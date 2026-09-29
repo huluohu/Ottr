@@ -36,9 +36,12 @@ use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
 /// 0ms（到即写）p50=5/p95=13ms 但完全失去合并能力。4ms 以可忽略的延迟税保留突发合并。
 /// 可用 `OTTR_BATCH_WINDOW_MS` 覆盖（Task 7 吞吐场景窗口实验沿用同一旋钮）。
 const BATCH_WINDOW: Duration = Duration::from_millis(4);
-/// 合批上限：窗口内攒到 64KB 立即 flush，不等窗口到期。
-/// 可用 `OTTR_BATCH_LIMIT_KB` 覆盖（Task 7 吞吐实验「64KB→调整」的旋钮）。
-const BATCH_LIMIT: usize = 64 * 1024;
+/// 合批上限：窗口内攒到 256KB 立即 flush，不等窗口到期。
+/// 默认 256KB —— Task 7 实测定值（task-7-report.md §4）：64KB 无节流在 100MB
+/// 洪流下触发 tauri Channel 静默停摆（~54MB 处整流冻结，wry#1644 同机制）；
+/// 256KB 帧 + 16ms flush 间隔两跑账目零差、14 MiB/s、冻结 0。
+/// 可用 `OTTR_BATCH_LIMIT_KB` 覆盖（实验/调试用）。
+const BATCH_LIMIT: usize = 256 * 1024;
 
 /// 运行时生效窗口（`OTTR_BATCH_WINDOW_MS` 覆盖；0 = 每条消息到即 flush）。
 fn batch_window() -> Duration {
@@ -59,18 +62,23 @@ fn batch_limit() -> usize {
         .unwrap_or(BATCH_LIMIT)
 }
 
-/// flush 节流：两次 flush 之间的最小间隔（`OTTR_FLUSH_MIN_INTERVAL_MS`，默认 0 = 关）。
+/// flush 节流：两次 flush 之间的最小间隔。**默认 16ms**（`OTTR_FLUSH_MIN_INTERVAL_MS`
+/// 覆盖；显式设 0 = 关闭节流）。
 ///
-/// 【Task 7 背压发现】tauri Channel 的 send 是「入队即返回」语义，没有反压信号；
-/// 100MB 全速洪流下 webview 侧取数管线停滞（详见 task-7-report.md）。
-/// 本旋钮在合批器源头限速，让 webview 追得上生产速率——SSH channel 窗口随之
-/// 收紧、sshd 端 cat 阻塞，即端到端背压。正式版需要更完善的反压设计（遗留项）。
+/// 默认值来源（Task 7 实测，task-7-report.md §4）：tauri `Channel::send` 是入队即
+/// 返回语义、无反压信号，无节流时 webview 取数管线在洪流下静默停摆（一次丢帧 =
+/// 全流冻结，wry#1644 同机制）；16ms（≈16MB/s @256KB 帧）是实测通过边界之下、
+/// 32MB/s（必停滞）之上的保守验证值——E6/E6b 账目零差、冻结 0、100MB 全量 8.6s。
+/// 交互场景不受影响：击键间隔 ≥16ms 时节流永不生效（Task 4 延迟红线复测无回归）。
 fn flush_min_interval() -> Option<Duration> {
-    std::env::var("OTTR_FLUSH_MIN_INTERVAL_MS")
+    match std::env::var("OTTR_FLUSH_MIN_INTERVAL_MS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
-        .filter(|v| *v > 0)
-        .map(Duration::from_millis)
+    {
+        Some(0) => None,
+        Some(ms) => Some(Duration::from_millis(ms)),
+        None => Some(Duration::from_millis(16)),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +403,7 @@ async fn forward_pty_loop(
                 }
             }
             last_flush = Some(Instant::now());
-            flush_batch(&mut buf, &mut deadline, on_data, counters, session_id).await
+            flush_batch(&mut buf, &mut deadline, limit, on_data, counters, session_id).await
         }};
     }
 
@@ -472,6 +480,7 @@ async fn forward_pty_loop(
 async fn flush_batch(
     buf: &mut Vec<u8>,
     deadline: &mut Option<Instant>,
+    limit: usize,
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
     session_id: &str,
@@ -481,7 +490,7 @@ async fn flush_batch(
         return true;
     }
     let n = buf.len();
-    let payload = std::mem::replace(buf, Vec::with_capacity(BATCH_LIMIT));
+    let payload = std::mem::replace(buf, Vec::with_capacity(limit));
     match on_data.send(InvokeResponseBody::Raw(payload)) {
         Ok(()) => {
             counters.forwarded_bytes.fetch_add(n as u64, Ordering::Relaxed);

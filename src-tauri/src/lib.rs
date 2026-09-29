@@ -1,15 +1,19 @@
 // Spike #2（Task 4）：PTY 双向流 + 二进制 IPC 通道定案 + 击键延迟测量。
+// Spike #3（Task 7）：100MB 吞吐/背压测量 + 会话取消（drop_session）+ M-2 失败策略。
 //
 // 数据面（输出方向，PTY → 前端）：
 //   russh channel 读循环 → 合批器（4ms 或 64KB 先到者，实验定值见下）→
 //   `Channel<InvokeResponseBody>` + `InvokeResponseBody::Raw(bytes)` —— 二进制帧，
 //   前端收到 `ArrayBuffer`（见 docs/phase0-report.md 定案）。禁 JSON/base64，永不丢弃字节。
 // 输入方向（击键 → PTY）：`write_session(id, bytes)`，spike 台账裁定允许 JSON 数组。
+// 会话取消（Task 7）：`drop_session(id)` → 移除表项 + 通知转发循环就地取消 +
+//   disconnect（russh Handle::drop 不关连接，必须显式断，见 SshSession::disconnect 文档）。
 //
-// Task 7 预埋：Rust 侧转发计数（forwarded_bytes/frames/input_bytes/writes/pty_read_bytes），
-// 经 `session_stats` 命令可读；`OTTR_BATCH_DEBUG=1` 时逐批打 debug 日志。
+// Task 7 字节账目：Rust 侧转发计数（forwarded_bytes/frames/input_bytes/writes/pty_read_bytes）
+// + send 失败显式计数（send_failed_bytes/send_failed_frames/failed —— M-2 失败策略，
+// flush_batch 文档）经 `session_stats` 可读；`OTTR_BATCH_DEBUG=1` 时逐批打 debug 日志。
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,6 +22,7 @@ use russh::ChannelMsg;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{Manager, State};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Notify;
 
 use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
 
@@ -26,12 +31,13 @@ use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
 // ---------------------------------------------------------------------------
 
 /// 合批窗口：首字节到达后最多等这么久（有字节即写、窗口为最长等待）。
-/// 默认 4ms —— spike 实验（2026-09-29，100 字符 @20ms，详见 docs/phase0-report.md）：
-/// 16ms 时 p50=40/p95=106ms（不达标）；4ms 时 p50=8/p95=12ms；0ms（到即写）
-/// p50=5/p95=13ms 但完全失去合并能力。4ms 以可忽略的延迟税保留突发合并。
-/// 可用 `OTTR_BATCH_WINDOW_MS` 覆盖（Task 7 调优沿用同一旋钮）。
+/// 默认 4ms —— spike 实验（2026-09-29，100 字符 @20ms，详见 docs/phase0-report.md §2）：
+/// 16ms 洁净复测同样达标（p95=23/29）；4ms 时 p50=8/p95=10–14ms（余量 3.5–5×）；
+/// 0ms（到即写）p50=5/p95=13ms 但完全失去合并能力。4ms 以可忽略的延迟税保留突发合并。
+/// 可用 `OTTR_BATCH_WINDOW_MS` 覆盖（Task 7 吞吐场景窗口实验沿用同一旋钮）。
 const BATCH_WINDOW: Duration = Duration::from_millis(4);
 /// 合批上限：窗口内攒到 64KB 立即 flush，不等窗口到期。
+/// 可用 `OTTR_BATCH_LIMIT_KB` 覆盖（Task 7 吞吐实验「64KB→调整」的旋钮）。
 const BATCH_LIMIT: usize = 64 * 1024;
 
 /// 运行时生效窗口（`OTTR_BATCH_WINDOW_MS` 覆盖；0 = 每条消息到即 flush）。
@@ -41,6 +47,30 @@ fn batch_window() -> Duration {
         .and_then(|v| v.parse::<u64>().ok())
         .map(Duration::from_millis)
         .unwrap_or(BATCH_WINDOW)
+}
+
+/// 运行时生效合批上限（`OTTR_BATCH_LIMIT_KB` 覆盖，向下取整到字节）。
+fn batch_limit() -> usize {
+    std::env::var("OTTR_BATCH_LIMIT_KB")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|kb| (kb as usize) * 1024)
+        .filter(|v| *v > 0)
+        .unwrap_or(BATCH_LIMIT)
+}
+
+/// flush 节流：两次 flush 之间的最小间隔（`OTTR_FLUSH_MIN_INTERVAL_MS`，默认 0 = 关）。
+///
+/// 【Task 7 背压发现】tauri Channel 的 send 是「入队即返回」语义，没有反压信号；
+/// 100MB 全速洪流下 webview 侧取数管线停滞（详见 task-7-report.md）。
+/// 本旋钮在合批器源头限速，让 webview 追得上生产速率——SSH channel 窗口随之
+/// 收紧、sshd 端 cat 阻塞，即端到端背压。正式版需要更完善的反压设计（遗留项）。
+fn flush_min_interval() -> Option<Duration> {
+    std::env::var("OTTR_FLUSH_MIN_INTERVAL_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .map(Duration::from_millis)
 }
 
 // ---------------------------------------------------------------------------
@@ -105,12 +135,21 @@ struct SessionCounters {
     input_bytes: AtomicU64,
     /// write_session 调用次数。
     writes: AtomicU64,
+    /// 【M-2 失败策略】on_data.send 失败而**丢弃**的帧数（不计入 forwarded/frames）。
+    send_failed_frames: AtomicU64,
+    /// 【M-2 失败策略】on_data.send 失败而**丢弃**的字节数。
+    /// 账目恒等式：pty_read_bytes == forwarded_bytes + send_failed_bytes + 批内残余。
+    send_failed_bytes: AtomicU64,
+    /// 【M-2 失败策略】会话级失败标志：任何 send 失败后置位，session_stats 可读。
+    failed: AtomicBool,
 }
 
 struct SessionEntry {
     /// PTY 写端（russh `make_writer()`，与读循环共享同一通道）。
     writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>>,
     counters: Arc<SessionCounters>,
+    /// 取消信号：`drop_session` 触发，转发循环 select 到即就地退出（进程端任务取消）。
+    cancel: Arc<Notify>,
 }
 
 #[derive(Default)]
@@ -127,6 +166,9 @@ struct SessionStats {
     frames: u64,
     input_bytes: u64,
     writes: u64,
+    send_failed_frames: u64,
+    send_failed_bytes: u64,
+    failed: bool,
 }
 
 fn snapshot(counters: &SessionCounters) -> SessionStats {
@@ -136,6 +178,9 @@ fn snapshot(counters: &SessionCounters) -> SessionStats {
         frames: counters.frames.load(Ordering::Relaxed),
         input_bytes: counters.input_bytes.load(Ordering::Relaxed),
         writes: counters.writes.load(Ordering::Relaxed),
+        send_failed_frames: counters.send_failed_frames.load(Ordering::Relaxed),
+        send_failed_bytes: counters.send_failed_bytes.load(Ordering::Relaxed),
+        failed: counters.failed.load(Ordering::Relaxed),
     }
 }
 
@@ -181,6 +226,7 @@ async fn attach_session(
 
     let id = format!("pty-{}", SESSION_SEQ.fetch_add(1, Ordering::Relaxed));
     let counters = Arc::new(SessionCounters::default());
+    let cancel = Arc::new(Notify::new());
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
     state
@@ -190,15 +236,35 @@ async fn attach_session(
         .insert(id.clone(), SessionEntry {
             writer,
             counters: Arc::clone(&counters),
+            cancel: Arc::clone(&cancel),
         });
 
-    // 读循环持有 channel 与 session（session 保活 = 连接保活）。
+    // 读循环持有 channel 与 session；循环退出（正常关闭/取消/IPC 失效）后统一断连：
+    // russh Handle::drop 不关闭连接，不显式 disconnect 会让 sshd 上的 shell 与 TCP 悬挂。
     let session_id = id.clone();
     tauri::async_runtime::spawn(async move {
-        let _keepalive = session;
-        forward_pty_loop(&mut channel, &on_data, &counters, &session_id).await;
+        forward_pty_loop(&mut channel, &on_data, &counters, &session_id, &cancel).await;
+        if let Err(e) = session.disconnect().await {
+            eprintln!("[batcher:{session_id}] disconnect on exit failed: {e}");
+        }
     });
     Ok(id)
+}
+
+/// 关闭会话（Task 7 Step 4 可中断性；Task 5+ 的「关标签」接线点）。
+/// 同步移除会话表项（此后 `session_stats` 报 no such session），并通知转发循环
+/// 取消——循环就地退出（批内残余字节随之丢弃，账目按 `pty_read − forwarded −
+/// send_failed = 批内残余` 显式失衡），随后统一 disconnect、连接关闭。
+#[tauri::command]
+async fn drop_session(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let entry = state
+        .sessions
+        .lock()
+        .unwrap()
+        .remove(&id)
+        .ok_or_else(|| format!("no such session: {id}"))?;
+    entry.cancel.notify_one();
+    Ok(())
 }
 
 /// 击键写入（输入方向，字节直传 PTY；spike 台账：传输编码允许 JSON 数组）。
@@ -256,7 +322,8 @@ fn spike_report_latency(state: State<'_, AppState>, payload: String) -> Result<S
         .collect();
     report["rust"] = serde_json::json!({
         "batch_window_ms": batch_window().as_millis() as u64,
-        "batch_limit_bytes": BATCH_LIMIT,
+        "batch_limit_bytes": batch_limit(),
+        "flush_min_interval_ms": flush_min_interval().map(|d| d.as_millis() as u64).unwrap_or(0),
         "sessions": rust_side,
     });
 
@@ -297,32 +364,70 @@ async fn spike_probe_channel(on_probe: Channel<InvokeResponseBody>) -> Result<()
 
 // ---------------------------------------------------------------------------
 // 合批转发循环：有字节即写、窗口（默认 4ms）为最长等待；64KB 先到者立即 flush。
+// 取消：select 在 `cancel`（drop_session）上，到即就地退出（打 `session dropped`）。
 // ---------------------------------------------------------------------------
 
+#[allow(unused_assignments)] // last_flush 的最后一次赋值在 break 路径上不被读取（预期）
 async fn forward_pty_loop(
     channel: &mut russh::Channel<russh::client::Msg>,
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
     session_id: &str,
+    cancel: &Notify,
 ) {
     // russh 类型在此泄漏为 spike-pragmatic（见 ottr-ssh SshTransport 文档：
     // Channel 是 trait 边界上唯一泄漏点，正式版由包装类型消除）。
-    let mut buf: Vec<u8> = Vec::with_capacity(BATCH_LIMIT);
+    let limit = batch_limit();
+    let mut buf: Vec<u8> = Vec::with_capacity(limit);
     let mut deadline: Option<Instant> = None;
+    let mut last_flush: Option<Instant> = None;
 
+    // flush 前按 `flush_min_interval` 节流（背压旋钮，默认关）：间隔不足就等足。
+    // 等待期间 russh channel 不被读取，SSH 窗口收紧 → sshd 端 cat 阻塞 → 端到端背压。
+    macro_rules! paced_flush {
+        () => {{
+            if let Some(min) = flush_min_interval() {
+                if let Some(t) = last_flush {
+                    let elapsed = t.elapsed();
+                    if elapsed < min {
+                        tokio::time::sleep(min - elapsed).await;
+                    }
+                }
+            }
+            last_flush = Some(Instant::now());
+            flush_batch(&mut buf, &mut deadline, on_data, counters, session_id).await
+        }};
+    }
+
+    // send 失败 = 前端通道不可达（M-2 失败策略，见 flush_batch）：终止循环。
     loop {
         let msg = match deadline {
             Some(d) => {
                 let remaining = d.saturating_duration_since(Instant::now());
-                match tokio::time::timeout(remaining, channel.wait()).await {
-                    Err(_elapsed) => {
-                        flush_batch(&mut buf, &mut deadline, on_data, counters, session_id).await;
+                tokio::select! {
+                    m = channel.wait() => m,
+                    _ = tokio::time::sleep(remaining) => {
+                        if !paced_flush!() {
+                            break;
+                        }
                         continue;
                     }
-                    Ok(m) => m,
+                    _ = cancel.notified() => {
+                        // 会话被丢弃（关标签/drop_session）：进程端任务就地取消。
+                        // 批内残余字节随之丢弃（不再转发）——账目恒等式显式失衡：
+                        // pty_read − forwarded − send_failed = 批内残余。
+                        eprintln!("[batcher:{session_id}] session dropped");
+                        break;
+                    }
                 }
             }
-            None => channel.wait().await,
+            None => tokio::select! {
+                m = channel.wait() => m,
+                _ = cancel.notified() => {
+                    eprintln!("[batcher:{session_id}] session dropped");
+                    break;
+                }
+            },
         };
 
         match msg {
@@ -332,16 +437,20 @@ async fn forward_pty_loop(
                 deadline = Some(Instant::now() + batch_window());
             }
                 buf.extend_from_slice(&data);
-                if buf.len() >= BATCH_LIMIT {
-                    flush_batch(&mut buf, &mut deadline, on_data, counters, session_id).await;
+                if buf.len() >= limit {
+                    if !paced_flush!() {
+                        break;
+                    }
                 }
             }
             Some(ChannelMsg::ExitStatus { .. }) => {}
             Some(ChannelMsg::Eof) => {
-                flush_batch(&mut buf, &mut deadline, on_data, counters, session_id).await;
+                if !paced_flush!() {
+                    break;
+                }
             }
             Some(ChannelMsg::Close) | None => {
-                flush_batch(&mut buf, &mut deadline, on_data, counters, session_id).await;
+                paced_flush!();
                 eprintln!("[batcher:{session_id}] pty closed");
                 break;
             }
@@ -350,16 +459,26 @@ async fn forward_pty_loop(
     }
 }
 
+/// flush 一批到前端。返回 false = send 失败，调用方**必须**终止转发循环。
+///
+/// 【M-2 失败策略（T4 台账挂账：此前 send 失败仅 eprintln，字节静默丢失且循环
+/// 空转继续丢）】send 失败意味着前端通道已不可达（webview 关闭/通道断开），
+/// 重试无意义、继续循环只会静默丢字节并烧 CPU。三步定案：
+/// ① 失败字节计入显式计数 `send_failed_bytes/frames`——账目恒等式
+///    `pty_read == forwarded + send_failed + 批内残余` 失衡可见，绝不静默；
+/// ② 置会话级失败标志 `failed`（`session_stats` 可读，前端轮询可见——spike 阶段
+///    无推送通道，轮询即「上报前端」）；
+/// ③ 返回 false 让转发循环终止，连接随后统一 disconnect（进程端任务取消）。
 async fn flush_batch(
     buf: &mut Vec<u8>,
     deadline: &mut Option<Instant>,
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
     session_id: &str,
-) {
+) -> bool {
     *deadline = None;
     if buf.is_empty() {
-        return;
+        return true;
     }
     let n = buf.len();
     let payload = std::mem::replace(buf, Vec::with_capacity(BATCH_LIMIT));
@@ -370,8 +489,15 @@ async fn flush_batch(
             if std::env::var_os("OTTR_BATCH_DEBUG").is_some() {
                 eprintln!("[batcher:{session_id}] flush {n} bytes");
             }
+            true
         }
-        Err(e) => eprintln!("[batcher:{session_id}] send failed ({n} bytes dropped by ipc): {e}"),
+        Err(e) => {
+            counters.send_failed_bytes.fetch_add(n as u64, Ordering::Relaxed);
+            counters.send_failed_frames.fetch_add(1, Ordering::Relaxed);
+            counters.failed.store(true, Ordering::Relaxed);
+            eprintln!("[batcher:{session_id}] session dropped (ipc send failed, {n} bytes lost): {e}");
+            false
+        }
     }
 }
 
@@ -390,23 +516,33 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .setup(|app| {
-            // 自动化驱动入口：OTTR_SPIKE=latency 时把页面导航到 ?spike=latency，
-            // 前端据此自动打字测量并回传报告（scripts/spike-latency.sh）。
+            // 自动化驱动入口：OTTR_SPIKE=latency|throughput 时把页面导航到对应
+            // ?spike=… 模式（Task 4/7 测量页），OTTR_SPIKE_INTERRUPT=1 追加中断参数
+            // （Task 7 Step 4 自动中断验证）。前端据此自动测量并回传报告
+            // （scripts/spike-latency.sh、scripts/spike-throughput.sh）。
             // eval 可能在页面首次加载 commit 前被 webview 丢弃，故带守卫重试：
             // 导航成功后表达式变成 no-op，重复 eval 无害。
             // 窗口置顶 + 抢焦点：后台/遮挡窗口会被 WebKit 节流计时器，
             // 曾导致测量页整场停滞（240s 无报告）。
-            if std::env::var("OTTR_SPIKE").as_deref() == Ok("latency") {
+            let spike_mode = std::env::var("OTTR_SPIKE")
+                .ok()
+                .filter(|m| m == "latency" || m == "throughput");
+            if let Some(mode) = spike_mode {
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = win.set_always_on_top(true);
                     let _ = win.set_focus();
+                    let extra = if std::env::var("OTTR_SPIKE_INTERRUPT").as_deref() == Ok("1") {
+                        "&interrupt=1"
+                    } else {
+                        ""
+                    };
+                    let target = format!("http://localhost:1420/?spike={mode}{extra}");
+                    let guard = format!(
+                        "if(!location.search.includes('spike={mode}'))location.replace('{target}')"
+                    );
                     tauri::async_runtime::spawn(async move {
                         for i in 0..480 {
-                            let ok = win
-                                .eval(
-                                    "if(!location.search.includes('spike=latency'))location.replace('http://localhost:1420/?spike=latency')",
-                                )
-                                .is_ok();
+                            let ok = win.eval(&guard).is_ok();
                             if !ok {
                                 break;
                             }
@@ -426,6 +562,7 @@ pub fn run() {
             greet,
             attach_session,
             write_session,
+            drop_session,
             session_stats,
             spike_report_latency,
             spike_probe_channel,

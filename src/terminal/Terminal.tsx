@@ -7,6 +7,11 @@
 // 3. 自动打 100 字符（间隔 20ms），performance.now() 记「发出 → term.write 收到回显」；
 // 4. p50/p95 + 帧长对账 JSON POST 给 `spike_report_latency` 落盘 /tmp/ottr-latency.json
 //    （取数机制：scripts/spike-latency.sh 轮询该文件后 kill dev server）。
+//
+// 吞吐模式（?spike=throughput，Task 7 / Spike #3，由 OTTR_SPIKE=throughput 自动导航进入）：
+// `ThroughputSpike`（本文件下方具名导出）——rAF 冻结探测 + `cat /tmp/big100` 100MB
+// 全量字节账目（前端收到 vs Rust 转发 vs 104857600+回显开销）+ `&interrupt=1` 自动
+// 中断验证（drop_session → 进程端取消 + UI 立即可用）。
 import { useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -363,6 +368,397 @@ export default function OttrTerminal({ spike }: { spike?: "latency" }) {
       }
     })();
   }, [spike]);
+
+  return (
+    <div className="spike-root">
+      <div className="spike-badge" id="spike-badge">
+        {badge}
+      </div>
+      <div className="spike-term" ref={hostRef} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Task 7 / Spike #3：100MB 吞吐与背压测量（?spike=throughput）
+// 由 OTTR_SPIKE=throughput 自动导航进入；&interrupt=1 追加自动中断验证（Step 4）。
+// 报告经 spike_report_latency 通道落盘（T4 既有取数机制复用，名称沿用），
+// 驱动脚本 scripts/spike-throughput.sh 轮询取数。
+// ---------------------------------------------------------------------------
+
+const BIG_FILE = "/tmp/big100";
+const BIG_FILE_BYTES = 104_857_600;
+const FREEZE_GAP_MS = 250; // 简报 Step 1：帧间隔 > 250ms 计一次冻结
+const FREEZE_SUSPEND_MS = 5000; // >5s 视为 rAF 停摆（窗口被遮挡/节流），单列不计冻结
+const THP_BOOT_MS = 1500; // 等 shell prompt 稳定
+const THP_POLL_MS = 200; // Rust 计数轮询周期（兼作 UI 活动信号：徽标 5Hz 刷新）
+const THP_STABLE_POLLS = 6; // 连续 6 拍（≈1.2s）PTY 读无增长且前端追平 → 传输结束
+const THP_TIMEOUT_MS = 120_000; // 传输硬超时（页面看门狗 150s 兜底）
+const INTERRUPT_AT_BYTES = 8 * 1024 * 1024; // interrupt=1：收到 8MiB 后自动 drop_session
+
+type RustStats = {
+  pty_read_bytes: number;
+  forwarded_bytes: number;
+  frames: number;
+  input_bytes: number;
+  writes: number;
+  send_failed_frames: number;
+  send_failed_bytes: number;
+  failed: boolean;
+};
+
+function summarizeSizes(sizes: number[]): {
+  count: number;
+  min: number;
+  max: number;
+  avg: number;
+  first10: number[];
+} {
+  if (!sizes.length) return { count: 0, min: 0, max: 0, avg: 0, first10: [] };
+  return {
+    count: sizes.length,
+    min: sizes.reduce((a, b) => Math.min(a, b), Infinity),
+    max: sizes.reduce((a, b) => Math.max(a, b), 0),
+    avg: +(sizes.reduce((a, b) => a + b, 0) / sizes.length).toFixed(1),
+    first10: sizes.slice(0, 10),
+  };
+}
+
+export function ThroughputSpike() {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const startedRef = useRef(false);
+  const [badge, setBadge] = useState("spike:throughput 初始化…");
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    void (async () => {
+      const interrupt =
+        new URLSearchParams(window.location.search).get("interrupt") === "1";
+
+      // 看门狗：卡死也落失败报告，驱动脚本才能快速失败并拿到卡住阶段（同 Task 4）。
+      let lastStage = "mounted";
+      const watchdog = setTimeout(() => {
+        pageLog(`watchdog fired at stage=${lastStage}`);
+        void invoke("spike_report_latency", {
+          payload: JSON.stringify({
+            mode: "throughput",
+            error: "flow stalled",
+            stage: lastStage,
+          }),
+        }).catch(() => {});
+      }, 150_000);
+      const clearWatchdog = () => clearTimeout(watchdog);
+      const stage = (msg: string) => {
+        lastStage = msg.length > 80 ? msg.slice(0, 80) : msg;
+        pageLog(msg);
+      };
+
+      // --- Step 1: rAF 冻结探测器（整场运行：attach、传输、中断全程） ---
+      let freezes = 0;
+      let rafSuspended = 0; // >5s 的 rAF 停摆（遮挡/节流），不与真冻结混计
+      let maxGapMs = 0;
+      let rafFrames = 0;
+      let lastFrame = performance.now();
+      let rafAlive = true;
+      const rafStep = (t: number) => {
+        if (!rafAlive) return;
+        const gap = t - lastFrame;
+        lastFrame = t;
+        rafFrames++;
+        if (gap > maxGapMs) maxGapMs = gap;
+        if (gap > FREEZE_SUSPEND_MS) rafSuspended++;
+        else if (gap > FREEZE_GAP_MS) freezes++;
+        requestAnimationFrame(rafStep);
+      };
+      requestAnimationFrame(rafStep);
+
+      const term = new XTerm({ fontSize: 13 });
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      if (hostRef.current) term.open(hostRef.current);
+      try {
+        fit.fit();
+      } catch {
+        // 布局未就绪不影响测量
+      }
+
+      // --- Step 2: attach + 前端字节计数（term.write 收到的每一帧） ---
+      const chan = new Channel<unknown>();
+      let frames = 0;
+      let frontBytes = 0;
+      let lastDataAt = 0;
+      let firstType = "";
+      let base64Seen = false;
+      const frameSizes: number[] = [];
+      chan.onmessage = (m) => {
+        frames++;
+        if (!firstType) firstType = classify(m);
+        if (typeof m === "string") base64Seen = true;
+        let bytes: Uint8Array;
+        try {
+          bytes = toBytes(m);
+        } catch {
+          return;
+        }
+        frameSizes.push(bytes.length);
+        frontBytes += bytes.length;
+        lastDataAt = performance.now();
+        term.write(bytes);
+      };
+
+      // attach 重试一次（同 Task 4：偶发连接停滞，Rust 侧已限时失败）
+      let id = "";
+      let attachErr: unknown = null;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          stage(`attach attempt ${attempt}`);
+          id = await invoke<string>("attach_session", {
+            host: FIXTURE.host,
+            port: FIXTURE.port,
+            username: FIXTURE.username,
+            password: FIXTURE.password,
+            cols: term.cols,
+            rows: term.rows,
+            onData: chan,
+          });
+          attachErr = null;
+          break;
+        } catch (e) {
+          attachErr = e;
+          stage(`attach attempt ${attempt} failed: ${e}`);
+          await sleep(1000);
+        }
+      }
+      if (attachErr !== null) {
+        term.writeln(`\r\n[attach failed] ${attachErr}`);
+        setBadge(`attach 失败: ${attachErr}`);
+        await invoke("spike_report_latency", {
+          payload: JSON.stringify({
+            mode: "throughput",
+            error: String(attachErr),
+            stage: "attach",
+          }),
+        }).catch(() => {});
+        clearWatchdog();
+        return;
+      }
+      stage(`attached as ${id}`);
+
+      const sendInput = (text: string) =>
+        invoke("write_session", {
+          id,
+          bytes: Array.from(new TextEncoder().encode(text)),
+        });
+
+      await sleep(THP_BOOT_MS);
+      term.writeln(`[spike] cat ${BIG_FILE}（${BIG_FILE_BYTES} B）…`);
+
+      // --- 传输 + 轮询（轮询兼作 UI 活动信号：React 徽标 5Hz 刷新） ---
+      const t0 = performance.now();
+      lastDataAt = t0;
+      let stats: RustStats | null = null;
+      let maxLagBytes = 0; // 背压信号：Rust 已转发 − 前端已收到的最大积压
+      const lagTrace: { t_ms: number; front: number; rust: number }[] = []; // 每 10 拍采样（2s 粒度）
+      let pollN = 0;
+      let stable = 0;
+      let lastRead = -1;
+      let interruptInfo: Record<string, unknown> | null = null;
+      let endedBy: "completed" | "interrupted" | "timeout" | "failed" = "timeout";
+
+      await sendInput(`cat ${BIG_FILE}\n`);
+
+      while (performance.now() - t0 < THP_TIMEOUT_MS) {
+        await sleep(THP_POLL_MS);
+        let s: RustStats;
+        try {
+          s = await invoke<RustStats>("session_stats", { id });
+        } catch (e) {
+          stage(`session_stats failed: ${e}`);
+          endedBy = "failed";
+          break;
+        }
+        stats = s;
+        pollN++;
+        const lag = Math.max(0, s.forwarded_bytes - frontBytes);
+        if (lag > maxLagBytes) maxLagBytes = lag;
+        if (pollN % 10 === 1) {
+          lagTrace.push({
+            t_ms: +(performance.now() - t0).toFixed(0),
+            front: frontBytes,
+            rust: s.forwarded_bytes,
+          });
+        }
+        setBadge(
+          `接收 ${(frontBytes / 1048576).toFixed(1)} / 100.0 MiB | Rust 已转发 ${s.forwarded_bytes} | 冻结 ${freezes} | maxGap ${maxGapMs.toFixed(0)}ms`,
+        );
+        if (s.failed || s.send_failed_bytes > 0) {
+          stage(`session failed flag on: send_failed_bytes=${s.send_failed_bytes}`);
+          endedBy = "failed";
+          break;
+        }
+        // --- Step 4（interrupt=1）：到达阈值即自动 drop session ---
+        if (interrupt && frontBytes >= INTERRUPT_AT_BYTES) {
+          const atBytes = frontBytes;
+          const atStats = s;
+          const dropReq0 = performance.now();
+          await invoke("drop_session", { id });
+          const dropInvokeMs = performance.now() - dropReq0;
+          // UI 立即可用证据 1：drop 返回后到下一次 rAF 帧的时距
+          const nextFrameMs = await new Promise<number>((res) => {
+            const t = performance.now();
+            requestAnimationFrame(() => res(performance.now() - t));
+          });
+          // 证据 2：旧会话已从进程端移除（session_stats 必须报 no such session）
+          let postDropStats: string;
+          try {
+            await invoke("session_stats", { id });
+            postDropStats = "STILL-ALIVE(取消失效!)";
+          } catch (e) {
+            postDropStats = `gone ok: ${e}`;
+          }
+          // 证据 3：立刻新开会话并打字回显（真实可用性）
+          const chan2 = new Channel<unknown>();
+          let postText = "";
+          const dec = new TextDecoder();
+          chan2.onmessage = (m) => {
+            try {
+              const b = toBytes(m);
+              postText = (postText + dec.decode(b)).slice(-2000);
+            } catch {
+              // 忽略非二进制帧
+            }
+          };
+          const attach2_0 = performance.now();
+          const id2 = await invoke<string>("attach_session", {
+            host: FIXTURE.host,
+            port: FIXTURE.port,
+            username: FIXTURE.username,
+            password: FIXTURE.password,
+            cols: term.cols,
+            rows: term.rows,
+            onData: chan2,
+          });
+          const postAttachMs = performance.now() - attach2_0;
+          const echo0 = performance.now();
+          await invoke("write_session", {
+            id: id2,
+            bytes: Array.from(new TextEncoder().encode("echo post-drop-ok\n")),
+          });
+          let echoOk = false;
+          const echoDeadline = performance.now() + 5000;
+          while (performance.now() < echoDeadline) {
+            await sleep(50);
+            if (postText.includes("post-drop-ok")) {
+              echoOk = true;
+              break;
+            }
+          }
+          interruptInfo = {
+            trigger_bytes: INTERRUPT_AT_BYTES,
+            front_bytes_at_drop: atBytes,
+            stats_at_drop: atStats,
+            drop_invoke_ms: +dropInvokeMs.toFixed(2),
+            next_frame_after_drop_ms: +nextFrameMs.toFixed(2),
+            post_drop_stats_check: postDropStats,
+            post_drop_attach_ms: +postAttachMs.toFixed(2),
+            post_drop_session: id2,
+            post_drop_echo_ok: echoOk,
+            post_drop_echo_ms:
+              echoOk ? +(performance.now() - echo0).toFixed(2) : -1,
+            freezes_at_drop: freezes,
+          };
+          stage(
+            `interrupted: drop=${dropInvokeMs.toFixed(1)}ms nextFrame=${nextFrameMs.toFixed(1)}ms reattach=${postAttachMs.toFixed(0)}ms echo_ok=${echoOk}`,
+          );
+          endedBy = "interrupted";
+          break;
+        }
+        // --- 完成判定：PTY 读停 + 前端追平 Rust ---
+        if (s.pty_read_bytes === lastRead && s.pty_read_bytes > 0 && lag <= 4096) {
+          stable++;
+          if (stable >= THP_STABLE_POLLS) {
+            endedBy = "completed";
+            break;
+          }
+        } else {
+          stable = 0;
+          lastRead = s.pty_read_bytes;
+        }
+      }
+      rafAlive = false; // 冻结计数止于传输/中断结束（报告时刻即计数快照）
+      const elapsedMs = performance.now() - t0;
+      // 吞吐分母 = 最后一个数据字节到达时刻（剔除结束判定的 ~1.2s 稳定尾）
+      const dataMs = Math.max(lastDataAt - t0, 1);
+      const rateBytes = endedBy === "completed" ? BIG_FILE_BYTES : frontBytes;
+      const account = stats
+        ? {
+            rust_pty_read_bytes: stats.pty_read_bytes,
+            rust_forwarded_bytes: stats.forwarded_bytes,
+            rust_frames: stats.frames,
+            rust_send_failed_frames: stats.send_failed_frames,
+            rust_send_failed_bytes: stats.send_failed_bytes,
+            rust_failed_flag: stats.failed,
+            front_bytes: frontBytes,
+            front_frames: frames,
+            diff_front_vs_rust: frontBytes - stats.forwarded_bytes,
+            // 完整跑才有意义：文件字节数之外的 shell 回显 + PTY ONLCR 展开开销
+            overhead_vs_file: endedBy === "completed" ? frontBytes - BIG_FILE_BYTES : null,
+          }
+        : null;
+
+      // --- Step 3: 三方账目 + 耗时 + 冻结计数回传报告 ---
+      const report = {
+        mode: "throughput",
+        ended_by: endedBy,
+        meta: {
+          file: BIG_FILE,
+          file_bytes: BIG_FILE_BYTES,
+          interrupt,
+          ua: navigator.userAgent,
+          measured_at: new Date().toISOString(),
+        },
+        transfer: {
+          elapsed_ms: +elapsedMs.toFixed(1),
+          data_ms: +dataMs.toFixed(1),
+          mib_per_s: +((rateBytes / 1048576) / (dataMs / 1000)).toFixed(2),
+          mb_per_s: +((rateBytes / 1e6) / (dataMs / 1000)).toFixed(2),
+          max_ipc_lag_bytes: maxLagBytes,
+          lag_trace_2s: lagTrace,
+        },
+        freeze: {
+          threshold_ms: FREEZE_GAP_MS,
+          freezes,
+          raf_suspended_gt_5s: rafSuspended,
+          max_frame_gap_ms: +maxGapMs.toFixed(1),
+          raf_frames: rafFrames,
+        },
+        account,
+        channel: {
+          typeof_first: firstType,
+          base64_seen: base64Seen,
+          frame_sizes: summarizeSizes(frameSizes),
+        },
+        interrupt: interruptInfo,
+      };
+      try {
+        const path = await invoke<string>("spike_report_latency", {
+          payload: JSON.stringify(report),
+        });
+        stage(`report written: ${path}`);
+        const mbps = report.transfer.mib_per_s;
+        setBadge(`${endedBy} | ${mbps} MiB/s | 冻结 ${freezes} | report=${path}`);
+        term.writeln(
+          `\r\n[spike] ${endedBy}: ${mbps} MiB/s 冻结=${freezes} report=${path}`,
+        );
+        clearWatchdog();
+      } catch (e) {
+        setBadge(`report 上报失败: ${e}`);
+        stage(`report 上报失败: ${e}`);
+      }
+    })();
+  }, []);
 
   return (
     <div className="spike-root">

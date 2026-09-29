@@ -1,14 +1,17 @@
 import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
-import OttrTerminal from "./terminal/Terminal";
+import OttrTerminal, { ThroughputSpike } from "./terminal/Terminal";
 import "./App.css";
 
 function App() {
-  // Task 4 spike 入口：?spike=latency（自动化由 OTTR_SPIKE=latency 导航进来）
+  // Task 4/7 spike 入口：?spike=latency | ?spike=throughput（自动化由 OTTR_SPIKE 导航进来）
   const spike = new URLSearchParams(window.location.search).get("spike");
   if (spike === "latency") {
     return <OttrTerminal spike="latency" />;
+  }
+  if (spike === "throughput") {
+    return <ThroughputSpike />;
   }
 
   const [greetMsg, setGreetMsg] = useState("");

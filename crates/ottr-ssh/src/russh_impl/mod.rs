@@ -86,6 +86,20 @@ impl SshSession {
     pub async fn open_pty(&self, cols: u32, rows: u32) -> Result<russh::Channel<russh::client::Msg>> {
         <Self as SshTransport>::open_pty(self, cols, rows).await
     }
+
+    /// 主动断开连接（发送 SSH_MSG_DISCONNECT，会话任务退出、TCP 关闭）。
+    ///
+    /// spike Task 7 Step 4（可中断性）依赖：关标签 → 会话级取消必须有进程端断连。
+    /// 注意 russh `Handle::drop` 只打 debug 日志**不关连接**（源码 0.63.3 `impl Drop
+    /// for Handle`），Channel 也没有 Drop 收尾——不显式 disconnect 会让 sshd 上的
+    /// shell 与 TCP 悬挂。Task 5+ 关标签路径沿用。
+    pub async fn disconnect(&self) -> Result<()> {
+        use russh::Disconnect;
+        self.handle
+            .disconnect(Disconnect::ByApplication, "session dropped", "en")
+            .await
+            .map_err(Error::from)
+    }
 }
 
 impl std::fmt::Debug for SshSession {

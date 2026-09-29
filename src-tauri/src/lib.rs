@@ -396,10 +396,11 @@ fn spike_notify(app: tauri::AppHandle, title: String, body: String) -> Result<()
 }
 
 /// Task 11 取数通道：spike 页 POST JSON 落盘（keyring/notify 页复用）。
-/// 路径白名单 /tmp/ottr-*.json（spike 报告约定目录，防 webview 任意写文件）。
+/// 路径白名单 /tmp/ottr-*.json（spike 报告约定目录，防 webview 任意写文件）；
+/// 含 `..` 一律拒绝（否则 /tmp/ottr-../../x.json 可同时满足前后缀逃逸白名单）。
 #[tauri::command]
 fn spike_report_file(path: String, payload: String) -> Result<String, String> {
-    if !path.starts_with("/tmp/ottr-") || !path.ends_with(".json") {
+    if !path.starts_with("/tmp/ottr-") || !path.ends_with(".json") || path.contains("..") {
         return Err(format!("report path not allowed: {path}"));
     }
     let report: serde_json::Value =

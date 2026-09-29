@@ -347,6 +347,68 @@ fn spike_log(msg: String) {
     eprintln!("[spike-page] {msg}");
 }
 
+// ---------------------------------------------------------------------------
+// Task 11 / Spike #7：keyring 读写（service 用 "ottr.spike" 与正式数据隔离）
+// ---------------------------------------------------------------------------
+
+/// spike 固定 service/account；account 只是条目第二键，取固定值即可。
+const KEYRING_SERVICE: &str = "ottr.spike";
+const KEYRING_ACCOUNT: &str = "spike-account";
+
+#[tauri::command]
+fn spike_keyring_set(value: String) -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .map_err(|e| format!("entry new: {e}"))?;
+    entry.set_password(&value).map_err(|e| format!("set: {e}"))
+}
+
+#[tauri::command]
+fn spike_keyring_get() -> Result<String, String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .map_err(|e| format!("entry new: {e}"))?;
+    entry.get_password().map_err(|e| format!("get: {e}"))
+}
+
+#[tauri::command]
+fn spike_keyring_del() -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+        .map_err(|e| format!("entry new: {e}"))?;
+    // keyring v3：delete_credential（v2 的 delete_password 已改名）。
+    entry.delete_credential().map_err(|e| format!("del: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// Task 11 / Spike #8：系统通知（tauri-plugin-notification，Rust 侧 API）
+// ---------------------------------------------------------------------------
+
+/// 发系统通知。macOS 首次调用触发系统授权框；未授权时 show() 仍成功、通知被
+/// 系统静默丢弃——本命令只能证明「插件 API 调用成功」，弹窗与点击回焦列入
+/// T13 runbook 人工验证（Windows Toast 应用身份 / Linux libnotify 同理）。
+#[tauri::command]
+fn spike_notify(app: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title(&title)
+        .body(&body)
+        .show()
+        .map_err(|e| format!("notify: {e}"))
+}
+
+/// Task 11 取数通道：spike 页 POST JSON 落盘（keyring/notify 页复用）。
+/// 路径白名单 /tmp/ottr-*.json（spike 报告约定目录，防 webview 任意写文件）。
+#[tauri::command]
+fn spike_report_file(path: String, payload: String) -> Result<String, String> {
+    if !path.starts_with("/tmp/ottr-") || !path.ends_with(".json") {
+        return Err(format!("report path not allowed: {path}"));
+    }
+    let report: serde_json::Value =
+        serde_json::from_str(&payload).map_err(|e| format!("bad report json: {e}"))?;
+    std::fs::write(&path, serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("write {path}: {e}"))?;
+    Ok(path)
+}
+
 /// 二进制通道定案探针：同一 `Channel<InvokeResponseBody>` 上发三种帧，
 /// 前端记录 `typeof`/长度做对账——
 /// 1) `Raw`(16B)：走 eval 直执行路径（<1024B 阈值）；
@@ -523,6 +585,8 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Task 11 / Spike #8：系统通知（macOS 首次调用触发系统授权）。
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
         .setup(|app| {
             // 自动化驱动入口：OTTR_SPIKE=latency|throughput 时把页面导航到对应
@@ -535,7 +599,7 @@ pub fn run() {
             // 曾导致测量页整场停滞（240s 无报告）。
             let spike_mode = std::env::var("OTTR_SPIKE")
                 .ok()
-                .filter(|m| m == "latency" || m == "throughput");
+                .filter(|m| matches!(m.as_str(), "latency" | "throughput" | "keyring" | "notify"));
             if let Some(mode) = spike_mode {
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = win.set_always_on_top(true);
@@ -575,7 +639,12 @@ pub fn run() {
             session_stats,
             spike_report_latency,
             spike_probe_channel,
-            spike_log
+            spike_log,
+            spike_keyring_set,
+            spike_keyring_get,
+            spike_keyring_del,
+            spike_notify,
+            spike_report_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

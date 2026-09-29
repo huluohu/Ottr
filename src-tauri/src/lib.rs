@@ -598,9 +598,12 @@ pub fn run() {
             // 导航成功后表达式变成 no-op，重复 eval 无害。
             // 窗口置顶 + 抢焦点：后台/遮挡窗口会被 WebKit 节流计时器，
             // 曾导致测量页整场停滞（240s 无报告）。
-            let spike_mode = std::env::var("OTTR_SPIKE")
-                .ok()
-                .filter(|m| matches!(m.as_str(), "latency" | "throughput" | "keyring" | "notify"));
+            let spike_mode = std::env::var("OTTR_SPIKE").ok().filter(|m| {
+                matches!(
+                    m.as_str(),
+                    "latency" | "throughput" | "keyring" | "notify" | "render"
+                )
+            });
             if let Some(mode) = spike_mode {
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = win.set_always_on_top(true);

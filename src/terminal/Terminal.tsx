@@ -380,6 +380,225 @@ export default function OttrTerminal({ spike }: { spike?: "latency" }) {
 }
 
 // ---------------------------------------------------------------------------
+// Task 13 / Spike #12：xterm.js 渲染压力（?spike=render，由 OTTR_SPIKE=render
+// 自动导航进入；驱动脚本 scripts/spike-desktop-api.sh render）。
+//
+// 测什么（简报 Step 2）：
+// 1. 【冷启动首响·T4 挂账补充】页面挂载即 attach 夹具：记 attach invoke →
+//    首帧字节到达的耗时（含 connect+auth+PTY+首字节，dev server 刚起后的
+//    第一次 attach）。attach 失败不阻断渲染测量（ttfb 记 null + error）。
+// 2. 【写入】一次性 write 10_000 行含色文本（256 色 ANSI 轮换 + 行号），
+//    `term.write(data, cb)` 回调计时（xterm 解析+入缓冲），再等两拍 rAF
+//    记「首帧渲染完成」。
+// 3. 【滚动】写完后逐帧 `scrollLines(±1)` 跑 SCROLL_FRAMES 帧，rAF 帧长
+//    avg/p50/p95/max（滚动流畅度的自动部分；主观评分归 runbook）。
+// 4. 【IME #14 mac 可自动化部分】记录 xterm 隐藏 textarea（组合输入事件
+//    通路载体）是否存在——xterm.js 6.0 内置 IME 组合支持，本页未注册任何
+//    attachCustomKeyEventHandler（无拦截风险）；真实组合输入三端人工验证
+//    归 docs/runbooks/spike-win-linux.md。
+//
+// 报告经 `spike_report_file` 落盘 /tmp/ottr-render.json（spike 白名单路径）。
+// 注意：本页数字 = macOS WebKit 真机形态；CI 软件渲染数字仅作回归基线，
+// ≠ 真机 GPU 数字（报告注明）；WebView2/WebKitGTK 专项归 runbook。
+// ---------------------------------------------------------------------------
+
+const RENDER_LINES = 10_000;
+const SCROLL_FRAMES = 180; // 滚动测量帧数（3s @60fps）
+
+/** 构造 L 行含色文本：256 色 ANSI 前景轮换 + 行号 + 填充列（~90 列宽）。 */
+function buildColoredLines(lines: number): string {
+  const parts: string[] = [];
+  for (let i = 0; i < lines; i++) {
+    const color = i % 256;
+    parts.push(`\x1b[38;5;${color}mline ${String(i).padStart(5, "0")} │ ${"ottr-render-".repeat(7)}\x1b[0m`);
+  }
+  return parts.join("\r\n");
+}
+
+/** 一轮 rAF。 */
+const nextFrame = () => new Promise<number>((res) => {
+  const t0 = performance.now();
+  requestAnimationFrame(() => res(performance.now() - t0));
+});
+
+export function RenderSpike() {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const startedRef = useRef(false);
+  const [badge, setBadge] = useState("spike:render 初始化…");
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    void (async () => {
+      let lastStage = "mounted";
+      const watchdog = setTimeout(() => {
+        pageLog(`watchdog fired at stage=${lastStage}`);
+        void invoke("spike_report_file", {
+          path: "/tmp/ottr-render.json",
+          payload: JSON.stringify({ mode: "render", error: "flow stalled", stage: lastStage }),
+        }).catch(() => {});
+      }, 90_000);
+      const clearWatchdog = () => clearTimeout(watchdog);
+      const stage = (msg: string) => {
+        lastStage = msg.length > 80 ? msg.slice(0, 80) : msg;
+        pageLog(msg);
+      };
+
+      const report: Record<string, unknown> = {
+        mode: "render",
+        meta: {
+          lines: RENDER_LINES,
+          scroll_frames: SCROLL_FRAMES,
+          ua: navigator.userAgent,
+          note: "mac=WebKit 真机；CI 软件渲染数字仅作回归基线≠真机 GPU",
+          measured_at: new Date().toISOString(),
+        },
+      };
+
+      // --- 1. 冷启动首响：挂载即 attach（dev server 刚起后的第一次） ---
+      const term = new XTerm({ fontSize: 13 });
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      if (hostRef.current) term.open(hostRef.current);
+      try {
+        fit.fit();
+      } catch {
+        // 布局未就绪不影响测量
+      }
+
+      const chan = new Channel<unknown>();
+      let attach0 = 0;
+      let ttfbMs: number | null = null;
+      chan.onmessage = (m) => {
+        if (ttfbMs === null && attach0 > 0) {
+          ttfbMs = +(performance.now() - attach0).toFixed(1);
+          stage(`cold ttfb ${ttfbMs}ms`);
+        }
+        try {
+          term.write(toBytes(m));
+        } catch {
+          // 忽略非二进制帧
+        }
+      };
+
+      let id = "";
+      let attachErr: unknown = null;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          stage(`attach attempt ${attempt}`);
+          attach0 = performance.now();
+          id = await invoke<string>("attach_session", {
+            host: FIXTURE.host,
+            port: FIXTURE.port,
+            username: FIXTURE.username,
+            password: FIXTURE.password,
+            cols: term.cols,
+            rows: term.rows,
+            onData: chan,
+          });
+          attachErr = null;
+          break;
+        } catch (e) {
+          attachErr = e;
+          stage(`attach attempt ${attempt} failed: ${e}`);
+          await sleep(1000);
+        }
+      }
+      if (attachErr === null) {
+        // 等首帧（最多 15s：connect 15s 限时 + 余量）
+        const deadline = performance.now() + 15_000;
+        while (ttfbMs === null && performance.now() < deadline) await sleep(20);
+        report.cold_start = {
+          attach_to_first_byte_ms: ttfbMs,
+          includes: "connect+auth+open_pty+shell+首字节（dev server 刚起后首 attach）",
+        };
+        stage(`cold start ttfb=${ttfbMs}ms`);
+      } else {
+        report.cold_start = { attach_to_first_byte_ms: null, error: String(attachErr) };
+        stage(`attach failed, render-only: ${attachErr}`);
+      }
+
+      // --- 2. 一次性写 10_000 行含色文本 ---
+      const data = buildColoredLines(RENDER_LINES);
+      const write0 = performance.now();
+      await new Promise<void>((res) => term.write(data, () => res()));
+      const writeMs = +(performance.now() - write0).toFixed(1);
+      const raf1 = await nextFrame();
+      const raf2 = await nextFrame(); // 第二拍 = 写入后稳定帧长参考
+      report.write = {
+        lines: RENDER_LINES,
+        bytes: data.length,
+        write_callback_ms: writeMs,
+        first_frame_after_write_ms: +raf1.toFixed(2),
+        steady_frame_ms: +raf2.toFixed(2),
+      };
+      stage(`write done: ${writeMs}ms`);
+
+      // --- 3. 滚动 rAF 帧长 ---
+      const deltas: number[] = [];
+      for (let i = 0; i < SCROLL_FRAMES; i++) {
+        term.scrollLines(i % 8 < 4 ? 3 : -3); // 下滚 4 帧上滚 4 帧（滚动条活动）
+        deltas.push(await nextFrame());
+      }
+      const sorted = [...deltas].sort((a, b) => a - b);
+      const pct = (q: number) => +sorted[Math.ceil(q * sorted.length) - 1].toFixed(2);
+      const avg = +(deltas.reduce((a, b) => a + b, 0) / deltas.length).toFixed(2);
+      report.scroll = {
+        frames: SCROLL_FRAMES,
+        avg_frame_ms: avg,
+        p50_frame_ms: pct(0.5),
+        p95_frame_ms: pct(0.95),
+        max_frame_ms: +sorted[sorted.length - 1].toFixed(2),
+        avg_fps: +(1000 / avg).toFixed(1),
+      };
+      stage(`scroll done: avg ${avg}ms`);
+
+      // --- 4. IME 组合输入通路存在性（#14 mac 可自动化部分） ---
+      report.ime_path = {
+        xterm_helper_textarea_present:
+          document.querySelector(".xterm-helper-textarea") !== null,
+        custom_key_handler_registered: false, // 本页无 attachCustomKeyEventHandler（代码事实）
+        note: "xterm.js 6.0 内置 IME 组合（textarea 通路）；真实组合输入三端人工验证归 runbook",
+      };
+
+      // --- 清理 + 回传 ---
+      if (id) {
+        await invoke("drop_session", { id }).catch(() => {});
+      }
+      try {
+        const path = await invoke<string>("spike_report_file", {
+          path: "/tmp/ottr-render.json",
+          payload: JSON.stringify(report),
+        });
+        stage(`report written: ${path}`);
+      const scroll = report.scroll as {
+        avg_frame_ms: number;
+        avg_fps: number;
+      };
+      setBadge(
+        `write ${writeMs}ms | scroll avg ${scroll.avg_frame_ms}ms (~${scroll.avg_fps}fps) | ttfb ${ttfbMs ?? "n/a"}ms | report=${path}`,
+      );
+      term.writeln(`\r\n[spike] done: write=${writeMs}ms scroll_avg=${scroll.avg_frame_ms}ms report=${path}`);
+        clearWatchdog();
+      } catch (e) {
+        setBadge(`report 上报失败: ${e}`);
+        stage(`report 上报失败: ${e}`);
+      }
+    })();
+  }, []);
+
+  return (
+    <div className="spike-root">
+      <div className="spike-badge" id="spike-badge">
+        {badge}
+      </div>
+      <div className="spike-term" ref={hostRef} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Task 7 / Spike #3：100MB 吞吐与背压测量（?spike=throughput）
 // 由 OTTR_SPIKE=throughput 自动导航进入；&interrupt=1 追加自动中断验证（Step 4）。
 // 报告经 spike_report_latency 通道落盘（T4 既有取数机制复用，名称沿用），

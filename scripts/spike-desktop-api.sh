@@ -13,18 +13,21 @@
 #   2. 前端自动执行并把报告 JSON POST 给 `spike_report_file` 落盘：
 #      keyring 页  set→get→del→assert → /tmp/ottr-keyring.json
 #      notify 页   spike_notify 调用   → /tmp/ottr-notify.json（API 层；弹窗需人工确认）
+#      render 页   Task 13 渲染压力    → /tmp/ottr-render.json（10k 行写入 + 滚动 rAF
+#                    帧长 + 冷启动首响 ttfb；窗口保持打开供外部采样进程 RSS）
 #   3. 本脚本轮询报告文件，拿到后打印并清理 vite 与 app 全家（EXIT trap 兜底）。
 #
-# 用法：scripts/spike-desktop-api.sh keyring|notify [等待报告超时秒数，默认 120]
+# 用法：scripts/spike-desktop-api.sh keyring|notify|render [等待报告超时秒数，默认 120]
 # 注意：macOS 首次 keyring/通知访问可能弹系统授权框，会阻塞自动化——超时即按
 # 简报裁定降级（keyring mock 单测 / 通知记人工验证项），见 task-11-report.md。
 set -euo pipefail
 
-MODE="${1:?usage: spike-desktop-api.sh keyring|notify [timeout]}"
+MODE="${1:?usage: spike-desktop-api.sh keyring|notify|render [timeout]}"
 case "$MODE" in
   keyring) REPORT=/tmp/ottr-keyring.json ;;
   notify) REPORT=/tmp/ottr-notify.json ;;
-  *) echo "FAIL: mode 必须是 keyring 或 notify" >&2; exit 1 ;;
+  render) REPORT=/tmp/ottr-render.json ;;
+  *) echo "FAIL: mode 必须是 keyring、notify 或 render" >&2; exit 1 ;;
 esac
 DEVLOG="/tmp/ottr-tauri-dev-$MODE.log"
 TIMEOUT="${2:-120}"

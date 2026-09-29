@@ -20,11 +20,13 @@
 //! ```
 
 pub mod auth;
+pub mod jump;
 pub mod russh_impl;
 pub mod sftp;
 pub mod shell_integration;
 
 pub use auth::{AuthMethod, HostKeyPolicy, PromptResponder};
+pub use jump::{HopSpec, JumpError};
 pub use russh_impl::{RusshTransport, SshSession, connect};
 
 // KeyError 随 Error 一起导出（Error::KeyLoad 的 source 类型）。

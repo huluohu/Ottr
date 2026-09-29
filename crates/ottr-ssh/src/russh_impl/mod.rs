@@ -10,6 +10,58 @@ use russh::client::{self, Handle};
 use crate::auth::{self, ClientAuthHandler, HostKeyPolicy};
 use crate::{AuthMethod, Error, Result, SshTransport};
 
+/// 组装握手用 config 与 host key 记录型 Handler（[`connect`] 与
+/// [`connect_stream`] 共用，保证直连与隧道跳行为一致）。
+fn handshake_parts(
+    host_key_cb: HostKeyPolicy,
+) -> (
+    Arc<client::Config>,
+    ClientAuthHandler,
+    Arc<Mutex<Vec<u8>>>,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Option<String>>>,
+) {
+    let host_key_bytes = Arc::new(Mutex::new(Vec::new()));
+    let host_key_fingerprints = Arc::new(Mutex::new(Vec::new()));
+    let host_key_rejected: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let handler = ClientAuthHandler::new(
+        host_key_cb,
+        Arc::clone(&host_key_bytes),
+        Arc::clone(&host_key_fingerprints),
+        Arc::clone(&host_key_rejected),
+    );
+    let config = Arc::new(client::Config {
+        inactivity_timeout: None,
+        keepalive_interval: None,
+        ..Default::default()
+    });
+    (
+        config,
+        handler,
+        host_key_bytes,
+        host_key_fingerprints,
+        host_key_rejected,
+    )
+}
+
+/// 把握手结果映射为自有错误：策略拒绝过主机密钥 → [`Error::HostKeyRejected`]
+/// （russh 的 UnknownKey 擦除为 source），其余 → [`Error::Protocol`]。
+fn map_handshake_err(
+    source: russh::Error,
+    host_key_rejected: &Arc<Mutex<Option<String>>>,
+) -> Error {
+    if let Some(fingerprint) = host_key_rejected.lock().unwrap().take() {
+        return Error::HostKeyRejected {
+            fingerprint,
+            source: Some(Box::new(source)),
+        };
+    }
+    Error::Protocol {
+        message: source.to_string(),
+        source: Some(Box::new(source)),
+    }
+}
+
 /// 建立连接并完成认证。
 ///
 /// `host_key_cb` 收到 `SHA256:…` 指纹并裁定是否接受；返回 false 时连接以
@@ -22,38 +74,42 @@ pub async fn connect(
     auth: AuthMethod,
     host_key_cb: HostKeyPolicy,
 ) -> Result<SshSession> {
-    let host_key_bytes = Arc::new(Mutex::new(Vec::new()));
-    let host_key_fingerprints = Arc::new(Mutex::new(Vec::new()));
-    let host_key_rejected: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let handler = ClientAuthHandler::new(
-        host_key_cb,
-        Arc::clone(&host_key_bytes),
-        Arc::clone(&host_key_fingerprints),
-        Arc::clone(&host_key_rejected),
-    );
+    let (config, handler, host_key_bytes, host_key_fingerprints, host_key_rejected) =
+        handshake_parts(host_key_cb);
 
-    let config = Arc::new(client::Config {
-        inactivity_timeout: None,
-        keepalive_interval: None,
-        ..Default::default()
-    });
-
-    let connect_result = client::connect(config, (addr, port), handler).await;
-    let mut handle = match connect_result {
+    let mut handle = match client::connect(config, (addr, port), handler).await {
         Ok(handle) => handle,
-        Err(source) => {
-            // 策略拒绝过主机密钥 → 返回自有变体（russh 的 UnknownKey 擦除为 source）。
-            if let Some(fingerprint) = host_key_rejected.lock().unwrap().take() {
-                return Err(Error::HostKeyRejected {
-                    fingerprint,
-                    source: Some(Box::new(source)),
-                });
-            }
-            return Err(Error::Protocol {
-                message: source.to_string(),
-                source: Some(Box::new(source)),
-            });
-        }
+        Err(source) => return Err(map_handshake_err(source, &host_key_rejected)),
+    };
+    auth::authenticate(&mut handle, username, auth).await?;
+
+    Ok(SshSession {
+        handle,
+        host_key_bytes,
+        host_key_fingerprints,
+    })
+}
+
+/// 在既有字节流（通常是上一跳会话打开的 direct-tcpip 隧道，见
+/// [`SshSession::open_direct_tcpip_stream`]）上完成 SSH 握手与认证。
+///
+/// Spike#5 跳板链的构建块：握手/认证行为与 [`connect`] 完全一致
+/// （同一 config、同一 Handler），只是传输从 TCP 换成调用方提供的流。
+pub async fn connect_stream<S>(
+    stream: S,
+    username: &str,
+    auth: AuthMethod,
+    host_key_cb: HostKeyPolicy,
+) -> Result<SshSession>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let (config, handler, host_key_bytes, host_key_fingerprints, host_key_rejected) =
+        handshake_parts(host_key_cb);
+
+    let mut handle = match client::connect_stream(config, stream, handler).await {
+        Ok(handle) => handle,
+        Err(source) => return Err(map_handshake_err(source, &host_key_rejected)),
     };
     auth::authenticate(&mut handle, username, auth).await?;
 
@@ -115,6 +171,28 @@ impl SshSession {
         // want_reply=true：等 SSH_MSG_CHANNEL_SUCCESS，确认子系统已启动再发 SFTP INIT
         channel
             .request_subsystem(true, "sftp")
+            .await?;
+        Ok(channel.into_stream())
+    }
+
+    /// 经本会话向 `(host, port)` 发起 direct-tcpip（SSH 在服务端侧完成 TCP 连接），
+    /// 把通道转成裸双向字节流（Spike#5 跳板链的构建块，供
+    /// [`connect_stream`] 在其上握手下一跳）。
+    ///
+    /// 与 [`open_sftp_stream`](SshSession::open_sftp_stream) 同类：russh 特有
+    /// 扩展方法，按 trait 文档的裁定不属于 [`SshTransport`]。
+    /// 远端连接失败时服务端回 CHANNEL_OPEN_FAILURE，本方法**立即**返回
+    /// [`Error::Protocol`]（source 为 russh `ChannelOpenFailure`）——这是
+    /// 「3 秒内断点定位」的依据：失败是显式协议错误，不是笼统超时。
+    pub async fn open_direct_tcpip_stream(
+        &self,
+        host: &str,
+        port: u16,
+    ) -> Result<russh::ChannelStream<russh::client::Msg>> {
+        // originator 仅为服务端日志用（RFC4254 §7），spike 固定占位。
+        let channel = self
+            .handle
+            .channel_open_direct_tcpip(host, port as u32, "127.0.0.1", 0)
             .await?;
         Ok(channel.into_stream())
     }

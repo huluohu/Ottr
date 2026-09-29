@@ -3076,6 +3076,7 @@ dependencies = [
 name = "ottr-ssh"
 version = "0.1.0"
 dependencies = [
+ "rand",
  "russh",
  "russh-sftp",
  "tokio",

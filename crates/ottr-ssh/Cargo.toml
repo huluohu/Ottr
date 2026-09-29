@@ -7,3 +7,7 @@ edition = "2024"
 russh = "0.63.3"
 russh-sftp = "3.0.1"
 tokio = "1.53.1"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "time"] }
+rand = "0.10"

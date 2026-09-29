@@ -11,3 +11,4 @@ src-tauri/gen/
 # 系统与工具
 .DS_Store
 .video_agent/
+.superpowers/

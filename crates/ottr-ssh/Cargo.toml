@@ -9,5 +9,7 @@ russh-sftp = "3.0.1"
 tokio = "1.53.1"
 
 [dev-dependencies]
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "time"] }
+# Task 6 spike#11：osc133_spike example 消费 ottr-term 的 OSC 133 解析器
+ottr-term = { path = "../ottr-term" }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }
 rand = "0.10"

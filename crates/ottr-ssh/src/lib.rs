@@ -21,6 +21,7 @@
 
 pub mod auth;
 pub mod russh_impl;
+pub mod shell_integration;
 
 pub use auth::{AuthMethod, HostKeyPolicy, PromptResponder};
 pub use russh_impl::{RusshTransport, SshSession, connect};

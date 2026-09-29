@@ -22,3 +22,11 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ottr-ssh = { path = "../crates/ottr-ssh" }
+tokio = { version = "1", features = ["io-util", "sync", "time"] }
+base64 = "0.22"
+sha2 = "0.10"
+# spike-pragmatic：PTY 读循环匹配 russh::ChannelMsg / Channel 类型。
+# 这是 ottr-ssh::SshTransport 文档记载的唯一 russh 泄漏点（Channel 关联类型）的延伸；
+# 正式版由 ottr-term 包装消除，届时移除本依赖。
+russh = "0.63.3"

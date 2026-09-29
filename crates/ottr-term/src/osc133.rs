@@ -106,6 +106,7 @@ impl Parser {
                         match b {
                             b'[' => State::Csi,
                             b']' => State::Osc { params: Vec::new() },
+                            0x1B => State::Esc, // ESC 重启转义解析（ECMA-48），与 Csi 态对齐
                             _ => State::Ground { text_start: None }, // 两字节转义（ESC 7、ESC c 等），吞掉
                         }
                     }
@@ -305,5 +306,36 @@ mod tests {
         let mut p = Parser::new();
         let ev = p.feed(b"ab\x07cd");
         assert_eq!(ev, vec![Event::Text(b"ab"), Event::Text(b"cd")]);
+    }
+
+    #[test]
+    fn esc_restarts_escape_parsing() {
+        let mut p = Parser::new();
+        // ESC ESC [31m x：第二个 ESC 必须重启转义解析，"[31m" 不得泄漏为文本。
+        let ev = p.feed(b"\x1b\x1b[31mx");
+        assert_eq!(ev, vec![Event::Text(b"x")]);
+    }
+
+    #[test]
+    fn osc_params_over_cap_are_truncated_but_safe() {
+        let mut p = Parser::new();
+        // 133;D："D;0" 之后塞满超限垃圾，截断后 parse 仍失败 → CommandDone{None}，且不 panic。
+        let mut input = b"\x1b]133;D;0".to_vec();
+        input.extend(std::iter::repeat_n(b'x', OSC_PARAM_CAP + 128));
+        input.extend_from_slice(b"\x07tail");
+        let ev = p.feed(&input);
+        assert_eq!(
+            ev,
+            vec![Event::CommandDone { exit_code: None }, Event::Text(b"tail")]
+        );
+
+        // OSC 7：第一个 '/' 被推到 8 KiB 上限之外。上限生效 → 截断后的参数里没有 '/'
+        // → 无 Cwd 事件（若上限未生效，会产出 Cwd("/realpath")）。此断言真正区分
+        // "截断生效" 与 "未截断"，并验证状态机在超长 OSC 后正常回到 Ground。
+        let mut input = b"\x1b]7;file://host".to_vec();
+        input.extend(std::iter::repeat_n(b'x', OSC_PARAM_CAP + 128));
+        input.extend_from_slice(b"/realpath\x07tail");
+        let ev = p.feed(&input);
+        assert_eq!(ev, vec![Event::Text(b"tail")]);
     }
 }

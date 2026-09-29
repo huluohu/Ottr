@@ -1,0 +1,2 @@
+# Golden fixtures 是逐字节断言的夹具，禁止任何换行符归一化。
+crates/ottr-term/tests/golden/** -text

@@ -15,7 +15,9 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use ottr_ssh::sftp::{CHUNK_SIZE, TransferStats, download_parallel, upload_parallel};
+use ottr_ssh::sftp::{
+    CHUNK_SIZE, JOURNAL_MAGIC, TransferStats, download_parallel, journal_header, upload_parallel,
+};
 use ottr_ssh::{AuthMethod, SshSession, connect};
 use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 use russh::ChannelMsg;
@@ -162,6 +164,7 @@ fn journal_offsets(path: &str) -> Vec<u64> {
     std::fs::read_to_string(path)
         .expect("read journal")
         .lines()
+        .filter(|l| !l.starts_with(JOURNAL_MAGIC)) // 跳过 v1 头部行
         .map(|l| l.trim().parse().expect("journal line"))
         .collect()
 }
@@ -205,9 +208,14 @@ async fn download_resume_skips_journaled_chunks() {
         .await
         .expect("first download");
 
-    // 构造续传 journal：chunk 0/1/2（offset 0、1MiB、2MiB）标记已完成
-    std::fs::write(&p.journal_b, format!("0\n{}\n{}\n", CHUNK_SIZE, 2 * CHUNK_SIZE))
-        .expect("seed resume journal");
+    // 构造续传 journal：v1 头部（绑定 down + 远端路径 + 5MiB 总长）+ 前 3 chunk offset
+    let seeded = format!(
+        "{}0\n{}\n{}\n",
+        journal_header(&p.remote_a, SIZE, "down"),
+        CHUNK_SIZE,
+        2 * CHUNK_SIZE
+    );
+    std::fs::write(&p.journal_b, seeded).expect("seed resume journal");
 
     let stats = download_parallel(&session, &p.remote_a, Path::new(&p.local_a), 4, Path::new(&p.journal_b))
         .await
@@ -268,8 +276,13 @@ async fn upload_resume_reuses_journaled_chunks() {
         .await
         .expect("first upload");
 
-    std::fs::write(&p.journal_b, format!("0\n{}\n{}\n", CHUNK_SIZE, 2 * CHUNK_SIZE))
-        .expect("seed resume journal");
+    let seeded = format!(
+        "{}0\n{}\n{}\n",
+        journal_header(&p.remote_a, SIZE, "up"),
+        CHUNK_SIZE,
+        2 * CHUNK_SIZE
+    );
+    std::fs::write(&p.journal_b, seeded).expect("seed resume journal");
 
     let stats = upload_parallel(&session, Path::new(&p.local_a), &p.remote_a, 4, Path::new(&p.journal_b))
         .await
@@ -282,6 +295,81 @@ async fn upload_resume_reuses_journaled_chunks() {
     assert_eq!(
         offs,
         vec![0, CHUNK_SIZE, 2 * CHUNK_SIZE, 3 * CHUNK_SIZE, 4 * CHUNK_SIZE],
+    );
+
+    cleanup_remote(&session, &p).await;
+    cleanup_local(&p);
+    let _ = session.disconnect().await;
+}
+
+/// 在预置 journal 上执行一次下载，断言被明确拒绝且 journal 未被改动。
+async fn assert_download_rejected(session: &SshSession, p: &Paths, label: &str, body: String) {
+    std::fs::write(&p.journal_b, &body).expect("write seeded journal");
+    let err = download_parallel(&session, &p.remote_a, Path::new(&p.local_b), 4, Path::new(&p.journal_b))
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("{label}: expected Err, got Ok (silent resume!)"));
+    let msg = err.to_string();
+    assert!(
+        msg.contains("journal") && msg.contains("refusing to resume"),
+        "{label}: error must point at the journal, got: {msg}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&p.journal_b).expect("journal intact"),
+        body,
+        "{label}: journal must be left untouched on rejection"
+    );
+}
+
+/// Fix round 1 I-1 负向用例：journal 身份不匹配（换文件/换大小/旧格式/换方向）
+/// 必须返回明确错误，**绝不按旧 offset 静默续传**——静默续传会把 journal 跳过
+/// 的 chunk 留成另一个文件的内容（混合损坏且无任何信号）。
+#[tokio::test]
+async fn journal_identity_mismatch_is_rejected_not_silently_resumed() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let p = paths("dl-mismatch");
+    cleanup_local(&p);
+    cleanup_remote(&session, &p).await;
+    make_remote_file(&session, &p.remote_a, 5).await; // 5 MiB
+
+    // 1) 头部合法但 total_size 与远端 stat 不一致（4 MiB vs 5 MiB）
+    assert_download_rejected(
+        &session,
+        &p,
+        "wrong total",
+        format!(
+            "{}0\n{}\n",
+            journal_header(&p.remote_a, 4 * 1024 * 1024, "down"),
+            CHUNK_SIZE
+        ),
+    )
+    .await;
+    // 2) 头部合法但路径是另一个远端文件
+    assert_download_rejected(
+        &session,
+        &p,
+        "wrong path",
+        format!(
+            "{}0\n",
+            journal_header("/tmp/ottr-t8-some-other-file.bin", SIZE, "down")
+        ),
+    )
+    .await;
+    // 3) 旧格式（无 v1 头部）journal
+    assert_download_rejected(&session, &p, "legacy headerless", "0\n1048576\n2097152\n".to_string()).await;
+
+    // 4) 模式不匹配：down journal 拿去续传 up（路径/大小一致，仅方向不同）
+    make_local_file(&p.local_a, SIZE);
+    std::fs::write(&p.journal_b, format!("{}0\n", journal_header(&p.remote_b, SIZE, "down")))
+        .expect("seed down journal");
+    let err = upload_parallel(&session, Path::new(&p.local_a), &p.remote_b, 4, Path::new(&p.journal_b))
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("mode mismatch: expected Err, got Ok (silent resume!)"));
+    assert!(
+        err.to_string().contains("refusing to resume"),
+        "mode mismatch must be rejected explicitly, got: {err}"
     );
 
     cleanup_remote(&session, &p).await;

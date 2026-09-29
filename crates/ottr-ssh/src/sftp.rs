@@ -30,8 +30,17 @@
 //! 2. 写了一半（partial chunk）被杀 ⇒ 该 offset 必不在 journal ⇒ 重启后
 //!    **整个 chunk 重传**，幂等覆盖原 offset 区间。**绝不允许 journal 先行、
 //!    数据后补**——那会让 partial chunk 被永久跳过，文件静默损坏。
+//! 3. **journal 绑定传输身份（模式 + 路径 + 总字节），不匹配即拒**（Fix round 1
+//!    I-1）：journal 文件第一行是 v1 自描述头部（[`journal_header`]），载入时与
+//!    本次传输三方比对（下载：远端路径 + 远端 stat 大小；上传：远端目标路径 +
+//!    本地源大小），不一致返回明确错误、提示删除或更换 journal——绝不按旧
+//!    offset 静默续传（否则换文件复用旧 journal 会把已跳过的 chunk 混成
+//!    两个文件的内容）。上传续传另以 `fsetstat(size=total)` 修剪远端可能
+//!    遗留的超长尾部字节（早前更大文件的同名遗留）。
 //!
-//! journal 格式：每行一个十进制 offset（chunk 起始字节），无其他内容。
+//! journal 格式（v1）：第一行 [`journal_header`]（`ottr-journal v1` + TAB 分隔的
+//! 路径/总字节/模式；TAB 以容忍含空格路径），其后每行一个十进制 offset（chunk
+//! 起始字节）。
 //!
 //! ## spike 简化（如实注明）
 //!
@@ -91,31 +100,89 @@ impl TransferStats {
     }
 }
 
+/// journal 头部魔数（v1，自描述传输身份）。
+pub const JOURNAL_MAGIC: &str = "ottr-journal v1";
+
+/// 生成 journal v1 头部行：`ottr-journal v1<TAB>路径<TAB>总字节<TAB>down|up`。
+/// 字段用 TAB 分隔以容忍含空格的路径。`identity_path` 为传输身份路径：
+/// 下载是远端源路径，上传是远端目标路径（按字面比对）。
+pub fn journal_header(identity_path: &str, total: u64, mode: &str) -> String {
+    format!("{JOURNAL_MAGIC}\t{identity_path}\t{total}\t{mode}\n")
+}
+
 /// 断点续传 journal。语义见模块注释的不变量。
 struct Journal {
     file: Mutex<std::fs::File>,
 }
 
 impl Journal {
-    /// 扫描已有 journal，返回已完成 chunk 的起始 offset 集合。
-    /// 文件不存在 / 行损坏按"未完成"处理（容忍尾行半截——append 原子性
-    /// 足够行级写入，但显式容错更稳）。
-    fn load(path: &Path) -> HashSet<u64> {
-        std::fs::read_to_string(path)
-            .map(|s| {
-                s.lines()
-                    .filter_map(|l| l.trim().parse::<u64>().ok())
-                    .collect()
-            })
-            .unwrap_or_default()
+    /// 扫描已有 journal：解析 v1 头部并校验传输身份（模式 + 路径 + 总字节，
+    /// 三方与本次传输一致才放行），返回已完成 chunk 的起始 offset 集合。
+    ///
+    /// - 文件不存在 → 空集合（全新传输）；
+    /// - 空文件（open 与写头之间被杀等，零记录无续传对象）→ 空集合；
+    /// - 非空但无 v1 头部（旧格式/别的东西）→ Err：journal 无法证明身份，
+    ///   **绝不按旧 offset 静默续传**；
+    /// - 头部身份与本次传输不一致 → Err，提示删除或更换 journal 文件；
+    /// - offset 行损坏按"未完成"处理（容忍尾行半截）。
+    fn load(
+        path: &Path,
+        mode: &str,
+        identity_path: &str,
+        total: u64,
+    ) -> Result<HashSet<u64>> {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
+            Err(e) => return Err(Error::Io(e)),
+        };
+        let mut lines = content.lines();
+        let head = match lines.next() {
+            None => return Ok(HashSet::new()), // 空文件：零记录，按全新传输
+            Some(h) => h,
+        };
+        let expected = format!("{mode} {identity_path} {total}");
+        let reject = |why: &str| {
+            plain_error(format!(
+                "journal {} rejected ({why}); expected identity: {expected:?}. \
+                 Delete this journal or point at a new one — refusing to resume blindly",
+                path.display()
+            ))
+        };
+        let rest = head
+            .strip_prefix(JOURNAL_MAGIC)
+            .filter(|r| r.starts_with('\t'))
+            .ok_or_else(|| reject("missing v1 header"))?;
+        let mut fields = rest[1..].split('\t');
+        let (h_path, h_total, h_mode) = match (fields.next(), fields.next(), fields.next(), fields.next()) {
+            (Some(p), Some(t), Some(m), None) if !p.is_empty() => (p, t, m),
+            _ => return Err(reject("malformed v1 header")),
+        };
+        let h_total: u64 = h_total
+            .parse()
+            .map_err(|_| reject("malformed v1 header (total not a number)"))?;
+        if h_mode != mode || h_path != identity_path || h_total != total {
+            return Err(reject(&format!(
+                "identity mismatch: journal is {h_mode} {h_path} {h_total}"
+            )));
+        }
+        Ok(lines
+            .filter_map(|l| l.trim().parse::<u64>().ok())
+            .collect())
     }
 
-    /// 以追加模式打开 journal（不存在则创建）。
-    fn open(path: &Path) -> std::io::Result<Self> {
+    /// 以追加模式打开 journal（不存在则创建）；文件为空时先写入 v1 头部行。
+    fn open(path: &Path, mode: &str, identity_path: &str, total: u64) -> std::io::Result<Self> {
         let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(path)?;
+        if file.metadata()?.len() == 0 {
+            let mut f = file;
+            f.write_all(journal_header(identity_path, total, mode).as_bytes())?;
+            f.flush()?;
+            return Ok(Self { file: Mutex::new(f) });
+        }
         Ok(Self { file: Mutex::new(file) })
     }
 
@@ -232,7 +299,7 @@ pub async fn download_parallel(
         .map_err(|e| protocol_error(e, &format!("open remote {remote}")))?
         .handle;
 
-    let done = Journal::load(journal_path);
+    let done = Journal::load(journal_path, "down", remote, total)?;
     let pending = chunk_table(total, &done);
     let chunks_total = total.div_ceil(CHUNK_SIZE) as usize;
     let resumed = chunks_total - pending.len();
@@ -248,7 +315,7 @@ pub async fn download_parallel(
     );
     local_file.set_len(total)?;
 
-    let journal = Arc::new(Journal::open(journal_path)?);
+    let journal = Arc::new(Journal::open(journal_path, "down", remote, total)?);
     let (read_block, _) = probe_block_sizes(&sftp, &read_handle).await;
 
     let queue = Arc::new(Mutex::new(VecDeque::from(pending)));
@@ -384,7 +451,7 @@ pub async fn upload_parallel(
     let sftp = open_sftp(session).await?;
     let total = std::fs::metadata(local)?.len();
 
-    let done = Journal::load(journal_path);
+    let done = Journal::load(journal_path, "up", remote, total)?;
     let pending = chunk_table(total, &done);
     let chunks_total = total.div_ceil(CHUNK_SIZE) as usize;
     let resumed = chunks_total - pending.len();
@@ -401,7 +468,27 @@ pub async fn upload_parallel(
         .map_err(|e| protocol_error(e, &format!("open remote {remote}")))?
         .handle;
 
-    let journal = Arc::new(Journal::open(journal_path)?);
+    // 上传续传：修剪远端可能遗留的超长尾部（如早前同名更大文件的字节）。
+    // fsetstat(size=total) 把远端截/扩到恰好本次总长；服务器不支持 fsetstat
+    // 时退化为检查——远端未超过总长则无尾部问题，超过则明确报错（绝不留下
+    // 会被静默保留的陈旧尾部）。
+    if resumed > 0 {
+        let trim = FileAttributes {
+            size: Some(total),
+            ..FileAttributes::default()
+        };
+        if sftp.fsetstat(write_handle.as_str(), trim).await.is_err() {
+            let cur = remote_size(&sftp, remote).await?;
+            if cur > total {
+                return Err(plain_error(format!(
+                    "resume upload {remote}: remote size {cur} exceeds transfer total {total} \
+                     and server does not support fsetstat to trim the stale tail"
+                )));
+            }
+        }
+    }
+
+    let journal = Arc::new(Journal::open(journal_path, "up", remote, total)?);
     let (_, write_block) = probe_block_sizes(&sftp, &write_handle).await;
 
     let local_file = Arc::new(std::fs::File::open(local)?);

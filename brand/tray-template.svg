@@ -1,0 +1,20 @@
+<svg width="44" height="32" viewBox="0 0 44 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ottr tray template">
+  <!-- Monochrome template icon: single fill, cutouts via mask.
+       macOS menu bar: recolored automatically (template image).
+       Windows/Linux tray: fill with currentColor.
+       Cutout geometry keeps ≥2px gaps at 16px render: chin band 2.5u,
+       eye-to-muzzle gap 4u, ear-to-head bridge 2.9u (44u canvas ≈ 16pt @1x). -->
+  <defs>
+    <mask id="cutouts">
+      <rect width="44" height="32" fill="white"/>
+      <ellipse cx="22" cy="22" rx="8" ry="5" fill="black"/>
+      <circle cx="15" cy="13.5" r="2" fill="black"/>
+      <circle cx="29" cy="13.5" r="2" fill="black"/>
+    </mask>
+  </defs>
+  <g mask="url(#cutouts)" fill="#000000">
+    <circle cx="10" cy="6" r="5"/>
+    <circle cx="34" cy="6" r="5"/>
+    <circle cx="22" cy="16" r="13.5"/>
+  </g>
+</svg>

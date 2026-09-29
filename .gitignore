@@ -1,0 +1,13 @@
+# Node / 前端
+node_modules/
+dist/
+
+# Rust
+target/
+
+# Tauri 生成物
+src-tauri/gen/
+
+# 系统与工具
+.DS_Store
+.video_agent/

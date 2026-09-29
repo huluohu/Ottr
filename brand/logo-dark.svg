@@ -1,0 +1,31 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ottr logo (dark backgrounds)">
+  <!-- Ottr — geometric otter head, warm variant for dark backgrounds -->
+  <!-- ears -->
+  <circle cx="150" cy="112" r="56" fill="#C98A4B"/>
+  <circle cx="362" cy="112" r="56" fill="#C98A4B"/>
+  <circle cx="150" cy="104" r="26" fill="#F6E7D4"/>
+  <circle cx="362" cy="104" r="26" fill="#F6E7D4"/>
+  <!-- head -->
+  <circle cx="256" cy="268" r="176" fill="#E0A868"/>
+  <!-- muzzle -->
+  <ellipse cx="256" cy="330" rx="118" ry="86" fill="#FBF1E3"/>
+  <!-- eyes -->
+  <circle cx="184" cy="248" r="17" fill="#241812"/>
+  <circle cx="328" cy="248" r="17" fill="#241812"/>
+  <circle cx="189" cy="243" r="5.5" fill="#FFFFFF"/>
+  <circle cx="333" cy="243" r="5.5" fill="#FFFFFF"/>
+  <!-- nose -->
+  <path d="M256 296 c14 0 26 4 26 14 0 12 -16 26 -26 26 -10 0 -26 -14 -26 -26 0 -10 12 -14 26 -14 Z" fill="#241812"/>
+  <!-- mouth -->
+  <path d="M256 336 v14 c0 12 -9 20 -22 20 M256 350 c0 12 9 20 22 20"
+        fill="none" stroke="#241812" stroke-width="9" stroke-linecap="round"/>
+  <!-- whiskers -->
+  <g stroke="#FBF1E3" stroke-width="9" stroke-linecap="round" opacity="0.85">
+    <path d="M148 300 L86 286"/>
+    <path d="M144 324 L80 324"/>
+    <path d="M148 348 L86 362"/>
+    <path d="M364 300 L426 286"/>
+    <path d="M368 324 L432 324"/>
+    <path d="M364 348 L426 362"/>
+  </g>
+</svg>

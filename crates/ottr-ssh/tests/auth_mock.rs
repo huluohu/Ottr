@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ottr_ssh::{AuthMethod, Error, connect};
+use ottr_ssh::{AuthMethod, Error, HostKeyPolicy, connect};
 use russh::keys::{Algorithm, HashAlg, PrivateKey, PublicKey, load_secret_key};
 use russh::server::{Auth, Response, Server as _};
 
@@ -269,6 +269,37 @@ async fn key_auth_ok() {
     assert!(
         matches!(err, Error::AuthRejected { .. }),
         "expected AuthRejected, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn host_key_mismatch_is_rejected_not_silently_accepted() {
+    let (addr, host_key) = spawn_mock_sshd().await;
+    // 策略拒绝一切主机密钥（模拟 pin 不匹配）。
+    let deny_all: HostKeyPolicy = Arc::new(|_fingerprint: &str| false);
+    let host = addr.ip().to_string();
+    let result = tokio::time::timeout(
+        TEST_TIMEOUT,
+        connect(
+            &host,
+            addr.port(),
+            MOCK_USER,
+            AuthMethod::Password(MOCK_PASSWORD.to_string()),
+            deny_all,
+        ),
+    )
+    .await
+    .expect("connect must finish within timeout");
+
+    let err = result.expect_err("connection with deny-all host key policy must fail");
+    let actual_fp = match &err {
+        Error::HostKeyRejected { fingerprint, .. } => fingerprint.clone(),
+        other => panic!("expected Error::HostKeyRejected, got {other:?}"),
+    };
+    assert_eq!(
+        actual_fp,
+        fingerprint_of(&host_key),
+        "HostKeyRejected must carry the server's actual fingerprint"
     );
 }
 

@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use russh::client::{Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 
-use crate::Error;
+use crate::{Error, KeyError};
 
 /// host key 策略回调：入参为 `SHA256:…` 形式的指纹，返回是否接受该主机密钥。
 /// 返回 false 时连接失败（不会静默跳过校验）。
@@ -34,6 +34,8 @@ pub enum AuthMethod {
 
 /// russh client Handler：
 /// - `check_server_key` 记录服务器主机密钥（原始字节 + SHA256 指纹），再交策略回调裁定；
+///   策略拒绝时记录被拒指纹，供 `connect` 把 russh 的 UnknownKey 映射为
+///   [`Error::HostKeyRejected`]（不把 russh 错误类型暴露给消费方）；
 /// - keyboard-interactive 不在本 Handler（russh 0.63 由调用方驱动 start/respond 循环，
 ///   见 [`crate::auth::authenticate`]）。
 pub(crate) struct ClientAuthHandler {
@@ -42,6 +44,8 @@ pub(crate) struct ClientAuthHandler {
     host_key_bytes: Arc<Mutex<Vec<u8>>>,
     /// 记录的 `SHA256:…` 指纹（按记录顺序）。
     host_key_fingerprints: Arc<Mutex<Vec<String>>>,
+    /// 策略拒绝时的服务器指纹（Some 即发生过拒绝）。
+    host_key_rejected: Arc<Mutex<Option<String>>>,
 }
 
 impl ClientAuthHandler {
@@ -49,11 +53,13 @@ impl ClientAuthHandler {
         policy: HostKeyPolicy,
         host_key_bytes: Arc<Mutex<Vec<u8>>>,
         host_key_fingerprints: Arc<Mutex<Vec<String>>>,
+        host_key_rejected: Arc<Mutex<Option<String>>>,
     ) -> Self {
         Self {
             policy,
             host_key_bytes,
             host_key_fingerprints,
+            host_key_rejected,
         }
     }
 }
@@ -80,6 +86,10 @@ impl russh::client::Handler for ClientAuthHandler {
             .push(fingerprint.clone());
 
         let accept = (self.policy)(&fingerprint);
+        if !accept {
+            // 记录拒绝上下文，connect 据此返回 Error::HostKeyRejected。
+            *self.host_key_rejected.lock().unwrap() = Some(fingerprint);
+        }
         Ok(accept)
     }
 }
@@ -95,9 +105,9 @@ pub(crate) async fn authenticate(
         AuthMethod::Password(password) => handle.authenticate_password(username, password).await?,
         AuthMethod::Key { path, passphrase } => {
             let key = russh::keys::load_secret_key(&path, passphrase.as_deref())
-                .map_err(|source| Error::KeyLoad {
+                .map_err(|e| Error::KeyLoad {
                     path: path.display().to_string(),
-                    source,
+                    source: KeyError::from(e), // russh 错误在此转为自有分类
                 })?;
             // 非 RSA 密钥 hash_alg 被忽略；RSA 走 best_supported_rsa_hash（Task 4 再接）。
             let key = PrivateKeyWithHashAlg::new(Arc::new(key), None);

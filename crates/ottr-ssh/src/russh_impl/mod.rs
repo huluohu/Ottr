@@ -8,12 +8,12 @@ use std::sync::{Arc, Mutex};
 use russh::client::{self, Handle};
 
 use crate::auth::{self, ClientAuthHandler, HostKeyPolicy};
-use crate::{AuthMethod, Result, SshTransport};
+use crate::{AuthMethod, Error, Result, SshTransport};
 
 /// 建立连接并完成认证。
 ///
 /// `host_key_cb` 收到 `SHA256:…` 指纹并裁定是否接受；返回 false 时连接以
-/// [`Error::Russh`]（UnknownKey）失败，绝不静默跳过主机密钥校验。
+/// [`Error::HostKeyRejected`] 失败（携带服务器实际指纹），绝不静默跳过主机密钥校验。
 /// 指纹（含原始公钥字节）总是记录在 [`SshSession`] 上供 UI 展示/TOFU 落库。
 pub async fn connect(
     addr: &str,
@@ -24,10 +24,12 @@ pub async fn connect(
 ) -> Result<SshSession> {
     let host_key_bytes = Arc::new(Mutex::new(Vec::new()));
     let host_key_fingerprints = Arc::new(Mutex::new(Vec::new()));
+    let host_key_rejected: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let handler = ClientAuthHandler::new(
         host_key_cb,
         Arc::clone(&host_key_bytes),
         Arc::clone(&host_key_fingerprints),
+        Arc::clone(&host_key_rejected),
     );
 
     let config = Arc::new(client::Config {
@@ -36,7 +38,23 @@ pub async fn connect(
         ..Default::default()
     });
 
-    let mut handle = client::connect(config, (addr, port), handler).await?;
+    let connect_result = client::connect(config, (addr, port), handler).await;
+    let mut handle = match connect_result {
+        Ok(handle) => handle,
+        Err(source) => {
+            // 策略拒绝过主机密钥 → 返回自有变体（russh 的 UnknownKey 擦除为 source）。
+            if let Some(fingerprint) = host_key_rejected.lock().unwrap().take() {
+                return Err(Error::HostKeyRejected {
+                    fingerprint,
+                    source: Some(Box::new(source)),
+                });
+            }
+            return Err(Error::Protocol {
+                message: source.to_string(),
+                source: Some(Box::new(source)),
+            });
+        }
+    };
     auth::authenticate(&mut handle, username, auth).await?;
 
     Ok(SshSession {

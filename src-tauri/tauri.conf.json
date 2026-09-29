@@ -31,5 +31,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://releases.ottr.invalid/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "pubkey": "REPLACE_WITH_UPDATER_PUBKEY__GENERATE_VIA__npx_tauri_signer_generate__CI_SECRET_INJECT_OR_REPLACE_AT_PACKAGING"
+    }
   }
 }

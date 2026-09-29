@@ -100,6 +100,24 @@ impl SshSession {
             .await
             .map_err(Error::from)
     }
+
+    /// 打开 SFTP 子系统通道并返回裸双向字节流（Task 8 并行传输的构建块）。
+    ///
+    /// russh-sftp 的客户端（RawSftpSession / SftpSession）构造需要
+    /// `AsyncRead + AsyncWrite` 流；`Channel::into_stream()` 把 subsystem
+    /// 通道转成流。Phase 1 的 ottr-transfer 直接继承该路径：
+    /// `SshSession::open_sftp_stream` → `RawSftpSession::new(stream)` →
+    /// `init` → 定长读写（见 [`crate::sftp`]）。
+    pub async fn open_sftp_stream(
+        &self,
+    ) -> Result<russh::ChannelStream<russh::client::Msg>> {
+        let channel = self.handle.channel_open_session().await?;
+        // want_reply=true：等 SSH_MSG_CHANNEL_SUCCESS，确认子系统已启动再发 SFTP INIT
+        channel
+            .request_subsystem(true, "sftp")
+            .await?;
+        Ok(channel.into_stream())
+    }
 }
 
 impl std::fmt::Debug for SshSession {

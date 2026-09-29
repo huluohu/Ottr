@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/ottr-ssh", "crates/ottr-term", "crates/ottr-bench"]
+
+# Moved here from src-tauri/Cargo.toml: cargo only honors profiles defined in the
+# workspace root. Values unchanged from the create-tauri-app template.
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

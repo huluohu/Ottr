@@ -1,0 +1,13 @@
+[package]
+name = "ottr-bench"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ottr-ssh = { path = "../ottr-ssh" }
+# russh 直接依赖仅为本 bench 消费 open_pty 返回的 Channel（trait 边界上唯一
+# 已裁定的泄漏点）；正式版由包装类型消除。
+russh = "0.63.3"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }
+base64 = "0.22"
+sha2 = "0.10"

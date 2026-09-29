@@ -1,0 +1,46 @@
+[package]
+name = "ottr"
+version = "0.1.0"
+description = "Ottr - cross-platform SSH client"
+authors = ["Ottr contributors"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "ottr_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ottr-ssh = { path = "../crates/ottr-ssh" }
+tokio = { version = "1", features = ["io-util", "sync", "time"] }
+base64 = "0.22"
+sha2 = "0.10"
+# spike-pragmatic：PTY 读循环匹配 russh::ChannelMsg / Channel 类型。
+# 这是 ottr-ssh::SshTransport 文档记载的唯一 russh 泄漏点（Channel 关联类型）的延伸；
+# 正式版由 ottr-term 包装消除，届时移除本依赖。
+russh = "0.63.3"
+tauri-plugin-notification = "2"
+
+# keyring v3 无默认 feature（无平台 store 即只剩 mock）；平台 store 按平台 opt-in，
+# 且 sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）——官方推荐按
+# target 分平台声明。Linux Secret Service 依赖 gnome-keyring：CI 无桌面环境预期失败，
+# fallback = 加密文件 + 主密码（Phase 1，见 docs/phase0-report.md §3 Spike#7 行）。
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }

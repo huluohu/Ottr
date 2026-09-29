@@ -1,0 +1,96 @@
+# Spike#6（Task 12）：三端构建矩阵 + updater 签名产物验证。
+#
+# 现状：仓库暂无 remote，本 workflow 尚未真推送验证过（本地验证形态见
+# docs/phase0-report.md §3 Spike#6 行与 task-12-report.md）。加 remote 后
+# push 即触发；Secrets 需先配置 TAURI_SIGNING_PRIVATE_KEY / _PASSWORD
+# （生成方式：npx tauri signer generate -w ottr-updater.key，见 task-12-report.md）。
+#
+# 设计说明（相对简报底稿的调整）：
+# - updater 签名段放在 src-tauri/tauri.updater.conf.json overlay，经
+#   --config 合并启用（bundle.createUpdaterArtifacts: true）。基础
+#   tauri.conf.json 不开 createUpdaterArtifacts——本地 `npx tauri build`
+#   不配置签名私钥也能出包，CI 才叠加签名。pubkey（非秘密）在基础配置。
+# - upload 路径按 Tauri v2 实际产物收窄：dmg / msi+nsis / deb / AppImage
+#   + updater 产物（*.sig、macOS *.app.tar.gz、msi *.msi.zip）。
+# - fail-fast: false：任一平台失败不取消其余平台，spike 期需要三端全量信号。
+
+name: spike-build
+
+on:
+  push:
+    branches: [phase0-spike]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Tauri v2 = webkit2gtk 4.1 API（libsoup3）。ubuntu-22.04 runner 上
+      # jammy universe 提供 libwebkit2gtk-4.1-dev；若包名报错按 runner 实际
+      # 发行版对齐（ubuntu-latest=24.04 同为 4.1，勿退回 v1 的 4.0 包名）。
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      # russh 默认 feature 走 aws-lc-rs → aws-lc-sys 在 Windows 需要 NASM
+      # 汇编器（本地跨平台 check 无法验证此项，真推送首跑若 Windows 失败先查）。
+      - name: Ensure NASM (aws-lc-sys assembler)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install -y nasm
+            Add-Content $env:GITHUB_ENV "PATH=$env:PATH;C:\Program Files\NASM"
+          }
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app (updater overlay, artifacts signed)
+        env:
+          # tauri build 检测到 createUpdaterArtifacts 时用这对 env 签
+          # updater 产物；Secrets 缺失会在打包阶段显式报错（预期防护）。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --config src-tauri/tauri.updater.conf.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ottr-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.msi.zip
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/**/*.sig

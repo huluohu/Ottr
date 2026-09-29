@@ -50,8 +50,7 @@ pub const BASH_SNIPPET: &str = r#"export PROMPT_COMMAND='printf "\e]133;D;%s\a\e
 /// zsh 注入片段（简报原稿，真机验证直接可用）。
 ///
 /// `precmd` 在每个提示符前发 `D`+`A`+`7`，`preexec` 在命令执行前发 `C`。
-pub const ZSH_SNIPPET: &str =
-    r#"precmd(){ print -Pn "\e]133;D;$?\a\e]133;A\a\e]7;file://$HOST$PWD\a" }; preexec(){ print -Pn "\e]133;C\a" }"#;
+pub const ZSH_SNIPPET: &str = r#"precmd(){ print -Pn "\e]133;D;$?\a\e]133;A\a\e]7;file://$HOST$PWD\a" }; preexec(){ print -Pn "\e]133;C\a" }"#;
 
 /// 按 shell 种类返回注入片段（简报 Task 6 的 Produces 接口）。
 pub fn inject_for(shell: ShellKind) -> &'static str {
@@ -82,7 +81,10 @@ mod tests {
         assert!(!BASH_SNIPPET.contains("bind"));
         assert!(BASH_SNIPPET.contains("trap '__osc133_preexec' DEBUG"));
         // 护栏：PROMPT_COMMAND 的两条 printf 不再触发 C。
-        assert!(BASH_SNIPPET.contains(r#"[[ "$BASH_COMMAND" == 'printf "\e]133;D;%s\a\e]133;A\a" "$?"'"#));
+        assert!(
+            BASH_SNIPPET
+                .contains(r#"[[ "$BASH_COMMAND" == 'printf "\e]133;D;%s\a\e]133;A\a" "$?"'"#)
+        );
         assert!(BASH_SNIPPET.contains("133;C"));
         assert!(BASH_SNIPPET.contains("133;D"));
         assert!(BASH_SNIPPET.contains("133;A"));

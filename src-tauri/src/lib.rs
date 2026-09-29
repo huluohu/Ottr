@@ -214,7 +214,13 @@ async fn attach_session(
     // 连接类操作不该无限等待——正式版同样需要这些超时（Task 5+ 沿用）。
     let session: SshSession = tokio::time::timeout(
         Duration::from_secs(15),
-        ottr_ssh::connect(&host, port, &username, AuthMethod::Password(password), policy),
+        ottr_ssh::connect(
+            &host,
+            port,
+            &username,
+            AuthMethod::Password(password),
+            policy,
+        ),
     )
     .await
     .map_err(|_| format!("connect timed out after 15s (pinned {pinned})"))?
@@ -237,15 +243,14 @@ async fn attach_session(
     let cancel = Arc::new(Notify::new());
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
-    state
-        .sessions
-        .lock()
-        .unwrap()
-        .insert(id.clone(), SessionEntry {
+    state.sessions.lock().unwrap().insert(
+        id.clone(),
+        SessionEntry {
             writer,
             counters: Arc::clone(&counters),
             cancel: Arc::clone(&cancel),
-        });
+        },
+    );
 
     // 读循环持有 channel 与 session；循环退出（正常关闭/取消/IPC 失效）后统一断连：
     // russh Handle::drop 不关闭连接，不显式 disconnect 会让 sshd 上的 shell 与 TCP 悬挂。
@@ -322,10 +327,7 @@ fn spike_report_latency(state: State<'_, AppState>, payload: String) -> Result<S
         .iter()
         .map(|(id, e)| {
             let stats = snapshot(&e.counters);
-            (
-                id.clone(),
-                serde_json::to_value(&stats).unwrap_or_default(),
-            )
+            (id.clone(), serde_json::to_value(&stats).unwrap_or_default())
         })
         .collect();
     report["rust"] = serde_json::json!({
@@ -335,9 +337,13 @@ fn spike_report_latency(state: State<'_, AppState>, payload: String) -> Result<S
         "sessions": rust_side,
     });
 
-    let path = std::env::var("OTTR_SPIKE_REPORT").unwrap_or_else(|_| "/tmp/ottr-latency.json".into());
-    std::fs::write(&path, serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("write {path}: {e}"))?;
+    let path =
+        std::env::var("OTTR_SPIKE_REPORT").unwrap_or_else(|_| "/tmp/ottr-latency.json".into());
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write {path}: {e}"))?;
     Ok(path)
 }
 
@@ -405,8 +411,11 @@ fn spike_report_file(path: String, payload: String) -> Result<String, String> {
     }
     let report: serde_json::Value =
         serde_json::from_str(&payload).map_err(|e| format!("bad report json: {e}"))?;
-    std::fs::write(&path, serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("write {path}: {e}"))?;
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write {path}: {e}"))?;
     Ok(path)
 }
 
@@ -428,7 +437,9 @@ async fn spike_probe_channel(on_probe: Channel<InvokeResponseBody>) -> Result<()
         .send(InvokeResponseBody::Raw(big))
         .map_err(|e| e.to_string())?;
     on_probe
-        .send(InvokeResponseBody::Json(serde_json::to_string(&b64).unwrap()))
+        .send(InvokeResponseBody::Json(
+            serde_json::to_string(&b64).unwrap(),
+        ))
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -466,7 +477,15 @@ async fn forward_pty_loop(
                 }
             }
             last_flush = Some(Instant::now());
-            flush_batch(&mut buf, &mut deadline, limit, on_data, counters, session_id).await
+            flush_batch(
+                &mut buf,
+                &mut deadline,
+                limit,
+                on_data,
+                counters,
+                session_id,
+            )
+            .await
         }};
     }
 
@@ -502,11 +521,13 @@ async fn forward_pty_loop(
         };
 
         match msg {
-        Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
-            counters.pty_read_bytes.fetch_add(data.len() as u64, Ordering::Relaxed);
-            if buf.is_empty() {
-                deadline = Some(Instant::now() + batch_window());
-            }
+            Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
+                counters
+                    .pty_read_bytes
+                    .fetch_add(data.len() as u64, Ordering::Relaxed);
+                if buf.is_empty() {
+                    deadline = Some(Instant::now() + batch_window());
+                }
                 buf.extend_from_slice(&data);
                 if buf.len() >= limit {
                     if !paced_flush!() {
@@ -556,7 +577,9 @@ async fn flush_batch(
     let payload = std::mem::replace(buf, Vec::with_capacity(limit));
     match on_data.send(InvokeResponseBody::Raw(payload)) {
         Ok(()) => {
-            counters.forwarded_bytes.fetch_add(n as u64, Ordering::Relaxed);
+            counters
+                .forwarded_bytes
+                .fetch_add(n as u64, Ordering::Relaxed);
             counters.frames.fetch_add(1, Ordering::Relaxed);
             if std::env::var_os("OTTR_BATCH_DEBUG").is_some() {
                 eprintln!("[batcher:{session_id}] flush {n} bytes");
@@ -564,10 +587,14 @@ async fn flush_batch(
             true
         }
         Err(e) => {
-            counters.send_failed_bytes.fetch_add(n as u64, Ordering::Relaxed);
+            counters
+                .send_failed_bytes
+                .fetch_add(n as u64, Ordering::Relaxed);
             counters.send_failed_frames.fetch_add(1, Ordering::Relaxed);
             counters.failed.store(true, Ordering::Relaxed);
-            eprintln!("[batcher:{session_id}] session dropped (ipc send failed, {n} bytes lost): {e}");
+            eprintln!(
+                "[batcher:{session_id}] session dropped (ipc send failed, {n} bytes lost): {e}"
+            );
             false
         }
     }

@@ -48,15 +48,9 @@ pub enum Error {
     /// 服务端拒绝认证（密码错误 / 密钥不在白名单 / 验证码错误）。
     AuthRejected,
     /// keyboard-interactive 回调返回的答案数量与 prompt 数量不一致。
-    PromptAnswerMismatch {
-        prompts: usize,
-        answers: usize,
-    },
+    PromptAnswerMismatch { prompts: usize, answers: usize },
     /// 私钥文件加载失败（含口令缺失/错误），`KeyError` 为 crate 自有分类。
-    KeyLoad {
-        path: String,
-        source: KeyError,
-    },
+    KeyLoad { path: String, source: KeyError },
     /// 传输/协议层错误（连接失败、握手失败、通道打开失败等）。
     Protocol {
         message: String,
@@ -92,7 +86,9 @@ impl std::error::Error for Error {
         fn erased(
             source: &Option<Box<dyn std::error::Error + Send + Sync>>,
         ) -> Option<&(dyn std::error::Error + 'static)> {
-            source.as_ref().map(|e| &**e as &(dyn std::error::Error + 'static))
+            source
+                .as_ref()
+                .map(|e| &**e as &(dyn std::error::Error + 'static))
         }
         match self {
             Error::HostKeyRejected { source, .. } => erased(source),
@@ -139,7 +135,9 @@ impl fmt::Display for KeyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             KeyError::Io(e) => write!(f, "key file I/O error: {e}"),
-            KeyError::PassphraseRequired => write!(f, "key is encrypted: passphrase missing or wrong"),
+            KeyError::PassphraseRequired => {
+                write!(f, "key is encrypted: passphrase missing or wrong")
+            }
             KeyError::Invalid { message, .. } => write!(f, "invalid key: {message}"),
         }
     }

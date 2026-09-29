@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
-use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 use russh::ChannelMsg;
+use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
@@ -22,8 +22,8 @@ const CLIENT_KEY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/sp
 
 /// 从 known_hosts 提取 `[127.0.0.1]:2222` 的公钥并生成指纹 pin 策略。
 fn pinned_host_key_policy() -> (HostKeyPolicy, String) {
-    let content = std::fs::read_to_string(KNOWN_HOSTS)
-        .unwrap_or_else(|e| panic!("read {KNOWN_HOSTS}: {e}"));
+    let content =
+        std::fs::read_to_string(KNOWN_HOSTS).unwrap_or_else(|e| panic!("read {KNOWN_HOSTS}: {e}"));
     let marker = format!("[{HOST}]:{PORT}");
     let line = content
         .lines()

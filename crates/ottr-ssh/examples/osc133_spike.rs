@@ -31,8 +31,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 use russh::ChannelMsg;
+use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
@@ -231,11 +231,15 @@ async fn send_command(
                 sink.push(ev);
             }
             Ok(Some(None)) => {
-                return Err(format!("channel EOF while waiting for CommandDone after {line:?}"));
+                return Err(format!(
+                    "channel EOF while waiting for CommandDone after {line:?}"
+                ));
             }
             Ok(None) => return Err("event channel closed".into()),
             Err(_) => {
-                return Err(format!("timeout ({CMD_MAX:?}) waiting for CommandDone after {line:?}"));
+                return Err(format!(
+                    "timeout ({CMD_MAX:?}) waiting for CommandDone after {line:?}"
+                ));
             }
         }
     };
@@ -253,7 +257,9 @@ async fn probe_integration(
     let start = sink.seen.len();
     send_line(writer, PROBE_MARKER).await?;
     pump(rx, sink, IDLE, SETTLE_MAX).await?;
-    let integrated = sink.seen[start..].iter().any(OwnedEvent::is_shell_integration);
+    let integrated = sink.seen[start..]
+        .iter()
+        .any(OwnedEvent::is_shell_integration);
     Ok(integrated)
 }
 
@@ -269,7 +275,10 @@ async fn run(scenario: &str, raw: &Arc<Mutex<Vec<u8>>>) -> Result<String, String
     )
     .await
     .map_err(|e| format!("connect: {e}"))?;
-    let mut channel = session.open_pty(120, 40).await.map_err(|e| format!("open_pty: {e}"))?;
+    let mut channel = session
+        .open_pty(120, 40)
+        .await
+        .map_err(|e| format!("open_pty: {e}"))?;
     channel
         .request_shell(true)
         .await
@@ -349,7 +358,10 @@ async fn run(scenario: &str, raw: &Arc<Mutex<Vec<u8>>>) -> Result<String, String
     if integrated {
         eprintln!("[probe] existing OSC 133 output detected -> SKIP injection (idempotent guard)");
     } else {
-        eprintln!("[probe] no OSC 133 output -> injecting {} snippet", shell_kind_name(shell));
+        eprintln!(
+            "[probe] no OSC 133 output -> injecting {} snippet",
+            shell_kind_name(shell)
+        );
         send_line(&mut writer, inject_for(shell)).await?;
         pump(&mut rx, &mut sink, IDLE, SETTLE_MAX).await?;
     }
@@ -382,7 +394,8 @@ async fn run(scenario: &str, raw: &Arc<Mutex<Vec<u8>>>) -> Result<String, String
     match scenario {
         "probe-skip" => {
             if !integrated {
-                problems.push("probe-skip: integration was NOT detected (expected skip path)".into());
+                problems
+                    .push("probe-skip: integration was NOT detected (expected skip path)".into());
             }
         }
         _ => {
@@ -392,10 +405,14 @@ async fn run(scenario: &str, raw: &Arc<Mutex<Vec<u8>>>) -> Result<String, String
         }
     }
     if code_false != Some(1) {
-        problems.push(format!("false -> CommandDone exit_code={code_false:?}, expected Some(1)"));
+        problems.push(format!(
+            "false -> CommandDone exit_code={code_false:?}, expected Some(1)"
+        ));
     }
     if code_true != Some(0) {
-        problems.push(format!("true -> CommandDone exit_code={code_true:?}, expected Some(0)"));
+        problems.push(format!(
+            "true -> CommandDone exit_code={code_true:?}, expected Some(0)"
+        ));
     }
     if !cwd_ok {
         problems.push(r#"no Cwd event pointing at /home/spike ($PWD)"#.into());
@@ -406,7 +423,11 @@ async fn run(scenario: &str, raw: &Arc<Mutex<Vec<u8>>>) -> Result<String, String
 
     let summary = format!(
         "scenario={scenario}: PromptStart={n_prompt} CommandEnd={n_end} CommandDone={n_done} Cwd={n_cwd} Text={n_text}; false->exit_code={code_false:?}, true->exit_code={code_true:?}; cwd~/home/spike={cwd_ok}; injection={}",
-        if integrated { "skipped(detected)" } else { "injected" }
+        if integrated {
+            "skipped(detected)"
+        } else {
+            "injected"
+        }
     );
     eprintln!("[summary] {summary}");
     if !problems.is_empty() {
@@ -425,7 +446,11 @@ fn shell_kind_name(shell: ShellKind) -> &'static str {
 fn dump_raw_tail(raw: &Arc<Mutex<Vec<u8>>>) {
     let buf = raw.lock().unwrap_or_else(|p| p.into_inner());
     let start = buf.len().saturating_sub(RAW_TAIL);
-    eprintln!("[raw tail {} bytes]\n{}", buf.len() - start, String::from_utf8_lossy(&buf[start..]));
+    eprintln!(
+        "[raw tail {} bytes]\n{}",
+        buf.len() - start,
+        String::from_utf8_lossy(&buf[start..])
+    );
 }
 
 #[tokio::main]

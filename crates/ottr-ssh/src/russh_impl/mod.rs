@@ -139,7 +139,11 @@ impl SshSession {
     }
 
     /// 打开交互式 PTY 会话通道（等价于 trait 方法，见 [`SshTransport`]）。
-    pub async fn open_pty(&self, cols: u32, rows: u32) -> Result<russh::Channel<russh::client::Msg>> {
+    pub async fn open_pty(
+        &self,
+        cols: u32,
+        rows: u32,
+    ) -> Result<russh::Channel<russh::client::Msg>> {
         <Self as SshTransport>::open_pty(self, cols, rows).await
     }
 
@@ -164,14 +168,10 @@ impl SshSession {
     /// 通道转成流。Phase 1 的 ottr-transfer 直接继承该路径：
     /// `SshSession::open_sftp_stream` → `RawSftpSession::new(stream)` →
     /// `init` → 定长读写（见 [`crate::sftp`]）。
-    pub async fn open_sftp_stream(
-        &self,
-    ) -> Result<russh::ChannelStream<russh::client::Msg>> {
+    pub async fn open_sftp_stream(&self) -> Result<russh::ChannelStream<russh::client::Msg>> {
         let channel = self.handle.channel_open_session().await?;
         // want_reply=true：等 SSH_MSG_CHANNEL_SUCCESS，确认子系统已启动再发 SFTP INIT
-        channel
-            .request_subsystem(true, "sftp")
-            .await?;
+        channel.request_subsystem(true, "sftp").await?;
         Ok(channel.into_stream())
     }
 
@@ -220,11 +220,7 @@ impl SshTransport for SshSession {
         connect(addr, port, username, auth, host_key_cb).await
     }
 
-    async fn open_pty(
-        &self,
-        cols: u32,
-        rows: u32,
-    ) -> Result<Self::Channel> {
+    async fn open_pty(&self, cols: u32, rows: u32) -> Result<Self::Channel> {
         let channel = self.handle.channel_open_session().await?;
         channel
             .request_pty(false, "xterm-256color", cols, rows, 0, 0, &[])

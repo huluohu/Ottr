@@ -76,7 +76,11 @@ fn parse_args() -> Args {
         match a.as_str() {
             "--journal" => journal = PathBuf::from(it.next().unwrap_or_else(|| usage())),
             "--chunks" => {
-                chunks = it.next().unwrap_or_else(|| usage()).parse().unwrap_or_else(|_| usage())
+                chunks = it
+                    .next()
+                    .unwrap_or_else(|| usage())
+                    .parse()
+                    .unwrap_or_else(|_| usage())
             }
             _ => usage(),
         }
@@ -84,7 +88,13 @@ fn parse_args() -> Args {
     if journal.as_os_str().is_empty() {
         usage();
     }
-    Args { direction, src, dst, journal, chunks }
+    Args {
+        direction,
+        src,
+        dst,
+        journal,
+        chunks,
+    }
 }
 
 fn usage() -> ! {
@@ -113,12 +123,24 @@ async fn main() -> ottr_ssh::Result<()> {
     let started = Instant::now();
     let stats = match args.direction.as_str() {
         "down" => {
-            download_parallel(&session, &args.src, Path::new(&args.dst), args.chunks, &args.journal)
-                .await?
+            download_parallel(
+                &session,
+                &args.src,
+                Path::new(&args.dst),
+                args.chunks,
+                &args.journal,
+            )
+            .await?
         }
         "up" => {
-            upload_parallel(&session, Path::new(&args.src), &args.dst, args.chunks, &args.journal)
-                .await?
+            upload_parallel(
+                &session,
+                Path::new(&args.src),
+                &args.dst,
+                args.chunks,
+                &args.journal,
+            )
+            .await?
         }
         _ => usage(),
     };

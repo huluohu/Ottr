@@ -26,13 +26,13 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use russh::keys::{parse_public_key_base64, HashAlg, PublicKey};
 use russh::ChannelMsg;
+use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 use tokio::io::AsyncWriteExt;
 
 use ottr_term::{Decoder, Encoding};
 
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy, SshSession};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;

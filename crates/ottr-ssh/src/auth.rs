@@ -73,7 +73,9 @@ impl russh::client::Handler for ClientAuthHandler {
         server_public_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
         let public_key = server_public_key.public_key();
-        let fingerprint = public_key.fingerprint(russh::keys::HashAlg::Sha256).to_string();
+        let fingerprint = public_key
+            .fingerprint(russh::keys::HashAlg::Sha256)
+            .to_string();
 
         // 必须记录：无论策略接受与否。
         self.host_key_bytes
@@ -104,11 +106,12 @@ pub(crate) async fn authenticate(
     let result = match auth {
         AuthMethod::Password(password) => handle.authenticate_password(username, password).await?,
         AuthMethod::Key { path, passphrase } => {
-            let key = russh::keys::load_secret_key(&path, passphrase.as_deref())
-                .map_err(|e| Error::KeyLoad {
+            let key = russh::keys::load_secret_key(&path, passphrase.as_deref()).map_err(|e| {
+                Error::KeyLoad {
                     path: path.display().to_string(),
                     source: KeyError::from(e), // russh 错误在此转为自有分类
-                })?;
+                }
+            })?;
             // 非 RSA 密钥 hash_alg 被忽略；RSA 走 best_supported_rsa_hash（Task 4 再接）。
             let key = PrivateKeyWithHashAlg::new(Arc::new(key), None);
             handle.authenticate_publickey(username, key).await?
@@ -138,8 +141,7 @@ async fn keyboard_interactive_auth(
             KeyboardInteractiveAuthResponse::Success => return Ok(()),
             KeyboardInteractiveAuthResponse::Failure { .. } => return Err(Error::AuthRejected),
             KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
-                let texts: Vec<String> =
-                    prompts.iter().map(|p| p.prompt.clone()).collect();
+                let texts: Vec<String> = prompts.iter().map(|p| p.prompt.clone()).collect();
                 let answers = responder(&texts);
                 if answers.len() != texts.len() {
                     return Err(Error::PromptAnswerMismatch {

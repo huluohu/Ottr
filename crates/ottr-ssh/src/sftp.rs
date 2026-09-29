@@ -60,8 +60,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use futures::future::try_join_all;
-use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::RawSftpSession;
+use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 
 use crate::russh_impl::SshSession;
@@ -95,7 +95,9 @@ impl TransferStats {
     /// 本次运行的有效吞吐（MB/s，10^6 字节口径）。
     pub fn mb_per_s(&self) -> f64 {
         let transferred = self.total_bytes
-            - (self.chunks_resumed as u64).saturating_mul(CHUNK_SIZE).min(self.total_bytes);
+            - (self.chunks_resumed as u64)
+                .saturating_mul(CHUNK_SIZE)
+                .min(self.total_bytes);
         transferred as f64 / 1e6 / self.elapsed.as_secs_f64().max(1e-9)
     }
 }
@@ -125,12 +127,7 @@ impl Journal {
     ///   **绝不按旧 offset 静默续传**；
     /// - 头部身份与本次传输不一致 → Err，提示删除或更换 journal 文件；
     /// - offset 行损坏按"未完成"处理（容忍尾行半截）。
-    fn load(
-        path: &Path,
-        mode: &str,
-        identity_path: &str,
-        total: u64,
-    ) -> Result<HashSet<u64>> {
+    fn load(path: &Path, mode: &str, identity_path: &str, total: u64) -> Result<HashSet<u64>> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
@@ -154,10 +151,11 @@ impl Journal {
             .filter(|r| r.starts_with('\t'))
             .ok_or_else(|| reject("missing v1 header"))?;
         let mut fields = rest[1..].split('\t');
-        let (h_path, h_total, h_mode) = match (fields.next(), fields.next(), fields.next(), fields.next()) {
-            (Some(p), Some(t), Some(m), None) if !p.is_empty() => (p, t, m),
-            _ => return Err(reject("malformed v1 header")),
-        };
+        let (h_path, h_total, h_mode) =
+            match (fields.next(), fields.next(), fields.next(), fields.next()) {
+                (Some(p), Some(t), Some(m), None) if !p.is_empty() => (p, t, m),
+                _ => return Err(reject("malformed v1 header")),
+            };
         let h_total: u64 = h_total
             .parse()
             .map_err(|_| reject("malformed v1 header (total not a number)"))?;
@@ -166,9 +164,7 @@ impl Journal {
                 "identity mismatch: journal is {h_mode} {h_path} {h_total}"
             )));
         }
-        Ok(lines
-            .filter_map(|l| l.trim().parse::<u64>().ok())
-            .collect())
+        Ok(lines.filter_map(|l| l.trim().parse::<u64>().ok()).collect())
     }
 
     /// 以追加模式打开 journal（不存在则创建）；文件为空时先写入 v1 头部行。
@@ -181,9 +177,13 @@ impl Journal {
             let mut f = file;
             f.write_all(journal_header(identity_path, total, mode).as_bytes())?;
             f.flush()?;
-            return Ok(Self { file: Mutex::new(f) });
+            return Ok(Self {
+                file: Mutex::new(f),
+            });
         }
-        Ok(Self { file: Mutex::new(file) })
+        Ok(Self {
+            file: Mutex::new(file),
+        })
     }
 
     /// 记录一个已完成 chunk（写行 + flush 到 OS）。
@@ -203,7 +203,10 @@ fn protocol_error(e: impl std::error::Error + Send + Sync + 'static, ctx: &str) 
 }
 
 fn plain_error(ctx: String) -> Error {
-    Error::Protocol { message: ctx, source: None }
+    Error::Protocol {
+        message: ctx,
+        source: None,
+    }
 }
 
 /// SFTP EOF 状态包（read 越过文件尾；对"按 stat 长度分块"的我们意味着
@@ -227,7 +230,10 @@ async fn remote_size(sftp: &RawSftpSession, remote: &str) -> Result<u64> {
         .stat(remote)
         .await
         .map_err(|e| protocol_error(e, &format!("stat {remote}")))?;
-    attrs.attrs.size.ok_or_else(|| plain_error(format!("{remote}: stat attrs have no size")))
+    attrs
+        .attrs
+        .size
+        .ok_or_else(|| plain_error(format!("{remote}: stat attrs have no size")))
 }
 
 /// 探测读写子请求块大小：报文上限收窄 + 服务器 limits@openssh.com 明示上限。
@@ -262,10 +268,7 @@ fn chunk_table(total: u64, done: &HashSet<u64>) -> Vec<(usize, u64, u64)> {
 fn print_resume_line(pending: &[(usize, u64, u64)], chunks_total: usize, workers: usize) {
     let resumed = chunks_total - pending.len();
     if resumed > 0 {
-        let first = pending
-            .first()
-            .map(|(i, _, _)| *i)
-            .unwrap_or(chunks_total); // 全部已完成：无可续传
+        let first = pending.first().map(|(i, _, _)| *i).unwrap_or(chunks_total); // 全部已完成：无可续传
         println!(
             "resume from chunk {first} ({resumed}/{chunks_total} chunks already journaled, {workers} workers)",
         );
@@ -332,7 +335,9 @@ pub async fn download_parallel(
         async move {
             loop {
                 let next = queue.lock().unwrap().pop_front();
-                let Some((_index, offset, len)) = next else { break };
+                let Some((_index, offset, len)) = next else {
+                    break;
+                };
                 let data =
                     read_chunk_pipelined(&sftp, &handle, offset, len as usize, read_block).await?;
                 // 顺序不变量：数据先完整写盘（页缓存，kill -9 不丢），后记 journal。
@@ -354,7 +359,9 @@ pub async fn download_parallel(
     });
     try_join_all(handles).await?;
 
-    sftp.close(read_handle).await.map_err(|e| protocol_error(e, "close remote handle"))?;
+    sftp.close(read_handle)
+        .await
+        .map_err(|e| protocol_error(e, "close remote handle"))?;
 
     Ok(TransferStats {
         total_bytes: total,
@@ -418,7 +425,7 @@ async fn read_chunk_pipelined(
                 Err(e) if is_eof(&e) => {
                     return Err(plain_error(format!(
                         "unexpected EOF at offset {block_off} (file shorter than stat size?)"
-                    )))
+                    )));
                 }
                 Err(e) => return Err(protocol_error(e, "sftp read top-up")),
             };
@@ -506,7 +513,9 @@ pub async fn upload_parallel(
         async move {
             loop {
                 let next = queue.lock().unwrap().pop_front();
-                let Some((_index, offset, len)) = next else { break };
+                let Some((_index, offset, len)) = next else {
+                    break;
+                };
                 let mut data = vec![0u8; len as usize];
                 local_file.read_exact_at(&mut data, offset)?;
                 // 远端写：块切分后一轮 try_join_all 流水线；raw write 对每个
@@ -546,7 +555,9 @@ pub async fn upload_parallel(
     });
     try_join_all(handles).await?;
 
-    sftp.close(write_handle).await.map_err(|e| protocol_error(e, "close remote handle"))?;
+    sftp.close(write_handle)
+        .await
+        .map_err(|e| protocol_error(e, "close remote handle"))?;
 
     Ok(TransferStats {
         total_bytes: total,

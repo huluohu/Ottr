@@ -46,29 +46,25 @@ struct MockAuth {
 impl russh::server::Handler for MockAuth {
     type Error = russh::Error;
 
-    async fn auth_password(
-        &mut self,
-        user: &str,
-        password: &str,
-    ) -> Result<Auth, Self::Error> {
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         Ok(match self.passwords.get(user) {
             Some(expected) if *expected == password => Auth::Accept,
             _ => Auth::reject(),
         })
     }
 
-    async fn auth_publickey(
-        &mut self,
-        user: &str,
-        key: &PublicKey,
-    ) -> Result<Auth, Self::Error> {
+    async fn auth_publickey(&mut self, user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
         // 白名单按密钥材料比较（PublicKey 的 PartialEq 含 comment 字段，
         // 私钥文件与 .pub 文件携带的 comment 不同会导致误判）。
         let whitelisted = self
             .key_whitelist
             .get(user)
             .is_some_and(|allowed| allowed.key_data() == key.key_data());
-        Ok(if whitelisted { Auth::Accept } else { Auth::reject() })
+        Ok(if whitelisted {
+            Auth::Accept
+        } else {
+            Auth::reject()
+        })
     }
 
     async fn auth_keyboard_interactive<'a>(
@@ -90,7 +86,11 @@ impl russh::server::Handler for MockAuth {
                     .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
                     .collect();
                 let correct = answers.len() == 1 && answers[0] == *self.totp_code;
-                Ok(if correct { Auth::Accept } else { Auth::reject() })
+                Ok(if correct {
+                    Auth::Accept
+                } else {
+                    Auth::reject()
+                })
             }
         }
     }

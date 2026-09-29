@@ -19,8 +19,8 @@ use ottr_ssh::sftp::{
     CHUNK_SIZE, JOURNAL_MAGIC, TransferStats, download_parallel, journal_header, upload_parallel,
 };
 use ottr_ssh::{AuthMethod, SshSession, connect};
-use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 use russh::ChannelMsg;
+use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
@@ -31,11 +31,16 @@ const SIZE: u64 = 5 * 1024 * 1024; // 简报：5MB
 
 /// 夹具可达性探测：不可达即 fail 并提示（裁定：不引入 testcontainers）。
 async fn fixture_or_panic() {
-    match tokio::time::timeout(std::time::Duration::from_secs(2), tokio::net::TcpStream::connect((HOST, PORT))).await {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        tokio::net::TcpStream::connect((HOST, PORT)),
+    )
+    .await
+    {
         Ok(Ok(_)) => {}
-        Ok(Err(e)) => panic!(
-            "sshd fixture unreachable at {HOST}:{PORT} ({e}) —— 先跑 scripts/spike-sshd.sh"
-        ),
+        Ok(Err(e)) => {
+            panic!("sshd fixture unreachable at {HOST}:{PORT} ({e}) —— 先跑 scripts/spike-sshd.sh")
+        }
         Err(_) => panic!(
             "sshd fixture unreachable at {HOST}:{PORT} (timeout) —— 先跑 scripts/spike-sshd.sh"
         ),
@@ -62,9 +67,15 @@ fn pinned_host_key_policy() -> ottr_ssh::HostKeyPolicy {
 }
 
 async fn connect_fixture() -> SshSession {
-    connect(HOST, PORT, USER, AuthMethod::Password(PASSWORD.to_string()), pinned_host_key_policy())
-        .await
-        .expect("connect fixture")
+    connect(
+        HOST,
+        PORT,
+        USER,
+        AuthMethod::Password(PASSWORD.to_string()),
+        pinned_host_key_policy(),
+    )
+    .await
+    .expect("connect fixture")
 }
 
 /// 远程执行命令（PTY + exec，real_fixture 同款模式），断言退出码 0，返回输出。
@@ -89,10 +100,7 @@ async fn exec(session: &SshSession, cmd: &str) -> String {
 
 /// 本地 sha256（shasum -a 256，macOS 夹具环境；失败回退 sha256sum）。
 fn sha256_local(path: &str) -> String {
-    let candidates: [Vec<&str>; 2] = [
-        vec!["shasum", "-a", "256", path],
-        vec!["sha256sum", path],
-    ];
+    let candidates: [Vec<&str>; 2] = [vec!["shasum", "-a", "256", path], vec!["sha256sum", path]];
     for cmd in candidates {
         if let Ok(out) = Command::new(cmd[0]).args(&cmd[1..]).output() {
             if out.status.success() {
@@ -116,7 +124,11 @@ async fn sha256_remote(session: &SshSession, path: &str) -> String {
 
 /// 远端生成 urandom 源文件（独立于被测代码的 ground truth）。
 async fn make_remote_file(session: &SshSession, path: &str, mib: u64) {
-    exec(session, &format!("dd if=/dev/urandom of={path} bs=1048576 count={mib} 2>/dev/null")).await;
+    exec(
+        session,
+        &format!("dd if=/dev/urandom of={path} bs=1048576 count={mib} 2>/dev/null"),
+    )
+    .await;
 }
 
 /// 本地生成 urandom 文件（上传用例的源）。
@@ -179,13 +191,21 @@ async fn download_5mb_4workers_sha256_matches() {
     cleanup_remote(&session, &p).await;
     make_remote_file(&session, &p.remote_a, 5).await;
 
-    let stats: TransferStats =
-        download_parallel(&session, &p.remote_a, Path::new(&p.local_a), 4, Path::new(&p.journal_a))
-            .await
-            .expect("download");
+    let stats: TransferStats = download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_a),
+    )
+    .await
+    .expect("download");
     assert_eq!(stats.chunks_total, 5, "5MB / 1MiB = 5 chunks");
     assert_eq!(stats.chunks_resumed, 0, "fresh journal: nothing resumed");
-    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
+    assert_eq!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await
+    );
 
     cleanup_remote(&session, &p).await;
     cleanup_local(&p);
@@ -204,9 +224,15 @@ async fn download_resume_skips_journaled_chunks() {
     make_remote_file(&session, &p.remote_a, 5).await;
 
     // 第一次完整下载：建立"前 3 块已正确落盘"的真实前提
-    download_parallel(&session, &p.remote_a, Path::new(&p.local_a), 4, Path::new(&p.journal_a))
-        .await
-        .expect("first download");
+    download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_a),
+    )
+    .await
+    .expect("first download");
 
     // 构造续传 journal：v1 头部（绑定 down + 远端路径 + 5MiB 总长）+ 前 3 chunk offset
     let seeded = format!(
@@ -217,18 +243,36 @@ async fn download_resume_skips_journaled_chunks() {
     );
     std::fs::write(&p.journal_b, seeded).expect("seed resume journal");
 
-    let stats = download_parallel(&session, &p.remote_a, Path::new(&p.local_a), 4, Path::new(&p.journal_b))
-        .await
-        .expect("resume download");
-    assert_eq!(stats.chunks_resumed, 3, "3 journaled chunks must be skipped");
+    let stats = download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_b),
+    )
+    .await
+    .expect("resume download");
+    assert_eq!(
+        stats.chunks_resumed, 3,
+        "3 journaled chunks must be skipped"
+    );
     assert_eq!(stats.chunks_total, 5);
-    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
+    assert_eq!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await
+    );
 
     let mut offs = journal_offsets(&p.journal_b);
     offs.sort_unstable();
     assert_eq!(
         offs,
-        vec![0, CHUNK_SIZE, 2 * CHUNK_SIZE, 3 * CHUNK_SIZE, 4 * CHUNK_SIZE],
+        vec![
+            0,
+            CHUNK_SIZE,
+            2 * CHUNK_SIZE,
+            3 * CHUNK_SIZE,
+            4 * CHUNK_SIZE
+        ],
         "journal must record all 5 chunk offsets after completion"
     );
 
@@ -247,12 +291,21 @@ async fn upload_5mb_4workers_sha256_matches() {
     cleanup_remote(&session, &p).await;
     make_local_file(&p.local_a, SIZE);
 
-    let stats = upload_parallel(&session, Path::new(&p.local_a), &p.remote_a, 4, Path::new(&p.journal_a))
-        .await
-        .expect("upload");
+    let stats = upload_parallel(
+        &session,
+        Path::new(&p.local_a),
+        &p.remote_a,
+        4,
+        Path::new(&p.journal_a),
+    )
+    .await
+    .expect("upload");
     assert_eq!(stats.chunks_total, 5);
     assert_eq!(stats.chunks_resumed, 0);
-    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
+    assert_eq!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await
+    );
 
     cleanup_remote(&session, &p).await;
     cleanup_local(&p);
@@ -272,9 +325,15 @@ async fn upload_resume_reuses_journaled_chunks() {
     make_local_file(&p.local_a, SIZE);
 
     // 第一次完整上传：远端已有正确内容（前提）
-    upload_parallel(&session, Path::new(&p.local_a), &p.remote_a, 4, Path::new(&p.journal_a))
-        .await
-        .expect("first upload");
+    upload_parallel(
+        &session,
+        Path::new(&p.local_a),
+        &p.remote_a,
+        4,
+        Path::new(&p.journal_a),
+    )
+    .await
+    .expect("first upload");
 
     let seeded = format!(
         "{}0\n{}\n{}\n",
@@ -284,17 +343,32 @@ async fn upload_resume_reuses_journaled_chunks() {
     );
     std::fs::write(&p.journal_b, seeded).expect("seed resume journal");
 
-    let stats = upload_parallel(&session, Path::new(&p.local_a), &p.remote_a, 4, Path::new(&p.journal_b))
-        .await
-        .expect("resume upload");
+    let stats = upload_parallel(
+        &session,
+        Path::new(&p.local_a),
+        &p.remote_a,
+        4,
+        Path::new(&p.journal_b),
+    )
+    .await
+    .expect("resume upload");
     assert_eq!(stats.chunks_resumed, 3);
-    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
+    assert_eq!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await
+    );
 
     let mut offs = journal_offsets(&p.journal_b);
     offs.sort_unstable();
     assert_eq!(
         offs,
-        vec![0, CHUNK_SIZE, 2 * CHUNK_SIZE, 3 * CHUNK_SIZE, 4 * CHUNK_SIZE],
+        vec![
+            0,
+            CHUNK_SIZE,
+            2 * CHUNK_SIZE,
+            3 * CHUNK_SIZE,
+            4 * CHUNK_SIZE
+        ],
     );
 
     cleanup_remote(&session, &p).await;
@@ -305,10 +379,16 @@ async fn upload_resume_reuses_journaled_chunks() {
 /// 在预置 journal 上执行一次下载，断言被明确拒绝且 journal 未被改动。
 async fn assert_download_rejected(session: &SshSession, p: &Paths, label: &str, body: String) {
     std::fs::write(&p.journal_b, &body).expect("write seeded journal");
-    let err = download_parallel(&session, &p.remote_a, Path::new(&p.local_b), 4, Path::new(&p.journal_b))
-        .await
-        .err()
-        .unwrap_or_else(|| panic!("{label}: expected Err, got Ok (silent resume!)"));
+    let err = download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_b),
+        4,
+        Path::new(&p.journal_b),
+    )
+    .await
+    .err()
+    .unwrap_or_else(|| panic!("{label}: expected Err, got Ok (silent resume!)"));
     let msg = err.to_string();
     assert!(
         msg.contains("journal") && msg.contains("refusing to resume"),
@@ -357,16 +437,31 @@ async fn journal_identity_mismatch_is_rejected_not_silently_resumed() {
     )
     .await;
     // 3) 旧格式（无 v1 头部）journal
-    assert_download_rejected(&session, &p, "legacy headerless", "0\n1048576\n2097152\n".to_string()).await;
+    assert_download_rejected(
+        &session,
+        &p,
+        "legacy headerless",
+        "0\n1048576\n2097152\n".to_string(),
+    )
+    .await;
 
     // 4) 模式不匹配：down journal 拿去续传 up（路径/大小一致，仅方向不同）
     make_local_file(&p.local_a, SIZE);
-    std::fs::write(&p.journal_b, format!("{}0\n", journal_header(&p.remote_b, SIZE, "down")))
-        .expect("seed down journal");
-    let err = upload_parallel(&session, Path::new(&p.local_a), &p.remote_b, 4, Path::new(&p.journal_b))
-        .await
-        .err()
-        .unwrap_or_else(|| panic!("mode mismatch: expected Err, got Ok (silent resume!)"));
+    std::fs::write(
+        &p.journal_b,
+        format!("{}0\n", journal_header(&p.remote_b, SIZE, "down")),
+    )
+    .expect("seed down journal");
+    let err = upload_parallel(
+        &session,
+        Path::new(&p.local_a),
+        &p.remote_b,
+        4,
+        Path::new(&p.journal_b),
+    )
+    .await
+    .err()
+    .unwrap_or_else(|| panic!("mode mismatch: expected Err, got Ok (silent resume!)"));
     assert!(
         err.to_string().contains("refusing to resume"),
         "mode mismatch must be rejected explicitly, got: {err}"

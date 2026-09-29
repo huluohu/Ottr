@@ -214,6 +214,13 @@ async fn session_worker(index: usize, deadline: Instant) -> ottr_ssh::Result<(u6
             }
         }
         eprintln!("[bench] sftp loop exit");
+    } else {
+        // 【Fix round 1 I-1】评审实锤：非 0 会话此前无保持段，走完 PTY+shell 即
+        // disconnect——「5 会话保持 60s」实为「1 会话负载 + 4 条瞬时连接」。
+        // 全部会话 sleep 到 hold 到期再断连，5 条并发活跃会话语义才成立。
+        let until = tokio::time::Instant::from_std(deadline);
+        eprintln!("[bench] session {index} holding until deadline");
+        tokio::time::sleep_until(until).await;
     }
 
     // 收尾：断连（russh 显式 disconnect —— Handle::drop 只打日志不关连接），

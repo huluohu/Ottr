@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! ottr-term：Ottr 的终端文本层。
+//!
+//! 纯同步、字节级处理：不依赖 async runtime、不依赖任何传输层（russh）类型。
+//! 上层（PTY 消费 / AI 诊断 / 统一历史 / 录制）按 chunk 喂入原始字节：
+//!
+//! - [`osc133::Parser`]：单遍状态机，产出 OSC 133 命令流事件、OSC 7 cwd 与文本片段；
+//! - [`stripper`]：在 Parser 之上剥离 ANSI，向 [`stripper::TextSink`] 输出合法 UTF-8 纯文本；
+//! - [`ring::RingBuffer`]：按行存储的定容环形缓冲（默认 10_000 行）。
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod osc133;
+pub mod ring;
+pub mod stripper;

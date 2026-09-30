@@ -5,10 +5,16 @@
 //! 落盘（FTS5 检索，见 migrations/）。
 
 pub mod crypto;
+pub mod entities;
 pub mod master_key;
 pub mod store;
 
 pub use crypto::{aad, Cipher};
+pub use entities::{
+    Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials, Host, HostGroup,
+    HostGroups, HostInput, Hosts, KnownHost, KnownHostState, KnownHosts, SecretField, Snippet,
+    SnippetInput, Snippets,
+};
 pub use master_key::MasterKey;
 pub use store::Vault;
 
@@ -28,6 +34,15 @@ pub enum VaultError {
     Kdf(String),
     /// 库的 schema 版本高于本程序支持——禁止降级打开以防静默数据损坏。
     SchemaTooNew { db: u32, app: u32 },
+    /// meta.schema_version 存在但不是合法版本号——库可能被外部改写。
+    /// 必须显式报错而非按 0 处理（按 0 会重跑迁移、静默改写库、掩盖损坏，T3 评审裁定）。
+    CorruptedSchemaVersion(String),
+    /// 输入校验失败（空名称、端口越界等）——消息可直接展示给用户。
+    InvalidInput(String),
+    /// 请求的实体不存在（update/delete/reveal 等按 id/key 操作落空）。
+    NotFound(String),
+    /// JSON 序列化/反序列化失败（tags/variables 等 JSON 列）。
+    Json(serde_json::Error),
 }
 
 impl fmt::Display for VaultError {
@@ -46,6 +61,14 @@ impl fmt::Display for VaultError {
                 f,
                 "vault schema v{db} is newer than supported v{app}; upgrade Ottr to open it"
             ),
+            Self::CorruptedSchemaVersion(v) => write!(
+                f,
+                "schema_version in meta is corrupted (not a version number): {v:?}; \
+                 the vault file may have been modified externally"
+            ),
+            Self::InvalidInput(msg) => write!(f, "invalid input: {msg}"),
+            Self::NotFound(msg) => write!(f, "not found: {msg}"),
+            Self::Json(e) => write!(f, "json error: {e}"),
         }
     }
 }
@@ -56,8 +79,15 @@ impl std::error::Error for VaultError {
             Self::Io(e) => Some(e),
             Self::Sql(e) => Some(e),
             Self::Keyring(e) => Some(e),
+            Self::Json(e) => Some(e),
             _ => None,
         }
+    }
+}
+
+impl From<serde_json::Error> for VaultError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Json(e)
     }
 }
 

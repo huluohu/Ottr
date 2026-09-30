@@ -16,6 +16,10 @@ aes-gcm = "0.11"
 argon2 = "0.6"
 hex = "0.4"
 rand = "0.10"
+# 实体结构体的 serde 序列化形态即前端契约（src/vault/api.ts 同构类型，Task 4）；
+# tags/variables 列以 JSON 文本落库（spec §3）。
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # zeroize（Master Key 用后即清）暂不引入：spec §14 backlog，见 task-3-report 偏差记录
 
 # keyring 平台 store 按 target opt-in——照抄 src-tauri（Phase 0 Task 11 先例）：

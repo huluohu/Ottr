@@ -18,10 +18,10 @@ fn open_creates_db_and_schema_version() {
     // 建库：vault.db 落在指定目录。
     assert!(dir.path().join("vault.db").exists());
 
-    // 自动迁移到最新 schema_version（0001 → 1）。
-    assert_eq!(vault.schema_version().unwrap(), 1);
+    // 自动迁移到最新 schema_version（0001+0002 → 2）。
+    assert_eq!(vault.schema_version().unwrap(), ottr_vault::store::LATEST_SCHEMA_VERSION);
 
-    // 两张引导表存在（台账裁定：实体表在 Task 4 的 0002，不在此迁移）。
+    // 引导表（0001）与实体表（Task 4 的 0002）全部就位。
     let conn = vault.connection();
     let tables: Vec<String> = {
         let mut stmt = conn
@@ -31,7 +31,7 @@ fn open_creates_db_and_schema_version() {
     };
     assert!(tables.contains(&"meta".to_string()), "tables: {tables:?}");
     assert!(tables.contains(&"settings".to_string()), "tables: {tables:?}");
-    assert!(!tables.contains(&"hosts".to_string()), "实体表不属于 0001");
+    assert!(tables.contains(&"hosts".to_string()), "0002 实体表应就位");
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn reopen_is_idempotent_and_preserves_data() {
 
     // 重复 open：不重跑迁移（版本不变）、不重建、数据保留。
     let reopened = open_vault(dir.path(), &storage);
-    assert_eq!(reopened.schema_version().unwrap(), 1);
+    assert_eq!(reopened.schema_version().unwrap(), ottr_vault::store::LATEST_SCHEMA_VERSION);
     let theme: String = reopened
         .connection()
         .query_row("SELECT value FROM settings WHERE key='theme'", [], |r| r.get(0))
@@ -120,4 +120,20 @@ fn db_too_new_is_rejected() {
         Ok(_) => panic!("版本 99 的库应拒绝打开"),
     };
     assert!(matches!(err, ottr_vault::VaultError::SchemaTooNew { db: 99, .. }), "{err}");
+}
+
+#[test]
+fn corrupted_schema_version_is_explicit_error() {
+    // T3 评审要求（Task 4 落地）：版本号 parse 失败 → 显式错误，
+    // 不得静默按 0 处理（否则会重跑迁移、静默改写库、掩盖损坏）。
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    open_vault(dir.path(), &storage).connection()
+        .execute("UPDATE meta SET value='v2-final-FINAL' WHERE key='schema_version'", [])
+        .unwrap();
+    let err = match Vault::open_with(dir.path(), &storage) {
+        Err(e) => e,
+        Ok(_) => panic!("垃圾版本号应显式报错而非按 0 重跑迁移"),
+    };
+    assert!(matches!(err, ottr_vault::VaultError::CorruptedSchemaVersion(_)), "{err}");
 }

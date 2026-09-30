@@ -18,10 +18,15 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 1;
+pub const LATEST_SCHEMA_VERSION: u32 = 2;
 
 /// 迁移脚本注册表：新迁移往后追加，版本号必须连续递增。
-const MIGRATIONS: &[(u32, &str)] = &[(1, include_str!("../migrations/0001_init.sql"))];
+/// 0001 引导（meta+settings）；0002 实体五表 + FTS5 trigram（Task 4）；
+/// history 表 Task 15、notifications Task 12 各自成迁移。
+const MIGRATIONS: &[(u32, &str)] = &[
+    (1, include_str!("../migrations/0001_init.sql")),
+    (2, include_str!("../migrations/0002_entities.sql")),
+];
 
 /// 打开的 vault：SQLite 连接 + 由 Master Key 派生的密封器。
 pub struct Vault {
@@ -111,13 +116,19 @@ fn current_schema_version(conn: &Connection) -> Result<u32> {
     if meta_exists == 0 {
         return Ok(0);
     }
-    match conn.query_row(
+    let raw = match conn.query_row(
         "SELECT value FROM meta WHERE key='schema_version'",
         [],
         |r| r.get::<_, String>(0),
     ) {
-        Ok(v) => Ok(v.parse().unwrap_or(0)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(0),
-        Err(e) => Err(e.into()),
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(0),
+        Err(e) => return Err(e.into()),
+    };
+    // T3 评审要求收紧（Task 4 落地）：parse 失败 → 显式错误。绝不能静默按 0 处理——
+    // 那会让损坏的库被当成空库重跑全部迁移，静默改写并掩盖真实损坏。
+    match raw.parse::<u32>() {
+        Ok(v) => Ok(v),
+        Err(_) => Err(VaultError::CorruptedSchemaVersion(raw)),
     }
 }

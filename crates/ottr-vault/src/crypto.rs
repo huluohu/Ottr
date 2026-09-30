@@ -83,6 +83,13 @@ impl Cipher {
 }
 
 /// AAD 纪律的唯一构造点：`"{table}:{row_id}:{field}"`（spec §3）。
+///
+/// **`table` 与 `field` 不得包含 `:`**：冒号是本格式的字段分隔符，混入会使
+/// `credentials:5:secret` 这类串在人工审计、日志排查与工具解析时产生歧义
+/// （如 `table="a:b"` 时无法区分边界）。GCM 把 AAD 当不透明字节，密封/开封
+/// 只要求两侧逐字节一致，故违反本约定不影响正确性，但破坏可读性约定——
+/// 新增 AAD 字段请用下划线等无歧义命名。现有合法样例：
+/// `credentials:{id}:secret|passphrase|totp_secret`。
 pub fn aad(table: &str, row_id: impl std::fmt::Display, field: &str) -> String {
     format!("{table}:{row_id}:{field}")
 }

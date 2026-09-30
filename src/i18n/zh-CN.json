@@ -206,7 +206,24 @@
     "reconnectExhausted": "自动重连 {{max}} 次未成功，已停止。双击左侧主机可再次连接。",
     "connectFailed": "连接失败：{{message}}",
     "hostKeyRejected": "主机密钥确认未通过，未连接",
-    "reconnectHint": "双击左侧主机可发起连接"
+    "reconnectHint": "双击左侧主机可发起连接",
+    "copyOnSelect": "选择即复制",
+    "searchPlaceholder": "搜索终端内容…",
+    "searchPrev": "上一个",
+    "searchNext": "下一个",
+    "searchNoResult": "无结果",
+    "clearScreen": "清屏",
+    "encoding": "编码",
+    "splitRight": "向右分屏",
+    "splitDown": "向下分屏",
+    "closePane": "关闭窗格",
+    "menuAria": "终端右键菜单",
+    "splitAria": "分屏",
+    "pasteTitle": "确认粘贴",
+    "pasteMultiline": "粘贴内容包含多行文本，回车将逐行执行：",
+    "pasteDanger": "粘贴内容命中危险命令规则：",
+    "pastePreview": "预览",
+    "pasteConfirm": "仍要粘贴"
   },
   "ai": {
     "title": "AI 助手",
@@ -218,7 +235,20 @@
     "empty": "开始你的第一次对话",
     "copyCode": "复制代码",
     "insertToTerminal": "插入到终端",
-    "failed": "请求失败，请重试"
+    "failed": "请求失败，请重试",
+    "danger": {
+      "recursive-delete": "递归强制删除",
+      "delete-root": "删除根路径",
+      "disk-write": "磁盘直写 / 格式化",
+      "fork-bomb": "fork 炸弹",
+      "privileged": "特权删除（sudo rm）",
+      "perm-open": "递归开放权限（777）",
+      "owner-change": "递归改属主",
+      "service-stop": "关机 / 重启",
+      "force-push": "强制推送（覆盖远端）",
+      "hard-reset": "丢弃本地改动（reset --hard）",
+      "sql-drop": "删除数据库对象（DROP）"
+    }
   },
   "tabs": {
     "list": "会话标签",

@@ -18,16 +18,18 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 3;
+pub const LATEST_SCHEMA_VERSION: u32 = 4;
 
 /// 迁移脚本注册表：新迁移往后追加，版本号必须连续递增。
 /// 0001 引导（meta+settings）；0002 实体五表 + FTS5 trigram（Task 4）；
 /// 0003 hosts.username 登录用户名列（Task 5，spec §3 模型缺口补列）；
+/// 0004 known_hosts host 端点绑定（Task 8 义务①，防 MITM changed 强提醒）；
 /// history 表 Task 15、notifications Task 12 各自成迁移。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
     (3, include_str!("../migrations/0003_hosts_username.sql")),
+    (4, include_str!("../migrations/0004_known_hosts_host_binding.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 由 Master Key 派生的密封器。
@@ -71,6 +73,14 @@ impl Vault {
     /// 单连接串行访问（rusqlite Connection 非 Sync，Mutex 是 Tauri 命令共享的标准形态）。
     pub fn connection(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().expect("vault connection poisoned")
+    }
+
+    /// 组合式单次加锁：闭包内完成全部语句后统一释放。
+    /// 实体层的多语句操作一律走本方法——在持有 `connection()` 守卫的期间再调
+    /// 任何会重新加锁的高层方法，都会造成同线程 Mutex 二次加锁死锁
+    /// （T8 known_hosts_state_machine 挂死事故的根因，见 entities.rs KnownHosts）。
+    pub fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+        f(&self.connection())
     }
 
     /// 当前 schema 版本（读 meta.schema_version；库为空时为 0）。

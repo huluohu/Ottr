@@ -207,7 +207,24 @@
     "reconnectExhausted": "Auto-reconnect gave up after {{max}} attempts. Double-click the host to try again.",
     "connectFailed": "Connection failed: {{message}}",
     "hostKeyRejected": "Host key confirmation rejected; not connected",
-    "reconnectHint": "Double-click a host in the sidebar to connect"
+    "reconnectHint": "Double-click a host in the sidebar to connect",
+    "copyOnSelect": "Copy on select",
+    "searchPlaceholder": "Search terminal…",
+    "searchPrev": "Previous",
+    "searchNext": "Next",
+    "searchNoResult": "No results",
+    "clearScreen": "Clear screen",
+    "encoding": "Encoding",
+    "splitRight": "Split right",
+    "splitDown": "Split down",
+    "closePane": "Close pane",
+    "menuAria": "Terminal context menu",
+    "splitAria": "Split pane",
+    "pasteTitle": "Confirm paste",
+    "pasteMultiline": "Pasted text has multiple lines; each line will run in sequence:",
+    "pasteDanger": "Pasted text matches dangerous command rules:",
+    "pastePreview": "Preview",
+    "pasteConfirm": "Paste anyway"
   },
   "ai": {
     "title": "AI Assistant",
@@ -219,7 +236,20 @@
     "empty": "Start your first conversation",
     "copyCode": "Copy code",
     "insertToTerminal": "Insert to terminal",
-    "failed": "Request failed, please retry"
+    "failed": "Request failed, please retry",
+    "danger": {
+      "recursive-delete": "Recursive force delete",
+      "delete-root": "Delete root path",
+      "disk-write": "Raw disk write / format",
+      "fork-bomb": "Fork bomb",
+      "privileged": "Privileged delete (sudo rm)",
+      "perm-open": "Recursive open permissions (777)",
+      "owner-change": "Recursive owner change",
+      "service-stop": "Shutdown / reboot",
+      "force-push": "Force push (overwrites remote)",
+      "hard-reset": "Discard local changes (reset --hard)",
+      "sql-drop": "Drop database object"
+    }
   },
   "tabs": {
     "list": "Session tabs",

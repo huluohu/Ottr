@@ -1,8 +1,9 @@
 /* ============================================================
- * 布局样式（Task 5 起骨架，Task 7 标签化终端主区）。
+ * 布局样式（Task 5 起骨架，Task 7 标签化终端主区，Task 8 分屏/搜索/右键菜单）。
  * 颜色纪律：组件层只引用 --color-* 语义层；派生表面（border/surface/
- * scrim）用 color-mix 从语义层混出，不写死色值（--btn-bg 的两处字面值为
- * Task 1 遗留，台账已挂账 T8 升格 --color-surface，此处不扩散新字面值）。
+ * scrim）用 color-mix 从语义层混出，不写死色值（--btn-bg 字面值已升格
+ * tokens 的 --color-surface，T1 挂账 M-1 清偿；.btn-danger 的 #fff 是
+ * danger 实底上的按钮文字色，两主题共用常量，不属表面派生）。
  * ============================================================ */
 
 :root {
@@ -31,12 +32,10 @@
   -webkit-text-size-adjust: 100%;
 }
 
-/* 控件底色（Task 1 遗留字面值，T8 升格 --color-surface 时一并处理） */
+/* 控件底色（T1 挂账 M-1 清偿，Task 8）：字面值升格为 tokens 的 --color-surface，
+ * 亮暗跟随语义层；组件层不再出现任何颜色字面值。 */
 :root {
-  --btn-bg: #ffffff;
-}
-[data-theme="dark"] {
-  --btn-bg: rgba(255, 255, 255, 0.08);
+  --btn-bg: var(--color-surface);
 }
 
 /* 控件基线（顶栏/树/表单/面板共用） */
@@ -702,19 +701,45 @@ button[data-active="true"] {
   border: none;
 }
 
+.term-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.term-toolbar {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+.term-toolbar button {
+  font-size: 0.75em;
+  padding: 0.15em 0.55em;
+  color: var(--fg-muted);
+}
 .term-stack {
   flex: 1;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
+/* 分屏 pane（Task 8）：位置 = split.ts layout() 矩形（px）；
+ * 非活动标签/已回收 pane：data-active=false → 隐藏但常驻（xterm 缓冲不丢） */
 .term-pane {
   position: absolute;
-  inset: 0;
-  padding: 6px;
+  padding: 2px;
   visibility: hidden;
+  overflow: hidden;
 }
 .term-pane[data-active="true"] {
   visibility: visible;
+}
+.term-pane[data-focused="true"] {
+  outline: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: -1px;
 }
 .session-term {
   width: 100%;
@@ -722,6 +747,152 @@ button[data-active="true"] {
 }
 .session-term .xterm {
   height: 100%;
+}
+
+/* 分隔条（Task 8）：命中面 = split.ts dividers() 矩形，拖拽回写 setPaneRatio */
+.split-divider {
+  position: absolute;
+  z-index: 2;
+  border-radius: 3px;
+}
+.split-divider[data-dir="row"] {
+  cursor: col-resize;
+}
+.split-divider[data-dir="column"] {
+  cursor: row-resize;
+}
+.split-divider:hover,
+.split-divider[data-dragging="true"] {
+  background: color-mix(in srgb, var(--color-accent) 55%, transparent);
+}
+
+/* 搜索栏（⌘F / 右键菜单「搜索」） */
+.search-bar {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-shadow: 0 4px 16px var(--scrim);
+}
+.search-bar input {
+  font-size: 0.85em;
+  width: 180px;
+  padding: 0.2em 0.5em;
+}
+.search-bar button {
+  font-size: 0.8em;
+  padding: 0.15em 0.5em;
+}
+.search-count {
+  font-size: 0.75em;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* 右键菜单（Task 8） */
+.ctx-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+.ctx-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 200px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px var(--scrim);
+}
+.ctx-menu-row {
+  position: relative;
+}
+.ctx-menu-item {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: none;
+  background: none;
+  padding: 5px 10px;
+  font-size: 0.85em;
+  text-align: left;
+  border-radius: 6px;
+  color: var(--color-fg);
+}
+.ctx-menu-item:hover:not(:disabled) {
+  background: var(--surface-raised);
+}
+.ctx-menu-item:disabled {
+  color: var(--fg-muted);
+  cursor: default;
+}
+.ctx-menu-item.danger {
+  color: var(--color-danger);
+}
+.ctx-menu-item[data-checked="true"] {
+  color: var(--color-accent);
+}
+.ctx-hint {
+  flex: none;
+  color: var(--fg-muted);
+}
+.ctx-submenu {
+  position: absolute;
+  left: calc(100% + 2px);
+  top: -4px;
+  min-width: 140px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px var(--scrim);
+  z-index: 101;
+}
+
+/* 粘贴确认弹层（多行/危险命令，danger.ts 预检） */
+.paste-dialog {
+  width: min(560px, 100%);
+}
+.paste-warning {
+  margin: 0 0 8px;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.paste-findings {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  color: var(--color-danger);
+  font-size: 0.85em;
+}
+.paste-findings code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+.paste-dialog pre {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  line-height: 1.5;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 /* --- 主机密钥确认框（TOFU）--- */

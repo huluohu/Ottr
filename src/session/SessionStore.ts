@@ -24,6 +24,14 @@
 import { create } from "zustand";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Host } from "../vault/api";
+import {
+  closeLeaf,
+  leaf,
+  leaves,
+  splitLeaf,
+  setRatioAt,
+  type PaneTree,
+} from "../terminal/split";
 
 export type SessionStatus =
   | "disconnected"
@@ -67,6 +75,9 @@ export interface Session {
   lastError: string | null;
   /** 下一次自动重连的绝对时刻（Date.now 基）；null = 无挂起重连。 */
   nextRetryAt: number | null;
+  /** 分屏归属（Task 8）：null = 标签根会话（TabBar 只渲染根）；
+   * 非空 = 所属标签根会话 id（一个标签一棵 pane 树，树叶 id = 会话 id）。 */
+  paneOf: string | null;
 }
 
 export interface SessionSettings {
@@ -120,8 +131,12 @@ function loadOpenTabIds(): number[] {
 }
 
 function persistOpenTabs(sessions: Session[]): void {
+  // 只持久化标签根（paneOf=null）：分屏 pane 属于标签内部布局，恢复时由用户重开
   try {
-    localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(sessions.map((s) => s.hostId)));
+    localStorage.setItem(
+      OPEN_TABS_KEY,
+      JSON.stringify(sessions.filter((s) => s.paneOf === null).map((s) => s.hostId)),
+    );
   } catch {
     // 持久化失败不阻塞会话管理
   }
@@ -176,10 +191,16 @@ interface SessionStore {
   activeId: string | null;
   hostKeyAsk: HostKeyAsk | null;
   settings: SessionSettings;
+  /** 分屏 pane 树（Task 8）：键 = 标签根会话 id；树叶 id = 会话 id。 */
+  trees: Record<string, PaneTree>;
+  /** 各标签的聚焦 pane（键 = 标签根 id；分屏/搜索/右键菜单的目标）。 */
+  activePane: Record<string, string>;
+  /** 搜索栏打开时目标会话 id（null = 关闭；右键菜单「搜索」/⌘F 置位）。 */
+  searchSessionId: string | null;
 
   /** 双击主机树/⌘K 选中：开新标签并立即连接（同主机已开则只激活）。返回标签 id。 */
   openTab: (host: Host, opts?: { autoConnect?: boolean }) => string;
-  /** 关标签 = drop_session（主动断开不重连）。 */
+  /** 关标签 = drop_session（主动断开不重连）；分屏 pane 一并收尾。 */
   closeTab: (id: string) => void;
   /** 激活标签（不触发连接）。 */
   setActive: (id: string) => void;
@@ -198,6 +219,18 @@ interface SessionStore {
   /** 启动恢复：按 open_host_ids 还原标签（不自动连接——安全考虑，见文件头）。 */
   restoreTabs: (hosts: Host[]) => number;
   loadSettings: () => void;
+
+  // --- 分屏（Task 8） -------------------------------------------------------
+  /** 在标签的聚焦 pane 处分裂（dir 透传 split.ts），新 pane 连同一主机并聚焦。 */
+  splitPane: (tabId: string, dir: "row" | "column") => void;
+  /** 关闭单个 pane（根 pane = 关标签）；兄弟子树提升，聚焦移交给存活 pane。 */
+  closePane: (sessionId: string) => void;
+  /** 点击/键盘聚焦某 pane（分屏与搜索的目标）。 */
+  setActivePane: (tabId: string, sessionId: string) => void;
+  /** 拖拽分隔条：path 定位 split 节点（split.ts dividers 的 path 语义）。 */
+  setPaneRatio: (tabId: string, path: readonly number[], ratio: number) => void;
+  /** 打开搜索栏并定位到会话（null = 关闭）。 */
+  openSearch: (sessionId: string | null) => void;
 }
 
 /** 会话内联状态补丁（找不到会话时静默——迟到事件的常规路径）。 */
@@ -218,6 +251,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   activeId: null,
   hostKeyAsk: null,
   settings: { maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS },
+  trees: {},
+  activePane: {},
+  searchSessionId: null,
 
   loadSettings: () => set({ settings: loadSettings() }),
 
@@ -243,11 +279,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       attempt: 0,
       lastError: null,
       nextRetryAt: null,
+      paneOf: null,
     };
     set((st) => {
       const sessions = [...st.sessions, session];
       persistOpenTabs(sessions);
-      return { sessions, activeId: id };
+      return {
+        sessions,
+        activeId: id,
+        trees: { ...st.trees, [id]: leaf(id) },
+        activePane: { ...st.activePane, [id]: id },
+      };
     });
     if (opts?.autoConnect !== false) void get().connect(id);
     return id;
@@ -255,14 +297,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   closeTab: (id) => {
     const st0 = get();
-    const session = st0.sessions.find((s) => s.id === id);
-    cancelRetryTimer(id);
-    unregisterSink(id);
-    if (session?.rustId) {
-      // 主动 drop：Rust 转发循环就地取消（session-closed=cancelled，事件端忽略）
-      void invoke("drop_session", { id: session.rustId }).catch(() => {});
+    // 分屏 pane 与标签同生命周期：根 + 全部 pane 一起收尾（drop/定时器/注册表）
+    const doomed = st0.sessions.filter((s) => s.id === id || s.paneOf === id);
+    for (const session of doomed) {
+      cancelRetryTimer(session.id);
+      unregisterSink(session.id);
+      if (session.rustId) {
+        // 主动 drop：Rust 转发循环就地取消（session-closed=cancelled，事件端忽略）
+        void invoke("drop_session", { id: session.rustId }).catch(() => {});
+      }
     }
-    if (st0.hostKeyAsk?.sessionId === id) {
+    const doomedIds = new Set(doomed.map((s) => s.id));
+    if (st0.hostKeyAsk && doomedIds.has(st0.hostKeyAsk.sessionId)) {
       // 关掉等待确认的标签：同步回拒绝，别让 Rust 侧问询白挂 60s
       void invoke("host_key_decision", {
         hostId: st0.hostKeyAsk.host_id,
@@ -271,14 +317,27 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }).catch(() => {});
     }
     set((st) => {
-      const sessions = st.sessions.filter((s) => s.id !== id);
+      const sessions = st.sessions.filter((s) => !doomedIds.has(s.id));
       persistOpenTabs(sessions);
       const activeId =
-        st.activeId === id ? (sessions[sessions.length - 1]?.id ?? null) : st.activeId;
+        st.activeId != null && doomedIds.has(st.activeId)
+          ? (sessions.filter((s) => s.paneOf === null).slice(-1)[0]?.id ?? null)
+          : st.activeId;
+      const trees = { ...st.trees };
+      const activePane = { ...st.activePane };
+      delete trees[id];
+      delete activePane[id];
       return {
         sessions,
         activeId,
-        hostKeyAsk: st.hostKeyAsk?.sessionId === id ? null : st.hostKeyAsk,
+        trees,
+        activePane,
+        hostKeyAsk:
+          st.hostKeyAsk && doomedIds.has(st.hostKeyAsk.sessionId) ? null : st.hostKeyAsk,
+        searchSessionId:
+          st.searchSessionId != null && doomedIds.has(st.searchSessionId)
+            ? null
+            : st.searchSessionId,
       };
     });
   },
@@ -491,6 +550,96 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
     return restored;
   },
+
+  // --- 分屏（Task 8） -------------------------------------------------------
+
+  splitPane: (tabId, dir) => {
+    const st = get();
+    const root = st.sessions.find((s) => s.id === tabId && s.paneOf === null);
+    const tree = st.trees[tabId];
+    if (!root || !tree) return;
+    const from = st.activePane[tabId] ?? tabId;
+    // 聚焦 pane 可能刚被关闭等竞态清掉：回退到树的第一个存活叶
+    const anchor = leaves(tree).includes(from) ? from : leaves(tree)[0];
+    if (!anchor) return;
+    const newId = newSessionId();
+    const paneSession: Session = {
+      id: newId,
+      hostId: root.hostId,
+      hostName: root.hostName,
+      address: root.address,
+      port: root.port,
+      username: root.username,
+      status: "disconnected",
+      rustId: null,
+      attempt: 0,
+      lastError: null,
+      nextRetryAt: null,
+      paneOf: tabId,
+    };
+    set((s0) => ({
+      sessions: [...s0.sessions, paneSession],
+      trees: { ...s0.trees, [tabId]: splitLeaf(s0.trees[tabId], anchor, newId, dir) },
+      activePane: { ...s0.activePane, [tabId]: newId },
+    }));
+    // 分屏即连同一主机（iTerm 惯例：新 pane 就是新会话）；连接失败走横幅，不连坐原 pane
+    void get().connect(newId);
+  },
+
+  closePane: (sessionId) => {
+    const st = get();
+    const session = st.sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    const tabId = session.paneOf ?? sessionId; // 根 pane 的关闭 = 关标签
+    if (tabId === sessionId) {
+      get().closeTab(sessionId);
+      return;
+    }
+    const tree = st.trees[tabId];
+    if (!tree) return;
+    const next = closeLeaf(tree, sessionId);
+    // 会话收尾（同 closeTab 的 pane 部分；定时器/注册表对已清项幂等）
+    cancelRetryTimer(sessionId);
+    unregisterSink(sessionId);
+    if (session.rustId) {
+      void invoke("drop_session", { id: session.rustId }).catch(() => {});
+    }
+    if (st.hostKeyAsk?.sessionId === sessionId) {
+      void invoke("host_key_decision", {
+        hostId: st.hostKeyAsk.host_id,
+        fingerprint: st.hostKeyAsk.fingerprint,
+        accept: false,
+      }).catch(() => {});
+    }
+    set((s0) => ({
+      sessions: s0.sessions.filter((s) => s.id !== sessionId),
+      searchSessionId: s0.searchSessionId === sessionId ? null : s0.searchSessionId,
+    }));
+    if (next === null) {
+      // 树空了（关掉最后一个 pane）→ 标签一并消亡；closeTab 幂等收尾剩余状态
+      get().closeTab(tabId);
+      return;
+    }
+    set((s0) => {
+      const activePane = { ...s0.activePane };
+      if (activePane[tabId] === sessionId) {
+        activePane[tabId] = leaves(next)[0] ?? tabId; // 聚焦移交存活 pane
+      }
+      return { trees: { ...s0.trees, [tabId]: next }, activePane };
+    });
+  },
+
+  setActivePane: (tabId, sessionId) =>
+    set((st) => ({ activePane: { ...st.activePane, [tabId]: sessionId } })),
+
+  setPaneRatio: (tabId, path, ratio) =>
+    set((st) => {
+      const tree = st.trees[tabId];
+      if (!tree) return {};
+      return { trees: { ...st.trees, [tabId]: setRatioAt(tree, path, ratio) } };
+    }),
+
+  openSearch: (sessionId) => set({ searchSessionId: sessionId }),
 }));
 
 // --- generation 守卫 ---------------------------------------------------------

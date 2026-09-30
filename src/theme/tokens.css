@@ -25,6 +25,8 @@
   --color-danger: #d92d20;
   --color-warning: #b45309; /* amber-700：亮底上作文字色可读 */
   --color-success: var(--ottr-teal-700);
+  /* 控件面（input/button/select 底色；App.css --btn-bg 字面值的升格，T1 挂账 M-1） */
+  --color-surface: #ffffff;
 }
 
 /* --- 语义层 · 暗色（背景 water-900，前景 cream-100 偏暖白，主色提亮为 teal-300） --- */
@@ -36,4 +38,6 @@
   --color-danger: #f97066;
   --color-warning: var(--ottr-amber-500);
   --color-success: #2dd4bf;
+  /* 控件面：白 8% 叠在 water-900 上（原 --btn-bg 暗色字面值，视觉不变） */
+  --color-surface: rgba(255, 255, 255, 0.08);
 }

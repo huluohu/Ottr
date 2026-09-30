@@ -15,7 +15,7 @@ import { QuickConnect } from "./hosts/QuickConnect";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { TabBar } from "./session/TabBar";
 import { HostKeyDialog } from "./session/HostKeyDialog";
-import { SessionTerminal } from "./terminal/Terminal";
+import { TerminalArea } from "./terminal/Terminal";
 import { initSessionEvents } from "./session/events";
 import { useSessionStore } from "./session/SessionStore";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
@@ -67,9 +67,8 @@ function HomeLayout() {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const storeError = useVaultStore((s) => s.error);
-  // 会话面（Task 7）：标签条 + 终端栈 + host key 确认框
+  // 会话面（Task 7）：标签条 + 分屏终端主区（Task 8） + host key 确认框
   const sessions = useSessionStore((s) => s.sessions);
-  const activeId = useSessionStore((s) => s.activeId);
   const openTab = useSessionStore((s) => s.openTab);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -175,17 +174,8 @@ function HomeLayout() {
         {terminalMode ? (
           <main className="main-area terminal-mode" data-testid="main-area">
             <TabBar />
-            <div className="term-stack" data-testid="term-stack">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className="term-pane"
-                  data-active={session.id === activeId}
-                >
-                  <SessionTerminal sessionId={session.id} />
-                </div>
-              ))}
-            </div>
+            {/* 分屏终端主区（Task 8）：pane 树布局/搜索/右键菜单在 TerminalArea 内 */}
+            <TerminalArea />
           </main>
         ) : (
           <main className="main-area" data-testid="main-area">

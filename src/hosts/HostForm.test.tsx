@@ -76,6 +76,22 @@ describe("HostForm", () => {
     expect(mockedInvoke).not.toHaveBeenCalledWith("hosts_create", expect.anything());
   });
 
+  it("端口非十进制字面量（0x10 / 1e2 / 负号 / 内嵌空格）→ 拒绝（T5 M-4 收紧，Task 8）", async () => {
+    render(<HostForm host={null} defaultGroupId={null} onClose={vi.fn()} />);
+    // Number() 会把 "0x10" 解析成 16、"1e2" 成 100——宽松解析曾经放过它们；
+    // 首尾空格 trim 后仍接受（与原 Number 行为一致），内嵌空格/其他进位写法拒绝。
+    for (const bad of ["0x10", "1e2", "-22", "2 2"]) {
+      fill("10.0.0.9", bad);
+      fireEvent.click(screen.getByTestId("form-submit"));
+      await waitFor(() =>
+        expect(screen.getByTestId("form-error").textContent).toBe(
+          "Port must be an integer between 1 and 65535",
+        ),
+      );
+    }
+    expect(mockedInvoke).not.toHaveBeenCalledWith("hosts_create", expect.anything());
+  });
+
   it("合法输入：hosts_create 收到 snake_case 载荷（tags 拆分、空 username→null）", async () => {
     listResponses();
     mockedInvoke.mockImplementation((cmd: string) => {

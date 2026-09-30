@@ -47,8 +47,8 @@ fn migration_0002_creates_entity_tables_and_fts() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
 
-    // 0002 实体表 + 0003（hosts.username，Task 5）→ 最新版本
-    assert_eq!(vault.schema_version().unwrap(), 3);
+    // 0002 实体表 + 0003（hosts.username）+ 0004（known_hosts host 绑定，Task 8）→ 最新版本
+    assert_eq!(vault.schema_version().unwrap(), 4);
 
     let conn = vault.connection();
     let tables: Vec<String> = {
@@ -576,44 +576,192 @@ fn snippets_crud_search_and_host_scope_unset_on_host_delete() {
 fn known_hosts_state_machine() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
+    let hk = "10.0.0.1:22";
     let fp = "SHA256:AAAA-BBBB-cccc";
 
-    let k = KnownHosts::upsert(&vault, fp).unwrap();
+    let k = KnownHosts::upsert(&vault, hk, fp).unwrap();
+    assert_eq!(k.host_key, hk);
     assert_eq!(k.state, KnownHostState::Pending, "首次握手先记 pending");
     assert!(!k.verified);
     assert!(k.first_seen > 0);
     assert_eq!(k.changed_at, None);
 
-    // 重复 upsert 幂等：不新增、first_seen 不变。
-    let again = KnownHosts::upsert(&vault, fp).unwrap();
+    // 重复 upsert 幂等：不新增、first_seen 不变、**信任锚不被覆盖**（换钥必须走
+    // changed 流程，upsert 静默换锚 = 绕过 TOFU 提醒）。
+    let again = KnownHosts::upsert(&vault, hk, "SHA256:OTHER").unwrap();
     assert_eq!(
         again.first_seen, k.first_seen,
         "重复 upsert 不得刷新 first_seen"
     );
+    assert_eq!(again.fingerprint, fp, "upsert 不得覆盖既有信任锚");
     assert_eq!(KnownHosts::list(&vault).unwrap().len(), 1);
 
-    let ok = KnownHosts::verify(&vault, fp).unwrap();
+    let ok = KnownHosts::verify(&vault, hk, fp).unwrap();
     assert_eq!(ok.state, KnownHostState::Ok);
     assert!(ok.verified);
 
-    // key 变更：state=changed、verified 作废、changed_at 落值。
-    let changed = KnownHosts::mark_changed(&vault, fp).unwrap();
+    // key 变更：state=changed、verified 作废、changed_at 落值；
+    // **信任锚保留旧指纹**（mark_changed 不覆盖——拒绝疑似 MITM 后仍钉原钥匙）。
+    let changed = KnownHosts::mark_changed(&vault, hk, "SHA256:new").unwrap();
     assert_eq!(changed.state, KnownHostState::Changed);
     assert!(!changed.verified, "key 变更后旧 verified 作废");
     assert!(changed.changed_at.is_some());
+    assert_eq!(
+        changed.fingerprint, fp,
+        "mark_changed 不得覆盖信任锚（新指纹由 verify 在用户接受后接管）"
+    );
 
     // changed_at 语义钉死（Task 6 裁定 #4）：re-verify 回 ok 后 changed_at
     // **保留**——它是最近一次变更的事件时间，不随信任恢复清空。
-    let reverted = KnownHosts::verify(&vault, fp).unwrap();
+    let reverted = KnownHosts::verify(&vault, hk, "SHA256:new").unwrap();
     assert_eq!(reverted.state, KnownHostState::Ok);
     assert!(reverted.verified);
+    assert_eq!(reverted.fingerprint, "SHA256:new", "verify 接管新指纹");
     assert_eq!(
         reverted.changed_at, changed.changed_at,
         "re-verify 回 ok 后 changed_at 必须保留"
     );
 
-    // 未入库指纹直接 mark_changed：以 changed 状态入库。
-    let fresh = KnownHosts::mark_changed(&vault, "SHA256:new").unwrap();
+    // 未入库端点直接 mark_changed：以 changed 状态入库（异常流）。
+    let fresh = KnownHosts::mark_changed(&vault, "10.0.0.9:22", "SHA256:new").unwrap();
     assert_eq!(fresh.state, KnownHostState::Changed);
     assert_eq!(KnownHosts::list(&vault).unwrap().len(), 2);
+}
+
+/// 【核心回归（Task 8 义务①）】同 host 换钥 → changed 强提醒，而非新一轮 TOFU。
+/// 旧 schema（fingerprint 主键）的病灶：换钥后的新指纹查无记录 → 当「首见」
+/// pending 处理。本测试按 tofu_host_key_policy 的真实调用序列走一遍。
+#[test]
+fn same_host_key_rotation_is_changed_not_new_tofu() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let hk = "web.example:22";
+    let fp_a = "SHA256:ORIGINAL-KEY";
+    let fp_b = "SHA256:ROTATED-KEY";
+
+    // 首连 TOFU：无记录 → upsert pending → 用户 verify → ok（静默放行态）。
+    let first = KnownHosts::upsert(&vault, hk, fp_a).unwrap();
+    assert_eq!(first.state, KnownHostState::Pending);
+    KnownHosts::verify(&vault, hk, fp_a).unwrap();
+
+    // 服务器换钥（或 MITM）：策略层 get(hk) 命中记录、比对 fingerprint 不一致
+    // → mark_changed。换钥后同一端点必须还是**同一条记录**。
+    let known = KnownHosts::get(&vault, hk).unwrap().expect("换钥后记录必须还在");
+    assert_ne!(known.fingerprint, fp_b, "前提：出示的是新指纹");
+    let flagged = KnownHosts::mark_changed(&vault, hk, fp_b).unwrap();
+    assert_eq!(flagged.state, KnownHostState::Changed, "同 host 换钥 → changed");
+    assert!(!flagged.verified);
+    assert_eq!(flagged.fingerprint, fp_a, "旧信任锚保留");
+
+    // 用户显式接受新钥匙 → verify 接管新指纹回 ok，changed 历史保留。
+    let accepted = KnownHosts::verify(&vault, hk, fp_b).unwrap();
+    assert_eq!(accepted.state, KnownHostState::Ok);
+    assert_eq!(accepted.fingerprint, fp_b);
+    assert_eq!(accepted.changed_at, flagged.changed_at);
+    assert_eq!(KnownHosts::list(&vault).unwrap().len(), 1, "换钥不产生第二行");
+}
+
+/// 不同 host 同指纹共存（义务①验收项）：信任按端点记账，指纹相同（如同一
+/// 镜像批量装机）也不得互相吞行。
+#[test]
+fn different_hosts_same_fingerprint_coexist() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let fp = "SHA256:SHARED-IMAGE-KEY";
+
+    let a = KnownHosts::upsert(&vault, "10.0.0.1:22", fp).unwrap();
+    let b = KnownHosts::upsert(&vault, "10.0.0.2:2222", fp).unwrap();
+    assert_ne!(a.host_key, b.host_key);
+    assert_eq!(a.fingerprint, fp);
+    assert_eq!(b.fingerprint, fp);
+
+    // 各自独立流转状态：verify A 不影响 B。
+    KnownHosts::verify(&vault, &a.host_key, fp).unwrap();
+    assert_eq!(KnownHosts::get(&vault, &b.host_key).unwrap().unwrap().state, KnownHostState::Pending);
+    let rows = KnownHosts::list(&vault).unwrap();
+    assert_eq!(rows.len(), 2, "不同 host 同指纹必须共存为两行");
+}
+
+/// host_endpoint_key：普通地址直拼、IPv6 加方括号；端口段恒为十进制数字
+/// （与 0004 迁移的 "legacy:" 虚拟端点不可能碰撞的结构前提）。
+#[test]
+fn host_endpoint_key_formats() {
+    use ottr_vault::host_endpoint_key;
+    assert_eq!(host_endpoint_key("10.0.0.1", 22), "10.0.0.1:22");
+    assert_eq!(host_endpoint_key("web.example.com", 2222), "web.example.com:2222");
+    assert_eq!(host_endpoint_key("fe80::1", 22), "[fe80::1]:22");
+}
+
+/// 0004 迁移三件套①：v3 库（fingerprint 主键）原位升级——存量行以
+/// "legacy:{fingerprint}" 虚拟端点保留（state/changed_at/verified 不丢）。
+#[test]
+fn migration_0004_preserves_legacy_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    // 手工搭一个最小 v3 库（meta + 旧 known_hosts 形状；0004 只触碰 known_hosts）。
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO meta VALUES ('schema_version', '3');
+             CREATE TABLE known_hosts (
+                 fingerprint TEXT PRIMARY KEY,
+                 first_seen  INTEGER NOT NULL,
+                 verified    INTEGER NOT NULL DEFAULT 0,
+                 changed_at  INTEGER,
+                 state       TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('ok','changed','pending'))
+             );
+             INSERT INTO known_hosts (fingerprint, first_seen, verified, changed_at, state)
+                 VALUES ('SHA256:OLD-KEY', 1000, 1, 2000, 'changed');",
+        )
+        .unwrap();
+    }
+    let vault = open_vault(dir.path());
+    assert_eq!(vault.schema_version().unwrap(), 4);
+
+    let rows = KnownHosts::list(&vault).unwrap();
+    assert_eq!(rows.len(), 1, "存量行必须保留，不得静默丢弃重 TOFU");
+    let row = &rows[0];
+    assert_eq!(row.host_key, "legacy:SHA256:OLD-KEY");
+    assert_eq!(row.fingerprint, "SHA256:OLD-KEY");
+    assert_eq!(row.state, KnownHostState::Changed);
+    assert!(row.verified);
+    assert_eq!(row.changed_at, Some(2000));
+    assert_eq!(row.first_seen, 1000);
+}
+
+/// 0004 迁移三件套②：host_key 唯一性在 schema 层兜底——同端点第二次插入
+/// （绕过 upsert 的 DO NOTHING 直写 SQL）必须被 PK 拒绝。
+#[test]
+fn migration_0004_host_key_is_unique_primary_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let conn = vault.connection();
+    conn.execute(
+        "INSERT INTO known_hosts (host_key, fingerprint, first_seen, verified, state)
+         VALUES ('h:22', 'SHA256:A', 1, 0, 'pending')",
+        [],
+    )
+    .unwrap();
+    let dup = conn.execute(
+        "INSERT INTO known_hosts (host_key, fingerprint, first_seen, verified, state)
+         VALUES ('h:22', 'SHA256:B', 2, 0, 'pending')",
+        [],
+    );
+    assert!(dup.is_err(), "host_key 为主键：同端点第二行必须被拒绝");
+}
+
+/// 0004 迁移三件套③：新库直接建在 v4——known_hosts 具备 host_key 列且
+/// 空表可用（upsert/get/list 走通）。
+#[test]
+fn migration_0004_fresh_schema_has_host_binding() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    assert_eq!(vault.schema_version().unwrap(), 4);
+    let k = KnownHosts::upsert(&vault, "10.0.0.1:22", "SHA256:X").unwrap();
+    assert_eq!(k.host_key, "10.0.0.1:22");
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
 }

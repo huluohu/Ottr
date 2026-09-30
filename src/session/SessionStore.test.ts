@@ -49,6 +49,9 @@ function resetStore() {
     activeId: null,
     hostKeyAsk: null,
     settings: { maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS },
+    trees: {},
+    activePane: {},
+    searchSessionId: null,
   });
   localStorage.clear();
 }

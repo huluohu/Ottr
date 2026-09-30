@@ -46,7 +46,9 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
     if (!address.trim()) {
       next.address = t("hostForm.errAddressRequired");
     }
-    const parsed = Number(port);
+    // 先做十进制字面量预筛（T5 M-4 收紧，Task 8）：Number() 会把 "0x10"→16、
+    // "1e2"→100 当合法数字，宽松解析放过的端口与用户所见不一致；只接受纯数字串。
+    const parsed = /^\d+$/.test(port.trim()) ? Number(port.trim()) : Number.NaN;
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
       next.port = t("hostForm.errPortRange");
     }
@@ -69,7 +71,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
         .map((s) => s.trim())
         .filter(Boolean),
       address: addr,
-      port: Number(port),
+      port: Number(port.trim()),
       username: username.trim() === "" ? null : username.trim(),
       credential_id: credentialId === "" ? null : Number(credentialId),
       jump_chain_id: host?.jump_chain_id ?? null,

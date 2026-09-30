@@ -256,9 +256,15 @@ async fn key_deploy_inner(
     .map_err(|_| "deploy timed out after 30s".to_string())?
     .map_err(|e| e.to_string())?;
 
-    // A3 联动：部署会话观察到的服务器指纹按 TOFU 首见落库（已存在则原样返回）
+    // A3 联动：部署会话观察到的服务器指纹按 TOFU 首见落库（已存在则原样返回，
+    // 信任锚不被覆盖）。记账键 = host 端点（0004 迁移，Task 8 义务①）。
     let known_hosts_state = match &outcome.host_key_fingerprint {
-        Some(fp) => KnownHosts::upsert(&vault.0, fp).map_err(vault_err).map(|k| k.state)?,
+        Some(fp) => {
+            let host_key = ottr_vault::host_endpoint_key(&address, i64::from(port));
+            KnownHosts::upsert(&vault.0, &host_key, fp)
+                .map_err(vault_err)
+                .map(|k| k.state)?
+        }
         None => KnownHostState::Pending,
     };
 

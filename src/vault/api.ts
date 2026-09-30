@@ -133,8 +133,11 @@ export interface SnippetInput {
   host_scope: number | null;
 }
 
-/** Rust `entities::KnownHost` 同构（以 fingerprint 为主键）。 */
+/** Rust `entities::KnownHost` 同构（以 host 端点为主键，0004 迁移起）。
+ * host_key = "address:port"（IPv6 为 "[addr]:port"）；迁移前的存量行是
+ * "legacy:{fingerprint}" 虚拟端点（信任关系待下次连接重建）。 */
 export interface KnownHost {
+  host_key: string;
   fingerprint: string;
   first_seen: number;
   verified: boolean;
@@ -210,10 +213,13 @@ export const vaultApi = {
   },
   knownHosts: {
     list: () => invoke<KnownHost[]>("known_hosts_list"),
-    upsert: (fingerprint: string) => invoke<KnownHost>("known_hosts_upsert", { fingerprint }),
-    verify: (fingerprint: string) => invoke<KnownHost>("known_hosts_verify", { fingerprint }),
-    markChanged: (fingerprint: string) =>
-      invoke<KnownHost>("known_hosts_mark_changed", { fingerprint }),
+    /** hostKey = "address:port"（Rust host_endpoint_key 同口径，见 KnownHost 注）。 */
+    upsert: (hostKey: string, fingerprint: string) =>
+      invoke<KnownHost>("known_hosts_upsert", { hostKey, fingerprint }),
+    verify: (hostKey: string, fingerprint: string) =>
+      invoke<KnownHost>("known_hosts_verify", { hostKey, fingerprint }),
+    markChanged: (hostKey: string, fingerprint: string) =>
+      invoke<KnownHost>("known_hosts_mark_changed", { hostKey, fingerprint }),
   },
   /** 密钥管理（Task 6，A4；Rust 侧 src-tauri/src/keys.rs）。
    * 导出调用契约（裁定 #2）：加密私钥必须先经 keyInspect 验证 passphrase

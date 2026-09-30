@@ -29,6 +29,7 @@ function makeSession(over: Partial<Session> & Pick<Session, "id" | "hostId" | "h
     attempt: 0,
     lastError: null,
     nextRetryAt: null,
+    paneOf: null,
     ...over,
   };
 }

@@ -217,6 +217,8 @@ pub fn snippets_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
 }
 
 // --- known_hosts -----------------------------------------------------------
+// 0004 迁移（Task 8 义务①）起按 host 端点记账：host_key = "address:port"
+// （ottr_vault::host_endpoint_key 构造），fingerprint 列 = 当前信任锚。
 
 #[tauri::command]
 pub fn known_hosts_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vault::KnownHost>> {
@@ -226,25 +228,28 @@ pub fn known_hosts_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vaul
 #[tauri::command]
 pub fn known_hosts_upsert(
     state: State<'_, VaultState>,
+    host_key: String,
     fingerprint: String,
 ) -> CmdResult<ottr_vault::KnownHost> {
-    cmd(KnownHosts::upsert(&state.0, &fingerprint))
+    cmd(KnownHosts::upsert(&state.0, &host_key, &fingerprint))
 }
 
 #[tauri::command]
 pub fn known_hosts_verify(
     state: State<'_, VaultState>,
+    host_key: String,
     fingerprint: String,
 ) -> CmdResult<ottr_vault::KnownHost> {
-    cmd(KnownHosts::verify(&state.0, &fingerprint))
+    cmd(KnownHosts::verify(&state.0, &host_key, &fingerprint))
 }
 
 #[tauri::command]
 pub fn known_hosts_mark_changed(
     state: State<'_, VaultState>,
+    host_key: String,
     fingerprint: String,
 ) -> CmdResult<ottr_vault::KnownHost> {
-    cmd(KnownHosts::mark_changed(&state.0, &fingerprint))
+    cmd(KnownHosts::mark_changed(&state.0, &host_key, &fingerprint))
 }
 
 // --- 导入 / 导出（Task 5 Step 3）-------------------------------------------

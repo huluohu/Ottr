@@ -936,8 +936,23 @@ fn row_to_snippet(row: &Row) -> rusqlite::Result<Snippet> {
 // KnownHosts
 // ---------------------------------------------------------------------------
 
-/// 主机指纹状态机：`pending`（首见未核验）→ `ok`（用户 verify）→
-/// `changed`（key 变更，verified 作废）——verify 可再回到 ok。
+/// TOFU 信任锚的 host 端点键（0004 迁移起 known_hosts 的主键）：
+/// `"{address}:{port}"`；地址含冒号（IPv6）时统一 `"[{address}]:{port}"`
+/// （OpenSSH 惯例），保证键格式无歧义、可逆解析。
+///
+/// 为什么按端点而不是 host_id 关联（0004 迁移文件头）：TOFU 信任锚是网络端点——
+/// 删主机重建（新 id）不应重置信任，同端点的多条主机记录共享同一份信任。
+pub fn host_endpoint_key(address: &str, port: i64) -> String {
+    if address.contains(':') {
+        format!("[{address}]:{port}")
+    } else {
+        format!("{address}:{port}")
+    }
+}
+
+/// 主机指纹状态机（0004 起按 host 端点记账）：
+/// `pending`（首见未核验）→ `ok`（用户 verify）→ `changed`（key 变更，verified
+/// 作废）——verify 可再回到 ok。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum KnownHostState {
@@ -959,73 +974,99 @@ impl KnownHostState {
     }
 }
 
-/// 已知主机指纹（TOFU 记录，以 fingerprint 为主键）。
+/// 已知主机指纹（TOFU 记录，以 host 端点为主键、fingerprint = 当前信任锚）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct KnownHost {
+    /// host 端点键（[`host_endpoint_key`]；0004 前的存量行为
+    /// `"legacy:{fingerprint}"` 虚拟端点，信任关系待下次连接重建）。
+    pub host_key: String,
+    /// 当前信任锚：最近一次 verify 接受的指纹。mark_changed **不覆盖**本列
+    /// （拒绝疑似 MITM 后仍钉着原钥匙，OpenSSH「警告且不写 known_hosts」语义）。
     pub fingerprint: String,
     pub first_seen: i64,
     pub verified: bool,
-    /// 最近一次检测到指纹变更的时间（`mark_changed` 落值）。语义钉死（Task 6
-    /// 裁定 #4，T4 挂账清偿）：这是**事件时间戳而非状态属性**——之后 re-verify
-    /// 回 ok 也**保留不清空**（「何时出过事」的历史不随信任恢复而抹除）。
+    /// 最近一次检测到该端点指纹与信任锚**不一致**的时间（事件时间戳而非状态
+    /// 属性）——之后 re-verify 回 ok 也**保留不清空**（「何时出过事」的历史不随
+    /// 信任恢复而抹除）。重复检测到不一致会刷新（= 最近一次检测到）。
     /// 从未变更过则为 None。
     pub changed_at: Option<i64>,
     pub state: KnownHostState,
 }
 
-/// [`KnownHost`] 的存储入口（upsert / verify / mark_changed，均单语句幂等）。
+/// [`KnownHost`] 的存储入口（upsert / verify / mark_changed，均单语句幂等；
+/// 键 = host 端点，换钥检测由策略层比对 `get` 的 fingerprint 与实际指纹）。
 pub struct KnownHosts;
 
 impl KnownHosts {
-    /// 首见入库（state=pending、verified=0）；已存在则原样返回（first_seen 不刷新）。
-    pub fn upsert(vault: &Vault, fingerprint: &str) -> Result<KnownHost> {
+    /// 首见入库（state=pending、verified=0）；该端点已有记录则原样返回
+    /// （first_seen 不刷新、fingerprint 不覆盖——换钥必须走 changed 流程，
+    /// 绝不允许 upsert 静默换锚）。
+    pub fn upsert(vault: &Vault, host_key: &str, fingerprint: &str) -> Result<KnownHost> {
         let ts = now_ts();
-        vault.connection().execute(
-            "INSERT INTO known_hosts (fingerprint, first_seen, verified, state)
-             VALUES (?1, ?2, 0, 'pending')
-             ON CONFLICT(fingerprint) DO NOTHING",
-            params![fingerprint, ts],
-        )?;
-        Self::get(vault, fingerprint)?
-            .ok_or_else(|| VaultError::NotFound(format!("known_host {fingerprint}")))
+        vault.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO known_hosts (host_key, fingerprint, first_seen, verified, state)
+                 VALUES (?1, ?2, ?3, 0, 'pending')
+                 ON CONFLICT(host_key) DO NOTHING",
+                params![host_key, fingerprint, ts],
+            )?;
+            Self::get_conn(conn, host_key)?
+                .ok_or_else(|| VaultError::NotFound(format!("known_host {host_key}")))
+        })
     }
 
-    /// 用户确认指纹：verified=1、state=ok（对 changed 的重确认也回到 ok）。
-    /// `changed_at` **保留不清空**（语义见 [`KnownHost::changed_at`]：
-    /// 变更是历史事件，不随信任恢复抹除）。
-    /// 未入库指纹按 upsert 处理（HostKeyPolicy 可直接调用）。
-    pub fn verify(vault: &Vault, fingerprint: &str) -> Result<KnownHost> {
+    /// 用户确认指纹：verified=1、state=ok、信任锚更新为本次接受的指纹
+    /// （对 changed 的重确认也回到 ok）。`changed_at` **保留不清空**（语义见
+    /// [`KnownHost::changed_at`]：变更是历史事件，不随信任恢复抹除）。
+    /// 未入库端点按首见 verify 处理（HostKeyPolicy 可直接调用）。
+    pub fn verify(vault: &Vault, host_key: &str, fingerprint: &str) -> Result<KnownHost> {
         let ts = now_ts();
-        vault.connection().execute(
-            "INSERT INTO known_hosts (fingerprint, first_seen, verified, state)
-             VALUES (?1, ?2, 1, 'ok')
-             ON CONFLICT(fingerprint) DO UPDATE SET verified = 1, state = 'ok'",
-            params![fingerprint, ts],
-        )?;
-        Self::get(vault, fingerprint)?
-            .ok_or_else(|| VaultError::NotFound(format!("known_host {fingerprint}")))
+        vault.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO known_hosts (host_key, fingerprint, first_seen, verified, state)
+                 VALUES (?1, ?2, ?3, 1, 'ok')
+                 ON CONFLICT(host_key) DO UPDATE SET
+                     fingerprint = excluded.fingerprint, verified = 1, state = 'ok'",
+                params![host_key, fingerprint, ts],
+            )?;
+            Self::get_conn(conn, host_key)?
+                .ok_or_else(|| VaultError::NotFound(format!("known_host {host_key}")))
+        })
     }
 
     /// 检测到 key 变更：state=changed、verified 作废、changed_at 落值。
-    /// 未入库指纹直接以 changed 状态入库（首次即为 changed 的异常流）。
-    pub fn mark_changed(vault: &Vault, fingerprint: &str) -> Result<KnownHost> {
+    /// **信任锚（fingerprint）保留原值不覆盖**——用户拒绝疑似 MITM 后，行内仍
+    /// 钉着原钥匙；新指纹是否接管信任由 verify 在用户显式接受后决定。
+    /// 未入库端点直接以 changed 状态入库（首次即为 changed 的异常流）。
+    pub fn mark_changed(vault: &Vault, host_key: &str, _seen_fingerprint: &str) -> Result<KnownHost> {
         let ts = now_ts();
-        vault.connection().execute(
-            "INSERT INTO known_hosts (fingerprint, first_seen, verified, changed_at, state)
-             VALUES (?1, ?2, 0, ?2, 'changed')
-             ON CONFLICT(fingerprint) DO UPDATE SET
-                 verified = 0, state = 'changed', changed_at = ?2",
-            params![fingerprint, ts],
-        )?;
-        Self::get(vault, fingerprint)?
-            .ok_or_else(|| VaultError::NotFound(format!("known_host {fingerprint}")))
+        vault.with_conn(|conn| {
+            let updated = conn.execute(
+                "UPDATE known_hosts SET verified = 0, state = 'changed', changed_at = ?2
+                 WHERE host_key = ?1",
+                params![host_key, ts],
+            )?;
+            if updated == 0 {
+                conn.execute(
+                    "INSERT INTO known_hosts (host_key, fingerprint, first_seen, verified, changed_at, state)
+                     VALUES (?1, ?2, ?3, 0, ?3, 'changed')",
+                    params![host_key, _seen_fingerprint, ts],
+                )?;
+            }
+            Self::get_conn(conn, host_key)?
+                .ok_or_else(|| VaultError::NotFound(format!("known_host {host_key}")))
+        })
     }
 
-    pub fn get(vault: &Vault, fingerprint: &str) -> Result<Option<KnownHost>> {
-        let conn = vault.connection();
+    pub fn get(vault: &Vault, host_key: &str) -> Result<Option<KnownHost>> {
+        vault.with_conn(|conn| Self::get_conn(conn, host_key))
+    }
+
+    /// 锁内读取——多语句实体操作的组合件，只收 `&Connection`，绝不自行加锁。
+    fn get_conn(conn: &Connection, host_key: &str) -> Result<Option<KnownHost>> {
         conn.query_row(
-            "SELECT * FROM known_hosts WHERE fingerprint = ?1",
-            [fingerprint],
+            "SELECT * FROM known_hosts WHERE host_key = ?1",
+            [host_key],
             row_to_known_host,
         )
         .optional()
@@ -1033,18 +1074,20 @@ impl KnownHosts {
     }
 
     pub fn list(vault: &Vault) -> Result<Vec<KnownHost>> {
-        let conn = vault.connection();
-        let mut stmt = conn.prepare("SELECT * FROM known_hosts ORDER BY first_seen DESC")?;
-        let rows = stmt
-            .query_map([], row_to_known_host)?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        Ok(rows)
+        vault.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT * FROM known_hosts ORDER BY first_seen DESC")?;
+            let rows = stmt
+                .query_map([], row_to_known_host)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
     }
 }
 
 fn row_to_known_host(row: &Row) -> rusqlite::Result<KnownHost> {
     let state: String = row.get("state")?;
     Ok(KnownHost {
+        host_key: row.get("host_key")?,
         fingerprint: row.get("fingerprint")?,
         first_seen: row.get("first_seen")?,
         verified: row.get("verified")?,

@@ -13,11 +13,13 @@ export function TabBar() {
   const closeTab = useSessionStore((s) => s.closeTab);
   const max = useSessionStore((s) => s.settings.maxReconnectAttempts);
 
-  if (sessions.length === 0) return null;
+  // 只渲染标签根会话（paneOf=null）：分屏 pane 属标签内部布局，不进标签条（Task 8）
+  const tabs = sessions.filter((s) => s.paneOf === null);
+  if (tabs.length === 0) return null;
 
   return (
     <div className="tabbar" role="tablist" aria-label={t("tabs.list")}>
-      {sessions.map((session: Session) => (
+      {tabs.map((session: Session) => (
         <div
           key={session.id}
           role="tab"

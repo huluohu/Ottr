@@ -13,7 +13,7 @@ pub use crypto::{aad, Cipher};
 pub use entities::{
     Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials, Host, HostGroup,
     HostGroups, HostInput, Hosts, KnownHost, KnownHostState, KnownHosts, SecretField, Snippet,
-    SnippetInput, Snippets,
+    SnippetInput, Snippets, host_endpoint_key,
 };
 pub use master_key::MasterKey;
 pub use store::Vault;

@@ -30,11 +30,12 @@ export type ActionId =
   | "vault.lock"
   | "app.quit";
 
-/** 每平台键位（mac 用 ⌘ 系，win/linux 用 Ctrl 系；无差异时三份同值）。 */
+/** 每平台键位（mac 用 ⌘ 系，win/linux 用 Ctrl 系；无差异时三份同值）。
+ * 平台项可缺省 = 该平台不注册全局键（仅面板/菜单可及）。 */
 export interface KeysPerPlatform {
-  mac: string;
-  win: string;
-  linux: string;
+  mac?: string;
+  win?: string;
+  linux?: string;
 }
 
 export interface ActionDef {
@@ -43,24 +44,37 @@ export interface ActionDef {
   labelKey: string;
   /** 绑定键位；缺省 = 无全局键（仅面板/菜单可及）。 */
   keys?: KeysPerPlatform;
+  /** 终端聚焦守卫候选标记（评审 M-4，fix round 1）：事件 target 在终端容器内
+   * 时，只有「带此标记 **且** 键位带 Shift」的动作可被拦截（⌘K 唯一例外，
+   * 见 terminalSafeHit）——终端第一公民是 Ctrl 系控制键（EOF = Ctrl+D），裸
+   * Ctrl 系键位永不入表。防未来新增键重蹈「全局劫持终端输入」的覆辙。 */
+  terminalSafe?: boolean;
 }
 
 /**
  * 动作总表（顺序 = 面板/汉堡菜单的展示顺序）。
  *
- * macOS 菜单镜像（src-tauri/src/menu.rs，改动需两侧同步 + 跑两侧测试）：
- *   palette.toggle = CmdOrCtrl+K   hosts.new = CmdOrCtrl+N
- *   settings.open  = CmdOrCtrl+,   session.splitRight = CmdOrCtrl+D
- *   session.splitDown = CmdOrCtrl+Shift+D
- * app.quit 的 mac 键 ⌘Q 由原生菜单 PredefinedMenuItem/自定义项承担；
- * win/linux 不装原生菜单，Alt+F4 是系统行为，面板里的「退出」走 app.exit。
- * theme/lang/vault.lock 刻意无全局键：低频动作，面板 + 设置页足够（防键位蔓延）。
+ * macOS 菜单镜像（src-tauri/src/menu.rs，改动需两侧同步 + 跑两侧测试）——
+ * 只镜像 **mac 键位**（菜单是 mac 专属呈现；⌘ 系 chord 与终端 Ctrl 系控制键
+ * 分属不同修饰键命名空间，不构成 EOF 劫持面）：
+ *   palette.toggle = ⌘K   hosts.new = ⌘N   settings.open = ⌘,
+ *   session.splitRight = ⌘D   session.splitDown = ⇧⌘D
+ *
+ * 【评审 M-4（fix round 1/5）：终端键位收敛】win/Linux 的分屏右**移除裸
+ * Ctrl+D**（EOF 键是终端第一公民）收敛为仅 Ctrl+Shift+D；分屏下 win/linux
+ * 不再注册全局键（面板/汉堡可及）——Ctrl+Shift+D 已被分屏右占用，不为分屏
+ * 下的全局键发明新 Ctrl 系组合。mac 的 ⌘D/⇧⌘D 不动（⌘ 与 Ctrl 分属不同修饰键，
+ * shell 的 Ctrl+D EOF 永远不经过菜单/全局监听，且终端聚焦守卫双保险，见下）。
+ * app.quit 的 mac 键 ⌘Q 由原生菜单承担；win/linux 不装原生菜单，Alt+F4 是系统
+ * 行为，面板里的「退出」走 app.exit。theme/lang/vault.lock 刻意无全局键：
+ * 低频动作，面板 + 设置页足够（防键位蔓延）。
  */
 export const ACTIONS: readonly ActionDef[] = [
   {
     id: "palette.toggle",
     labelKey: "palette.title",
     keys: { mac: "CmdOrCtrl+K", win: "Ctrl+K", linux: "Ctrl+K" },
+    terminalSafe: true,
   },
   {
     id: "hosts.new",
@@ -77,12 +91,14 @@ export const ACTIONS: readonly ActionDef[] = [
   {
     id: "session.splitRight",
     labelKey: "terminal.splitRight",
-    keys: { mac: "CmdOrCtrl+D", win: "Ctrl+D", linux: "Ctrl+D" },
+    keys: { mac: "CmdOrCtrl+D", win: "Ctrl+Shift+D", linux: "Ctrl+Shift+D" },
+    terminalSafe: true,
   },
   {
     id: "session.splitDown",
     labelKey: "terminal.splitDown",
-    keys: { mac: "CmdOrCtrl+Shift+D", win: "Ctrl+Shift+D", linux: "Ctrl+Shift+D" },
+    keys: { mac: "CmdOrCtrl+Shift+D" },
+    terminalSafe: true,
   },
   { id: "vault.lock", labelKey: "security.lockNow" },
   { id: "app.quit", labelKey: "palette.quit" },
@@ -95,9 +111,9 @@ export function platform(ua: string = navigator.userAgent): Platform {
   return "win";
 }
 
-/** 按平台取动作键位（无键位 → null）。 */
+/** 按平台取动作键位（该平台未注册/无键位 → null）。 */
 export function actionKeys(def: ActionDef, plat: Platform): string | null {
-  return def.keys ? (def.keys[plat] ?? null) : null;
+  return def.keys?.[plat] ?? null;
 }
 
 const MAC_SYMBOLS: Record<string, string> = {
@@ -168,13 +184,39 @@ export function matchesAccelerator(e: KeyboardEvent, accel: string): boolean {
   return e.key.toLowerCase() === p.key;
 }
 
-/** 遍历总表匹配键盘事件（全局监听入口）；命中返回 ActionId。 */
-export function matchActionEvent(e: KeyboardEvent, plat: Platform): ActionId | null {
+/** 遍历总表匹配键盘事件（全局监听入口）；命中返回 ActionId。
+ * `inTerminal`（评审 M-4 终端聚焦守卫）：事件 target 在终端容器内时，只放行
+ * 「terminalSafe 且键位带 Shift」的分屏键与 ⌘K 例外，其余一律 null——调用方对
+ * null 不 preventDefault，击键原样到达 PTY。mac ⌘D 不带 Shift 故被前端守卫
+ * 拦下：无碍——mac 菜单 chord 在 AppKit 层先于 webview 消费，⌘D 分屏走菜单路径。 */
+export function matchActionEvent(
+  e: KeyboardEvent,
+  plat: Platform,
+  inTerminal = false,
+): ActionId | null {
   for (const def of ACTIONS) {
     const accel = actionKeys(def, plat);
-    if (accel && matchesAccelerator(e, accel)) return def.id;
+    if (accel && matchesAccelerator(e, accel)) {
+      if (inTerminal && !terminalSafeHit(def, accel)) return null;
+      return def.id;
+    }
   }
   return null;
+}
+
+/** 终端内放行判定：terminalSafe 标记 + 键位带 Shift（⌘K 唯一例外）。
+ * 双条件缺一不可——标记防新增裸 Ctrl 键重蹈覆辙，Shift 条件把「带 Shift 的
+ * 分屏键」语义钉在数据上而非注释里。 */
+function terminalSafeHit(def: ActionDef, accel: string): boolean {
+  if (!def.terminalSafe) return false;
+  return parseAccelerator(accel).shift || def.id === "palette.toggle";
+}
+
+/** 终端聚焦判定（App 全局监听用）：事件 target 落在 `[data-terminal]` 容器内。
+ * 非 Element target（window/document 直发）返回 false——守卫只针对真实终端面。 */
+export function isTerminalTarget(target: EventTarget | null): boolean {
+  const el = target as Element | null;
+  return typeof el?.closest === "function" && el.closest("[data-terminal]") !== null;
 }
 
 // --- 开发期冲突检测 -----------------------------------------------------------

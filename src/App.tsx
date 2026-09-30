@@ -33,6 +33,7 @@ import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
 import { TitleBar } from "./titlebar/TitleBar";
 import {
+  isTerminalTarget,
   matchActionEvent,
   platform,
   shortcutLabel,
@@ -195,11 +196,13 @@ function HomeLayout() {
     [themeMode, setMode, lang],
   );
 
-  // 全局快捷键：registry 驱动（⌘K 面板 / ⌘N 新建主机 / ⌘, 设置 / ⌘D 分屏…，
+  // 全局快捷键：registry 驱动（⌘K 面板 / ⌘N 新建主机 / ⌘, 设置 / 分屏…，
   // win/linux 同键位 Ctrl 系）。面板 input 内的 Esc/↑↓/Enter 由组件自管。
+  // 评审 M-4 终端聚焦守卫：target 在终端容器内时只放行 terminalSafe 动作
+  // （Shift 系分屏 + ⌘K），其余不拦截——Ctrl+D（EOF）等控制键原样到 PTY。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const action = matchActionEvent(e, PLATFORM);
+      const action = matchActionEvent(e, PLATFORM, isTerminalTarget(e.target));
       if (action) {
         e.preventDefault();
         handleAction(action);
@@ -348,7 +351,9 @@ function HomeLayout() {
             {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢。
                 T13：AI 诊断面板 = 终端视图的右侧栏（文件视图让位——面板依赖终端选区）。 */}
             <div className="term-main-row">
-              <div className="term-area-holder" data-hidden={filesOpen}>
+              {/* data-terminal = 终端聚焦守卫的判定容器（评审 M-4）：覆盖全部
+                  pane（含 xterm 隐藏 textarea），文件视图/AI 面板在其外不受守卫。 */}
+              <div className="term-area-holder" data-hidden={filesOpen} data-terminal="">
                 <TerminalArea />
               </div>
               {!filesOpen && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}

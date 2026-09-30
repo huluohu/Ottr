@@ -94,4 +94,34 @@ describe("App 主页布局（集成）", () => {
       expect(screen.getByTestId("store-error").textContent).toContain("vault locked"),
     );
   });
+
+  // 评审 M-4（fix round 1/5）终端聚焦守卫：target 在 [data-terminal] 容器内时
+  // 全局监听只拦 Shift 系分屏与 ⌘K——裸 Ctrl+D（终端 EOF）必须不被
+  // preventDefault（放行 PTY）。
+  it("终端聚焦守卫：终端内 Ctrl+D 放行（defaultPrevented=false）、Ctrl+Shift+D 仍拦截、Ctrl+N 被守卫挡", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<App />);
+    const term = document.createElement("div");
+    term.setAttribute("data-terminal", "");
+    document.body.appendChild(term);
+
+    // 裸 Ctrl+D：registry 已不注册 + 守卫双保险 → 事件原样放行（到 PTY）
+    expect(fireEvent.keyDown(term, { key: "d", ctrlKey: true })).toBe(true);
+    // Ctrl+Shift+D（分屏右）：terminalSafe + 带 Shift → 拦截（preventDefault）
+    expect(fireEvent.keyDown(term, { key: "D", ctrlKey: true, shiftKey: true })).toBe(false);
+    // ⌘K / Ctrl+K（面板）：terminalSafe 例外 → 拦截
+    expect(fireEvent.keyDown(term, { key: "k", ctrlKey: true })).toBe(false);
+    // Ctrl+N（新建主机）：非 terminalSafe → 守卫挡下、不拦截
+    expect(fireEvent.keyDown(term, { key: "n", ctrlKey: true })).toBe(true);
+
+    // 对照：终端外（target = body）Ctrl+N 照常拦截
+    expect(fireEvent.keyDown(document.body, { key: "n", ctrlKey: true })).toBe(false);
+
+    term.remove();
+  });
 });

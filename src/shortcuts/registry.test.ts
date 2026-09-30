@@ -5,6 +5,7 @@ import {
   ACTIONS,
   findConflicts,
   formatAccelerator,
+  isTerminalTarget,
   matchActionEvent,
   matchesAccelerator,
   platform,
@@ -74,12 +75,24 @@ describe("matchesAccelerator / matchActionEvent（键盘面）", () => {
     expect(matchActionEvent(keyEvent({ key: "k" }), "win")).toBeNull();
   });
 
-  it("Shift 修饰严格匹配（splitDown ⇧D vs splitRight D）", () => {
+  it("分屏键位（评审 M-4 收敛）：裸 Ctrl+D 不再注册；Ctrl+Shift+D = 分屏右", () => {
+    // win/linux：裸 Ctrl+D（终端 EOF 第一公民）不放行、不注册
+    expect(matchActionEvent(keyEvent({ key: "d", ctrlKey: true }), "win")).toBeNull();
+    expect(matchActionEvent(keyEvent({ key: "d", ctrlKey: true }), "linux")).toBeNull();
+    // win/linux：Ctrl+Shift+D = 分屏右（splitDown 在 win/linux 无全局键）
+    expect(matchActionEvent(keyEvent({ key: "D", ctrlKey: true, shiftKey: true }), "win")).toBe(
+      "session.splitRight",
+    );
+    expect(matchActionEvent(keyEvent({ key: "D", ctrlKey: true, shiftKey: true }), "linux")).toBe(
+      "session.splitRight",
+    );
+    // mac：⌘D / ⇧⌘D（⌘ 与终端 Ctrl 系分属不同修饰键，不构成 EOF 劫持面）
     expect(matchActionEvent(keyEvent({ key: "d", metaKey: true }), "mac")).toBe("session.splitRight");
     expect(matchActionEvent(keyEvent({ key: "D", metaKey: true, shiftKey: true }), "mac")).toBe(
       "session.splitDown",
     );
-    expect(matchActionEvent(keyEvent({ key: "d", ctrlKey: true, shiftKey: true }), "linux")).toBe(
+    // Shift 修饰严格匹配：⌘⇧D 不会命中 ⌘D 的动作
+    expect(matchActionEvent(keyEvent({ key: "d", metaKey: true, shiftKey: true }), "mac")).toBe(
       "session.splitDown",
     );
   });
@@ -109,8 +122,9 @@ describe("findConflicts（开发期冲突检测）", () => {
     );
     const byKey = new Map<string, string[]>();
     for (const def of mutated) {
-      if (!def.keys) continue;
-      const norm = def.keys.mac.split("+").map((s) => s.trim().toLowerCase()).sort().join("+");
+      const mac = def.keys?.mac;
+      if (!mac) continue;
+      const norm = mac.split("+").map((s) => s.trim().toLowerCase()).sort().join("+");
       byKey.set(norm, [...(byKey.get(norm) ?? []), def.id]);
     }
     const dupes = [...byKey.values()].filter((ids) => ids.length > 1);
@@ -127,6 +141,8 @@ describe("findConflicts（开发期冲突检测）", () => {
 
 // macOS 原生菜单（src-tauri/src/menu.rs menu_tree()）镜像值钉死：Rust 侧无法
 // import 本表，两侧字面量靠本用例 + Rust 单测双向锁定——改动键位必须两侧同步。
+// 镜像只覆盖 **mac 键位**（菜单是 mac 专属呈现）；win/linux 键位独立，其中
+// 分屏右已按评审 M-4 收敛为 Ctrl+Shift+D（裸 Ctrl+D 是终端 EOF，见 ACTIONS 注）。
 describe("Rust 菜单镜像钉死", () => {
   const MIRRORED: Partial<Record<ActionId, string>> = {
     "palette.toggle": "CmdOrCtrl+K",
@@ -135,10 +151,62 @@ describe("Rust 菜单镜像钉死", () => {
     "session.splitRight": "CmdOrCtrl+D",
     "session.splitDown": "CmdOrCtrl+Shift+D",
   };
-  it("注册表中带键位的动作与 Rust 菜单字面量一致", () => {
+  it("注册表 mac 键位与 Rust 菜单字面量一致", () => {
     for (const [id, accel] of Object.entries(MIRRORED)) {
       expect(shortcutLabel(id as ActionId, "mac"), id).toBe(formatAccelerator(accel, "mac"));
-      expect(shortcutLabel(id as ActionId, "linux"), id).toBe(formatAccelerator(accel, "linux"));
     }
+  });
+  it("分屏右 win/linux 收敛为 Ctrl+Shift+D；分屏下无 win/linux 全局键", () => {
+    expect(shortcutLabel("session.splitRight", "win")).toBe("Ctrl+Shift+D");
+    expect(shortcutLabel("session.splitRight", "linux")).toBe("Ctrl+Shift+D");
+    expect(shortcutLabel("session.splitDown", "win")).toBeNull();
+    expect(shortcutLabel("session.splitDown", "linux")).toBeNull();
+  });
+});
+
+// 终端聚焦守卫（评审 M-4，fix round 1）：target 在终端容器内时只有
+// terminalSafe 动作（Shift 系分屏 + ⌘K）可命中，其余返回 null（不拦截）。
+describe("终端聚焦守卫（matchActionEvent inTerminal）", () => {
+  it("终端内：Ctrl+D（EOF）永不命中；Ctrl+Shift+D 与 ⌘K 照常命中", () => {
+    expect(matchActionEvent(keyEvent({ key: "d", ctrlKey: true }), "win", true)).toBeNull();
+    expect(matchActionEvent(keyEvent({ key: "d", ctrlKey: true }), "linux", true)).toBeNull();
+    // mac ⌘D 不带 Shift → 前端守卫不放行（分屏走 mac 菜单 AppKit 路径，无碍）
+    expect(matchActionEvent(keyEvent({ key: "d", metaKey: true }), "mac", true)).toBeNull();
+    expect(
+      matchActionEvent(keyEvent({ key: "D", ctrlKey: true, shiftKey: true }), "linux", true),
+    ).toBe("session.splitRight");
+    expect(matchActionEvent(keyEvent({ key: "D", metaKey: true, shiftKey: true }), "mac", true)).toBe(
+      "session.splitDown",
+    );
+    expect(matchActionEvent(keyEvent({ key: "k", metaKey: true }), "mac", true)).toBe(
+      "palette.toggle",
+    );
+    expect(matchActionEvent(keyEvent({ key: "k", ctrlKey: true }), "win", true)).toBe(
+      "palette.toggle",
+    );
+  });
+
+  it("终端内：非 terminalSafe 动作（Ctrl+N / Ctrl+,）一律 null（防新增键重蹈覆辙）", () => {
+    expect(matchActionEvent(keyEvent({ key: "n", ctrlKey: true }), "linux", true)).toBeNull();
+    expect(matchActionEvent(keyEvent({ key: ",", ctrlKey: true }), "win", true)).toBeNull();
+    // 对照：终端外同一事件照常命中
+    expect(matchActionEvent(keyEvent({ key: "n", ctrlKey: true }), "linux", false)).toBe("hosts.new");
+    expect(matchActionEvent(keyEvent({ key: ",", ctrlKey: true }), "win", false)).toBe(
+      "settings.open",
+    );
+  });
+
+  it("isTerminalTarget：closest 命中 [data-terminal]，非 Element target 恒 false", () => {
+    const container = document.createElement("div");
+    container.setAttribute("data-terminal", "");
+    const inner = document.createElement("textarea");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+    expect(isTerminalTarget(inner)).toBe(true);
+    expect(isTerminalTarget(container)).toBe(true);
+    expect(isTerminalTarget(document.body)).toBe(false);
+    expect(isTerminalTarget(null)).toBe(false);
+    expect(isTerminalTarget(window)).toBe(false);
+    container.remove();
   });
 });

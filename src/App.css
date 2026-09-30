@@ -752,7 +752,8 @@ button[data-active="true"] {
 }
 
 /* 编码检测提示条（Task 9，A9）：detect_hint 命中后浮于终端顶部，不挤布局。
- * 颜色只引用 --color-*/--border-*/--surface-*/--fg-* 语义层（主题纪律）。 */
+ * 颜色只引用 --color-* / --border-* / --surface-* / --fg-* 语义层（主题纪律；
+ * 注：星号后补空格——块注释内出现星号斜杠会提前终结注释，曾炸掉生产构建）。 */
 .encoding-hint {
   position: absolute;
   z-index: 3;
@@ -975,4 +976,270 @@ button[data-active="true"] {
   border-radius: 8px;
   color: var(--color-danger);
   font-size: 0.9em;
+}
+
+/* --- 文件面板（Task 10，A5）：双栏（本地/远端）+ 传输队列 --------------------- */
+.tabbar-row {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+}
+/* TabBar 的下边框上移到行容器（视图切换器同处一行） */
+.tabbar-row .tabbar {
+  border-bottom: none;
+  flex: 1;
+}
+.tabbar-row {
+  border-bottom: 1px solid var(--border-subtle);
+}
+.view-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 0 8px;
+}
+.view-switch button {
+  font-size: 0.75em;
+  padding: 0.15em 0.6em;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.view-switch button[data-active="true"] {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+}
+
+/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲不丢。
+ * hidden 时 absolute+inset 保持原尺寸（回到终端视图无需 refit）。 */
+.term-area-holder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.main-area.terminal-mode {
+  position: relative;
+}
+.term-area-holder[data-hidden="true"] {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.file-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.file-hint {
+  margin: auto;
+  color: var(--fg-muted);
+}
+.file-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+.file-toolbar button {
+  font-size: 0.75em;
+  padding: 0.15em 0.55em;
+  color: var(--fg-muted);
+}
+.file-toolbar button:disabled {
+  opacity: 0.5;
+}
+.file-toolbar-hint {
+  margin-left: auto;
+  font-size: 0.72em;
+  color: var(--fg-muted);
+}
+.file-notice {
+  font-size: 0.75em;
+  color: var(--color-accent-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+.file-panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.file-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.file-pane[data-side="local"] {
+  border-right: 1px solid var(--border-subtle);
+}
+.file-pane[data-focused="true"] .file-pane-path {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+.file-pane[data-droptarget="true"] {
+  outline: 2px dashed color-mix(in srgb, var(--color-accent) 65%, transparent);
+  outline-offset: -2px;
+}
+.file-pane-path {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.file-pane-path input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.file-pane-path button {
+  font-size: 0.75em;
+  padding: 0.1em 0.45em;
+  color: var(--fg-muted);
+}
+.file-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+.file-status {
+  padding: 8px 10px;
+  font-size: 0.8em;
+  color: var(--fg-muted);
+}
+.file-status.file-error {
+  color: var(--color-danger);
+  word-break: break-all;
+}
+.file-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 10px;
+  font-size: 0.8em;
+  user-select: none;
+}
+.file-row[data-selected="true"] {
+  background: var(--surface-raised);
+}
+.file-row:hover {
+  background: color-mix(in srgb, var(--surface-raised) 60%, transparent);
+}
+.file-icon {
+  flex: none;
+  width: 1em;
+  color: var(--fg-muted);
+}
+.file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+.file-mode {
+  width: 9ch;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.file-mtime {
+  width: 11ch;
+  text-align: right;
+}
+
+/* 传输队列（Task 10） */
+.file-queue {
+  flex: none;
+  max-height: 160px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  padding: 2px 0;
+}
+.file-queue-title {
+  font-size: 0.72em;
+  color: var(--fg-muted);
+  padding: 2px 10px;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  font-size: 0.78em;
+}
+.queue-kind {
+  flex: none;
+  color: var(--fg-muted);
+}
+.queue-name {
+  flex: none;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg-muted) 25%, transparent);
+  overflow: hidden;
+}
+.queue-bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.15s linear;
+}
+.queue-meta {
+  flex: none;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.queue-status {
+  flex: none;
+}
+.queue-status[data-status="done"] {
+  color: var(--color-success);
+}
+.queue-status[data-status="failed"] {
+  color: var(--color-danger);
+}
+.queue-status[data-status="cancelled"] {
+  color: var(--color-warning);
+}
+.queue-act {
+  flex: none;
+  font-size: 0.9em;
+  padding: 0.05em 0.4em;
+  color: var(--fg-muted);
+}
+
+/* 文件操作小对话框（mkdir/rename/chmod/delete 复用 .overlay/.dialog 语言） */
+.file-dialog {
+  width: min(420px, 100%);
+}
+.file-dialog input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.95em;
+  margin-bottom: 4px;
 }

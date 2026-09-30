@@ -16,7 +16,9 @@ import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { TabBar } from "./session/TabBar";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { TerminalArea } from "./terminal/Terminal";
+import { FilePanel } from "./files/FilePanel";
 import { initSessionEvents } from "./session/events";
+import { initTransferEvents } from "./files/events";
 import { useSessionStore } from "./session/SessionStore";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
 import { useVaultStore } from "./vault/store";
@@ -69,6 +71,7 @@ function HomeLayout() {
   const storeError = useVaultStore((s) => s.error);
   // 会话面（Task 7）：标签条 + 分屏终端主区（Task 8） + host key 确认框
   const sessions = useSessionStore((s) => s.sessions);
+  const activeId = useSessionStore((s) => s.activeId);
   const openTab = useSessionStore((s) => s.openTab);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -97,6 +100,7 @@ function HomeLayout() {
         // 失败由 store.error 驱动主区错误横幅；恢复跳过（无主机可查）
       }
       await initSessionEvents();
+      await initTransferEvents();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
     })();
   }, []);
@@ -139,6 +143,16 @@ function HomeLayout() {
 
   const selected = hosts.find((h) => h.id === selectedId) ?? null;
   const terminalMode = sessions.length > 0;
+  // 文件面板（Task 10，A5）：主区视图切换（终端 | 文件）。全局开关——面板跟随
+  // 活动标签；终端以 visibility 隐藏常驻（xterm 缓冲不丢，同 pane 惯例）。
+  const [filesOpen, setFilesOpen] = useState(false);
+  const activeSession =
+    sessions.find((s) => s.id === activeId) ??
+    sessions.find((s) => s.paneOf === activeId) ??
+    null;
+  const rootSession = activeSession
+    ? (sessions.find((s) => s.id === (activeSession.paneOf ?? activeSession.id)) ?? null)
+    : null;
 
   return (
     <div className="app-shell">
@@ -173,9 +187,32 @@ function HomeLayout() {
         />
         {terminalMode ? (
           <main className="main-area terminal-mode" data-testid="main-area">
-            <TabBar />
-            {/* 分屏终端主区（Task 8）：pane 树布局/搜索/右键菜单在 TerminalArea 内 */}
-            <TerminalArea />
+            <div className="tabbar-row">
+              <TabBar />
+              <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
+                <button
+                  data-testid="view-terminal"
+                  data-active={!filesOpen}
+                  aria-pressed={!filesOpen}
+                  onClick={() => setFilesOpen(false)}
+                >
+                  {t("files.viewTerminal")}
+                </button>
+                <button
+                  data-testid="view-files"
+                  data-active={filesOpen}
+                  aria-pressed={filesOpen}
+                  onClick={() => setFilesOpen(true)}
+                >
+                  {t("files.viewFiles")}
+                </button>
+              </div>
+            </div>
+            {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢 */}
+            <div className="term-area-holder" data-hidden={filesOpen}>
+              <TerminalArea />
+            </div>
+            {filesOpen && rootSession && <FilePanel session={rootSession} />}
           </main>
         ) : (
           <main className="main-area" data-testid="main-area">

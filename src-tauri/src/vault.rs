@@ -11,25 +11,37 @@
 //!
 //! State：`VaultState(Arc<Vault>)` 在 setup 阶段打开（app_data_dir），单连接
 //! Mutex 串行化见 ottr-vault store.rs 模块文档。
+//!
+//! Task 11（A7）扩展：
+//!   * open 走 `Vault::open_auto`（Linux 无 Secret Service → 主密码模式 fallback）；
+//!   * 全部实体命令过 `ensure_unlocked` 门卫——锁定（主密码模式）时统一返回
+//!     "vault is locked..."（UI LockScreen 遮罩兜底 + 命令面防漏）；
+//!   * 安全状态机命令：vault_security_status / vault_unlock / vault_lock /
+//!     vault_upgrade_to_master_password（重加密进度事件 ottr://reencrypt-progress）；
+//!   * settings_get / settings_set（主题/语言迁 vault + 安全配置；已知键校验在
+//!     security.rs）；剪贴板命令在 security.rs（明文不过前端）。
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tauri::{Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
+use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
     CredentialInput, CredentialPatch, Credentials, Host, HostGroups, HostInput, Hosts, KnownHosts,
-    SecretField, SnippetInput, Snippets, Vault, VaultError,
+    SecretField, Settings, SnippetInput, Snippets, Vault, VaultError,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
 pub struct VaultState(pub Arc<Vault>);
 
 /// setup 阶段打开 vault：目录 = Tauri app_data_dir（macOS
-/// ~/Library/Application Support/<identifier>/），Master Key 走系统钥匙链。
+/// ~/Library/Application Support/<identifier>/）。`open_auto`：钥匙链可用走
+/// 钥匙链模式（macOS/Windows 恒可用），Linux 无 Secret Service 自动落主密码
+/// 模式（Phase 0 spec §3 fallback 承诺，见 ottr-vault store.rs）。
 pub fn init(app: &tauri::AppHandle) -> Result<VaultState, Box<dyn std::error::Error>> {
     let dir = app.path().app_data_dir()?;
-    let vault = Vault::open(&dir)?;
+    let vault = Vault::open_auto(&dir)?;
     Ok(VaultState(Arc::new(vault)))
 }
 
@@ -39,30 +51,139 @@ fn cmd<T>(r: ottr_vault::Result<T>) -> CmdResult<T> {
     r.map_err(|e: VaultError| e.to_string())
 }
 
+/// 锁定门卫（T11）：实体命令统一在入口拒绝锁定态。vault 层只有密钥面操作
+/// 硬性要求密钥（凭据 seal/open），这里把封锁面上收到全部实体读写——遮罩后的
+/// UI 本不该发起这些调用，属防漏兵（settings/安全状态命令不过此门卫）。
+fn ensure_unlocked(vault: &Vault) -> CmdResult<()> {
+    vault.ensure_unlocked().map_err(|e| e.to_string())
+}
+
+// --- 安全状态机（T11，A7）----------------------------------------------------
+// 语义矩阵（完整版见 task-11-report）：keyring 模式无锁概念（open 即解锁，
+// lock/unlock 拒绝/无效）；password 模式 open 即锁定 → unlock_with_password 或
+// 自动锁定后解锁。事件：ottr://vault-locked / vault-unlocked（Rust 侧统一发，
+// 前端状态机订阅）；ottr://reencrypt-progress（升级向导进度条）。
+
+/// 安全状态快照（SecuritySettings 页/锁定屏启动查询）。
+#[derive(Clone, serde::Serialize)]
+pub struct SecurityStatus {
+    /// "keyring" | "password"（KeyMode::as_str）
+    pub mode: String,
+    pub locked: bool,
+}
+
+#[tauri::command]
+pub fn vault_security_status(state: State<'_, VaultState>) -> CmdResult<SecurityStatus> {
+    Ok(SecurityStatus {
+        mode: state.0.mode().as_str().to_string(),
+        locked: state.0.is_locked(),
+    })
+}
+
+/// 解锁（password 模式）：主密码校验通过后 Master Key 进内存。
+/// 成功发 `ottr://vault-unlocked`（LockScreen 收口；keyring 模式/密码错显式报错）。
+#[tauri::command]
+pub fn vault_unlock(
+    state: State<'_, VaultState>,
+    app: AppHandle,
+    password: String,
+) -> CmdResult<()> {
+    state.0.unlock_with_password(&password).map_err(|e| e.to_string())?;
+    let _ = app.emit("ottr://vault-unlocked", ());
+    Ok(())
+}
+
+/// 手动锁定（password 模式；keyring 模式为 no-op）。幂等；统一发
+/// `ottr://vault-locked`（Task 14 快捷键挂同一命令）。
+#[tauri::command]
+pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()> {
+    state.0.lock();
+    let _ = app.emit("ottr://vault-locked", ());
+    Ok(())
+}
+
+/// 升级到主密码模式（设置页向导本体，keyring → password）：
+/// 重加密逐字段发 `ottr://reencrypt-progress`（向导进度条），成功后删除钥匙链
+/// 旧条目（失败路径什么都不动——vault 层单事务保证，残留由下次 open 兜底）。
+/// 返回值 = 重密封字段数（向导完成页展示）。
+#[tauri::command]
+pub fn vault_upgrade_to_master_password(
+    state: State<'_, VaultState>,
+    app: AppHandle,
+    password: String,
+) -> CmdResult<usize> {
+    let emitter = app.clone();
+    let fields = state
+        .0
+        .set_master_password(&password, &mut |done, total| {
+            let _ = emitter.emit(
+                "ottr://reencrypt-progress",
+                serde_json::json!({ "done": done, "total": total }),
+            );
+        })
+        .map_err(|e| e.to_string())?;
+    // 旧 Master Key 条目删除（升级成功的收尾）。失败不致命——残留条目在下次
+    // open（password 模式）被兜底清理，且不再参与任何解锁路径。
+    if let Err(e) = ottr_vault::master_key::KeyringStorage::new(
+        ottr_vault::master_key::DEFAULT_SERVICE,
+    )
+    .delete()
+    {
+        eprintln!("[vault-upgrade] stale keyring entry cleanup failed: {e}");
+    }
+    let _ = app.emit("ottr://vault-unlocked", ());
+    Ok(fields)
+}
+
+// --- settings（T11：theme/language 迁 vault + 安全配置）-----------------------
+
+#[tauri::command]
+pub fn settings_get(state: State<'_, VaultState>, key: String) -> CmdResult<Option<serde_json::Value>> {
+    // 明文面：锁定可读（锁定屏要读主题/自动锁定配置，见 ottr-vault settings.rs）。
+    cmd(Settings::get(&state.0, &key))
+}
+
+/// 写设置项。已知安全键越界/类型错显式拒绝（security::validate_setting），
+/// 未注册键放行（settings 表是通用配置面）。
+#[tauri::command]
+pub fn settings_set(
+    state: State<'_, VaultState>,
+    key: String,
+    value: serde_json::Value,
+) -> CmdResult<()> {
+    crate::security::validate_setting(&key, &value)?;
+    cmd(Settings::set(&state.0, &key, &value))
+}
+
 // --- hosts -----------------------------------------------------------------
 
 #[tauri::command]
 pub fn hosts_list(state: State<'_, VaultState>) -> CmdResult<Vec<Host>> {
+    ensure_unlocked(&state.0)?;
     cmd(Hosts::list(&state.0))
 }
 
 #[tauri::command]
 pub fn hosts_get(state: State<'_, VaultState>, id: i64) -> CmdResult<Option<Host>> {
+    ensure_unlocked(&state.0)?;
     cmd(Hosts::get(&state.0, id))
 }
 
 #[tauri::command]
 pub fn hosts_create(state: State<'_, VaultState>, input: HostInput) -> CmdResult<Host> {
+    ensure_unlocked(&state.0)?;
     cmd(Hosts::create(&state.0, input))
 }
 
 #[tauri::command]
 pub fn hosts_update(state: State<'_, VaultState>, id: i64, input: HostInput) -> CmdResult<Host> {
+    ensure_unlocked(&state.0)?;
     cmd(Hosts::update(&state.0, id, input))
 }
 
 #[tauri::command]
 pub fn hosts_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
+    ensure_unlocked(&state.0)?;
     cmd(Hosts::delete(&state.0, id))
 }
 
@@ -71,11 +192,13 @@ pub fn hosts_list_by_group(
     state: State<'_, VaultState>,
     group_id: Option<i64>,
 ) -> CmdResult<Vec<Host>> {
+    ensure_unlocked(&state.0)?;
     cmd(Hosts::list_by_group(&state.0, group_id))
 }
 
 #[tauri::command]
 pub fn hosts_search(state: State<'_, VaultState>, query: String) -> CmdResult<Vec<Host>> {
+    ensure_unlocked(&state.0)?;
     cmd(Hosts::search(&state.0, &query))
 }
 
@@ -83,6 +206,7 @@ pub fn hosts_search(state: State<'_, VaultState>, query: String) -> CmdResult<Ve
 
 #[tauri::command]
 pub fn credentials_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vault::Credential>> {
+    ensure_unlocked(&state.0)?;
     cmd(Credentials::list(&state.0))
 }
 
@@ -91,6 +215,7 @@ pub fn credentials_get(
     state: State<'_, VaultState>,
     id: i64,
 ) -> CmdResult<Option<ottr_vault::Credential>> {
+    ensure_unlocked(&state.0)?;
     cmd(Credentials::get(&state.0, id))
 }
 
@@ -99,6 +224,7 @@ pub fn credentials_create(
     state: State<'_, VaultState>,
     input: CredentialInput,
 ) -> CmdResult<ottr_vault::Credential> {
+    ensure_unlocked(&state.0)?;
     cmd(Credentials::create(&state.0, &input))
 }
 
@@ -108,11 +234,13 @@ pub fn credentials_update(
     id: i64,
     patch: CredentialPatch,
 ) -> CmdResult<ottr_vault::Credential> {
+    ensure_unlocked(&state.0)?;
     cmd(Credentials::update(&state.0, id, &patch))
 }
 
 #[tauri::command]
 pub fn credentials_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
+    ensure_unlocked(&state.0)?;
     cmd(Credentials::delete(&state.0, id))
 }
 
@@ -124,6 +252,7 @@ pub fn credentials_reveal(
     id: i64,
     field: SecretField,
 ) -> CmdResult<Option<String>> {
+    ensure_unlocked(&state.0)?;
     cmd(Credentials::reveal(&state.0, id, field))
 }
 
@@ -131,6 +260,7 @@ pub fn credentials_reveal(
 
 #[tauri::command]
 pub fn host_groups_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vault::HostGroup>> {
+    ensure_unlocked(&state.0)?;
     cmd(HostGroups::list(&state.0))
 }
 
@@ -141,6 +271,7 @@ pub fn host_groups_create(
     parent_id: Option<i64>,
     color: Option<String>,
 ) -> CmdResult<ottr_vault::HostGroup> {
+    ensure_unlocked(&state.0)?;
     cmd(HostGroups::create(
         &state.0,
         &name,
@@ -157,6 +288,7 @@ pub fn host_groups_update(
     parent_id: Option<i64>,
     color: Option<String>,
 ) -> CmdResult<ottr_vault::HostGroup> {
+    ensure_unlocked(&state.0)?;
     cmd(HostGroups::update(
         &state.0,
         id,
@@ -168,6 +300,7 @@ pub fn host_groups_update(
 
 #[tauri::command]
 pub fn host_groups_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
+    ensure_unlocked(&state.0)?;
     cmd(HostGroups::delete(&state.0, id))
 }
 
@@ -175,6 +308,7 @@ pub fn host_groups_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()
 
 #[tauri::command]
 pub fn snippets_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vault::Snippet>> {
+    ensure_unlocked(&state.0)?;
     cmd(Snippets::list(&state.0))
 }
 
@@ -183,6 +317,7 @@ pub fn snippets_get(
     state: State<'_, VaultState>,
     id: i64,
 ) -> CmdResult<Option<ottr_vault::Snippet>> {
+    ensure_unlocked(&state.0)?;
     cmd(Snippets::get(&state.0, id))
 }
 
@@ -191,6 +326,7 @@ pub fn snippets_search(
     state: State<'_, VaultState>,
     query: String,
 ) -> CmdResult<Vec<ottr_vault::Snippet>> {
+    ensure_unlocked(&state.0)?;
     cmd(Snippets::search(&state.0, &query))
 }
 
@@ -199,6 +335,7 @@ pub fn snippets_create(
     state: State<'_, VaultState>,
     input: SnippetInput,
 ) -> CmdResult<ottr_vault::Snippet> {
+    ensure_unlocked(&state.0)?;
     cmd(Snippets::create(&state.0, &input))
 }
 
@@ -208,11 +345,13 @@ pub fn snippets_update(
     id: i64,
     input: SnippetInput,
 ) -> CmdResult<ottr_vault::Snippet> {
+    ensure_unlocked(&state.0)?;
     cmd(Snippets::update(&state.0, id, &input))
 }
 
 #[tauri::command]
 pub fn snippets_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
+    ensure_unlocked(&state.0)?;
     cmd(Snippets::delete(&state.0, id))
 }
 
@@ -222,6 +361,7 @@ pub fn snippets_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
 
 #[tauri::command]
 pub fn known_hosts_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vault::KnownHost>> {
+    ensure_unlocked(&state.0)?;
     cmd(KnownHosts::list(&state.0))
 }
 
@@ -231,6 +371,7 @@ pub fn known_hosts_upsert(
     host_key: String,
     fingerprint: String,
 ) -> CmdResult<ottr_vault::KnownHost> {
+    ensure_unlocked(&state.0)?;
     cmd(KnownHosts::upsert(&state.0, &host_key, &fingerprint))
 }
 
@@ -240,6 +381,7 @@ pub fn known_hosts_verify(
     host_key: String,
     fingerprint: String,
 ) -> CmdResult<ottr_vault::KnownHost> {
+    ensure_unlocked(&state.0)?;
     cmd(KnownHosts::verify(&state.0, &host_key, &fingerprint))
 }
 
@@ -249,6 +391,7 @@ pub fn known_hosts_mark_changed(
     host_key: String,
     fingerprint: String,
 ) -> CmdResult<ottr_vault::KnownHost> {
+    ensure_unlocked(&state.0)?;
     cmd(KnownHosts::mark_changed(&state.0, &host_key, &fingerprint))
 }
 
@@ -262,6 +405,7 @@ pub fn import_ssh_config(
     state: State<'_, VaultState>,
     path: Option<String>,
 ) -> CmdResult<crate::ssh_config::ImportReport> {
+    ensure_unlocked(&state.0)?;
     let path = path
         .map(PathBuf::from)
         .or_else(crate::ssh_config::default_ssh_config_path)
@@ -279,6 +423,7 @@ pub fn export_hosts_csv(
     state: State<'_, VaultState>,
     path: Option<String>,
 ) -> CmdResult<String> {
+    ensure_unlocked(&state.0)?;
     let target = match path {
         Some(p) => PathBuf::from(p),
         None => {

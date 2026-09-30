@@ -30,6 +30,7 @@ use ottr_term::encoding::{Encoding, StreamDecoder};
 use ottr_vault::{Hosts, KnownHostState, KnownHosts};
 
 pub mod keys;
+pub mod security;
 pub mod ssh_config;
 pub mod vault;
 use crate::vault::VaultState;
@@ -344,6 +345,9 @@ async fn attach_host_session(
     rows: u32,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<String, String> {
+    // T11 锁定门卫：锁定态（主密码模式）下连接必须先解锁——凭据 reveal 反正
+    // 会失败，这里提前给出明确错误（LockScreen 遮罩正常时不会走到这）。
+    vault.0.ensure_unlocked().map_err(|e| e.to_string())?;
     let host = Hosts::get(&vault.0, host_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("host id={host_id} not found"))?;
@@ -1657,10 +1661,15 @@ pub fn run() {
         // Task 11 / Spike #8：系统通知（macOS 首次调用触发系统授权）。
         .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
+        // T11（A7）：自动锁定计时状态（失焦起 N 分钟计时，重聚焦作废；
+        // Arc 共享给窗口事件闭包与 spawn 的计时任务）。
+        .manage(Arc::new(security::AutoLockState::default()))
         .setup(|app| {
             // Task 5：vault 打开并托管（app_data_dir + 钥匙链 Master Key）。
             // 在此失败即启动失败——数据层不可用时主机/凭据功能整体不可用，
             // 显式报错优于让每个命令各自失败。
+            // T11：open_auto——Linux 无 Secret Service 自动落主密码模式（锁定启动，
+            // 前端 LockScreen 引导设主密码/解锁）。
             let vault_state = vault::init(app.handle())
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
             app.manage(vault_state);
@@ -1669,11 +1678,22 @@ pub fn run() {
             // （src/theme/ThemeContext.tsx）；这里补 Rust 侧兜底推送 `ottr://system-theme`
             // （payload: "light"/"dark"）——Linux WebKitGTK 对系统明暗动态跟随不可靠，
             // 由窗口 ThemeChanged 事件兜底。初始值无需推送：前端挂载时读 matchMedia。
+            // T11：同一挂点接 Focused → security::AutoLockState（失焦自动锁定计时）。
             if let Some(win) = app.get_webview_window("main") {
+                let autolock: Arc<security::AutoLockState> =
+                    app.state::<Arc<security::AutoLockState>>().inner().clone();
                 let watcher = win.clone();
                 win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::ThemeChanged(theme) = event {
-                        let _ = watcher.emit("ottr://system-theme", theme.to_string());
+                    match event {
+                        tauri::WindowEvent::ThemeChanged(theme) => {
+                            let _ = watcher.emit("ottr://system-theme", theme.to_string());
+                        }
+                        // T11 自动锁定：失焦起计时 / 重聚焦作废（generation 机制见
+                        // security.rs）。keyring 模式 / 已锁定 / 配置关闭时 no-op。
+                        tauri::WindowEvent::Focused(focused) => {
+                            autolock.on_focus_changed(&watcher.app_handle(), *focused);
+                        }
+                        _ => {}
                     }
                 });
             }
@@ -1708,6 +1728,14 @@ pub fn run() {
             spike_keyring_del,
             spike_notify,
             spike_report_file,
+            // T11（A7）：安全底座——锁定状态机 / 主密码升级 / settings / 剪贴板
+            vault::vault_security_status,
+            vault::vault_unlock,
+            vault::vault_lock,
+            vault::vault_upgrade_to_master_password,
+            vault::settings_get,
+            vault::settings_set,
+            security::vault_copy_credential_secret,
             // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
             vault::hosts_list,
             vault::hosts_get,

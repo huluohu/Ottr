@@ -37,6 +37,12 @@ sha2 = "0.10"
 # 正式版由 ottr-term 包装消除，届时移除本依赖。
 russh = "0.63.3"
 tauri-plugin-notification = "2"
+# T11（A7）：剪贴板敏感复制自动清空——arboard（tauri-plugin-clipboard-manager
+# 的同源后端）Rust 侧直用，免插件/Capability 面（前端永不接触明文，见 security.rs）。
+# default-features = false：关 image-data（文本剪贴板够用，少拖 image 依赖树）。
+arboard = { version = "3", default-features = false }
+# 剪贴板明文 String 用后即清（vault 侧裸 key 同源纪律）。
+zeroize = "1"
 
 # keyring v3 无默认 feature（无平台 store 即只剩 mock）；平台 store 按平台 opt-in，
 # 且 sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）——官方推荐按

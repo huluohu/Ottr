@@ -30,7 +30,9 @@
     "language": "Language",
     "langZh": "中文",
     "langEn": "English",
-    "sectionSecurity": "Security"
+    "sectionSecurity": "Security",
+    "closeToTray": "Hide to tray on close",
+    "closeToTrayHint": "Ottr stays in the system tray after closing; quit from the tray."
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -98,11 +100,22 @@
     "errors": "Parse errors ({{count}})",
     "noErrors": "No parse errors"
   },
-  "quickConnect": {
-    "title": "Quick Connect",
-    "placeholder": "Search hosts, Enter to select…",
-    "empty": "No matching hosts",
-    "buttonHint": "⌘K"
+  "palette": {
+    "title": "Command Palette",
+    "placeholder": "Search commands or hosts…",
+    "empty": "No matches",
+    "commands": "Commands",
+    "hosts": "Hosts",
+    "newHost": "New Host",
+    "themeToggle": "Toggle Theme (Light / Dark / System)",
+    "langToggle": "Toggle Language (中文 / English)",
+    "quit": "Quit Ottr"
+  },
+  "titlebar": {
+    "menu": "Menu",
+    "minimize": "Minimize",
+    "maximize": "Maximize / Restore",
+    "close": "Close"
   },
   "credentials": {
     "openButton": "Credentials",

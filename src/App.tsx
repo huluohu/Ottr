@@ -6,16 +6,16 @@
 // App 成为单一渲染路径——没有任何条件 return，hooks 顺序恒定。
 // Task 4/11 的 spike 测量页（latency/throughput/keyring/notify/render）与
 // 顶栏 keyring/notify 手动验证按钮随本重构消亡。
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { HostTree } from "./hosts/HostTree";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
 import { useVaultLockStore } from "./security/VaultLockStore";
-import { syncLangFromVault } from "./i18n";
+import { syncLangFromVault, setLang, useLanguage } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
-import { QuickConnect } from "./hosts/QuickConnect";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { TabBar } from "./session/TabBar";
 import { HostKeyDialog } from "./session/HostKeyDialog";
@@ -29,11 +29,25 @@ import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
 import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
+import { CommandPalette } from "./palette/CommandPalette";
+import {
+  matchActionEvent,
+  platform,
+  shortcutLabel,
+  warnShortcutConflicts,
+  type ActionId,
+} from "./shortcuts/registry";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
 import { useVaultStore } from "./vault/store";
 import type { Host } from "./vault/api";
 import "./theme/tokens.css";
 import "./App.css";
+
+// 开发期哨兵：键位表冲突即 console.warn（见 registry.ts）。
+warnShortcutConflicts();
+
+// 平台口径（键位提示 / 命令面板 hint）：模块级只判一次。
+const PLATFORM = platform();
 
 // 主题切换器（A10）：手动验证入口 + Task 8 设置页前的临时控件。
 const THEME_MODES: { value: ThemeMode; labelKey: string }[] = [
@@ -84,6 +98,9 @@ function HomeLayout() {
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
   const openTab = useSessionStore((s) => s.openTab);
+  // A12：面板动作需要当前主题/语言（toggle 循环用）
+  const { mode: themeMode, setMode } = useTheme();
+  const { lang } = useLanguage();
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(null);
@@ -132,17 +149,57 @@ function HomeLayout() {
     return () => setAiSettingsOpener(null);
   }, []);
 
-  // ⌘K / Ctrl+K 呼出快速连接（雏形：Task 14 扩成完整命令面板）
+  // A12 动作收口：面板 / 全局快捷键 / （Task 14 后续提交）原生菜单事件、
+  // 汉堡菜单——一处 action 多入口，全部汇到 handleAction。
+  const handleAction = useCallback(
+    (action: ActionId) => {
+      switch (action) {
+        case "palette.toggle":
+          setPaletteOpen((v) => !v);
+          break;
+        case "hosts.new":
+          setForm({ mode: "new", groupId: null });
+          break;
+        case "settings.open":
+          setSettingsOpen(true);
+          break;
+        case "theme.toggle":
+          setMode(themeMode === "light" ? "dark" : themeMode === "dark" ? "system" : "light");
+          break;
+        case "lang.toggle":
+          setLang(lang === "zh-CN" ? "en-US" : "zh-CN");
+          break;
+        case "session.splitRight":
+        case "session.splitDown": {
+          const s = useSessionStore.getState();
+          if (s.activeId) s.splitPane(s.activeId, action === "session.splitRight" ? "row" : "column");
+          break;
+        }
+        case "vault.lock":
+          void useVaultLockStore.getState().lock();
+          break;
+        case "app.quit":
+          // 真退出（不走 close-to-tray 拦截路径）；非 Tauri 环境静默。
+          invoke("quit_app").catch(() => {});
+          break;
+      }
+    },
+    [themeMode, setMode, lang],
+  );
+
+  // 全局快捷键：registry 驱动（⌘K 面板 / ⌘N 新建主机 / ⌘, 设置 / ⌘D 分屏…，
+  // win/linux 同键位 Ctrl 系）。面板 input 内的 Esc/↑↓/Enter 由组件自管。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      const action = matchActionEvent(e, PLATFORM);
+      if (action) {
         e.preventDefault();
-        setPaletteOpen((v) => !v);
+        handleAction(action);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [handleAction]);
 
   function startResize(e: React.PointerEvent) {
     e.preventDefault();
@@ -185,8 +242,8 @@ function HomeLayout() {
     <div className="app-shell">
       <header className="topbar">
         <span className="topbar-title">Ottr</span>
-        <button className="topbar-palette" data-testid="open-quick-connect" onClick={() => setPaletteOpen(true)}>
-          {t("quickConnect.title")} <kbd>{t("quickConnect.buttonHint")}</kbd>
+        <button className="topbar-palette" data-testid="open-palette" onClick={() => setPaletteOpen(true)}>
+          {t("palette.title")} <kbd>{shortcutLabel("palette.toggle", PLATFORM)}</kbd>
         </button>
         <button className="topbar-debug" data-testid="open-credentials" onClick={() => setCredentialsOpen(true)}>
           {t("credentials.openButton")}
@@ -302,13 +359,21 @@ function HomeLayout() {
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}
-      <QuickConnect
+      {/* A12 命令面板（T5 QuickConnect 并入收口）：主机 + 命令统一搜索。
+          动作经 handleAction 分派；连主机即开标签。 */}
+      <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onSelect={(host) => {
+        hosts={hosts}
+        onConnect={(host) => {
           openTab(host);
           setPaletteOpen(false);
         }}
+        onAction={(action) => {
+          setPaletteOpen(false);
+          handleAction(action);
+        }}
+        plat={PLATFORM}
       />
     </div>
   );

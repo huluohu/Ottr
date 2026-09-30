@@ -774,6 +774,16 @@ async fn drop_session(state: State<'_, AppState>, id: String) -> Result<(), Stri
     Ok(())
 }
 
+/// 应用退出（A12，Task 14）：命令面板「退出」/ macOS 菜单 ⌘Q / 托盘菜单共用。
+/// 走 `app.exit(0)` 而非窗口 close——close 会被 close-to-tray 拦截（隐藏窗口），
+/// 退出必须绕过该拦截。
+#[tauri::command]
+fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    #[allow(unreachable_code)]
+    Ok(())
+}
+
 /// 击键写入（输入方向，字节直传 PTY；spike 台账：传输编码允许 JSON 数组）。
 #[tauri::command]
 async fn write_session(
@@ -1773,6 +1783,7 @@ pub fn run() {
             write_session,
             set_session_encoding,
             drop_session,
+            quit_app,
             session_stats,
             session_tail,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）

@@ -30,7 +30,9 @@
     "language": "语言",
     "langZh": "中文",
     "langEn": "English",
-    "sectionSecurity": "安全"
+    "sectionSecurity": "安全",
+    "closeToTray": "关闭窗口时隐藏到托盘",
+    "closeToTrayHint": "关闭后 Ottr 常驻系统托盘，可从托盘退出。"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -98,11 +100,22 @@
     "errors": "解析错误（{{count}}）",
     "noErrors": "无解析错误"
   },
-  "quickConnect": {
-    "title": "快速连接",
-    "placeholder": "搜索主机，回车选择…",
-    "empty": "无匹配主机",
-    "buttonHint": "⌘K"
+  "palette": {
+    "title": "命令面板",
+    "placeholder": "搜索命令或主机…",
+    "empty": "无匹配结果",
+    "commands": "命令",
+    "hosts": "主机",
+    "newHost": "新建主机",
+    "themeToggle": "切换主题（亮 / 暗 / 跟随系统）",
+    "langToggle": "切换语言（中文 / English）",
+    "quit": "退出 Ottr"
+  },
+  "titlebar": {
+    "menu": "菜单",
+    "minimize": "最小化",
+    "maximize": "最大化 / 还原",
+    "close": "关闭"
   },
   "credentials": {
     "openButton": "凭据",

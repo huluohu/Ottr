@@ -609,6 +609,30 @@ button[data-active="true"] {
   padding: 12px;
   color: var(--fg-muted);
 }
+/* --- A12 命令面板（Task 14）：分区头 + 键位提示 + 高亮 --- */
+.palette-section {
+  padding: 8px 10px 2px;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  user-select: none;
+}
+.palette-hint {
+  font: inherit;
+  font-size: 0.8em;
+  padding: 0 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.palette-item mark {
+  background: transparent;
+  color: var(--color-accent-text);
+  font-weight: 700;
+  padding: 0;
+}
 
 /* --- A10 主题切换器（Task 8 设置页前的临时控件，驻顶栏） --- */
 .theme-switch {

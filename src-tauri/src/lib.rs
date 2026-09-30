@@ -13,6 +13,7 @@
 // + send 失败显式计数（send_failed_bytes/send_failed_frames/failed —— M-2 失败策略，
 // flush_batch 文档）经 `session_stats` 可读；`OTTR_BATCH_DEBUG=1` 时逐批打 debug 日志。
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -166,6 +167,10 @@ pub struct SessionCounters {
 }
 
 struct SessionEntry {
+    /// 既有 SSH 会话（Task 10）：SFTP 子系统/传输在**同一连接**上开新 channel，
+    /// 不新建 SSH 连接。与转发循环共享同一 Arc（循环退出即 disconnect，SFTP
+    /// 与传输随会话生命周期消亡）。
+    session: Arc<SshSession>,
     /// PTY 写端（russh `make_writer()`，与读循环共享同一通道）。
     writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>>,
     counters: Arc<SessionCounters>,
@@ -174,7 +179,12 @@ struct SessionEntry {
     decoder: Arc<Mutex<StreamDecoder>>,
     /// 取消信号：`drop_session` 触发，转发循环 select 到即就地退出（进程端任务取消）。
     cancel: Arc<Notify>,
+    /// FilePanel 复用的 SFTP 客户端（Task 10，懒开 + 缓存；表项移除即消亡）。
+    sftp: SftpSlot,
 }
+
+/// 每会话缓存的 [`SftpClient`]（懒开）。
+type SftpSlot = Arc<Mutex<Option<Arc<ottr_transfer::SftpClient>>>>;
 
 /// 会话表（Arc 共享：命令面与转发循环收尾任务都要增删）。
 type SessionMap = Arc<Mutex<HashMap<String, SessionEntry>>>;
@@ -187,13 +197,30 @@ type SessionMap = Arc<Mutex<HashMap<String, SessionEntry>>>;
 /// 60s 无裁定即按拒绝处理（超时安全侧）。
 type HostKeyAsks = Arc<Mutex<HashMap<String, std::sync::mpsc::Sender<bool>>>>;
 
+/// 在途传输（Task 10）：取消令牌句柄表。键 = transfer_id；任务结束时自清
+/// （cancel 后令牌仍在表里直到任务退出——重复 cancel 幂等无害）。
+struct TransferEntry {
+    cancel: ottr_transfer::CancelToken,
+}
+
+type TransferMap = Arc<Mutex<HashMap<String, TransferEntry>>>;
+
 #[derive(Default)]
 struct AppState {
     sessions: SessionMap,
     host_key_asks: HostKeyAsks,
+    /// 在途传输的取消令牌（Task 10）：键 = transfer_id；传输结束由任务自清。
+    transfers: TransferMap,
 }
 
 static SESSION_SEQ: AtomicU64 = AtomicU64::new(0);
+static TRANSFER_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// 传输并发 worker 数（Task 8 spike 验证过的默认 4）。
+const SFTP_CHUNKS: usize = 4;
+/// 进度事件节流间隔（Task 10）：chunk 粒度回调 → 事件面按时间窗合并，
+/// 首帧与末帧必发（进度条起点/终点不丢）。
+const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
 /// attach_host_session 的传输层 keepalive 间隔（简报定值 60s）。
 /// russh `Config::keepalive_interval`：每间隔发传输层 keepalive 全局请求
@@ -588,21 +615,27 @@ async fn open_and_register(
     let decoder = Arc::new(Mutex::new(StreamDecoder::new(initial_encoding)));
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
+    // session 进 Arc（Task 10）：会话表项持一份（SFTP/传输按 rustId 复用同一
+    // 连接），转发循环任务持另一份（退出统一 disconnect）。任一侧先行消亡，
+    // 连接关闭会连带终止另一侧的操作（传输失败报协议错，journal 可续传）。
+    let session = Arc::new(session);
     sessions.lock().unwrap().insert(
         id.clone(),
         SessionEntry {
+            session: Arc::clone(&session),
             writer,
             counters: Arc::clone(&counters),
             decoder: Arc::clone(&decoder),
             cancel: Arc::clone(&cancel),
+            sftp: Arc::new(Mutex::new(None)),
         },
     );
 
     // 读循环持有 channel 与 session；循环退出后统一收尾：清表（此后 session_stats
     // 报 no such session；drop_session 对已消失的 id 幂等报错，前端容忍）→
     // session-closed 事件（前端重连状态机的触发点）→ disconnect。
-    // session 进 Arc：LANG 探测任务（独立 exec 通道）与收尾 disconnect 共享。
-    let session = Arc::new(session);
+    // session 进 Arc：LANG 探测任务（独立 exec 通道）与收尾 disconnect 共享
+    // （Arc 化已上移到会话表插入处，Task 10：SFTP 复用同一 Arc）。
     let session_id = id.clone();
     let probe_app = close_event.clone(); // 探测任务与收尾事件各持一份
     let probe_session = probe_lang.then(|| Arc::clone(&session));
@@ -779,6 +812,482 @@ fn spike_report_latency(state: State<'_, AppState>, payload: String) -> Result<S
 #[tauri::command]
 fn spike_log(msg: String) {
     eprintln!("[spike-page] {msg}");
+}
+
+// ---------------------------------------------------------------------------
+// Task 10（A5）：SFTP 文件面板命令面 + 传输队列（进度/取消，事件驱动）
+// ---------------------------------------------------------------------------
+// 设计裁定（task-10 简报/协调者记录）：
+//   * SFTP 通道**复用既有会话**：SessionEntry 持 Arc<SshSession>，从同一 russh
+//     handle 开新 subsystem channel（sftp_for），绝不新建 SSH 连接；
+//   * 远端文件操作走 SFTP 而非 exec（ottr_transfer::ops 模块文档裁定）；
+//   * 传输 = 后台任务 + 全局事件（ottr://transfer-begin/progress/end，全局 emit
+//     带 transfer_id）；取消 = chunk 边界协作令牌，journal 保留（重传即续传）；
+//   * journal 路径按传输身份（mode|path|total）确定性派生到 app_cache_dir，
+//     失败重试 / 应用重启后同身份重传自动断点续传。
+
+/// 取会话的 SFTP 客户端（懒开 + 缓存；会话不存在/已死显式报错）。
+async fn sftp_for(state: &AppState, id: &str) -> Result<Arc<ottr_transfer::SftpClient>, String> {
+    let (session, cached) = {
+        let sessions = state.sessions.lock().unwrap();
+        let e = sessions
+            .get(id)
+            .ok_or_else(|| format!("no such session: {id}"))?;
+        let session = Arc::clone(&e.session);
+        let cached = e.sftp.lock().unwrap().as_ref().map(Arc::clone);
+        (session, cached)
+    };
+    if let Some(c) = cached {
+        return Ok(c);
+    }
+    let client = Arc::new(ottr_transfer::SftpClient::open(&session).await.map_err(|e| e.to_string())?);
+    // 竞态兜底：两路并发懒开时后到者采用先到者的实例（同会话单客户端）。
+    let sessions = state.sessions.lock().unwrap();
+    let slot = sessions
+        .get(id)
+        .ok_or_else(|| format!("no such session: {id}"))?;
+    let mut guard = slot.sftp.lock().unwrap();
+    if let Some(c) = guard.as_ref() {
+        return Ok(Arc::clone(c));
+    }
+    *guard = Some(Arc::clone(&client));
+    Ok(client)
+}
+
+#[tauri::command]
+async fn sftp_list(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<Vec<ottr_transfer::DirEntry>, String> {
+    let client = sftp_for(&state, &id).await?;
+    client.list_dir(&path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn sftp_realpath(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<String, String> {
+    let client = sftp_for(&state, &id).await?;
+    client.realpath(&path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn sftp_mkdir(state: State<'_, AppState>, id: String, path: String) -> Result<(), String> {
+    let client = sftp_for(&state, &id).await?;
+    client.mkdir(&path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn sftp_rename(
+    state: State<'_, AppState>,
+    id: String,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    let client = sftp_for(&state, &id).await?;
+    client.rename(&from, &to).await.map_err(|e| e.to_string())
+}
+
+/// 删除远端文件或空目录（`is_dir` 选 remove/rmdir；递归删除不进 MVP——
+/// 非空目录由服务器拒绝，显式失败优于误删）。
+#[tauri::command]
+async fn sftp_remove(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+    is_dir: bool,
+) -> Result<(), String> {
+    let client = sftp_for(&state, &id).await?;
+    let r = if is_dir {
+        client.remove_dir(&path).await
+    } else {
+        client.remove_file(&path).await
+    };
+    r.map_err(|e| e.to_string())
+}
+
+/// chmod（`mode` 为完整 POSIX 权限位十进制值，如 0o644 = 420）。
+#[tauri::command]
+async fn sftp_chmod(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+    mode: u32,
+) -> Result<(), String> {
+    let client = sftp_for(&state, &id).await?;
+    client.chmod(&path, mode).await.map_err(|e| e.to_string())
+}
+
+// --- 本地面（FilePanel 左栏） ------------------------------------------------
+
+#[derive(serde::Serialize)]
+struct LocalEntry {
+    name: String,
+    is_dir: bool,
+    size: u64,
+    mode: u32,
+    /// 秒级 Unix 时间（与远端 DirEntry.mtime 同口径）。
+    mtime: i64,
+}
+
+#[tauri::command]
+fn local_list(path: String) -> Result<Vec<LocalEntry>, String> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&path).map_err(|e| format!("read_dir {path}: {e}"))? {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue, // 竞态删除等瞬时错误跳过（目录列表容忍）
+        };
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        #[cfg(unix)]
+        let mode = {
+            use std::os::unix::fs::PermissionsExt;
+            meta.permissions().mode()
+        };
+        #[cfg(not(unix))]
+        let mode = 0u32;
+        out.push(LocalEntry {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            is_dir: meta.is_dir(),
+            size: meta.len(),
+            mode,
+            mtime,
+        });
+    }
+    out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+    Ok(out)
+}
+
+/// 用户主目录（本地栏初始位置）。
+#[tauri::command]
+fn local_home(app: AppHandle) -> Result<String, String> {
+    app.path()
+        .home_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .map_err(|e| format!("home_dir: {e}"))
+}
+
+/// 下载目录（下载降级目标的默认位置；不存在时回退主目录）。
+#[tauri::command]
+fn local_downloads_dir(app: AppHandle) -> Result<String, String> {
+    let home = local_home(app)?;
+    let downloads = PathBuf::from(&home).join("Downloads");
+    Ok(if downloads.is_dir() {
+        downloads.to_string_lossy().into_owned()
+    } else {
+        home
+    })
+}
+
+// --- 传输队列（事件 + 取消） ---------------------------------------------------
+
+#[derive(Clone, serde::Serialize)]
+struct TransferBeginPayload {
+    transfer_id: String,
+    /// "download" | "upload"
+    kind: &'static str,
+    remote_path: String,
+    local_path: String,
+    /// 预 stat 的总字节（stat 失败 = 0，随后 progress 事件携带真实 total）。
+    total: u64,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct TransferProgressPayload {
+    transfer_id: String,
+    transferred: u64,
+    total: u64,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct TransferEndPayload {
+    transfer_id: String,
+    /// "done" | "failed" | "cancelled"
+    status: &'static str,
+    message: String,
+}
+
+#[derive(serde::Serialize)]
+struct TransferStarted {
+    transfer_id: String,
+    local_path: String,
+    remote_path: String,
+    total: u64,
+}
+
+/// journal 确定性路径：app_cache_dir/transfers/{sha256(mode|identity|total)}.journal。
+/// 同身份（路径+总字节+方向）的重试/重启重传天然命中同一 journal → 断点续传。
+fn journal_path_for(
+    app: &AppHandle,
+    mode: &str,
+    identity_path: &str,
+    total: u64,
+) -> Result<PathBuf, String> {
+    use base64::Engine as _;
+    use sha2::Digest;
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("app_cache_dir: {e}"))?
+        .join("transfers");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create_dir_all {dir:?}: {e}"))?;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(format!("{mode}|{identity_path}|{total}").as_bytes());
+    let digest = hasher.finalize();
+    // base64url 无填充（文件名安全、比 hex 短）
+    let name: String = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest);
+    Ok(dir.join(format!("{name}.journal")))
+}
+
+/// 进度 hook：100ms 时间窗节流（首帧/末帧必发）转 `ottr://transfer-progress`。
+/// chunk 粒度回调在本地链路可达每秒数百次，直接 emit 会把 IPC 打满。
+fn progress_emitter(
+    app: AppHandle,
+    transfer_id: String,
+) -> ottr_transfer::ProgressHook {
+    let last = Arc::new(Mutex::new(None::<(Instant, u64)>));
+    Arc::new(move |p: ottr_transfer::TransferProgress| {
+        let mut guard = last.lock().unwrap();
+        let is_final = p.chunks_done == p.chunks_total;
+        let due = match guard.as_ref() {
+            None => true, // 首帧必发
+            Some((t, _)) => t.elapsed() >= TRANSFER_PROGRESS_INTERVAL,
+        };
+        let dedupe = matches!(guard.as_ref(), Some((_, b)) if *b == p.transferred);
+        if due || is_final {
+            if !dedupe {
+                let _ = app.emit(
+                    "ottr://transfer-progress",
+                    TransferProgressPayload {
+                        transfer_id: transfer_id.clone(),
+                        transferred: p.transferred,
+                        total: p.total,
+                    },
+                );
+            }
+            *guard = Some((Instant::now(), p.transferred));
+        }
+    })
+}
+
+/// 传输任务统一包装：begin/progress/end 事件 + transfers 表自清。
+/// 进度 hook 由调用方在构造 fut 前注入（progress_emitter：100ms 节流）；
+/// 取消（Error::Cancelled）与失败（其余 Err）分状态上报，前端状态机据此分派。
+#[allow(clippy::too_many_arguments)]
+fn spawn_transfer(
+    transfers: TransferMap,
+    app: AppHandle,
+    transfer_id: String,
+    kind: &'static str,
+    remote_path: String,
+    local_path: String,
+    cancel: ottr_transfer::CancelToken,
+    fut: impl std::future::Future<Output = ottr_transfer::Result<ottr_transfer::TransferStats>>
+        + Send
+        + 'static,
+) {
+    transfers.lock().unwrap().insert(
+        transfer_id.clone(),
+        TransferEntry {
+            cancel: cancel.clone(),
+        },
+    );
+    tauri::async_runtime::spawn(async move {
+        let _ = app.emit(
+            "ottr://transfer-begin",
+            TransferBeginPayload {
+                transfer_id: transfer_id.clone(),
+                kind,
+                remote_path: remote_path.clone(),
+                local_path: local_path.clone(),
+                // 下载的 total 依赖远端 stat，由首个 progress 事件携带真实值；
+                // 上传在命令面已知 total，但载荷同构（progress 首帧即刻校正）。
+                total: 0,
+            },
+        );
+        let result = fut.await;
+        let (status, message): (&'static str, String) = match &result {
+            Ok(_) => ("done", String::new()),
+            Err(ottr_transfer::Error::Cancelled) => ("cancelled", String::new()),
+            Err(e) => ("failed", e.to_string()),
+        };
+        let _ = app.emit(
+            "ottr://transfer-end",
+            TransferEndPayload {
+                transfer_id: transfer_id.clone(),
+                status,
+                message,
+            },
+        );
+        transfers.lock().unwrap().remove(&transfer_id);
+        if let Err(e) = result {
+            eprintln!("[transfer:{transfer_id}] {kind} ended: {e}");
+        }
+    });
+}
+
+/// 下载（远端 → 本地）。`local` 缺省 = 下载目录/远端文件名（MVP 降级裁定：
+/// 「拖出到 Finder」不可行，以「下载到下载目录」+ 提示替代）。
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn sftp_download(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    remote: String,
+    local: Option<String>,
+) -> Result<TransferStarted, String> {
+    let session = {
+        let sessions = state.sessions.lock().unwrap();
+        Arc::clone(
+            &sessions
+                .get(&id)
+                .ok_or_else(|| format!("no such session: {id}"))?
+                .session,
+        )
+    };
+    let local = match local {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let dir = local_downloads_dir(app.clone())?;
+            let name = remote
+                .rsplit('/')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("download.bin");
+            PathBuf::from(dir).join(name)
+        }
+    };
+    // 预 stat 总长（begin 载荷 + journal 身份）；失败不阻塞——传输内部会再 stat
+    // 并以同一错误失败，保持单一错误路径。
+    let total = sftp_for(&state, &id)
+        .await?
+        .stat(&remote)
+        .await
+        .map(|d| d.size)
+        .unwrap_or(0);
+    let journal = journal_path_for(&app, "down", &remote, total)?;
+    let transfer_id = format!("xfer-{}", TRANSFER_SEQ.fetch_add(1, Ordering::Relaxed));
+    let cancel = ottr_transfer::CancelToken::new();
+    let local_str = local.to_string_lossy().into_owned();
+    let started = TransferStarted {
+        transfer_id: transfer_id.clone(),
+        local_path: local_str.clone(),
+        remote_path: remote.clone(),
+        total,
+    };
+    use ottr_transfer::FileTransfer;
+    let hook = progress_emitter(app.clone(), transfer_id.clone());
+    let (remote_fut, local_fut, cancel_fut) =
+        (remote.clone(), local.clone(), cancel.clone());
+    let fut = async move {
+        session
+            .download_parallel(&remote_fut, &local_fut, SFTP_CHUNKS, &journal, &cancel_fut, Some(hook))
+            .await
+    };
+    spawn_transfer(
+        state.transfers.clone(),
+        app,
+        transfer_id,
+        "download",
+        remote,
+        local_str,
+        cancel,
+        fut,
+    );
+    Ok(started)
+}
+
+/// 上传（本地 → 远端目录）。`remote_dir` 缺省 = 远端当前目录由前端传；
+/// 目标名 = 本地文件名（重名覆盖——SFTP CREATE|TRUNCATE 语义，UI 不做冲突
+/// 对话框，MVP 记录为已知取舍）。
+#[tauri::command]
+async fn sftp_upload(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    id: String,
+    local: String,
+    remote_dir: String,
+) -> Result<TransferStarted, String> {
+    let session = {
+        let sessions = state.sessions.lock().unwrap();
+        Arc::clone(
+            &sessions
+                .get(&id)
+                .ok_or_else(|| format!("no such session: {id}"))?
+                .session,
+        )
+    };
+    let local_path = PathBuf::from(&local);
+    let total = std::fs::metadata(&local_path)
+        .map_err(|e| format!("stat {local}: {e}"))?
+        .len();
+    let name = local_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .ok_or_else(|| format!("not a file: {local}"))?;
+    let trimmed = remote_dir.trim_end_matches('/');
+    let remote = if trimmed.is_empty() {
+        format!("/{name}")
+    } else {
+        format!("{trimmed}/{name}")
+    };
+    let journal = journal_path_for(&app, "up", &remote, total)?;
+    let transfer_id = format!("xfer-{}", TRANSFER_SEQ.fetch_add(1, Ordering::Relaxed));
+    let cancel = ottr_transfer::CancelToken::new();
+    let started = TransferStarted {
+        transfer_id: transfer_id.clone(),
+        local_path: local.clone(),
+        remote_path: remote.clone(),
+        total,
+    };
+    use ottr_transfer::FileTransfer;
+    let hook = progress_emitter(app.clone(), transfer_id.clone());
+    let (remote_fut, local_fut, cancel_fut) =
+        (remote.clone(), local_path.clone(), cancel.clone());
+    let fut = async move {
+        session
+            .upload_parallel(&local_fut, &remote_fut, SFTP_CHUNKS, &journal, &cancel_fut, Some(hook))
+            .await
+    };
+    spawn_transfer(
+        state.transfers.clone(),
+        app,
+        transfer_id,
+        "upload",
+        remote,
+        local,
+        cancel,
+        fut,
+    );
+    Ok(started)
+}
+
+/// 取消在途传输（chunk 边界协作退出；journal 保留——重试即续传）。
+#[tauri::command]
+fn transfer_cancel(state: State<'_, AppState>, transfer_id: String) -> Result<(), String> {
+    let cancel = {
+        let transfers = state.transfers.lock().unwrap();
+        transfers
+            .get(&transfer_id)
+            .ok_or_else(|| format!("no such transfer: {transfer_id}"))?
+            .cancel
+            .clone()
+    };
+    cancel.cancel();
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1116,6 +1625,19 @@ pub fn run() {
             set_session_encoding,
             drop_session,
             session_stats,
+            // Task 10（A5）：SFTP 文件面板 + 传输队列
+            sftp_list,
+            sftp_realpath,
+            sftp_mkdir,
+            sftp_rename,
+            sftp_remove,
+            sftp_chmod,
+            local_list,
+            local_home,
+            local_downloads_dir,
+            sftp_download,
+            sftp_upload,
+            transfer_cancel,
             spike_report_latency,
             spike_probe_channel,
             spike_log,

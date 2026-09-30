@@ -13,10 +13,13 @@
 //! trait 边界上唯一已裁定的泄漏点的直接延伸，ottr-transfer 依赖 ottr-ssh
 //! 消费该流；libssh2 fallback 时随传输层实现整体替换，trait 消费方不动。
 
+pub mod ops;
 pub mod sftp;
 
+pub use ops::{DirEntry, SftpClient};
 pub use sftp::{
-    CHUNK_SIZE, FileTransfer, TransferStats, download_parallel, journal_header, upload_parallel,
+    CancelToken, CHUNK_SIZE, FileTransfer, ProgressHook, TransferProgress, TransferStats,
+    download_parallel, journal_header, upload_parallel,
 };
 
 use std::fmt;
@@ -33,6 +36,9 @@ pub enum Error {
     },
     /// 本地文件 I/O 错误。
     Io(std::io::Error),
+    /// 传输被调用方取消（Task 10 Step 2）：chunk 边界协作退出；journal 保留，
+    /// 同身份重传即断点续传。
+    Cancelled,
 }
 
 impl fmt::Display for Error {
@@ -40,6 +46,7 @@ impl fmt::Display for Error {
         match self {
             Error::Protocol { message, .. } => write!(f, "transfer protocol error: {message}"),
             Error::Io(e) => write!(f, "local io error: {e}"),
+            Error::Cancelled => write!(f, "transfer cancelled"),
         }
     }
 }
@@ -56,6 +63,7 @@ impl std::error::Error for Error {
         match self {
             Error::Protocol { source, .. } => erased(source),
             Error::Io(e) => Some(e),
+            Error::Cancelled => None,
         }
     }
 }

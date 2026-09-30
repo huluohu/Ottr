@@ -49,9 +49,11 @@
 //!
 //! ## spike 简化（如实注明）
 //!
-//! - 进度/续传日志直接 `println!`（Task 8 裁定要求进程日志含
-//!   `resume from chunk N`），Phase 1 应换成 tracing / 回调；
-//! - 错误统一映射为 crate [`Error::Protocol`]，无结构化重试分类；
+//! - 续传日志仍 `println!`（Task 8 裁定要求进程日志含 `resume from chunk N`）；
+//!   进度日志已在 Task 10 Step 2 换成 [`ProgressHook`] 回调（src-tauri 转成
+//!   Tauri 事件）；
+//! - 错误统一映射为 crate [`Error::Protocol`]（另有 [`Error::Cancelled`] /
+//!   [`Error::Io`]），无结构化重试分类；
 //! - chunk 内子请求完成到 worker 写盘之间有 join 屏障（每 chunk 一轮），
 //!   4 worker 错峰后通道基本不空转；更细粒度的无屏障流水线是 Phase 1
 //!   优化项，不属本 spike 验证范围。
@@ -60,7 +62,7 @@ use std::collections::{HashSet, VecDeque};
 use std::io::Write;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -77,8 +79,46 @@ use crate::{Error, Result};
 /// 续传粒度即 chunk 粒度。
 pub const CHUNK_SIZE: u64 = 1024 * 1024;
 
-/// 进度日志频率（每 N 个已完成 chunk 一行）。
-const PROGRESS_EVERY: u64 = 16;
+/// 协作式取消令牌（Task 10 Step 2）：chunk 边界轮询的 AtomicBool（不引
+/// tokio_util，一枚 bool 足够）。
+///
+/// 语义：[`CancelToken::cancel`] 置位后，每个 worker 在**下一个 chunk 边界**
+/// 退出——in-flight chunk 正常完成/失败，不中途 drop 请求 future（russh-sftp
+/// 的请求配对表不承受半途 future 消亡）；journal 只含已完整落盘的 chunk，
+/// 因此取消对续传语义**零破坏**：同身份重传 = 断点续传。取消最坏延迟 =
+/// 一个 chunk 的传输时长（1 MiB @ 本地夹具 ≈ 数十 ms）。
+#[derive(Clone, Debug, Default)]
+pub struct CancelToken(Arc<AtomicBool>);
+
+impl CancelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 置位取消信号（幂等；任意线程/任务可调用）。
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+/// 传输进度快照（每个 chunk 完成时回调一次；Task 10 Step 2）。
+/// `transferred` = 已完成 chunk 覆盖的字节数（**含续传跳过部分**，封顶
+/// `total`）——UI 进度条口径 = 「文件完成度」，与本次运行的有效吞吐
+/// （[`TransferStats::mb_per_s`] 的口径，剔除续传跳过字节）刻意区分。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransferProgress {
+    pub transferred: u64,
+    pub total: u64,
+    pub chunks_done: usize,
+    pub chunks_total: usize,
+}
+
+/// 进度回调（chunk 边界同步触发，务必轻量——emit/记账即可，勿做重活）。
+pub type ProgressHook = Arc<dyn Fn(TransferProgress) + Send + Sync>;
 
 /// russh-sftp 默认报文上限 256 KiB；读写子请求按同款开销公式收窄
 /// （russh-sftp `fs/file.rs`：READ_OVERHEAD_LENGTH=13 / WRITE_OVERHEAD_LENGTH=25），
@@ -290,12 +330,16 @@ fn print_resume_line(pending: &[(usize, u64, u64)], chunks_total: usize, workers
 ///
 /// `chunks` 为并发 worker 数（简报签名里的 `chunks: 4`；spike 默认 4）。
 /// journal 语义见模块注释。返回本次运行的统计。
+/// Task 10 Step 2：`cancel` = chunk 边界协作取消；`progress` = 每 chunk 完成
+/// 时的进度回调（None = 静默）。
 pub async fn download_parallel(
     session: &SshSession,
     remote: &str,
     local: &Path,
     chunks: usize,
     journal_path: &Path,
+    cancel: &CancelToken,
+    progress: Option<ProgressHook>,
 ) -> Result<TransferStats> {
     let started = Instant::now();
     let workers = chunks.max(1);
@@ -328,7 +372,8 @@ pub async fn download_parallel(
     let (read_block, _) = probe_block_sizes(&sftp, &read_handle).await;
 
     let queue = Arc::new(Mutex::new(VecDeque::from(pending)));
-    let progress = Arc::new(AtomicU64::new(0));
+    // 计数器与进度 hook 参数刻意不同名（counter）：`progress` 参数是 hook 传递面。
+    let counter = Arc::new(AtomicU64::new(0));
     let remaining = queue.lock().unwrap().len() as u64;
 
     let handles = (0..workers).map(|_| {
@@ -337,9 +382,17 @@ pub async fn download_parallel(
         let queue = Arc::clone(&queue);
         let journal = Arc::clone(&journal);
         let local_file = Arc::clone(&local_file);
-        let progress = Arc::clone(&progress);
+        let counter = Arc::clone(&counter);
+        let cancel = cancel.clone();
+        let progress_hook = progress.clone();
         async move {
             loop {
+                // 取消检查（Step 2，chunk 边界）：协作退出——in-flight chunk 正常
+                // 完成/失败，不中途 drop 请求 future；journal 只含完整落盘 chunk，
+                // 续传语义零破坏（同身份重传即续传）。
+                if cancel.is_cancelled() {
+                    return Ok::<(), Error>(());
+                }
                 let next = queue.lock().unwrap().pop_front();
                 let Some((_index, offset, len)) = next else {
                     break;
@@ -349,21 +402,28 @@ pub async fn download_parallel(
                 // 顺序不变量：数据先完整写盘（页缓存，kill -9 不丢），后记 journal。
                 local_file.write_all_at(&data, offset)?;
                 journal.record(offset)?;
-                let done_now = progress.fetch_add(1, Ordering::Relaxed) + 1;
-                if done_now % PROGRESS_EVERY == 0 || done_now == remaining {
-                    let chunks_done = chunks_total as u64 - remaining + done_now;
-                    let bytes = (chunks_done * CHUNK_SIZE).min(total);
-                    println!(
-                        "progress {chunks_done}/{chunks_total} chunks | {:.1} MiB | {:.1} MB/s",
-                        bytes as f64 / (1024.0 * 1024.0),
-                        bytes as f64 / 1e6 / started.elapsed().as_secs_f64().max(1e-9),
-                    );
+                let done_now = counter.fetch_add(1, Ordering::Relaxed) + 1;
+                let chunks_done = chunks_total as u64 - remaining + done_now;
+                if let Some(hook) = &progress_hook {
+                    hook(TransferProgress {
+                        transferred: (chunks_done * CHUNK_SIZE).min(total),
+                        total,
+                        chunks_done: chunks_done as usize,
+                        chunks_total,
+                    });
                 }
             }
             Ok::<(), Error>(())
         }
     });
     try_join_all(handles).await?;
+
+    // 取消（Step 2）：全部 worker 已在 chunk 边界就地退出；显式 Cancelled 让
+    // 调用方区分「用户中止」与「失败」。
+    if cancel.is_cancelled() {
+        let _ = sftp.close(read_handle).await;
+        return Err(Error::Cancelled);
+    }
 
     sftp.close(read_handle)
         .await
@@ -451,12 +511,15 @@ async fn read_chunk_pipelined(
 ///
 /// 续传时远端以 `CREATE|WRITE` 重开（**绝不 TRUNCATE**，否则会抹掉已完成
 /// chunk）；全新传输才 `CREATE|TRUNCATE|WRITE`。
+/// 取消/进度语义与 [`download_parallel`] 相同（Task 10 Step 2）。
 pub async fn upload_parallel(
     session: &SshSession,
     local: &Path,
     remote: &str,
     chunks: usize,
     journal_path: &Path,
+    cancel: &CancelToken,
+    progress: Option<ProgressHook>,
 ) -> Result<TransferStats> {
     let started = Instant::now();
     let workers = chunks.max(1);
@@ -506,7 +569,8 @@ pub async fn upload_parallel(
 
     let local_file = Arc::new(std::fs::File::open(local)?);
     let queue = Arc::new(Mutex::new(VecDeque::from(pending)));
-    let progress = Arc::new(AtomicU64::new(0));
+    // 计数器与进度 hook 参数刻意不同名（counter）：`progress` 参数是 hook 传递面。
+    let counter = Arc::new(AtomicU64::new(0));
     let remaining = queue.lock().unwrap().len() as u64;
 
     let handles = (0..workers).map(|_| {
@@ -515,9 +579,15 @@ pub async fn upload_parallel(
         let queue = Arc::clone(&queue);
         let journal = Arc::clone(&journal);
         let local_file = Arc::clone(&local_file);
-        let progress = Arc::clone(&progress);
+        let counter = Arc::clone(&counter);
+        let cancel = cancel.clone();
+        let progress_hook = progress.clone();
         async move {
             loop {
+                // 取消检查（Step 2，chunk 边界）：语义同下载侧。
+                if cancel.is_cancelled() {
+                    return Ok::<(), Error>(());
+                }
                 let next = queue.lock().unwrap().pop_front();
                 let Some((_index, offset, len)) = next else {
                     break;
@@ -545,21 +615,27 @@ pub async fn upload_parallel(
                     .await
                     .map_err(|e| protocol_error(e, &format!("sftp write chunk @{offset}")))?;
                 journal.record(offset)?;
-                let done_now = progress.fetch_add(1, Ordering::Relaxed) + 1;
-                if done_now % PROGRESS_EVERY == 0 || done_now == remaining {
-                    let chunks_done = chunks_total as u64 - remaining + done_now;
-                    let bytes = (chunks_done * CHUNK_SIZE).min(total);
-                    println!(
-                        "progress {chunks_done}/{chunks_total} chunks | {:.1} MiB | {:.1} MB/s",
-                        bytes as f64 / (1024.0 * 1024.0),
-                        bytes as f64 / 1e6 / started.elapsed().as_secs_f64().max(1e-9),
-                    );
+                let done_now = counter.fetch_add(1, Ordering::Relaxed) + 1;
+                let chunks_done = chunks_total as u64 - remaining + done_now;
+                if let Some(hook) = &progress_hook {
+                    hook(TransferProgress {
+                        transferred: (chunks_done * CHUNK_SIZE).min(total),
+                        total,
+                        chunks_done: chunks_done as usize,
+                        chunks_total,
+                    });
                 }
             }
             Ok::<(), Error>(())
         }
     });
     try_join_all(handles).await?;
+
+    // 取消（Step 2）：语义同下载侧（journal 保留，重传即续传）。
+    if cancel.is_cancelled() {
+        let _ = sftp.close(write_handle).await;
+        return Err(Error::Cancelled);
+    }
 
     sftp.close(write_handle)
         .await
@@ -588,6 +664,8 @@ pub trait FileTransfer {
         local: &Path,
         chunks: usize,
         journal_path: &Path,
+        cancel: &CancelToken,
+        progress: Option<ProgressHook>,
     ) -> impl Future<Output = Result<TransferStats>> + Send;
 
     /// 并行分块上传：本地 `local` → 远端 `remote`。语义同 [`upload_parallel`]。
@@ -597,6 +675,8 @@ pub trait FileTransfer {
         remote: &str,
         chunks: usize,
         journal_path: &Path,
+        cancel: &CancelToken,
+        progress: Option<ProgressHook>,
     ) -> impl Future<Output = Result<TransferStats>> + Send;
 }
 
@@ -607,8 +687,10 @@ impl FileTransfer for SshSession {
         local: &Path,
         chunks: usize,
         journal_path: &Path,
+        cancel: &CancelToken,
+        progress: Option<ProgressHook>,
     ) -> impl Future<Output = Result<TransferStats>> + Send {
-        download_parallel(self, remote, local, chunks, journal_path)
+        download_parallel(self, remote, local, chunks, journal_path, cancel, progress)
     }
 
     fn upload_parallel(
@@ -617,7 +699,9 @@ impl FileTransfer for SshSession {
         remote: &str,
         chunks: usize,
         journal_path: &Path,
+        cancel: &CancelToken,
+        progress: Option<ProgressHook>,
     ) -> impl Future<Output = Result<TransferStats>> + Send {
-        upload_parallel(self, local, remote, chunks, journal_path)
+        upload_parallel(self, local, remote, chunks, journal_path, cancel, progress)
     }
 }

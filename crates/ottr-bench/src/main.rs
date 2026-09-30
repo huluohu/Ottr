@@ -25,6 +25,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use ottr_ssh::AuthMethod;
 use ottr_transfer::download_parallel;
+use ottr_transfer::sftp::CancelToken;
 use russh::ChannelMsg;
 
 const FIXTURE: (&str, u16, &str, &str) = ("127.0.0.1", 2222, "spike", "spike-pass");
@@ -204,7 +205,17 @@ async fn session_worker(index: usize, deadline: Instant) -> ottr_ssh::Result<(u6
             let _ = std::fs::remove_file(&local);
             let _ = std::fs::remove_file(&journal);
             eprintln!("[bench] sftp round {} begin", sftp_iters + 1);
-            match download_parallel(&session, REMOTE_BIG, &local, SFTP_CHUNKS, &journal).await {
+            match download_parallel(
+                &session,
+                REMOTE_BIG,
+                &local,
+                SFTP_CHUNKS,
+                &journal,
+                &CancelToken::new(),
+                None,
+            )
+            .await
+            {
                 Ok(stats) => {
                     sftp_iters += 1;
                     sftp_bytes += stats.total_bytes;

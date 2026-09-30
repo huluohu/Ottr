@@ -17,8 +17,10 @@ use std::process::Command;
 use std::sync::Arc;
 
 use ottr_transfer::sftp::{
-    CHUNK_SIZE, JOURNAL_MAGIC, TransferStats, download_parallel, journal_header, upload_parallel,
+    CancelToken, CHUNK_SIZE, JOURNAL_MAGIC, TransferStats, download_parallel, journal_header,
+    upload_parallel,
 };
+use ottr_transfer::Error as TransferError;
 use ottr_ssh::{AuthMethod, SshSession, connect};
 use russh::ChannelMsg;
 use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
@@ -68,15 +70,31 @@ fn pinned_host_key_policy() -> ottr_ssh::HostKeyPolicy {
 }
 
 async fn connect_fixture() -> SshSession {
-    connect(
-        HOST,
-        PORT,
-        USER,
-        AuthMethod::Password(PASSWORD.to_string()),
-        pinned_host_key_policy(),
-    )
-    .await
-    .expect("connect fixture")
+    // 夹具偶发 connect 阶段 Disconnected（sshd MaxStartups 对并发未认证连接的
+    // 节流；Task 10 起测试数 5→6 后更易触发）。短退避重试 3 次属测试基建容错，
+    // 不改任何传输语义。
+    let mut last = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        match connect(
+            HOST,
+            PORT,
+            USER,
+            AuthMethod::Password(PASSWORD.to_string()),
+            pinned_host_key_policy(),
+        )
+        .await
+        {
+            Ok(s) => return s,
+            Err(e) => last = Some(e),
+        }
+    }
+    panic!(
+        "connect fixture (3 attempts): {}",
+        last.expect("at least one attempt")
+    );
 }
 
 /// 远程执行命令（PTY + exec，real_fixture 同款模式），断言退出码 0，返回输出。
@@ -198,6 +216,8 @@ async fn download_5mb_4workers_sha256_matches() {
         Path::new(&p.local_a),
         4,
         Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
     )
     .await
     .expect("download");
@@ -231,6 +251,8 @@ async fn download_resume_skips_journaled_chunks() {
         Path::new(&p.local_a),
         4,
         Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
     )
     .await
     .expect("first download");
@@ -250,6 +272,8 @@ async fn download_resume_skips_journaled_chunks() {
         Path::new(&p.local_a),
         4,
         Path::new(&p.journal_b),
+        &CancelToken::new(),
+        None,
     )
     .await
     .expect("resume download");
@@ -298,6 +322,8 @@ async fn upload_5mb_4workers_sha256_matches() {
         &p.remote_a,
         4,
         Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
     )
     .await
     .expect("upload");
@@ -332,6 +358,8 @@ async fn upload_resume_reuses_journaled_chunks() {
         &p.remote_a,
         4,
         Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
     )
     .await
     .expect("first upload");
@@ -350,6 +378,8 @@ async fn upload_resume_reuses_journaled_chunks() {
         &p.remote_a,
         4,
         Path::new(&p.journal_b),
+        &CancelToken::new(),
+        None,
     )
     .await
     .expect("resume upload");
@@ -386,6 +416,8 @@ async fn assert_download_rejected(session: &SshSession, p: &Paths, label: &str, 
         Path::new(&p.local_b),
         4,
         Path::new(&p.journal_b),
+        &CancelToken::new(),
+        None,
     )
     .await
     .err()
@@ -459,6 +491,8 @@ async fn journal_identity_mismatch_is_rejected_not_silently_resumed() {
         &p.remote_b,
         4,
         Path::new(&p.journal_b),
+        &CancelToken::new(),
+        None,
     )
     .await
     .err()
@@ -466,6 +500,83 @@ async fn journal_identity_mismatch_is_rejected_not_silently_resumed() {
     assert!(
         err.to_string().contains("refusing to resume"),
         "mode mismatch must be rejected explicitly, got: {err}"
+    );
+
+    cleanup_remote(&session, &p).await;
+    cleanup_local(&p);
+    let _ = session.disconnect().await;
+}
+
+/// Task 10 Step 2/4：**中途取消 + 续传恢复**（真夹具）。
+/// 首 1 个 chunk 完成即在进度 hook 里置位取消令牌 → Err(Cancelled)、journal
+/// 保留已完成 chunk；同 journal 重传到完成 → sha256 一致、resumed 计数 =
+/// 取消时已完成 chunk 数。把「用户取消不破坏续传」钉进测试。
+#[tokio::test]
+async fn download_cancel_at_chunk_boundary_then_resume_completes() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let p = paths("dl-cancel");
+    cleanup_local(&p);
+    cleanup_remote(&session, &p).await;
+    const MIB: u64 = 32; // 32 chunk：取消后有得续
+    make_remote_file(&session, &p.remote_a, MIB).await;
+
+    // 首 1 个 chunk 完成即取消（hook 同步触发置位；worker 下个 chunk 边界退出）
+    let cancel = CancelToken::new();
+    let hook_cancel = cancel.clone();
+    let seen = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen_hook = std::sync::Arc::clone(&seen);
+    let hook = std::sync::Arc::new(move |_progress| {
+        if seen_hook.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            hook_cancel.cancel();
+        }
+    }) as ottr_transfer::sftp::ProgressHook;
+    let err = download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_a),
+        &cancel,
+        Some(hook),
+    )
+    .await
+    .err()
+    .expect("cancel: expected Err");
+    assert!(
+        matches!(err, TransferError::Cancelled),
+        "must be Error::Cancelled, got: {err}"
+    );
+
+    // 取消时已完成 ≥1 chunk 且未传完：journal 非空、少于总数
+    let journaled = journal_offsets(&p.journal_a);
+    assert!(
+        !journaled.is_empty(),
+        "cancelled mid-transfer: journal must keep completed chunks"
+    );
+    assert!(journaled.len() < 32, "cancel must be mid-transfer");
+
+    // 续传恢复：同 journal 重传到完成 → sha256 一致、resumed = 取消时已完成数
+    let stats = download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
+    )
+    .await
+    .expect("resume after cancel");
+    assert_eq!(stats.chunks_total, 32);
+    assert_eq!(
+        stats.chunks_resumed,
+        journaled.len(),
+        "resume must skip exactly the chunks journaled before cancel"
+    );
+    assert_eq!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await
     );
 
     cleanup_remote(&session, &p).await;

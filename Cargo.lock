@@ -3177,6 +3177,7 @@ dependencies = [
  "keyring",
  "ottr-ssh",
  "ottr-term",
+ "ottr-transfer",
  "ottr-vault",
  "russh",
  "serde",
@@ -3229,6 +3230,7 @@ dependencies = [
  "ottr-ssh",
  "russh",
  "russh-sftp",
+ "serde",
  "tokio",
 ]
 

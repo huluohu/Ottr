@@ -25,6 +25,8 @@ serde_json = "1"
 ottr-ssh = { path = "../crates/ottr-ssh" }
 # Task 9（A9）：转发路径解码（合批后、IPC 前）——ottr-term 流式会话解码器
 ottr-term = { path = "../crates/ottr-term" }
+# Task 10（A5）：SFTP 传输/文件操作（FileTransfer trait + SftpClient ops）
+ottr-transfer = { path = "../crates/ottr-transfer" }
 # Task 5：数据层接线（vault 命令 + ssh-config 导入）
 ottr-vault = { path = "../crates/ottr-vault" }
 tokio = { version = "1", features = ["io-util", "sync", "time"] }

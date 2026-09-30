@@ -19,7 +19,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
+use ottr_transfer::sftp::{CancelToken, ProgressHook, TransferProgress};
 use ottr_transfer::{download_parallel, upload_parallel};
+
+/// 每 16 chunk 打一行进度（Phase 0 println 行为的 hook 复刻；Task 10 Step 2
+/// 起进度走 [`ProgressHook`]，src-tauri 再转 Tauri 事件）。
+fn printing_hook() -> ProgressHook {
+    let n = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    Arc::new(move |p: TransferProgress| {
+        let done = n.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if done.is_multiple_of(16) || p.chunks_done == p.chunks_total {
+            println!(
+                "progress {}/{} chunks | {:.1} MiB",
+                p.chunks_done,
+                p.chunks_total,
+                p.transferred as f64 / (1024.0 * 1024.0)
+            );
+        }
+    })
+}
 use ottr_ssh::{AuthMethod, connect};
 use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
@@ -123,6 +141,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("connected {USER}@{HOST}:{PORT} (host key pinned via known_hosts)");
 
     let started = Instant::now();
+    let cancel = CancelToken::new();
+    let hook = printing_hook();
     let stats = match args.direction.as_str() {
         "down" => {
             download_parallel(
@@ -131,6 +151,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Path::new(&args.dst),
                 args.chunks,
                 &args.journal,
+                &cancel,
+                Some(Arc::clone(&hook)),
             )
             .await?
         }
@@ -141,6 +163,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &args.dst,
                 args.chunks,
                 &args.journal,
+                &cancel,
+                Some(Arc::clone(&hook)),
             )
             .await?
         }

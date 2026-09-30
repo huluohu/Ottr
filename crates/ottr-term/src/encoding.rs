@@ -10,8 +10,10 @@ pub enum Encoding {
     /// UTF-8（默认）。
     #[default]
     Utf8,
-    /// GBK（简体中文 Windows 服务器家族，含 GB2312/GB18030 提示）。
+    /// GBK（简体中文 Windows 服务器家族，含 GB2312 提示）。
     Gbk,
+    /// GB18030（国标超集，Task 9 切换菜单收录；字节级兼容 GBK）。
+    Gb18030,
 }
 
 impl Encoding {
@@ -20,6 +22,7 @@ impl Encoding {
         match self {
             Encoding::Utf8 => "UTF-8",
             Encoding::Gbk => "GBK",
+            Encoding::Gb18030 => "GB18030",
         }
     }
 
@@ -63,6 +66,10 @@ impl Decoder {
                 .decode_with_bom_removal(bytes)
                 .0
                 .into_owned(),
+            Encoding::Gb18030 => encoding_rs::GB18030
+                .decode_with_bom_removal(bytes)
+                .0
+                .into_owned(),
         }
     }
 
@@ -79,6 +86,134 @@ impl Decoder {
         } else {
             Encoding::Utf8
         }
+    }
+}
+
+/// GBK 族的安全切点：从块尾回退「可能未收完的序列」的字节数。
+/// 贪婪左→右配对扫描（lead 0x81..=0xFE 吞下一字节作 trail；位置配对与
+/// 解码器逐字节状态机一致，纯句法可判）：
+/// * `gb18030 = false`（GBK）：双字节序列；
+/// * `gb18030 = true`：第二字节 0x30..=0x39 开四字节序列（GB18030 扩充），
+///   残尾最多持有 3 字节。
+///
+/// 切点之前的字节（含坏 trail）整段交给一次性解码器按规范结算——坏序列
+/// 的替换符产出与整段喂入完全一致，只是不再跨 chunk 撕裂。
+fn gbk_safe_cut(bytes: &[u8], gb18030: bool) -> usize {
+    let n = bytes.len();
+    let mut i = 0;
+    while i < n {
+        if (0x81..=0xFE).contains(&bytes[i]) {
+            let seq_len = if gb18030
+                && i + 1 < n
+                && (0x30..=0x39).contains(&bytes[i + 1])
+            {
+                4
+            } else {
+                2
+            };
+            if i + seq_len > n {
+                return i; // 块尾停在序列中段 → 从这里持有（1..3 字节）
+            }
+            i += seq_len;
+        } else {
+            i += 1;
+        }
+    }
+    n
+}
+
+/// 流式会话解码器（Task 9 转发路径消费）：[`Decoder`] 的逐 chunk 变体。
+///
+/// Phase 0 的 [`Decoder::decode`] 无跨调用状态——chunk 边界上的撕裂序列各自
+/// 独立出替换符（spike 台账裁定 3）。转发路径（合批 flush 后、IPC 前）按
+/// flush 批喂字节，边界由 4ms 窗口/256KB 上限决定，撕裂概率不可忽略
+/// （尤其默认 UTF-8 的 bulk 文本流）；本类型持有块尾的**不完整**序列
+/// （UTF-8 ≤3B / GBK 族 1 个 lead 字节）并入下个 chunk，flush 边界不再丢字。
+/// 非法序列（真坏字节）仍即时按所选编码出替换符，无跨批滞留。
+///
+/// 切换语义：[`StreamDecoder::set_encoding`] 先把残字节按**旧编码**结算返回
+/// （字节永不丢弃；切换点前的字节按切换前的契约落账），之后 chunk 按新编码。
+#[derive(Debug, Clone, Default)]
+pub struct StreamDecoder {
+    encoding: Encoding,
+    residual: Vec<u8>,
+}
+
+impl StreamDecoder {
+    pub fn new(encoding: Encoding) -> Self {
+        Self {
+            encoding,
+            residual: Vec::new(),
+        }
+    }
+
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+
+    /// 当前持有的残字节数（≤3；仅测试/诊断读）。
+    pub fn residual_len(&self) -> usize {
+        self.residual.len()
+    }
+
+    /// 切换编码：残字节按旧编码结算（返回值 = 结算文本，调用方转发前端），
+    /// 之后 `decode_chunk` 按新编码。即切即生效，从下一个 chunk 起。
+    pub fn set_encoding(&mut self, encoding: Encoding) -> String {
+        let flushed = self.take_residual_as_text();
+        self.encoding = encoding;
+        flushed
+    }
+
+    /// 会话终止（PTY Eof/Close）：残字节按当前编码结算（不完整序列 → 替换符）。
+    pub fn finish(&mut self) -> String {
+        self.take_residual_as_text()
+    }
+
+    /// 流式解码一段字节。不完整的块尾序列持有至下个调用；真坏字节即时替换。
+    pub fn decode_chunk(&mut self, bytes: &[u8]) -> String {
+        if self.residual.is_empty() {
+            // 快路径：无残字节时零拷贝借入，避免 concat。
+            let (text, hold) = self.decode_split(bytes);
+            self.residual = hold.to_vec();
+            text
+        } else {
+            let mut buf = std::mem::take(&mut self.residual);
+            buf.extend_from_slice(bytes);
+            let (text, hold) = self.decode_split(&buf);
+            self.residual = hold.to_vec();
+            text
+        }
+    }
+
+    /// 解码 `bytes`，返回（文本, 应持有到下个 chunk 的块尾切片）。
+    fn decode_split<'a>(&self, bytes: &'a [u8]) -> (String, &'a [u8]) {
+        match self.encoding {
+            Encoding::Utf8 => {
+                let cut = match std::str::from_utf8(bytes) {
+                    Ok(_) => bytes.len(),
+                    Err(e) if e.error_len().is_none() => e.valid_up_to(), // 块尾不完整 → 持有
+                    Err(_) => bytes.len(), // 中段坏序列 → 整段结算（损失由 lossy 兜底）
+                };
+                (String::from_utf8_lossy(&bytes[..cut]).into_owned(), &bytes[cut..])
+            }
+            Encoding::Gbk | Encoding::Gb18030 => {
+                let cut = gbk_safe_cut(bytes, self.encoding == Encoding::Gb18030);
+                let decoder = match self.encoding {
+                    Encoding::Gb18030 => encoding_rs::GB18030,
+                    _ => encoding_rs::GBK,
+                };
+                (decoder.decode_with_bom_removal(&bytes[..cut]).0.into_owned(), &bytes[cut..])
+            }
+        }
+    }
+
+    /// 残字节按当前编码一次性结算（set_encoding / finish 共用）。
+    fn take_residual_as_text(&mut self) -> String {
+        let residual = std::mem::take(&mut self.residual);
+        if residual.is_empty() {
+            return String::new();
+        }
+        Decoder::new(self.encoding).decode(&residual)
     }
 }
 
@@ -258,5 +393,120 @@ mod tests {
     fn encoding_names_for_reports() {
         assert_eq!(Encoding::Utf8.name(), "UTF-8");
         assert_eq!(Encoding::Gbk.name(), "GBK");
+        assert_eq!(Encoding::Gb18030.name(), "GB18030");
+    }
+
+    #[test]
+    fn gb18030_fixture_bytes_decode_exact_text() {
+        // GB18030 是 GBK 的超集：夹具 GBK 字节按 GB18030 解出同文（T9 菜单面）。
+        let d = Decoder::new(Encoding::Gb18030);
+        assert_eq!(d.decode(GBK_PAYLOAD), TEXT);
+        assert_eq!(d.encoding().name(), "GB18030");
+    }
+
+    // --- StreamDecoder（Task 9 转发路径） ------------------------------------
+
+    /// 转发路径核心裁定：任意切法的 chunk 边界都不丢字（合批 flush 边界
+    /// 由 4ms 窗口决定，撕裂 UTF-8 序列不再各出替换符）。
+    #[test]
+    fn stream_utf8_torn_across_chunks_reassembles_exactly() {
+        let text = "中文 abc 中文";
+        for chunk in 1..text.len() {
+            let mut d = StreamDecoder::new(Encoding::Utf8);
+            let mut out = String::new();
+            for part in text.as_bytes().chunks(chunk) {
+                out.push_str(&d.decode_chunk(part));
+            }
+            out.push_str(&d.finish());
+            assert_eq!(out, text, "chunk size {chunk} must reassemble exactly");
+            assert_eq!(d.residual_len(), 0);
+        }
+    }
+
+    /// 中段真坏字节即时替换（不滞留），前后好序列保真。
+    #[test]
+    fn stream_utf8_invalid_midstream_replaces_immediately() {
+        let mut d = StreamDecoder::new(Encoding::Utf8);
+        let out = d.decode_chunk(&[0x61, 0xFF, 0xE4, 0xB8, 0xAD]); // a + 坏字节 + 中
+        assert_eq!(out, "a\u{FFFD}中");
+        assert_eq!(d.residual_len(), 0);
+    }
+
+    /// GBK 撕裂双字节跨 chunk：残 lead 持有至下个 chunk，不再是「各 1 替换符」。
+    #[test]
+    fn stream_gbk_torn_pair_reassembles() {
+        let mut d = StreamDecoder::new(Encoding::Gbk);
+        assert_eq!(d.decode_chunk(&[0xD6]), "", "孤 lead 持有，不出替换符");
+        assert_eq!(d.residual_len(), 1);
+        assert_eq!(d.decode_chunk(&[0xD0, 0xCE, 0xC4]), "中文");
+        assert_eq!(d.residual_len(), 0);
+    }
+
+    /// GBK 流逐字节喂入与整段解码等价（夹具 17B，简报三段验证的数据面基础）。
+    #[test]
+    fn stream_gbk_bytewise_equals_oneshot() {
+        let mut d = StreamDecoder::new(Encoding::Gbk);
+        let mut out = String::new();
+        for b in GBK_PAYLOAD {
+            out.push_str(&d.decode_chunk(&[*b]));
+        }
+        assert_eq!(out, TEXT);
+    }
+
+    /// 切换语义：残字节按旧编码结算返回（字节永不丢弃），之后按新编码。
+    #[test]
+    fn stream_switch_settles_residual_under_old_encoding() {
+        let mut d = StreamDecoder::new(Encoding::Utf8);
+        let _ = d.decode_chunk(&[0xE4, 0xB8]); // 残 2B（「中」的前缀）
+        let flushed = d.set_encoding(Encoding::Gbk);
+        // 旧编码（UTF-8）结算残字节：一个不完整序列 → 恰 1 个替换符；
+        // E4 B8 在 GBK 下是合法对，但结算必须按切换前的契约（UTF-8）执行。
+        assert_eq!(flushed, "\u{FFFD}");
+        assert_eq!(d.residual_len(), 0);
+        // 之后按 GBK 解码。
+        assert_eq!(d.decode_chunk(&[0xD6, 0xD0]), "中");
+        assert_eq!(d.encoding(), Encoding::Gbk);
+    }
+
+    /// finish 结算残字节（不完整序列 → 替换符），PTY 收尾不静默丢字。
+    #[test]
+    fn stream_finish_flushes_residual_as_replacements() {
+        let mut d = StreamDecoder::new(Encoding::Utf8);
+        d.decode_chunk(&[0xE4, 0xB8]);
+        assert_eq!(d.finish(), "\u{FFFD}");
+        assert_eq!(d.residual_len(), 0);
+    }
+
+    /// GB18030 流式路径（T9 新变体）：撕裂重组 + 残 lead 持有。
+    #[test]
+    fn stream_gb18030_torn_pair_reassembles() {
+        let mut d = StreamDecoder::new(Encoding::Gb18030);
+        assert_eq!(d.decode_chunk(&[0xD6]), "");
+        assert_eq!(d.decode_chunk(&[0xD0]), "中");
+    }
+
+    /// 三段切换语义（转发路径版）：默认 UTF-8 乱码 → 切 GBK 正确 → 切回再乱码。
+    /// 与 Phase 0 session_switch_redecodes_same_bytes 对应，但按 chunk 流转。
+    #[test]
+    fn stream_three_stage_switch_on_fixture_bytes() {
+        let mut d = StreamDecoder::default();
+        let stage1 = d.decode_chunk(GBK_PAYLOAD);
+        assert!(stage1.contains('\u{FFFD}') && stage1.contains(" GBK "));
+
+        d.set_encoding(Encoding::Gbk);
+        let stage2 = d.decode_chunk(GBK_PAYLOAD);
+        assert_eq!(stage2, TEXT);
+
+        d.set_encoding(Encoding::Utf8);
+        let stage3 = d.decode_chunk(GBK_PAYLOAD);
+        assert_eq!(stage3, stage1);
+    }
+
+    /// BOM 相似字节不偷换编码（同 Decoder 契约，流式路径同样成立）。
+    #[test]
+    fn stream_gbk_mode_never_switches_on_bom_like_bytes() {
+        let mut d = StreamDecoder::new(Encoding::Gbk);
+        let out = d.decode_chunk(&[0xFF, 0xFE]);
+        assert!(!out.is_empty(), "FF FE got BOM-stripped: {out:?}");
     }
 }

@@ -14,4 +14,4 @@ pub mod osc133;
 pub mod ring;
 pub mod stripper;
 
-pub use encoding::{Decoder, Encoding};
+pub use encoding::{Decoder, Encoding, StreamDecoder};

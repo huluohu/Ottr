@@ -25,6 +25,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Notify;
 
 use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
+use ottr_term::encoding::{Encoding, StreamDecoder};
 use ottr_vault::{Hosts, KnownHostState, KnownHosts};
 
 pub mod keys;
@@ -137,31 +138,40 @@ fn pinned_host_key_policy() -> (HostKeyPolicy, String) {
 // 会话表与计数器（Task 7 字节计数预埋）
 // ---------------------------------------------------------------------------
 
+/// 转发计数（驱动脚本/example 直驱 `forward_pty_loop` 时也要传入，故 pub；
+/// 字段私有，读数走 `session_stats` 命令）。
 #[derive(Default)]
-struct SessionCounters {
+pub struct SessionCounters {
     /// PTY 原始读出字节（合批前）。
-    pty_read_bytes: AtomicU64,
-    /// 合批后向前端转发的字节（= 各 Raw 帧长度之和）。
-    forwarded_bytes: AtomicU64,
+    pub(crate) pty_read_bytes: AtomicU64,
+    /// 合批+解码后向前端转发的字节（= 各 Raw 帧长度之和，**解码后的 UTF-8
+    /// 文本字节数**，Task 9 起解码在 IPC 前完成）。解码有损（替换符变长、
+    /// GBK 对 2B→汉字 3B）且批尾残字节（≤3B）滞留会话 Decoder 随下批转发，
+    /// 故与 pty_read_bytes 不再严格逐批恒等；字节永不丢弃由 Decoder 残字
+    /// 结算（set_encoding 返回值 / finish）保证。
+    pub(crate) forwarded_bytes: AtomicU64,
     /// 向前端发送的帧数（合批次数）。
-    frames: AtomicU64,
+    pub(crate) frames: AtomicU64,
     /// 前端写向 PTY 的字节（击键级）。
-    input_bytes: AtomicU64,
+    pub(crate) input_bytes: AtomicU64,
     /// write_session 调用次数。
-    writes: AtomicU64,
+    pub(crate) writes: AtomicU64,
     /// 【M-2 失败策略】on_data.send 失败而**丢弃**的帧数（不计入 forwarded/frames）。
-    send_failed_frames: AtomicU64,
+    pub(crate) send_failed_frames: AtomicU64,
     /// 【M-2 失败策略】on_data.send 失败而**丢弃**的字节数。
-    /// 账目恒等式：pty_read_bytes == forwarded_bytes + send_failed_bytes + 批内残余。
-    send_failed_bytes: AtomicU64,
+    /// 解码前口径的失败字节（Task 9 起转发以解码后文本计，见 forwarded_bytes）。
+    pub(crate) send_failed_bytes: AtomicU64,
     /// 【M-2 失败策略】会话级失败标志：任何 send 失败后置位，session_stats 可读。
-    failed: AtomicBool,
+    pub(crate) failed: AtomicBool,
 }
 
 struct SessionEntry {
     /// PTY 写端（russh `make_writer()`，与读循环共享同一通道）。
     writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>>,
     counters: Arc<SessionCounters>,
+    /// 会话流式解码器（Task 9，A9）：合批 flush 后、IPC 前解码；
+    /// `set_session_encoding` 即切即生效（残字节按旧编码结算回传前端）。
+    decoder: Arc<Mutex<StreamDecoder>>,
     /// 取消信号：`drop_session` 触发，转发循环 select 到即就地退出（进程端任务取消）。
     cancel: Arc<Notify>,
 }
@@ -194,6 +204,35 @@ const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(60);
 
 /// host key 问询超时（简报定值）：前端确认框挂起 connect 的最长等待。
 const HOST_KEY_ASK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// LANG 探测命令/超时（Task 9 detect_hint：连接建立后独立 exec 通道跑一次，
+/// 不进 PTY 数据流、不阻塞 attach 返回；失败/超时 = 不提示，安全侧）。
+const LANG_PROBE_CMD: &str = "echo $LANG";
+const LANG_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 编码字符串（host 表 `encoding_override` / `set_session_encoding` 入参）→
+/// [`Encoding`]。支持集 = 简报定值 UTF-8/GBK/GB18030（GB2312 按 GBK 处理，
+/// 与 ottr-term detect_hint 同口径）；无法识别 → None（调用方兜底 UTF-8 /
+/// 显式报错）。**不支持** big5/shift_jis/euc-kr（Decoder 无对应解码器，宁可
+/// 报错也不静默按错误编码出乱码）。
+fn encoding_from_str(s: &str) -> Option<Encoding> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "utf-8" | "utf8" => Some(Encoding::Utf8),
+        "gbk" | "gb2312" => Some(Encoding::Gbk),
+        "gb18030" => Some(Encoding::Gb18030),
+        _ => None,
+    }
+}
+
+/// `ottr://encoding-hint` 事件载荷（serde 同构前端 EncodingHintPayload）。
+/// 仅在 detect_hint 命中 GBK 家族时发出（UTF-8 兜底不打扰，前端不提示）。
+#[derive(Clone, serde::Serialize)]
+struct EncodingHintPayload {
+    /// Rust 会话 id（前端按 rustId 反查标签会话）。
+    id: String,
+    /// 固定 "gbk"（与 ottr-term detect_hint 的提示粒度一致）。
+    encoding: String,
+}
 
 #[derive(serde::Serialize)]
 struct SessionStats {
@@ -255,6 +294,8 @@ async fn attach_session(
         cols,
         rows,
         on_data,
+        Encoding::Utf8,
+        false,
     )
     .await
 }
@@ -298,6 +339,14 @@ async fn attach_host_session(
         Arc::clone(&state.host_key_asks),
     );
     // connect 限时 = host key 问询窗口 60s + 网络预算 15s（问询期间握手合法挂起）
+    // 初始编码 = host 表单 encoding_override（T5 字段，Task 9 生效点）；
+    // 无法识别的值兜底 UTF-8（attach 不因坏配置失败）。会话级手动切换
+    // （set_session_encoding）不写回 host，重连后回到本初值。
+    let initial_encoding = host
+        .encoding_override
+        .as_deref()
+        .and_then(encoding_from_str)
+        .unwrap_or(Encoding::Utf8);
     open_and_register(
         state.sessions.clone(),
         Some(app),
@@ -312,6 +361,8 @@ async fn attach_host_session(
         cols,
         rows,
         on_data,
+        initial_encoding,
+        true,
     )
     .await
 }
@@ -484,10 +535,14 @@ fn host_key_decision(
 
 /// 连接生命周期骨架（[`attach_session`] 与 [`attach_host_session`] 共用）：
 /// connect（限时）→ open_pty（10s）→ request_shell（10s）→ 注册会话表 →
-/// 起合批转发循环。循环退出（对端关闭 / drop_session 取消 / IPC 失败）统一收尾：
+/// 起合批转发循环（Task 9：flush 时按会话 Decoder 解码再 IPC）。
+/// 循环退出（对端关闭 / drop_session 取消 / IPC 失败）统一收尾：
 /// 清会话表项 + （可选）`ottr://session-closed` 事件 + 显式 disconnect
 /// （russh `Handle::drop` 不关连接，必须显式断，见 SshSession::disconnect 文档）。
 /// `keepalive`：交互式长连传 Some；spike 命令面传 None 保持 Phase 0 语义不变。
+/// `initial_encoding`：会话解码初值（host encoding_override 兜底 UTF-8）；
+/// `probe_lang`：连接后独立通道跑 `echo $LANG` 做 detect_hint，命中 GBK 家族
+/// 发 `ottr://encoding-hint`（正式 UI 面 true；spike 命令面 false 不打扰）。
 #[allow(clippy::too_many_arguments)]
 async fn open_and_register(
     sessions: SessionMap,
@@ -503,6 +558,8 @@ async fn open_and_register(
     cols: u32,
     rows: u32,
     on_data: Channel<InvokeResponseBody>,
+    initial_encoding: Encoding,
+    probe_lang: bool,
 ) -> Result<String, String> {
     // spike 观测：attach 偶发整体停滞（1/5 频率），故每步限时并打点定位。
     let session: SshSession = tokio::time::timeout(
@@ -528,6 +585,7 @@ async fn open_and_register(
     let id = format!("pty-{}", SESSION_SEQ.fetch_add(1, Ordering::Relaxed));
     let counters = Arc::new(SessionCounters::default());
     let cancel = Arc::new(Notify::new());
+    let decoder = Arc::new(Mutex::new(StreamDecoder::new(initial_encoding)));
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
     sessions.lock().unwrap().insert(
@@ -535,6 +593,7 @@ async fn open_and_register(
         SessionEntry {
             writer,
             counters: Arc::clone(&counters),
+            decoder: Arc::clone(&decoder),
             cancel: Arc::clone(&cancel),
         },
     );
@@ -542,9 +601,21 @@ async fn open_and_register(
     // 读循环持有 channel 与 session；循环退出后统一收尾：清表（此后 session_stats
     // 报 no such session；drop_session 对已消失的 id 幂等报错，前端容忍）→
     // session-closed 事件（前端重连状态机的触发点）→ disconnect。
+    // session 进 Arc：LANG 探测任务（独立 exec 通道）与收尾 disconnect 共享。
+    let session = Arc::new(session);
     let session_id = id.clone();
+    let probe_app = close_event.clone(); // 探测任务与收尾事件各持一份
+    let probe_session = probe_lang.then(|| Arc::clone(&session));
     tauri::async_runtime::spawn(async move {
-        let reason = forward_pty_loop(&mut channel, &on_data, &counters, &session_id, &cancel).await;
+        let reason = forward_pty_loop(
+            &mut channel,
+            &on_data,
+            &counters,
+            &decoder,
+            &session_id,
+            &cancel,
+        )
+        .await;
         sessions.lock().unwrap().remove(&session_id);
         if let Some(app) = &close_event {
             let _ = app.emit(
@@ -559,6 +630,45 @@ async fn open_and_register(
             eprintln!("[batcher:{session_id}] disconnect on exit failed: {e}");
         }
     });
+
+    // LANG 探测（Task 9 detect_hint）：独立 exec 通道异步跑，不阻塞 attach 返回、
+    // 不进 PTY 数据流（探测输出不经转发循环）。仅正式 UI 面（probe_lang）。
+    // 命中 GBK 家族 → `ottr://encoding-hint`（前端提示条「检测到 GBK，切换？」）；
+    // UTF-8 兜底 / exec 失败 / 10s 超时 → 不提示（安全侧，绝不误报打扰）。
+    if let Some(probe_session) = probe_session {
+        let probe_id = id.clone();
+        tauri::async_runtime::spawn(async move {
+            let probe = tokio::time::timeout(
+                LANG_PROBE_TIMEOUT,
+                probe_session.exec(LANG_PROBE_CMD),
+            )
+            .await;
+            match probe {
+                Ok(Ok(out)) => {
+                    let locale = String::from_utf8_lossy(&out.stdout);
+                    let hint = ottr_term::Decoder::detect_hint(&locale);
+                    eprintln!(
+                        "[attach:{probe_id}] LANG probe {:?} -> {}",
+                        locale.trim(),
+                        hint.name()
+                    );
+                    if hint == Encoding::Gbk {
+                        if let Some(app) = probe_app {
+                            let _ = app.emit(
+                                "ottr://encoding-hint",
+                                EncodingHintPayload {
+                                    id: probe_id,
+                                    encoding: "gbk".into(),
+                                },
+                            );
+                        }
+                    }
+                }
+                Ok(Err(e)) => eprintln!("[attach:{probe_id}] LANG probe exec failed: {e}"),
+                Err(_) => eprintln!("[attach:{probe_id}] LANG probe timed out"),
+            }
+        });
+    }
     Ok(id)
 }
 
@@ -602,6 +712,26 @@ async fn write_session(
     counters.input_bytes.fetch_add(n as u64, Ordering::Relaxed);
     counters.writes.fetch_add(1, Ordering::Relaxed);
     Ok(())
+}
+
+/// 会话编码切换（Task 9，A9 收口）：即切即生效，从下个转发 chunk 起。
+/// 返回值 = 切换瞬间 Decoder 残字节的按**旧编码**结算文本（通常为空；
+/// 残留的不完整序列按切换前契约出替换符）——前端把这段文本写进终端即完成
+/// 残字落账，字节永不静默丢弃。不支持集（big5 等）显式报错，不静默转码。
+#[tauri::command]
+fn set_session_encoding(
+    state: State<'_, AppState>,
+    id: String,
+    encoding: String,
+) -> Result<String, String> {
+    let enc = encoding_from_str(&encoding)
+        .ok_or_else(|| format!("unsupported encoding: {encoding} (utf-8/gbk/gb18030)"))?;
+    let sessions = state.sessions.lock().unwrap();
+    let entry = sessions
+        .get(&id)
+        .ok_or_else(|| format!("no such session: {id}"))?;
+    let flushed = entry.decoder.lock().unwrap().set_encoding(enc);
+    Ok(flushed)
 }
 
 /// Task 7 字节计数读数（Rust 侧转发计数）。
@@ -750,10 +880,11 @@ async fn spike_probe_channel(on_probe: Channel<InvokeResponseBody>) -> Result<()
 // 重连状态机不应反应；Closed/IpcFailed = 连接丢失，触发自动重连）。
 // ---------------------------------------------------------------------------
 
-/// 会话关闭原因（`ottr://session-closed` 载荷，serde snake_case）。
-#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
+/// 会话关闭原因（`ottr://session-closed` 载荷，serde snake_case）。pub 伴随
+/// pub 的 `forward_pty_loop` 直驱面（驱动脚本/example 读返回值用）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-enum SessionCloseReason {
+pub enum SessionCloseReason {
     /// drop_session 主动取消（关标签/手动断开）。
     Cancelled,
     /// 对端关闭（shell 退出 / 连接断开 / keepalive 超时）。
@@ -769,10 +900,13 @@ struct SessionClosedPayload {
 }
 
 #[allow(unused_assignments)] // last_flush 的最后一次赋值在 break 路径上不被读取（预期）
-async fn forward_pty_loop(
+/// 合批转发循环。pub = 驱动脚本/example 直驱面（T9 真夹具三段验证走本函数，
+/// 与正式会话同一代码路径）；常规入口经 attach_*。
+pub async fn forward_pty_loop(
     channel: &mut russh::Channel<russh::client::Msg>,
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
+    decoder: &Mutex<StreamDecoder>,
     session_id: &str,
     cancel: &Notify,
 ) -> SessionCloseReason {
@@ -802,6 +936,7 @@ async fn forward_pty_loop(
                 limit,
                 on_data,
                 counters,
+                decoder,
                 session_id,
             )
             .await
@@ -854,11 +989,13 @@ async fn forward_pty_loop(
             }
             Some(ChannelMsg::ExitStatus { .. }) => {}
             Some(ChannelMsg::Eof) => {
+                flush_decoder_tail(&mut buf, decoder);
                 if !paced_flush!() {
                     return SessionCloseReason::IpcFailed;
                 }
             }
             Some(ChannelMsg::Close) | None => {
+                flush_decoder_tail(&mut buf, decoder);
                 paced_flush!();
                 eprintln!("[batcher:{session_id}] pty closed");
                 return SessionCloseReason::Closed;
@@ -868,30 +1005,51 @@ async fn forward_pty_loop(
     }
 }
 
+/// 会话收尾（Eof/Close）：Decoder 残字结算（不完整序列 → 替换符，字节永不
+/// 静默丢弃），结算文本排在本批之前转发。
+fn flush_decoder_tail(buf: &mut Vec<u8>, decoder: &Mutex<StreamDecoder>) {
+    let tail = decoder.lock().unwrap().finish();
+    if !tail.is_empty() {
+        let mut merged = tail.into_bytes();
+        merged.extend_from_slice(buf);
+        *buf = merged;
+    }
+}
+
 /// flush 一批到前端。返回 false = send 失败，调用方**必须**终止转发循环。
 ///
 /// 【M-2 失败策略（T4 台账挂账：此前 send 失败仅 eprintln，字节静默丢失且循环
 /// 空转继续丢）】send 失败意味着前端通道已不可达（webview 关闭/通道断开），
 /// 重试无意义、继续循环只会静默丢字节并烧 CPU。三步定案：
-/// ① 失败字节计入显式计数 `send_failed_bytes/frames`——账目恒等式
-///    `pty_read == forwarded + send_failed + 批内残余` 失衡可见，绝不静默；
-/// ② 置会话级失败标志 `failed`（`session_stats` 可读，前端轮询可见——spike 阶段
-///    无推送通道，轮询即「上报前端」）；
+/// ① 失败字节计入显式计数 `send_failed_bytes/frames`——失衡可见，绝不静默；
+/// ② 置会话级失败标志 `failed`（`session_stats` 可读，前端轮询可见）；
 /// ③ 返回 false 让转发循环终止，连接随后统一 disconnect（进程端任务取消）。
+///
+/// 【Task 9 解码接入】send 前经会话 Decoder（合批后、IPC 前）：buf 里的原始
+/// PTY 字节解码为 UTF-8 文本再发。批尾不完整序列滞留 Decoder（≤3B）随下批
+/// 转发；解码输出为空（全部滞留）时不发空帧。forwarded_bytes 按解码后文本
+/// 字节记账（有损变换 + 残字滞留，与 pty_read_bytes 不再逐批恒等，见字段文档）。
 async fn flush_batch(
     buf: &mut Vec<u8>,
     deadline: &mut Option<Instant>,
     limit: usize,
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
+    decoder: &Mutex<StreamDecoder>,
     session_id: &str,
 ) -> bool {
     *deadline = None;
     if buf.is_empty() {
         return true;
     }
-    let n = buf.len();
-    let payload = std::mem::replace(buf, Vec::with_capacity(limit));
+    let raw = std::mem::replace(buf, Vec::with_capacity(limit));
+    // 解码（会话当前编码；切换由 set_session_encoding 即时生效，从下个 chunk 起）
+    let text = decoder.lock().unwrap().decode_chunk(&raw);
+    if text.is_empty() {
+        return true; // 全部为批尾残字，滞留待下批（不丢，不发空帧）
+    }
+    let n = text.len();
+    let payload = text.into_bytes();
     match on_data.send(InvokeResponseBody::Raw(payload)) {
         Ok(()) => {
             counters
@@ -955,6 +1113,7 @@ pub fn run() {
             attach_host_session,
             host_key_decision,
             write_session,
+            set_session_encoding,
             drop_session,
             session_stats,
             spike_report_latency,
@@ -1116,5 +1275,114 @@ mod tests {
         // 拒绝后重连：仍是 changed 强提醒（信任锚还在旧钥匙上，指纹依旧不一致）
         assert_eq!(host_key_ask_kind(KnownHosts::get(&vault, hk).unwrap().as_ref(), "SHA256:B"), Some("changed"));
         assert_eq!(KnownHosts::list(&vault).unwrap().len(), 1, "换钥不新增记录");
+    }
+
+    // --- Task 9（A9）：编码切换与转发路径解码 ---------------------------------
+
+    /// 编码字符串解析表：支持集 UTF-8/GBK/GB18030（GB2312 按 GBK），大小写/
+    /// 空白宽容；不支持的候选（T8 菜单遗留面）显式 None。
+    #[test]
+    fn encoding_from_str_supports_brief_set_only() {
+        assert_eq!(encoding_from_str("utf-8"), Some(Encoding::Utf8));
+        assert_eq!(encoding_from_str("UTF8"), Some(Encoding::Utf8));
+        assert_eq!(encoding_from_str(" gbk "), Some(Encoding::Gbk));
+        assert_eq!(encoding_from_str("GB2312"), Some(Encoding::Gbk));
+        assert_eq!(encoding_from_str("gb18030"), Some(Encoding::Gb18030));
+        assert_eq!(encoding_from_str("GB18030"), Some(Encoding::Gb18030));
+        for bad in ["", "big5", "shift_jis", "euc-kr", "latin1", "gbk;rm -rf"] {
+            assert_eq!(encoding_from_str(bad), None, "{bad:?} must be rejected");
+        }
+    }
+
+    /// flush_batch 转发路径解码：GBK 原始批 → IPC 帧是 UTF-8 文本（mock 会话流，
+    /// Channel::new 捕获 Raw 帧）；forwarded 按解码后字节记账。
+    #[test]
+    fn flush_batch_decodes_gbk_batch_before_ipc() {
+        use tauri::ipc::{Channel, InvokeResponseBody};
+
+        const GBK: &[u8] = &[
+            0xD6, 0xD0, 0xCE, 0xC4, 0xB2, 0xE2, 0xCA, 0xD4, 0x20, 0x47, 0x42, 0x4B, 0x20, 0xCA,
+            0xE4, 0xB3, 0xF6,
+        ];
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = Arc::clone(&captured);
+        let chan = Channel::new(move |body: InvokeResponseBody| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                sink.lock().unwrap().extend_from_slice(&bytes);
+            }
+            Ok(())
+        });
+        let counters = SessionCounters::default();
+        // 默认 UTF-8：GBK 批 → 替换符乱码（ASCII 段保真）
+        let decoder = Mutex::new(StreamDecoder::default());
+        let mut buf = GBK.to_vec();
+        let mut deadline = Some(Instant::now());
+        let ok = tauri::async_runtime::block_on(flush_batch(
+            &mut buf,
+            &mut deadline,
+            1024,
+            &chan,
+            &counters,
+            &decoder,
+            "t-utf8",
+        ));
+        assert!(ok);
+        assert!(buf.is_empty());
+        let out = captured.lock().unwrap().clone();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains('\u{FFFD}'), "utf-8 default must mojibake: {text:?}");
+        assert!(text.contains(" GBK "));
+        assert_eq!(counters.forwarded_bytes.load(Ordering::Relaxed) as usize, text.len());
+        assert_eq!(counters.frames.load(Ordering::Relaxed), 1);
+
+        // 切 GBK（set_session_encoding 的 Decoder 侧动作）→ 同批字节解出原文
+        captured.lock().unwrap().clear();
+        decoder.lock().unwrap().set_encoding(Encoding::Gbk);
+        let mut buf = GBK.to_vec();
+        let ok = tauri::async_runtime::block_on(flush_batch(
+            &mut buf,
+            &mut deadline,
+            1024,
+            &chan,
+            &counters,
+            &decoder,
+            "t-gbk",
+        ));
+        assert!(ok);
+        assert_eq!(
+            String::from_utf8(captured.lock().unwrap().clone()).unwrap(),
+            "中文测试 GBK 输出"
+        );
+
+        // 切回 UTF-8 后的批尾撕裂序列滞留（无空帧）；下批补齐重组
+        captured.lock().unwrap().clear();
+        decoder.lock().unwrap().set_encoding(Encoding::Utf8);
+        let mut buf = vec![0xE4, 0xB8]; // 「中」的前 2/3（UTF-8 不完整序列）
+        let ok = tauri::async_runtime::block_on(flush_batch(
+            &mut buf,
+            &mut deadline,
+            1024,
+            &chan,
+            &counters,
+            &decoder,
+            "t-torn",
+        ));
+        assert!(ok);
+        assert!(captured.lock().unwrap().is_empty(), "残批不发空帧");
+        let mut buf = vec![0xAD, 0x21]; // 补齐「中」+ '!'
+        let ok = tauri::async_runtime::block_on(flush_batch(
+            &mut buf,
+            &mut deadline,
+            1024,
+            &chan,
+            &counters,
+            &decoder,
+            "t-torn2",
+        ));
+        assert!(ok);
+        assert_eq!(
+            String::from_utf8(captured.lock().unwrap().clone()).unwrap(),
+            "中!"
+        );
     }
 }

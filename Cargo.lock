@@ -3176,6 +3176,7 @@ dependencies = [
  "base64 0.22.1",
  "keyring",
  "ottr-ssh",
+ "ottr-term",
  "ottr-vault",
  "russh",
  "serde",

@@ -31,6 +31,7 @@ import { initNotifyEvents } from "./notify/core";
 import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
+import { TitleBar } from "./titlebar/TitleBar";
 import {
   matchActionEvent,
   platform,
@@ -49,6 +50,9 @@ warnShortcutConflicts();
 
 // 平台口径（键位提示 / 命令面板 hint）：模块级只判一次。
 const PLATFORM = platform();
+
+// Tauri 运行时标记（标题栏只在其下渲染；纯浏览器 dev 无窗口控制可调）。
+const IS_TAURI = "__TAURI_INTERNALS__" in window;
 
 // A12：macOS 原生菜单动作回传事件（Rust menu.rs 把 ActionId 字符串转发过来）。
 const MENU_ACTION_EVENT = "ottr://menu-action";
@@ -267,6 +271,11 @@ function HomeLayout() {
 
   return (
     <div className="app-shell">
+      {/* A12：Win/Linux 自绘标题栏（decorations:false 的窗口壳；mac 不渲染走
+          原生红绿灯 + 系统菜单栏）。动作收口同一 handleAction。 */}
+      {PLATFORM !== "mac" && IS_TAURI && (
+        <TitleBar plat={PLATFORM} onAction={handleAction} />
+      )}
       <header className="topbar">
         <span className="topbar-title">Ottr</span>
         <button className="topbar-palette" data-testid="open-palette" onClick={() => setPaletteOpen(true)}>

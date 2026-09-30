@@ -1779,6 +1779,13 @@ pub fn run() {
             // 由窗口 ThemeChanged 事件兜底。初始值无需推送：前端挂载时读 matchMedia。
             // T11：同一挂点接 Focused → security::AutoLockState（失焦自动锁定计时）。
             if let Some(win) = app.get_webview_window("main") {
+                // A12（Task 14）：Win/Linux 关原生装饰——前端自绘标题栏补壳
+                // （src/titlebar/TitleBar.tsx：汉堡/拖拽区/min-max-close）。
+                // macOS 保留原生装饰（红绿灯 + 系统菜单栏）。
+                #[cfg(not(target_os = "macos"))]
+                if let Err(e) = win.set_decorations(false) {
+                    eprintln!("[setup] set_decorations(false) failed: {e}");
+                }
                 let autolock: Arc<security::AutoLockState> =
                     app.state::<Arc<security::AutoLockState>>().inner().clone();
                 let watcher = win.clone();

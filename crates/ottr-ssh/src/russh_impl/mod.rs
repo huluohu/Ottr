@@ -4,16 +4,21 @@
 //! （spike 阶段 pragmatic：Channel 直接用 russh 类型，见 trait 文档的 libssh2 适配点）。
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use russh::client::{self, Handle};
 
 use crate::auth::{self, ClientAuthHandler, HostKeyPolicy};
 use crate::{AuthMethod, Error, Result, SshTransport};
 
-/// 组装握手用 config 与 host key 记录型 Handler（[`connect`] 与
-/// [`connect_stream`] 共用，保证直连与隧道跳行为一致）。
+/// 组装握手用 config 与 host key 记录型 Handler（`connect*` 系列共用，
+/// 保证直连与隧道跳行为一致）。`keepalive_interval` 透传进 russh 传输层：
+/// `Some(d)` 时 run loop 每 d 发送传输层 keepalive（SSH 全局请求，**不进任何
+/// channel 数据流**——不会污染终端）；`keepalive_max`（默认 3）个周期内未收到
+/// 对端任何数据即 KeepaliveTimeout 断连（死链检测，Phase 1 会话重连的消费点）。
 fn handshake_parts(
     host_key_cb: HostKeyPolicy,
+    keepalive_interval: Option<Duration>,
 ) -> (
     Arc<client::Config>,
     ClientAuthHandler,
@@ -32,7 +37,7 @@ fn handshake_parts(
     );
     let config = Arc::new(client::Config {
         inactivity_timeout: None,
-        keepalive_interval: None,
+        keepalive_interval,
         ..Default::default()
     });
     (
@@ -74,8 +79,22 @@ pub async fn connect(
     auth: AuthMethod,
     host_key_cb: HostKeyPolicy,
 ) -> Result<SshSession> {
+    connect_with_keepalive(addr, port, username, auth, host_key_cb, None).await
+}
+
+/// [`connect`] 的 keepalive 变体（Phase 1 会话管理消费）：交互式长连会话传
+/// `Some(Duration::from_secs(60))` 开启传输层 keepalive；短生命周期连接
+/// （deploy/exec）用 [`connect`]（interval=None，行为与 Phase 0 完全一致）。
+pub async fn connect_with_keepalive(
+    addr: &str,
+    port: u16,
+    username: &str,
+    auth: AuthMethod,
+    host_key_cb: HostKeyPolicy,
+    keepalive_interval: Option<Duration>,
+) -> Result<SshSession> {
     let (config, handler, host_key_bytes, host_key_fingerprints, host_key_rejected) =
-        handshake_parts(host_key_cb);
+        handshake_parts(host_key_cb, keepalive_interval);
 
     let mut handle = match client::connect(config, (addr, port), handler).await {
         Ok(handle) => handle,
@@ -105,7 +124,7 @@ where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     let (config, handler, host_key_bytes, host_key_fingerprints, host_key_rejected) =
-        handshake_parts(host_key_cb);
+        handshake_parts(host_key_cb, None);
 
     let mut handle = match client::connect_stream(config, stream, handler).await {
         Ok(handle) => handle,

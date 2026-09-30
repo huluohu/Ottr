@@ -134,7 +134,8 @@ pub struct KeyDeployReport {
 /// 临时私钥文件的 Drop guard（评审 I-1）：离开作用域即删——key_deploy 的任何
 /// 提前返回（port 越界 / 部署超时 / 连接失败）与成功路径统一收尾，杜绝明文
 /// 私钥滞留 OS temp dir。此前为手动 remove_file，只覆盖成功路径（泄漏已修）。
-struct TempKeyGuard(Option<PathBuf>);
+/// Task 7 起 `attach_host_session` 复用（key 凭据连接的同一收尾语义）。
+pub(crate) struct TempKeyGuard(Option<PathBuf>);
 
 impl Drop for TempKeyGuard {
     fn drop(&mut self) {
@@ -147,7 +148,9 @@ impl Drop for TempKeyGuard {
 /// 部署认证材料：从 vault 服务端解析（明文不过前端）。
 /// 返回 AuthMethod 与临时私钥文件的 [`TempKeyGuard`]（key 认证时 guard 内
 /// 持有路径，Drop 即删——所有权随函数体走，所有返回路径都清理）。
-async fn resolve_deploy_auth(
+/// Task 7 更名 pub(crate)：`attach_host_session` 复用同一「凭据 → AuthMethod」
+/// 解析（明文只在 Rust 侧解密，前端只传 host_id / credential_id）。
+pub(crate) async fn resolve_credential_auth(
     vault: &VaultState,
     auth_credential_id: i64,
 ) -> Result<(AuthMethod, TempKeyGuard), String> {
@@ -237,7 +240,7 @@ async fn key_deploy_inner(
     public_key: String,
 ) -> CmdResult<KeyDeployReport> {
     // guard 持有临时私钥路径直到本函数返回（含 ? 提前返回），Drop 即删
-    let (auth, _temp_key_guard) = resolve_deploy_auth(vault, auth_credential_id).await?;
+    let (auth, _temp_key_guard) = resolve_credential_auth(vault, auth_credential_id).await?;
     let port = u16::try_from(port).map_err(|_| format!("port {port} out of range"))?;
 
     // 裁定 #3：部署 MVP 主机密钥策略 = 接受 SHA256: 指纹（观察值随回执返回并落
@@ -352,7 +355,7 @@ mod tests {
 
         // 对照组：guard 存活期内文件确实在（证明「落盘发生过」，断言不是恒真）
         let (auth, guard) =
-            tauri::async_runtime::block_on(resolve_deploy_auth(&state, cred.id)).unwrap();
+            tauri::async_runtime::block_on(resolve_credential_auth(&state, cred.id)).unwrap();
         assert!(matches!(auth, AuthMethod::Key { .. }));
         let paths = leaked_temp_keys();
         assert_eq!(paths.len(), 1, "guard 存活期内临时 PEM 应存在");

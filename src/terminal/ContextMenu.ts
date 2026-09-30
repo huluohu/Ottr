@@ -15,8 +15,9 @@ export interface ContextMenuItem {
   separatorAfter?: boolean;
 }
 
-/** 编码候选（与 HostForm 的 ENCODINGS 同一集合；"" = 跟随主机设置/UTF-8）。 */
-export const MENU_ENCODINGS = ["utf-8", "gbk", "gb18030", "big5", "shift_jis", "euc-kr"] as const;
+/** 编码候选（Task 9 收口：与 Rust encoding_from_str 支持集一致——
+ * utf-8/gbk/gb18030；big5 等其余候选 Rust 侧无解码器，删项防「选了出乱码」）。 */
+export const MENU_ENCODINGS = ["utf-8", "gbk", "gb18030"] as const;
 
 /** 构建菜单所需的上下文快照（SessionTerminal 在 contextmenu 时采集）。 */
 export interface MenuContext {

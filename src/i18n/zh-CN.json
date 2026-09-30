@@ -223,7 +223,11 @@
     "pasteMultiline": "粘贴内容包含多行文本，回车将逐行执行：",
     "pasteDanger": "粘贴内容命中危险命令规则：",
     "pastePreview": "预览",
-    "pasteConfirm": "仍要粘贴"
+    "pasteConfirm": "仍要粘贴",
+    "encodingHint": "检测到 {{encoding}} 编码，切换？",
+    "encodingHintAccept": "切换为 {{encoding}}",
+    "encodingHintDismiss": "不再提示",
+    "encodingBadgeAria": "切换会话编码（当前 {{encoding}}，点击循环）"
   },
   "ai": {
     "title": "AI 助手",

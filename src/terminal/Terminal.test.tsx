@@ -79,6 +79,8 @@ function sess(over: Partial<Session> & Pick<Session, "id">): Session {
     lastError: null,
     nextRetryAt: null,
     paneOf: null,
+    encoding: "utf-8",
+    encodingHint: null,
     ...over,
   };
 }
@@ -266,6 +268,82 @@ describe("主题实时跟随（system 模式 OS 明暗切换 → xterm theme）"
 });
 
 describe("TerminalArea（分屏主区）", () => {
+  it("编码徽标：聚焦 pane 的当前编码，点击循环 utf-8→gbk→gb18030 并下发 Rust", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-a" })],
+      activeId: "t-a",
+      trees: { "t-a": { kind: "leaf", id: "t-a" } },
+      activePane: { "t-a": "t-a" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalArea />
+      </ThemeProvider>,
+    );
+    const badge = screen.getByTestId("encoding-badge");
+    expect(badge.textContent).toBe("UTF-8");
+    expect(badge.getAttribute("data-encoding")).toBe("utf-8");
+
+    fireEvent.click(badge); // utf-8 → gbk
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gbk");
+    expect(mockedInvoke).toHaveBeenCalledWith("set_session_encoding", {
+      id: "pty-1",
+      encoding: "gbk",
+    });
+    expect(screen.getByTestId("encoding-badge").getAttribute("data-encoding")).toBe("gbk");
+    expect(screen.getByTestId("encoding-badge").textContent).toBe("GBK");
+
+    fireEvent.click(screen.getByTestId("encoding-badge")); // gbk → gb18030
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gb18030");
+    fireEvent.click(screen.getByTestId("encoding-badge")); // gb18030 → utf-8
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("utf-8");
+  });
+
+  it("编码提示条（Task 9）：提示展示/切换下发，接受记一次性可关", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-h", encodingHint: "gbk" })],
+      activeId: "t-h",
+      trees: { "t-h": { kind: "leaf", id: "t-h" } },
+      activePane: { "t-h": "t-h" },
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="t-h" />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId("encoding-hint").textContent).toContain("GBK");
+
+    fireEvent.click(screen.getByTestId("encoding-hint-accept"));
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.encoding).toBe("gbk");
+    expect(s.encodingHint).toBeNull();
+    expect(mockedInvoke).toHaveBeenCalledWith("set_session_encoding", {
+      id: "pty-1",
+      encoding: "gbk",
+    });
+    expect(JSON.parse(localStorage.getItem("ottr.encoding.hintDismissed") ?? "[]")).toEqual([1]);
+  });
+
+  it("编码提示条：dismiss 只清除提示并持久化，不改编码", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-h2", encodingHint: "gbk" })],
+      activeId: "t-h2",
+      trees: { "t-h2": { kind: "leaf", id: "t-h2" } },
+      activePane: { "t-h2": "t-h2" },
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="t-h2" />
+      </ThemeProvider>,
+    );
+    fireEvent.click(screen.getByTestId("encoding-hint-dismiss"));
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.encoding).toBe("utf-8");
+    expect(s.encodingHint).toBeNull();
+    expect(screen.queryByTestId("encoding-hint")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("ottr.encoding.hintDismissed") ?? "[]")).toEqual([1]);
+  });
+
   it("分隔条带 i18n aria 标签与方向；⌘F 呼出活动 pane 的搜索栏", () => {
     useSessionStore.setState({
       sessions: [sess({ id: "t-a" }), sess({ id: "t-b", paneOf: "t-a" })],

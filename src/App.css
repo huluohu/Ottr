@@ -745,9 +745,53 @@ button[data-active="true"] {
 .session-term {
   width: 100%;
   height: 100%;
+  position: relative; /* 编码提示条（Task 9）绝对定位于终端顶部 */
 }
 .session-term .xterm {
   height: 100%;
+}
+
+/* 编码检测提示条（Task 9，A9）：detect_hint 命中后浮于终端顶部，不挤布局。
+ * 颜色只引用 --color-*/--border-*/--surface-*/--fg-* 语义层（主题纪律）。 */
+.encoding-hint {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--fg-muted);
+  font-size: 0.8em;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.encoding-hint-accept {
+  color: var(--color-accent-text);
+  font-size: inherit;
+}
+.encoding-hint-dismiss {
+  color: var(--fg-muted);
+  font-size: 1em;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+/* 编码徽标（Task 9）：term-toolbar 右侧，聚焦 pane 的会话编码，点击循环切换 */
+.encoding-badge {
+  margin-left: auto;
+  font-family: ui-monospace, monospace;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+.encoding-badge[data-encoding="gbk"],
+.encoding-badge[data-encoding="gb18030"] {
+  color: var(--color-accent-text);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
 
 /* 分隔条（Task 8）：命中面 = split.ts dividers() 矩形，拖拽回写 setPaneRatio */

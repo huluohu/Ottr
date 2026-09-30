@@ -16,8 +16,9 @@ export interface HostFormProps {
   onClose: () => void;
 }
 
-/** 编码覆盖候选（值与 ottr-term encoding 支持集对齐；"" = 不覆盖）。 */
-const ENCODINGS = ["utf-8", "gbk", "gb18030", "big5", "shift_jis", "euc-kr"];
+/** 编码覆盖候选（Task 9 收口：与 Rust encoding_from_str 支持集一致——
+ * utf-8/gbk/gb18030；big5 等无解码器的候选移除，防「存了就乱码」的静默陷阱）。 */
+const ENCODINGS = ["utf-8", "gbk", "gb18030"];
 
 export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   const { t } = useTranslation();

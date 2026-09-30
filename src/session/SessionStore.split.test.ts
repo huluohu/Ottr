@@ -64,6 +64,8 @@ function sess(over: Partial<Session> & Pick<Session, "id">): Session {
     lastError: null,
     nextRetryAt: null,
     paneOf: null,
+    encoding: "utf-8",
+    encodingHint: null,
     ...over,
   };
 }

@@ -3,9 +3,11 @@
 // 事件名契约（Rust 侧 lib.rs）：
 //   ottr://host-key-ask   HostKeyAskPayload — TOFU 确认框问询
 //   ottr://session-closed SessionClosedPayload — 连接丢失/主动关闭通知
+//   ottr://encoding-hint  EncodingHintPayload — detect_hint 命中 GBK（Task 9）
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   useSessionStore,
+  type EncodingHintPayload,
   type HostKeyAskPayload,
   type SessionClosedPayload,
 } from "./SessionStore";
@@ -27,6 +29,11 @@ export async function initSessionEvents(): Promise<void> {
   unlisteners.push(
     await listen<SessionClosedPayload>("ottr://session-closed", (e) => {
       store.getState().onSessionClosed(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen<EncodingHintPayload>("ottr://encoding-hint", (e) => {
+      store.getState().onEncodingHint(e.payload);
     }),
   );
 }

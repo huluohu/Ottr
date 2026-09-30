@@ -23,7 +23,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
-import { registerSink, unregisterSink, useSessionStore, isHostKeyRejection } from "../session/SessionStore";
+import { registerSink, unregisterSink, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
 import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
 import { terminalThemes } from "../theme/terminal-themes";
 import type { ITheme } from "@xterm/xterm";
@@ -55,9 +55,8 @@ export function applyTermTheme(
   term.options.theme = terminalThemes[resolved];
 }
 
-// 会话级编码覆盖（右键菜单写入；连接侧转码消费挂账——ottr-term encoding 转换器
-// 已有，attach 数据面接线属后续任务，见 task-8-report 偏差记录）。
-const sessionEncoding = new Map<string, string>();
+// 会话编码状态在 SessionStore（Task 9）：T8 的临时 sessionEncoding 内存表已删，
+// 右键菜单/徽标/提示条统一走 store.setSessionEncoding（Rust 侧即切即生效）。
 
 // ---------------------------------------------------------------------------
 // 单会话终端（xterm 装配 + 状态横幅 + 右键菜单 + 粘贴确认）
@@ -113,6 +112,39 @@ export function PasteConfirmDialog({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 编码检测提示条（Task 9，A9）：Rust detect_hint 命中 GBK 家族后展示
+ * 「检测到 GBK 编码，切换？」；「切换」= acceptEncodingHint（切编码 + 同 host
+ * 记一次性可关），「忽略」= dismissEncodingHint。 */
+export function EncodingHintBar({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
+  const hint = useSessionStore(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.encodingHint ?? null,
+  );
+  if (!hint) return null;
+  return (
+    <div className="encoding-hint" data-testid="encoding-hint" role="status">
+      <span className="encoding-hint-text">
+        {t("terminal.encodingHint", { encoding: encodingName(hint) })}
+      </span>
+      <button
+        className="encoding-hint-accept"
+        data-testid="encoding-hint-accept"
+        onClick={() => useSessionStore.getState().acceptEncodingHint(sessionId)}
+      >
+        {t("terminal.encodingHintAccept", { encoding: encodingName(hint) })}
+      </button>
+      <button
+        className="encoding-hint-dismiss"
+        aria-label={t("terminal.encodingHintDismiss")}
+        data-testid="encoding-hint-dismiss"
+        onClick={() => useSessionStore.getState().dismissEncodingHint(sessionId)}
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -298,7 +330,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const ctx: MenuContext = {
       hasSelection: term?.hasSelection() ?? false,
       copyOnSelect: loadTerminalSettings().copyOnSelect,
-      encoding: sessionEncoding.get(sessionId) ?? "utf-8",
+      encoding: useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.encoding ?? "utf-8",
     };
     const width = 220;
     setMenu({
@@ -348,7 +380,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         break;
       default:
         if (id.startsWith("encoding:")) {
-          sessionEncoding.set(sessionId, id.slice("encoding:".length));
+          // Task 9：切换走 store（Rust 侧 set_session_encoding 即切即生效）
+          const enc = id.slice("encoding:".length) as SessionEncoding;
+          store.setSessionEncoding(sessionId, enc);
         }
         break;
     }
@@ -366,6 +400,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="session-term" ref={hostRef} data-session-id={sessionId} onContextMenu={openContextMenu}>
+      <EncodingHintBar sessionId={sessionId} />
       {menu && (
         <>
           <div className="ctx-overlay" onMouseDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
@@ -553,6 +588,13 @@ export function TerminalArea() {
   const dividerList = activeTree ? dividers(activeTree, bounds) : [];
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
 
+  // 编码徽标（Task 9）：聚焦 pane 的当前会话编码，点击循环 utf-8→gbk→gb18030。
+  const activeEncoding = useSessionStore((s) =>
+    focusedPane != null
+      ? (s.sessions.find((x) => x.id === focusedPane)?.encoding ?? null)
+      : null,
+  );
+
   // ⌘F / Ctrl+F 呼出聚焦 pane 的搜索；Esc 由搜索栏自处理
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -610,6 +652,23 @@ export function TerminalArea() {
         >
           {t("terminal.splitDown")}
         </button>
+        {activeEncoding != null && (
+          <button
+            className="encoding-badge"
+            data-testid="encoding-badge"
+            data-encoding={activeEncoding}
+            aria-label={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
+            title={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
+            style={{ marginLeft: "auto" }}
+            onClick={() =>
+              useSessionStore
+                .getState()
+                .setSessionEncoding(focusedPane as string, nextEncoding(activeEncoding))
+            }
+          >
+            {encodingName(activeEncoding)}
+          </button>
+        )}
       </div>
       <div className="term-stack" ref={stackRef} data-testid="term-stack">
         {sessions.map((session) => {

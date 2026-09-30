@@ -15,7 +15,9 @@ import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   OPEN_TABS_KEY,
   reconnectDelayMs,
+  registerSink,
   toBytes,
+  unregisterSink,
   useSessionStore,
   type Session,
 } from "./SessionStore";
@@ -329,6 +331,113 @@ describe("toBytes 通道解码", () => {
     const buf = src.slice().buffer;
     expect(toBytes(buf)).toEqual(src);
     expect(toBytes(btoa("\x01\x02\x03\xfa"))).toEqual(src);
+  });
+});
+
+describe("会话编码（Task 9，A9）", () => {
+  const gbkHost: Host = { ...hostA, id: 9, name: "gbk-box", encoding_override: "gbk" };
+  const big5Host: Host = { ...hostA, id: 10, name: "big5-box", encoding_override: "big5" };
+
+  it("openTab：encoding_override 进初值（支持集内）；不支持集兜底 utf-8", () => {
+    const store = useSessionStore.getState();
+    store.openTab(gbkHost, { autoConnect: false });
+    store.openTab(big5Host, { autoConnect: false });
+    const sessions = useSessionStore.getState().sessions;
+    expect(sessions[0].encoding).toBe("gbk");
+    expect(sessions[1].encoding).toBe("utf-8"); // big5 无 Rust 解码器，兜底
+  });
+
+  it("connect 成功后把会话编码下发新 rust 会话（重连不丢手动切换）", async () => {
+    mockedInvoke.mockResolvedValue("pty-enc");
+    const store = useSessionStore.getState();
+    const id = store.openTab(gbkHost, { autoConnect: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("set_session_encoding", {
+      id: "pty-enc",
+      encoding: "gbk",
+    });
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gbk");
+    void id;
+  });
+
+  it("setSessionEncoding：状态即变 + 已连接下发 Rust + 残字结算写回终端", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "set_session_encoding"
+        ? Promise.resolve("\u{FFFD}") // 模拟切换瞬间的残字结算文本
+        : Promise.resolve("pty-1"),
+    );
+    const store = useSessionStore.getState();
+    const id = store.openTab(hostA, { autoConnect: false });
+    const writes: Uint8Array[] = [];
+    registerSink(id, {
+      write: (b) => writes.push(b),
+      getSize: () => ({ cols: 80, rows: 24 }),
+    });
+    // 未连接：只记状态，不 invoke
+    store.setSessionEncoding(id, "gbk");
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gbk");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("set_session_encoding", expect.anything());
+
+    markConnected(id, "pty-1");
+    store.setSessionEncoding(id, "gb18030");
+    expect(mockedInvoke).toHaveBeenCalledWith("set_session_encoding", {
+      id: "pty-1",
+      encoding: "gb18030",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    // 残字结算文本写回终端 sink
+    expect(writes.map((w) => new TextDecoder().decode(w))).toEqual(["\u{FFFD}"]);
+    unregisterSink(id);
+  });
+
+  it("onEncodingHint：按 rustId 反查；非 utf-8 编码不提示", () => {
+    mockedInvoke.mockResolvedValue("");
+    const store = useSessionStore.getState();
+    const id = store.openTab(hostA, { autoConnect: false });
+    markConnected(id, "pty-h");
+    useSessionStore.getState().onEncodingHint({ id: "pty-h", encoding: "gbk" });
+    expect(useSessionStore.getState().sessions[0].encodingHint).toBe("gbk");
+
+    // 已切 GBK 后再来的提示被忽略
+    useSessionStore.getState().setSessionEncoding(id, "gbk");
+    useSessionStore.getState().onEncodingHint({ id: "pty-h", encoding: "gbk" });
+    expect(useSessionStore.getState().sessions[0].encodingHint).toBeNull();
+
+    // 未知 rustId 忽略
+    useSessionStore.getState().onEncodingHint({ id: "pty-ghost", encoding: "gbk" });
+    expect(useSessionStore.getState().sessions).toHaveLength(1);
+  });
+
+  it("accept：切编码 + 同 host 记一次性可关；dismiss：只记不再提示", () => {
+    mockedInvoke.mockResolvedValue("");
+    const store = useSessionStore.getState();
+    const id = store.openTab(hostA, { autoConnect: false });
+    markConnected(id, "pty-a");
+    useSessionStore.getState().onEncodingHint({ id: "pty-a", encoding: "gbk" });
+
+    useSessionStore.getState().acceptEncodingHint(id);
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gbk");
+    expect(useSessionStore.getState().sessions[0].encodingHint).toBeNull();
+    expect(JSON.parse(localStorage.getItem("ottr.encoding.hintDismissed") ?? "[]")).toEqual([1]);
+    expect(mockedInvoke).toHaveBeenCalledWith("set_session_encoding", {
+      id: "pty-a",
+      encoding: "gbk",
+    });
+
+    // 同 host 重连后再来提示 → 已记「不再提示」，不再弹
+    useSessionStore.getState().onEncodingHint({ id: "pty-a", encoding: "gbk" });
+    expect(useSessionStore.getState().sessions[0].encodingHint).toBeNull();
+
+    // dismiss 路径：另一个 host
+    const id2 = useSessionStore.getState().openTab(hostB, { autoConnect: false });
+    markConnected(id2, "pty-b");
+    useSessionStore.getState().onEncodingHint({ id: "pty-b", encoding: "gbk" });
+    useSessionStore.getState().dismissEncodingHint(id2);
+    expect(useSessionStore.getState().sessions[1].encodingHint).toBeNull();
+    expect(useSessionStore.getState().sessions[1].encoding).toBe("utf-8");
+    expect(
+      JSON.parse(localStorage.getItem("ottr.encoding.hintDismissed") ?? "[]").sort(),
+    ).toEqual([1, 2]);
   });
 });
 

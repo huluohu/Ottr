@@ -224,7 +224,11 @@
     "pasteMultiline": "Pasted text has multiple lines; each line will run in sequence:",
     "pasteDanger": "Pasted text matches dangerous command rules:",
     "pastePreview": "Preview",
-    "pasteConfirm": "Paste anyway"
+    "pasteConfirm": "Paste anyway",
+    "encodingHint": "{{encoding}} encoding detected. Switch?",
+    "encodingHintAccept": "Switch to {{encoding}}",
+    "encodingHintDismiss": "Don't ask again",
+    "encodingBadgeAria": "Switch session encoding (current {{encoding}}, click to cycle)"
   },
   "ai": {
     "title": "AI Assistant",

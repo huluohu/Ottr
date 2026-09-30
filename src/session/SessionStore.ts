@@ -78,6 +78,67 @@ export interface Session {
   /** 分屏归属（Task 8）：null = 标签根会话（TabBar 只渲染根）；
    * 非空 = 所属标签根会话 id（一个标签一棵 pane 树，树叶 id = 会话 id）。 */
   paneOf: string | null;
+  /** 会话编码（Task 9，A9）：初值 = host encoding_override（支持集内）兜底
+   * utf-8；setSessionEncoding 切换（即切即生效，不写回 host——重连后由
+   * connect 重新下发）。 */
+  encoding: SessionEncoding;
+  /** detect_hint 提示（Rust `ottr://encoding-hint`）：非空 = 展示
+   * 「检测到 GBK，切换？」提示条；接受/忽略后清空（per-host 一次，可关）。 */
+  encodingHint: SessionEncoding | null;
+}
+
+// --- 会话编码（Task 9，A9） --------------------------------------------------
+
+/** 会话编码支持集（与 Rust encoding_from_str / ottr-term Decoder 同口径；
+ * big5 等其余 T8 菜单候选 Rust 侧无解码器，显式不支持）。 */
+export const SESSION_ENCODINGS = ["utf-8", "gbk", "gb18030"] as const;
+export type SessionEncoding = (typeof SESSION_ENCODINGS)[number];
+
+/** 编码 id → 展示名（徽标/提示条用；编码名不作 i18n）。 */
+export function encodingName(e: SessionEncoding): string {
+  return e === "utf-8" ? "UTF-8" : e === "gbk" ? "GBK" : "GB18030";
+}
+
+/** host 表 encoding_override 字符串 → 支持集内编码；无法识别 → null（兜底 utf-8）。 */
+export function parseSessionEncoding(v: string | null | undefined): SessionEncoding | null {
+  return (SESSION_ENCODINGS as readonly string[]).includes(v ?? "")
+    ? (v as SessionEncoding)
+    : null;
+}
+
+/** 编码徽标点击循环序（utf-8 → gbk → gb18030 → utf-8）。 */
+export function nextEncoding(e: SessionEncoding): SessionEncoding {
+  return SESSION_ENCODINGS[(SESSION_ENCODINGS.indexOf(e) + 1) % SESSION_ENCODINGS.length];
+}
+
+const HINT_DISMISSED_KEY = "ottr.encoding.hintDismissed";
+
+/** 已「不再提示」的 hostId 集（localStorage；「一次性可关」= 接受/忽略后同
+ * host 不再弹，含换标签/重连）。 */
+export function loadDismissedEncodingHosts(): number[] {
+  try {
+    const raw = localStorage.getItem(HINT_DISMISSED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v): v is number => typeof v === "number") : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDismissedEncodingHosts(ids: number[]): void {
+  try {
+    localStorage.setItem(HINT_DISMISSED_KEY, JSON.stringify(ids));
+  } catch {
+    // 持久化失败不阻塞提示条
+  }
+}
+
+/** `ottr://encoding-hint` 事件载荷（Rust EncodingHintPayload 同构）。 */
+export interface EncodingHintPayload {
+  /** Rust 会话 id（按 rustId 反查会话）。 */
+  id: string;
+  /** 固定 "gbk"（Rust 侧仅 detect_hint 命中 GBK 家族才发事件）。 */
+  encoding: "gbk";
 }
 
 export interface SessionSettings {
@@ -231,6 +292,18 @@ interface SessionStore {
   setPaneRatio: (tabId: string, path: readonly number[], ratio: number) => void;
   /** 打开搜索栏并定位到会话（null = 关闭）。 */
   openSearch: (sessionId: string | null) => void;
+
+  // --- 会话编码（Task 9，A9） -----------------------------------------------
+  /** 切换会话编码：状态即变 + Rust 侧 set_session_encoding（残字结算文本写回
+   * 终端）；未连接时只记状态（connect 成功后统一下发）。 */
+  setSessionEncoding: (id: string, encoding: SessionEncoding) => void;
+  /** ottr://encoding-hint 事件入口：按 rustId 反查会话；已是目标编码或该 host
+   * 已「不再提示」则忽略。 */
+  onEncodingHint: (payload: EncodingHintPayload) => void;
+  /** 提示条「切换」：切到提示编码 + 同 host 记「不再提示」。 */
+  acceptEncodingHint: (id: string) => void;
+  /** 提示条「忽略」：同 host 记「不再提示」（一次性可关）。 */
+  dismissEncodingHint: (id: string) => void;
 }
 
 /** 会话内联状态补丁（找不到会话时静默——迟到事件的常规路径）。 */
@@ -280,6 +353,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       lastError: null,
       nextRetryAt: null,
       paneOf: null,
+      encoding: parseSessionEncoding(host.encoding_override) ?? "utf-8",
+      encodingHint: null,
     };
     set((st) => {
       const sessions = [...st.sessions, session];
@@ -413,6 +488,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           lastError: null,
         }),
       }));
+      // 会话编码下发（Task 9）：Rust 侧 attach 已按 host encoding_override 初始化；
+      // 这里把会话级手动切换（不写回 host）重新下发到新 rust 会话——重连不丢用户
+      // 的切换，utf-8 是 Rust 侧默认值无需下发。
+      const encoding = get().sessions.find((s) => s.id === id)?.encoding ?? "utf-8";
+      if (encoding !== "utf-8") {
+        void invoke("set_session_encoding", { id: rustId, encoding }).catch(() => {});
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) return;
@@ -576,6 +658,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       lastError: null,
       nextRetryAt: null,
       paneOf: tabId,
+      encoding: root.encoding, // 分屏 pane 沿用标签的会话编码
+      encodingHint: null,
     };
     set((s0) => ({
       sessions: [...s0.sessions, paneSession],
@@ -640,6 +724,57 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }),
 
   openSearch: (sessionId) => set({ searchSessionId: sessionId }),
+
+  // --- 会话编码（Task 9，A9） -----------------------------------------------
+
+  setSessionEncoding: (id, encoding) => {
+    set((st) => ({
+      sessions: patchSession(st.sessions, id, { encoding, encodingHint: null }),
+    }));
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session?.rustId) return; // 未连接：只记状态，connect 成功后统一下发
+    void invoke<string>("set_session_encoding", { id: session.rustId, encoding })
+      .then((flushed) => {
+        // 残字结算文本（切换瞬间的批尾不完整序列，通常为空）写回终端——字节永不静默丢弃
+        if (flushed) {
+          sinks.get(id)?.write(new TextEncoder().encode(flushed));
+        }
+      })
+      .catch(() => {});
+  },
+
+  onEncodingHint: (payload) => {
+    const session = get().sessions.find((s) => s.rustId === payload.id);
+    if (!session) return; // 未知会话（已关标签）——忽略
+    if (session.encoding !== "utf-8") return; // 已在非 UTF-8 编码，无需提示
+    if (loadDismissedEncodingHosts().includes(session.hostId)) return; // 同 host 一次性可关
+    set((st) => ({
+      sessions: patchSession(st.sessions, session.id, {
+        encodingHint: parseSessionEncoding(payload.encoding) ?? "gbk",
+      }),
+    }));
+  },
+
+  acceptEncodingHint: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session?.encodingHint) return;
+    const encoding = session.encodingHint;
+    persistDismissedEncodingHosts([
+      ...new Set([...loadDismissedEncodingHosts(), session.hostId]),
+    ]);
+    get().setSessionEncoding(id, encoding);
+  },
+
+  dismissEncodingHint: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session) return;
+    persistDismissedEncodingHosts([
+      ...new Set([...loadDismissedEncodingHosts(), session.hostId]),
+    ]);
+    set((st) => ({
+      sessions: patchSession(st.sessions, id, { encodingHint: null }),
+    }));
+  },
 }));
 
 // --- generation 守卫 ---------------------------------------------------------

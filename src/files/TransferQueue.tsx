@@ -65,6 +65,15 @@ export function TransferQueue() {
             <span className={`queue-status`} data-status={item.status}>
               {statusLabel(item, t)}
             </span>
+            {item.status === "failed" && item.error && (
+              <span
+                className="queue-error"
+                data-testid={`queue-error-${item.transferId}`}
+                title={item.error}
+              >
+                {t("files.queue.errorText", { message: item.error })}
+              </span>
+            )}
             {item.status === "active" && (
               <button
                 className="queue-act"

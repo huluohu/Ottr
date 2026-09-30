@@ -158,6 +158,30 @@ pub fn journal_header(identity_path: &str, total: u64, mode: &str) -> String {
     format!("{JOURNAL_MAGIC}\t{identity_path}\t{total}\t{mode}\n")
 }
 
+/// journal 文件名派生（Task 10 Fix round 1，C-1）：sha256 + base64url 无填充。
+///
+/// `scope` = **传输作用域身份**，与 v1 头部的（mode, identity_path, total）共同
+/// 构成完整传输身份：下载 scope = host 端点（`address:port`），上传 scope =
+/// 本地源路径。同 (mode, path, total) 但 scope 不同的 journal **不共享文件名**——
+/// 跨主机/跨源的同路径同大小文件各用各的 journal，杜绝「A 机已传内容被 B 机
+/// 按旧 offset 跳过」（头部身份校验只看 path+size，scope 在文件名层补上最后
+/// 一块身份）。
+pub fn journal_file_name(mode: &str, scope: &str, identity_path: &str, total: u64) -> String {
+    use base64::Engine as _;
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(mode.as_bytes());
+    hasher.update(b"|");
+    hasher.update(scope.as_bytes());
+    hasher.update(b"|");
+    hasher.update(identity_path.as_bytes());
+    hasher.update(b"|");
+    hasher.update(total.to_string().as_bytes());
+    let digest = hasher.finalize();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
+}
+
+
 /// 断点续传 journal。语义见模块注释的不变量。
 struct Journal {
     file: Mutex<std::fs::File>,
@@ -703,5 +727,33 @@ impl FileTransfer for SshSession {
         progress: Option<ProgressHook>,
     ) -> impl Future<Output = Result<TransferStats>> + Send {
         upload_parallel(self, local, remote, chunks, journal_path, cancel, progress)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Fix round 1 C-1 回归（单测面）：同 path+size+mode 跨身份 scope 的 journal
+    /// 文件名必须不同（跨主机/跨源不互通），同身份必须派生同名。
+    #[test]
+    fn journal_file_name_binds_scope_identity() {
+        let a1 = journal_file_name("down", "10.0.0.1:22", "/tmp/x.bin", 1000);
+        let b1 = journal_file_name("down", "10.0.0.2:22", "/tmp/x.bin", 1000);
+        assert_ne!(a1, b1, "cross-host same path+size must NOT share a journal");
+
+        let up_a = journal_file_name("up", "/Users/me/a.bin", "/srv/x.bin", 1000);
+        let up_b = journal_file_name("up", "/Users/me/b.bin", "/srv/x.bin", 1000);
+        assert_ne!(up_a, up_b, "cross-source same remote must NOT share a journal");
+
+        let a2 = journal_file_name("down", "10.0.0.1:22", "/tmp/x.bin", 1000);
+        assert_eq!(a1, a2, "same identity must derive the same name (resume hits)");
+        assert_ne!(
+            journal_file_name("down", "10.0.0.1:22", "/tmp/x.bin", 1000),
+            journal_file_name("up", "10.0.0.1:22", "/tmp/x.bin", 1000),
+            "mode is part of the identity"
+        );
+        // 文件名安全面：base64url 无填充，不含路径分隔符/填充符
+        assert!(!a1.contains('/') && !a1.contains('='));
     }
 }

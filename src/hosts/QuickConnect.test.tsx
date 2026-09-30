@@ -8,6 +8,9 @@ import { invoke } from "@tauri-apps/api/core";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 // App 挂载即注册 Tauri 事件监听（Task 7 会话事件）；jsdom 无 Tauri runtime，stub 掉
 vi.mock("../session/events", () => ({ initSessionEvents: vi.fn(async () => {}) }));
+// Task 10（A5）传输事件同上（Fix round 1 I-1：漏 mock 会让真 listen() 产生
+// unhandled rejection，npm test exit 1）
+vi.mock("../files/events", () => ({ initTransferEvents: vi.fn(async () => {}) }));
 
 import "../i18n";
 import App from "../App";

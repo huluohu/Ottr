@@ -411,7 +411,7 @@ async fn upload_resume_reuses_journaled_chunks() {
 async fn assert_download_rejected(session: &SshSession, p: &Paths, label: &str, body: String) {
     std::fs::write(&p.journal_b, &body).expect("write seeded journal");
     let err = download_parallel(
-        &session,
+        session,
         &p.remote_a,
         Path::new(&p.local_b),
         4,
@@ -578,6 +578,86 @@ async fn download_cancel_at_chunk_boundary_then_resume_completes() {
         sha256_local(&p.local_a),
         sha256_remote(&session, &p.remote_a).await
     );
+
+    cleanup_remote(&session, &p).await;
+    cleanup_local(&p);
+    let _ = session.disconnect().await;
+}
+
+/// Fix round 1 C-1 回归（真夹具）：**done 即删 journal 后重下必须全量重传**。
+///
+/// 钉住 src-tauri spawn_transfer 的 done 分支策略（成功完成 → 删 journal）的
+/// 生命周期契约，并实证删除为何是 load-bearing 的：
+/// 1. 完整下载后删本地文件、保留 journal → 重下 = journal 全命中 = 0 chunk
+///    传输 + set_len 稀疏文件 → **sha256 不一致（全零文件）**——这就是修复前
+///    的静默数据损坏面；
+/// 2. 同场景下按 app 策略删掉 journal 再重下 → chunks_resumed == 0（全量重传）
+///    → sha256 一致。
+#[tokio::test]
+async fn redownload_after_done_requires_journal_deletion_to_retransfer() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let p = paths("dl-redone");
+    cleanup_local(&p);
+    cleanup_remote(&session, &p).await;
+    make_remote_file(&session, &p.remote_a, 5).await;
+
+    // 第一次完整下载（app 策略：done → 删 journal；此处先保留以实证危害面）
+    download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
+    )
+    .await
+    .expect("first download");
+    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
+
+    // 危害面实证：删本地、保留完整 journal → 重下全命中 → 本地成稀疏全零文件
+    std::fs::remove_file(&p.local_a).expect("delete local file");
+    let hazard = download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
+    )
+    .await
+    .expect("hazard download (journal kept)");
+    assert_eq!(
+        hazard.chunks_resumed, hazard.chunks_total,
+        "complete journal must short-circuit every chunk (the hazard)"
+    );
+    assert_ne!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await,
+        "sparse local file must NOT match source — this is why done-deletion is mandatory"
+    );
+
+    // 修复路径（app done 分支同款）：删 journal + 删本地 → 重下 = 全量重传
+    std::fs::remove_file(&p.journal_a).expect("delete journal (done policy)");
+    std::fs::remove_file(&p.local_a).expect("delete local file again");
+    let fresh = download_parallel(
+        &session,
+        &p.remote_a,
+        Path::new(&p.local_a),
+        4,
+        Path::new(&p.journal_a),
+        &CancelToken::new(),
+        None,
+    )
+    .await
+    .expect("re-download after journal deletion");
+    assert_eq!(
+        fresh.chunks_resumed, 0,
+        "after done-deletion the re-download must transfer ALL chunks"
+    );
+    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
 
     cleanup_remote(&session, &p).await;
     cleanup_local(&p);

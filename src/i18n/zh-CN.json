@@ -308,7 +308,8 @@
       "uploadOf": "上传 {{name}}",
       "cancelAria": "取消传输 {{name}}",
       "retryAria": "重试传输 {{name}}",
-      "dismissAria": "移除记录 {{name}}"
+      "dismissAria": "移除记录 {{name}}",
+      "errorText": "错误：{{message}}"
     }
   },
   "hostKey": {

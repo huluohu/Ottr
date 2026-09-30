@@ -309,7 +309,8 @@
       "uploadOf": "Upload {{name}}",
       "cancelAria": "Cancel transfer {{name}}",
       "retryAria": "Retry transfer {{name}}",
-      "dismissAria": "Remove record {{name}}"
+      "dismissAria": "Remove record {{name}}",
+      "errorText": "Error: {{message}}"
     }
   },
   "hostKey": {

@@ -16,6 +16,9 @@ futures = "0.3"
 serde = { version = "1", features = ["derive"] }
 # Step 2（Task 10）：CancelToken（AtomicBool）与进度 hook 的原子计数
 tokio = { version = "1", features = ["sync", "time"] }
+# Fix round 1（C-1）：journal 文件名身份派生（sha256 + base64url）
+sha2 = "0.10"
+base64 = "0.22"
 
 [dev-dependencies]
 # 随迁测试（tests/sftp_test.rs）的取证通道：远端 exec（ChannelMsg 匹配）与

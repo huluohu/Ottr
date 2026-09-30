@@ -234,6 +234,37 @@ describe("TransferStore 状态机", () => {
     });
   });
 
+  it("Fix round 1 I-4：retry 失败 → 条目保留 + failed + 错误文案（不先移除）", async () => {
+    useTransferStore.setState({
+      items: [
+        {
+          transferId: "xfer-dead",
+          kind: "download",
+          remotePath: "/tmp/a.bin",
+          localPath: "/Downloads/a.bin",
+          rustId: "pty-old",
+          total: 10,
+          transferred: 3,
+          status: "cancelled",
+          error: null,
+          cancelling: false,
+          startedAt: 1,
+        },
+      ],
+    });
+    // 会话重连后 rustId 失效：invoke 抛 no such session
+    mockedInvoke.mockRejectedValueOnce("no such session: pty-old");
+    await useTransferStore.getState().retry("xfer-dead");
+    const items = useTransferStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      transferId: "xfer-dead",
+      status: "failed",
+      error: "no such session: pty-old",
+      cancelling: false,
+    });
+  });
+
   it("dismiss 移除条目；sortQueueItems active→收尾→failed", () => {
     const mk = (id: string, status: "active" | "done" | "failed" | "cancelled") => ({
       transferId: id,

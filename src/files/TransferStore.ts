@@ -75,7 +75,9 @@ interface TransferStore {
   startUpload: (rustId: string, local: string, remoteDir: string) => Promise<void>;
   /** 取消（Rust chunk 边界协作退出；end 事件收尾）。未知 id 显式报错。 */
   cancel: (transferId: string) => Promise<void>;
-  /** 失败/取消后重试：同参数重发（journal 续传），旧条目移除。 */
+  /** 失败/取消后重试：同参数重发（journal 续传）。成功才移除旧条目；
+   * 重发失败（如会话已重连 rustId 失效）条目**保留**并标 failed + 错误文案
+   * （Fix round 1 I-4：绝不先移除再静默吞错）。 */
   retry: (transferId: string) => Promise<void>;
   /** 移除收尾条目（清空队列手动项）。 */
   dismiss: (transferId: string) => void;
@@ -178,11 +180,24 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
     const item = get().items.find((it) => it.transferId === transferId);
     if (!item) return;
     if (item.status !== "failed" && item.status !== "cancelled") return;
-    set((st) => ({ items: st.items.filter((it) => it.transferId !== transferId) }));
-    if (item.kind === "download") {
-      await get().startDownload(item.rustId, item.remotePath, item.localPath);
-    } else {
-      await get().startUpload(item.rustId, item.localPath, parentOf(item.remotePath));
+    try {
+      if (item.kind === "download") {
+        await get().startDownload(item.rustId, item.remotePath, item.localPath);
+      } else {
+        await get().startUpload(item.rustId, item.localPath, parentOf(item.remotePath));
+      }
+      // 新条目已就位才移除旧条目
+      set((st) => ({ items: st.items.filter((it) => it.transferId !== transferId) }));
+    } catch (e) {
+      // Fix round 1 I-4：重发失败可见化——条目保留、标 failed + 错误文案
+      // （典型：会话重连后 rustId 失效，「no such session」必须让用户看见）
+      set((st) => ({
+        items: patchItem(st.items, transferId, {
+          status: "failed",
+          error: String(e),
+          cancelling: false,
+        }),
+      }));
     }
   },
 

@@ -14,6 +14,7 @@
 //       snippets_delete
 //       known_hosts_list known_hosts_upsert known_hosts_verify known_hosts_mark_changed
 //       import_ssh_config export_hosts_csv（Task 5 导入/导出）
+//       key_generate key_inspect key_export key_deploy（Task 6 密钥管理，src-tauri keys.rs）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -139,6 +140,28 @@ export interface KnownHost {
   state: KnownHostState;
 }
 
+/** Rust `keygen::KeyAlgorithm` 同构（serde lowercase）。 */
+export type KeyAlgorithm = "ed25519" | "ecdsa-p256" | "rsa";
+
+/** Rust `keygen::KeyMaterial` 同构：私钥 PEM（可能含加密段）/ 公钥行 / SHA256 指纹。 */
+export interface KeyMaterial {
+  algorithm: KeyAlgorithm;
+  private_openssh: string;
+  public_openssh: string;
+  fingerprint: string;
+}
+
+/** Rust `DeployStatus` 同构（serde snake_case）。 */
+export type DeployStatus = "added" | "already_present";
+
+/** Rust `keys::KeyDeployReport` 同构（serde snake_case）。 */
+export interface KeyDeployReport {
+  status: DeployStatus;
+  public_key_fingerprint: string;
+  host_key_fingerprint: string | null;
+  known_hosts_state: KnownHostState;
+}
+
 export const vaultApi = {
   hosts: {
     list: () => invoke<Host[]>("hosts_list"),
@@ -189,5 +212,27 @@ export const vaultApi = {
     verify: (fingerprint: string) => invoke<KnownHost>("known_hosts_verify", { fingerprint }),
     markChanged: (fingerprint: string) =>
       invoke<KnownHost>("known_hosts_mark_changed", { fingerprint }),
+  },
+  /** 密钥管理（Task 6，A4；Rust 侧 src-tauri/src/keys.rs）。
+   * 导出调用契约（裁定 #2）：加密私钥必须先经 keyInspect 验证 passphrase
+   * 通过后才允许 keyExport——主密码模式 Task 11 落地后在此收口升级。 */
+  keys: {
+    /** algorithm ∈ KeyAlgorithm；passphrase 空/缺省 = 不加密。RSA-4096 生成耗时秒级～数十秒。 */
+    generate: (algorithm: KeyAlgorithm, passphrase: string | null, comment: string | null) =>
+      invoke<KeyMaterial>("key_generate", { algorithm, passphrase, comment }),
+    /** 解析 openssh 私钥（导入预览 / 导出前 passphrase 校验）。加密钥缺/错口令 → reject。 */
+    inspect: (pem: string, passphrase: string | null) =>
+      invoke<KeyMaterial>("key_inspect", { pem, passphrase }),
+    /** 导出私钥 PEM（0600）。path=null → 下载目录 ottr-key-<ts>.pem，返回落盘路径。 */
+    export: (pem: string, path: string | null) => invoke<string>("key_export", { pem, path }),
+    /** 部署公钥到主机（幂等 exec 追加 authorized_keys）；认证材料从 vault 服务端取，明文不过前端。 */
+    deploy: (authCredentialId: number, address: string, port: number, username: string, publicKey: string) =>
+      invoke<KeyDeployReport>("key_deploy", {
+        authCredentialId,
+        address,
+        port,
+        username,
+        publicKey,
+      }),
   },
 };

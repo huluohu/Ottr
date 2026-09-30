@@ -7,6 +7,7 @@ import {
   vaultApi,
   type Credential,
   type CredentialInput,
+  type CredentialPatch,
   type Host,
   type HostGroup,
   type HostInput,
@@ -25,6 +26,8 @@ interface VaultStore {
   updateHost: (id: number, input: HostInput) => Promise<Host>;
   deleteHost: (id: number) => Promise<void>;
   createCredential: (input: CredentialInput) => Promise<Credential>;
+  /** Task 6：patch null = 保留现值（未重输的密钥不重密封）。 */
+  updateCredential: (id: number, patch: CredentialPatch) => Promise<Credential>;
   deleteCredential: (id: number) => Promise<void>;
   /** Task 5：分组创建（MVP 仅根级，parentId=null）/删除（组内主机经 FK 脱组）。 */
   createGroup: (name: string) => Promise<HostGroup>;
@@ -72,6 +75,12 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
 
   createCredential: async (input) => {
     const credential = await vaultApi.credentials.create(input);
+    await get().refresh();
+    return credential;
+  },
+
+  updateCredential: async (id, patch) => {
+    const credential = await vaultApi.credentials.update(id, patch);
     await get().refresh();
     return credential;
   },

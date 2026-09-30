@@ -12,6 +12,7 @@ import { HostTree } from "./hosts/HostTree";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
 import { QuickConnect } from "./hosts/QuickConnect";
+import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
 import { useVaultStore } from "./vault/store";
 import type { Host } from "./vault/api";
@@ -64,6 +65,7 @@ function HomeLayout() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     try {
@@ -126,6 +128,9 @@ function HomeLayout() {
         <button className="topbar-palette" data-testid="open-quick-connect" onClick={() => setPaletteOpen(true)}>
           {t("quickConnect.title")} <kbd>{t("quickConnect.buttonHint")}</kbd>
         </button>
+        <button className="topbar-debug" data-testid="open-credentials" onClick={() => setCredentialsOpen(true)}>
+          {t("credentials.openButton")}
+        </button>
         <div className="topbar-spacer" />
         <ThemeSwitch />
         {/* Task 11 / Spike #7/#8 人工验证入口（自动化路径走 ?spike= 页） */}
@@ -185,6 +190,7 @@ function HomeLayout() {
         />
       )}
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
+      {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
       <QuickConnect
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}

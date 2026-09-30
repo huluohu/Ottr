@@ -207,7 +207,14 @@ impl Vault {
 
     /// 打开连接 + PRAGMA + 迁移的公共段（模式判定由各入口自己做）。
     fn open_conn(dir: &Path) -> Result<Vault> {
-        let conn = Connection::open(dir.join("vault.db"))?;
+        let db_path = dir.join("vault.db");
+        let conn = Connection::open(&db_path)?;
+
+        // fix 1/5 M-3：库文件最小权限 0600（承载全部凭据密文 + meta）。best-effort：
+        // 权限收紧失败（ exotic FS / 平台差异）不阻塞打开，但显式留痕。
+        // WAL/SHM 副文件：清理关闭时由 SQLite 删除；崩溃残留的旧副文件在下次
+        // open 时同样被这里收紧（新副文件继承 umask，残留窗口见 task-11-report）。
+        restrict_db_permissions(&db_path);
 
         // PRAGMA 先于迁移：WAL 是持久属性，foreign_keys 不持久、每次 open 重设。
         // journal_mode 赋值会返回一行（"wal"），用 query_row 接住。
@@ -348,9 +355,10 @@ impl Vault {
 
     /// 升级到主密码模式（keyring → password，设置页向导的本体）：
     /// 1. 新盐随机生成，新钥 = Argon2id(新密码, 新盐)；
-    /// 2. **单个 SQLite 事务**内：全表扫 credentials 的 `*_enc` 三列，旧钥开、
-    ///    新钥封（AAD 不变——`credentials:{id}:{field}` 绑定面不动），随后写
-    ///    meta（mode=password + salt + verifier，verifier 用新钥密封）；
+    /// 2. **单个 SQLite 事务**内：按 [`scan_registry`] 全表扫所有 `*_enc` 密文列
+    ///    （扫描 SQL 从注册表生成，见其文档），旧钥开、新钥封（AAD 不变——
+    ///    `{table}:{id}:{field}` 绑定面不动），随后写 meta（mode=password +
+    ///    salt + verifier，verifier 用新钥密封）；
     /// 3. 提交成功后新 Cipher 进内存槽位（保持解锁态，向导无需再输密码）。
     ///
     /// 中断安全（TDD 三件套之三）：事务提交前任何一步失败（含旧密文损坏、
@@ -379,65 +387,80 @@ impl Vault {
 
         let mut salt = [0u8; KDF_SALT_LEN];
         rand::fill(&mut salt);
-        let new = derive_cipher(password, &salt)?;
-        let verifier = new.seal(VERIFIER_PLAINTEXT, &verifier_aad())?;
+        // 盐的清理收口（fix 1/5 M-4）：闭包内任何错误早退路径统一清零后返回
+        // ——盐虽随密文明文落盘（非密级），但清零是零成本的纵深防御。
+        let outcome = (|| -> Result<usize> {
+            let new = derive_cipher(password, &salt)?;
+            let verifier = new.seal(VERIFIER_PLAINTEXT, &verifier_aad())?;
 
-        let conn = self.connection();
-        let total: i64 = conn.query_row(
-            "SELECT count(secret_enc) + count(passphrase_enc) + count(totp_secret_enc)
-             FROM credentials",
-            [],
-            |r| r.get(0),
-        )?;
-        let tx = conn.unchecked_transaction()?;
-
-        // 全表扫重密封：逐行取三列（Some 才动），AAD 原样保留。
-        // 读明文集中在内存即刻重封，不落任何中间文件。
-        let mut stmt = tx.prepare(
-            "SELECT id, secret_enc, passphrase_enc, totp_secret_enc
-             FROM credentials ORDER BY id",
-        )?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, Option<Vec<u8>>>(1)?,
-                    r.get::<_, Option<Vec<u8>>>(2)?,
-                    r.get::<_, Option<Vec<u8>>>(3)?,
-                ))
-            })?
-            .collect::<std::result::Result<Vec<_>, rusqlite::Error>>()?;
-        drop(stmt);
-
-        let mut done = 0usize;
-        for (id, secret, passphrase, totp) in rows {
-            for (col, blob) in [
-                (SecretColumn::Secret, secret),
-                (SecretColumn::Passphrase, passphrase),
-                (SecretColumn::TotpSecret, totp),
-            ] {
-                let Some(blob) = blob else { continue };
-                let plain = old.open(&blob, &col.aad(id))?; // 旧钥坏 → 整体回滚
-                let resealed = new.seal(&plain, &col.aad(id))?;
-                tx.execute(
-                    &format!("UPDATE credentials SET {} = ?1 WHERE id = ?2", col.column()),
-                    params![resealed, id],
-                )?;
-                done += 1;
-                progress(done, total.max(1) as usize);
+            let conn = self.connection();
+            // 总数：按注册表逐表生成 COUNT（count 非空列求和）。
+            let mut total: i64 = 0;
+            for (table, cols) in scan_plan() {
+                let counts = cols
+                    .iter()
+                    .map(|c| format!("count({})", c.column))
+                    .collect::<Vec<_>>()
+                    .join(" + ");
+                total += conn.query_row(&format!("SELECT {counts} FROM {table}"), [], |r| {
+                    r.get::<_, i64>(0)
+                })?;
             }
-        }
-        set_meta_tx(&tx, META_KEY_MODE, KeyMode::Password.as_str())?;
-        set_meta_tx(&tx, META_KEY_KDF_SALT, &hex::encode(salt))?;
-        set_meta_tx(&tx, META_KEY_VERIFIER, &hex::encode(&verifier))?;
-        tx.commit()?;
-        salt.zeroize();
+            let tx = conn.unchecked_transaction()?;
 
-        // 事务已提交：新钥接管内存槽位（保持解锁态）；旧钥材料随 old Cipher
-        // 在本函数结束处 drop（zeroize）。meta 翻转与密文同事务，无中间态。
-        self.promote_to_password();
-        *self.cipher_slot.lock().expect("cipher slot poisoned") = Some(new);
-        Ok(done)
+            // 逐表扫描重密封（fix 1/5 I-2b）：SELECT/UPDATE 的列清单一律由
+            // [`scan_registry`] 生成——单一事实源，不存在第二处手写列名。
+            // 读明文集中在内存即刻重封，不落任何中间文件；rowid = 各表
+            // INTEGER PRIMARY KEY 的别名（AUTOINCREMENT 保证永不复用，AAD
+            // 绑定值与实体层写入时一致）。
+            let mut done = 0usize;
+            for (table, cols) in scan_plan() {
+                let col_list = cols
+                    .iter()
+                    .map(|c| c.column)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let sql = format!("SELECT rowid, {col_list} FROM {table} ORDER BY rowid");
+                let mut stmt = tx.prepare(&sql)?;
+                let mut rows = stmt.query([])?;
+                while let Some(row) = rows.next()? {
+                    let row_id: i64 = row.get(0)?;
+                    for (idx, col) in cols.iter().enumerate() {
+                        let Some(blob) = row.get::<_, Option<Vec<u8>>>(idx + 1)? else {
+                            continue;
+                        };
+                        let aad = col.aad(row_id);
+                        let mut plain = old.open(&blob, &aad)?; // 旧钥坏 → 整体回滚
+                        let resealed = match new.seal(&plain, &aad) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                plain.zeroize();
+                                return Err(e);
+                            }
+                        };
+                        plain.zeroize();
+                        tx.execute(
+                            &format!("UPDATE {table} SET {} = ?1 WHERE rowid = ?2", col.column),
+                            params![resealed, row_id],
+                        )?;
+                        done += 1;
+                        progress(done, total.max(1) as usize);
+                    }
+                }
+            }
+            set_meta_tx(&tx, META_KEY_MODE, KeyMode::Password.as_str())?;
+            set_meta_tx(&tx, META_KEY_KDF_SALT, &hex::encode(salt))?;
+            set_meta_tx(&tx, META_KEY_VERIFIER, &hex::encode(&verifier))?;
+            tx.commit()?;
+
+            // 事务已提交：新钥接管内存槽位（保持解锁态）；旧钥材料随 old Cipher
+            // 在本函数结束处 drop（zeroize）。meta 翻转与密文同事务，无中间态。
+            self.promote_to_password();
+            *self.cipher_slot.lock().expect("cipher slot poisoned") = Some(new);
+            Ok(done)
+        })();
+        salt.zeroize();
+        outcome
     }
 
     /// 单连接串行访问（rusqlite Connection 非 Sync，Mutex 是 Tauri 命令共享的标准形态）。
@@ -460,38 +483,91 @@ impl Vault {
     }
 }
 
-/// credentials 表的三个密文列（重密封扫描的字段清单；AAD 名即列名）。
-#[derive(Clone, Copy)]
-enum SecretColumn {
-    Secret,
-    Passphrase,
-    TotpSecret,
+/// 库文件权限收紧到 0600（fix 1/5 M-3）：主文件必做；-wal/-shm 残留 best-effort
+/// （存在才收，正常关闭时 SQLite 已删）。Unix 专属；Windows 的 ACL 语义不同，
+/// 记 runbook（task-11-report Fix round 1/5 节）。
+fn restrict_db_permissions(db_path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::Permissions::from_mode(0o600);
+        for path in [
+            db_path.to_path_buf(),
+            db_path.with_file_name("vault.db-wal"),
+            db_path.with_file_name("vault.db-shm"),
+        ] {
+            if let Err(e) = std::fs::set_permissions(&path, mode.clone()) {
+                if path == *db_path || path.exists() {
+                    eprintln!("[vault] chmod 0600 failed ({}): {e}", path.display());
+                }
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = db_path; // Windows：ACL 面挂 runbook（本函数为 no-op）
+    }
+}
+
+/// 重密封扫描注册表项（fix 1/5 I-2）：`table` + `column` + `field` 三元组——
+/// 表名 / 密文列名（`*_enc`）/ AAD 字段名（实体层短名，**不是列名**）。
+/// pub 仅因守卫测试（tests/password_mode_test.rs）需读注册表比对 schema；
+/// 勿当公共 API 消费。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SecretColumn {
+    pub table: &'static str,
+    pub column: &'static str,
+    pub field: &'static str,
 }
 
 impl SecretColumn {
-    fn column(self) -> &'static str {
-        match self {
-            Self::Secret => "secret_enc",
-            Self::Passphrase => "passphrase_enc",
-            Self::TotpSecret => "totp_secret_enc",
+    /// AAD 与实体层同源约定：`{table}:{row_id}:{field}`（entities.rs `seal_fields`
+    /// 写入时用的就是这个形态，重密封必须逐字节复刻，否则旧钥开封即失败——
+    /// GCM 认证强制）。
+    fn aad(self, row_id: i64) -> String {
+        crate::aad(self.table, row_id, self.field)
+    }
+}
+
+/// 【I-2 单一注册表】全库所有承载 `*_enc` 密文列的清单——`set_master_password`
+/// 重密封扫描的**唯一事实源**（COUNT/SELECT/UPDATE 的 SQL 全部从它生成）。
+///
+/// **新增 `*_enc` 列（含未来 notify_channels.config_enc 等新表）必须登记于此**：
+/// 漏登 = 升级后旧钥删除、该列密文永久 GCM 认证失败（静默数据损毁）。
+/// 守卫测试 `reencrypt_scan_covers_all_enc_columns`（tests/password_mode_test.rs）
+/// 从 sqlite_master/PRAGMA 动态收集全库 `*_enc` 列与本表比对——新增列而漏改
+/// 注册表时测试必红。
+pub fn scan_registry() -> &'static [SecretColumn] {
+    &[
+        SecretColumn {
+            table: "credentials",
+            column: "secret_enc",
+            field: "secret",
+        },
+        SecretColumn {
+            table: "credentials",
+            column: "passphrase_enc",
+            field: "passphrase",
+        },
+        SecretColumn {
+            table: "credentials",
+            column: "totp_secret_enc",
+            field: "totp_secret",
+        },
+    ]
+}
+
+/// 注册表 → 扫描计划（按表分组、保序；要求注册表内同表列相邻——当前形态
+/// 天然满足）。每组 = (表名, 该表待重封列清单)。
+fn scan_plan() -> Vec<(&'static str, Vec<SecretColumn>)> {
+    let mut plan: Vec<(&'static str, Vec<SecretColumn>)> = Vec::new();
+    for col in scan_registry() {
+        match plan.last_mut() {
+            Some((table, cols)) if *table == col.table => cols.push(*col),
+            _ => plan.push((col.table, vec![*col])),
         }
     }
-
-    /// AAD 的 field 名 = 实体层的短名（**不是**列名）：entities.rs `seal_fields` /
-    /// `SecretField::aad_name` 用的都是 "secret"/"passphrase"/"totp_secret"，
-    /// 重密封必须逐字节复刻原 AAD，否则旧钥开封即失败（GCM 认证强制）。
-    fn aad_name(self) -> &'static str {
-        match self {
-            Self::Secret => "secret",
-            Self::Passphrase => "passphrase",
-            Self::TotpSecret => "totp_secret",
-        }
-    }
-
-    /// AAD 与实体层同源约定：`credentials:{id}:{field}`。
-    fn aad(self, id: i64) -> String {
-        crate::aad("credentials", id, self.aad_name())
-    }
+    plan
 }
 
 /// 主密码派生 + 立即密封器化（派生中间值用后即清）。返回值只含 `Aes256Gcm`

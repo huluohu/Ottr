@@ -480,3 +480,80 @@ fn settings_roundtrip_and_type_convenience() {
         Some("light")
     );
 }
+
+// ---------------------------------------------------------------------------
+// fix 1/5：评审 I-2（扫描非 schema 驱动守卫）+ M-3（库文件 0600）
+// ---------------------------------------------------------------------------
+
+/// I-2a 守卫测试：从 sqlite_master/PRAGMA 动态收集全库全部 `*_enc` 列，断言与
+/// [`ottr_vault::store::scan_registry`] 完全一致——未来新增 `*_enc` 列（如
+/// notify_channels.config_enc）而漏改注册表时，本测试必红（漏登 = 升级后旧钥
+/// 删除、该列永久 GCM 认证失败，静默数据损毁）。
+#[test]
+fn reencrypt_scan_covers_all_enc_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Vault::open_with(dir.path(), &InMemoryStorage::new()).unwrap();
+    let conn = vault.connection();
+
+    // 动态收集：全部用户表（排除 sqlite_% 内部表；FTS 影子表无 _enc 列，自然落空）
+    let tables: Vec<String> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT name FROM sqlite_master
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+            )
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    let mut dynamic: Vec<(String, String)> = Vec::new();
+    for table in &tables {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+        let columns = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for col in columns {
+            if col.ends_with("_enc") {
+                dynamic.push((table.clone(), col));
+            }
+        }
+    }
+    drop(conn);
+
+    // 注册表侧：(table, column) 集合
+    let mut registry: Vec<(String, String)> = ottr_vault::store::scan_registry()
+        .iter()
+        .map(|c| (c.table.to_string(), c.column.to_string()))
+        .collect();
+
+    // 全库必须真的存在 _enc 列——否则收集逻辑本身退化（断言不是恒真）
+    assert!(
+        !dynamic.is_empty(),
+        "库中应存在 *_enc 列（credentials 三列）；收集逻辑坏了先修收集"
+    );
+    dynamic.sort();
+    registry.sort();
+    assert_eq!(
+        dynamic, registry,
+        "全库 *_enc 列与重封扫描注册表不一致：新增列必须登记 scan_registry，\
+         移除列必须同步清理（漏改 = 升级后旧钥删除、密文永久解不开）"
+    );
+}
+
+/// M-3：vault.db Unix 权限 0600（密文 + meta 落盘面的最小权限）。
+#[cfg(unix)]
+#[test]
+fn vault_db_file_is_0600() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let _vault = Vault::open_with(dir.path(), &InMemoryStorage::new()).unwrap();
+    let mode = std::fs::metadata(dir.path().join("vault.db"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600, "vault.db must be owner-only (0600)");
+}

@@ -28,8 +28,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
-    CredentialInput, CredentialPatch, Credentials, Host, HostGroups, HostInput, Hosts, KnownHosts,
-    SecretField, Settings, SnippetInput, Snippets, Vault, VaultError,
+    CredentialInput, CredentialPatch, Credentials, Host, HostGroups, HostInput, Hosts, KeyMode,
+    KnownHosts, SecretField, Settings, SnippetInput, Snippets, Vault, VaultError,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -93,12 +93,16 @@ pub fn vault_unlock(
     Ok(())
 }
 
-/// 手动锁定（password 模式；keyring 模式为 no-op）。幂等；统一发
-/// `ottr://vault-locked`（Task 14 快捷键挂同一命令）。
+/// 手动锁定（password 模式）。幂等；成功才发 `ottr://vault-locked`
+/// （Task 14 快捷键挂同一命令）。keyring 模式无锁概念——**直接返回不发事件**
+/// （fix 1/5 M-1）：前端 LockScreen 只订阅事件置锁，keyring 模式带外调用若发
+/// 事件会弹一个永远解不开的锁屏（无解锁路径）。
 #[tauri::command]
 pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()> {
-    state.0.lock();
-    let _ = app.emit("ottr://vault-locked", ());
+    if state.0.mode() == KeyMode::Password {
+        state.0.lock();
+        let _ = app.emit("ottr://vault-locked", ());
+    }
     Ok(())
 }
 

@@ -107,6 +107,22 @@ fn autolock_minutes(app: &AppHandle) -> Option<u64> {
     autolock_minutes_from(raw)
 }
 
+/// 到点复核（fix 1/5 I-1，纯函数）：自动锁定计时器到点是否真正落锁。
+/// 四个条件缺一不可：
+/// * `gen_snapshot == gen_current`——期间有过任何焦点事件（重聚焦/再失焦），
+///   本计时器让位最新一轮（旧计时器绝不打新状态）；
+/// * `!focused`——已重新聚焦即放弃（用户在场）；
+/// * `!is_locked`——已锁定（手动/前一轮）不重复锁、不重发事件。
+/// 单测见本模块 `auto_lock_fire_matrix`。
+pub fn auto_lock_should_fire(
+    gen_snapshot: u64,
+    gen_current: u64,
+    focused: bool,
+    is_locked: bool,
+) -> bool {
+    gen_snapshot == gen_current && !focused && !is_locked
+}
+
 /// 自动锁定计时状态（Tauri 托管）。generation：每次焦点变化自增——
 /// 计时器到点后只有 generation 未变（期间无新焦点事件）才真正落锁，
 /// 一条原子计数即实现「重新聚焦作废计时器 + 多轮失焦只认最新」。
@@ -131,17 +147,16 @@ impl AutoLockState {
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(minutes * 60)).await;
-            // 到点复核：期间有任何焦点事件（无论聚焦/失焦）都让位最新一轮；
-            // 期间已重新聚焦 / 已手动锁定也在此收口（focused/gen 双确认）。
-            if state.generation.load(Ordering::SeqCst) == gen
-                && !state.focused.load(Ordering::SeqCst)
-            {
+            // 到点复核（auto_lock_should_fire，纯函数单测覆盖）：期间有任何
+            // 焦点事件让位最新一轮；已重新聚焦 / 已锁定（手动或前一轮）不重复。
+            let gen_current = state.generation.load(Ordering::SeqCst);
+            let focused = state.focused.load(Ordering::SeqCst);
+            let is_locked = app.try_state::<VaultState>().is_some_and(|v| v.0.is_locked());
+            if auto_lock_should_fire(gen, gen_current, focused, is_locked) {
                 if let Some(vault) = app.try_state::<VaultState>() {
-                    if !vault.0.is_locked() {
-                        vault.0.lock();
-                        let _ = app.emit("ottr://vault-locked", ());
-                        eprintln!("[security] auto-locked after {minutes} min unfocused");
-                    }
+                    vault.0.lock();
+                    let _ = app.emit("ottr://vault-locked", ());
+                    eprintln!("[security] auto-locked after {minutes} min unfocused");
                 }
             }
         });
@@ -240,6 +255,21 @@ mod tests {
             Some(CLIPBOARD_MAX_SECS),
             "越界收敛到上限"
         );
+    }
+
+    #[test]
+    fn auto_lock_fire_matrix() {
+        // 四条件齐备 → 落锁
+        assert!(auto_lock_should_fire(1, 1, false, false));
+        // generation 变化（期间重聚焦/再失焦过）→ 旧计时器让位，不打锁
+        assert!(!auto_lock_should_fire(1, 2, false, false));
+        // 未到点形态不存在于本函数；但失焦态是前提：已聚焦不锁
+        assert!(!auto_lock_should_fire(1, 1, true, false));
+        // 已锁定（手动/前一轮）不重复锁
+        assert!(!auto_lock_should_fire(1, 1, false, true));
+        // 竞态组合：generation 变了且已聚焦 / 已锁定，一律不打
+        assert!(!auto_lock_should_fire(3, 4, true, true));
+        assert!(!auto_lock_should_fire(3, 4, false, true));
     }
 
     #[test]

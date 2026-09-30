@@ -317,6 +317,22 @@
       "errorText": "错误：{{message}}"
     }
   },
+  "notify": {
+    "bellAria": "通知中心",
+    "empty": "暂无通知",
+    "markAllRead": "全部已读",
+    "clear": "清空",
+    "muteSection": "通知类型",
+    "muteHint": "静音后该类事件不再提醒、不进通知中心",
+    "kindTransfer": "传输",
+    "kindSession": "连接",
+    "unreadBadge": "{{count}} 条未读",
+    "title": {
+      "transferFailed": "传输失败",
+      "transferCancelled": "传输已取消",
+      "sessionLost": "连接已断开"
+    }
+  },
   "hostKey": {
     "firstTitle": "首次连接确认",
     "firstIntro": "首次连接「{{host}}」，请核对服务器主机密钥指纹：",

@@ -318,6 +318,22 @@
       "errorText": "Error: {{message}}"
     }
   },
+  "notify": {
+    "bellAria": "Notification center",
+    "empty": "No notifications",
+    "markAllRead": "Mark all read",
+    "clear": "Clear all",
+    "muteSection": "Notification types",
+    "muteHint": "Muted kinds no longer alert and are kept out of the center",
+    "kindTransfer": "Transfers",
+    "kindSession": "Connections",
+    "unreadBadge": "{{count}} unread",
+    "title": {
+      "transferFailed": "Transfer failed",
+      "transferCancelled": "Transfer cancelled",
+      "sessionLost": "Connection lost"
+    }
+  },
   "hostKey": {
     "firstTitle": "First connection",
     "firstIntro": "First time connecting to \"{{host}}\". Verify the server host key fingerprint:",

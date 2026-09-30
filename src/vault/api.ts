@@ -18,6 +18,8 @@
 //       vault_security_status vault_unlock vault_lock vault_upgrade_to_master_password
 //       settings_get settings_set（T11 安全底座 + theme/language 迁 vault）
 //       vault_copy_credential_secret（T11 剪贴板，src-tauri security.rs）
+//       notify_insert notify_list notify_mark_read notify_clear notify_unread_count
+//       （Task 12 通知中心，spec §7①；事件源接线在 src/notify/core.ts）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -177,6 +179,33 @@ export interface SecurityStatus {
   locked: boolean;
 }
 
+/** Rust `notifications::Notification` 同构（Task 12，spec §7 通知中心行）。
+ * severity ∈ "info" | "success" | "warning" | "error"（DB CHECK 同集）。 */
+export interface Notification {
+  id: number;
+  kind: string;
+  severity: "info" | "success" | "warning" | "error";
+  host_id: number | null;
+  /** i18n 词典键（渲染时 t(title_key)；非明文标题，换语言不失效）。 */
+  title_key: string;
+  /** 展示文本（路径/主机名/错误消息，事件自带内容）。 */
+  body: string;
+  payload: unknown;
+  read: boolean;
+  /** 秒级 Unix 时间。 */
+  ts: number;
+}
+
+/** Rust `notifications::NotificationInput` 同构（notify_insert 载荷，snake_case）。 */
+export interface NotificationInput {
+  kind: string;
+  severity: Notification["severity"];
+  host_id: number | null;
+  title_key: string;
+  body: string;
+  payload: unknown;
+}
+
 /** Rust `vault_upgrade_to_master_password` 进度事件载荷（ottr://reencrypt-progress）。 */
 export interface ReencryptProgress {
   done: number;
@@ -274,6 +303,18 @@ export const vaultApi = {
   settings: {
     get: <T = unknown>(key: string) => invoke<T | null>("settings_get", { key }),
     set: (key: string, value: unknown) => invoke<void>("settings_set", { key, value }),
+  },
+  /** 通知中心（Task 12，spec §7①）：明文面命令（锁定可读写，Rust 侧不过门卫）。
+   * 事件源接线与管线在 src/notify/core.ts；本组只是表的类型化 invoke 面。 */
+  notifications: {
+    insert: (input: NotificationInput) => invoke<Notification>("notify_insert", { input }),
+    /** 最近通知（ts DESC）；limit 缺省 200（Rust 侧 unwrap_or）。 */
+    list: (limit?: number) => invoke<Notification[]>("notify_list", { limit: limit ?? null }),
+    /** 标记已读；id=null = 全部已读。返回受影响行数。 */
+    markRead: (id: number | null) => invoke<number>("notify_mark_read", { id }),
+    /** 清空全部，返回删除行数。 */
+    clear: () => invoke<number>("notify_clear"),
+    unreadCount: () => invoke<number>("notify_unread_count"),
   },
   /** 凭据密文复制（Rust 侧解密写剪贴板 + 定时清空；明文不回前端）。 */
   copyCredentialSecret: (id: number, field: SecretField) =>

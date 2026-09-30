@@ -31,6 +31,7 @@ function makeSession(over: Partial<Session> & Pick<Session, "id" | "hostId" | "h
     nextRetryAt: null,
     paneOf: null,
     encoding: "utf-8",
+    encodingOverride: "utf-8",
     encodingHint: null,
     ...over,
   };

@@ -485,6 +485,42 @@ mod tests {
         assert_eq!(d.decode_chunk(&[0xD0]), "中");
     }
 
+    /// I-1（fix 1/5）：GB18030 **四字节序列**全切法——gbk_safe_cut 的 seq_len=4
+    /// 分支（lead + 0x30..=0x39 第二字节 → 四字节序列）此前无测试触达。样例用
+    /// encoding_rs 编码器现编（U+1F600 在 GB18030 为合法四字节，尾随三字节
+    /// 「中」保证序列两侧都有边界压力）；1..8 全部切法下逐 chunk 喂入 ≡ 整段。
+    #[test]
+    fn stream_gb18030_four_byte_torn_across_chunks_reassembles() {
+        let (bytes, _, had_errors) = encoding_rs::GB18030.encode("\u{1F600}中");
+        assert!(!had_errors, "sample must be encodable");
+        assert_eq!(bytes.len(), 6, "expect 4-byte sequence + GBK 中(2B): {bytes:02X?}");
+        for chunk in 1..8 {
+            let mut d = StreamDecoder::new(Encoding::Gb18030);
+            let mut out = String::new();
+            for part in bytes.chunks(chunk) {
+                out.push_str(&d.decode_chunk(part));
+            }
+            out.push_str(&d.finish());
+            assert_eq!(out, "\u{1F600}中", "chunk size {chunk} must reassemble exactly");
+            assert_eq!(d.residual_len(), 0, "chunk size {chunk}: finish must drain");
+        }
+    }
+
+    /// I-1（fix 1/5）直接触达 seq_len=4 分支的截断持有：四字节序列停在
+    /// 1..4 字节处时整段持有（残尾 ≤3B），不裂出替换符。
+    #[test]
+    fn stream_gb18030_four_byte_truncated_tail_is_held_whole() {
+        let (bytes, _, had_errors) = encoding_rs::GB18030.encode("\u{1F600}");
+        assert!(!had_errors);
+        assert_eq!(bytes.len(), 4);
+        for cut in 1..4 {
+            let mut d = StreamDecoder::new(Encoding::Gb18030);
+            assert_eq!(d.decode_chunk(&bytes[..cut]), "", "cut {cut}: held, no replacement");
+            assert_eq!(d.residual_len(), cut, "cut {cut}: prefix held whole");
+            assert_eq!(d.decode_chunk(&bytes[cut..]), "\u{1F600}");
+        }
+    }
+
     /// 三段切换语义（转发路径版）：默认 UTF-8 乱码 → 切 GBK 正确 → 切回再乱码。
     /// 与 Phase 0 session_switch_redecodes_same_bytes 对应，但按 chunk 流转。
     #[test]

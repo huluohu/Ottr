@@ -347,17 +347,60 @@ describe("会话编码（Task 9，A9）", () => {
     expect(sessions[1].encoding).toBe("utf-8"); // big5 无 Rust 解码器，兜底
   });
 
-  it("connect 成功后把会话编码下发新 rust 会话（重连不丢手动切换）", async () => {
+  it("connect 成功：无条件下发 host 派生编码（语义裁定 fix 1/5：重连=新会话）", async () => {
+    // gbk override host：下发 gbk
     mockedInvoke.mockResolvedValue("pty-enc");
-    const store = useSessionStore.getState();
-    const id = store.openTab(gbkHost, { autoConnect: true });
+    useSessionStore.getState().openTab(gbkHost, { autoConnect: true });
     await vi.advanceTimersByTimeAsync(0);
     expect(mockedInvoke).toHaveBeenCalledWith("set_session_encoding", {
       id: "pty-enc",
       encoding: "gbk",
     });
     expect(useSessionStore.getState().sessions[0].encoding).toBe("gbk");
-    void id;
+  });
+
+  it("重连=新会话：手动切换不跨重连，编码一律回 host.encoding_override（fix 1/5）", async () => {
+    let rustSeq = 0;
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session"
+        ? Promise.resolve(`pty-r${++rustSeq}`)
+        : cmd === "set_session_encoding"
+          ? Promise.resolve("")
+          : cmd === "drop_session"
+            ? Promise.resolve(undefined)
+            : Promise.reject(new Error(`unexpected: ${cmd}`)),
+    );
+    const id = useSessionStore.getState().openTab(gbkHost, { autoConnect: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gbk");
+
+    // 会话内手动切 gb18030（徽标/菜单路径）
+    useSessionStore.getState().setSessionEncoding(id, "gb18030");
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gb18030");
+
+    // 断线重连：编码必须回到 host override（gbk），不是手动值
+    useSessionStore.getState().onSessionClosed({ id: "pty-r1", reason: "closed" });
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs(1));
+    expect(useSessionStore.getState().sessions[0].status).toBe("connected");
+    expect(useSessionStore.getState().sessions[0].rustId).toBe("pty-r2");
+    expect(useSessionStore.getState().sessions[0].encoding).toBe("gbk");
+    expect(mockedInvoke).toHaveBeenLastCalledWith("set_session_encoding", {
+      id: "pty-r2",
+      encoding: "gbk",
+    });
+
+    // 对照：无 override 的 host（手动切过 GBK）→ 重连回 utf-8 且无条件下发 utf-8
+    const id2 = useSessionStore.getState().openTab(hostA, { autoConnect: true });
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().setSessionEncoding(id2, "gbk");
+    useSessionStore.getState().onSessionClosed({ id: "pty-r3", reason: "closed" });
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs(1));
+    const s2 = useSessionStore.getState().sessions[1];
+    expect(s2.encoding).toBe("utf-8"); // 手动 GBK 不跨重连
+    expect(mockedInvoke).toHaveBeenLastCalledWith("set_session_encoding", {
+      id: "pty-r4",
+      encoding: "utf-8",
+    });
   });
 
   it("setSessionEncoding：状态即变 + 已连接下发 Rust + 残字结算写回终端", async () => {

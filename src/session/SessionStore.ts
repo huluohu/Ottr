@@ -79,9 +79,12 @@ export interface Session {
    * 非空 = 所属标签根会话 id（一个标签一棵 pane 树，树叶 id = 会话 id）。 */
   paneOf: string | null;
   /** 会话编码（Task 9，A9）：初值 = host encoding_override（支持集内）兜底
-   * utf-8；setSessionEncoding 切换（即切即生效，不写回 host——重连后由
-   * connect 重新下发）。 */
+   * utf-8；setSessionEncoding 切换（即切即生效，不写回 host）。
+   * 【语义裁定（fix 1/5）】重连=新会话：connect 成功后编码一律从
+   * encodingOverride 重新派生——手动切换只活在当前连接内，不跨重连。 */
   encoding: SessionEncoding;
+  /** host.encoding_override 的派生值（支持集内，兜底 utf-8；重连下发源）。 */
+  encodingOverride: SessionEncoding;
   /** detect_hint 提示（Rust `ottr://encoding-hint`）：非空 = 展示
    * 「检测到 GBK，切换？」提示条；接受/忽略后清空（per-host 一次，可关）。 */
   encodingHint: SessionEncoding | null;
@@ -353,6 +356,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       lastError: null,
       nextRetryAt: null,
       paneOf: null,
+      encodingOverride: parseSessionEncoding(host.encoding_override) ?? "utf-8",
       encoding: parseSessionEncoding(host.encoding_override) ?? "utf-8",
       encodingHint: null,
     };
@@ -479,6 +483,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         void invoke("drop_session", { id: rustId }).catch(() => {});
         return;
       }
+      // 会话编码（Task 9；语义裁定 fix 1/5）：重连=新会话——编码一律从 host
+      // encoding_override 重新派生（Rust attach 侧同一来源初始化，两处口径一致），
+      // 无条件 set_session_encoding 显式对齐（含 utf-8，自愈式同步）；上一会话的
+      // 手动切换不跨重连（切换不写回 host，徽标随 session.encoding 复位，
+      // 与 Rust 实际解码一致）。把 Rust 侧残留的解码状态也一并覆盖。
+      const override =
+        parseSessionEncoding(
+          get().sessions.find((s) => s.id === id)?.encodingOverride,
+        ) ?? "utf-8";
       set((st) => ({
         sessions: patchSession(st.sessions, id, {
           status: "connected",
@@ -486,15 +499,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           attempt: 0,
           nextRetryAt: null,
           lastError: null,
+          encoding: override,
         }),
       }));
-      // 会话编码下发（Task 9）：Rust 侧 attach 已按 host encoding_override 初始化；
-      // 这里把会话级手动切换（不写回 host）重新下发到新 rust 会话——重连不丢用户
-      // 的切换，utf-8 是 Rust 侧默认值无需下发。
-      const encoding = get().sessions.find((s) => s.id === id)?.encoding ?? "utf-8";
-      if (encoding !== "utf-8") {
-        void invoke("set_session_encoding", { id: rustId, encoding }).catch(() => {});
-      }
+      void invoke("set_session_encoding", { id: rustId, encoding: override }).catch(() => {});
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) return;
@@ -658,6 +666,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       lastError: null,
       nextRetryAt: null,
       paneOf: tabId,
+      encodingOverride: root.encodingOverride, // pane 与标签同源（重连派生一致）
       encoding: root.encoding, // 分屏 pane 沿用标签的会话编码
       encodingHint: null,
     };
@@ -744,6 +753,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   onEncodingHint: (payload) => {
+    // 挂账（fix 1/5 评审记录，不实现）：hint 事件与 connect resolve 存在理论
+    // 竞态——探测任务在 attach 成功后 spawn，但 emit 若先于前端 rustId 落地，
+    // 会被下方「未知会话」分支静默丢弃（该轮提示不弹，无重试）。概率极低
+    // （同一 attach 完成事件的两条 IPC，事件通道通常后到）；若实测可复现，
+    // 兜底方案 = 按 hostId 反查（payload 无 hostId，需 Rust 侧补字段）。
     const session = get().sessions.find((s) => s.rustId === payload.id);
     if (!session) return; // 未知会话（已关标签）——忽略
     if (session.encoding !== "utf-8") return; // 已在非 UTF-8 编码，无需提示

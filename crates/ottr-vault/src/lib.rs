@@ -5,8 +5,12 @@
 //! 落盘（FTS5 检索，见 migrations/）。
 
 pub mod crypto;
+pub mod master_key;
+pub mod store;
 
 pub use crypto::{aad, Cipher};
+pub use master_key::MasterKey;
+pub use store::Vault;
 
 use std::fmt;
 
@@ -20,6 +24,8 @@ pub enum VaultError {
     Keyring(keyring::Error),
     /// 钥匙链条目存在但内容不是合法的 32B key（十六进制损坏/被外部改写）。
     CorruptedMasterKey,
+    /// KDF（Argon2id）派生失败。
+    Kdf(String),
     /// 库的 schema 版本高于本程序支持——禁止降级打开以防静默数据损坏。
     SchemaTooNew { db: u32, app: u32 },
 }
@@ -35,6 +41,7 @@ impl fmt::Display for VaultError {
                 f,
                 "master key entry in keyring is corrupted (not valid hex / wrong length)"
             ),
+            Self::Kdf(msg) => write!(f, "kdf error: {msg}"),
             Self::SchemaTooNew { db, app } => write!(
                 f,
                 "vault schema v{db} is newer than supported v{app}; upgrade Ottr to open it"

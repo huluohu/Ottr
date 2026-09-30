@@ -73,9 +73,8 @@ fn nonce_unique_across_1000_seals() {
     let mut nonces = std::collections::HashSet::new();
     for i in 0..1000 {
         let blob = cipher.seal(b"x", "credentials:1:secret").unwrap();
-        assert_eq!(
+        assert!(
             nonces.insert(blob[..12].to_vec()),
-            true,
             "第 {i} 次出现重复 nonce"
         );
     }

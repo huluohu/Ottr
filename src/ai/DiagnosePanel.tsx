@@ -3,9 +3,11 @@
 // * 流式渲染：普通文本 + ``` 代码块两种块——代码块带「插入终端」按钮 =
 //   danger 分级标注（classify）+ 分档确认（green 直插 / yellow 确认 /
 //   red 二次确认红字），插入 = write_session 直写 PTY（不含换行，回车由用户）；
+// * 脱敏口径（fix 1/5 M-1 定案）：面板命令区显示**原文**（本地行为，明文不出
+//   本机）；发送给模型的请求体**已脱敏**（aiStore.run 内 redact 后才装配
+//   messages——见 aiStore 步骤 3），面板以「已脱敏 N 处」标注外发侧命中；
 // * 错误面：noProvider/noKey → 「去设置」按钮（App 注入 openSettings）；
-//   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）；
-// * 脱敏标注：请求前 redact 命中数展示（明文不出面板）。
+//   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";

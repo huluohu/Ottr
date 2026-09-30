@@ -253,8 +253,9 @@ mod tests {
 
     #[test]
     fn ring_is_a_text_sink_for_stripper() {
-        // 胶水实现回归：Stripper 剥完的文本直接入环
-        use crate::stripper::{Stripper, TextSink};
+        // 胶水实现回归：Stripper 剥完的文本直接入环（dyn TextSink 转型无需 trait
+        // 在作用域，故此处只 import Stripper）
+        use crate::stripper::Stripper;
         let mut ring = RingBuffer::with_capacity(10);
         let mut st = Stripper::new();
         st.feed(b"\x1b[31merr\x1b[0m: disk full\n", &mut ring);

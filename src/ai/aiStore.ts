@@ -178,15 +178,14 @@ export const useAiStore = create<AiStore>((set, get) => ({
       return;
     }
 
-    // --- 2. 明文 key 单点出库（vault secrets；锁定/未配置显式报错）---
+    // --- 2. 明文 key 单点出库（vault secrets）---
+    // key 未保存 → **空串**（fix 1/5 I-1）：openai-compatible 显式允许免 key
+    // （Ollama 本地端点；OpenAICompatibleProvider 对空 key 不发 Authorization 头）。
+    // Anthropic 需要 key 的校验在设置页保存侧（errKeyRequired）；这里空 key 直连
+    // 会拿到端点 401 → request 错误面，不在此二次设卡。
     let apiKey: string;
     try {
-      const stored = await vaultApi.secrets.get(apiKeySecretKey(meta.id));
-      if (stored === null) {
-        set({ status: "error", errorKind: "noKey", error: null });
-        return;
-      }
-      apiKey = stored;
+      apiKey = (await vaultApi.secrets.get(apiKeySecretKey(meta.id))) ?? "";
     } catch (e) {
       set({
         status: "error",

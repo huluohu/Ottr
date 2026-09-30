@@ -162,13 +162,53 @@ describe("诊断链路（onCommandFailed → run）", () => {
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
-  it("key 未保存 → error/noKey", async () => {
-    mockBackend({ secret: null });
+  it("免 key Ollama 全链：secrets 无存值 → 空 key 照常出结果（fix 1/5 I-1）", async () => {
+    // openai-compatible 显式允许免 key（Ollama 本地）；此前 stored===null→noKey
+    // 是自相矛盾面，修正为空串透传（不发 Authorization 的裁决在 provider 层）
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([
+          {
+            id: "local",
+            name: "Ollama",
+            kind: "openai-compatible",
+            baseURL: "http://localhost:11434/v1",
+            model: "qwen2.5:7b",
+          },
+        ]);
+      }
+      if (cmd === "settings_get" && args?.key === "redaction") {
+        return Promise.resolve({ hostname: true, custom: [] });
+      }
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "secret_get") return Promise.resolve(null);
+      if (cmd === "session_tail") return Promise.resolve("ok\n");
+      if (cmd === "notify_insert") return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    useAiStore.getState().onCommandFailed(REQ);
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().status).toBe("done");
+    });
+    const st = useAiStore.getState();
+    expect(st.errorKind).toBeNull();
+    expect(st.answer).toContain("原因是磁盘已满。");
+    expect(chatFactory.mock.calls[0][1]).toBe("");
+  });
+
+  it("secrets 读取故障（非未存值）→ error/noKey", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") return Promise.resolve(PROVIDERS);
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "secret_get") return Promise.reject(new Error("vault is locked"));
+      return Promise.resolve(null);
+    });
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
       expect(useAiStore.getState().status).toBe("error");
     });
     expect(useAiStore.getState().errorKind).toBe("noKey");
+    expect(useAiStore.getState().error).toContain("vault is locked");
   });
 
   it("session_tail 失败（会话已关）：空输出照发诊断", async () => {

@@ -1,8 +1,10 @@
 // danger.ts 单元测试（Task 8 骨架 + Task 13 分级完善）：
 // 多行判定、危险规则命中、红黄绿分档、T10 挂账死分支（fork 炸弹错标
-// disk-write）清理回归。
+// disk-write）清理回归、fix 1/5 分离旗标（rm -r -f）漏报修复与词典键存在性。
 import { describe, expect, it } from "vitest";
-import { assessPaste, classify, isMultiline, scanDanger } from "./danger";
+import zhCN from "../i18n/zh-CN.json";
+import enUS from "../i18n/en-US.json";
+import { DANGER_RULES, assessPaste, classify, isMultiline, scanDanger } from "./danger";
 
 describe("isMultiline", () => {
   it("LF / CRLF / CR 均算多行", () => {
@@ -36,6 +38,48 @@ describe("scanDanger（规则表面）", () => {
   it("普通命令不误报", () => {
     expect(scanDanger("ls -la && tail -f app.log")).toEqual([]);
     expect(scanDanger("rm build/one-file.o")).toEqual([]);
+  });
+});
+
+describe("recursive-delete 分离旗标（fix 1/5 I-2：token 序列判定）", () => {
+  it("rm -r -f / rm --recursive --force / 混排 -fr 全 red", () => {
+    expect(classify("rm -r -f /tmp/build").level).toBe("red");
+    expect(classify("rm --recursive --force /tmp/build").level).toBe("red");
+    expect(classify("rm -fr /tmp/build").level).toBe("red");
+    expect(classify("rm -Rf /tmp/build").level).toBe("red");
+    expect(scanDanger("rm -r -f /tmp/x").map((x) => x.kind)).toContain("recursive-delete");
+  });
+  it("sudo rm -r -f（提权叠加）仍 red 且双命中", () => {
+    const v = classify("sudo rm -r -f /var/data");
+    expect(v.level).toBe("red");
+    expect(v.findings.map((f) => f.kind)).toEqual(expect.arrayContaining(["sudo", "recursive-delete"]));
+  });
+  it("非递归/单旗标不误报", () => {
+    expect(classify("rm -r /tmp/build").level).not.toBe("red"); // 无 f
+    expect(classify("rm -f one-file.o").level).not.toBe("red"); // 无 r
+    expect(classify("rm build/one-file.o").level).toBe("green");
+  });
+  it("段边界隔离：rm 与他段旗标不串（rsync --recursive --force 不连坐）", () => {
+    expect(classify("rm old.txt && rsync --recursive --force a/ b/").level).not.toBe("red");
+  });
+  it("管道/子 shell 里的 rm 分离旗标仍命中", () => {
+    expect(classify("find . -empty | xargs rm -r -f").level).toBe("red");
+    expect(classify("cat list | sudo xargs rm --recursive --force").level).toBe("red");
+  });
+});
+
+describe("词典键存在性（fix 1/5 I-3：防裸 slug 进 UI）", () => {
+  it("每个规则 kind 在 zh-CN / en-US 词典都有 ai.danger.<kind>", () => {
+    const zh = (zhCN as { ai: { danger: Record<string, string> } }).ai.danger;
+    const en = (enUS as { ai: { danger: Record<string, string> } }).ai.danger;
+    for (const { kind } of DANGER_RULES) {
+      expect(zh[kind], `zh-CN 缺 ai.danger.${kind}`).toBeTruthy();
+      expect(en[kind], `en-US 缺 ai.danger.${kind}`).toBeTruthy();
+    }
+  });
+  it("死键清零：词典不再含已删除的 privileged", () => {
+    expect((zhCN as { ai: { danger: Record<string, unknown> } }).ai.danger).not.toHaveProperty("privileged");
+    expect((enUS as { ai: { danger: Record<string, unknown> } }).ai.danger).not.toHaveProperty("privileged");
   });
 });
 

@@ -17,20 +17,66 @@
 /** 分档：red（灾难）/ yellow（需过目）/ green（放行）。 */
 export type TrafficLight = "red" | "yellow" | "green";
 
-/** 单条规则：kind 为类目（i18n 键 `ai.danger.<kind>`），level 定分档。 */
+/** 单条规则：kind 为类目（i18n 键 `ai.danger.<kind>`），level 定分档。
+ * 匹配面二选一：`re`（常规正则）或 `match`（正则表达不了的 token 序列判定，
+ * 命中返回 excerpt；如 rm 分离旗标 `rm -r -f`）。 */
 export interface DangerRule {
   kind: string;
   level: TrafficLight;
-  re: RegExp;
+  re?: RegExp;
+  match?: (cmd: string) => string | null;
+}
+
+/**
+ * rm 递归+强制组合的 token 序列判定（fix 1/5 I-2）：
+ * 合并旗标（-rf/-fr/-Rf）与**分离旗标**（`rm -r -f`、`rm --recursive --force`）
+ * 同判——正则无法表达「旗标分散在多个 token」，按段切分（\r\n ; | & 为界，
+ * 段内归属同一命令）后扫描 token：
+ *   * 命中 rm（含路径前缀形态，token 以斜杠 rm 结尾）后收集旗标 token：短旗标组含 r/R 且含 f，或长旗标
+ *     等于 --recursive 且 --force，即递归强删；
+ *   * 操作数不终止扫描（GNU rm 允许选项后置：`rm x -rf`）——保守侧宁多问；
+ *   * 段边界保证 `rm a && rsync --recursive --force` 不误伤（旗标属各段）。
+ * 返回命中片段（excerpt），未命中 null。
+ */
+export function matchRmRecursiveForce(cmd: string): string | null {
+  for (const segment of cmd.split(/[\r\n;|&]+/)) {
+    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+    let sawRm = false;
+    let recursive = false;
+    let force = false;
+    for (const tok of tokens) {
+      if (!sawRm) {
+        if (tok === "rm" || tok.endsWith("/rm")) sawRm = true;
+        continue;
+      }
+      if (tok.startsWith("--")) {
+        if (tok === "--recursive") recursive = true;
+        if (tok === "--force") force = true;
+      } else if (/^-[a-zA-Z]+$/.test(tok)) {
+        const letters = tok.slice(1);
+        if (/[rR]/.test(letters)) recursive = true;
+        if (/f/.test(letters)) force = true;
+      }
+    }
+    if (sawRm && recursive && force) {
+      return segment.trim().slice(0, 80);
+    }
+  }
+  return null;
 }
 
 /**
  * 危险命令规则表（红黄两档；green = 无命中，不设规则）。
- * kind 命名与 i18n ai.danger.* 对齐，勿随意改。
+ * kind 命名与 i18n ai.danger.* 对齐，勿随意改（词典键存在性测试钉住）。
  */
 export const DANGER_RULES: readonly DangerRule[] = [
   // --- red：不可逆 / 灾难面 ---------------------------------------------------
-  { kind: "recursive-delete", level: "red", re: /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r)\b/i },
+  {
+    kind: "recursive-delete",
+    level: "red",
+    // 合并+分离旗标统一走 token 判定（fix 1/5 I-2：`rm -r -f` 曾漏报判 green）
+    match: matchRmRecursiveForce,
+  },
   { kind: "delete-root", level: "red", re: /\brm\s+[^|;\n]*\s+\/(\s|$|\*)/i },
   { kind: "disk-write", level: "red", re: /\b(dd\s+[^\n]*of=\/dev\/|mkfs(\.\w+)?\s)/i },
   { kind: "fork-bomb", level: "red", re: /:\(\)\{.*\};\s*:/s },
@@ -91,10 +137,10 @@ export function isMultiline(text: string): boolean {
  * 定位由消费方按 excerpt 自行展示）。 */
 export function scanDanger(text: string): DangerFinding[] {
   const findings: DangerFinding[] = [];
-  for (const { kind, level, re } of DANGER_RULES) {
-    const m = re.exec(text);
-    if (m) {
-      findings.push({ kind, level, excerpt: m[0].trim().slice(0, 80) });
+  for (const { kind, level, re, match } of DANGER_RULES) {
+    const hit = match ? match(text) : re ? re.exec(text)?.[0] : null;
+    if (hit) {
+      findings.push({ kind, level, excerpt: hit.trim().slice(0, 80) });
     }
   }
   return findings;

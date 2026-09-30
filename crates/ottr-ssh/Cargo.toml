@@ -9,9 +9,13 @@ russh-sftp = "3.0.1"
 tokio = "1.53.1"
 # Task 8 spike#4：chunk 内子请求流水线（futures::future::try_join_all）
 futures = "0.3"
+# Task 6 keygen：与 russh 同版（0.10）的 rng —— PrivateKey::random 的 R: CryptoRng
+# 必须与 russh 的 rand_core 同 major，跨版本 trait 不兼容
+rand = "0.10"
+# Task 6：KeyMaterial/DeployOutcome 序列化面（src-tauri 命令直出）
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 # Task 6 spike#11：osc133_spike example 消费 ottr-term 的 OSC 133 解析器
 ottr-term = { path = "../ottr-term" }
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }
-rand = "0.10"

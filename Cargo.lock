@@ -3209,6 +3209,7 @@ dependencies = [
  "rand 0.10.3",
  "russh",
  "russh-sftp",
+ "serde",
  "tokio",
 ]
 

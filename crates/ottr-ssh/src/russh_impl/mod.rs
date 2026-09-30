@@ -127,6 +127,15 @@ pub struct SshSession {
     host_key_fingerprints: Arc<Mutex<Vec<String>>>,
 }
 
+/// [`SshSession::exec`] 的结果：stdout/stderr 分离 + 退出码。
+/// `exit_status: None` = 服务端未回 ExitStatus 就关闭了通道（异常流，调用方按失败处置）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecOutput {
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub exit_status: Option<u32>,
+}
+
 impl SshSession {
     /// 最近一次记录的服务器主机密钥指纹（`SHA256:…`）。
     pub fn host_key_fingerprint(&self) -> Option<String> {
@@ -159,6 +168,36 @@ impl SshSession {
             .disconnect(Disconnect::ByApplication, "session dropped", "en")
             .await
             .map_err(Error::from)
+    }
+
+    /// 在远端执行单条命令（exec 通道，无 PTY）：收齐 stdout/stderr 与退出码。
+    ///
+    /// 消费方：Task 6 公钥部署（[`crate::deploy`]）、Task 12 monitor 只读命令采集。
+    /// 与 `open_pty` + `channel.exec` 的 spike 路径（examples/real_fixture.rs）不同，
+    /// 这里不开 PTY——命令输出是结构化数据而非交互流，避免 shell 脚本/回车污染输出。
+    pub async fn exec(&self, command: &str) -> Result<ExecOutput> {
+        let mut channel = self.handle.channel_open_session().await?;
+        channel.exec(true, command).await?;
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut exit_status: Option<u32> = None;
+        // Eof 后服务端仍会发 ExitStatus / Close：只对 Close / 通道关闭收尾，
+        // 保证退出码不被提前丢弃。
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                russh::ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
+                russh::ChannelMsg::ExtendedData { data, .. } => stderr.extend_from_slice(&data),
+                russh::ChannelMsg::ExitStatus { exit_status: code } => exit_status = Some(code),
+                russh::ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+        Ok(ExecOutput {
+            stdout,
+            stderr,
+            exit_status,
+        })
     }
 
     /// 打开 SFTP 子系统通道并返回裸双向字节流（Task 8 并行传输的构建块）。

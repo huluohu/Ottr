@@ -478,6 +478,12 @@
       "doneCount": "已重新加密 {{count}} 个密文字段，之后以主密码解锁。",
       "errTooShort": "主密码至少 {{min}} 位",
       "errMismatch": "两次输入不一致"
+    },
+    "vaultInit": {
+      "loading": "正在解锁数据保险库…",
+      "failedTitle": "Ottr 无法打开数据保险库",
+      "failedHint": "可能是系统钥匙链拒绝了访问。请重启应用重试；若持续失败，请重新安装或联系支持。",
+      "quit": "退出"
     }
   }
 }

@@ -14,6 +14,7 @@ import { HostTree } from "./hosts/HostTree";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
 import { useVaultLockStore } from "./security/VaultLockStore";
+import { useVaultInitGate } from "./security/VaultInitGate";
 import { syncLangFromVault, setLang, useLanguage } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
@@ -123,6 +124,11 @@ function HomeLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
+  // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
+  // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
+  const initPhase = useVaultInitGate((s) => (IS_TAURI ? s.phase : "ready"));
+  const initError = useVaultInitGate((s) => s.error);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     try {
       const raw = localStorage.getItem(SIDEBAR_KEY);
@@ -134,11 +140,20 @@ function HomeLayout() {
   });
   const resizing = useRef(false);
 
-  // 首屏：vault 数据 → 会话事件监听 → 标签恢复（不自动连接，安全考虑见
-  // SessionStore.restoreTabs）。恢复依赖 hosts 就位，故排在 refresh 之后。
-  // T11：锁定状态机先查 status（password 模式锁定时 refresh 会被 Locked 门卫拒，
-  // 错误横幅由遮罩盖住，解锁后用户手动重试即可——锁屏优先是预期行为）。
+  // Task 16.5 就绪门取数（仅 Tauri）：先挂事件监听、后查 vault_init_status
+  // （两端夹逼无漏窗，见 VaultInitGate 模块文档）。
   useEffect(() => {
+    if (!IS_TAURI) return;
+    void useVaultInitGate.getState().init();
+  }, []);
+
+  // 首屏（vault 就绪后走 T11 既有启动链）：锁定状态机 → vault 数据 → 会话事件
+  // 监听 → 标签恢复（不自动连接，安全考虑见 SessionStore.restoreTabs）。恢复依
+  // 赖 hosts 就位，故排在 refresh 之后。T11：锁定状态机先查 status（password 模
+  // 式锁定时 refresh 会被 Locked 门卫拒，错误横幅由遮罩盖住，解锁后用户手动重试
+  // 即可——锁屏优先是预期行为）。
+  useEffect(() => {
+    if (initPhase !== "ready") return;
     void (async () => {
       await useVaultLockStore.getState().init();
       void syncLangFromVault();
@@ -154,7 +169,7 @@ function HomeLayout() {
       await initNotifyEvents();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
     })();
-  }, []);
+  }, [initPhase]);
 
   // T13：设置页路由钩子注入（aiStore 错误面「去设置」按钮 → 打开 AI 设置）
   useEffect(() => {
@@ -407,6 +422,39 @@ function HomeLayout() {
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}
+      {/* Task 16.5 vault 初始化门遮罩（LockScreen 同款 overlay，z 序在锁屏之上——
+          初始化未完成时锁屏状态机尚未启动，两者互斥）。loading 期主壳无数据、
+          无命令在途；failed 语义 = 旧的「setup 失败即启动失败」，只是主窗已可见：
+          全屏错误面 + 退出按钮（真退出绕过关窗到托盘拦截）。 */}
+      {initPhase === "initializing" && (
+        <div className="overlay lock-screen" data-testid="vault-init-loading" role="status">
+          <div className="dialog lock-card">
+            <h2>Ottr</h2>
+            <p className="dialog-intro">{t("security.vaultInit.loading")}</p>
+          </div>
+        </div>
+      )}
+      {initPhase === "failed" && (
+        <div className="overlay lock-screen" data-testid="vault-init-failed" role="alert">
+          <div className="dialog lock-card">
+            <h2>{t("security.vaultInit.failedTitle")}</h2>
+            <p className="form-error" data-testid="vault-init-error">
+              {initError}
+            </p>
+            <p className="dialog-intro">{t("security.vaultInit.failedHint")}</p>
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn-accent"
+                data-testid="vault-init-quit"
+                onClick={() => invoke("quit_app").catch(() => {})}
+              >
+                {t("security.vaultInit.quit")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* A12 命令面板（T5 QuickConnect 并入收口）：主机 + 命令统一搜索。
           动作经 handleAction 分派；连主机即开标签。 */}
       <CommandPalette

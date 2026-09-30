@@ -9,7 +9,9 @@
 //!   * 返回值 serde 直序列化（snake_case），与 TS 同构类型逐字对齐；
 //!   * 错误一律 `String`（VaultError::Display 面向用户可读）。
 //!
-//! State：`VaultState(Arc<Vault>)` 在 setup 阶段打开（app_data_dir），单连接
+//! State：`VaultState(Arc<Vault>)` 由后台初始化线程打开后 manage（Task 16.5 起
+//! 不再在 setup 主线程同步打开——钥匙链 SecItem 访问在 macOS 27 + ad-hoc 每次
+//! 重建签名场景会挂起主线程、把主窗 frame 归零，见 task-16x5-report），单连接
 //! Mutex 串行化见 ottr-vault store.rs 模块文档。
 //!
 //! Task 11（A7）扩展：
@@ -45,6 +47,58 @@ pub fn init(app: &tauri::AppHandle) -> Result<VaultState, Box<dyn std::error::Er
     let dir = app.path().app_data_dir()?;
     let vault = Vault::open_auto(&dir)?;
     Ok(VaultState(Arc::new(vault)))
+}
+
+// --- 后台初始化状态（Task 16.5，0×0 主窗 frame 修复）-------------------------
+// vault::init（含钥匙链 SecItem 访问）已移出 setup 主线程。init 完成前
+// `VaultState` 尚未 manage，vault 命令在 Tauri 的 State 抽取层即被拒（invoke
+// promise reject："state not managed …"，进程不崩）。前端就绪门
+// （src/security/VaultInitGate.ts）以下面的状态面为唯一放行依据：
+//   * `vault_init_status` 命令——无 VaultState 依赖，初始化窗口期可安全调用；
+//   * `ottr://vault-ready` / `ottr://vault-init-failed` 事件——就绪快路径。
+//
+// 竞态契约（happens-before）：后台线程 **先 `manage(VaultState)` 再置 Ready**，
+// 且 Ready/Failed 置位先于事件发出——前端「先挂监听、后查命令」两端夹逼后，
+// 见到 Ready 即 State 必已可解析，首批 vault 命令（hosts_list 等）永不踩
+// "state not managed"。T11 安全语义不变：Ready 后前端照旧走
+// vault_security_status → keyring 模式进主 UI / password 模式进 LockScreen。
+
+/// vault 后台初始化状态（serde tag=status snake_case，前端
+/// `VaultInitStatusPayload` 同构）。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum VaultInitStatus {
+    /// 后台初始化进行中（app_data_dir + 钥匙链/SQLite 打开）。
+    #[default]
+    Initializing,
+    /// 就绪（VaultState 已 manage，vault 命令面可用）。
+    Ready,
+    /// 初始化失败（error = 错误 Display）。语义等同旧的「setup 失败即启动
+    /// 失败」，只是主窗已可见——前端渲染全屏错误面（含退出按钮）。
+    Failed { error: String },
+}
+
+/// [`VaultInitStatus`] 的 Tauri 托管壳。Builder 启动即 manage（无钥匙链访问，
+/// 零开销）；写入只发生在后台初始化线程。Arc 内壳便于线程持克隆。
+#[derive(Clone, Default)]
+pub struct VaultInit(pub Arc<std::sync::Mutex<VaultInitStatus>>);
+
+impl VaultInit {
+    /// 写入只在后台初始化线程发生（lib.rs vault-init 线程；crate 内私有——
+    /// Ready 的 happens-before 契约不允许第三方写入点）。
+    pub(crate) fn set(&self, status: VaultInitStatus) {
+        *self.0.lock().unwrap() = status;
+    }
+
+    pub fn get(&self) -> VaultInitStatus {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+/// vault 初始化状态查询（前端就绪门的取数面）。
+#[tauri::command]
+pub fn vault_init_status(init: State<'_, VaultInit>) -> VaultInitStatus {
+    init.get()
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -597,5 +651,35 @@ mod tests {
         assert_eq!(csv_field("a,b"), "\"a,b\"");
         assert_eq!(csv_field("he said \"hi\""), "\"he said \"\"hi\"\"\"");
         assert_eq!(csv_field("line\nbreak"), "\"line\nbreak\"");
+    }
+
+    /// Task 16.5：vault_init_status 的 serde 面与前端 VaultInitStatusPayload
+    /// 同构（tag=status snake_case）——字段名漂移会让前端就绪门永远停在 loading。
+    #[test]
+    fn vault_init_status_serde_matches_frontend_contract() {
+        assert_eq!(
+            serde_json::to_value(VaultInitStatus::Initializing).unwrap(),
+            serde_json::json!({ "status": "initializing" })
+        );
+        assert_eq!(
+            serde_json::to_value(VaultInitStatus::Ready).unwrap(),
+            serde_json::json!({ "status": "ready" })
+        );
+        assert_eq!(
+            serde_json::to_value(VaultInitStatus::Failed { error: "boom".into() }).unwrap(),
+            serde_json::json!({ "status": "failed", "error": "boom" })
+        );
+    }
+
+    /// tracker 缺省 Initializing、set→get 终态可见（后台线程经此与前端共享
+    /// 终态；Ready 置位由 lib.rs 保证严格晚于 VaultState manage）。
+    #[test]
+    fn vault_init_tracker_defaults_to_initializing_and_lands_terminal_state() {
+        let tracker = VaultInit::default();
+        assert!(matches!(tracker.get(), VaultInitStatus::Initializing));
+        tracker.set(VaultInitStatus::Ready);
+        assert!(matches!(tracker.get(), VaultInitStatus::Ready));
+        tracker.set(VaultInitStatus::Failed { error: "x".into() });
+        assert!(matches!(tracker.get(), VaultInitStatus::Failed { .. }));
     }
 }

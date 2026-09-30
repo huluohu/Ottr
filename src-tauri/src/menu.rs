@@ -60,6 +60,16 @@ pub fn lang_from_vault(vault: &ottr_vault::Vault) -> Lang {
     }
 }
 
+/// 当前菜单语言：vault settings 现读。vault 未就绪（Task 16.5：init 已移出
+/// setup 主线程，菜单初始构建时 `VaultState` 尚未 manage）按 En 兜底——
+/// vault-ready 后 `on_vault_ready` 会按 settings 真值重建纠偏，旧值最多存活到
+/// 初始化完成。
+fn menu_lang<R: Runtime>(app: &AppHandle<R>) -> Lang {
+    app.try_state::<VaultState>()
+        .map(|v| lang_from_vault(&v.0))
+        .unwrap_or(Lang::En)
+}
+
 /// 菜单文案表（zh/en；PredefinedMenuItem 的系统项文案由系统自动本地化，不进表）。
 fn text(lang: Lang, key: &str) -> &'static str {
     let zh = lang == Lang::Zh;
@@ -410,16 +420,18 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     // macOS 原生菜单（HIG）。win/linux：decorations:false 菜单栏不可见，
     // 对应交互由前端自绘标题栏/汉堡菜单承担（src/titlebar/TitleBar.tsx），
     // 故不构建（菜单 accelerator 的 win/linux 键盘面由前端 registry 全局监听兜住）。
+    // 语言：Task 16.5 起 vault 就绪前此处拿不到 settings——menu_lang 按 En 兜底，
+    // vault-ready 后 on_vault_ready 重建纠偏。
     #[cfg(target_os = "macos")]
     {
-        let lang = lang_from_vault(&app.state::<VaultState>().0);
+        let lang = menu_lang(app);
         app.set_menu(build_menu(app, &menu_tree(lang))?)?;
     }
     app.manage(ZoomState::default());
     app.on_menu_event(on_app_menu_event);
 
     // 托盘（三端）：模板图标 + 右键菜单 + 左键切换主窗。
-    let lang = lang_from_vault(&app.state::<VaultState>().0);
+    let lang = menu_lang(app);
     let tray_menu = build_menu(app, &tray_tree(lang))?;
     let icon = tauri::image::Image::from_bytes(TRAY_ICON_BYTES)?;
     TrayIconBuilder::with_id(TRAY_ID)
@@ -451,29 +463,40 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
 
     // 语言切换 → 重建 app 菜单（mac）与托盘菜单文案（前端 setLang 发事件）。
     let handle = app.clone();
-    app.listen(UI_LANG_EVENT, move |_| {
-        let lang = lang_from_vault(&handle.state::<VaultState>().0);
-        #[cfg(target_os = "macos")]
-        match build_menu(&handle, &menu_tree(lang)) {
-            Ok(menu) => {
-                if let Err(e) = handle.set_menu(menu) {
-                    eprintln!("[menu] rebuild failed: {e}");
-                }
-            }
-            Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
-        }
-        if let Some(tray) = handle.tray_by_id(TRAY_ID) {
-            match build_menu(&handle, &tray_tree(lang)) {
-                Ok(menu) => {
-                    if let Err(e) = tray.set_menu(Some(menu)) {
-                        eprintln!("[tray] set_menu failed: {e}");
-                    }
-                }
-                Err(e) => eprintln!("[tray] rebuild build failed: {e}"),
-            }
-        }
-    });
+    app.listen(UI_LANG_EVENT, move |_| rebuild_menus(&handle));
     Ok(())
+}
+
+/// vault 后台初始化就绪（Task 16.5，lib.rs 的 vault-init 线程调用）：初始菜单/
+/// 托盘在 vault 就绪前以 En 兜底构建（menu_lang），这里按 settings 真值重建
+/// 纠偏。语言本就是 En 时重建无害（同文案）。
+pub fn on_vault_ready<R: Runtime>(app: &AppHandle<R>) {
+    rebuild_menus(app);
+}
+
+/// 按 vault settings 现值重建 app 菜单（mac）与托盘菜单文案。UI_LANG_EVENT
+/// 监听与 [`on_vault_ready`] 共用；vault 未就绪（try_state 落空）按 En 兜底。
+fn rebuild_menus<R: Runtime>(handle: &AppHandle<R>) {
+    let lang = menu_lang(handle);
+    #[cfg(target_os = "macos")]
+    match build_menu(handle, &menu_tree(lang)) {
+        Ok(menu) => {
+            if let Err(e) = handle.set_menu(menu) {
+                eprintln!("[menu] rebuild failed: {e}");
+            }
+        }
+        Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
+    }
+    if let Some(tray) = handle.tray_by_id(TRAY_ID) {
+        match build_menu(handle, &tray_tree(lang)) {
+            Ok(menu) => {
+                if let Err(e) = tray.set_menu(Some(menu)) {
+                    eprintln!("[tray] set_menu failed: {e}");
+                }
+            }
+            Err(e) => eprintln!("[tray] rebuild build failed: {e}"),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -490,8 +513,13 @@ pub fn close_to_tray_enabled(vault: &ottr_vault::Vault) -> bool {
 }
 
 /// CloseRequested 拦截：开关开 → prevent_close + 隐藏（会话保活，托盘可回）。
+/// vault 未就绪（Task 16.5 启动窗口期）按开兜底——与下方配置读取失败同口径
+/// （不把「点 X」变成「丢会话退出」）。
 pub fn on_close_requested<R: Runtime>(app: &AppHandle<R>, api: &tauri::CloseRequestApi) {
-    let enabled = close_to_tray_enabled(&app.state::<VaultState>().0);
+    let enabled = app
+        .try_state::<VaultState>()
+        .map(|v| close_to_tray_enabled(&v.0))
+        .unwrap_or(true);
     if enabled {
         api.prevent_close();
         if let Some(w) = app.get_webview_window("main") {

@@ -1965,15 +1965,25 @@ pub fn run() {
         // T11（A7）：自动锁定计时状态（失焦起 N 分钟计时，重聚焦作废；
         // Arc 共享给窗口事件闭包与 spawn 的计时任务）。
         .manage(Arc::new(security::AutoLockState::default()))
+        // Task 16.5：vault 后台初始化状态（Builder 链上即 manage——无钥匙链
+        // 访问零开销，`vault_init_status` 命令在初始化窗口期即可安全调用）。
+        .manage(vault::VaultInit::default())
         .setup(|app| {
             // Task 5：vault 打开并托管（app_data_dir + 钥匙链 Master Key）。
-            // 在此失败即启动失败——数据层不可用时主机/凭据功能整体不可用，
-            // 显式报错优于让每个命令各自失败。
-            // T11：open_auto——Linux 无 Secret Service 自动落主密码模式（锁定启动，
-            // 前端 LockScreen 引导设主密码/解锁）。
-            let vault_state = vault::init(app.handle())
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
-            app.manage(vault_state);
+            // T16 判别实验（task-16-report.md §3，Exp10/14 阳性）：setup 主线程
+            // 的钥匙链 SecItem 访问在 macOS 27 + ad-hoc 每次重建签名（ACL 失配）
+            // 场景触发 securityd 交互路径，把主窗 frame 归零（打包产物整体不可
+            // 用）；Exp13 证明纯阻塞无害——元凶是钥匙链访问本身，不是「耗时」。
+            // Task 16.5 修复：init 移到后台线程（完成后 manage VaultState → 置
+            // Ready → 发 ottr://vault-ready；失败置 Failed 发
+            // ottr://vault-init-failed）。前端就绪门（VaultInitGate）在 Ready 前
+            // 不发首批 vault 命令；T11 锁定语义矩阵不变（Ready 后照旧
+            // status 查询 → keyring 模式进主 UI / password 模式进 LockScreen）。
+            // 竞态契约：线程内 manage 严格先于 Ready 置位与事件（见 vault.rs
+            // VaultInit 文档），就绪后命令面与旧实现逐字等价。
+            // 线程在本 setup 尾部（menu::setup 之后）才 spawn：vault-ready 会触发
+            // 菜单/托盘文案重建（on_vault_ready），晚 spawn 消除「重建与初始构建
+            // 并发」的窗口——init 的钥匙链访问本就不占 setup 主线程，先后无碍。
 
             // A10（Task 1）：系统主题监听。前端主通道是 matchMedia(prefers-color-scheme)
             // （src/theme/ThemeContext.tsx）；这里补 Rust 侧兜底推送 `ottr://system-theme`
@@ -2015,6 +2025,41 @@ pub fn run() {
             // 语言切换重建监听（menu.rs 模块文档）。失败即启动失败——菜单/托盘
             // 是 A12 的承诺面，静默缺失会让功能面漂移。
             menu::setup(app.handle())?;
+
+            // vault 后台初始化（Task 16.5，见上注释）：setup 主线程不再触碰
+            // 钥匙链——主窗创建/显示不被阻塞，frame 归零路径就此消除。
+            {
+                let handle = app.handle().clone();
+                let tracker = app.state::<vault::VaultInit>().inner().clone();
+                std::thread::Builder::new()
+                    .name("vault-init".into())
+                    .spawn(move || {
+                        let t0 = std::time::Instant::now();
+                        match vault::init(&handle) {
+                            Ok(vault_state) => {
+                                // 顺序即契约：先 manage（此后 State 可解析），
+                                // 再置 Ready、再发事件（前端见 Ready 即 State 必在）。
+                                handle.manage(vault_state);
+                                tracker.set(vault::VaultInitStatus::Ready);
+                                let _ = handle.emit("ottr://vault-ready", ());
+                                eprintln!(
+                                    "[vault] background init ok in {}ms",
+                                    t0.elapsed().as_millis()
+                                );
+                                // 初始菜单/托盘在 vault 就绪前以 En 兜底构建；
+                                // 就绪后按 settings ui.language 真值重建纠偏。
+                                menu::on_vault_ready(&handle);
+                            }
+                            Err(e) => {
+                                tracker
+                                    .set(vault::VaultInitStatus::Failed { error: e.to_string() });
+                                let _ = handle.emit("ottr://vault-init-failed", e.to_string());
+                                eprintln!("[vault] background init failed: {e}");
+                            }
+                        }
+                    })
+                    .expect("spawn vault-init thread");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2061,6 +2106,8 @@ pub fn run() {
             vault::vault_upgrade_to_master_password,
             vault::settings_get,
             vault::settings_set,
+            // Task 16.5（0×0 主窗 frame 修复）：vault 后台初始化就绪门取数面
+            vault::vault_init_status,
             // Task 12（spec §7）：通知管线①应用内通知中心（明文面，锁定可读写）
             vault::notify_insert,
             vault::notify_list,

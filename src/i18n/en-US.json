@@ -479,6 +479,12 @@
       "doneCount": "Re-encrypted {{count}} secret fields; unlock with the master password from now on.",
       "errTooShort": "Master password must be at least {{min}} characters",
       "errMismatch": "Passwords do not match"
+    },
+    "vaultInit": {
+      "loading": "Unlocking the data vault…",
+      "failedTitle": "Ottr could not open its data vault",
+      "failedHint": "The system keychain may have denied access. Restart the app to retry; if it keeps failing, reinstall or contact support.",
+      "quit": "Quit"
     }
   }
 }

@@ -208,7 +208,14 @@
     "contextReset": "Reset Terminal",
     "contextReconnect": "Reconnect",
     "closeTab": "Close Tab",
-    "closeSession": "Disconnect Session"
+    "closeSession": "Disconnect Session",
+    "connecting": "Connecting to {{host}}…",
+    "reconnected": "Reconnected",
+    "reconnecting": "Connection lost. Retrying in {{seconds}}s (attempt {{attempt}}/{{max}})…",
+    "reconnectExhausted": "Auto-reconnect gave up after {{max}} attempts. Double-click the host to try again.",
+    "connectFailed": "Connection failed: {{message}}",
+    "hostKeyRejected": "Host key confirmation rejected; not connected",
+    "reconnectHint": "Double-click a host in the sidebar to connect"
   },
   "ai": {
     "title": "AI Assistant",
@@ -221,6 +228,22 @@
     "copyCode": "Copy code",
     "insertToTerminal": "Insert to terminal",
     "failed": "Request failed, please retry"
+  },
+  "tabs": {
+    "list": "Session tabs",
+    "closeAria": "Close tab {{name}}"
+  },
+  "hostKey": {
+    "firstTitle": "First connection",
+    "firstIntro": "First time connecting to \"{{host}}\". Verify the server host key fingerprint:",
+    "pendingIntro": "The host key of \"{{host}}\" is not verified yet. Verify the fingerprint:",
+    "changedTitle": "WARNING: host key has changed!",
+    "changedIntro": "The host key of \"{{host}}\" does not match the recorded one. This could indicate a man-in-the-middle attack, or the server key was genuinely replaced.",
+    "changedWarning": "Unless you can confirm the server key was genuinely replaced, refuse to connect.",
+    "fingerprint": "Fingerprint",
+    "reject": "Refuse",
+    "trust": "Trust & connect",
+    "acceptAnyway": "Connect anyway"
   },
   "spike": {
     "keyringButton": "Keyring read/write test (Spike #7)",

@@ -207,7 +207,14 @@
     "contextReset": "重置终端",
     "contextReconnect": "重新连接",
     "closeTab": "关闭标签页",
-    "closeSession": "断开会话"
+    "closeSession": "断开会话",
+    "connecting": "正在连接 {{host}}…",
+    "reconnected": "已重新连接",
+    "reconnecting": "连接已断开，{{seconds}} 秒后重连（第 {{attempt}}/{{max}} 次）…",
+    "reconnectExhausted": "自动重连 {{max}} 次未成功，已停止。双击左侧主机可再次连接。",
+    "connectFailed": "连接失败：{{message}}",
+    "hostKeyRejected": "主机密钥确认未通过，未连接",
+    "reconnectHint": "双击左侧主机可发起连接"
   },
   "ai": {
     "title": "AI 助手",
@@ -220,6 +227,22 @@
     "copyCode": "复制代码",
     "insertToTerminal": "插入到终端",
     "failed": "请求失败，请重试"
+  },
+  "tabs": {
+    "list": "会话标签",
+    "closeAria": "关闭标签 {{name}}"
+  },
+  "hostKey": {
+    "firstTitle": "首次连接确认",
+    "firstIntro": "首次连接「{{host}}」，请核对服务器主机密钥指纹：",
+    "pendingIntro": "「{{host}}」的主机密钥尚未核验，请核对指纹：",
+    "changedTitle": "警告：主机密钥已变更！",
+    "changedIntro": "「{{host}}」的主机密钥与已记录的不一致。这可能是中间人攻击，也可能是服务器确实更换了密钥。",
+    "changedWarning": "除非你确认服务器确实更换了密钥，否则请拒绝连接。",
+    "fingerprint": "指纹",
+    "reject": "拒绝连接",
+    "trust": "信任并连接",
+    "acceptAnyway": "仍要连接"
   },
   "spike": {
     "keyringButton": "Keyring 读写测试（Spike#7）",

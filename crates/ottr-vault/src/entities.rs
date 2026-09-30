@@ -242,7 +242,11 @@ impl std::str::FromStr for CredentialKind {
 }
 
 /// 可开封的密文字段（列名与 AAD 字段名一一对应）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// serde 面（snake_case："secret"/"passphrase"/"totp_secret"）与 TS `SecretField`
+/// 联合类型逐字同构——Task 4 评审转交必办①：`credentials_reveal` 命令的 `field`
+/// 参数反序列化依赖这里（TS 侧 totp_secret 传 "totp_secret"，缺 derive 会地雷式失败）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SecretField {
     Secret,
     Passphrase,
@@ -481,6 +485,7 @@ fn row_to_credential(row: &Row) -> rusqlite::Result<Credential> {
 
 /// 主机。tags 为 JSON 列；credential_id / group_id 可空、FK ON DELETE SET NULL；
 /// jump_chain_id 的目标表（jump_chains）未建，暂无 FK（0002 迁移注释）。
+/// username（0003 迁移）为登录用户名，可空（未指定时连接侧回退当前用户）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Host {
     pub id: i64,
@@ -489,6 +494,7 @@ pub struct Host {
     pub tags: Vec<String>,
     pub address: String,
     pub port: i64,
+    pub username: Option<String>,
     pub credential_id: Option<i64>,
     pub jump_chain_id: Option<i64>,
     pub encoding_override: Option<String>,
@@ -507,6 +513,7 @@ pub struct HostInput {
     pub tags: Vec<String>,
     pub address: String,
     pub port: i64,
+    pub username: Option<String>,
     pub credential_id: Option<i64>,
     pub jump_chain_id: Option<i64>,
     pub encoding_override: Option<String>,
@@ -525,16 +532,17 @@ impl Hosts {
         let conn = vault.connection();
         let tx = conn.unchecked_transaction()?;
         tx.execute(
-            "INSERT INTO hosts (name, group_id, tags, address, port, credential_id,
-                                jump_chain_id, encoding_override, theme_override,
+            "INSERT INTO hosts (name, group_id, tags, address, port, username,
+                                credential_id, jump_chain_id, encoding_override, theme_override,
                                 monitor_enabled, notes, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
             params![
                 input.name,
                 input.group_id,
                 tags_to_json(&input.tags),
                 input.address,
                 input.port,
+                input.username,
                 input.credential_id,
                 input.jump_chain_id,
                 input.encoding_override,
@@ -553,6 +561,7 @@ impl Hosts {
             tags: input.tags,
             address: input.address,
             port: input.port,
+            username: input.username,
             credential_id: input.credential_id,
             jump_chain_id: input.jump_chain_id,
             encoding_override: input.encoding_override,
@@ -578,16 +587,17 @@ impl Hosts {
             .ok_or_else(|| VaultError::NotFound(format!("host id={id}")))?;
         tx.execute(
             "UPDATE hosts SET name = ?1, group_id = ?2, tags = ?3, address = ?4, port = ?5,
-                              credential_id = ?6, jump_chain_id = ?7,
-                              encoding_override = ?8, theme_override = ?9,
-                              monitor_enabled = ?10, notes = ?11, updated_at = ?12
-             WHERE id = ?13",
+                              username = ?6, credential_id = ?7, jump_chain_id = ?8,
+                              encoding_override = ?9, theme_override = ?10,
+                              monitor_enabled = ?11, notes = ?12, updated_at = ?13
+             WHERE id = ?14",
             params![
                 input.name,
                 input.group_id,
                 tags_to_json(&input.tags),
                 input.address,
                 input.port,
+                input.username,
                 input.credential_id,
                 input.jump_chain_id,
                 input.encoding_override,
@@ -606,6 +616,7 @@ impl Hosts {
             tags: input.tags,
             address: input.address,
             port: input.port,
+            username: input.username,
             credential_id: input.credential_id,
             jump_chain_id: input.jump_chain_id,
             encoding_override: input.encoding_override,
@@ -723,6 +734,7 @@ fn row_to_host(row: &Row) -> rusqlite::Result<Host> {
         tags,
         address: row.get("address")?,
         port: row.get("port")?,
+        username: row.get("username")?,
         credential_id: row.get("credential_id")?,
         jump_chain_id: row.get("jump_chain_id")?,
         encoding_override: row.get("encoding_override")?,

@@ -22,6 +22,7 @@ fn host_input(name: &str, notes: &str) -> HostInput {
         tags: vec![],
         address: "10.0.0.1".into(),
         port: 22,
+        username: None,
         credential_id: None,
         jump_chain_id: None,
         encoding_override: None,
@@ -46,7 +47,8 @@ fn migration_0002_creates_entity_tables_and_fts() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
 
-    assert_eq!(vault.schema_version().unwrap(), 2);
+    // 0002 实体表 + 0003（hosts.username，Task 5）→ 最新版本
+    assert_eq!(vault.schema_version().unwrap(), 3);
 
     let conn = vault.connection();
     let tables: Vec<String> = {
@@ -87,6 +89,7 @@ fn host_crud_roundtrip() {
     input.group_id = Some(group.id);
     input.tags = vec!["prod".into(), "nginx".into()];
     input.port = 2222;
+    input.username = Some("deploy".into());
     input.credential_id = Some(cred.id);
     input.encoding_override = Some("gbk".into());
     input.monitor_enabled = true;
@@ -98,6 +101,7 @@ fn host_crud_roundtrip() {
     assert_eq!(host.tags, vec!["prod".to_string(), "nginx".to_string()]);
     assert_eq!(host.address, "10.0.0.1");
     assert_eq!(host.port, 2222);
+    assert_eq!(host.username.as_deref(), Some("deploy"));
     assert_eq!(host.credential_id, Some(cred.id));
     assert_eq!(host.encoding_override.as_deref(), Some("gbk"));
     assert!(host.monitor_enabled);
@@ -109,6 +113,7 @@ fn host_crud_roundtrip() {
     upd.tags = vec![];
     upd.group_id = None;
     upd.credential_id = None;
+    upd.username = None;
     upd.monitor_enabled = false;
     upd.notes = None;
     let updated = Hosts::update(&vault, created.id, upd).unwrap();
@@ -117,6 +122,7 @@ fn host_crud_roundtrip() {
     assert!(updated.tags.is_empty());
     assert_eq!(updated.group_id, None);
     assert_eq!(updated.credential_id, None);
+    assert_eq!(updated.username, None);
     assert!(!updated.monitor_enabled);
     assert_eq!(updated.notes, None);
     assert_eq!(

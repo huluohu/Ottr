@@ -18,14 +18,16 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 2;
+pub const LATEST_SCHEMA_VERSION: u32 = 3;
 
 /// 迁移脚本注册表：新迁移往后追加，版本号必须连续递增。
 /// 0001 引导（meta+settings）；0002 实体五表 + FTS5 trigram（Task 4）；
+/// 0003 hosts.username 登录用户名列（Task 5，spec §3 模型缺口补列）；
 /// history 表 Task 15、notifications Task 12 各自成迁移。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
+    (3, include_str!("../migrations/0003_hosts_username.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 由 Master Key 派生的密封器。

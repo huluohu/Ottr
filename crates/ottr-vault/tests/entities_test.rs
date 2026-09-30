@@ -248,6 +248,43 @@ fn host_update_and_delete_sync_fts_index() {
 }
 
 #[test]
+fn rowids_never_reused_after_delete() {
+    // I-1 回归（AAD 防换绑不变量）：裸 rowid = max+1，删掉最大 id 行后新行会复用
+    // 该 id——同主密钥下被删凭据的旧密文即可原样通过 GCM 认证注入复用同 id 的新行。
+    // 0002 的 INTEGER PK 全部 AUTOINCREMENT，新行 rowid 必须严格大于被删行。
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+
+    let c1 = Credentials::create(&vault, &password_input("pw")).unwrap();
+    Credentials::delete(&vault, c1.id).unwrap();
+    let c2 = Credentials::create(&vault, &password_input("pw2")).unwrap();
+    assert!(c2.id > c1.id, "credentials rowid 复用：{} → {}", c1.id, c2.id);
+
+    let h1 = Hosts::create(&vault, host_input("a", "")).unwrap();
+    Hosts::delete(&vault, h1.id).unwrap();
+    let h2 = Hosts::create(&vault, host_input("b", "")).unwrap();
+    assert!(h2.id > h1.id, "hosts rowid 复用：{} → {}", h1.id, h2.id);
+
+    let g1 = HostGroups::create(&vault, "g1", None, None).unwrap();
+    HostGroups::delete(&vault, g1.id).unwrap();
+    let g2 = HostGroups::create(&vault, "g2", None, None).unwrap();
+    assert!(g2.id > g1.id, "host_groups rowid 复用：{} → {}", g1.id, g2.id);
+
+    let s1 = Snippets::create(
+        &vault,
+        &SnippetInput { name: "s1".into(), body: "x".into(), variables: vec![], tags: vec![], host_scope: None },
+    )
+    .unwrap();
+    Snippets::delete(&vault, s1.id).unwrap();
+    let s2 = Snippets::create(
+        &vault,
+        &SnippetInput { name: "s2".into(), body: "x".into(), variables: vec![], tags: vec![], host_scope: None },
+    )
+    .unwrap();
+    assert!(s2.id > s1.id, "snippets rowid 复用：{} → {}", s1.id, s2.id);
+}
+
+#[test]
 fn credential_secret_is_sealed_at_rest_and_revealable() {
     // 裁定 #2：密文落库断言必须绕过 API 直查 SQLite。
     let dir = tempfile::tempdir().unwrap();

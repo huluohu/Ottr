@@ -8,6 +8,12 @@
 //! - **密文纪律**：调用方传明文，存储层经 [`Vault::crypto`] seal；AAD 一律走
 //!   [`crate::aad`]（`credentials:{id}:{field}`）。落库无明文由
 //!   `entities_test::credential_secret_is_sealed_at_rest` 直查库文件断言。
+//! - **AAD 绑定表一律 AUTOINCREMENT**（评审 I-1）：承载加密字段的表主键必须是
+//!   `INTEGER PRIMARY KEY AUTOINCREMENT`（0002 迁移已落地）——裸 rowid 在删最大行后
+//!   会被新行复用，同主密钥下被删行的旧密文即可原样通过 GCM 认证注入复用同 id 的
+//!   新行；AUTOINCREMENT 保证 rowid 严格递增永不复用。回归测试
+//!   `entities_test::rowids_never_reused_after_delete`。未来新表凡带 `*_enc`/
+//!   `config_enc` 类字段必须遵守本约定。
 //! - **删除语义（裁定 #3）**：credentials / host_groups 是可复用实体，只解绑不级联删；
 //!   FK 统一 ON DELETE SET NULL（0002 迁移），删引用方留被引用方。
 //! - **检索（spec §3 CJK 约束 + Task 3 实测）**：trigram 只命中 ≥3 字符查询，

@@ -9,6 +9,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { HostTree } from "./hosts/HostTree";
+import { LockScreen } from "./security/LockScreen";
+import { SecuritySettings } from "./security/SecuritySettings";
+import { useVaultLockStore } from "./security/VaultLockStore";
+import { syncLangFromVault } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
 import { QuickConnect } from "./hosts/QuickConnect";
@@ -67,6 +71,8 @@ function clampSidebarWidth(w: number): number {
 
 function HomeLayout() {
   const { t } = useTranslation();
+  // T11（A7）：安全底座——锁定遮罩盖全屏（password 模式）；设置对话框入口在顶栏。
+  const lockPhase = useVaultLockStore((s) => s.phase);
   const hosts = useVaultStore((s) => s.hosts);
   const storeError = useVaultStore((s) => s.error);
   // 会话面（Task 7）：标签条 + 分屏终端主区（Task 8） + host key 确认框
@@ -79,6 +85,7 @@ function HomeLayout() {
   const [importOpen, setImportOpen] = useState(false);
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     try {
       const raw = localStorage.getItem(SIDEBAR_KEY);
@@ -92,8 +99,12 @@ function HomeLayout() {
 
   // 首屏：vault 数据 → 会话事件监听 → 标签恢复（不自动连接，安全考虑见
   // SessionStore.restoreTabs）。恢复依赖 hosts 就位，故排在 refresh 之后。
+  // T11：锁定状态机先查 status（password 模式锁定时 refresh 会被 Locked 门卫拒，
+  // 错误横幅由遮罩盖住，解锁后用户手动重试即可——锁屏优先是预期行为）。
   useEffect(() => {
     void (async () => {
+      await useVaultLockStore.getState().init();
+      void syncLangFromVault();
       try {
         await useVaultStore.getState().refresh();
       } catch {
@@ -163,6 +174,14 @@ function HomeLayout() {
         </button>
         <button className="topbar-debug" data-testid="open-credentials" onClick={() => setCredentialsOpen(true)}>
           {t("credentials.openButton")}
+        </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-settings"
+          aria-label={t("settings.title")}
+          onClick={() => setSettingsOpen(true)}
+        >
+          {t("settings.title")}
         </button>
         <div className="topbar-spacer" />
         <ThemeSwitch />
@@ -249,7 +268,10 @@ function HomeLayout() {
       )}
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
+      <SecuritySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <HostKeyDialog />
+      {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
+      {lockPhase === "locked" && <LockScreen />}
       <QuickConnect
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}

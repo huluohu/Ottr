@@ -15,6 +15,9 @@
 //       known_hosts_list known_hosts_upsert known_hosts_verify known_hosts_mark_changed
 //       import_ssh_config export_hosts_csv（Task 5 导入/导出）
 //       key_generate key_inspect key_export key_deploy（Task 6 密钥管理，src-tauri keys.rs）
+//       vault_security_status vault_unlock vault_lock vault_upgrade_to_master_password
+//       settings_get settings_set（T11 安全底座 + theme/language 迁 vault）
+//       vault_copy_credential_secret（T11 剪贴板，src-tauri security.rs）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -167,6 +170,19 @@ export interface KeyDeployReport {
   known_hosts_state: KnownHostState;
 }
 
+/** Rust `vault::SecurityStatus` 同构（T11 锁定状态机查询）。 */
+export interface SecurityStatus {
+  /** "keyring"（钥匙链直取，无锁概念）| "password"（Argon2id 主密码派生）。 */
+  mode: "keyring" | "password";
+  locked: boolean;
+}
+
+/** Rust `vault_upgrade_to_master_password` 进度事件载荷（ottr://reencrypt-progress）。 */
+export interface ReencryptProgress {
+  done: number;
+  total: number;
+}
+
 export const vaultApi = {
   hosts: {
     list: () => invoke<Host[]>("hosts_list"),
@@ -243,4 +259,23 @@ export const vaultApi = {
         publicKey,
       }),
   },
+  /** 安全底座（T11，A7）：锁定状态机 / 主密码升级 / settings / 剪贴板。
+   * 事件契约：ottr://vault-locked、ottr://vault-unlocked（Rust 侧统一发）；
+   * ottr://reencrypt-progress（升级进度）。命令面锁定时报 "vault is locked..."。 */
+  security: {
+    status: () => invoke<SecurityStatus>("vault_security_status"),
+    unlock: (password: string) => invoke<void>("vault_unlock", { password }),
+    lock: () => invoke<void>("vault_lock"),
+    /** keyring → password 升级（重加密迁移）；resolve = 完成并返回重密封字段数。 */
+    upgradeToMasterPassword: (password: string) =>
+      invoke<number>("vault_upgrade_to_master_password", { password }),
+  },
+  /** settings 表 JSON 读写（明文面：锁定可读——锁定屏要读主题/安全配置）。 */
+  settings: {
+    get: <T = unknown>(key: string) => invoke<T | null>("settings_get", { key }),
+    set: (key: string, value: unknown) => invoke<void>("settings_set", { key, value }),
+  },
+  /** 凭据密文复制（Rust 侧解密写剪贴板 + 定时清空；明文不回前端）。 */
+  copyCredentialSecret: (id: number, field: SecretField) =>
+    invoke<void>("vault_copy_credential_secret", { id, field }),
 };

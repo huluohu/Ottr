@@ -11,8 +11,15 @@ vi.hoisted(() => {
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nextProvider, useTranslation } from "react-i18next";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import i18n, { detectLang, useLanguage } from "./index";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import i18n, { detectLang, setLang, syncLangFromVault, useLanguage } from "./index";
+
+const mockedInvoke = invoke as unknown as Mock;
+const settingsStore = new Map<string, unknown>();
 
 function setNavigatorLanguage(lang: string) {
   Object.defineProperty(window.navigator, "language", { value: lang, configurable: true });
@@ -33,6 +40,18 @@ function Probe() {
 
 beforeEach(() => {
   localStorage.clear();
+  settingsStore.clear();
+  // 内存 settings 表（T11 迁移用；未覆盖命令显式失败防误用）
+  mockedInvoke.mockImplementation((cmd: string, args?: { key: string; value: unknown }) => {
+    if (cmd === "settings_get") {
+      return Promise.resolve(settingsStore.has(args!.key) ? settingsStore.get(args!.key) : null);
+    }
+    if (cmd === "settings_set") {
+      settingsStore.set(args!.key, args!.value);
+      return Promise.resolve(null);
+    }
+    return Promise.reject(new Error(`unexpected command: ${cmd}`));
+  });
   setNavigatorLanguage("en-US");
 });
 
@@ -71,10 +90,39 @@ describe("i18n", () => {
     fireEvent.click(screen.getByText("to-zh"));
     await waitFor(() => expect(screen.getByTestId("ok").textContent).toBe("确定"));
     expect(screen.getByTestId("lang").textContent).toBe("zh-CN");
-    // 迁移点注记：localStorage 键 ottr.settings.lang，Task 4 vault 落地后迁移
+    // T11：setLang 双写（缓存镜像即时 + vault settings 异步）
     expect(localStorage.getItem("ottr.settings.lang")).toBe("zh-CN");
+    await waitFor(() => expect(settingsStore.get("ui.language")).toBe("zh-CN"));
     fireEvent.click(screen.getByText("to-en"));
     await waitFor(() => expect(screen.getByTestId("ok").textContent).toBe("OK"));
+    // 等本测试触发的 vault 写落地（fire-and-forget 链不跨测试泄漏，防竞态）
+    await waitFor(() => expect(settingsStore.get("ui.language")).toBe("en-US"));
+  });
+
+  it("T11 迁移：localStorage 有值、vault 空 → 迁入 ui.language 并清 localStorage 键", async () => {
+    localStorage.setItem("ottr.settings.lang", "zh-CN");
+    await syncLangFromVault();
+    expect(settingsStore.get("ui.language")).toBe("zh-CN");
+    expect(localStorage.getItem("ottr.settings.lang")).toBeNull();
+    // 幂等：二次 sync 不再写
+    mockedInvoke.mockClear();
+    await syncLangFromVault();
+    expect(mockedInvoke.mock.calls.filter(([cmd]) => cmd === "settings_set")).toHaveLength(0);
+  });
+
+  it("T11 真源对齐：vault 有值时以 vault 为准（changeLanguage 生效）", async () => {
+    settingsStore.set("ui.language", "en-US");
+    await i18n.changeLanguage("zh-CN"); // 实例先在 zh
+    await syncLangFromVault();
+    expect(i18n.language).toBe("en-US");
+    // 缓存镜像刷新为 vault 值
+    expect(localStorage.getItem("ottr.settings.lang")).toBe("en-US");
+  });
+
+  it("T11 setLang 双写：缓存镜像即时 + vault ui.language 异步", async () => {
+    setLang("zh-CN");
+    expect(localStorage.getItem("ottr.settings.lang")).toBe("zh-CN");
+    await waitFor(() => expect(settingsStore.get("ui.language")).toBe("zh-CN"));
   });
 
   it("缺键 fallback：zh-CN 缺键回落 en-US 译文；双语皆缺返回键名", () => {

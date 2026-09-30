@@ -1,5 +1,6 @@
 // CredentialList 组件测试（Task 6 裁定 #6/#7）：删除确认框提示「N 台主机将
 // 解除绑定」（从 hosts 数据现算）、取消不动、确认发 credentials_delete 并刷新。
+// T11：密码复制——vault_copy_credential_secret（明文不回前端），按钮态「已复制」。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -116,5 +117,47 @@ describe("CredentialList 删除确认", () => {
     // 私钥材料（即使是误传的 secret 字段）永不渲染
     expect(item.textContent).not.toContain("PRIVATE KEY");
     expect(item.textContent).not.toContain("BEGIN OPENSSH");
+  });
+});
+
+describe("CredentialList 密码复制（T11）", () => {
+  it("password 凭据显示复制按钮，点击发 vault_copy_credential_secret 并亮「已复制」", async () => {
+    seedStore([host(1, 7)], [cred(7, "password"), cred(8, "key")]);
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      if (cmd === "vault_copy_credential_secret") return Promise.resolve(null);
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<CredentialList />);
+    // key 凭据无复制按钮（复制面 = password 凭据的 secret）
+    expect(screen.queryByTestId("cred-copy-8")).toBeNull();
+    fireEvent.click(screen.getByTestId("cred-copy-7"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("vault_copy_credential_secret", {
+        id: 7,
+        field: "secret",
+      }),
+    );
+    await waitFor(() => expect(screen.getByTestId("cred-copy-7").textContent).toBe("Copied"));
+  });
+
+  it("复制失败：错误条展示（命令拒绝路径）", async () => {
+    seedStore([host(1, 7)], [cred(7, "password")]);
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      if (cmd === "vault_copy_credential_secret") {
+        return Promise.reject("credential id=7 has no secret in \"secret\"");
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<CredentialList />);
+    fireEvent.click(screen.getByTestId("cred-copy-7"));
+    await waitFor(() =>
+      expect(screen.getByTestId("cred-list-error").textContent).toContain("Copy failed"),
+    );
   });
 });

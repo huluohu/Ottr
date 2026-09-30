@@ -1,9 +1,19 @@
 // A10（Task 1 Step 4）：ThemeContext 行为测试——mode 切换改 data-theme、
 // system 模式跟随 mock matchMedia、localStorage 持久化与恢复。
 // Tauri 事件兜底在纯浏览器环境（jsdom 无 __TAURI_INTERNALS__）自动跳过，只测 matchMedia 主通道。
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ThemeProvider, useTheme } from "./ThemeContext";
+// T11（A7）：持久化真源迁 vault settings（ui.theme）——localStorage 降级为启动
+// 缓存镜像；迁移（vault 空时从 localStorage 迁入并清键）与真源对齐（vault 值
+// 纠正陈旧缓存）有专项用例。invoke mock = 内存 settings 表（行为贴近真后端）。
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { ThemeProvider, useTheme, syncThemeFromVault } from "./ThemeContext";
+
+const mockedInvoke = invoke as unknown as Mock;
+const settingsStore = new Map<string, unknown>();
 
 // --- 可控 matchMedia 模拟（jsdom 不实现 prefers-color-scheme 动态切换） ---
 type Listener = (e: { matches: boolean }) => void;
@@ -52,6 +62,18 @@ const renderThemed = () =>
 
 beforeEach(() => {
   localStorage.clear();
+  settingsStore.clear();
+  // 内存 settings 表（settings_get/set 契约面；其余命令显式失败防误用）
+  mockedInvoke.mockImplementation((cmd: string, args?: { key: string; value: unknown }) => {
+    if (cmd === "settings_get") {
+      return Promise.resolve(settingsStore.has(args!.key) ? settingsStore.get(args!.key) : null);
+    }
+    if (cmd === "settings_set") {
+      settingsStore.set(args!.key, args!.value);
+      return Promise.resolve(null);
+    }
+    return Promise.reject(new Error(`unexpected command: ${cmd}`));
+  });
   installMatchMedia(false); // 默认系统为亮色
 });
 
@@ -93,5 +115,42 @@ describe("ThemeContext", () => {
     renderThemed();
     expect(screen.getByTestId("mode").textContent).toBe("light");
     expect(dataTheme()).toBe("light");
+  });
+
+  it("T11 迁移：localStorage 有值、vault 空 → 迁入 ui.theme 并清 localStorage 键", async () => {
+    localStorage.setItem("ottr.settings.theme", "dark");
+    await act(async () => {
+      await syncThemeFromVault();
+    });
+    expect(settingsStore.get("ui.theme")).toBe("dark");
+    expect(localStorage.getItem("ottr.settings.theme")).toBeNull();
+    // 幂等：二次 sync 不再写
+    mockedInvoke.mockClear();
+    await act(async () => {
+      await syncThemeFromVault();
+    });
+    expect(
+      mockedInvoke.mock.calls.filter(([cmd]) => cmd === "settings_set"),
+    ).toHaveLength(0);
+  });
+
+  it("T11 真源对齐：vault 有值时以 vault 为准（陈旧缓存被纠正）", async () => {
+    settingsStore.set("ui.theme", "dark");
+    localStorage.setItem("ottr.settings.theme", "light"); // 陈旧缓存
+    await act(async () => {
+      renderThemed();
+      // 首帧（同步）按缓存 light，挂载 sync 后被 vault 值纠正为 dark
+    });
+    await waitFor(() => expect(screen.getByTestId("mode").textContent).toBe("dark"));
+    expect(dataTheme()).toBe("dark");
+    // 真源对齐不迁不删：缓存镜像刷新为 vault 值
+    expect(localStorage.getItem("ottr.settings.theme")).toBe("dark");
+  });
+
+  it("T11 setMode 双写：缓存镜像 + vault ui.theme", async () => {
+    renderThemed();
+    fireEvent.click(screen.getByText("set-dark"));
+    expect(localStorage.getItem("ottr.settings.theme")).toBe("dark");
+    await waitFor(() => expect(settingsStore.get("ui.theme")).toBe("dark"));
   });
 });

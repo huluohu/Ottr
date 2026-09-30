@@ -29,7 +29,8 @@
     "themeSystem": "System",
     "language": "Language",
     "langZh": "中文",
-    "langEn": "English"
+    "langEn": "English",
+    "sectionSecurity": "Security"
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -121,7 +122,11 @@
     "deleteWillUnbind_other": "{{count}} hosts will be unbound.",
     "deleteNoHosts": "No hosts currently bound to this credential.",
     "confirmDelete": "Delete",
-    "deleteFailed": "Delete failed: {{message}}"
+    "deleteFailed": "Delete failed: {{message}}",
+    "copyPassword": "Copy password",
+    "copyPasswordAria": "Copy password of credential {{id}}",
+    "copied": "Copied",
+    "copyFailed": "Copy failed: {{message}}"
   },
   "credentialForm": {
     "newTitle": "New Credential",
@@ -324,5 +329,40 @@
     "reject": "Refuse",
     "trust": "Trust & connect",
     "acceptAnyway": "Connect anyway"
+  },
+  "security": {
+    "mode": "Key mode",
+    "modeKeyring": "System keychain",
+    "modeKeyringDesc": "Master key is random and stored in the system keychain; zero setup, no lock concept.",
+    "modePassword": "Master password",
+    "modePasswordDesc": "Master key is derived from your master password and never stored; the app starts locked.",
+    "masterPassword": "Master password",
+    "upgrade": "Upgrade to master password…",
+    "lockNow": "Lock now",
+    "off": "Off",
+    "autolock": "Auto-lock when unfocused",
+    "autolockMinutes": "{{count}} min",
+    "clipboardClear": "Clear clipboard after copying",
+    "clipboardSeconds": "{{count}} s",
+    "lockScreen": {
+      "title": "Ottr is locked",
+      "hint": "Enter your master password to unlock this vault.",
+      "unlock": "Unlock",
+      "errEmpty": "Enter your master password",
+      "errWrongPassword": "Master password is incorrect"
+    },
+    "wizard": {
+      "stepPassword": "Set a master password (credentials will be re-encrypted)",
+      "confirm": "Confirm master password",
+      "intro": "At least {{min}} characters. If lost, credentials cannot be recovered.",
+      "start": "Start upgrade",
+      "stepProgress": "Re-encrypting credentials…",
+      "progressOf": "{{done}}/{{total}}",
+      "progressPending": "Preparing…",
+      "stepDone": "Upgrade complete",
+      "doneCount": "Re-encrypted {{count}} secret fields; unlock with the master password from now on.",
+      "errTooShort": "Master password must be at least {{min}} characters",
+      "errMismatch": "Passwords do not match"
+    }
   }
 }

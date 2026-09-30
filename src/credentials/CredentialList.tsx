@@ -1,10 +1,12 @@
-// CredentialList（Task 6，A3）：凭据列表 + 删除确认。
+// CredentialList（Task 6，A3）：凭据列表 + 删除确认 + 密码复制（T11）。
 // 删除确认（裁定 #6）：确认框提示「N 台主机将解除绑定」——N 从 hosts 数据现算
 // （host.credential_id === 凭据 id）；FK ON DELETE SET NULL 只解绑不级联删。
 // 列表项不含任何密钥材料（Credential 序列化面天然无密钥），仅展示 kind 与公钥摘要。
-import { useState } from "react";
+// T11 密码复制：vault_copy_credential_secret——明文在 Rust 侧解密直写剪贴板并
+// 定时清空（默认 30s 可关），前端永不接触明文（复制成功只亮「已复制」提示）。
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Credential } from "../vault/api";
+import { vaultApi, type Credential } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { CredentialForm } from "./CredentialForm";
 
@@ -18,9 +20,25 @@ export function CredentialList() {
   /** 正在编辑的凭据；"new" = 新建表单。 */
   const [form, setForm] = useState<Credential | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 复制成功提示的凭据 id（「已复制」微光；复制失败走 error 条）。 */
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function boundHostCount(id: number): number {
     return hosts.filter((h) => h.credential_id === id).length;
+  }
+
+  async function handleCopyPassword(c: Credential) {
+    setError(null);
+    try {
+      // 明文不回前端：命令内部 reveal + 剪贴板 + 清空调度（Rust security.rs）。
+      await vaultApi.copyCredentialSecret(c.id, "secret");
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      setCopiedId(c.id);
+      copiedTimer.current = setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      setError(t("credentials.copyFailed", { message: String(err) }));
+    }
   }
 
   async function handleConfirmDelete(id: number) {
@@ -56,6 +74,16 @@ export function CredentialList() {
                 <span className="cred-title">{t("credentials.itemTitle", { id: c.id })}</span>
                 {pubSnippet && <code className="cred-pub">{pubSnippet}…</code>}
                 <span className="cred-meta">{t("credentials.boundCount", { count: bound })}</span>
+                {c.kind === "password" && (
+                  <button
+                    type="button"
+                    data-testid={`cred-copy-${c.id}`}
+                    aria-label={t("credentials.copyPasswordAria", { id: c.id })}
+                    onClick={() => void handleCopyPassword(c)}
+                  >
+                    {copiedId === c.id ? t("credentials.copied") : t("credentials.copyPassword")}
+                  </button>
+                )}
                 <button
                   type="button"
                   data-testid={`cred-edit-${c.id}`}

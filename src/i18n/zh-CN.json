@@ -29,7 +29,8 @@
     "themeSystem": "跟随系统",
     "language": "语言",
     "langZh": "中文",
-    "langEn": "English"
+    "langEn": "English",
+    "sectionSecurity": "安全"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -120,7 +121,11 @@
     "deleteWillUnbind": "删除后 {{count}} 台主机将解除绑定。",
     "deleteNoHosts": "当前没有主机绑定此凭据。",
     "confirmDelete": "确认删除",
-    "deleteFailed": "删除失败：{{message}}"
+    "deleteFailed": "删除失败：{{message}}",
+    "copyPassword": "复制密码",
+    "copyPasswordAria": "复制凭据 {{id}} 的密码",
+    "copied": "已复制",
+    "copyFailed": "复制失败：{{message}}"
   },
   "credentialForm": {
     "newTitle": "新建凭据",
@@ -323,5 +328,40 @@
     "reject": "拒绝连接",
     "trust": "信任并连接",
     "acceptAnyway": "仍要连接"
+  },
+  "security": {
+    "mode": "密钥模式",
+    "modeKeyring": "系统钥匙链",
+    "modeKeyringDesc": "主密钥随机生成、存系统钥匙链，开箱即用，无锁定概念。",
+    "modePassword": "主密码",
+    "modePasswordDesc": "主密钥由主密码派生、不落盘；应用启动即锁定，需输入主密码解锁。",
+    "masterPassword": "主密码",
+    "upgrade": "升级到主密码…",
+    "lockNow": "立即锁定",
+    "off": "关闭",
+    "autolock": "失焦自动锁定",
+    "autolockMinutes": "{{count}} 分钟",
+    "clipboardClear": "剪贴板自动清空",
+    "clipboardSeconds": "{{count}} 秒",
+    "lockScreen": {
+      "title": "Ottr 已锁定",
+      "hint": "输入主密码解锁当前库。",
+      "unlock": "解锁",
+      "errEmpty": "请输入主密码",
+      "errWrongPassword": "主密码不正确"
+    },
+    "wizard": {
+      "stepPassword": "设置主密码（升级后凭据将以主密码重新加密）",
+      "confirm": "确认主密码",
+      "intro": "主密码不少于 {{min}} 位；遗失后库内凭据无法恢复，请牢记。",
+      "start": "开始升级",
+      "stepProgress": "正在重新加密凭据…",
+      "progressOf": "{{done}}/{{total}}",
+      "progressPending": "准备中…",
+      "stepDone": "升级完成",
+      "doneCount": "已重新加密 {{count}} 个密文字段，之后以主密码解锁。",
+      "errTooShort": "主密码至少 {{min}} 位",
+      "errMismatch": "两次输入不一致"
+    }
   }
 }

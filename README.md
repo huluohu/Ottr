@@ -84,7 +84,7 @@ cargo test           # Rust 工作区全部单测/集成测试（src-tauri + cra
 npm run tauri build  # 产出 dmg / msi / nsis / deb / AppImage（按当前平台）
 ```
 
-构建产物位于 `src-tauri/target/release/bundle/`。
+构建产物位于 `target/release/bundle/`（workspace 根 `target/`，非 `src-tauri/target/`）。
 
 ## Troubleshooting（开发环境实录）
 

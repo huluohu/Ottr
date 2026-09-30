@@ -337,7 +337,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         rows: size.rows,
         onData: chan,
       });
-      if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) return;
+      if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) {
+        // 孤儿收尾（评审 I-1，fix 1/5）：标签已关/手动断开/已换代期间 attach 才
+        // 成功——rustId 若不落地就没人持有（closeTab 时 rustId 还是 null 无可
+        // drop），Channel send 永不失败、转发循环不退、keepalive 也杀不掉健康
+        // 连接上的孤儿（服务端 shell 同样滞留）。best-effort 显式丢弃。
+        void invoke("drop_session", { id: rustId }).catch(() => {});
+        return;
+      }
       set((st) => ({
         sessions: patchSession(st.sessions, id, {
           status: "connected",

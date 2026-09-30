@@ -361,7 +361,13 @@ fn tofu_host_key_policy(
                 eprintln!("[host-key] emit ask failed: {e}");
                 return false;
             }
-            matches!(rx.recv_timeout(HOST_KEY_ASK_TIMEOUT), Ok(true))
+            // block_in_place（评审 M-1）：recv_timeout 最长 60s 阻塞；本回调运行在
+            // russh run loop 任务（russh-util spawn = tokio::spawn）里，包裹后该
+            // worker 被标记 blocking、其余任务可被其余 worker 领走，不占死共享池。
+            matches!(
+                tokio::task::block_in_place(|| rx.recv_timeout(HOST_KEY_ASK_TIMEOUT)),
+                Ok(true)
+            )
         };
         // 先分类（None → "first"），再 TOFU pending 入库——入库后记录是 pending，
         // 顺序颠倒会让首连问询带上错误的 kind。

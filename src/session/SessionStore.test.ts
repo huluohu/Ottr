@@ -174,6 +174,50 @@ describe("连接与断线重连", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(attachCalls()).toHaveLength(1);
   });
+
+  it("孤儿收尾（评审 I-1）：connecting 期间关标签，迟到的 attach 成功也必须 drop_session", async () => {
+    let resolveAttach: (v: string) => void = () => {};
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session") {
+        return new Promise<string>((res) => (resolveAttach = res));
+      }
+      if (cmd === "drop_session") return Promise.resolve(undefined);
+      return Promise.reject(new Error(`unexpected: ${cmd}`));
+    });
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions).toHaveLength(1);
+
+    // 复现路径：接受 TOFU 前后立即点 ×（attach 仍在途、rustId 尚未落地）
+    useSessionStore.getState().closeTab(id);
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+
+    // 迟到的成功解析：若无守卫收尾，Rust 会话/服务端 shell 永久泄漏
+    resolveAttach("pty-orphan");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-orphan" });
+    // 且不得把已关标签复活
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+  });
+
+  it("孤儿收尾（generation 失配变体）：connecting 期间手动断开，迟到成功同样 drop_session", async () => {
+    let resolveAttach: (v: string) => void = () => {};
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session") {
+        return new Promise<string>((res) => (resolveAttach = res));
+      }
+      if (cmd === "drop_session") return Promise.resolve(undefined);
+      return Promise.reject(new Error(`unexpected: ${cmd}`));
+    });
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().disconnect(id); // generation +1，attach 未解析
+    resolveAttach("pty-orphan-2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-orphan-2" });
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+    expect(useSessionStore.getState().sessions[0].rustId).toBeNull();
+  });
 });
 
 describe("host key 问询（TOFU）", () => {

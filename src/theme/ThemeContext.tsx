@@ -109,8 +109,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(loadMode);
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
 
-  // T11：注册 vault 值应用回调（syncThemeFromVault 用）+ 首挂后同步真源。
-  // 应用 vault 值时同步刷新缓存镜像（真源变更后镜像不得停留在旧值）。
+  // T11：注册 vault 值应用回调（syncThemeFromVault 用）。T17 F1：挂载时的
+  // syncThemeFromVault 挪进 App 就绪门（VaultInitGate ready 后，与 syncLangFromVault
+  // 同点）——挂载期 vault State 尚未 manage，settings_get 被拒即静默降级 localStorage
+  // 缓存，vault 真源主题在重启会话后丢失。应用 vault 值时同步刷新缓存镜像。
   useEffect(() => {
     modeApplier = (m) => {
       setModeState(m);
@@ -120,7 +122,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         // 缓存失败不阻塞真源对齐
       }
     };
-    void syncThemeFromVault();
     return () => {
       modeApplier = null;
     };

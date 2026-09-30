@@ -43,7 +43,7 @@ import {
   warnShortcutConflicts,
   type ActionId,
 } from "./shortcuts/registry";
-import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
+import { ThemeProvider, useTheme, syncThemeFromVault, type ThemeMode } from "./theme/ThemeContext";
 import { useVaultStore } from "./vault/store";
 import type { Host } from "./vault/api";
 import "./theme/tokens.css";
@@ -157,6 +157,9 @@ function HomeLayout() {
     void (async () => {
       await useVaultLockStore.getState().init();
       void syncLangFromVault();
+      // T17 F1（T16.5 转办）：主题真源对齐/迁移同样必须等 vault 就绪——
+      // ThemeProvider 挂载期调用会被未 manage 的 State 拒绝而静默降级缓存。
+      void syncThemeFromVault();
       try {
         await useVaultStore.getState().refresh();
       } catch {

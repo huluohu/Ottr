@@ -60,9 +60,12 @@ const renderThemed = () =>
     </ThemeProvider>,
   );
 
-beforeEach(() => {
+beforeEach(async () => {
   localStorage.clear();
   settingsStore.clear();
+  // T17 F1：预热 persistMode 的动态 import（模块转换有真实 I/O 延迟，冷缓存时
+  // 其浮动 promise 会滞留到后续用例，污染 vault 前置态）；预热后微任务级落定。
+  await import("../vault/api");
   // 内存 settings 表（settings_get/set 契约面；其余命令显式失败防误用）
   mockedInvoke.mockImplementation((cmd: string, args?: { key: string; value: unknown }) => {
     if (cmd === "settings_get") {
@@ -100,12 +103,16 @@ describe("ThemeContext", () => {
     expect(dataTheme()).toBe("light");
   });
 
-  it("setMode 立即写 data-theme 并持久化；手动模式不受系统切换影响", () => {
+  it("setMode 立即写 data-theme 并持久化；手动模式不受系统切换影响", async () => {
     renderThemed();
     fireEvent.click(screen.getByText("set-dark"));
     expect(dataTheme()).toBe("dark");
     // 迁移点注记：localStorage 键 ottr.settings.theme，Task 4 vault 落地后迁移
     expect(localStorage.getItem("ottr.settings.theme")).toBe("dark");
+    // T17 F1：冲刷 persistMode 的浮动 promise（动态 import 跨测试滞留会污染
+    // 后续用例的 vault 前置态——曾使迁移用例的 settings_store 预期失真）
+    await act(async () => {});
+    expect(settingsStore.get("ui.theme")).toBe("dark");
     act(() => flipSystem(false)); // 系统变亮，手动 dark 不跟随
     expect(dataTheme()).toBe("dark");
   });
@@ -139,7 +146,13 @@ describe("ThemeContext", () => {
     localStorage.setItem("ottr.settings.theme", "light"); // 陈旧缓存
     await act(async () => {
       renderThemed();
-      // 首帧（同步）按缓存 light，挂载 sync 后被 vault 值纠正为 dark
+    });
+    // T17 F1：sync 已挪出 ThemeProvider 挂载（App 就绪门内调用）——挂载本身不得触达 vault
+    expect(mockedInvoke.mock.calls.filter(([cmd]) => cmd === "settings_get")).toHaveLength(0);
+    expect(screen.getByTestId("mode").textContent).toBe("light"); // 仍按缓存首帧
+    // 模拟就绪门放行后的显式 sync（modeApplier 已注册）→ vault 真源纠正缓存
+    await act(async () => {
+      await syncThemeFromVault();
     });
     await waitFor(() => expect(screen.getByTestId("mode").textContent).toBe("dark"));
     expect(dataTheme()).toBe("dark");

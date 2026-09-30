@@ -11,6 +11,12 @@ vi.mock("../session/events", () => ({ initSessionEvents: vi.fn(async () => {}) }
 // Task 10（A5）传输事件同上（Fix round 1 I-1：漏 mock 会让真 listen() 产生
 // unhandled rejection，npm test exit 1）
 vi.mock("../files/events", () => ({ initTransferEvents: vi.fn(async () => {}) }));
+// Task 12 通知管线同上：只 stub initNotifyEvents（真 listen 触底层 ipc），
+// 其余（useNotifyStore 等）保留真实现——NotificationCenter 面板在本页可用。
+vi.mock("../notify/core", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../notify/core")>();
+  return { ...mod, initNotifyEvents: vi.fn(async () => {}) };
+});
 
 import "../i18n";
 import App from "../App";

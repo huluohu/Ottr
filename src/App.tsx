@@ -23,6 +23,8 @@ import { TerminalArea } from "./terminal/Terminal";
 import { FilePanel } from "./files/FilePanel";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
+import { initNotifyEvents } from "./notify/core";
+import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
 import { useVaultStore } from "./vault/store";
@@ -112,6 +114,9 @@ function HomeLayout() {
       }
       await initSessionEvents();
       await initTransferEvents();
+      // T12（spec §7）：通知管线接线（transfer-end / session-closed → 中心）。
+      // 在事件源初始化之后挂（管线订阅既有事件，顺序无依赖，晚挂只漏启动窗口期事件）。
+      await initNotifyEvents();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
     })();
   }, []);
@@ -184,6 +189,7 @@ function HomeLayout() {
           {t("settings.title")}
         </button>
         <div className="topbar-spacer" />
+        <NotificationCenter />
         <ThemeSwitch />
       </header>
       <div className="app-body">

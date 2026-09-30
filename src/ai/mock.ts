@@ -20,4 +20,9 @@ export class MockProvider {
       yield { text: chunk };
     }
   }
+
+  /** 接口面补齐（设置页「测试连接」；mock 场景恒通）。 */
+  async testConnection(): Promise<string> {
+    return "mock-ok";
+  }
 }

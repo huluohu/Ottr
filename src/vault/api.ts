@@ -20,6 +20,9 @@
 //       vault_copy_credential_secret（T11 剪贴板，src-tauri security.rs）
 //       notify_insert notify_list notify_mark_read notify_clear notify_unread_count
 //       （Task 12 通知中心，spec §7①；事件源接线在 src/notify/core.ts）
+//       session_tail（Task 13 AI 诊断：会话输出尾部剥 ANSI 纯文本）
+//       secret_set secret_get secret_delete secret_contains
+//       （Task 13 secrets 密文 KV：AI provider api key，锁定即拒）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -316,6 +319,19 @@ export const vaultApi = {
     clear: () => invoke<number>("notify_clear"),
     unreadCount: () => invoke<number>("notify_unread_count"),
   },
+  /** secrets 密文 KV（Task 13，AI BYOK）：provider api key 等，AES-256-GCM 密封
+   * 落盘、锁定即拒（"vault is locked..."）。key 逻辑名 = `ai.apikey.<providerId>`。
+   * 明文只在内存短暂存在（组装请求头），永不落 settings/日志。 */
+  secrets: {
+    set: (key: string, value: string) => invoke<void>("secret_set", { key, value }),
+    get: (key: string) => invoke<string | null>("secret_get", { key }),
+    delete: (key: string) => invoke<void>("secret_delete", { key }),
+    /** 存在性（不派生明文——设置页「已保存」标记）。 */
+    contains: (key: string) => invoke<boolean>("secret_contains", { key }),
+  },
+  /** 会话输出尾部（Task 13，AI 诊断取数面）：最后 bytes 字节的剥 ANSI 纯文本。
+   * 未知会话（已关/重连中）显式报错——调用方 catch 降级（空输出照发诊断）。 */
+  sessionTail: (id: string, bytes: number) => invoke<string>("session_tail", { id, bytes }),
   /** 凭据密文复制（Rust 侧解密写剪贴板 + 定时清空；明文不回前端）。 */
   copyCredentialSecret: (id: number, field: SecretField) =>
     invoke<void>("vault_copy_credential_secret", { id, field }),

@@ -42,6 +42,9 @@ export interface ChatDelta {
 export interface AIProvider {
   /** 流式对话（诊断/解释场景唯一消费面）。 */
   chat(req: ChatRequest): AsyncIterable<ChatDelta>;
+  /** 连通性自检（设置页「测试连接」）：非流式一发，返回模型回文；失败 reject
+   * 带端点错误（HTTP 状态 + error.message）。 */
+  testConnection(): Promise<string>;
 }
 
 /** provider 工厂：meta.kind 分派到对应实现；apiKey 明文只经本调用注入

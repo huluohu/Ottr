@@ -28,6 +28,8 @@ import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
 import { terminalThemes } from "../theme/terminal-themes";
 import type { ITheme } from "@xterm/xterm";
 import { assessPaste } from "../ai/danger";
+import { useAiStore } from "../ai/aiStore";
+import { createCommandWatch, type IDisposable } from "./CommandWatch";
 import {
   getSearch,
   registerSearch,
@@ -201,6 +203,31 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     });
     registerSearch(sessionId, search);
 
+    // T13 报错即诊：OSC133 命令边界监听（shell 集成片段发 A/C/D 标记）；
+    // D;code≠0 → aiStore.onCommandFailed（ai.enabled 总开关在 store 内现读）。
+    let watch: IDisposable | null = null;
+    try {
+      watch = createCommandWatch(term, {
+        onCommandDone: ({ exitCode, command }) => {
+          const session = useSessionStore
+            .getState()
+            .sessions.find((x) => x.id === sessionId);
+          if (!session) return;
+          useAiStore.getState().onCommandFailed({
+            kind: "diagnose",
+            sessionId,
+            rustId: session.rustId,
+            hostId: session.hostId,
+            hostName: session.hostName,
+            exitCode,
+            command,
+          });
+        },
+      });
+    } catch {
+      // parser 不可用（测试环境极简 fake）不阻塞终端装配
+    }
+
     // 击键 → PTY（rustId 实时读 store；重连换会话 id 后自动跟随）
     const onData = term.onData((d) => {
       const session = useSessionStore
@@ -237,6 +264,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       ro.disconnect();
       onSelectionChange.dispose();
       onData.dispose();
+      watch?.dispose();
       unregisterSearch(sessionId);
       unregisterSink(sessionId);
       term.dispose();
@@ -349,6 +377,18 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       case "copy":
         if (term?.hasSelection()) {
           void navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+        }
+        break;
+      case "explain":
+        // T13 选中解释：选区文本 → AI 面板单轮（不受 ai.enabled 管，显式动作）
+        if (term?.hasSelection()) {
+          useAiStore.getState().openExplain({
+            kind: "explain",
+            sessionId,
+            hostId: session?.hostId ?? null,
+            hostName: session?.hostName ?? "",
+            text: term.getSelection(),
+          });
         }
         break;
       case "paste":

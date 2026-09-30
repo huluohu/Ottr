@@ -258,6 +258,71 @@
       "force-push": "Force push (overwrites remote)",
       "hard-reset": "Discard local changes (reset --hard)",
       "sql-drop": "Drop database object"
+    },
+    "menuExplain": "Explain",
+    "panelDiagnose": "Command diagnosis",
+    "panelExplain": "Explain selection",
+    "exitCodeBadge": "exit {{code}}",
+    "aborted": "Cancelled",
+    "retry": "Retry",
+    "redacted": "{{count}} item(s) redacted",
+    "levelGreen": "Safe",
+    "levelYellow": "Confirm",
+    "levelRed": "Danger",
+    "insertConfirm": "Insert? Click to confirm",
+    "insertConfirmRed": "Dangerous — click again to confirm",
+    "inserted": "Inserted",
+    "insertFailed": "Insert failed",
+    "errNoProvider": "No AI provider configured yet.",
+    "errNoKey": "No API key saved for this provider, or the vault is locked.",
+    "openSettings": "Open settings",
+    "prompt": {
+      "diagnose": "You are a senior ops engineer. The user ran a failing command in an SSH terminal. Provide: **Cause** (1-3 sentences based on the output), **Fix commands** (each in a ```bash fenced block, independently runnable), **Notes** (optional, 1 sentence). Answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",
+      "explain": "You are a terminal assistant. Explain the selected terminal content (error/log/text): what it means, likely causes, and (if applicable) suggested next commands in ```bash fenced blocks. Be concise, answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim."
+    },
+    "msg": {
+      "exitCode": "Exit code",
+      "command": "Command",
+      "outputTail": "Output tail",
+      "explainTarget": "Explain this terminal content"
+    },
+    "settings": {
+      "title": "AI settings",
+      "general": "General",
+      "autoDiagnose": "Auto-diagnose failed commands",
+      "autoDiagnoseHint": "When off, failed commands no longer open the panel automatically; right-click Explain still works.",
+      "maxTokens": "Max reply tokens",
+      "providers": "Providers (BYOK, direct connection)",
+      "byokHint": "API keys are stored encrypted in the local vault; requests go straight from this machine to the endpoint you configure — no Ottr relay server.",
+      "noProviders": "No provider yet. Add one to enable diagnosis and explanation.",
+      "addProvider": "Add provider",
+      "formTitle": "Provider configuration",
+      "fieldName": "Name",
+      "fieldKind": "Kind",
+      "kindOpenai": "OpenAI-compatible (OpenAI/DeepSeek/Ollama...)",
+      "kindAnthropic": "Anthropic",
+      "fieldBaseUrl": "Base URL",
+      "fieldModel": "Model",
+      "fieldApiKey": "API key",
+      "apiKeyPlaceholder": "Leave empty to keep the saved key",
+      "apiKeyHint": "The key is sealed with AES-256-GCM into the local vault; unavailable while locked in master-password mode.",
+      "errName": "Name is required",
+      "errBaseUrl": "Base URL is required",
+      "errBaseUrlFormat": "Base URL must start with http(s)://",
+      "errModel": "Model is required",
+      "errKeyRequired": "Anthropic requires an API key",
+      "test": "Test connection",
+      "testing": "Testing...",
+      "testOkEmpty": "Connected (empty reply)",
+      "defaultBadge": "Default",
+      "setDefault": "Set default",
+      "redaction": "Redaction",
+      "redactHostname": "Hostnames / domains",
+      "redactionHint": "IPs, password assignments and emails are replaced with placeholders before sending; add custom rules by regex.",
+      "ruleName": "Rule name (e.g. order_id)",
+      "rulePattern": "Regex (e.g. OTTR-\\d{6})",
+      "errRuleIncomplete": "Both rule name and regex are required",
+      "errRuleInvalid": "Regex does not compile"
     }
   },
   "tabs": {
@@ -331,8 +396,11 @@
     "title": {
       "transferFailed": "Transfer failed",
       "transferCancelled": "Transfer cancelled",
-      "sessionLost": "Connection lost"
-    }
+      "sessionLost": "Connection lost",
+      "aiDone": "Diagnosis ready",
+      "aiExplain": "Explanation ready"
+    },
+    "kindAi": "AI"
   },
   "hostKey": {
     "firstTitle": "First connection",

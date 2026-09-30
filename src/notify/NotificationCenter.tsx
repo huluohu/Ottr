@@ -12,7 +12,7 @@ import { useNotifyStore, type NotifyKind } from "./core";
 /** 未读数徽标文案封顶（99+ 防 badge 撑爆铃铛）。 */
 const BADGE_CAP = 99;
 
-const MUTABLE_KINDS: NotifyKind[] = ["transfer", "session"];
+const MUTABLE_KINDS: NotifyKind[] = ["transfer", "session", "ai"];
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString(undefined, {

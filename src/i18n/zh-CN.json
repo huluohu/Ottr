@@ -243,7 +243,7 @@
     "newChat": "新对话",
     "empty": "开始你的第一次对话",
     "copyCode": "复制代码",
-    "insertToTerminal": "插入到终端",
+    "insertToTerminal": "插入终端",
     "failed": "请求失败，请重试",
     "danger": {
       "recursive-delete": "递归强制删除",
@@ -257,6 +257,71 @@
       "force-push": "强制推送（覆盖远端）",
       "hard-reset": "丢弃本地改动（reset --hard）",
       "sql-drop": "删除数据库对象（DROP）"
+    },
+    "menuExplain": "解释",
+    "panelDiagnose": "命令诊断",
+    "panelExplain": "选中解释",
+    "exitCodeBadge": "exit {{code}}",
+    "aborted": "已取消",
+    "retry": "重试",
+    "redacted": "已脱敏 {{count}} 处",
+    "levelGreen": "安全",
+    "levelYellow": "需确认",
+    "levelRed": "危险",
+    "insertConfirm": "确认插入？",
+    "insertConfirmRed": "危险命令——再点一次确认",
+    "inserted": "已插入终端",
+    "insertFailed": "插入失败",
+    "errNoProvider": "还没有配置 AI Provider。",
+    "errNoKey": "该 Provider 未保存 API Key，或 vault 处于锁定状态。",
+    "openSettings": "去设置",
+    "prompt": {
+      "diagnose": "你是资深运维工程师。用户在 SSH 终端执行了一条失败命令，给出：**原因**（1-3 句，基于输出）、**修复命令**（每条用 ```bash 围栏代码块，逐条独立可执行）、**备注**（可选，1 句）。使用界面语言回答；输出里的 [REDACTED_*] 是脱敏占位符，原样保留，不要猜测其内容。",
+      "explain": "你是终端助手。解释用户选中的终端内容（报错/日志/文本）：含义、可能原因、（如适用）下一步建议命令（```bash 围栏代码块）。简明扼要，使用界面语言。[REDACTED_*] 是脱敏占位符，原样保留。"
+    },
+    "msg": {
+      "exitCode": "退出码",
+      "command": "命令",
+      "outputTail": "输出尾部",
+      "explainTarget": "解释以下终端内容"
+    },
+    "settings": {
+      "title": "AI 设置",
+      "general": "通用",
+      "autoDiagnose": "命令失败自动诊断",
+      "autoDiagnoseHint": "关闭后命令失败不再自动打开诊断面板；右键「解释」仍然可用。",
+      "maxTokens": "单次回复上限（tokens）",
+      "providers": "Provider（自带密钥，直连）",
+      "byokHint": "API Key 保存在本机 vault（加密），请求从本机直连你填写的端点——没有 Ottr 中转服务器。",
+      "noProviders": "尚未配置 Provider。添加一个即可启用诊断与解释。",
+      "addProvider": "添加 Provider",
+      "formTitle": "Provider 配置",
+      "fieldName": "名称",
+      "fieldKind": "类型",
+      "kindOpenai": "OpenAI 兼容（OpenAI/DeepSeek/Ollama…）",
+      "kindAnthropic": "Anthropic",
+      "fieldBaseUrl": "端点 Base URL",
+      "fieldModel": "模型",
+      "fieldApiKey": "API Key",
+      "apiKeyPlaceholder": "留空 = 保留已保存的 Key",
+      "apiKeyHint": "Key 以 AES-256-GCM 加密存入本机 vault；主密码模式下锁定即不可用。",
+      "errName": "名称不能为空",
+      "errBaseUrl": "Base URL 不能为空",
+      "errBaseUrlFormat": "Base URL 必须以 http(s):// 开头",
+      "errModel": "模型不能为空",
+      "errKeyRequired": "Anthropic 需要 API Key",
+      "test": "测试连接",
+      "testing": "测试中…",
+      "testOkEmpty": "连接成功（空回复）",
+      "defaultBadge": "默认",
+      "setDefault": "设为默认",
+      "redaction": "脱敏",
+      "redactHostname": "主机名 / 域名",
+      "redactionHint": "发送给 AI 前，IP、密码赋值、邮箱默认替换为占位符；自定义规则按正则追加。",
+      "ruleName": "规则名（如 order_id）",
+      "rulePattern": "正则（如 OTTR-\\d{6}）",
+      "errRuleIncomplete": "规则名与正则都要填",
+      "errRuleInvalid": "正则无法编译"
     }
   },
   "tabs": {
@@ -330,8 +395,11 @@
     "title": {
       "transferFailed": "传输失败",
       "transferCancelled": "传输已取消",
-      "sessionLost": "连接已断开"
-    }
+      "sessionLost": "连接已断开",
+      "aiDone": "诊断完成",
+      "aiExplain": "解释完成"
+    },
+    "kindAi": "AI"
   },
   "hostKey": {
     "firstTitle": "首次连接确认",

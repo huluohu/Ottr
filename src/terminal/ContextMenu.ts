@@ -36,6 +36,7 @@ export interface MenuContext {
 export function buildContextMenu(ctx: MenuContext, t: TFunction): ContextMenuItem[] {
   return [
     { id: "copy", label: t("common.copy"), disabled: !ctx.hasSelection },
+    { id: "explain", label: t("ai.menuExplain"), disabled: !ctx.hasSelection, separatorAfter: true },
     { id: "paste", label: t("common.paste"), separatorAfter: true },
     { id: "search", label: t("terminal.searchPlaceholder") },
     { id: "clear", label: t("terminal.clearScreen"), separatorAfter: true },

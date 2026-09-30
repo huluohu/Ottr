@@ -28,8 +28,9 @@ import { useSessionStore } from "../session/SessionStore";
 // 类型（事件源 → 管线入参；kind 是静音键）
 // ---------------------------------------------------------------------------
 
-/** 事件类别（Phase 1 两个事件源；Phase 3 起 AI 等扩充——迁移 0005 kind 列无约束）。 */
-export type NotifyKind = "transfer" | "session";
+/** 事件类别（T13 起 AI 诊断完成入管线——迁移 0005 kind 列无约束）。
+ * 静音键按 kind：ai 诊断完成通知可独立静音（NotificationCenter 类型区）。 */
+export type NotifyKind = "transfer" | "session" | "ai";
 /** severity 合法集（Rust notifications::SEVERITIES / DB CHECK 同集）。 */
 export type NotifySeverity = "info" | "success" | "warning" | "error";
 

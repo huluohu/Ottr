@@ -21,6 +21,9 @@ import { TabBar } from "./session/TabBar";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { TerminalArea } from "./terminal/Terminal";
 import { FilePanel } from "./files/FilePanel";
+import { DiagnosePanel } from "./ai/DiagnosePanel";
+import { AISettings } from "./ai/AISettings";
+import { setAiSettingsOpener } from "./ai/aiStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
@@ -88,6 +91,8 @@ function HomeLayout() {
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     try {
       const raw = localStorage.getItem(SIDEBAR_KEY);
@@ -119,6 +124,12 @@ function HomeLayout() {
       await initNotifyEvents();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
     })();
+  }, []);
+
+  // T13：设置页路由钩子注入（aiStore 错误面「去设置」按钮 → 打开 AI 设置）
+  useEffect(() => {
+    setAiSettingsOpener(() => setAiSettingsOpen(true));
+    return () => setAiSettingsOpener(null);
   }, []);
 
   // ⌘K / Ctrl+K 呼出快速连接（雏形：Task 14 扩成完整命令面板）
@@ -188,6 +199,14 @@ function HomeLayout() {
         >
           {t("settings.title")}
         </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-ai-settings"
+          aria-label={t("ai.settings.title")}
+          onClick={() => setAiSettingsOpen(true)}
+        >
+          {t("ai.title")}
+        </button>
         <div className="topbar-spacer" />
         <NotificationCenter />
         <ThemeSwitch />
@@ -233,9 +252,13 @@ function HomeLayout() {
                 </button>
               </div>
             </div>
-            {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢 */}
-            <div className="term-area-holder" data-hidden={filesOpen}>
-              <TerminalArea />
+            {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢。
+                T13：AI 诊断面板 = 终端视图的右侧栏（文件视图让位——面板依赖终端选区）。 */}
+            <div className="term-main-row">
+              <div className="term-area-holder" data-hidden={filesOpen}>
+                <TerminalArea />
+              </div>
+              {!filesOpen && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}
             </div>
             {filesOpen && rootSession && <FilePanel session={rootSession} />}
           </main>
@@ -275,6 +298,7 @@ function HomeLayout() {
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
       <SecuritySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}

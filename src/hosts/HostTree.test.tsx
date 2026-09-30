@@ -52,11 +52,12 @@ function seedStore() {
   useVaultStore.setState({ hosts: [web, db, solo], hostGroups: [group], loading: false, error: null });
 }
 
-function renderTree() {
+function renderTree(onOpen: (host: Host) => void = vi.fn()) {
   return render(
     <HostTree
       selectedId={null}
       onSelect={vi.fn()}
+      onOpen={onOpen}
       onEdit={vi.fn()}
       onAdd={vi.fn()}
       onImport={vi.fn()}
@@ -120,6 +121,16 @@ describe("HostTree", () => {
     // 搜索态只显示命中项（db-01 不在结果里）——结果替换整棵树
     await act(async () => {}); // flush 微任务让结果落地
     expect(screen.queryByText("db-01")).toBeNull();
+  });
+
+  it("双击主机行 → onOpen(host)（Task 7：开标签连接的入口；单击仍是选中）", () => {
+    const onOpen = vi.fn();
+    renderTree(onOpen);
+    const row = screen.getByText("web-01");
+    fireEvent.click(row);
+    fireEvent.doubleClick(row);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(web);
   });
 
   it("两步删除：先点 ✕ 出确认，确认后发 hosts_delete", async () => {

@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// App 挂载即注册 Tauri 事件监听（Task 7 会话事件）；jsdom 无 Tauri runtime，stub 掉
+vi.mock("../session/events", () => ({ initSessionEvents: vi.fn(async () => {}) }));
 
 import "../i18n";
 import App from "../App";
@@ -103,7 +105,7 @@ describe("App 主页布局（集成）", () => {
 
     // 选中主机 → 主区切到已选占位
     fireEvent.click(screen.getByText("web-01"));
-    expect(screen.getByTestId("main-area").textContent).toContain("Terminal sessions arrive");
+    expect(screen.getByTestId("main-area").textContent).toContain("Double-click a host");
 
     // Ctrl+K 呼出 palette（快速连接雏形）
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });

@@ -11,6 +11,8 @@ import { useDebouncedValue } from "./useDebouncedValue";
 export interface HostTreeProps {
   selectedId: number | null;
   onSelect: (host: Host) => void;
+  /** 双击主机行：打开会话标签并连接（Task 7 A6）。 */
+  onOpen: (host: Host) => void;
   onEdit: (host: Host) => void;
   onAdd: (groupId: number | null) => void;
   onImport: () => void;
@@ -18,7 +20,7 @@ export interface HostTreeProps {
 
 const SEARCH_DEBOUNCE_MS = 200;
 
-export function HostTree({ selectedId, onSelect, onEdit, onAdd, onImport }: HostTreeProps) {
+export function HostTree({ selectedId, onSelect, onOpen, onEdit, onAdd, onImport }: HostTreeProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const hostGroups = useVaultStore((s) => s.hostGroups);
@@ -191,6 +193,7 @@ export function HostTree({ selectedId, onSelect, onEdit, onAdd, onImport }: Host
               hosts={groupHosts}
               selectedId={selectedId}
               onSelect={onSelect}
+              onOpen={onOpen}
               onEdit={onEdit}
               deletingId={deletingId}
               setDeletingId={setDeletingId}
@@ -210,6 +213,7 @@ export function HostTree({ selectedId, onSelect, onEdit, onAdd, onImport }: Host
               hosts={ungrouped}
               selectedId={selectedId}
               onSelect={onSelect}
+              onOpen={onOpen}
               onEdit={onEdit}
               deletingId={deletingId}
               setDeletingId={setDeletingId}
@@ -228,6 +232,7 @@ interface HostItemsProps {
   hosts: Host[];
   selectedId: number | null;
   onSelect: (host: Host) => void;
+  onOpen: (host: Host) => void;
   onEdit: (host: Host) => void;
   deletingId: number | null;
   setDeletingId: (id: number | null) => void;
@@ -238,6 +243,7 @@ function HostItems({
   hosts,
   selectedId,
   onSelect,
+  onOpen,
   onEdit,
   deletingId,
   setDeletingId,
@@ -254,7 +260,11 @@ function HostItems({
         });
         return (
           <li key={host.id} className="tree-host" data-selected={selectedId === host.id}>
-            <button className="host-row" onClick={() => onSelect(host)}>
+            <button
+              className="host-row"
+              onClick={() => onSelect(host)}
+              onDoubleClick={() => onOpen(host)}
+            >
               <span className="host-name">{host.name}</span>
               <span className="host-subtitle">{subtitle}</span>
             </button>

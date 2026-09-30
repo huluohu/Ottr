@@ -196,18 +196,10 @@
   "mainArea": {
     "placeholder": "从左侧选择一台主机，或按 ⌘K 快速连接",
     "selected": "已选择主机",
-    "terminalPending": "终端会话将在后续任务接入，此处为主区域占位。",
+    "openHint": "双击主机或在 ⌘K 中选择即可打开终端。",
     "loadFailed": "数据加载失败：{{message}}"
   },
   "terminal": {
-    "contextCopy": "复制",
-    "contextPaste": "粘贴",
-    "contextSelectAll": "全选",
-    "contextClear": "清屏",
-    "contextReset": "重置终端",
-    "contextReconnect": "重新连接",
-    "closeTab": "关闭标签页",
-    "closeSession": "断开会话",
     "connecting": "正在连接 {{host}}…",
     "reconnected": "已重新连接",
     "reconnecting": "连接已断开，{{seconds}} 秒后重连（第 {{attempt}}/{{max}} 次）…",
@@ -243,9 +235,5 @@
     "reject": "拒绝连接",
     "trust": "信任并连接",
     "acceptAnyway": "仍要连接"
-  },
-  "spike": {
-    "keyringButton": "Keyring 读写测试（Spike#7）",
-    "notifyButton": "系统通知测试（Spike#8）"
   }
 }

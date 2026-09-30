@@ -1,9 +1,8 @@
 /* ============================================================
- * 布局样式（Task 5）：主页 = 顶栏 + 左侧主机树 + 主区占位。
+ * 布局样式（Task 5 起骨架，Task 7 标签化终端主区）。
  * 颜色纪律：组件层只引用 --color-* 语义层；派生表面（border/surface/
  * scrim）用 color-mix 从语义层混出，不写死色值（--btn-bg 的两处字面值为
  * Task 1 遗留，台账已挂账 T8 升格 --color-surface，此处不扩散新字面值）。
- * .spike-* / .container 为 spike 页（?spike=）专用，Task 7 重构时随清理。
  * ============================================================ */
 
 :root {
@@ -626,47 +625,138 @@ button[data-active="true"] {
   color: var(--color-accent);
 }
 
-/* --- Task 4 spike 页（?spike=latency）：调试角标 + 全屏终端 --- */
-.spike-root {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  background: #14161a;
-}
-
-.spike-badge {
-  flex: none;
-  padding: 6px 12px;
-  font: 12px/16px ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #7ee787;
-  background: #1d2126;
-  border-bottom: 1px solid #2b3138;
-  white-space: nowrap;
+/* --- 标签化终端主区（Task 7，A6）--- */
+.main-area.terminal-mode {
+  padding: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.spike-term {
+.tabbar {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  background: var(--surface-raised);
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 5px 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+  user-select: none;
+}
+.tab[data-active="true"] {
+  background: var(--color-bg);
+  border-color: var(--border-subtle);
+  color: var(--color-fg);
+}
+.tab:hover {
+  border-color: var(--border-subtle);
+}
+.tab-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  /* disconnected/waiting 兜底灰 */
+  background: var(--fg-muted);
+}
+.tab[data-status="connected"] .tab-dot {
+  background: var(--color-success);
+}
+.tab[data-status="reconnecting"] .tab-dot {
+  background: var(--color-warning);
+}
+.tab[data-status="waiting_host_key"] .tab-dot {
+  background: var(--color-warning);
+}
+.tab[data-status="connecting"] .tab-dot {
+  background: color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+.tab-retry {
+  font-size: 0.85em;
+  color: var(--color-warning);
+  font-variant-numeric: tabular-nums;
+}
+.tab-close {
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 1em;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+.tab-close:hover {
+  color: var(--color-danger);
+  border: none;
+}
+
+.term-stack {
   flex: 1;
   min-height: 0;
-  padding: 6px;
+  position: relative;
 }
-
-.spike-term .xterm {
+.term-pane {
+  position: absolute;
+  inset: 0;
+  padding: 6px;
+  visibility: hidden;
+}
+.term-pane[data-active="true"] {
+  visibility: visible;
+}
+.session-term {
+  width: 100%;
+  height: 100%;
+}
+.session-term .xterm {
   height: 100%;
 }
 
-/* spike 报告页（keyring/notify）沿用模板容器布局 */
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
+/* --- 主机密钥确认框（TOFU）--- */
+.host-key h2 {
+  margin-top: 0;
+  font-size: 1.1em;
 }
-
-h1 {
-  text-align: center;
+.host-key-changed-title {
+  color: var(--color-danger);
+}
+.host-key-fp {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 12px 0;
+}
+.host-key-fp-label {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+}
+.host-key-fp code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  word-break: break-all;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.host-key-warning {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: 8px;
+  color: var(--color-danger);
+  font-size: 0.9em;
 }

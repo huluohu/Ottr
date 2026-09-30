@@ -1,18 +1,23 @@
-// App（Task 5 重构）：主页 = 左侧主机树 + 主区占位（终端 Task 7 接入）。
-// spike 页（?spike=…）为 Task 4/7/11 自动化测量入口，原样保留（台账裁定：
-// UI 侧 spike 分支由 Task 7 重构时清除）；Task 11 的人工验证按钮暂驻顶栏
-// （Task 8 设置页落地时迁移）。
-// 注：旧模板 greet 页与 home.* 词典段随本重构消亡；AppContent 不再持有任何
-// hooks（条件返回在 hooks 之前的历史债随模板页一并清偿）。
+// App（Task 7 重构）：单页 = 顶栏 + 主机树 + 标签化终端主区。
+//
+// 【条件 hooks 债清偿（终审风险③）】Phase 0 的 `?spike=` early-return 发生在
+// AppContent hooks 之前，属条件分支打破 hooks 顺序约定的历史债；本重构删除
+// spike UI 分支（台账裁定：scripts/ 命令面保留在 Rust 侧，UI 侧分支清除），
+// App 成为单一渲染路径——没有任何条件 return，hooks 顺序恒定。
+// Task 4/11 的 spike 测量页（latency/throughput/keyring/notify/render）与
+// 顶栏 keyring/notify 手动验证按钮随本重构消亡。
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import OttrTerminal, { RenderSpike, ThroughputSpike } from "./terminal/Terminal";
 import { HostTree } from "./hosts/HostTree";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
 import { QuickConnect } from "./hosts/QuickConnect";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
+import { TabBar } from "./session/TabBar";
+import { HostKeyDialog } from "./session/HostKeyDialog";
+import { SessionTerminal } from "./terminal/Terminal";
+import { initSessionEvents } from "./session/events";
+import { useSessionStore } from "./session/SessionStore";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
 import { useVaultStore } from "./vault/store";
 import type { Host } from "./vault/api";
@@ -45,7 +50,7 @@ function ThemeSwitch() {
   );
 }
 
-// --- 主页布局（Task 5）------------------------------------------------------
+// --- 主页布局 ----------------------------------------------------------------
 
 type FormState = { mode: "new"; groupId: number | null } | { mode: "edit"; host: Host } | null;
 
@@ -62,6 +67,11 @@ function HomeLayout() {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const storeError = useVaultStore((s) => s.error);
+  // 会话面（Task 7）：标签条 + 终端栈 + host key 确认框
+  const sessions = useSessionStore((s) => s.sessions);
+  const activeId = useSessionStore((s) => s.activeId);
+  const openTab = useSessionStore((s) => s.openTab);
+
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -78,9 +88,18 @@ function HomeLayout() {
   });
   const resizing = useRef(false);
 
-  // 首屏拉取 vault 数据（失败时 store.error 驱动主区错误横幅）
+  // 首屏：vault 数据 → 会话事件监听 → 标签恢复（不自动连接，安全考虑见
+  // SessionStore.restoreTabs）。恢复依赖 hosts 就位，故排在 refresh 之后。
   useEffect(() => {
-    void useVaultStore.getState().refresh().catch(() => {});
+    void (async () => {
+      try {
+        await useVaultStore.getState().refresh();
+      } catch {
+        // 失败由 store.error 驱动主区错误横幅；恢复跳过（无主机可查）
+      }
+      await initSessionEvents();
+      useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
+    })();
   }, []);
 
   // ⌘K / Ctrl+K 呼出快速连接（雏形：Task 14 扩成完整命令面板）
@@ -120,6 +139,7 @@ function HomeLayout() {
   }
 
   const selected = hosts.find((h) => h.id === selectedId) ?? null;
+  const terminalMode = sessions.length > 0;
 
   return (
     <div className="app-shell">
@@ -133,19 +153,13 @@ function HomeLayout() {
         </button>
         <div className="topbar-spacer" />
         <ThemeSwitch />
-        {/* Task 11 / Spike #7/#8 人工验证入口（自动化路径走 ?spike= 页） */}
-        <button id="spike-keyring-btn" className="topbar-debug">
-          {t("spike.keyringButton")}
-        </button>
-        <button id="spike-notify-btn" className="topbar-debug">
-          {t("spike.notifyButton")}
-        </button>
       </header>
       <div className="app-body">
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <HostTree
             selectedId={selectedId}
             onSelect={(host) => setSelectedId(host.id)}
+            onOpen={(host) => openTab(host)}
             onEdit={(host) => setForm({ mode: "edit", host })}
             onAdd={(groupId) => setForm({ mode: "new", groupId })}
             onImport={() => setImportOpen(true)}
@@ -158,28 +172,45 @@ function HomeLayout() {
           onPointerDown={startResize}
           data-testid="sidebar-resizer"
         />
-        <main className="main-area" data-testid="main-area">
-          {storeError && (
-            <p className="main-error" data-testid="store-error">
-              {t("mainArea.loadFailed", { message: storeError })}
-            </p>
-          )}
-          {selected ? (
-            <section className="main-placeholder">
-              <p className="placeholder-caption">{t("mainArea.selected")}</p>
-              <h2>{selected.name}</h2>
-              <p className="placeholder-mono">
-                {selected.username ? `${selected.username}@` : ""}
-                {selected.address}:{selected.port}
+        {terminalMode ? (
+          <main className="main-area terminal-mode" data-testid="main-area">
+            <TabBar />
+            <div className="term-stack" data-testid="term-stack">
+              {sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="term-pane"
+                  data-active={session.id === activeId}
+                >
+                  <SessionTerminal sessionId={session.id} />
+                </div>
+              ))}
+            </div>
+          </main>
+        ) : (
+          <main className="main-area" data-testid="main-area">
+            {storeError && (
+              <p className="main-error" data-testid="store-error">
+                {t("mainArea.loadFailed", { message: storeError })}
               </p>
-              <p>{t("mainArea.terminalPending")}</p>
-            </section>
-          ) : (
-            <section className="main-placeholder">
-              <p>{t("mainArea.placeholder")}</p>
-            </section>
-          )}
-        </main>
+            )}
+            {selected ? (
+              <section className="main-placeholder">
+                <p className="placeholder-caption">{t("mainArea.selected")}</p>
+                <h2>{selected.name}</h2>
+                <p className="placeholder-mono">
+                  {selected.username ? `${selected.username}@` : ""}
+                  {selected.address}:{selected.port}
+                </p>
+                <p>{t("mainArea.openHint")}</p>
+              </section>
+            ) : (
+              <section className="main-placeholder">
+                <p>{t("mainArea.placeholder")}</p>
+              </section>
+            )}
+          </main>
+        )}
       </div>
 
       {form && (
@@ -191,11 +222,12 @@ function HomeLayout() {
       )}
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
+      <HostKeyDialog />
       <QuickConnect
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         onSelect={(host) => {
-          setSelectedId(host.id);
+          openTab(host);
           setPaletteOpen(false);
         }}
       />
@@ -203,233 +235,11 @@ function HomeLayout() {
   );
 }
 
-function AppContent() {
-  // Task 4/7/11/13 spike 入口：?spike=latency | throughput | keyring | notify | render
-  // （自动化由 OTTR_SPIKE 导航进来，见 src-tauri lib.rs setup）
-  const spike = new URLSearchParams(window.location.search).get("spike");
-  if (spike === "latency") {
-    return <OttrTerminal spike="latency" />;
-  }
-  if (spike === "throughput") {
-    return <ThroughputSpike />;
-  }
-  if (spike === "render") {
-    return <RenderSpike />;
-  }
-  if (spike === "keyring") {
-    return <KeyringSpikePage />;
-  }
-  if (spike === "notify") {
-    return <NotifySpikePage />;
-  }
-  return <HomeLayout />;
-}
-
-// ---------------------------------------------------------------------------
-// Task 11 / Spike #7：keyring 读写（service "ottr.spike" 与正式数据隔离）
-// 流程：set → get → del → assert（del 后 get 应 NoEntry）；报告 JSON 落盘
-// /tmp/ottr-keyring.json（驱动脚本 scripts/spike-desktop-api.sh 轮询取数）。
-// ---------------------------------------------------------------------------
-
-const KEYRING_SERVICE = "ottr.spike";
-const KEYRING_ACCOUNT = "spike-account";
-
-interface KeyringReport {
-  mode: "keyring";
-  service: string;
-  account: string;
-  value_sent: string;
-  value_got: string | null;
-  steps: { set: string; get: string; del: string; get_after_del: string };
-  roundtrip: boolean;
-  deleted_assert: boolean;
-  pass: boolean;
-  cleanup: string;
-  error?: string;
-}
-
-/** 单步包装：失败不中断后续步骤（del 兜底清理仍要执行），detail 记录错误。 */
-async function step(name: string, fn: () => Promise<void>): Promise<string | null> {
-  pageLog(`keyring: ${name}`);
-  try {
-    await fn();
-    return null;
-  } catch (e) {
-    return `${name}: ${e}`;
-  }
-}
-
-function pageLog(msg: string) {
-  void invoke("spike_log", { msg }).catch(() => {});
-}
-
-async function runKeyringSteps(): Promise<KeyringReport> {
-  const value = `ottr-spike-secret-${Date.now()}`;
-  const r: KeyringReport = {
-    mode: "keyring",
-    service: KEYRING_SERVICE,
-    account: KEYRING_ACCOUNT,
-    value_sent: value,
-    value_got: null,
-    steps: { set: "not-run", get: "not-run", del: "not-run", get_after_del: "not-run" },
-    roundtrip: false,
-    deleted_assert: false,
-    pass: false,
-    cleanup: "n/a（条目已删）",
-  };
-
-  // set
-  let err = await step("set", () => invoke("spike_keyring_set", { value }));
-  r.steps.set = err ?? "ok";
-  if (err) {
-    r.error = err;
-    return r;
-  }
-
-  // get（值必须一致）
-  pageLog("keyring: get");
-  try {
-    const got = await invoke<string>("spike_keyring_get");
-    r.value_got = got;
-    r.roundtrip = got === value;
-    r.steps.get = r.roundtrip ? "ok（值一致）" : `值不一致: ${got}`;
-  } catch (e) {
-    r.steps.get = `get: ${e}`;
-  }
-
-  // del
-  err = await step("del", () => invoke("spike_keyring_del"));
-  r.steps.del = err ?? "ok";
-
-  // assert：del 后 get 应 NoEntry（删除生效）
-  if (!err) {
-    pageLog("keyring: get after del（应 NoEntry）");
-    try {
-      const again = await invoke<string>("spike_keyring_get");
-      r.steps.get_after_del = `删除未生效，仍读到: ${again}`;
-    } catch {
-      r.steps.get_after_del = "ok（NoEntry，符合预期）";
-      r.deleted_assert = true;
-    }
-  }
-
-  // 兜底清理：任何一步失败导致条目残留时再删一次（验证完不留条目）
-  if (r.steps.del !== "ok" || r.steps.get_after_del.startsWith("删除未生效")) {
-    pageLog("keyring: cleanup retry");
-    r.cleanup = (await step("cleanup-del", () => invoke("spike_keyring_del"))) ?? "ok";
-  }
-
-  r.pass = r.roundtrip && r.deleted_assert;
-  return r;
-}
-
-/** StrictMode dev 双挂载防护：自动页整个生命周期只跑一次（同 Terminal.tsx 模式）。 */
-let keyringPageRan = false;
-
-function KeyringSpikePage() {
-  const [out, setOut] = useState("spike:keyring 初始化…");
-  if (!keyringPageRan) {
-    keyringPageRan = true;
-    void (async () => {
-      try {
-        const report = await runKeyringSteps();
-        setOut(JSON.stringify(report, null, 2));
-        const path = await invoke<string>("spike_report_file", {
-          path: "/tmp/ottr-keyring.json",
-          payload: JSON.stringify(report),
-        });
-        pageLog(`keyring report -> ${path}`);
-      } catch (e) {
-        pageLog(`keyring report failed: ${e}`);
-        // 落一份失败报告让驱动脚本快速失败（而非干等超时）
-        void invoke("spike_report_file", {
-          path: "/tmp/ottr-keyring.json",
-          payload: JSON.stringify({ mode: "keyring", pass: false, error: String(e) }),
-        }).catch(() => {});
-      }
-    })();
-  }
-  return (
-    <main className="container">
-      <h1>Spike #7: keyring 读写</h1>
-      <p>set → get → del → assert（报告落盘 /tmp/ottr-keyring.json）</p>
-      <pre id="spike-keyring-out" style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
-        {out}
-      </pre>
-    </main>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Task 11 / Spike #8：系统通知。API 层调用成功即记 PASS(API 层)——macOS 未授权时
-// 通知被系统静默丢弃但 show() 不报错，「弹窗显示 + 点击回焦」只能人工确认
-// （列入 T13 runbook；Windows Toast 应用身份 / Linux libnotify 同理）。
-// ---------------------------------------------------------------------------
-
-interface NotifyReport {
-  mode: "notify";
-  api: "ok" | "fail";
-  error: string | null;
-  note: string;
-}
-
-async function runNotifySteps(): Promise<NotifyReport> {
-  try {
-    await invoke("spike_notify", {
-      title: "Ottr spike（Spike #8）",
-      body: "通知已触发：请点我回焦窗口",
-    });
-    return {
-      mode: "notify",
-      api: "ok",
-      error: null,
-      note: "插件 API 调用成功；弹窗是否显示 + 点击回焦需人工确认（T13 runbook）",
-    };
-  } catch (e) {
-    return { mode: "notify", api: "fail", error: String(e), note: "插件 API 调用失败" };
-  }
-}
-
-let notifyPageRan = false;
-
-function NotifySpikePage() {
-  const [out, setOut] = useState("spike:notify 初始化…");
-  if (!notifyPageRan) {
-    notifyPageRan = true;
-    void (async () => {
-      try {
-        const report = await runNotifySteps();
-        setOut(JSON.stringify(report, null, 2));
-        const path = await invoke<string>("spike_report_file", {
-          path: "/tmp/ottr-notify.json",
-          payload: JSON.stringify(report),
-        });
-        pageLog(`notify report -> ${path}`);
-      } catch (e) {
-        pageLog(`notify report failed: ${e}`);
-        void invoke("spike_report_file", {
-          path: "/tmp/ottr-notify.json",
-          payload: JSON.stringify({ mode: "notify", api: "fail", error: String(e) }),
-        }).catch(() => {});
-      }
-    })();
-  }
-  return (
-    <main className="container">
-      <h1>Spike #8: 系统通知</h1>
-      <p>spike_notify 已调用（报告落盘 /tmp/ottr-notify.json）；弹窗需人工目视确认。</p>
-      <pre id="spike-notify-out" style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
-        {out}
-      </pre>
-    </main>
-  );
-}
-
-/** ThemeProvider 挂在最外层：spike 页与主页共享 data-theme（spike 测量页样式固定深底，不受影响）。 */
+/** ThemeProvider 挂在最外层：单一渲染路径（spike 分支已删，hooks 顺序恒定）。 */
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <HomeLayout />
     </ThemeProvider>
   );
 }

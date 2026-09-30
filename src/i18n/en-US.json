@@ -197,18 +197,10 @@
   "mainArea": {
     "placeholder": "Pick a host on the left, or press ⌘K to quick connect",
     "selected": "Selected host",
-    "terminalPending": "Terminal sessions arrive in a later task; this is the main-area placeholder.",
+    "openHint": "Double-click a host (or pick one in ⌘K) to open a terminal.",
     "loadFailed": "Failed to load data: {{message}}"
   },
   "terminal": {
-    "contextCopy": "Copy",
-    "contextPaste": "Paste",
-    "contextSelectAll": "Select All",
-    "contextClear": "Clear",
-    "contextReset": "Reset Terminal",
-    "contextReconnect": "Reconnect",
-    "closeTab": "Close Tab",
-    "closeSession": "Disconnect Session",
     "connecting": "Connecting to {{host}}…",
     "reconnected": "Reconnected",
     "reconnecting": "Connection lost. Retrying in {{seconds}}s (attempt {{attempt}}/{{max}})…",
@@ -244,9 +236,5 @@
     "reject": "Refuse",
     "trust": "Trust & connect",
     "acceptAnyway": "Connect anyway"
-  },
-  "spike": {
-    "keyringButton": "Keyring read/write test (Spike #7)",
-    "notifyButton": "System notification test (Spike #8)"
   }
 }

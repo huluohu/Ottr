@@ -3176,6 +3176,7 @@ dependencies = [
  "base64 0.22.1",
  "keyring",
  "ottr-ssh",
+ "ottr-vault",
  "russh",
  "serde",
  "serde_json",
@@ -3184,6 +3185,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "tempfile",
  "tokio",
 ]
 

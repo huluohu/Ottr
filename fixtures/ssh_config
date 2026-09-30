@@ -1,0 +1,40 @@
+# Task 5 导入解析 golden 夹具（import_ssh_config）。
+# 覆盖：单 pattern / 多 pattern Host 行、缺省字段（无 Port/User）、
+#       大小写混排关键字、引号路径（含空格）、通配模式、`!` 排除模式、
+#       非法 Port 行、文件内重复（web-01-copy 与 web-01 同 address+port+user）、
+#       注释与其它关键字（应被忽略）。
+# 注意：本文件是解析器测试夹具，不是可用的用户配置。
+
+Host web-01
+    HostName 192.168.1.10
+    Port 2222
+    User deploy
+    IdentityFile ~/.ssh/id_ed25519
+
+Host db-master 192.168.1.20
+    Hostname 10.0.0.5
+    User backup
+    ForwardAgent yes
+
+Host bastion
+    # 端口缺省 22、User 未指定
+    hostName bastion.example.com
+
+Host spaced-host
+    HostName 10.0.0.9
+    IdentityFile "/Users/ottr/My Keys/id_rsa"
+
+Host bad-port
+    HostName 10.0.0.7
+    Port not-a-port
+
+Host web-01-copy
+    HostName 192.168.1.10
+    Port 2222
+    User deploy
+
+Host prod-*
+    HostName 10.9.9.9
+
+Host *.lan !exclude-me
+    User lanadmin

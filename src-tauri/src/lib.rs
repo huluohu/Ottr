@@ -26,6 +26,9 @@ use tokio::sync::Notify;
 
 use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
 
+pub mod ssh_config;
+pub mod vault;
+
 // ---------------------------------------------------------------------------
 // 合批器参数（Task 7 复用同一语义）
 // ---------------------------------------------------------------------------
@@ -617,6 +620,13 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
         .setup(|app| {
+            // Task 5：vault 打开并托管（app_data_dir + 钥匙链 Master Key）。
+            // 在此失败即启动失败——数据层不可用时主机/凭据功能整体不可用，
+            // 显式报错优于让每个命令各自失败。
+            let vault_state = vault::init(app.handle())
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            app.manage(vault_state);
+
             // A10（Task 1）：系统主题监听。前端主通道是 matchMedia(prefers-color-scheme)
             // （src/theme/ThemeContext.tsx）；这里补 Rust 侧兜底推送 `ottr://system-theme`
             // （payload: "light"/"dark"）——Linux WebKitGTK 对系统明暗动态跟随不可靠，
@@ -687,7 +697,37 @@ pub fn run() {
             spike_keyring_get,
             spike_keyring_del,
             spike_notify,
-            spike_report_file
+            spike_report_file,
+            // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
+            vault::hosts_list,
+            vault::hosts_get,
+            vault::hosts_create,
+            vault::hosts_update,
+            vault::hosts_delete,
+            vault::hosts_list_by_group,
+            vault::hosts_search,
+            vault::credentials_list,
+            vault::credentials_get,
+            vault::credentials_create,
+            vault::credentials_update,
+            vault::credentials_delete,
+            vault::credentials_reveal,
+            vault::host_groups_list,
+            vault::host_groups_create,
+            vault::host_groups_update,
+            vault::host_groups_delete,
+            vault::snippets_list,
+            vault::snippets_get,
+            vault::snippets_search,
+            vault::snippets_create,
+            vault::snippets_update,
+            vault::snippets_delete,
+            vault::known_hosts_list,
+            vault::known_hosts_upsert,
+            vault::known_hosts_verify,
+            vault::known_hosts_mark_changed,
+            vault::import_ssh_config,
+            vault::export_hosts_csv
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

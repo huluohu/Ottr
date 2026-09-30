@@ -1,33 +1,85 @@
-// danger.ts 雏形（Task 8，A8）：粘贴多行 / 危险命令的正则预检——**单一来源约定**：
-// 终端粘贴确认（本任务）与 Task 13 的 AI 命令分级共用本模块；Task 13 在此完成
-// 分级（把 level 细化、引入上下文与白名单），不另起炉灶。
+// danger.ts（Task 8 雏形 → Task 13 完善分级）：危险命令识别的**单一来源**——
+// 终端粘贴确认（assessPaste）与 AI 修复命令插终端（classify 红黄绿）共用同一张
+// 规则表（DANGER_RULES），禁止另起炉灶。
 //
-// 纪律：
-// * 只做**预检**（heuristic），不做放行判断——误报宁可多问一句，漏报由确认交互兜底；
-// * 正则一律小写不敏感、不锚定行首（命令可能在管道/子 shell 里）；
-// * skeleton 语境：分级只分 none/warn/danger 三档，覆盖最常见破坏面
-//   （递归强删 / 磁盘直写 / 撤销性 VCS 操作 / 服务中断），完整威胁模型 Task 13。
+// 纪律（T8 原则沿袭）：
+// * 只做**预检**（heuristic），不做放行判断——误报宁可多问一句，漏报由确认
+//   交互兜底（red 插终端 = 二次确认红字，yellow = 确认，green = 直接插入）；
+// * 正则一律不锚定行首（命令可能在管道/子 shell 里）、小写不敏感；
+// * 规则带 level（red/yellow）：red = 不可逆/灾难面（递归强删、磁盘直写、格式化、
+//   fork 炸弹、强推覆盖远端、丢弃工作区、DROP、对 PID 1 发 SIGKILL）；yellow =
+//   需要过目但不必然灾难（sudo、重启关机、kill -9、777、重定向覆盖文件）。
+//
+// T13 清理（T8 评审挂账「死分支」）：disk-write 正则原含 fork 炸弹备选分支
+// （`:\(\)\{\s*:\|\:&…`），与独立 fork-bomb 规则重复且**错标类目**（fork 炸弹
+// 会同时命中 disk-write）；已移除——fork 炸弹只归 fork-bomb（回归见测试）。
 
-/** 单条命中：kind 为规则类目（i18n / Task 13 分级用），excerpt 为命中片段。 */
+/** 分档：red（灾难）/ yellow（需过目）/ green（放行）。 */
+export type TrafficLight = "red" | "yellow" | "green";
+
+/** 单条规则：kind 为类目（i18n 键 `ai.danger.<kind>`），level 定分档。 */
+export interface DangerRule {
+  kind: string;
+  level: TrafficLight;
+  re: RegExp;
+}
+
+/**
+ * 危险命令规则表（红黄两档；green = 无命中，不设规则）。
+ * kind 命名与 i18n ai.danger.* 对齐，勿随意改。
+ */
+export const DANGER_RULES: readonly DangerRule[] = [
+  // --- red：不可逆 / 灾难面 ---------------------------------------------------
+  { kind: "recursive-delete", level: "red", re: /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r)\b/i },
+  { kind: "delete-root", level: "red", re: /\brm\s+[^|;\n]*\s+\/(\s|$|\*)/i },
+  { kind: "disk-write", level: "red", re: /\b(dd\s+[^\n]*of=\/dev\/|mkfs(\.\w+)?\s)/i },
+  { kind: "fork-bomb", level: "red", re: /:\(\)\{.*\};\s*:/s },
+  // kill -9 对 PID 1 / 全部进程（容器/init 杀手）；普通 kill -9 归 yellow
+  { kind: "kill9-init", level: "red", re: /\bkill\s+(-9|--sigkill|-s\s+sigkill)\s+(-1|1)\b/i },
+  { kind: "perm-open-recursive-root", level: "red", re: /\bchmod\s+-R\s+777\s+\/(\s|$)/i },
+  { kind: "owner-change-root", level: "red", re: /\bchown\s+(-R\s+)?[\w.-]+\s+\/(\s|$)/i },
+  { kind: "force-push", level: "red", re: /\bgit\s+push\s+(-f|--force|--force-with-lease)(\s|$)/i },
+  { kind: "hard-reset", level: "red", re: /\bgit\s+reset\s+--hard\b/i },
+  { kind: "sql-drop", level: "red", re: /\bdrop\s+(table|database|schema)\b/i },
+  // 重定向直写块设备（> 覆盖写 /dev/sdX 等，与 dd of= 同级灾难）
+  { kind: "device-redirect", level: "red", re: />>?\s*\/dev\/(?:sd|hd|nvme|vd|disk|mapper)/i },
+  { kind: "disk-erase", level: "red", re: /\b(shred|wipefs|blkdiscard)\b/i },
+
+  // --- yellow：需要过目（确认后放行）------------------------------------------
+  { kind: "sudo", level: "yellow", re: /\bsudo\s+\S/i },
+  { kind: "service-stop", level: "yellow", re: /\b(shutdown|reboot|halt|poweroff|init\s+[06])\b/i },
+  { kind: "kill9", level: "yellow", re: /\bkill\s+(-9|--sigkill|-s\s+sigkill)\b/i },
+  { kind: "perm-open", level: "yellow", re: /\bchmod\s+(-R\s+)?777\b/i },
+  { kind: "owner-change", level: "yellow", re: /\bchown\s+(-R\s+)?[\w.-]+\s+\S/i },
+  // 重定向覆盖已有写法（> 覆盖文件内容；>> 追加不拦；>&/2> 等 fd 复制不拦；
+  // > /dev/null 不拦——黑洞是丢弃不是破坏）
+  { kind: "overwrite-redirect", level: "yellow", re: /(^|[\s;|&])>(?![>&])\s*(?!\/dev\/null\b)\S/ },
+  { kind: "pkg-purge", level: "yellow", re: /\b(apt|apt-get|yum|dnf|pacman|brew)\s+(remove|purge|erase|-R)\b/i },
+];
+
+/** 单条命中：kind 为规则类目（i18n / 分级展示用），excerpt 为命中片段。 */
 export interface DangerFinding {
   kind: string;
+  level: TrafficLight;
   excerpt: string;
 }
 
-/** 危险命令规则骨架（kind 命名与 Task 13 分级对齐，勿随意改）。 */
-export const DANGER_PATTERNS: readonly { kind: string; re: RegExp }[] = [
-  { kind: "recursive-delete", re: /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r)\b/i },
-  { kind: "delete-root", re: /\brm\s+[^|;\n]*\s\/(\s|$)/i },
-  { kind: "disk-write", re: /\b(dd\s+[^\n]*of=\/dev\/|mkfs(\.\w+)?\s|:\(\)\{\s*:\|\:&\s*\}\s*;?\s*:)/i },
-  { kind: "fork-bomb", re: /:\(\)\{.*\};\s*:/s },
-  { kind: "privileged", re: /\bsudo\s+rm\b/i },
-  { kind: "perm-open", re: /\bchmod\s+(-R\s+)?777\b/i },
-  { kind: "owner-change", re: /\bchown\s+(-R\s+)?[\w.-]+\s+\/(\s|$)/i },
-  { kind: "service-stop", re: /\b(shutdown|reboot|halt|poweroff)\b/i },
-  { kind: "force-push", re: /\bgit\s+push\s+(-f|--force)(\s|--)/i },
-  { kind: "hard-reset", re: /\bgit\s+reset\s+--hard\b/i },
-  { kind: "sql-drop", re: /\bdrop\s+(table|database)\b/i },
-];
+/** 兼容别名（T8 粘贴面沿用 none/warn/danger 三档命名；warn↔yellow、danger↔red）。 */
+export type DangerLevel = "none" | "warn" | "danger";
+
+/**
+ * 红黄绿分档（AI 修复命令插终端的判定入口，spec §6）：
+ * 返回最高命中档（red > yellow > green）与全部命中。
+ */
+export function classify(cmd: string): { level: TrafficLight; findings: DangerFinding[] } {
+  const findings = scanDanger(cmd);
+  const level: TrafficLight = findings.some((f) => f.level === "red")
+    ? "red"
+    : findings.some((f) => f.level === "yellow")
+      ? "yellow"
+      : "green";
+  return { level, findings };
+}
 
 /** 是否包含换行（粘贴确认的主触发条件：多行内容进了交互式 shell，
  * 回车即执行后续行——用户往往只看到第一行）。 */
@@ -39,24 +91,27 @@ export function isMultiline(text: string): boolean {
  * 定位由消费方按 excerpt 自行展示）。 */
 export function scanDanger(text: string): DangerFinding[] {
   const findings: DangerFinding[] = [];
-  for (const { kind, re } of DANGER_PATTERNS) {
+  for (const { kind, level, re } of DANGER_RULES) {
     const m = re.exec(text);
     if (m) {
-      findings.push({ kind, excerpt: m[0].trim().slice(0, 80) });
+      findings.push({ kind, level, excerpt: m[0].trim().slice(0, 80) });
     }
   }
   return findings;
 }
 
-export type DangerLevel = "none" | "warn" | "danger";
-
-/** 粘贴预检结论（粘贴确认弹层的输入）：
+/** 粘贴预检结论（粘贴确认弹层的输入；T8 语义原样——任何规则命中都要确认，
+ * red/yellow 在此同档，分级细节由 classify 面向 AI 插终端场景表达）：
  *  * danger — 命中危险规则（无论单行多行，都要确认）；
  *  * warn   — 无规则命中但内容多行（回车连发风险）；
  *  * none   — 放行。 */
-export function assessPaste(text: string): { level: DangerLevel; findings: DangerFinding[]; multiline: boolean } {
+export function assessPaste(text: string): {
+  level: DangerLevel;
+  findings: DangerFinding[];
+  multiline: boolean;
+} {
   const findings = scanDanger(text);
-  const multiline = /\r\n|\r|\n/.test(text);
+  const multiline = isMultiline(text);
   if (findings.length > 0) return { level: "danger", findings, multiline };
   if (multiline) return { level: "warn", findings, multiline };
   return { level: "none", findings, multiline };

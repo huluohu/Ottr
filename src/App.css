@@ -2,8 +2,9 @@
  * 布局样式（Task 5 起骨架，Task 7 标签化终端主区，Task 8 分屏/搜索/右键菜单）。
  * 颜色纪律：组件层只引用 --color-* 语义层；派生表面（border/surface/
  * scrim）用 color-mix 从语义层混出，不写死色值（--btn-bg 字面值已升格
- * tokens 的 --color-surface，T1 挂账 M-1 清偿；.btn-danger 的 #fff 是
- * danger 实底上的按钮文字色，两主题共用常量，不属表面派生）。
+ * tokens 的 --color-surface，T1 挂账 M-1 清偿；accent 作文字色一律用
+ * --color-accent-text、实底按钮文字用 --color-on-accent/--color-on-danger，
+ * fix 2 裁定键，种子值备案 brand.md）。
  * ============================================================ */
 
 :root {
@@ -66,12 +67,12 @@ button:disabled {
 }
 button[data-active="true"] {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 .btn-accent {
   background-color: var(--color-accent);
   border-color: var(--color-accent);
-  color: var(--color-bg);
+  color: var(--color-on-accent);
   font-weight: 600;
 }
 .btn-accent:hover {
@@ -98,7 +99,7 @@ button[data-active="true"] {
 }
 .topbar-title {
   font-weight: 700;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 .topbar-palette kbd {
   font: inherit;
@@ -438,7 +439,7 @@ button[data-active="true"] {
   border-bottom: 2px solid transparent;
 }
 .dialog-tabs button[data-active="true"] {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   border-bottom-color: var(--color-accent);
 }
 .cred-toolbar {
@@ -468,7 +469,7 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 .cred-kind-key {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   border-color: var(--color-accent);
 }
 .cred-title {
@@ -498,7 +499,7 @@ button[data-active="true"] {
 .btn-danger {
   background-color: var(--color-danger);
   border-color: var(--color-danger);
-  color: #fff;
+  color: var(--color-on-danger);
   font-weight: 600;
 }
 .secret-field {
@@ -621,7 +622,7 @@ button[data-active="true"] {
 }
 .theme-switch button[data-active="true"] {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 /* --- 标签化终端主区（Task 7，A6）--- */
@@ -842,7 +843,7 @@ button[data-active="true"] {
   color: var(--color-danger);
 }
 .ctx-menu-item[data-checked="true"] {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 .ctx-hint {
   flex: none;

@@ -38,8 +38,9 @@
 
 | 令牌 | 值 | 语义 |
 |---|---|---|
-| `--ottr-teal-500` | `#14B8A6` | 主色 River Teal（连接、主按钮） |
+| `--ottr-teal-500` | `#14B8A6` | 主色 River Teal（连接、主按钮、非文字 accent：按钮底/边框/选中底） |
 | `--ottr-teal-700` | `#0F766E` | 主色深（hover、标题强调） |
+| `--ottr-teal-800` | `#115E59` | 主色深·文字对比专用（亮色主题 accent 文字色；fix 2 备案，见下） |
 | `--ottr-teal-300` | `#5EEAD4` | 主色浅（暗色主题主色） |
 | `--ottr-amber-500` | `#F59E0B` | 点缀 Otter Amber（收藏星标、AI 提示） |
 | `--ottr-fur-600` | `#A9714B` | 毛色 Riverbank Brown（品牌插画、logo 主色） |
@@ -47,6 +48,27 @@
 | `--ottr-cream-100` | `#F6E7D4` | 吻部 Cream（品牌插画浅色） |
 | `--ottr-ink-900` | `#0F172A` | 墨色（五官、正文标题） |
 | `--ottr-water-900` | `#0B2B33` | Deep Water（暗色主题背景基调） |
+
+### 语义层派生键备案（T1 M-5 闭环；Fix round 2，2026-09-30）
+
+来源：Task 8 目检（WCAG 对比度审查）裁定项——accent/danger 实底与亮底上作**文字**时
+不达 AA 4.5:1，语义层拆分「面」与「字」两类键。数字为 WCAG 2.x 相对亮度法，
+落面含 color-mix 派生面（raised = fg6%/bg，overlay = fg10%/bg）。
+
+| 语义键 | 亮色值 | 暗色值 | 语义 | 对比度（改前 → 改后） |
+|---|---|---|---|---|
+| `--color-accent-text` | `var(--ottr-teal-800)` #115E59 | `var(--ottr-teal-300)` #5EEAD4 | accent 作**文字色**专用（链接、激活态文字、徽标文字、菜单勾选） | 亮 teal-500 on bg **2.33** → teal-800 on bg/raised/overlay **7.09/6.31/5.80**；暗 teal-300 **10.09/8.68/7.72**（原值即达标的键值等价） |
+| `--color-on-accent` | `var(--ottr-ink-900)` #0F172A | `var(--ottr-water-900)` #0B2B33 | accent 实底（主按钮）上的文字 | 亮 cream-bg 字 on teal-500 **2.33** → 墨色字 **7.17**；暗 water-900 on teal-300 **10.09**（不变） |
+| `--color-on-danger` | `#FFFFFF` | `var(--ottr-ink-900)` #0F172A | danger 实底（危险按钮）上的文字 | 亮 #fff on #d92d20 **4.83**（不变）；暗 #fff on #f97066 **2.79** → 墨色字 **6.41** |
+
+裁定说明：
+* 亮色 accent-text 取 teal-800 而非 teal-700（#0F766E on overlay 仅 4.18，右键菜单/
+  对话框底不达标；teal-800 全落面 ≥4.5），新增品牌种子一档，色相与 500/700/300 同族。
+* 暗色 danger 保持 #F97066 不动（作文字色 on bg 5.35 达标）；「加深底色到 #d92d20」
+  的备选方案会把暗色 danger 文字对比拖到 3.09，弃。
+* `#FFFFFF` 作为亮色 on-danger 值与 `--color-surface` 同为语义层白（cream-100 对
+  #d92d20 仅 3.98，不可用）。
+* 回归钉：`src/theme/tokens.test.ts`（解析 tokens.css 实算对比度，退回即红）。
 
 **终端默认主题映射建议**（ANSI 16 色）：normal 色取品牌同色系低饱和值（red→#D97066 系、green→teal 系、yellow→amber 系、blue→水色系），bright 色取同色相高饱和值；前景 `--ottr-cream-100` 偏暖白，背景 `--ottr-water-900`。生产环境主机红色边框（B11）复用 ANSI red bright。
 

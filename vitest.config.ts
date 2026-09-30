@@ -7,5 +7,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    // tokens.test.ts 经 `?raw` 读取 tokens.css/App.css 实算对比度——css:false
+    // （默认）会把 .css 导入替换为空串连 ?raw 一起吞掉，故开启处理。
+    css: true,
   },
 });

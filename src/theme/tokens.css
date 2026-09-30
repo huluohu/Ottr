@@ -6,9 +6,10 @@
  * ============================================================ */
 
 :root {
-  /* --- 品牌 9 色（种子值，主题无关的常量层） --- */
-  --ottr-teal-500: #14b8a6; /* 主色 River Teal（连接、主按钮） */
+  /* --- 品牌 10 色（种子值，主题无关的常量层） --- */
+  --ottr-teal-500: #14b8a6; /* 主色 River Teal（连接、主按钮、非文字 accent） */
   --ottr-teal-700: #0f766e; /* 主色深（hover、标题强调） */
+  --ottr-teal-800: #115e59; /* 主色深·文字对比专用（亮色 accent-text 种子，fix 2 备案 brand.md） */
   --ottr-teal-300: #5eead4; /* 主色浅（暗色主题主色） */
   --ottr-amber-500: #f59e0b; /* 点缀 Otter Amber（收藏星标、AI 提示） */
   --ottr-fur-600: #a9714b; /* 毛色 Riverbank Brown（品牌插画、logo 主色） */
@@ -22,9 +23,18 @@
   --color-bg: #faf7f1; /* cream 派生的暖纸白 */
   --color-fg: var(--ottr-ink-900);
   --color-accent: var(--ottr-teal-500); /* 亮色主色 = teal-500（brand.md） */
+  /* accent 作文字色专用键（fix 2，T8 报告 §3.3-2 裁定）：teal-500 亮底上仅
+   * 2.33:1，文字场景（激活态文字/链接/徽标文字）一律用本键；teal-500 保留给
+   * 非文字 accent（按钮底、边框、选中底）。teal-800 对 bg/raised/overlay
+   * = 7.09/6.31/5.80，全落面 ≥4.5（teal-700 对 overlay 仅 4.18 故不用）。 */
+  --color-accent-text: var(--ottr-teal-800);
   --color-danger: #d92d20;
   --color-warning: #b45309; /* amber-700：亮底上作文字色可读 */
   --color-success: var(--ottr-teal-700);
+  /* 实底按钮/徽标上的前景键（fix 2）：--color-danger/--color-accent 实底上的
+   * 文字不随主题猜——亮 #fff 对 #d92d20 4.83；墨色对 teal-500 7.17。 */
+  --color-on-danger: #ffffff;
+  --color-on-accent: var(--ottr-ink-900);
   /* 控件面（input/button/select 底色；App.css --btn-bg 字面值的升格，T1 挂账 M-1） */
   --color-surface: #ffffff;
 }
@@ -35,9 +45,16 @@
   --color-bg: var(--ottr-water-900);
   --color-fg: var(--ottr-cream-100);
   --color-accent: var(--ottr-teal-300); /* 暗色主色 = teal-300（brand.md） */
+  /* 暗色 accent 本就是 teal-300（对 bg/raised/overlay 10.09/8.68/7.72），文字键同值 */
+  --color-accent-text: var(--ottr-teal-300);
   --color-danger: #f97066;
   --color-warning: var(--ottr-amber-500);
   --color-success: #2dd4bf;
+  /* 实底前景键（fix 2）：原 #fff 对 #f97066 仅 2.79（T8 报告 §7-4 裁定项）——
+   * 改墨色 6.41；保持 #f97066 作 danger 文字/bg 5.35 不动（加深底色的方案 b
+   * 会把 danger 文字对比拖到 3.09，弃）。on-accent：water-900 对 teal-300 10.09。 */
+  --color-on-danger: var(--ottr-ink-900);
+  --color-on-accent: var(--ottr-water-900);
   /* 控件面：白 8% 叠在 water-900 上（原 --btn-bg 暗色字面值，视觉不变） */
   --color-surface: rgba(255, 255, 255, 0.08);
 }

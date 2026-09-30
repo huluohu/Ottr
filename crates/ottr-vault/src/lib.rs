@@ -6,6 +6,7 @@
 
 pub mod crypto;
 pub mod entities;
+pub mod history;
 pub mod master_key;
 pub mod notifications;
 pub mod secrets;
@@ -18,6 +19,7 @@ pub use entities::{
     HostGroups, HostInput, Hosts, KnownHost, KnownHostState, KnownHosts, SecretField, Snippet,
     SnippetInput, Snippets, host_endpoint_key,
 };
+pub use history::{History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT};
 pub use master_key::MasterKey;
 pub use notifications::{Notification, NotificationInput, Notifications};
 pub use secrets::Secrets;

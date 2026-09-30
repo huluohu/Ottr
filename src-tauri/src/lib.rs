@@ -1865,6 +1865,9 @@ pub fn run() {
             vault::notify_mark_read,
             vault::notify_clear,
             vault::notify_unread_count,
+            // Task 15（spec §5）：统一历史搜索 ⌘R（明文面，锁定可读写）
+            vault::history_insert,
+            vault::history_search,
             security::vault_copy_credential_secret,
             // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
             vault::hosts_list,

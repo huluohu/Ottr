@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 6;
+pub const LATEST_SCHEMA_VERSION: u32 = 7;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -97,7 +97,8 @@ impl KeyMode {
 /// 0004 known_hosts host 端点绑定（Task 8 义务①，防 MITM changed 强提醒）；
 /// 0005 notifications（Task 12，spec §7 应用内通知中心——明文面，无 *_enc 列，
 /// 不涉 scan_registry）；0006 secrets 密封 KV（Task 13 AI BYOK，value_enc 已
-/// 登记 scan_registry）；history 表 Task 15 单独成迁移。
+/// 登记 scan_registry）；0007 history 命令历史 + FTS5（Task 15，spec §5 文本层
+/// 消费方③——明文面，无 *_enc 列，不涉 scan_registry）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
@@ -105,6 +106,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (4, include_str!("../migrations/0004_known_hosts_host_binding.sql")),
     (5, include_str!("../migrations/0005_notifications.sql")),
     (6, include_str!("../migrations/0006_secrets.sql")),
+    (7, include_str!("../migrations/0007_history.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。

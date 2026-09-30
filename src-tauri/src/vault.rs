@@ -28,9 +28,10 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
-    CredentialInput, CredentialPatch, Credentials, Host, HostGroups, HostInput, Hosts, KeyMode,
-    KnownHosts, Notification, NotificationInput, Notifications, SecretField, Secrets, Settings,
-    SnippetInput, Snippets, Vault, VaultError,
+    CredentialInput, CredentialPatch, Credentials, History, HistoryEntry, HistoryInput, Host,
+    HostGroups, HostInput, Hosts, KeyMode, KnownHosts, Notification, NotificationInput,
+    Notifications, SecretField, Secrets, Settings, SnippetInput, Snippets, Vault, VaultError,
+    HISTORY_SEARCH_LIMIT,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -227,6 +228,39 @@ pub fn notify_clear(state: State<'_, VaultState>) -> CmdResult<usize> {
 #[tauri::command]
 pub fn notify_unread_count(state: State<'_, VaultState>) -> CmdResult<i64> {
     cmd(Notifications::unread_count(&state.0))
+}
+
+// --- history（Task 15，spec §5 统一历史搜索 ⌘R）-------------------------------
+// 明文面（history 无 *_enc 列，见 0007 迁移文件头）：**不过 ensure_unlocked 门卫**
+// ——锁定（password 模式自动锁定）时正在跑的会话命令照常完成、照常入库，
+// 门卫在这里会把每条命令变成一次静默丢弃（fire-and-forget 无错误面），故与
+// notifications 同一锁定语义。脱敏不在历史层做（spec 定案：历史是本地数据）。
+// 写入源 = 前端 CommandWatch（OSC133 命令完成事件），Rust 侧只供表。
+
+#[tauri::command]
+pub fn history_insert(
+    state: State<'_, VaultState>,
+    input: HistoryInput,
+) -> CmdResult<HistoryEntry> {
+    cmd(History::insert(&state.0, &input))
+}
+
+/// `query` 空白 = 最近记录（面板初始态）；`host_id` 缺省 = 跨主机；
+/// `limit` 缺省 [`HISTORY_SEARCH_LIMIT`]。≥3 字符 FTS trigram / 超短 LIKE 兜底
+/// （Rust 层分派，与 hosts_search 同语义）。
+#[tauri::command]
+pub fn history_search(
+    state: State<'_, VaultState>,
+    query: String,
+    host_id: Option<i64>,
+    limit: Option<u32>,
+) -> CmdResult<Vec<HistoryEntry>> {
+    cmd(History::search(
+        &state.0,
+        &query,
+        host_id,
+        limit.unwrap_or(HISTORY_SEARCH_LIMIT as u32) as usize,
+    ))
 }
 
 // --- hosts -----------------------------------------------------------------

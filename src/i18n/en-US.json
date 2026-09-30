@@ -1,0 +1,85 @@
+{
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "search": "Search",
+    "close": "Close",
+    "confirm": "Confirm",
+    "retry": "Retry",
+    "copy": "Copy",
+    "paste": "Paste",
+    "edit": "Edit",
+    "add": "Add",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "yes": "Yes",
+    "no": "No",
+    "error": "Error",
+    "done": "Done"
+  },
+  "home": {
+    "title": "Welcome to Ottr",
+    "logosHint": "Click on the Tauri, Vite, and React logos to learn more.",
+    "greetPlaceholder": "Enter a name…",
+    "greetButton": "Greet"
+  },
+  "settings": {
+    "title": "Settings",
+    "sectionAppearance": "Appearance",
+    "sectionLanguage": "Language",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "language": "Language",
+    "langZh": "中文",
+    "langEn": "English"
+  },
+  "hostForm": {
+    "newTitle": "New Host",
+    "editTitle": "Edit Host",
+    "name": "Name",
+    "namePlaceholder": "e.g. production gateway",
+    "host": "Host",
+    "hostPlaceholder": "e.g. 192.168.1.10",
+    "port": "Port",
+    "username": "Username",
+    "password": "Password",
+    "authType": "Authentication",
+    "authPassword": "Password",
+    "authKey": "SSH key",
+    "privateKey": "Private key",
+    "passphrase": "Key passphrase",
+    "connect": "Connect",
+    "testConnection": "Test connection",
+    "deleteConfirm": "Delete host \"{{name}}\"?"
+  },
+  "terminal": {
+    "contextCopy": "Copy",
+    "contextPaste": "Paste",
+    "contextSelectAll": "Select All",
+    "contextClear": "Clear",
+    "contextReset": "Reset Terminal",
+    "contextReconnect": "Reconnect",
+    "closeTab": "Close Tab",
+    "closeSession": "Disconnect Session"
+  },
+  "ai": {
+    "title": "AI Assistant",
+    "inputPlaceholder": "Describe what you want to do…",
+    "send": "Send",
+    "stop": "Stop",
+    "thinking": "Thinking…",
+    "newChat": "New Chat",
+    "empty": "Start your first conversation",
+    "copyCode": "Copy code",
+    "insertToTerminal": "Insert to terminal",
+    "failed": "Request failed, please retry"
+  },
+  "spike": {
+    "keyringButton": "Keyring read/write test (Spike #7)",
+    "notifyButton": "System notification test (Spike #8)"
+  }
+}

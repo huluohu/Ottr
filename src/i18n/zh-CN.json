@@ -1,0 +1,85 @@
+{
+  "common": {
+    "ok": "确定",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "search": "搜索",
+    "close": "关闭",
+    "confirm": "确认",
+    "retry": "重试",
+    "copy": "复制",
+    "paste": "粘贴",
+    "edit": "编辑",
+    "add": "添加",
+    "refresh": "刷新",
+    "loading": "加载中…",
+    "yes": "是",
+    "no": "否",
+    "error": "错误",
+    "done": "完成"
+  },
+  "home": {
+    "title": "欢迎使用 Ottr",
+    "logosHint": "点击 Tauri、Vite、React 图标了解更多。",
+    "greetPlaceholder": "输入一个名字…",
+    "greetButton": "打招呼"
+  },
+  "settings": {
+    "title": "设置",
+    "sectionAppearance": "外观",
+    "sectionLanguage": "语言",
+    "theme": "主题",
+    "themeLight": "亮色",
+    "themeDark": "暗色",
+    "themeSystem": "跟随系统",
+    "language": "语言",
+    "langZh": "中文",
+    "langEn": "English"
+  },
+  "hostForm": {
+    "newTitle": "新建主机",
+    "editTitle": "编辑主机",
+    "name": "名称",
+    "namePlaceholder": "例如：生产网关",
+    "host": "主机地址",
+    "hostPlaceholder": "例如：192.168.1.10",
+    "port": "端口",
+    "username": "用户名",
+    "password": "密码",
+    "authType": "认证方式",
+    "authPassword": "密码认证",
+    "authKey": "密钥认证",
+    "privateKey": "私钥",
+    "passphrase": "私钥口令",
+    "connect": "连接",
+    "testConnection": "测试连接",
+    "deleteConfirm": "确定删除主机「{{name}}」吗？"
+  },
+  "terminal": {
+    "contextCopy": "复制",
+    "contextPaste": "粘贴",
+    "contextSelectAll": "全选",
+    "contextClear": "清屏",
+    "contextReset": "重置终端",
+    "contextReconnect": "重新连接",
+    "closeTab": "关闭标签页",
+    "closeSession": "断开会话"
+  },
+  "ai": {
+    "title": "AI 助手",
+    "inputPlaceholder": "向 AI 描述你要做的事…",
+    "send": "发送",
+    "stop": "停止",
+    "thinking": "思考中…",
+    "newChat": "新对话",
+    "empty": "开始你的第一次对话",
+    "copyCode": "复制代码",
+    "insertToTerminal": "插入到终端",
+    "failed": "请求失败，请重试"
+  },
+  "spike": {
+    "keyringButton": "Keyring 读写测试（Spike#7）",
+    "notifyButton": "系统通知测试（Spike#8）"
+  }
+}

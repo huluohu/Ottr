@@ -1,30 +1,32 @@
 import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import OttrTerminal, { RenderSpike, ThroughputSpike } from "./terminal/Terminal";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
 import "./theme/tokens.css";
 import "./App.css";
 
-// 主题切换器（A10）：手动验证入口 + Task 8 设置页前的临时控件（Task 2 文案过 t()）。
-const THEME_MODES: { value: ThemeMode; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
+// 主题切换器（A10）：手动验证入口 + Task 8 设置页前的临时控件。
+const THEME_MODES: { value: ThemeMode; labelKey: string }[] = [
+  { value: "light", labelKey: "settings.themeLight" },
+  { value: "dark", labelKey: "settings.themeDark" },
+  { value: "system", labelKey: "settings.themeSystem" },
 ];
 
 function ThemeSwitch() {
   const { mode, setMode } = useTheme();
+  const { t } = useTranslation();
   return (
-    <div className="theme-switch" role="group" aria-label="Theme">
-      {THEME_MODES.map(({ value, label }) => (
+    <div className="theme-switch" role="group" aria-label={t("settings.theme")}>
+      {THEME_MODES.map(({ value, labelKey }) => (
         <button
           key={value}
           data-active={mode === value}
           aria-pressed={mode === value}
           onClick={() => setMode(value)}
         >
-          {label}
+          {t(labelKey)}
         </button>
       ))}
     </div>
@@ -32,6 +34,7 @@ function ThemeSwitch() {
 }
 
 function AppContent() {
+  const { t } = useTranslation();
   // Task 4/7/11/13 spike 入口：?spike=latency | throughput | keyring | notify | render
   // （自动化由 OTTR_SPIKE 导航进来，见 src-tauri lib.rs setup）
   const spike = new URLSearchParams(window.location.search).get("spike");
@@ -84,7 +87,7 @@ function AppContent() {
 
   return (
     <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+      <h1>{t("home.title")}</h1>
 
       {/* A10 主题切换（Task 8 设置页落地前的临时控件） */}
       <ThemeSwitch />
@@ -100,7 +103,7 @@ function AppContent() {
           <img src={reactLogo} className="logo react" alt="React logo" />
         </a>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <p>{t("home.logosHint")}</p>
 
       <form
         className="row"
@@ -112,19 +115,19 @@ function AppContent() {
         <input
           id="greet-input"
           onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          placeholder={t("home.greetPlaceholder")}
         />
-        <button type="submit">Greet</button>
+        <button type="submit">{t("home.greetButton")}</button>
       </form>
       <p>{greetMsg}</p>
 
       {/* Task 11 / Spike #7/#8 人工验证入口 */}
       <div className="row">
         <button id="spike-keyring-btn" onClick={runKeyringButton}>
-          Keyring 读写测试（Spike#7）
+          {t("spike.keyringButton")}
         </button>
         <button id="spike-notify-btn" onClick={runNotifyButton}>
-          系统通知测试（Spike#8）
+          {t("spike.notifyButton")}
         </button>
       </div>
       <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{keyringOut}</pre>

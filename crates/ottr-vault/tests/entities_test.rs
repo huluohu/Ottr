@@ -602,6 +602,16 @@ fn known_hosts_state_machine() {
     assert!(!changed.verified, "key 变更后旧 verified 作废");
     assert!(changed.changed_at.is_some());
 
+    // changed_at 语义钉死（Task 6 裁定 #4）：re-verify 回 ok 后 changed_at
+    // **保留**——它是最近一次变更的事件时间，不随信任恢复清空。
+    let reverted = KnownHosts::verify(&vault, fp).unwrap();
+    assert_eq!(reverted.state, KnownHostState::Ok);
+    assert!(reverted.verified);
+    assert_eq!(
+        reverted.changed_at, changed.changed_at,
+        "re-verify 回 ok 后 changed_at 必须保留"
+    );
+
     // 未入库指纹直接 mark_changed：以 changed 状态入库。
     let fresh = KnownHosts::mark_changed(&vault, "SHA256:new").unwrap();
     assert_eq!(fresh.state, KnownHostState::Changed);

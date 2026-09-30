@@ -965,6 +965,10 @@ pub struct KnownHost {
     pub fingerprint: String,
     pub first_seen: i64,
     pub verified: bool,
+    /// 最近一次检测到指纹变更的时间（`mark_changed` 落值）。语义钉死（Task 6
+    /// 裁定 #4，T4 挂账清偿）：这是**事件时间戳而非状态属性**——之后 re-verify
+    /// 回 ok 也**保留不清空**（「何时出过事」的历史不随信任恢复而抹除）。
+    /// 从未变更过则为 None。
     pub changed_at: Option<i64>,
     pub state: KnownHostState,
 }
@@ -987,6 +991,8 @@ impl KnownHosts {
     }
 
     /// 用户确认指纹：verified=1、state=ok（对 changed 的重确认也回到 ok）。
+    /// `changed_at` **保留不清空**（语义见 [`KnownHost::changed_at`]：
+    /// 变更是历史事件，不随信任恢复抹除）。
     /// 未入库指纹按 upsert 处理（HostKeyPolicy 可直接调用）。
     pub fn verify(vault: &Vault, fingerprint: &str) -> Result<KnownHost> {
         let ts = now_ts();

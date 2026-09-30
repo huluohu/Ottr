@@ -26,6 +26,7 @@ use tokio::sync::Notify;
 
 use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
 
+pub mod keys;
 pub mod ssh_config;
 pub mod vault;
 
@@ -727,7 +728,12 @@ pub fn run() {
             vault::known_hosts_verify,
             vault::known_hosts_mark_changed,
             vault::import_ssh_config,
-            vault::export_hosts_csv
+            vault::export_hosts_csv,
+            // 密钥管理（Task 6，A4；命令名契约见 src/vault/api.ts keys 段）
+            keys::key_generate,
+            keys::key_inspect,
+            keys::key_export,
+            keys::key_deploy
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

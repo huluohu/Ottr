@@ -21,6 +21,7 @@ export type Platform = "mac" | "win" | "linux";
  * macOS 菜单（经事件回传）共用同一组 id。 */
 export type ActionId =
   | "palette.toggle"
+  | "history.search"
   | "hosts.new"
   | "settings.open"
   | "theme.toggle"
@@ -59,6 +60,9 @@ export interface ActionDef {
  * 分属不同修饰键命名空间，不构成 EOF 劫持面）：
  *   palette.toggle = ⌘K   hosts.new = ⌘N   settings.open = ⌘,
  *   session.splitRight = ⌘D   session.splitDown = ⇧⌘D
+ * history.search（⌘R）**刻意不进原生菜单**：AppKit 层的菜单 chord 先于 webview
+ * 消费，会把「终端内 ⌘R 放行 PTY」的守卫语义整个击穿（菜单拦截不经过
+ * matchActionEvent）——⌘R 只走前端全局监听 + 终端聚焦守卫。
  *
  * 【评审 M-4（fix round 1/5）：终端键位收敛】win/Linux 的分屏右**移除裸
  * Ctrl+D**（EOF 键是终端第一公民）收敛为仅 Ctrl+Shift+D；分屏下 win/linux
@@ -75,6 +79,16 @@ export const ACTIONS: readonly ActionDef[] = [
     labelKey: "palette.title",
     keys: { mac: "CmdOrCtrl+K", win: "Ctrl+K", linux: "Ctrl+K" },
     terminalSafe: true,
+  },
+  {
+    // 【T15 终端聚焦守卫裁定】**不标 terminalSafe**——终端内 Ctrl+R 是 shell
+    // 反向搜索（bash/zsh history-search-backward），⌘R 放行 PTY 是硬约束：
+    // inTerminal 时 matchActionEvent 对本条返回 null（不拦截不 preventDefault），
+    // 击键原样到 shell。⌘R 面板只在终端**不**聚焦时可由全局键呼出（⌘K 面板/
+    // 汉堡菜单恒可及）。
+    id: "history.search",
+    labelKey: "history.title",
+    keys: { mac: "CmdOrCtrl+R", win: "Ctrl+R", linux: "Ctrl+R" },
   },
   {
     id: "hosts.new",

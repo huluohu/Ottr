@@ -484,6 +484,53 @@ describe("会话编码（Task 9，A9）", () => {
   });
 });
 
+describe("⌘R 历史插入（Task 15，insertToFocusedPane）", () => {
+  it("聚焦 pane 已连接 → write_session 携带命令字节，**不带回车**（T13 惯例）", async () => {
+    mockedInvoke.mockResolvedValue(undefined);
+    const id = useSessionStore.getState().openTab(hostA, { autoConnect: false });
+    markConnected(id, "pty-h1");
+    useSessionStore.getState().insertToFocusedPane("docker logs ottr-api");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("write_session", {
+      id: "pty-h1",
+      bytes: Array.from(new TextEncoder().encode("docker logs ottr-api")),
+    });
+    const bytes = mockedInvoke.mock.calls.find((c) => c[0] === "write_session")?.[1]
+      .bytes as number[];
+    expect(bytes).not.toContain(0x0d); // 无 \r
+    expect(bytes).not.toContain(0x0a); // 无 \n
+  });
+
+  it("无活动标签 / 未连接（rustId=null）→ 不发 invoke（静默）", () => {
+    useSessionStore.setState({ sessions: [], activeId: null, trees: {}, activePane: {} });
+    useSessionStore.getState().insertToFocusedPane("ls");
+    const id = useSessionStore.getState().openTab(hostB, { autoConnect: false }); // disconnected
+    useSessionStore.getState().insertToFocusedPane("ls");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("write_session", expect.anything());
+    expect(id).toBeTruthy();
+  });
+
+  it("分屏下插入目标是聚焦 pane（activePane），非标签根", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session" ? Promise.resolve("pty-h2") : Promise.resolve(undefined),
+    );
+    const tab = useSessionStore.getState().openTab(hostC, { autoConnect: true });
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().splitPane(tab, "row");
+    await vi.advanceTimersByTimeAsync(0);
+    const state = useSessionStore.getState();
+    const paneId = state.activePane[tab];
+    const pane = state.sessions.find((s) => s.id === paneId);
+    expect(pane && pane.id !== tab).toBeTruthy();
+    useSessionStore.getState().insertToFocusedPane("htop");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("write_session", {
+      id: pane?.rustId,
+      bytes: Array.from(new TextEncoder().encode("htop")),
+    });
+  });
+});
+
 // act 兼容 shim（store 直驱时其实不需要 React act；保留直接调用形式）
 function act<T>(fn: () => T): T {
   return fn();

@@ -196,6 +196,33 @@ describe("终端聚焦守卫（matchActionEvent inTerminal）", () => {
     );
   });
 
+  it("T15：⌘R/Ctrl+R（history.search）终端内放行 PTY，终端外命中面板", () => {
+    // 终端内 Ctrl+R 是 shell 反向搜索：非 terminalSafe → null（不拦截不
+    // preventDefault，击键原样到 shell）——三平台全一致
+    expect(matchActionEvent(keyEvent({ key: "r", ctrlKey: true }), "win", true)).toBeNull();
+    expect(matchActionEvent(keyEvent({ key: "r", ctrlKey: true }), "linux", true)).toBeNull();
+    expect(matchActionEvent(keyEvent({ key: "r", metaKey: true }), "mac", true)).toBeNull();
+    // 终端外：全局键呼出历史搜索面板
+    expect(matchActionEvent(keyEvent({ key: "r", metaKey: true }), "mac", false)).toBe(
+      "history.search",
+    );
+    expect(matchActionEvent(keyEvent({ key: "r", ctrlKey: true }), "win", false)).toBe(
+      "history.search",
+    );
+    expect(matchActionEvent(keyEvent({ key: "r", ctrlKey: true }), "linux", false)).toBe(
+      "history.search",
+    );
+  });
+
+  it("T15：history.search 三平台键位 + 无冲突 + 刻意不进 mac 原生菜单镜像", () => {
+    expect(shortcutLabel("history.search", "mac")).toBe("⌘R");
+    expect(shortcutLabel("history.search", "win")).toBe("Ctrl+R");
+    expect(shortcutLabel("history.search", "linux")).toBe("Ctrl+R");
+    for (const p of ["mac", "win", "linux"] as const) {
+      expect(findConflicts(p)).toEqual([]);
+    }
+  });
+
   it("isTerminalTarget：closest 命中 [data-terminal]，非 Element target 恒 false", () => {
     const container = document.createElement("div");
     container.setAttribute("data-terminal", "");

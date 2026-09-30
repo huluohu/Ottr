@@ -29,6 +29,7 @@ import { terminalThemes } from "../theme/terminal-themes";
 import type { ITheme } from "@xterm/xterm";
 import { assessPaste } from "../ai/danger";
 import { useAiStore } from "../ai/aiStore";
+import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
 import {
   getSearch,
@@ -205,6 +206,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
     // T13 报错即诊：OSC133 命令边界监听（shell 集成片段发 A/C/D 标记）；
     // D;code≠0 → aiStore.onCommandFailed（ai.enabled 总开关在 store 内现读）。
+    // T15 历史入库：onCommandFinished（全量命令完成，含 exit 0）→ history_insert
+    // （fire-and-forget，见 src/history/record.ts）。
     let watch: IDisposable | null = null;
     try {
       watch = createCommandWatch(term, {
@@ -222,6 +225,13 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             exitCode,
             command,
           });
+        },
+        onCommandFinished: (ev) => {
+          const session = useSessionStore
+            .getState()
+            .sessions.find((x) => x.id === sessionId);
+          if (!session) return;
+          recordCommand({ hostId: session.hostId, sessionId }, ev);
         },
       });
     } catch {

@@ -31,6 +31,8 @@ import { initNotifyEvents } from "./notify/core";
 import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
+import { HistorySearch } from "./history/HistorySearch";
+import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
 import {
   isTerminalTarget,
@@ -116,6 +118,8 @@ function HomeLayout() {
   const [importOpen, setImportOpen] = useState(false);
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // T15：⌘R 历史搜索面板（registry history.search；终端内放行 PTY 见 registry）
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
@@ -165,6 +169,9 @@ function HomeLayout() {
       switch (action) {
         case "palette.toggle":
           setPaletteOpen((v) => !v);
+          break;
+        case "history.search":
+          setHistoryOpen((v) => !v);
           break;
         case "hosts.new":
           setForm({ mode: "new", groupId: null });
@@ -413,6 +420,19 @@ function HomeLayout() {
         onAction={(action) => {
           setPaletteOpen(false);
           handleAction(action);
+        }}
+        plat={PLATFORM}
+      />
+      {/* T15 历史搜索面板（⌘R）：跨主机命令历史 FTS 检索；回车把命令写进当前
+          聚焦 pane（剥提示符前缀——CommandWatch 提取含提示符原文；不带换行，
+          落在输入行由用户确认执行）。 */}
+      <HistorySearch
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        hosts={hosts}
+        onInsert={(command) => {
+          useSessionStore.getState().insertToFocusedPane(stripPromptPrefix(command));
+          setHistoryOpen(false);
         }}
         plat={PLATFORM}
       />

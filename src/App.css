@@ -634,6 +634,77 @@ button[data-active="true"] {
   padding: 0;
 }
 
+/* --- T15 历史搜索面板（⌘R）：复用 palette 骨架 + 结果元信息 --- */
+.palette.history {
+  width: min(640px, 100%);
+}
+.history-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.history-toolbar .palette-input {
+  flex: 1;
+  width: auto;
+}
+.history-select {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 8px;
+  max-width: 40%;
+}
+.history-item {
+  align-items: flex-start;
+}
+.history-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.history-cmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78em;
+  color: var(--fg-muted);
+}
+.history-badge {
+  font-size: 0.9em;
+  line-height: 1;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+}
+.history-badge.exit-ok {
+  color: var(--fg-muted);
+}
+.history-badge.exit-fail {
+  color: #e5484d;
+  border-color: #e5484d;
+}
+.history-badge.exit-none {
+  color: var(--fg-muted);
+  opacity: 0.7;
+}
+.history-hint {
+  padding: 6px 10px 2px;
+  font-size: 0.72em;
+  color: var(--fg-muted);
+  text-align: right;
+  user-select: none;
+}
+
 /* --- A12 自绘标题栏（Task 14，win/linux；mac 不渲染走原生） --- */
 .titlebar {
   position: relative;

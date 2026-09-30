@@ -111,6 +111,26 @@
     "langToggle": "Toggle Language (中文 / English)",
     "quit": "Quit Ottr"
   },
+  "palette": {
+    "title": "Command Palette",
+    "placeholder": "Search commands or hosts…",
+    "empty": "No matches",
+    "commands": "Commands",
+    "hosts": "Hosts",
+    "newHost": "New Host",
+    "themeToggle": "Toggle Theme (Light / Dark / System)",
+    "langToggle": "Toggle Language (中文 / English)",
+    "quit": "Quit Ottr"
+  },
+  "history": {
+    "title": "History Search",
+    "placeholder": "Search commands you've run…",
+    "empty": "No matching commands",
+    "hostAll": "All hosts",
+    "hostFilter": "Filter by host",
+    "insertHint": "Enter inserts into the current terminal",
+    "unknownHost": "unknown host"
+  },
   "titlebar": {
     "menu": "Menu",
     "minimize": "Minimize",

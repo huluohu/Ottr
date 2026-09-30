@@ -118,9 +118,20 @@ describe("App 主页布局（集成）", () => {
     expect(fireEvent.keyDown(term, { key: "k", ctrlKey: true })).toBe(false);
     // Ctrl+N（新建主机）：非 terminalSafe → 守卫挡下、不拦截
     expect(fireEvent.keyDown(term, { key: "n", ctrlKey: true })).toBe(true);
+    // T15：Ctrl+R（history.search，非 terminalSafe）→ 终端内放行（shell 反向
+    // 搜索），且历史面板不被呼出
+    expect(fireEvent.keyDown(term, { key: "r", ctrlKey: true })).toBe(true);
+    expect(screen.queryByTestId("history-search")).toBeNull();
 
-    // 对照：终端外（target = body）Ctrl+N 照常拦截
+    // 对照：终端外（target = body）Ctrl+N 照常拦截；Ctrl+R 呼出历史面板
     expect(fireEvent.keyDown(document.body, { key: "n", ctrlKey: true })).toBe(false);
+    expect(fireEvent.keyDown(document.body, { key: "r", ctrlKey: true })).toBe(false);
+    await waitFor(() => expect(screen.getByTestId("history-search")).toBeTruthy());
+    expect(mockedInvoke).toHaveBeenCalledWith("history_search", {
+      query: "",
+      hostId: null,
+      limit: 50,
+    });
 
     term.remove();
   });

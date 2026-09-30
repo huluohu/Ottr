@@ -23,6 +23,9 @@
 //       session_tail（Task 13 AI 诊断：会话输出尾部剥 ANSI 纯文本）
 //       secret_set secret_get secret_delete secret_contains
 //       （Task 13 secrets 密文 KV：AI provider api key，锁定即拒）
+//       history_insert history_search
+//       （Task 15 统一历史搜索 ⌘R：明文面，锁定可读写——写入源是前端
+//       CommandWatch 的命令完成事件，见 src/history/record.ts）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -209,6 +212,29 @@ export interface NotificationInput {
   payload: unknown;
 }
 
+/** Rust `history::HistoryEntry` 同构（Task 15，⌘R 历史行）。
+ * command 存 OSC133 提取的原样文本（含提示符原文——消费侧剥离是保守启发式，
+ * 见 src/history/format.ts）；exit_code 可空（shell 未上报）；明文面。 */
+export interface HistoryEntry {
+  id: number;
+  host_id: number;
+  command: string;
+  cwd: string | null;
+  exit_code: number | null;
+  session_id: string | null;
+  /** 秒级 Unix 时间。 */
+  ts: number;
+}
+
+/** Rust `history::HistoryInput` 同构（history_insert 载荷，snake_case）。 */
+export interface HistoryInput {
+  host_id: number;
+  command: string;
+  cwd: string | null;
+  exit_code: number | null;
+  session_id: string | null;
+}
+
 /** Rust `vault_upgrade_to_master_password` 进度事件载荷（ottr://reencrypt-progress）。 */
 export interface ReencryptProgress {
   done: number;
@@ -318,6 +344,20 @@ export const vaultApi = {
     /** 清空全部，返回删除行数。 */
     clear: () => invoke<number>("notify_clear"),
     unreadCount: () => invoke<number>("notify_unread_count"),
+  },
+  /** 命令历史（Task 15，spec §5 统一历史搜索 ⌘R）：明文面命令（锁定可读写，
+   * 同 notifications 锁定语义）。写入源 = CommandWatch 命令完成事件
+   * （src/history/record.ts fire-and-forget）；检索 ≥3 字符 FTS trigram /
+   * 超短 LIKE 兜底（Rust 层分派，同 hosts_search 语义）。 */
+  history: {
+    insert: (input: HistoryInput) => invoke<HistoryEntry>("history_insert", { input }),
+    /** query 空白 = 最近记录（面板初始态）；hostId=null 跨主机；limit 缺省 50。 */
+    search: (query: string, hostId: number | null, limit?: number) =>
+      invoke<HistoryEntry[]>("history_search", {
+        query,
+        hostId,
+        limit: limit ?? null,
+      }),
   },
   /** secrets 密文 KV（Task 13，AI BYOK）：provider api key 等，AES-256-GCM 密封
    * 落盘、锁定即拒（"vault is locked..."）。key 逻辑名 = `ai.apikey.<providerId>`。

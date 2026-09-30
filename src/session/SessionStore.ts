@@ -295,6 +295,10 @@ interface SessionStore {
   setPaneRatio: (tabId: string, path: readonly number[], ratio: number) => void;
   /** 打开搜索栏并定位到会话（null = 关闭）。 */
   openSearch: (sessionId: string | null) => void;
+  /** ⌘R 历史面板插入（Task 15）：命令文本写入当前聚焦 pane 的 PTY——
+   * write_session 不带回车（T13 惯例：落进输入行由用户确认执行）。
+   * 无活动会话/未连接时静默（面板侧照常关闭）。 */
+  insertToFocusedPane: (text: string) => void;
 
   // --- 会话编码（Task 9，A9） -----------------------------------------------
   /** 切换会话编码：状态即变 + Rust 侧 set_session_encoding（残字结算文本写回
@@ -733,6 +737,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }),
 
   openSearch: (sessionId) => set({ searchSessionId: sessionId }),
+
+  insertToFocusedPane: (text) => {
+    const st = get();
+    const focused =
+      st.activeId != null ? (st.activePane[st.activeId] ?? st.activeId) : null;
+    const session = st.sessions.find((s) => s.id === focused);
+    if (!session?.rustId) return; // 无活动终端/未连接：无处插入（静默）
+    void invoke("write_session", {
+      id: session.rustId,
+      bytes: Array.from(new TextEncoder().encode(text)),
+    }).catch(() => {}); // 写失败（会话刚断）静默——同击键路径的容错口径
+  },
 
   // --- 会话编码（Task 9，A9） -----------------------------------------------
 

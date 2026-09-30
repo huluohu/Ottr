@@ -1,8 +1,9 @@
 // 终端体验层组件测试（Task 8 Step 3/4）：粘贴确认弹层（多行/危险两态）、
-// 右键菜单模型与渲染（含编码子菜单）、SessionTerminal 上右键唤起菜单。
+// 右键菜单模型与渲染（含编码子菜单）、SessionTerminal 上右键唤起菜单、
+// 主题实时跟随（system 模式 OS 切换 → xterm theme）与 TerminalArea 分隔条/⌘F。
 // xterm 在 jsdom 里 open() 会失败（Terminal.tsx 已容错），DOM 交互面不受影响；
 // ThemeProvider 需 matchMedia（jsdom 不实现）→ 最小 stub。
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -12,6 +13,21 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((m: unknown) => void) | null = null;
   },
 }));
+
+// xterm 实例捕获：主题跟随测试需要读到 term.options.theme（实例不出组件面，
+// 子类只记录不改行为，对既有用例透明）。
+vi.mock("@xterm/xterm", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@xterm/xterm")>();
+  const captured: InstanceType<typeof mod.Terminal>[] = [];
+  class Terminal extends mod.Terminal {
+    constructor(...args: ConstructorParameters<typeof mod.Terminal>) {
+      super(...args);
+      captured.push(this);
+    }
+    static __captured = captured;
+  }
+  return { ...mod, Terminal };
+});
 
 const mockedInvoke = invoke as unknown as Mock;
 
@@ -40,9 +56,15 @@ beforeEach(() => {
 
 import i18n from "../i18n";
 import { ThemeProvider } from "../theme/ThemeContext";
-import { ContextMenuView, PasteConfirmDialog, SessionTerminal } from "./Terminal";
+import { terminalThemes } from "../theme/terminal-themes";
+import { applyTermTheme, ContextMenuView, PasteConfirmDialog, SessionTerminal, TerminalArea } from "./Terminal";
 import { buildContextMenu, loadTerminalSettings, saveTerminalSettings } from "./ContextMenu";
 import { useSessionStore, type Session } from "../session/SessionStore";
+import { Terminal as XTermClass } from "@xterm/xterm";
+
+function capturedTerms(): InstanceType<typeof XTermClass>[] {
+  return (XTermClass as unknown as { __captured: InstanceType<typeof XTermClass>[] }).__captured ?? [];
+}
 
 function sess(over: Partial<Session> & Pick<Session, "id">): Session {
   return {
@@ -176,5 +198,132 @@ describe("SessionTerminal 右键唤起菜单（集成）", () => {
     expect(loadTerminalSettings().copyOnSelect).toBe(false);
     saveTerminalSettings({ copyOnSelect: true });
     expect(loadTerminalSettings().copyOnSelect).toBe(true);
+  });
+});
+
+describe("applyTermTheme（resolved → xterm theme 映射）", () => {
+  it("light/dark 分别取 terminalThemes 对应套", () => {
+    const stub = { options: {} as { theme?: (typeof terminalThemes)["light"] } };
+    applyTermTheme(stub, "light");
+    expect(stub.options.theme).toBe(terminalThemes.light);
+    applyTermTheme(stub, "dark");
+    expect(stub.options.theme).toBe(terminalThemes.dark);
+  });
+});
+
+describe("主题实时跟随（system 模式 OS 明暗切换 → xterm theme）", () => {
+  it("system 模式下 prefers-color-scheme 变化，终端主题同步换套", async () => {
+    // 受控 matchMedia：ThemeProvider 订阅 change 事件，翻转 matches 模拟 OS 切换
+    const mqs: Array<{
+      matches: boolean;
+      media: string;
+      listeners: Array<(e: { matches: boolean }) => void>;
+      addEventListener: (t: string, l: (e: { matches: boolean }) => void) => void;
+      removeEventListener: () => void;
+    }> = [];
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockImplementation((query: string) => {
+        const o = {
+          matches: false,
+          media: query,
+          listeners: [] as Array<(e: { matches: boolean }) => void>,
+          addEventListener(_t: string, l: (e: { matches: boolean }) => void) {
+            o.listeners.push(l);
+          },
+          removeEventListener() {},
+        };
+        mqs.push(o);
+        return o;
+      }),
+    );
+    localStorage.clear(); // theme 未设置 → mode=system（默认）
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-th" })],
+      activeId: "tab-th",
+      trees: { "tab-th": { kind: "leaf", id: "tab-th" } },
+      activePane: { "tab-th": "tab-th" },
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-th" />
+      </ThemeProvider>,
+    );
+    const terms = capturedTerms();
+    const term = terms[terms.length - 1]!;
+    expect(term.options.theme).toBe(terminalThemes.light); // 初始 OS=亮
+
+    await act(async () => {
+      // matchMedia 在 ThemeProvider 里至少被调两次（state 初值 + effect 订阅），
+      // 逐个翻转并广播 change——模拟 OS 级明暗切换
+      for (const o of mqs) {
+        o.matches = true;
+        o.listeners.forEach((l) => l({ matches: true }));
+      }
+    });
+    expect(term.options.theme).toBe(terminalThemes.dark); // 实时换套
+  });
+});
+
+describe("TerminalArea（分屏主区）", () => {
+  it("分隔条带 i18n aria 标签与方向；⌘F 呼出活动 pane 的搜索栏", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-a" }), sess({ id: "t-b", paneOf: "t-a" })],
+      activeId: "t-a",
+      trees: {
+        "t-a": {
+          kind: "split",
+          dir: "row",
+          ratio: 0.5,
+          first: { kind: "leaf", id: "t-a" },
+          second: { kind: "leaf", id: "t-b" },
+        },
+      },
+      activePane: { "t-a": "t-a" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalArea />
+      </ThemeProvider>,
+    );
+    const divider = document.querySelector(".split-divider") as HTMLElement;
+    expect(divider).toBeTruthy();
+    expect(divider.getAttribute("aria-label")).toBeTruthy(); // terminal.splitAria
+    expect(divider.getAttribute("aria-orientation")).toBe("vertical");
+
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    expect(screen.getByTestId("search-bar")).toBeTruthy();
+    expect(useSessionStore.getState().searchSessionId).toBe("t-a");
+  });
+
+  it("拖拽分隔条（pointer 事件）回写 setPaneRatio", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-a" }), sess({ id: "t-b", paneOf: "t-a" })],
+      activeId: "t-a",
+      trees: {
+        "t-a": {
+          kind: "split",
+          dir: "row",
+          ratio: 0.5,
+          first: { kind: "leaf", id: "t-a" },
+          second: { kind: "leaf", id: "t-b" },
+        },
+      },
+      activePane: { "t-a": "t-a" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalArea />
+      </ThemeProvider>,
+    );
+    // 布局由 ResizeObserver 驱动（stub 为 no-op）→ jsdom 里 bounds 退化为 0 尺寸，
+    // 分隔条 rect = {x:-3, w:6}；把指针拖到远负值 → 原始 ratio 为负，经
+    // setPaneRatio 的 clamp 落在 MIN_RATIO（0.15）——验证 pointer 事件确实回写 store。
+    const divider = document.querySelector(".split-divider") as HTMLElement;
+    fireEvent.pointerDown(divider, { clientX: 0, clientY: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: -100, clientY: 0, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: -100, clientY: 0, pointerId: 1 });
+    const tree = useSessionStore.getState().trees["t-a"];
+    expect(tree.kind === "split" && tree.ratio).toBe(0.15);
   });
 });

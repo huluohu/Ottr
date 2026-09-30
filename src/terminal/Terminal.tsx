@@ -24,8 +24,9 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 import { registerSink, unregisterSink, useSessionStore, isHostKeyRejection } from "../session/SessionStore";
-import { useTheme } from "../theme/ThemeContext";
+import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
 import { terminalThemes } from "../theme/terminal-themes";
+import type { ITheme } from "@xterm/xterm";
 import { assessPaste } from "../ai/danger";
 import {
   getSearch,
@@ -43,15 +44,15 @@ import {
 } from "./ContextMenu";
 import { dividers, layout, leaf, type Divider, type Rect } from "./split";
 
-/** 主题切换时同步 xterm 配色（亮/暗两套，A10；T1 terminalThemes 消费）。 */
-function applyTermTheme(term: XTerm, mode: "light" | "dark" | "system"): void {
-  const effective =
-    mode === "system"
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light"
-      : mode;
-  term.options.theme = terminalThemes[effective];
+/** 主题同步 xterm 配色（亮/暗两套，A10；T1 terminalThemes 消费）。入参是
+ * ThemeContext 的**解析结果**（resolved，非三态 mode）——system 模式下 OS
+ * 明暗切换时 resolved 变化驱动本组件 effect 重跑，终端实时换套（简报 I面：
+ * useTheme().resolved → xterm theme）。结构化入参便于单测，不绑定 xterm 类。 */
+export function applyTermTheme(
+  term: { options: { theme?: ITheme } },
+  resolved: ResolvedTheme,
+): void {
+  term.options.theme = terminalThemes[resolved];
 }
 
 // 会话级编码覆盖（右键菜单写入；连接侧转码消费挂账——ottr-term encoding 转换器
@@ -118,7 +119,7 @@ export function PasteConfirmDialog({
 
 export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
-  const { mode } = useTheme();
+  const { resolved } = useTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
   const prevStatus = useRef<string | null>(null);
@@ -154,7 +155,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         // 布局未就绪（隐藏窗格/测试环境）不阻塞；恢复可见时 RO 会再 fit
       }
     }
-    applyTermTheme(term, mode);
+    applyTermTheme(term, resolved);
     registerSink(sessionId, {
       write: (bytes) => term.write(bytes),
       getSize: () => {
@@ -213,10 +214,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // --- 主题跟随 ---
+  // --- 主题跟随（resolved 驱动：手动切换与 system 模式的 OS 切换都实时生效） ---
   useEffect(() => {
-    if (termRef.current) applyTermTheme(termRef.current, mode);
-  }, [mode]);
+    if (termRef.current) applyTermTheme(termRef.current, resolved);
+  }, [resolved]);
 
   // --- 粘贴拦截（宿主捕获阶段，先于 xterm 的 textarea 监听） ---
   useEffect(() => {
@@ -400,11 +401,12 @@ export function ContextMenuView({
   testPrefix: string;
 }) {
   const [openSub, setOpenSub] = useState<string | null>(null);
+  const { t } = useTranslation();
   return (
     <div
       className="ctx-menu"
       role="menu"
-      aria-label={items.length > 0 ? "context-menu" : undefined}
+      aria-label={t("terminal.menuAria")}
       style={{ left: x, top: y }}
       data-testid={`ctx-menu-${testPrefix}`}
     >
@@ -638,6 +640,8 @@ export function TerminalArea() {
           <div
             key={`divider-${i}`}
             role="separator"
+            aria-label={t("terminal.splitAria")}
+            aria-orientation={d.dir === "row" ? "vertical" : "horizontal"}
             className="split-divider"
             data-dir={d.dir}
             data-testid={`split-divider-${d.path.join("-") || "root"}`}

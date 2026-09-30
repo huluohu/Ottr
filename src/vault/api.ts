@@ -27,7 +27,9 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type CredentialKind = "password" | "key" | "totp";
 export type KnownHostState = "ok" | "changed" | "pending";
-/** credentials.reveal 的字段选择（Rust SecretField 同构，serde snake_case）。 */
+/** credentials.reveal 的字段选择（Rust SecretField 同构，serde snake_case）。
+ * 注：此处 totp_secret 为用户原样输入，不做 normalize（去空格/大写化）——
+ * normalize 挂账 TOTP 生成器任务（消费 totp_secret 时统一处理），UI 只做字符集粗检。 */
 export type SecretField = "secret" | "passphrase" | "totp_secret";
 
 /** Rust `ssh_config::ImportReport` 同构（Task 5 ssh-config 导入，对话框展示）。 */

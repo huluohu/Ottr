@@ -54,9 +54,15 @@ pub async fn key_generate(
 
 /// 解析 openssh 私钥 PEM（导入预览 / 导出 passphrase 校验）。
 /// 口令缺失/错误 → 明确错误串（KeyError::PassphraseRequired::Display）。
+/// spawn_blocking（评审 M-1）：加密钥解析含 bcrypt KDF（数十~百毫秒级 CPU），
+/// 不卡主线程——与 key_generate 对齐。
 #[tauri::command]
-pub fn key_inspect(pem: String, passphrase: Option<String>) -> CmdResult<ottr_ssh::KeyMaterial> {
-    ottr_ssh::keygen::inspect(&pem, passphrase.as_deref()).map_err(|e| e.to_string())
+pub async fn key_inspect(pem: String, passphrase: Option<String>) -> CmdResult<ottr_ssh::KeyMaterial> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ottr_ssh::keygen::inspect(&pem, passphrase.as_deref()).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("join: {e}"))?
 }
 
 // --- 导出 -------------------------------------------------------------------
@@ -117,7 +123,7 @@ pub fn key_export(app: AppHandle, pem: String, path: Option<String>) -> CmdResul
 // --- 公钥部署 ---------------------------------------------------------------
 
 /// 部署回执（serde snake_case → TS `KeyDeployReport`）。
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct KeyDeployReport {
     pub status: DeployStatus,
     pub public_key_fingerprint: String,
@@ -125,29 +131,42 @@ pub struct KeyDeployReport {
     pub known_hosts_state: KnownHostState,
 }
 
+/// 临时私钥文件的 Drop guard（评审 I-1）：离开作用域即删——key_deploy 的任何
+/// 提前返回（port 越界 / 部署超时 / 连接失败）与成功路径统一收尾，杜绝明文
+/// 私钥滞留 OS temp dir。此前为手动 remove_file，只覆盖成功路径（泄漏已修）。
+struct TempKeyGuard(Option<PathBuf>);
+
+impl Drop for TempKeyGuard {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 /// 部署认证材料：从 vault 服务端解析（明文不过前端）。
-/// 返回 AuthMethod 与**临时私钥文件的路径**（key 认证时非空，
-/// 调用方在部署结束后负责删除）。
+/// 返回 AuthMethod 与临时私钥文件的 [`TempKeyGuard`]（key 认证时 guard 内
+/// 持有路径，Drop 即删——所有权随函数体走，所有返回路径都清理）。
 async fn resolve_deploy_auth(
     vault: &VaultState,
     auth_credential_id: i64,
-) -> Result<(AuthMethod, Option<PathBuf>), String> {
+) -> Result<(AuthMethod, TempKeyGuard), String> {
     let vault = vault.0.clone();
-    tauri::async_runtime::spawn_blocking(move || -> Result<(AuthMethod, Option<PathBuf>), String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<(AuthMethod, TempKeyGuard), String> {
         let credential = Credentials::get(&vault, auth_credential_id).map_err(vault_err)?
             .ok_or_else(|| format!("credential id={auth_credential_id} not found"))?;
         match credential.kind {
             ottr_vault::CredentialKind::Password => {
                 let secret = Credentials::reveal(&vault, auth_credential_id, SecretField::Secret).map_err(vault_err)?
                     .ok_or_else(|| "password credential has no secret".to_string())?;
-                Ok((AuthMethod::Password(secret), None))
+                Ok((AuthMethod::Password(secret), TempKeyGuard(None)))
             }
             ottr_vault::CredentialKind::Key => {
                 let pem = Credentials::reveal(&vault, auth_credential_id, SecretField::Secret).map_err(vault_err)?
                     .ok_or_else(|| "key credential has no private key".to_string())?;
                 let passphrase =
                     Credentials::reveal(&vault, auth_credential_id, SecretField::Passphrase).map_err(vault_err)?;
-                // 临时文件 0600：AuthMethod::Key 的 path 语义要求；用后即删
+                // 临时文件 0600：AuthMethod::Key 的 path 语义要求；guard Drop 即删
                 let mut path = std::env::temp_dir();
                 path.push(format!(
                     "ottr-deploy-{}-{}.pem",
@@ -181,7 +200,7 @@ async fn resolve_deploy_auth(
                         .and_then(|_| f.flush())
                         .map_err(|e| format!("temp key file write: {e}"))?;
                 }
-                Ok((AuthMethod::Key { path: path.clone(), passphrase }, Some(path)))
+                Ok((AuthMethod::Key { path: path.clone(), passphrase }, TempKeyGuard(Some(path))))
             }
             ottr_vault::CredentialKind::Totp => Err(
                 "totp credential cannot authenticate deployment (keyboard-interactive unsupported for deploy)".to_string(),
@@ -204,7 +223,21 @@ pub async fn key_deploy(
     username: String,
     public_key: String,
 ) -> CmdResult<KeyDeployReport> {
-    let (auth, temp_key) = resolve_deploy_auth(&state, auth_credential_id).await?;
+    key_deploy_inner(&state, auth_credential_id, address, port, username, public_key).await
+}
+
+/// 命令本体。State 只做解引用——拆 inner 供无 Tauri 运行时的回归测试直接调用
+/// （评审 I-1：临时私钥在「resolve 之后、部署之前」的任何失败路径都不得残留）。
+async fn key_deploy_inner(
+    vault: &VaultState,
+    auth_credential_id: i64,
+    address: String,
+    port: i64,
+    username: String,
+    public_key: String,
+) -> CmdResult<KeyDeployReport> {
+    // guard 持有临时私钥路径直到本函数返回（含 ? 提前返回），Drop 即删
+    let (auth, _temp_key_guard) = resolve_deploy_auth(vault, auth_credential_id).await?;
     let port = u16::try_from(port).map_err(|_| format!("port {port} out of range"))?;
 
     // 裁定 #3：部署 MVP 主机密钥策略 = 接受 SHA256: 指纹（观察值随回执返回并落
@@ -220,14 +253,9 @@ pub async fn key_deploy(
     .map_err(|_| "deploy timed out after 30s".to_string())?
     .map_err(|e| e.to_string())?;
 
-    // 临时私钥用完即删（成功/失败路径都要走）
-    if let Some(path) = temp_key {
-        let _ = std::fs::remove_file(&path);
-    }
-
     // A3 联动：部署会话观察到的服务器指纹按 TOFU 首见落库（已存在则原样返回）
     let known_hosts_state = match &outcome.host_key_fingerprint {
-        Some(fp) => KnownHosts::upsert(&state.0, fp).map_err(vault_err).map(|k| k.state)?,
+        Some(fp) => KnownHosts::upsert(&vault.0, fp).map_err(vault_err).map(|k| k.state)?,
         None => KnownHostState::Pending,
     };
 
@@ -260,7 +288,75 @@ mod tests {
         assert_eq!(m.algorithm.as_str(), "ed25519");
         assert!(m.fingerprint.starts_with("SHA256:"));
         assert!(m.public_openssh.starts_with("ssh-ed25519 "));
-        let back = key_inspect(m.private_openssh.clone(), None).unwrap();
+        let back = tauri::async_runtime::block_on(key_inspect(m.private_openssh.clone(), None))
+            .unwrap();
         assert_eq!(back.fingerprint, m.fingerprint);
+    }
+
+    /// 评审 I-1 回归：key_deploy 在「resolve（已落盘临时私钥）之后」失败
+    /// （此处构造 port 越界的前置校验失败），OS temp dir 不得残留
+    /// `ottr-deploy-<pid>-*.pem`。guard 回归防御：若有人把 Drop guard 改回
+    /// 手动 remove_file，本测试必红。
+    #[test]
+    fn key_deploy_failure_path_leaves_no_temp_private_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = ottr_vault::Vault::open_with(
+            dir.path(),
+            &ottr_vault::master_key::InMemoryStorage::new(),
+        )
+        .expect("open in-memory vault");
+        let state = VaultState(std::sync::Arc::new(vault));
+        // key 凭据：secret 内容无需可解析——失败点在 port 前置校验（连接之前）
+        let cred = ottr_vault::Credentials::create(
+            &state.0,
+            &ottr_vault::CredentialInput {
+                kind: ottr_vault::CredentialKind::Key,
+                secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk\n-----END OPENSSH PRIVATE KEY-----".into()),
+                key_pub: None,
+                passphrase: None,
+                totp_secret: None,
+            },
+        )
+        .expect("create key credential");
+
+        fn leaked_temp_keys() -> Vec<std::path::PathBuf> {
+            let prefix = format!("ottr-deploy-{}-", std::process::id());
+            std::env::temp_dir()
+                .read_dir()
+                .expect("read temp dir")
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    name.starts_with(&prefix) && name.ends_with(".pem")
+                })
+                .map(|e| e.path())
+                .collect()
+        }
+        assert!(leaked_temp_keys().is_empty(), "前置：基线无残留");
+
+        let err = tauri::async_runtime::block_on(key_deploy_inner(
+            &state,
+            cred.id,
+            "203.0.113.1".into(),
+            70_000, // 越界：resolve（临时 PEM 已落盘）之后、连接之前的 ? 提前返回
+            "spike".into(),
+            "ssh-ed25519 AAAA leak-test".into(),
+        ))
+        .unwrap_err();
+        assert!(err.contains("out of range"), "got: {err}");
+        assert!(
+            leaked_temp_keys().is_empty(),
+            "失败路径残留临时私钥（I-1 回归）：{:?}",
+            leaked_temp_keys()
+        );
+
+        // 对照组：guard 存活期内文件确实在（证明「落盘发生过」，断言不是恒真）
+        let (auth, guard) =
+            tauri::async_runtime::block_on(resolve_deploy_auth(&state, cred.id)).unwrap();
+        assert!(matches!(auth, AuthMethod::Key { .. }));
+        let paths = leaked_temp_keys();
+        assert_eq!(paths.len(), 1, "guard 存活期内临时 PEM 应存在");
+        drop(guard);
+        assert!(leaked_temp_keys().is_empty(), "guard Drop 后应删除");
     }
 }

@@ -1,9 +1,20 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+// App（Task 5 重构）：主页 = 左侧主机树 + 主区占位（终端 Task 7 接入）。
+// spike 页（?spike=…）为 Task 4/7/11 自动化测量入口，原样保留（台账裁定：
+// UI 侧 spike 分支由 Task 7 重构时清除）；Task 11 的人工验证按钮暂驻顶栏
+// （Task 8 设置页落地时迁移）。
+// 注：旧模板 greet 页与 home.* 词典段随本重构消亡；AppContent 不再持有任何
+// hooks（条件返回在 hooks 之前的历史债随模板页一并清偿）。
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import OttrTerminal, { RenderSpike, ThroughputSpike } from "./terminal/Terminal";
+import { HostTree } from "./hosts/HostTree";
+import { HostForm } from "./hosts/HostForm";
+import { ImportDialog } from "./hosts/ImportDialog";
+import { QuickConnect } from "./hosts/QuickConnect";
 import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
+import { useVaultStore } from "./vault/store";
+import type { Host } from "./vault/api";
 import "./theme/tokens.css";
 import "./App.css";
 
@@ -33,8 +44,160 @@ function ThemeSwitch() {
   );
 }
 
-function AppContent() {
+// --- 主页布局（Task 5）------------------------------------------------------
+
+type FormState = { mode: "new"; groupId: number | null } | { mode: "edit"; host: Host } | null;
+
+/** 左栏宽（裁定 #2：暂记 localStorage，settings 表落地后迁移）。 */
+const SIDEBAR_KEY = "ottr.layout.sidebarWidth";
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 560;
+
+function clampSidebarWidth(w: number): number {
+  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
+}
+
+function HomeLayout() {
   const { t } = useTranslation();
+  const hosts = useVaultStore((s) => s.hosts);
+  const storeError = useVaultStore((s) => s.error);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [form, setForm] = useState<FormState>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_KEY);
+      if (raw !== null) return clampSidebarWidth(Number(raw));
+    } catch {
+      // localStorage 不可用 → 默认宽度
+    }
+    return 280;
+  });
+  const resizing = useRef(false);
+
+  // 首屏拉取 vault 数据（失败时 store.error 驱动主区错误横幅）
+  useEffect(() => {
+    void useVaultStore.getState().refresh().catch(() => {});
+  }, []);
+
+  // ⌘K / Ctrl+K 呼出快速连接（雏形：Task 14 扩成完整命令面板）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function startResize(e: React.PointerEvent) {
+    e.preventDefault();
+    resizing.current = true;
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+    const onMove = (ev: PointerEvent) => {
+      if (resizing.current) setSidebarWidth(clampSidebarWidth(startWidth + ev.clientX - startX));
+    };
+    const onUp = (ev: PointerEvent) => {
+      resizing.current = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const finalWidth = clampSidebarWidth(startWidth + ev.clientX - startX);
+      setSidebarWidth(finalWidth);
+      try {
+        localStorage.setItem(SIDEBAR_KEY, String(finalWidth));
+      } catch {
+        // 持久化失败不阻塞
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  const selected = hosts.find((h) => h.id === selectedId) ?? null;
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <span className="topbar-title">Ottr</span>
+        <button className="topbar-palette" data-testid="open-quick-connect" onClick={() => setPaletteOpen(true)}>
+          {t("quickConnect.title")} <kbd>{t("quickConnect.buttonHint")}</kbd>
+        </button>
+        <div className="topbar-spacer" />
+        <ThemeSwitch />
+        {/* Task 11 / Spike #7/#8 人工验证入口（自动化路径走 ?spike= 页） */}
+        <button id="spike-keyring-btn" className="topbar-debug">
+          {t("spike.keyringButton")}
+        </button>
+        <button id="spike-notify-btn" className="topbar-debug">
+          {t("spike.notifyButton")}
+        </button>
+      </header>
+      <div className="app-body">
+        <aside className="sidebar" style={{ width: sidebarWidth }}>
+          <HostTree
+            selectedId={selectedId}
+            onSelect={(host) => setSelectedId(host.id)}
+            onEdit={(host) => setForm({ mode: "edit", host })}
+            onAdd={(groupId) => setForm({ mode: "new", groupId })}
+            onImport={() => setImportOpen(true)}
+          />
+        </aside>
+        <div
+          className="sidebar-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          onPointerDown={startResize}
+          data-testid="sidebar-resizer"
+        />
+        <main className="main-area" data-testid="main-area">
+          {storeError && (
+            <p className="main-error" data-testid="store-error">
+              {t("mainArea.loadFailed", { message: storeError })}
+            </p>
+          )}
+          {selected ? (
+            <section className="main-placeholder">
+              <p className="placeholder-caption">{t("mainArea.selected")}</p>
+              <h2>{selected.name}</h2>
+              <p className="placeholder-mono">
+                {selected.username ? `${selected.username}@` : ""}
+                {selected.address}:{selected.port}
+              </p>
+              <p>{t("mainArea.terminalPending")}</p>
+            </section>
+          ) : (
+            <section className="main-placeholder">
+              <p>{t("mainArea.placeholder")}</p>
+            </section>
+          )}
+        </main>
+      </div>
+
+      {form && (
+        <HostForm
+          host={form.mode === "edit" ? form.host : null}
+          defaultGroupId={form.mode === "new" ? form.groupId : null}
+          onClose={() => setForm(null)}
+        />
+      )}
+      {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
+      <QuickConnect
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSelect={(host) => {
+          setSelectedId(host.id);
+          setPaletteOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
+function AppContent() {
   // Task 4/7/11/13 spike 入口：?spike=latency | throughput | keyring | notify | render
   // （自动化由 OTTR_SPIKE 导航进来，见 src-tauri lib.rs setup）
   const spike = new URLSearchParams(window.location.search).get("spike");
@@ -53,87 +216,7 @@ function AppContent() {
   if (spike === "notify") {
     return <NotifySpikePage />;
   }
-
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-  const [keyringOut, setKeyringOut] = useState("");
-  const [notifyOut, setNotifyOut] = useState("");
-
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
-
-  // Task 11 / Spike #7：人工验证按钮（自动化路径走 ?spike=keyring 页）
-  async function runKeyringButton() {
-    setKeyringOut("running…");
-    try {
-      const r = await runKeyringSteps();
-      setKeyringOut(JSON.stringify(r, null, 2));
-    } catch (e) {
-      setKeyringOut(`failed: ${e}`);
-    }
-  }
-
-  // Task 11 / Spike #8：人工验证按钮（自动化路径走 ?spike=notify 页）
-  async function runNotifyButton() {
-    setNotifyOut("running…");
-    try {
-      setNotifyOut(JSON.stringify(await runNotifySteps(), null, 2));
-    } catch (e) {
-      setNotifyOut(`failed: ${e}`);
-    }
-  }
-
-  return (
-    <main className="container">
-      <h1>{t("home.title")}</h1>
-
-      {/* A10 主题切换（Task 8 设置页落地前的临时控件） */}
-      <ThemeSwitch />
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>{t("home.logosHint")}</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder={t("home.greetPlaceholder")}
-        />
-        <button type="submit">{t("home.greetButton")}</button>
-      </form>
-      <p>{greetMsg}</p>
-
-      {/* Task 11 / Spike #7/#8 人工验证入口 */}
-      <div className="row">
-        <button id="spike-keyring-btn" onClick={runKeyringButton}>
-          {t("spike.keyringButton")}
-        </button>
-        <button id="spike-notify-btn" onClick={runNotifyButton}>
-          {t("spike.notifyButton")}
-        </button>
-      </div>
-      <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{keyringOut}</pre>
-      <pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{notifyOut}</pre>
-    </main>
-  );
+  return <HomeLayout />;
 }
 
 // ---------------------------------------------------------------------------

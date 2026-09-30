@@ -19,12 +19,6 @@
     "error": "Error",
     "done": "Done"
   },
-  "home": {
-    "title": "Welcome to Ottr",
-    "logosHint": "Click on the Tauri, Vite, and React logos to learn more.",
-    "greetPlaceholder": "Enter a name…",
-    "greetButton": "Greet"
-  },
   "settings": {
     "title": "Settings",
     "sectionAppearance": "Appearance",
@@ -46,6 +40,7 @@
     "hostPlaceholder": "e.g. 192.168.1.10",
     "port": "Port",
     "username": "Username",
+    "usernamePlaceholder": "SSH login user (optional)",
     "password": "Password",
     "authType": "Authentication",
     "authPassword": "Password",
@@ -54,7 +49,65 @@
     "passphrase": "Key passphrase",
     "connect": "Connect",
     "testConnection": "Test connection",
-    "deleteConfirm": "Delete host \"{{name}}\"?"
+    "deleteConfirm": "Delete host \"{{name}}\"?",
+    "credential": "Credential",
+    "credentialNone": "No credential",
+    "credentialLabel": "Credential #{{id}} · {{kind}}",
+    "encoding": "Encoding",
+    "encodingDefault": "Default (UTF-8)",
+    "notes": "Notes",
+    "notesPlaceholder": "Notes…",
+    "tags": "Tags (comma separated)",
+    "tagsPlaceholder": "e.g. prod, nginx",
+    "group": "Group",
+    "groupNone": "Ungrouped",
+    "monitor": "Monitor panel",
+    "errAddressRequired": "Host address is required",
+    "errPortRange": "Port must be an integer between 1 and 65535",
+    "saveFailed": "Save failed: {{message}}",
+    "save": "Save host"
+  },
+  "hostTree": {
+    "searchPlaceholder": "Search hosts (name/notes)…",
+    "addHost": "New Host",
+    "addGroup": "New Group",
+    "groupNamePlaceholder": "Group name",
+    "ungrouped": "Ungrouped",
+    "tagsFilter": "Tags",
+    "allTags": "All",
+    "empty": "No hosts yet. Click \"New Host\", or import ~/.ssh/config.",
+    "noMatch": "No matching hosts",
+    "hostSubtitle": "{{username}}{{address}}:{{port}}",
+    "editAria": "Edit host {{name}}",
+    "deleteAria": "Delete host {{name}}",
+    "confirmDelete": "Click again to confirm",
+    "importSshConfig": "Import ssh config",
+    "exportCsv": "Export CSV"
+  },
+  "importDialog": {
+    "title": "Import ~/.ssh/config",
+    "intro": "Parse an ssh config and import hosts: wildcard patterns are skipped, entries matching an existing host by address/port/user are deduplicated.",
+    "running": "Parsing and importing…",
+    "start": "Start import",
+    "failed": "Import failed: {{message}}",
+    "added": "Added {{count}} hosts",
+    "addedZero": "No hosts added",
+    "skippedWildcards": "Skipped {{count}} wildcard/exclude patterns",
+    "skippedDuplicates": "Skipped {{count}} duplicate hosts",
+    "errors": "Parse errors ({{count}})",
+    "noErrors": "No parse errors"
+  },
+  "quickConnect": {
+    "title": "Quick Connect",
+    "placeholder": "Search hosts, Enter to select…",
+    "empty": "No matching hosts",
+    "buttonHint": "⌘K"
+  },
+  "mainArea": {
+    "placeholder": "Pick a host on the left, or press ⌘K to quick connect",
+    "selected": "Selected host",
+    "terminalPending": "Terminal sessions arrive in a later task; this is the main-area placeholder.",
+    "loadFailed": "Failed to load data: {{message}}"
   },
   "terminal": {
     "contextCopy": "Copy",

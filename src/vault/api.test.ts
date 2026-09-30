@@ -19,6 +19,7 @@ const sampleHost: Host = {
   tags: ["prod"],
   address: "10.0.0.1",
   port: 2222,
+  username: "deploy",
   credential_id: null,
   jump_chain_id: null,
   encoding_override: null,
@@ -43,6 +44,7 @@ const sampleInput: HostInput = {
   tags: ["prod"],
   address: "10.0.0.1",
   port: 2222,
+  username: "deploy",
   credential_id: null,
   jump_chain_id: null,
   encoding_override: null,
@@ -67,6 +69,35 @@ describe("vaultApi（invoke 封装）", () => {
     mockedInvoke.mockResolvedValue(sampleHost);
     await vaultApi.hosts.create(sampleInput);
     expect(mockedInvoke).toHaveBeenCalledWith("hosts_create", { input: sampleInput });
+  });
+
+  // Task 4 评审转交必办②：listByGroup 的 { groupId } camelCase 顶层参数真实用例
+  it("hosts.listByGroup 发送 hosts_list_by_group + camelCase groupId（含 null 组）", async () => {
+    mockedInvoke.mockResolvedValue([sampleHost]);
+    const grouped = await vaultApi.hosts.listByGroup(5);
+    expect(mockedInvoke).toHaveBeenCalledWith("hosts_list_by_group", { groupId: 5 });
+    expect(grouped).toEqual([sampleHost]);
+
+    mockedInvoke.mockClear();
+    mockedInvoke.mockResolvedValue([]);
+    const ungrouped = await vaultApi.hosts.listByGroup(null);
+    expect(mockedInvoke).toHaveBeenCalledWith("hosts_list_by_group", { groupId: null });
+    expect(ungrouped).toEqual([]);
+  });
+
+  it("importSshConfig 发送 import_ssh_config（path=null 走默认 ~/.ssh/config）", async () => {
+    const report = { added: 3, skipped_wildcards: 2, skipped_duplicates: 1, errors: ["L9: …"] };
+    mockedInvoke.mockResolvedValue(report);
+    const got = await vaultApi.importSshConfig(null);
+    expect(mockedInvoke).toHaveBeenCalledWith("import_ssh_config", { path: null });
+    expect(got).toEqual(report);
+  });
+
+  it("exportHostsCsv 发送 export_hosts_csv 并返回落盘路径", async () => {
+    mockedInvoke.mockResolvedValue("/Downloads/ottr-hosts.csv");
+    const path = await vaultApi.exportHostsCsv(null);
+    expect(mockedInvoke).toHaveBeenCalledWith("export_hosts_csv", { path: null });
+    expect(path).toBe("/Downloads/ottr-hosts.csv");
   });
 
   it("credentials.reveal 走单点明文通道", async () => {
@@ -115,5 +146,29 @@ describe("useVaultStore", () => {
     await expect(useVaultStore.getState().refresh()).rejects.toThrow("vault locked");
     expect(useVaultStore.getState().error).toBe("vault locked");
     expect(useVaultStore.getState().loading).toBe(false);
+  });
+
+  it("createGroup/deleteGroup 走分组命令并触发 refresh（Task 5 新增动作）", async () => {
+    const group = { id: 3, name: "生产组", parent_id: null, color: null, created_at: 1, updated_at: 1 };
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "host_groups_create") return Promise.resolve(group);
+      if (cmd === "host_groups_delete") return Promise.resolve(undefined);
+      if (cmd === "hosts_list" || cmd === "credentials_list") return Promise.resolve([]);
+      if (cmd === "host_groups_list") return Promise.resolve([]);
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+
+    const created = await useVaultStore.getState().createGroup("生产组");
+    expect(mockedInvoke).toHaveBeenCalledWith("host_groups_create", {
+      name: "生产组",
+      parentId: null,
+      color: null,
+    });
+    expect(created.id).toBe(3);
+
+    useVaultStore.setState({ hostGroups: [group] });
+    await useVaultStore.getState().deleteGroup(3);
+    expect(mockedInvoke).toHaveBeenCalledWith("host_groups_delete", { id: 3 });
+    expect(useVaultStore.getState().hostGroups).toEqual([]);
   });
 });

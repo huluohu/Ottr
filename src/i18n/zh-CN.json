@@ -19,12 +19,6 @@
     "error": "错误",
     "done": "完成"
   },
-  "home": {
-    "title": "欢迎使用 Ottr",
-    "logosHint": "点击 Tauri、Vite、React 图标了解更多。",
-    "greetPlaceholder": "输入一个名字…",
-    "greetButton": "打招呼"
-  },
   "settings": {
     "title": "设置",
     "sectionAppearance": "外观",
@@ -46,6 +40,7 @@
     "hostPlaceholder": "例如：192.168.1.10",
     "port": "端口",
     "username": "用户名",
+    "usernamePlaceholder": "SSH 登录用户（可空）",
     "password": "密码",
     "authType": "认证方式",
     "authPassword": "密码认证",
@@ -54,7 +49,65 @@
     "passphrase": "私钥口令",
     "connect": "连接",
     "testConnection": "测试连接",
-    "deleteConfirm": "确定删除主机「{{name}}」吗？"
+    "deleteConfirm": "确定删除主机「{{name}}」吗？",
+    "credential": "凭据",
+    "credentialNone": "不绑定凭据",
+    "credentialLabel": "凭据 #{{id}} · {{kind}}",
+    "encoding": "编码",
+    "encodingDefault": "默认（UTF-8）",
+    "notes": "备注",
+    "notesPlaceholder": "备注信息…",
+    "tags": "标签（逗号分隔）",
+    "tagsPlaceholder": "例如：prod, nginx",
+    "group": "分组",
+    "groupNone": "未分组",
+    "monitor": "监控面板",
+    "errAddressRequired": "主机地址不能为空",
+    "errPortRange": "端口必须是 1-65535 的整数",
+    "saveFailed": "保存失败：{{message}}",
+    "save": "保存主机"
+  },
+  "hostTree": {
+    "searchPlaceholder": "搜索主机（名称/备注）…",
+    "addHost": "新建主机",
+    "addGroup": "新建分组",
+    "groupNamePlaceholder": "分组名称",
+    "ungrouped": "未分组",
+    "tagsFilter": "标签",
+    "allTags": "全部",
+    "empty": "还没有主机。点击「新建主机」，或导入 ~/.ssh/config。",
+    "noMatch": "无匹配主机",
+    "hostSubtitle": "{{username}}{{address}}:{{port}}",
+    "editAria": "编辑主机 {{name}}",
+    "deleteAria": "删除主机 {{name}}",
+    "confirmDelete": "再次点击确认删除",
+    "importSshConfig": "导入 ssh config",
+    "exportCsv": "导出 CSV"
+  },
+  "importDialog": {
+    "title": "导入 ~/.ssh/config",
+    "intro": "解析 ssh config 并导入主机：通配模式跳过，与现有主机同地址/端口/用户的条目去重。",
+    "running": "解析导入中…",
+    "start": "开始导入",
+    "failed": "导入失败：{{message}}",
+    "added": "新增 {{count}} 台主机",
+    "addedZero": "没有新增主机",
+    "skippedWildcards": "跳过通配/排除模式 {{count}} 条",
+    "skippedDuplicates": "跳过重复主机 {{count}} 台",
+    "errors": "解析错误（{{count}}）",
+    "noErrors": "无解析错误"
+  },
+  "quickConnect": {
+    "title": "快速连接",
+    "placeholder": "搜索主机，回车选择…",
+    "empty": "无匹配主机",
+    "buttonHint": "⌘K"
+  },
+  "mainArea": {
+    "placeholder": "从左侧选择一台主机，或按 ⌘K 快速连接",
+    "selected": "已选择主机",
+    "terminalPending": "终端会话将在后续任务接入，此处为主区域占位。",
+    "loadFailed": "数据加载失败：{{message}}"
   },
   "terminal": {
     "contextCopy": "复制",

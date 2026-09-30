@@ -13,6 +13,7 @@
 //       snippets_list snippets_get snippets_search snippets_create snippets_update
 //       snippets_delete
 //       known_hosts_list known_hosts_upsert known_hosts_verify known_hosts_mark_changed
+//       import_ssh_config export_hosts_csv（Task 5 导入/导出）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -25,8 +26,16 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type CredentialKind = "password" | "key" | "totp";
 export type KnownHostState = "ok" | "changed" | "pending";
-/** credentials.reveal 的字段选择（Rust SecretField 同构）。 */
+/** credentials.reveal 的字段选择（Rust SecretField 同构，serde snake_case）。 */
 export type SecretField = "secret" | "passphrase" | "totp_secret";
+
+/** Rust `ssh_config::ImportReport` 同构（Task 5 ssh-config 导入，对话框展示）。 */
+export interface ImportReport {
+  added: number;
+  skipped_wildcards: number;
+  skipped_duplicates: number;
+  errors: string[];
+}
 
 /** Rust `entities::Host`（serde）同构。 */
 export interface Host {
@@ -36,6 +45,7 @@ export interface Host {
   tags: string[];
   address: string;
   port: number;
+  username: string | null;
   credential_id: number | null;
   jump_chain_id: number | null;
   encoding_override: string | null;
@@ -53,6 +63,7 @@ export interface HostInput {
   tags: string[];
   address: string;
   port: number;
+  username: string | null;
   credential_id: number | null;
   jump_chain_id: number | null;
   encoding_override: string | null;
@@ -140,6 +151,11 @@ export const vaultApi = {
     /** 空查询返回全量；≥3 字符 FTS trigram，超短 LIKE 兜底（Rust 层分派）。 */
     search: (query: string) => invoke<Host[]>("hosts_search", { query }),
   },
+  /** ssh-config 导入（path=null → ~/.ssh/config）。报告供导入完成对话框展示。 */
+  importSshConfig: (path: string | null) =>
+    invoke<ImportReport>("import_ssh_config", { path }),
+  /** CSV 导出（path=null → 系统下载目录 ottr-hosts.csv），返回落盘路径。 */
+  exportHostsCsv: (path: string | null) => invoke<string>("export_hosts_csv", { path }),
   credentials: {
     list: () => invoke<Credential[]>("credentials_list"),
     get: (id: number) => invoke<Credential | null>("credentials_get", { id }),

@@ -32,6 +32,7 @@ use ottr_term::stripper::Stripper;
 use ottr_vault::{Hosts, KnownHostState, KnownHosts};
 
 pub mod keys;
+pub mod menu;
 pub mod security;
 pub mod ssh_config;
 pub mod vault;
@@ -782,6 +783,27 @@ fn quit_app(app: AppHandle) -> Result<(), String> {
     app.exit(0);
     #[allow(unreachable_code)]
     Ok(())
+}
+
+/// 断开全部会话（A12，Task 14）：托盘菜单「断开全部」的实现核。
+/// 逐条走 drop_session 同款语义（移除表项 + cancel 通知转发循环），循环退出后
+/// 统一 disconnect 并发 `ottr://session-closed`(cancelled)——前端既有事件路径
+/// 收尾（重连状态机对 cancelled 不反应，标签回 disconnected），**不另起跨窗口
+/// 事件面**：会话表真源在 Rust 侧，从源头断开对隐藏窗口/多窗口都可靠。
+pub(crate) fn disconnect_all_inner(sessions: &SessionMap) -> usize {
+    let drained: Vec<(String, SessionEntry)> =
+        sessions.lock().unwrap().drain().collect();
+    let n = drained.len();
+    for (_, entry) in &drained {
+        entry.cancel.notify_one();
+    }
+    n
+}
+
+/// 断开全部会话（命令面：托盘动作共用同一实现核；返回断开条数）。
+#[tauri::command]
+fn session_disconnect_all(state: State<'_, AppState>) -> Result<usize, String> {
+    Ok(disconnect_all_inner(&state.sessions))
 }
 
 /// 击键写入（输入方向，字节直传 PTY；spike 台账：传输编码允许 JSON 数组）。
@@ -1770,10 +1792,20 @@ pub fn run() {
                         tauri::WindowEvent::Focused(focused) => {
                             autolock.on_focus_changed(&watcher.app_handle(), *focused);
                         }
+                        // A12（Task 14）关窗到托盘：开关开（默认）→ 拦截关闭 +
+                        // 隐藏主窗（会话保活）；托盘菜单/左键可恢复。
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            menu::on_close_requested(watcher.app_handle(), api);
+                        }
                         _ => {}
                     }
                 });
             }
+
+            // A12（Task 14）：macOS 原生菜单 + 三端托盘 + 关窗到托盘设置面 +
+            // 语言切换重建监听（menu.rs 模块文档）。失败即启动失败——菜单/托盘
+            // 是 A12 的承诺面，静默缺失会让功能面漂移。
+            menu::setup(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1784,6 +1816,7 @@ pub fn run() {
             set_session_encoding,
             drop_session,
             quit_app,
+            session_disconnect_all,
             session_stats,
             session_tail,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）

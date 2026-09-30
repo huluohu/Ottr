@@ -185,6 +185,44 @@ describe("SecuritySettings", () => {
     );
   });
 
+  it("关窗到托盘（A12）：默认开（未设置）；取消勾选写 ui.close_to_tray=0", async () => {
+    seedMode("password");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "settings_set") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    const toggle = (await waitFor(() =>
+      screen.getByTestId("close-to-tray-toggle"),
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(true); // 未设置 = 开（Rust 侧同口径）
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("settings_set", {
+        key: "ui.close_to_tray",
+        value: 0,
+      }),
+    );
+  });
+
+  it("关窗到托盘（A12）：ui.close_to_tray=0 回显关", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string, args?: { key: string }) => {
+      if (cmd === "settings_get") {
+        return Promise.resolve(args?.key === "ui.close_to_tray" ? 0 : null);
+      }
+      if (cmd === "settings_set") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    const toggle = (await waitFor(() =>
+      screen.getByTestId("close-to-tray-toggle"),
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+  });
+
   it("手动锁定：vault_lock 调用 + store 落 locked", async () => {
     seedMode("password");
     mockedInvoke.mockImplementation((cmd: string) => {

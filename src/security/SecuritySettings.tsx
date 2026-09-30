@@ -50,6 +50,8 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
   // 配置项本地镜像（open 时从 vault settings 现读；改动即写）。
   const [autolock, setAutolock] = useState<number | null>(null);
   const [clipboard, setClipboard] = useState<number | null>(null);
+  // A12（Task 14）：关窗到托盘开关（Rust 侧 CloseRequested 读同一键）。
+  const [closeToTray, setCloseToTray] = useState<boolean | null>(null);
 
   // 每次打开：拉配置 + 挂进度事件；关闭：清向导态。
   useEffect(() => {
@@ -67,19 +69,22 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
     let unlisten: (() => void) | undefined;
     void (async () => {
       try {
-        const [a, c] = await Promise.all([
+        const [a, c, tray] = await Promise.all([
           vaultApi.settings.get<number>("security.autolock_minutes"),
           vaultApi.settings.get<number>("security.clipboard_clear_secs"),
+          vaultApi.settings.get<number>("ui.close_to_tray"),
         ]);
         if (!disposed) {
           setAutolock(a ?? 10);
           setClipboard(c ?? 30);
+          setCloseToTray(tray !== 0); // 未设置/非 0 = 开（Rust 侧同口径）
         }
       } catch {
         // 非 Tauri 环境 / 后端不可达：控件回落默认值，改动时再报错。
         if (!disposed) {
           setAutolock(10);
           setClipboard(30);
+          setCloseToTray(true);
         }
       }
       try {
@@ -306,6 +311,21 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
               ))}
             </div>
           </div>
+          {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。 */}
+          <label className="settings-row" data-testid="close-to-tray-row">
+            <span className="settings-label">{t("settings.closeToTray")}</span>
+            <input
+              type="checkbox"
+              data-testid="close-to-tray-toggle"
+              checked={closeToTray ?? true}
+              onChange={(e) => {
+                const on = e.currentTarget.checked;
+                setCloseToTray(on);
+                void saveSetting("ui.close_to_tray", on ? 1 : 0);
+              }}
+            />
+          </label>
+          <p className="settings-hint">{t("settings.closeToTrayHint")}</p>
         </section>
 
         <section aria-label={t("settings.sectionLanguage")}>

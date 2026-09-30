@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { HostTree } from "./hosts/HostTree";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
@@ -48,6 +49,9 @@ warnShortcutConflicts();
 
 // 平台口径（键位提示 / 命令面板 hint）：模块级只判一次。
 const PLATFORM = platform();
+
+// A12：macOS 原生菜单动作回传事件（Rust menu.rs 把 ActionId 字符串转发过来）。
+const MENU_ACTION_EVENT = "ottr://menu-action";
 
 // 主题切换器（A10）：手动验证入口 + Task 8 设置页前的临时控件。
 const THEME_MODES: { value: ThemeMode; labelKey: string }[] = [
@@ -199,6 +203,29 @@ function HomeLayout() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [handleAction]);
+
+  // A12：macOS 原生菜单 → 前端动作（设置/新建主机/分屏/面板）。Rust 侧已就
+  // 地处理退出与缩放，这里只收前端动作；纯浏览器 dev 无菜单不挂监听。
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const stop = await listen<string>(MENU_ACTION_EVENT, (e) => {
+          handleAction(e.payload as ActionId);
+        });
+        if (disposed) stop();
+        else unlisten = stop;
+      } catch {
+        // 监听失败不阻塞（菜单动作缺失属降级，不打断主功能）
+      }
+    })();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, [handleAction]);
 
   function startResize(e: React.PointerEvent) {

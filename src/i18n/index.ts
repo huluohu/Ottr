@@ -57,13 +57,17 @@ void i18n.use(initReactI18next).init({
 
 export default i18n;
 
-/** 切换语言并持久化：缓存镜像即时 + vault 真源异步（T11 迁移完成态；
- * vault 写失败不阻塞会话内切换）。 */
+/** 切换语言并持久化：缓存镜像即时 + vault 真源异步（T11 迁移完成态）。
+ * vault 写成功后发 `ottr://ui-language`（A12，Task 14）——Rust 侧菜单/托盘
+ * 文案随 vault settings 重建，故必须**在真源落地之后**发（有先后依赖）；
+ * vault 写失败（非 Tauri 环境/纯浏览器 dev）不通知——开发环境本无原生菜单。 */
 export function setLang(lang: Lang): void {
   void i18n.changeLanguage(lang);
   writeCache(lang);
   void import("../vault/api")
     .then(({ vaultApi }) => vaultApi.settings.set(LANG_SETTING_KEY, lang))
+    .then(() => import("@tauri-apps/api/event"))
+    .then(({ emit }) => emit("ottr://ui-language"))
     .catch(() => {
       // 非 Tauri 环境（纯浏览器 dev / vitest 无 mock）：镜像已是持久化面
     });

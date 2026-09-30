@@ -1,22 +1,18 @@
-//! Task 15（spec §5 文本层消费方③）：历史入库链路的**真夹具三命令验证**。
+//! Task 15（spec §5 文本层消费方③）+ fix 1/5：shell 集成**产线注入路径**的
+//! 真夹具端到端验证（本轮验收核心——把 Phase 0 T6 的注入能力接到产品路径上）。
 //!
-//! 链路证据（生产入库源 = 前端 CommandWatch，本 example 是其语义的**流重放**——
-//! 正式面的提取逻辑单测在 src/terminal/CommandWatch.test.ts，两者消费同一批
-//! 真实标记字节）：
-//!   容器化 sshd 夹具（scripts/spike-sshd.sh，127.0.0.1:2222，pinned 指纹）
-//!   → open_pty + request_shell → 注入 ottr-ssh shell_integration 的 bash 片段
-//!   （T6 真机验证终稿，与未来注入任务同源）→ 跑 3 条命令 → 经正式转发循环
-//!   （forward_pty_loop，真合批/解码）捕获含 OSC 133 A/C/D + OSC 7 的解码流
-//!   → 流重放出 (command, exit_code, cwd) 三元组（CommandWatch 语义）
-//!   → ottr-vault History::insert 真库落账（tempfile + InMemoryStorage）
-//!   → History::search 检索断言（「跑 3 命令 → ⌘R 搜到」的 Rust 侧闭环）。
-//!
-//! 场景：`echo ottr-hist-alpha`（exit 0）/ `false`（exit 1）/ `cd /tmp`（exit 0，
-//! 下个提示符的 OSC 7 应上报 /tmp——cwd 跟踪证据）。
-//! 断言不达标进程退出码非 0；stdout 证据供报告原样抄录。
+//! 链路（与生产 attach_host_session 完全同一条实现）：
+//!   容器化 sshd 夹具（127.0.0.1:2222，**默认 bash，无预置集成**）→
+//!   open_pty + request_shell → 正式转发循环（真合批/解码，TextTail 头部原始
+//!   探针随行）→ [`ottr_lib::inject_shell_integration`]（生产注入核：$SHELL
+//!   探测 → 首输出 133 幂等探测 → 片段经 PTY writer 下发）→ 跑 3 条命令 →
+//!   流重放（CommandWatch 语义，单测在 src/terminal/CommandWatch.test.ts）出
+//!   (command, exit_code, cwd) → ottr-vault History::insert 真库落账 →
+//!   History::search 断言（「连接→跑 3 命令 → ⌘R 搜到」的产品路径闭环）。
+//!   另断言幂等（二次注入 → SkippedAlreadyIntegrated）与开关（关 → SkippedDisabled）。
 //!
 //! 运行：先 `bash scripts/spike-sshd.sh` 起夹具，再
-//! `cargo run -p ottr --example history_fixture`。
+//! `cargo run -p ottr --example history_fixture`。断言不达标退出码非 0。
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -24,9 +20,10 @@ use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
-use ottr_lib::{forward_pty_loop, SessionCounters, TextTail};
-use ottr_ssh::shell_integration::{inject_for, ShellKind};
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy};
+use ottr_lib::{
+    forward_pty_loop, inject_shell_integration, ShellIntegrationOutcome, SessionCounters, TextTail,
+};
+use ottr_ssh::{connect, AuthMethod, HostKeyPolicy, SshSession};
 use ottr_vault::{History, HistoryInput, HostInput, Hosts};
 
 const HOST: &str = "127.0.0.1";
@@ -65,15 +62,16 @@ fn pinned_host_key_policy() -> (HostKeyPolicy, String) {
     )
 }
 
-/// PTY 写端 + 解码输出累积。
+/// PTY 写端 + 解码输出累积（writer Arc 与生产注入核共享同一写端）。
 struct Stage {
     decoded: Arc<Mutex<String>>,
-    writer: tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>,
+    writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>>,
 }
 
 impl Stage {
-    /// 发一行并等解码输出静默（连续 IDLE 无增长），返回本窗新增文本。
-    async fn run_line(&self, line: &str) -> Result<String, String> {
+    /// 发一行并等解码输出静默（连续 IDLE 无增长）——窗口文本不单独消费，
+    /// 重放统一吃全量 decoded 缓冲（从连接开始，banner 段无标记天然无事件）。
+    async fn run_line(&self, line: &str) -> Result<(), String> {
         use tokio::io::AsyncWriteExt;
         let before = self.decoded.lock().unwrap().len();
         {
@@ -98,8 +96,7 @@ impl Stage {
             tokio::time::sleep(IDLE).await;
             let len2 = self.decoded.lock().unwrap().len();
             if len2 == len {
-                let buf = self.decoded.lock().unwrap();
-                return Ok(buf[before..].to_string());
+                return Ok(());
             }
         }
     }
@@ -236,7 +233,7 @@ fn strip_prompt(line: &str) -> String {
 }
 
 /// 注入行回声/完成事件的噪声过滤（src/history/record.ts isIntegrationNoise
-/// 的测试架同款 + 注入片段换行回声的片段特征；生产不注入，这里注入故从严）。
+/// 的测试架同款 + 注入片段换行回声的片段特征）。
 fn is_integration_noise(command: &str) -> bool {
     [
         "133;",
@@ -261,9 +258,10 @@ async fn main() {
 async fn run() -> Result<(), String> {
     let (policy, pinned_fp) = pinned_host_key_policy();
     eprintln!("[fixture] connect spike@127.0.0.1:2222 (pinned {pinned_fp})");
-    let session = connect(HOST, PORT, USER, AuthMethod::Password(PASSWORD.into()), policy)
-        .await
-        .map_err(|e| format!("connect: {e}"))?;
+    let session: SshSession =
+        connect(HOST, PORT, USER, AuthMethod::Password(PASSWORD.into()), policy)
+            .await
+            .map_err(|e| format!("connect: {e}"))?;
     let mut channel = session
         .open_pty(120, 40)
         .await
@@ -272,10 +270,10 @@ async fn run() -> Result<(), String> {
         .request_shell(true)
         .await
         .map_err(|e| format!("request_shell: {e}"))?;
-    eprintln!("[fixture] pty 120x40 + shell running");
+    eprintln!("[fixture] pty 120x40 + shell running (default bash, no pre-set integration)");
 
-    // 正式转发路径：真合批/解码；捕获含 OSC 标记的解码流（前端 xterm 同样直接
-    // 消费这些帧——CommandWatch 正是从这些字节里提取命令事件）
+    // 正式转发路径：真合批/解码；TextTail 头部原始探针随行（产线注入核的
+    // 幂等探测消费源——与 attach_host_session 同一结构面）
     let decoded: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let captured = Arc::clone(&decoded);
     let on_data = Channel::new(move |body: InvokeResponseBody| {
@@ -293,17 +291,17 @@ async fn run() -> Result<(), String> {
     )));
     let cancel = Arc::new(Notify::new());
     let cancel_handle = Arc::clone(&cancel);
-    let writer = tokio::sync::Mutex::new(
-        Box::new(channel.make_writer()) as Box<dyn tokio::io::AsyncWrite + Unpin + Send>
-    );
+    let text_tail = Arc::new(TextTail::new());
+    let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>> =
+        Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
+    let forward_tail = Arc::clone(&text_tail);
     tauri::async_runtime::spawn(async move {
-        let text_tail = TextTail::new();
         let _ = forward_pty_loop(
             &mut channel,
             &on_data,
             &counters,
             &decoder,
-            &text_tail,
+            &forward_tail,
             "history-fixture",
             &cancel_handle,
         )
@@ -311,34 +309,44 @@ async fn run() -> Result<(), String> {
     });
     let stage = Stage {
         decoded,
-        writer,
+        writer: Arc::clone(&writer),
     };
 
     // 首窗吃掉 banner/提示符（注入前无 133 标记）
     stage.run_line("true").await?;
 
-    // 注入 shell 集成片段（ottr-ssh T6 真机验证终稿的 bash 片段）；注入窗
-    // （回声 + 首个 D;0/A/7 突发）同样喂给重放——生产是连续流，首个 cwd 就位
-    // 后第一条用户命令即携带；窗口边界是测试架的人为产物，不喂会漏首个 OSC7。
-    let inject_win = stage.run_line(inject_for(ShellKind::Bash)).await?;
+    // --- 产线注入核（与 attach_host_session 同一函数）-----------------------
+    let outcome = inject_shell_integration(&writer, &session, &text_tail, true).await;
+    println!("[inject] first call -> {outcome:?}");
+    if outcome != ShellIntegrationOutcome::Injected("bash") {
+        return Err(format!("expected Injected(\"bash\"), got {outcome:?}"));
+    }
 
-    // 真会话跑 3 条命令（重放只消费新增窗口）
+    // 真会话跑 3 条命令（注入片段的回声/首 D 在同一缓冲里，重放按噪声过滤）
+    for cmd in ["echo ottr-hist-alpha", "false", "cd /tmp"] {
+        stage.run_line(cmd).await?;
+        println!("[cmd] {cmd} done");
+    }
+
+    // 幂等 + 开关断言（产线同一函数，原始头部此刻已含本轮注入的 133）
+    let replay_outcome = inject_shell_integration(&writer, &session, &text_tail, true).await;
+    println!("[inject] second call -> {replay_outcome:?}");
+    if replay_outcome != ShellIntegrationOutcome::SkippedAlreadyIntegrated {
+        return Err(format!("expected SkippedAlreadyIntegrated, got {replay_outcome:?}"));
+    }
+    let disabled = inject_shell_integration(&writer, &session, &text_tail, false).await;
+    println!("[inject] disabled -> {disabled:?}");
+    if disabled != ShellIntegrationOutcome::SkippedDisabled {
+        return Err(format!("expected SkippedDisabled, got {disabled:?}"));
+    }
+
+    // 流重放（CommandWatch 语义）出三元组——重放全量缓冲（从连接开始：
+    // banner/`true` 段无 133 标记天然无事件；注入回声按噪声过滤）
     let mut replay = StreamReplay::new();
-    let mut windows = vec![inject_win];
-    for cmd in [
-        "echo ottr-hist-alpha",
-        "false",
-        "cd /tmp",
-    ] {
-        let win = stage.run_line(cmd).await?;
-        println!("[cmd] {cmd} -> window {} bytes", win.len());
-        windows.push(win);
+    {
+        let buf = stage.decoded.lock().unwrap();
+        replay.feed(&buf);
     }
-    for win in &windows {
-        replay.feed(win);
-    }
-
-    // 噪声过滤 + 提示符剥离 → 入库载荷（record.ts + App 侧 strip 同语义）
     let mut rows = Vec::new();
     for (raw, code, cwd) in &replay.events {
         let cleaned = strip_prompt(raw);
@@ -417,8 +425,9 @@ async fn run() -> Result<(), String> {
     assert_eq!(by_host[0].command, "cd /tmp");
 
     println!(
-        "[PASS] history_fixture: 3 commands -> 3 rows; search(\"ottr-hist\")={:?} (exit 0); \
-search(\"false\") exit={} ; search(\"cd\", host)={:?}; OSC7 cwd reported {:?}",
+        "[PASS] history_fixture (production injection path): default bash fixture -> inject(bash) -> \
+3 commands -> 3 rows; search(\"ottr-hist\")={:?} (exit 0); search(\"false\") exit={} ; \
+search(\"cd\", host)={:?}; OSC7 cwd reported {:?}; idempotent second inject skipped; disabled switch skipped",
         hit[0].command,
         failed[0].exit_code.unwrap(),
         by_host[0].command,

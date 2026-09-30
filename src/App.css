@@ -690,8 +690,8 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 .history-badge.exit-fail {
-  color: #e5484d;
-  border-color: #e5484d;
+  color: var(--color-danger);
+  border-color: var(--color-danger);
 }
 .history-badge.exit-none {
   color: var(--fg-muted);

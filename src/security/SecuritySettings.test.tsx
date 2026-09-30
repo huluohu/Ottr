@@ -223,6 +223,44 @@ describe("SecuritySettings", () => {
     expect(toggle.checked).toBe(false);
   });
 
+  it("shell 集成注入开关（T15 fix 1/5）：false 回显关；切换写 shell.integration 布尔；缺省回显开", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string, args?: { key: string; value: unknown }) => {
+      if (cmd === "settings_get") {
+        return Promise.resolve(args?.key === "shell.integration" ? false : null);
+      }
+      if (cmd === "settings_set") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    // 存量 false → 回显关
+    const toggle = (await waitFor(() =>
+      screen.getByTestId("shell-integration-toggle"),
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    // 切开 → settings_set 布尔 true
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("settings_set", {
+        key: "shell.integration",
+        value: true,
+      }),
+    );
+
+    // 缺省（settings_get 全 null）→ 回显开（Rust 侧缺省开同口径）
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "settings_set") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    cleanup();
+    renderDialog();
+    const fresh = (await waitFor(() =>
+      screen.getByTestId("shell-integration-toggle"),
+    )) as HTMLInputElement;
+    expect(fresh.checked).toBe(true);
+  });
+
   it("手动锁定：vault_lock 调用 + store 落 locked", async () => {
     seedMode("password");
     mockedInvoke.mockImplementation((cmd: string) => {

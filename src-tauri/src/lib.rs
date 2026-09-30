@@ -29,7 +29,7 @@ use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
 use ottr_term::encoding::{Encoding, StreamDecoder};
 use ottr_term::ring::RingBuffer;
 use ottr_term::stripper::Stripper;
-use ottr_vault::{Hosts, KnownHostState, KnownHosts};
+use ottr_vault::{Hosts, KnownHostState, KnownHosts, Settings};
 
 pub mod keys;
 pub mod menu;
@@ -193,13 +193,21 @@ struct SessionEntry {
     sftp: SftpSlot,
 }
 
-/// 会话文本尾缓冲（Task 13）：Stripper（剥 ANSI，跨 chunk 状态）→ RingBuffer
-/// （默认 10_000 行）。与前端转发互不影响——ring 吃的是同一份解码后文本的
-/// 剥离副本；`session_tail` 按字节取尾（spec §6 输出尾部 8KB）。
+/// 会话文本缓冲（Task 13 尾环 + fix 1/5 头部原始探针）：
+/// * 尾缓冲（AI 诊断）：Stripper（剥 ANSI，跨 chunk 状态）→ RingBuffer
+///   （默认 10_000 行）。`session_tail` 按字节取尾（spec §6 输出尾部 8KB）。
+/// * 头部原始探针（fix 1/5 shell 集成注入）：截留会话**开头**的解码原文
+///   （剥 ANSI 前，OSC 133 标记完整保留），供注入任务判断「用户已自带
+///   133 集成」（幂等探测，防双标记双入库）。上限 [`RAW_HEAD_CAP`] 字节
+///   （banner + 首提示符绰绰有余），截满即停。
 pub struct TextTail {
     stripper: Mutex<Stripper>,
     ring: Mutex<RingBuffer>,
+    raw_head: Mutex<String>,
 }
+
+/// 头部原始探针上限（字节；字符串按字符截断，CJK 下字节数略低，无碍判断面）。
+pub const RAW_HEAD_CAP: usize = 16 * 1024;
 
 impl Default for TextTail {
     fn default() -> Self {
@@ -213,17 +221,51 @@ impl TextTail {
         TextTail {
             stripper: Mutex::new(Stripper::new()),
             ring: Mutex::new(RingBuffer::new()),
+            raw_head: Mutex::new(String::new()),
         }
     }
 
-    /// 喂入一段解码后的终端文本（合批 flush 的剥离副本）。
+    /// 喂入一段解码后的终端文本（合批 flush 的剥离副本入尾环；原文副本入头部探针）。
     fn push(&self, text: &[u8]) {
+        self.note_raw(&String::from_utf8_lossy(text));
         let mut ring = self.ring.lock().unwrap();
         self.stripper.lock().unwrap().feed(text, &mut *ring);
     }
 
+    /// 头部原始探针追加（截满即停：会话开头定性，无需滚动）。
+    fn note_raw(&self, text: &str) {
+        let mut head = self.raw_head.lock().unwrap();
+        if head.len() >= RAW_HEAD_CAP {
+            return;
+        }
+        let remaining = RAW_HEAD_CAP - head.len();
+        if text.len() <= remaining {
+            head.push_str(text);
+            return;
+        }
+        // 按字符边界截断（String::get 对非边界返回 None，手动走 char_indices）
+        let mut end = 0;
+        for (i, _) in text.char_indices() {
+            if i > remaining {
+                break;
+            }
+            end = i;
+        }
+        head.push_str(&text[..end]);
+    }
+
+    /// 首输出是否已见 OSC 133 标记（用户自带集成的幂等判定面）。
+    pub fn raw_head_has_133(&self) -> bool {
+        self.raw_head.lock().unwrap().contains("\x1b]133;")
+    }
+
+    /// 头部原始探针当前长度（注入任务等待「输出稳定」的观察面）。
+    pub fn raw_head_len(&self) -> usize {
+        self.raw_head.lock().unwrap().len()
+    }
+
     /// 取最后 `limit` 字节（完整行对齐；UTF-8 校验由入环前的 Stripper 保证，
-    /// 此处 lossy 仅作纵深防御）。环空/limit=0 → 空串。
+    /// 此处 lossy 仅作纵深防御）。
     fn tail(&self, limit: usize) -> String {
         let bytes = self.ring.lock().unwrap().tail_bytes(limit);
         String::from_utf8_lossy(&bytes).into_owned()
@@ -370,6 +412,7 @@ async fn attach_session(
         on_data,
         Encoding::Utf8,
         false,
+        false,
     )
     .await
 }
@@ -424,6 +467,13 @@ async fn attach_host_session(
         .as_deref()
         .and_then(encoding_from_str)
         .unwrap_or(Encoding::Utf8);
+    // shell 集成自动注入开关（Task 15 fix 1/5）：settings `shell.integration`
+    // 现读（缺省开；读取失败兜底开——坏配置不断 ⌘R 历史数据源）。
+    let shell_integration = crate::security::shell_integration_enabled(
+        Settings::get(&vault.0, crate::security::SETTING_SHELL_INTEGRATION)
+            .unwrap_or(None)
+            .as_ref(),
+    );
     open_and_register(
         state.sessions.clone(),
         Some(app),
@@ -440,6 +490,7 @@ async fn attach_host_session(
         on_data,
         initial_encoding,
         true,
+        shell_integration,
     )
     .await
 }
@@ -618,8 +669,9 @@ fn host_key_decision(
 /// （russh `Handle::drop` 不关连接，必须显式断，见 SshSession::disconnect 文档）。
 /// `keepalive`：交互式长连传 Some；spike 命令面传 None 保持 Phase 0 语义不变。
 /// `initial_encoding`：会话解码初值（host encoding_override 兜底 UTF-8）；
-/// `probe_lang`：连接后独立通道跑 `echo $LANG` 做 detect_hint，命中 GBK 家族
-/// 发 `ottr://encoding-hint`（正式 UI 面 true；spike 命令面 false 不打扰）。
+/// `ui_face`：正式 UI 面开关（LANG 探测 + shell 集成自动注入两个后台任务，
+/// scripts 驱动面 false 不打扰）；`shell_integration`：settings
+/// `shell.integration` 现读值（关 = 不探测不注入，见 [`inject_shell_integration`]）。
 #[allow(clippy::too_many_arguments)]
 async fn open_and_register(
     sessions: SessionMap,
@@ -636,7 +688,8 @@ async fn open_and_register(
     rows: u32,
     on_data: Channel<InvokeResponseBody>,
     initial_encoding: Encoding,
-    probe_lang: bool,
+    ui_face: bool,
+    shell_integration: bool,
 ) -> Result<String, String> {
     // spike 观测：attach 偶发整体停滞（1/5 频率），故每步限时并打点定位。
     let session: SshSession = tokio::time::timeout(
@@ -675,7 +728,7 @@ async fn open_and_register(
         SessionEntry {
             session: Arc::clone(&session),
             endpoint: format!("{address}:{port}"),
-            writer,
+            writer: Arc::clone(&writer),
             counters: Arc::clone(&counters),
             decoder: Arc::clone(&decoder),
             text_tail: Arc::clone(&text_tail),
@@ -691,7 +744,12 @@ async fn open_and_register(
     // （Arc 化已上移到会话表插入处，Task 10：SFTP 复用同一 Arc）。
     let session_id = id.clone();
     let probe_app = close_event.clone(); // 探测任务与收尾事件各持一份
-    let probe_session = probe_lang.then(|| Arc::clone(&session));
+    let probe_session = ui_face.then(|| Arc::clone(&session));
+    // shell 集成注入任务与转发循环共享 writer/text_tail/session（探针看原始
+    // 头部、探测走独立 exec 通道、片段写 PTY 输入端）。
+    let inject_session = ui_face.then(|| Arc::clone(&session));
+    let inject_writer = Arc::clone(&writer);
+    let inject_tail = Arc::clone(&text_tail);
     tauri::async_runtime::spawn(async move {
         let reason = forward_pty_loop(
             &mut channel,
@@ -754,6 +812,19 @@ async fn open_and_register(
                 Ok(Err(e)) => eprintln!("[attach:{probe_id}] LANG probe exec failed: {e}"),
                 Err(_) => eprintln!("[attach:{probe_id}] LANG probe timed out"),
             }
+        });
+    }
+
+    // shell 集成自动注入（Task 15 fix 1/5，⌘R 历史入库数据源）：仅正式 UI 面
+    // 且 settings `shell.integration` 开（缺省开）。探测/幂等/下发全程异步，
+    // 不阻塞 attach 返回；结果只打点（注入是增强面，失败不重试——重连即新会话
+    // 重走本流程）。
+    if let (Some(inj_session), true) = (inject_session, shell_integration) {
+        let inject_id = id.clone();
+        tauri::async_runtime::spawn(async move {
+            let outcome = inject_shell_integration(&inject_writer, &inj_session, &inject_tail, true)
+                .await;
+            eprintln!("[attach:{inject_id}] shell integration: {outcome:?}");
         });
     }
     Ok(id)
@@ -1750,6 +1821,138 @@ async fn flush_batch(
 }
 
 // ---------------------------------------------------------------------------
+// shell 集成自动注入（Task 15 fix 1/5，⌘R 历史入库的数据源前提）
+// ---------------------------------------------------------------------------
+// 接线点 = attach_host_session 的 request_shell 成功后、首提示符消费前：注入
+// 片段经 PTY writer 下发（作为一行命令发给交互 shell 执行，Phase 0 T6 spike
+// 同源调用，asset = ottr_ssh::shell_integration::inject_for T6 真机验证终稿）。
+// 四要素：
+//   1. shell 探测：exec 通道 `echo $SHELL`（同 LANG 探测先例；bash→Bash、
+//      zsh→Zsh、其他（fish/sh/nushell…）→ 跳过不报错）；
+//   2. 幂等探测：等首输出（banner+首提示符）稳定后查 TextTail 原始头部是否
+//      已有 OSC 133——用户自带集成则跳过（防双标记双入库）。**已知盲区
+//      （挂账）**：首提示符晚于稳定窗的慢 shell 会漏判为未集成而重复注入；
+//      前端 record.ts 的同秒去重兜底双 D（评审裁定 MVP 接受）；
+//   3. 用户开关：settings `shell.integration`（缺省开，validate_setting 注册）；
+//   4. 片段本身带 PROMPT_COMMAND/DEBUG 护栏（T6 终稿），重复注入天然幂等
+//      （覆盖式 export / 重定义 precmd）。
+// 注入行会回显在用户终端（一次性，T6 spike 同款已知行为；隐身注入挂账）。
+
+/// `echo $SHELL` 输出 → ShellKind（basename 判定；其他 shell 显式 None）。
+fn detect_shell_kind(shell_path: &str) -> Option<ottr_ssh::shell_integration::ShellKind> {
+    let base = shell_path.trim().rsplit('/').next().unwrap_or("");
+    match base {
+        "bash" => Some(ottr_ssh::shell_integration::ShellKind::Bash),
+        "zsh" => Some(ottr_ssh::shell_integration::ShellKind::Zsh),
+        _ => None,
+    }
+}
+
+/// 注入决策（可测纯函数）：开关开 + 识别的 shell + 未自带集成 → Some(kind)。
+fn integration_decision(
+    enabled: bool,
+    kind: Option<ottr_ssh::shell_integration::ShellKind>,
+    already_integrated: bool,
+) -> Option<ottr_ssh::shell_integration::ShellKind> {
+    if !enabled || already_integrated {
+        return None;
+    }
+    kind
+}
+
+/// shell 集成注入结果（attach 打点 / fixture example 断言面）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellIntegrationOutcome {
+    /// 已下发片段（载荷 = shell 种类名）。
+    Injected(&'static str),
+    /// settings 开关关（调用方门卫，本函数不重复判）。
+    SkippedDisabled,
+    /// $SHELL 非 bash/zsh（fish/sh/…）——跳过不报错。
+    SkippedNoShell,
+    /// 首输出已见 OSC 133（用户自带集成，防双标记）。
+    SkippedAlreadyIntegrated,
+    /// exec 探测失败/超时（安全侧不注入，不打扰会话）。
+    ProbeFailed,
+}
+
+/// 首输出稳定窗参数：banner+首提示符落定后 400ms 无增长即稳定；至少观察
+/// 500ms；封顶 6s（慢链路兜底——超时按现状判定，盲区挂账见模块注释）。
+const INJECT_STABLE_WINDOW: Duration = Duration::from_millis(400);
+const INJECT_MIN_OBSERVE: Duration = Duration::from_millis(500);
+const INJECT_MAX_WAIT: Duration = Duration::from_secs(6);
+
+/// 等首输出稳定（原始头部无增长达稳定窗），返回（是否已见 133）。
+async fn wait_initial_output(text_tail: &TextTail) -> bool {
+    let start = Instant::now();
+    let mut last_len = text_tail.raw_head_len();
+    let mut stable_since: Option<Instant> = None;
+    while start.elapsed() < INJECT_MAX_WAIT {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let len = text_tail.raw_head_len();
+        if len != last_len {
+            last_len = len;
+            stable_since = None;
+            continue;
+        }
+        let stable_for = stable_since.get_or_insert_with(Instant::now).elapsed();
+        if start.elapsed() >= INJECT_MIN_OBSERVE && stable_for >= INJECT_STABLE_WINDOW {
+            break;
+        }
+    }
+    text_tail.raw_head_has_133()
+}
+
+/// shell 集成注入（生产 attach 与 fixture example 共用同一实现）：
+/// 开关→shell 探测→幂等探测→片段下发。返回结果供打点/断言；失败不打扰
+/// 会话（注入是增强面，缺了只是历史/诊断不工作）。
+pub async fn inject_shell_integration(
+    writer: &tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>,
+    probe_session: &SshSession,
+    text_tail: &TextTail,
+    enabled: bool,
+) -> ShellIntegrationOutcome {
+    if !enabled {
+        return ShellIntegrationOutcome::SkippedDisabled;
+    }
+    // $SHELL 探测（exec 通道，不进 PTY 数据流；同 LANG 探测先例）
+    let kind = match tokio::time::timeout(LANG_PROBE_TIMEOUT, probe_session.exec("echo $SHELL"))
+        .await
+    {
+        Ok(Ok(out)) => detect_shell_kind(&String::from_utf8_lossy(&out.stdout)),
+        Ok(Err(_)) | Err(_) => return ShellIntegrationOutcome::ProbeFailed,
+    };
+    let Some(kind) = kind else {
+        return ShellIntegrationOutcome::SkippedNoShell;
+    };
+    // 幂等探测：首输出已有 133 = 用户自带集成，跳过（防双标记双入库）
+    if wait_initial_output(text_tail).await {
+        return ShellIntegrationOutcome::SkippedAlreadyIntegrated;
+    }
+    // 片段下发（单行 + \r，交互 shell 在提示符处读入执行；T6 真机验证终稿）
+    let snippet = ottr_ssh::shell_integration::inject_for(kind);
+    let result = (async {
+        use tokio::io::AsyncWriteExt;
+        let mut w = writer.lock().await;
+        w.write_all(snippet.as_bytes()).await?;
+        w.write_all(b"\r").await?;
+        Ok::<(), std::io::Error>(())
+    })
+    .await;
+    match result {
+        Ok(()) => ShellIntegrationOutcome::Injected(match kind {
+            ottr_ssh::shell_integration::ShellKind::Bash => "bash",
+            ottr_ssh::shell_integration::ShellKind::Zsh => "zsh",
+        }),
+        Err(e) => {
+            eprintln!("[shell-integration] write failed: {e}");
+            ShellIntegrationOutcome::ProbeFailed
+        }
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
 // 入口
 // ---------------------------------------------------------------------------
 
@@ -2136,7 +2339,59 @@ mod tests {
         );
     }
 
-    // --- Task 13（AI 诊断）：TextTail 尾缓冲（剥 ANSI 副本入环） ---------------
+    // --- shell 集成注入（Task 15 fix 1/5）：探测/决策/头部探针 ---------------
+
+    /// $SHELL basename 判定表：bash/zsh 识别，其他（fish/sh/nushell/空）显式跳过。
+    #[test]
+    fn detect_shell_kind_supports_bash_and_zsh_only() {
+        use ottr_ssh::shell_integration::ShellKind;
+        assert_eq!(detect_shell_kind("/bin/bash"), Some(ShellKind::Bash));
+        assert_eq!(detect_shell_kind("/usr/bin/bash"), Some(ShellKind::Bash));
+        assert_eq!(detect_shell_kind("bash"), Some(ShellKind::Bash));
+        assert_eq!(detect_shell_kind("/bin/zsh"), Some(ShellKind::Zsh));
+        assert_eq!(detect_shell_kind("/usr/bin/zsh\n"), Some(ShellKind::Zsh));
+        for skip in ["/bin/sh", "/usr/bin/fish", "/opt/homebrew/bin/nu", "", "/bin/dash"] {
+            assert_eq!(detect_shell_kind(skip), None, "{skip:?} must be skipped");
+        }
+    }
+
+    /// 注入决策表：开关关 / 非目标 shell / 已自带集成（幂等）一律不注入。
+    #[test]
+    fn integration_decision_table() {
+        use ottr_ssh::shell_integration::ShellKind;
+        assert_eq!(
+            integration_decision(true, Some(ShellKind::Bash), false),
+            Some(ShellKind::Bash)
+        );
+        assert_eq!(
+            integration_decision(true, Some(ShellKind::Zsh), false),
+            Some(ShellKind::Zsh)
+        );
+        // 开关关 → 不注入（探测都省了）
+        assert_eq!(integration_decision(false, Some(ShellKind::Bash), false), None);
+        // 未识别 shell → 不注入不报错
+        assert_eq!(integration_decision(true, None, false), None);
+        // 已自带 133 集成（幂等探测）→ 不注入（防双标记双入库）
+        assert_eq!(integration_decision(true, Some(ShellKind::Bash), true), None);
+    }
+
+    /// TextTail 原始头部探针：OSC 133 完整保留（剥 ANSI 前）、截满即停。
+    #[test]
+    fn text_tail_raw_head_keeps_osc_and_caps() {
+        let tail = TextTail::new();
+        assert!(!tail.raw_head_has_133());
+        // 带颜色与 133 标记的原始批（flush_batch 喂入口径）
+        tail.push(b"\x1b]133;D;0\x07\x1b]133;A\x07prompt$ \x1b[31mhi\x1b[0m\n");
+        assert!(tail.raw_head_has_133(), "OSC 133 必须完整进头部探针");
+        // 尾缓冲（AI 诊断面）不受影响：剥 ANSI 纯文本
+        assert!(tail.tail(8192).contains("prompt$ hi"));
+        // 截满即停：再喂大块不超上限
+        let big = vec![b'x'; RAW_HEAD_CAP * 2];
+        tail.push(&big);
+        assert!(tail.raw_head_len() <= RAW_HEAD_CAP);
+    }
+
+
 
     /// flush_batch 把解码后文本剥 ANSI 推进 TextTail：session_tail 的取数面。
     /// GBK 批解出的中文 + ANSI 颜色序列 → 尾缓冲里是纯文本。

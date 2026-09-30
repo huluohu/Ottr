@@ -6,13 +6,14 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
-import { historyPayload, isIntegrationNoise, recordCommand } from "./record";
+import { historyPayload, isIntegrationNoise, recordCommand, resetDedupForTests } from "./record";
 
 const mockedInvoke = invoke as unknown as Mock;
 
 beforeEach(() => {
   mockedInvoke.mockReset();
   mockedInvoke.mockResolvedValue(undefined);
+  resetDedupForTests();
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -80,5 +81,44 @@ describe("recordCommand（fire-and-forget）", () => {
   it("噪声/空白命令不发 invoke", () => {
     recordCommand(ctx, { exitCode: 0, command: "  ", cwd: null });
     expect(mockedInvoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("双 D 去重（fix 1/5：注入幂等盲区的双集成重复完成事件）", () => {
+  const ev = { exitCode: 0, command: "docker ps", cwd: null };
+
+  it("同 host+command 同秒重复完成事件只入一条（双 D 间隔毫秒级必同秒）", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T12:00:00Z"));
+    recordCommand(ctx, ev);
+    recordCommand(ctx, ev);
+    recordCommand(ctx, ev);
+    expect(mockedInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("跨秒的同命令照常入库（真人重跑不去重）；不同 host 互不影响", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T12:00:00Z"));
+    recordCommand(ctx, ev);
+    vi.setSystemTime(new Date("2026-09-30T12:00:02Z"));
+    recordCommand(ctx, ev);
+    expect(mockedInvoke).toHaveBeenCalledTimes(2);
+
+    recordCommand({ hostId: 9, sessionId: "tab-other" }, ev);
+    expect(mockedInvoke).toHaveBeenCalledTimes(3);
+  });
+
+  it("FIFO 有界：超容量后最老键被驱逐（同键可再次入库）", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T12:00:00Z"));
+    // 灌 16 个不同键
+    for (let i = 0; i < 16; i++) {
+      recordCommand(ctx, { ...ev, command: `cmd-${i}` });
+    }
+    expect(mockedInvoke).toHaveBeenCalledTimes(16);
+    // 第 17 个键驱逐 cmd-0；cmd-0 再来（同秒）可重新入库
+    recordCommand(ctx, { ...ev, command: "cmd-16" });
+    recordCommand(ctx, { ...ev, command: "cmd-0" });
+    expect(mockedInvoke).toHaveBeenCalledTimes(18);
   });
 });

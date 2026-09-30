@@ -32,7 +32,9 @@
     "langEn": "English",
     "sectionSecurity": "安全",
     "closeToTray": "关闭窗口时隐藏到托盘",
-    "closeToTrayHint": "关闭后 Ottr 常驻系统托盘，可从托盘退出。"
+    "closeToTrayHint": "关闭后 Ottr 常驻系统托盘，可从托盘退出。",
+    "shellIntegration": "Shell 集成自动注入",
+    "shellIntegrationHint": "连接时自动探测远端 shell 并注入 OSC 133/OSC 7 片段，驱动历史搜索与报错即诊；已自带集成的远端自动跳过。"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -111,24 +113,13 @@
     "langToggle": "切换语言（中文 / English）",
     "quit": "退出 Ottr"
   },
-  "palette": {
-    "title": "命令面板",
-    "placeholder": "搜索命令或主机…",
-    "empty": "无匹配结果",
-    "commands": "命令",
-    "hosts": "主机",
-    "newHost": "新建主机",
-    "themeToggle": "切换主题（亮 / 暗 / 跟随系统）",
-    "langToggle": "切换语言（中文 / English）",
-    "quit": "退出 Ottr"
-  },
   "history": {
     "title": "历史搜索",
     "placeholder": "搜索跑过的命令…",
     "empty": "无匹配命令",
     "hostAll": "全部主机",
     "hostFilter": "按主机过滤",
-    "insertHint": "回车插入当前终端（⌘R）",
+    "insertHint": "回车插入当前终端",
     "unknownHost": "未知主机"
   },
   "titlebar": {

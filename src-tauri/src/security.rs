@@ -33,6 +33,16 @@ pub const CLIPBOARD_DEFAULT_SECS: u64 = 30;
 /// 剪贴板清空上限（1 小时）。
 pub const CLIPBOARD_MAX_SECS: u64 = 3600;
 
+/// shell 集成自动注入开关（Task 15 fix 1/5，⌘R 历史入库的数据源）。
+/// 缺省开（None = 注入）；false = 关（attach 不探测不注入）。
+pub const SETTING_SHELL_INTEGRATION: &str = "shell.integration";
+
+/// shell.integration 配置 → 是否注入。`None`/非布尔 = 缺省开（validate_setting
+/// 挡住非布尔写入，读取侧收敛兜底——配置坏不断功能）。
+pub fn shell_integration_enabled(raw: Option<&serde_json::Value>) -> bool {
+    raw.and_then(|v| v.as_bool()).unwrap_or(true)
+}
+
 pub const SETTING_AUTOLOCK: &str = "security.autolock_minutes";
 pub const SETTING_CLIPBOARD: &str = "security.clipboard_clear_secs";
 
@@ -75,6 +85,13 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
         SETTING_AUTOLOCK => u64_in_range(value, AUTOLOCK_MAX_MINUTES),
         SETTING_CLIPBOARD => u64_in_range(value, CLIPBOARD_MAX_SECS),
         // Task 13：AI 成本护栏（单请求 max_tokens 上限）与诊断自动触发开关
+        SETTING_SHELL_INTEGRATION => {
+            if value.is_boolean() {
+                Ok(())
+            } else {
+                Err("shell.integration expects a boolean".to_string())
+            }
+        }
         "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
         "ai.enabled" => {
             if value.is_boolean() {
@@ -271,6 +288,14 @@ mod tests {
     }
 
     #[test]
+    fn shell_integration_enabled_defaults_on() {
+        assert!(shell_integration_enabled(None), "未配置 = 缺省开");
+        assert!(shell_integration_enabled(Some(&serde_json::json!(true))));
+        assert!(!shell_integration_enabled(Some(&serde_json::json!(false))));
+        assert!(shell_integration_enabled(Some(&serde_json::json!("yes"))), "非布尔收敛默认开");
+    }
+
+    #[test]
     fn auto_lock_fire_matrix() {
         // 四条件齐备 → 落锁
         assert!(auto_lock_should_fire(1, 1, false, false));
@@ -294,6 +319,12 @@ mod tests {
         assert_eq!(validate_setting("ui.theme", &serde_json::json!("dark")), Ok(()));
         assert_eq!(validate_setting("ui.language", &serde_json::json!("zh-CN")), Ok(()));
         assert_eq!(validate_setting("unknown.key", &serde_json::json!(1)), Ok(()));
+        // Task 15 fix 1/5：shell.integration 布尔校验注册
+        assert_eq!(
+            validate_setting(SETTING_SHELL_INTEGRATION, &serde_json::json!(false)),
+            Ok(())
+        );
+        assert!(validate_setting(SETTING_SHELL_INTEGRATION, &serde_json::json!("on")).is_err());
         // 越界拒绝（写入侧显式失败）。
         assert!(validate_setting(SETTING_AUTOLOCK, &serde_json::json!(100_000)).is_err());
         assert!(validate_setting(SETTING_CLIPBOARD, &serde_json::json!(100_000)).is_err());

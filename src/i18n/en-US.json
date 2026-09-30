@@ -32,7 +32,9 @@
     "langEn": "English",
     "sectionSecurity": "Security",
     "closeToTray": "Hide to tray on close",
-    "closeToTrayHint": "Ottr stays in the system tray after closing; quit from the tray."
+    "closeToTrayHint": "Ottr stays in the system tray after closing; quit from the tray.",
+    "shellIntegration": "Auto shell integration",
+    "shellIntegrationHint": "Detects the remote shell on connect and injects OSC 133/OSC 7 markers that power history search and failure diagnosis; remotes with existing integration are skipped."
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -99,17 +101,6 @@
     "skippedDuplicates": "Skipped {{count}} duplicate hosts",
     "errors": "Parse errors ({{count}})",
     "noErrors": "No parse errors"
-  },
-  "palette": {
-    "title": "Command Palette",
-    "placeholder": "Search commands or hosts…",
-    "empty": "No matches",
-    "commands": "Commands",
-    "hosts": "Hosts",
-    "newHost": "New Host",
-    "themeToggle": "Toggle Theme (Light / Dark / System)",
-    "langToggle": "Toggle Language (中文 / English)",
-    "quit": "Quit Ottr"
   },
   "palette": {
     "title": "Command Palette",

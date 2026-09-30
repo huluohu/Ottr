@@ -1,4 +1,5 @@
-//! Task 8（Spike #4）**集成测试**：SFTP 并行分块 + 断点续传。
+//! SFTP 并行分块 + 断点续传**集成测试**（Phase 0 Task 8/Spike #4 随迁，
+//! Task 10 Step 1：5 个真夹具用例原样迁移，语义不变——搬家不丢东西的验收）。
 //!
 //! 如实命名：这不是纯单测——它需要真实 sshd 夹具（127.0.0.1:2222，
 //! `scripts/spike-sshd.sh` 启动；用户 spike / 密码 spike-pass）。夹具不可达时
@@ -15,7 +16,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use ottr_ssh::sftp::{
+use ottr_transfer::sftp::{
     CHUNK_SIZE, JOURNAL_MAGIC, TransferStats, download_parallel, journal_header, upload_parallel,
 };
 use ottr_ssh::{AuthMethod, SshSession, connect};

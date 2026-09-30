@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 ottr-ssh = { path = "../ottr-ssh" }
+# Task 10：sftp.rs 迁入 ottr-transfer，bench 的 download_parallel 随迁引用
+ottr-transfer = { path = "../ottr-transfer" }
 # russh 直接依赖仅为本 bench 消费 open_pty 返回的 Channel（trait 边界上唯一
 # 已裁定的泄漏点）；正式版由包装类型消除。
 russh = "0.63.3"

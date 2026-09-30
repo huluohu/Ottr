@@ -1,6 +1,11 @@
-//! Spike #4（Task 8）：SFTP 并行分块传输 + 断点续传。
+//! SFTP 并行分块传输 + 断点续传（Phase 0 spike #4 / Task 8 代码随迁）。
 //!
-//! Phase 1 的 ottr-transfer crate 直接继承本模块（接口与 journal 语义不变）。
+//! Task 10 Step 1：本模块自 `ottr-ssh/src/sftp.rs` 原样迁入 ottr-transfer，
+//! 接口与 journal 语义不变；journal 身份绑定等不变量见下文（测试随迁：
+//! `tests/sftp_test.rs` 同一套 5 个真夹具用例）。russh 类型边界裁定见
+//! crate 文档（lib.rs）：`FileTransfer` trait 签名纯自有类型，实现内部经
+//! [`ottr_ssh::SshSession::open_sftp_stream`] 消费 russh `ChannelStream`
+//! （与 `SshTransport::Channel` 例外同等待遇）。
 //!
 //! ## 设计（简报 Step 1）
 //!
@@ -64,7 +69,8 @@ use russh_sftp::client::RawSftpSession;
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 
-use crate::russh_impl::SshSession;
+use ottr_ssh::SshSession;
+
 use crate::{Error, Result};
 
 /// chunk 粒度（简报规定 1 MiB）。journal 记录的是 chunk 起始 offset，
@@ -565,4 +571,53 @@ pub async fn upload_parallel(
         chunks_resumed: resumed,
         elapsed: started.elapsed(),
     })
+}
+
+/// 文件传输收口 trait（Task 10 简报 Step 1）：并行分块上传/下载 + journal v1
+/// 断点续传。消费方（src-tauri 传输命令、bench、测试）依赖本 trait 而非自由
+/// 函数，传输后端可替换（trait 消费方不动）。
+///
+/// 签名只含 crate 自有类型与 std 类型；russh `ChannelStream` 只出现在实现
+/// 内部（经 [`ottr_ssh::SshSession::open_sftp_stream`]），边界裁定见 crate
+/// 文档（与 `SshTransport::Channel` 例外同等待遇）。
+pub trait FileTransfer {
+    /// 并行分块下载：远端 `remote` → 本地 `local`。语义同 [`download_parallel`]。
+    fn download_parallel(
+        &self,
+        remote: &str,
+        local: &Path,
+        chunks: usize,
+        journal_path: &Path,
+    ) -> impl Future<Output = Result<TransferStats>> + Send;
+
+    /// 并行分块上传：本地 `local` → 远端 `remote`。语义同 [`upload_parallel`]。
+    fn upload_parallel(
+        &self,
+        local: &Path,
+        remote: &str,
+        chunks: usize,
+        journal_path: &Path,
+    ) -> impl Future<Output = Result<TransferStats>> + Send;
+}
+
+impl FileTransfer for SshSession {
+    fn download_parallel(
+        &self,
+        remote: &str,
+        local: &Path,
+        chunks: usize,
+        journal_path: &Path,
+    ) -> impl Future<Output = Result<TransferStats>> + Send {
+        download_parallel(self, remote, local, chunks, journal_path)
+    }
+
+    fn upload_parallel(
+        &self,
+        local: &Path,
+        remote: &str,
+        chunks: usize,
+        journal_path: &Path,
+    ) -> impl Future<Output = Result<TransferStats>> + Send {
+        upload_parallel(self, local, remote, chunks, journal_path)
+    }
 }

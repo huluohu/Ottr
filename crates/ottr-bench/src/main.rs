@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use ottr_ssh::AuthMethod;
-use ottr_ssh::sftp::download_parallel;
+use ottr_transfer::download_parallel;
 use russh::ChannelMsg;
 
 const FIXTURE: (&str, u16, &str, &str) = ("127.0.0.1", 2222, "spike", "spike-pass");

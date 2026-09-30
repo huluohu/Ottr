@@ -3196,6 +3196,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "ottr-ssh",
+ "ottr-transfer",
  "russh",
  "sha2 0.10.9",
  "tokio",
@@ -3205,11 +3206,9 @@ dependencies = [
 name = "ottr-ssh"
 version = "0.1.0"
 dependencies = [
- "futures",
  "ottr-term",
  "rand 0.10.3",
  "russh",
- "russh-sftp",
  "serde",
  "tokio",
 ]
@@ -3219,6 +3218,17 @@ name = "ottr-term"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
+ "tokio",
+]
+
+[[package]]
+name = "ottr-transfer"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "ottr-ssh",
+ "russh",
+ "russh-sftp",
  "tokio",
 ]
 

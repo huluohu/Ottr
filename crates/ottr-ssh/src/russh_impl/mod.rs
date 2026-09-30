@@ -223,9 +223,10 @@ impl SshSession {
     ///
     /// russh-sftp 的客户端（RawSftpSession / SftpSession）构造需要
     /// `AsyncRead + AsyncWrite` 流；`Channel::into_stream()` 把 subsystem
-    /// 通道转成流。Phase 1 的 ottr-transfer 直接继承该路径：
-    /// `SshSession::open_sftp_stream` → `RawSftpSession::new(stream)` →
-    /// `init` → 定长读写（见 [`crate::sftp`]）。
+    /// 通道转成流。Phase 1（Task 10）起该路径由 ottr-transfer crate 消费
+    /// （sftp.rs 已迁入）：`SshSession::open_sftp_stream` →
+    /// `RawSftpSession::new(stream)` → `init` → 并行分块读写。
+    /// ottr-ssh 不反向依赖 ottr-transfer（后者依赖前者），此处仅以文字引用。
     pub async fn open_sftp_stream(&self) -> Result<russh::ChannelStream<russh::client::Msg>> {
         let channel = self.handle.channel_open_session().await?;
         // want_reply=true：等 SSH_MSG_CHANNEL_SUCCESS，确认子系统已启动再发 SFTP INIT

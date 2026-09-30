@@ -2,8 +2,8 @@
 //!
 //! Usage:
 //! ```text
-//! cargo run -p ottr-ssh --release --example sftp_spike -- down <remote> <local> --journal <path> [--chunks N]
-//! cargo run -p ottr-ssh --release --example sftp_spike -- up   <local> <remote> --journal <path> [--chunks N]
+//! cargo run -p ottr-transfer --release --example sftp_spike -- down <remote> <local> --journal <path> [--chunks N]
+//! cargo run -p ottr-transfer --release --example sftp_spike -- up   <local> <remote> --journal <path> [--chunks N]
 //! ```
 //!
 //! - 夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222，spike / spike-pass）；
@@ -12,14 +12,14 @@
 //! - journal：每完成一个 chunk 追加一行 offset，进程被杀后同命令重跑即续传
 //!   （正确性不变量见 sftp.rs 模块注释）。
 //!
-//! 验收路径（Task 8 简报 Step 2/3）：传 1GB 至 ~40% `kill -9`，重跑同命令，
+//! 验收路径（Task 8 简报 Step 2/3，随迁保留）：传 1GB 至 ~40% `kill -9`，重跑同命令，
 //! 日志出现 `resume from chunk N`（N>0），完成后双端 sha256 一致。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use ottr_ssh::sftp::{download_parallel, upload_parallel};
+use ottr_transfer::{download_parallel, upload_parallel};
 use ottr_ssh::{AuthMethod, connect};
 use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
@@ -106,7 +106,9 @@ fn usage() -> ! {
 }
 
 #[tokio::main]
-async fn main() -> ottr_ssh::Result<()> {
+// 迁移注（Task 10）：ottr-ssh / ottr-transfer 现在是两个 Error 类型，CLI 取
+// Box<dyn Error> 统一两者（spike 语义不变，仅错误出口类型放宽）。
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
     let policy = pinned_host_key_policy();
 

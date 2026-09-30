@@ -24,7 +24,6 @@ pub mod deploy;
 pub mod jump;
 pub mod keygen;
 pub mod russh_impl;
-pub mod sftp;
 pub mod shell_integration;
 
 pub use auth::{AuthMethod, HostKeyPolicy, PromptResponder};

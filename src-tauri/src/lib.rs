@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use base64::Engine as _;
 use russh::ChannelMsg;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Notify;
 
@@ -617,6 +617,18 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
         .setup(|app| {
+            // A10（Task 1）：系统主题监听。前端主通道是 matchMedia(prefers-color-scheme)
+            // （src/theme/ThemeContext.tsx）；这里补 Rust 侧兜底推送 `ottr://system-theme`
+            // （payload: "light"/"dark"）——Linux WebKitGTK 对系统明暗动态跟随不可靠，
+            // 由窗口 ThemeChanged 事件兜底。初始值无需推送：前端挂载时读 matchMedia。
+            if let Some(win) = app.get_webview_window("main") {
+                let watcher = win.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::ThemeChanged(theme) = event {
+                        let _ = watcher.emit("ottr://system-theme", theme.to_string());
+                    }
+                });
+            }
             // 自动化驱动入口：OTTR_SPIKE=latency|throughput 时把页面导航到对应
             // ?spike=… 模式（Task 4/7 测量页），OTTR_SPIKE_INTERRUPT=1 追加中断参数
             // （Task 7 Step 4 自动中断验证）。前端据此自动测量并回传报告

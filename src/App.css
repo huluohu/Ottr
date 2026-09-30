@@ -42,14 +42,23 @@
   line-height: 24px;
   font-weight: 400;
 
-  color: #0f0f0f;
-  background-color: #f6f6f6;
+  /* A10：明暗由 ThemeContext 挂 data-theme + tokens.css 语义层驱动（弃用媒体查询） */
+  color: var(--color-fg);
+  background-color: var(--color-bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+}
+
+/* 控件底色（页面级派生变量，不入 tokens.css 语义层） */
+:root {
+  --btn-bg: #ffffff;
+}
+[data-theme="dark"] {
+  --btn-bg: rgba(255, 255, 255, 0.08);
 }
 
 .container {
@@ -79,12 +88,16 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: var(--color-accent);
   text-decoration: inherit;
 }
 
 a:hover {
-  color: #535bf2;
+  color: var(--ottr-teal-700);
+}
+
+[data-theme="dark"] a:hover {
+  color: var(--ottr-teal-300);
 }
 
 h1 {
@@ -99,8 +112,8 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
+  color: var(--color-fg);
+  background-color: var(--btn-bg);
   transition: border-color 0.25s;
   box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
 }
@@ -110,11 +123,11 @@ button {
 }
 
 button:hover {
-  border-color: #396cd8;
+  border-color: var(--color-accent);
 }
 button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+  border-color: var(--color-accent);
+  background-color: rgba(127, 127, 127, 0.15);
 }
 
 input,
@@ -122,26 +135,23 @@ button {
   outline: none;
 }
 
-#greet-input {
-  margin-right: 5px;
+/* A10 主题切换器 */
+.theme-switch {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 1.5em;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
+.theme-switch button {
+  box-shadow: none;
+}
 
-  a:hover {
-    color: #24c8db;
-  }
+.theme-switch button[data-active="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+#greet-input {
+  margin-right: 5px;
 }

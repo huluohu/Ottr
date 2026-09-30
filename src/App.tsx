@@ -2,9 +2,36 @@ import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
 import OttrTerminal, { RenderSpike, ThroughputSpike } from "./terminal/Terminal";
+import { ThemeProvider, useTheme, type ThemeMode } from "./theme/ThemeContext";
+import "./theme/tokens.css";
 import "./App.css";
 
-function App() {
+// 主题切换器（A10）：手动验证入口 + Task 8 设置页前的临时控件（Task 2 文案过 t()）。
+const THEME_MODES: { value: ThemeMode; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+];
+
+function ThemeSwitch() {
+  const { mode, setMode } = useTheme();
+  return (
+    <div className="theme-switch" role="group" aria-label="Theme">
+      {THEME_MODES.map(({ value, label }) => (
+        <button
+          key={value}
+          data-active={mode === value}
+          aria-pressed={mode === value}
+          onClick={() => setMode(value)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AppContent() {
   // Task 4/7/11/13 spike 入口：?spike=latency | throughput | keyring | notify | render
   // （自动化由 OTTR_SPIKE 导航进来，见 src-tauri lib.rs setup）
   const spike = new URLSearchParams(window.location.search).get("spike");
@@ -58,6 +85,9 @@ function App() {
   return (
     <main className="container">
       <h1>Welcome to Tauri + React</h1>
+
+      {/* A10 主题切换（Task 8 设置页落地前的临时控件） */}
+      <ThemeSwitch />
 
       <div className="row">
         <a href="https://vite.dev" target="_blank">
@@ -303,4 +333,11 @@ function NotifySpikePage() {
   );
 }
 
-export default App;
+/** ThemeProvider 挂在最外层：spike 页与主页共享 data-theme（spike 测量页样式固定深底，不受影响）。 */
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}

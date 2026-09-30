@@ -7,6 +7,7 @@
 pub mod crypto;
 pub mod entities;
 pub mod master_key;
+pub mod settings;
 pub mod store;
 
 pub use crypto::{aad, Cipher};
@@ -16,7 +17,8 @@ pub use entities::{
     SnippetInput, Snippets, host_endpoint_key,
 };
 pub use master_key::MasterKey;
-pub use store::Vault;
+pub use settings::Settings;
+pub use store::{KeyMode, Vault};
 
 use std::fmt;
 
@@ -41,6 +43,15 @@ pub enum VaultError {
     InvalidInput(String),
     /// 请求的实体不存在（update/delete/reveal 等按 id/key 操作落空）。
     NotFound(String),
+    /// 库处于锁定态（主密码模式，Master Key 不在内存）——需要密钥的操作
+    /// （凭据密封/解密、主密码升级）拒绝执行。UI 层应对策略 = 弹锁定屏。
+    Locked,
+    /// 主密码错误（解锁校验器开封失败；与「校验器损坏」统一映射，防侧信道枚举）。
+    BadMasterPassword,
+    /// 主密钥不可达：库是 keyring 模式但系统钥匙链服务不可用（典型：Linux
+    /// Secret Service 在建库后消失）。密钥在打不开的钥匙链里，fallback 换钥
+    /// 等于销毁数据——显式报错，绝不静默换钥。
+    MasterKeyUnreachable,
     /// JSON 序列化/反序列化失败（tags/variables 等 JSON 列）。
     Json(serde_json::Error),
 }
@@ -68,6 +79,13 @@ impl fmt::Display for VaultError {
             ),
             Self::InvalidInput(msg) => write!(f, "invalid input: {msg}"),
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
+            Self::Locked => write!(f, "vault is locked; unlock with the master password to continue"),
+            Self::BadMasterPassword => write!(f, "master password is incorrect"),
+            Self::MasterKeyUnreachable => write!(
+                f,
+                "master key lives in the system keychain, which is currently unavailable; \
+                 restore the keychain service to open this vault"
+            ),
             Self::Json(e) => write!(f, "json error: {e}"),
         }
     }

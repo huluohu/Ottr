@@ -68,12 +68,20 @@ fn master_key_feeds_vault_crypto_roundtrip() {
     let storage = InMemoryStorage::new();
 
     let vault = ottr_vault::Vault::open_with(dir.path(), &storage).unwrap();
-    let blob = vault.crypto().seal(b"secret-bytes", "credentials:1:secret").unwrap();
+    let blob = vault
+        .cipher()
+        .unwrap()
+        .seal(b"secret-bytes", "credentials:1:secret")
+        .unwrap();
     drop(vault);
 
     let reopened = ottr_vault::Vault::open_with(dir.path(), &storage).unwrap();
     assert_eq!(
-        reopened.crypto().open(&blob, "credentials:1:secret").unwrap(),
+        reopened
+            .cipher()
+            .unwrap()
+            .open(&blob, "credentials:1:secret")
+            .unwrap(),
         b"secret-bytes"
     );
 }

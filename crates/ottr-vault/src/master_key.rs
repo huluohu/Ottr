@@ -4,7 +4,9 @@
 //! 无钥匙链条目时生成新 key 写回钥匙链（默认无感模式，用户零负担）。
 //! Linux 无 Secret Service 的 fallback（加密文件 + Argon2id 主密码，
 //! `Vault::unlock_with_password`）走 [`derive_key_argon2id`] 派生原语，
-//! 完整文件存储在主密码模式（Task 11 安全底座）落地。
+//! 完整文件存储在主密码模式（Task 11 安全底座）落地——见 [`keyring_available`]
+//! 与 `Vault::open_auto`（store.rs）：Linux 上运行时探测 Secret Service，
+//! 不可用即整库走主密码模式（库文件本身就是那份「加密文件」，无需第二层文件）。
 //!
 //! 可注入是纪律：真钥匙链操作在 CI/测试里不可靠，故 KeyStorage 为 trait——
 //! 生产 [`KeyringStorage`]、测试 [`InMemoryStorage`]，单测一律走内存实现。
@@ -116,6 +118,37 @@ pub fn derive_key_argon2id(password: &str, salt: &[u8]) -> Result<RawKey> {
         .hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| VaultError::Kdf(format!("argon2id derive failed: {e}")))?;
     Ok(key)
+}
+
+/// 系统钥匙链条目操作错误 → 是否「钥匙链服务不可用」（T11 Linux fallback 的
+/// 分类原语，纯函数便于跨平台单测）。分类（keyring v3 错误面）：
+/// * `NoStorageAccess` / `PlatformFailure`：后端不可达——Linux 无 Secret Service
+///   （gnome-keyring 未装/未起）时的典型报错 → `true`，调用方落主密码 fallback；
+/// * `NoEntry`：服务正常、只是还没有条目 → `false`（钥匙链可用，正常首装路径）；
+/// * `Invalid`/`BadEncoding` 等「条目内容有问题」：服务在、内容坏 → `false`
+///   （不是不可用，走 CorruptedMasterKey 显式报错，绝不静默 fallback 掩盖）。
+pub fn keyring_error_is_unavailable(e: &keyring::Error) -> bool {
+    matches!(
+        e,
+        keyring::Error::NoStorageAccess(_) | keyring::Error::PlatformFailure(_)
+    )
+}
+
+/// 运行时探测系统钥匙链是否可用（T11 Linux fallback 判定点）。探测动作 =
+/// 对 Master Key 条目做一次无副作用的 `get_password`：
+/// * `Ok(_)`（已有条目）或 `NoEntry`（服务正常、首装无条目）→ 可用；
+/// * [`keyring_error_is_unavailable`] 命中 → 不可用。
+/// 其余错误（条目损坏等）按「可用」返回——损坏要在正式 load 路径显式报错，
+/// 探测不做越界诊断（单一职责：只回答「服务通不通」）。
+pub fn keyring_available() -> bool {
+    let entry = match keyring::Entry::new(DEFAULT_SERVICE, MASTER_KEY_ACCOUNT) {
+        Ok(e) => e,
+        Err(e) => return !keyring_error_is_unavailable(&e),
+    };
+    match entry.get_password() {
+        Ok(_) | Err(keyring::Error::NoEntry) => true,
+        Err(e) => !keyring_error_is_unavailable(&e),
+    }
 }
 
 /// 系统钥匙链后端（keyring v3，平台 feature 见 Cargo.toml 三段 target 声明）。

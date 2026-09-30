@@ -319,7 +319,7 @@ impl Credentials {
         )?;
         let id = tx.last_insert_rowid();
         seal_fields(
-            vault.crypto(),
+            &vault.cipher()?,
             &tx,
             id,
             input.secret.as_deref(),
@@ -366,7 +366,7 @@ impl Credentials {
             )?;
         }
         seal_fields(
-            vault.crypto(),
+            &vault.cipher()?,
             &tx,
             id,
             patch.secret.as_deref(),
@@ -433,7 +433,7 @@ impl Credentials {
             return Ok(None);
         };
         let plain = vault
-            .crypto()
+            .cipher()?
             .open(&blob, &aad("credentials", id, field.aad_name()))?;
         String::from_utf8(plain)
             .map(Some)

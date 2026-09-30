@@ -11,7 +11,9 @@ description = "Ottr storage engine and key hierarchy (AES-256-GCM / keyring / SQ
 # 注：rusqlite 0.40 起移除了 fts5 feature——bundled 构建在 libsqlite3-sys build.rs
 # 无条件带 -DSQLITE_ENABLE_FTS5（已核对源码），trigram 生效由 store_test 的 smoke 断言兜底。
 rusqlite = { version = "0.40", features = ["bundled"] }
-aes-gcm = "0.11"
+# zeroize feature：AesGcm 内部 key schedule（AES 轮密钥 + GHash 子钥）ZeroizeOnDrop
+# ——T11 锁定语义（Master Key 内存清掉）依赖此 drop 路径，Task 3 时挂账未开。
+aes-gcm = { version = "0.11", features = ["zeroize"] }
 # Linux 无钥匙链 fallback / 主密码模式：Argon2id 派生（spec §3 密钥层级图）
 argon2 = "0.6"
 hex = "0.4"
@@ -20,7 +22,10 @@ rand = "0.10"
 # tags/variables 列以 JSON 文本落库（spec §3）。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# zeroize（Master Key 用后即清）暂不引入：spec §14 backlog，见 task-3-report 偏差记录
+# T11 锁定语义：自持密钥字节（派生中间值、盐、校验器明文）用后即清；
+# Cipher 内部 schedule 的清理由上行 aes-gcm zeroize feature 承担
+# （spec §14 backlog 的本任务内联部分，替代 Task 3 的暂不引入裁定）。
+zeroize = "1"
 
 # keyring 平台 store 按 target opt-in——照抄 src-tauri（Phase 0 Task 11 先例）：
 # v3 无默认 feature；sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）。

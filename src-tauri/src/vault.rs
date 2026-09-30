@@ -29,7 +29,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
     CredentialInput, CredentialPatch, Credentials, Host, HostGroups, HostInput, Hosts, KeyMode,
-    KnownHosts, SecretField, Settings, SnippetInput, Snippets, Vault, VaultError,
+    KnownHosts, Notification, NotificationInput, Notifications, SecretField, Settings,
+    SnippetInput, Snippets, Vault, VaultError,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -157,6 +158,41 @@ pub fn settings_set(
 ) -> CmdResult<()> {
     crate::security::validate_setting(&key, &value)?;
     cmd(Settings::set(&state.0, &key, &value))
+}
+
+// --- notifications（Task 12，spec §7 通知管线①应用内通知中心）-----------------
+// 明文面（通知无 *_enc 列，见 0005 迁移文件头）：**不过 ensure_unlocked 门卫**
+// ——锁定态下 session-closed 等事件也要能落表（与 settings 同一锁定语义）。
+// 事件源接线在前端 src/notify/core.ts（管线枢纽，spec §7 定案），Rust 只供表。
+
+#[tauri::command]
+pub fn notify_insert(
+    state: State<'_, VaultState>,
+    input: NotificationInput,
+) -> CmdResult<Notification> {
+    cmd(Notifications::insert(&state.0, &input))
+}
+
+/// `limit` 缺省 200（None → 200；通知中心一屏量级）。
+#[tauri::command]
+pub fn notify_list(state: State<'_, VaultState>, limit: Option<u32>) -> CmdResult<Vec<Notification>> {
+    cmd(Notifications::list(&state.0, limit.unwrap_or(200) as usize))
+}
+
+/// 标记已读：`id` 缺省 = 全部已读；未知 id 显式报错。
+#[tauri::command]
+pub fn notify_mark_read(state: State<'_, VaultState>, id: Option<i64>) -> CmdResult<usize> {
+    cmd(Notifications::mark_read(&state.0, id))
+}
+
+#[tauri::command]
+pub fn notify_clear(state: State<'_, VaultState>) -> CmdResult<usize> {
+    cmd(Notifications::clear(&state.0))
+}
+
+#[tauri::command]
+pub fn notify_unread_count(state: State<'_, VaultState>) -> CmdResult<i64> {
+    cmd(Notifications::unread_count(&state.0))
 }
 
 // --- hosts -----------------------------------------------------------------

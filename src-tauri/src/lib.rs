@@ -1735,6 +1735,12 @@ pub fn run() {
             vault::vault_upgrade_to_master_password,
             vault::settings_get,
             vault::settings_set,
+            // Task 12（spec §7）：通知管线①应用内通知中心（明文面，锁定可读写）
+            vault::notify_insert,
+            vault::notify_list,
+            vault::notify_mark_read,
+            vault::notify_clear,
+            vault::notify_unread_count,
             security::vault_copy_credential_secret,
             // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
             vault::hosts_list,

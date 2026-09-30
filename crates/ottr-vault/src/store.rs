@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 4;
+pub const LATEST_SCHEMA_VERSION: u32 = 5;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -95,12 +95,14 @@ impl KeyMode {
 /// 0001 引导（meta+settings）；0002 实体五表 + FTS5 trigram（Task 4）；
 /// 0003 hosts.username 登录用户名列（Task 5，spec §3 模型缺口补列）；
 /// 0004 known_hosts host 端点绑定（Task 8 义务①，防 MITM changed 强提醒）；
-/// history 表 Task 15、notifications Task 12 各自成迁移。
+/// 0005 notifications（Task 12，spec §7 应用内通知中心——明文面，无 *_enc 列，
+/// 不涉 scan_registry）；history 表 Task 15 单独成迁移。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
     (3, include_str!("../migrations/0003_hosts_username.sql")),
     (4, include_str!("../migrations/0004_known_hosts_host_binding.sql")),
+    (5, include_str!("../migrations/0005_notifications.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -413,6 +415,12 @@ impl Vault {
             // 读明文集中在内存即刻重封，不落任何中间文件；rowid = 各表
             // INTEGER PRIMARY KEY 的别名（AUTOINCREMENT 保证永不复用，AAD
             // 绑定值与实体层写入时一致）。
+            // 【T11 转交顺手项（Task 12）】读改写不再共用一条游标：SELECT 游标
+            // 未关闭时对同表 UPDATE，SQLite 对未访问行的可见性行为未定义
+            // （可能跳行/重访）。改为按 rowid 分批物化（每批 [`RESEAL_BATCH`]
+            // 行，语句作用域结束即关游标）后再逐行 UPDATE——UPDATE 不改 rowid，
+            // `rowid > ?` 分页键安全，内存占用恒有界。
+            const RESEAL_BATCH: i64 = 64;
             let mut done = 0usize;
             for (table, cols) in scan_plan() {
                 let col_list = cols
@@ -420,31 +428,57 @@ impl Vault {
                     .map(|c| c.column)
                     .collect::<Vec<_>>()
                     .join(", ");
-                let sql = format!("SELECT rowid, {col_list} FROM {table} ORDER BY rowid");
-                let mut stmt = tx.prepare(&sql)?;
-                let mut rows = stmt.query([])?;
-                while let Some(row) = rows.next()? {
-                    let row_id: i64 = row.get(0)?;
-                    for (idx, col) in cols.iter().enumerate() {
-                        let Some(blob) = row.get::<_, Option<Vec<u8>>>(idx + 1)? else {
-                            continue;
-                        };
-                        let aad = col.aad(row_id);
-                        let mut plain = old.open(&blob, &aad)?; // 旧钥坏 → 整体回滚
-                        let resealed = match new.seal(&plain, &aad) {
-                            Ok(b) => b,
-                            Err(e) => {
-                                plain.zeroize();
-                                return Err(e);
+                let sql = format!(
+                    "SELECT rowid, {col_list} FROM {table} WHERE rowid > ?1
+                     ORDER BY rowid LIMIT {RESEAL_BATCH}"
+                );
+                let mut last_rowid = 0i64;
+                loop {
+                    // 物化一批 (rowid, 密文…)；stmt/rows 随块结束 drop（游标已关），
+                    // 此后同表 UPDATE 是定义良好的语句序列。
+                    let batch: Vec<(i64, Vec<Option<Vec<u8>>>)> = {
+                        let mut stmt = tx.prepare(&sql)?;
+                        let mut rows = stmt.query(params![last_rowid])?;
+                        let mut batch = Vec::new();
+                        while let Some(row) = rows.next()? {
+                            let row_id: i64 = row.get(0)?;
+                            let mut blobs = Vec::with_capacity(cols.len());
+                            for idx in 0..cols.len() {
+                                blobs.push(row.get::<_, Option<Vec<u8>>>(idx + 1)?);
                             }
-                        };
-                        plain.zeroize();
-                        tx.execute(
-                            &format!("UPDATE {table} SET {} = ?1 WHERE rowid = ?2", col.column),
-                            params![resealed, row_id],
-                        )?;
-                        done += 1;
-                        progress(done, total.max(1) as usize);
+                            batch.push((row_id, blobs));
+                        }
+                        batch
+                    };
+                    if batch.is_empty() {
+                        break;
+                    }
+                    for (row_id, mut blobs) in batch {
+                        for (idx, col) in cols.iter().enumerate() {
+                            let Some(blob) = blobs[idx].take() else {
+                                continue;
+                            };
+                            let aad = col.aad(row_id);
+                            let mut plain = old.open(&blob, &aad)?; // 旧钥坏 → 整体回滚
+                            let resealed = match new.seal(&plain, &aad) {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    plain.zeroize();
+                                    return Err(e);
+                                }
+                            };
+                            plain.zeroize();
+                            tx.execute(
+                                &format!(
+                                    "UPDATE {table} SET {} = ?1 WHERE rowid = ?2",
+                                    col.column
+                                ),
+                                params![resealed, row_id],
+                            )?;
+                            done += 1;
+                            progress(done, total.max(1) as usize);
+                        }
+                        last_rowid = row_id;
                     }
                 }
             }

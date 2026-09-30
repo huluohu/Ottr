@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 5;
+pub const LATEST_SCHEMA_VERSION: u32 = 6;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -96,13 +96,15 @@ impl KeyMode {
 /// 0003 hosts.username 登录用户名列（Task 5，spec §3 模型缺口补列）；
 /// 0004 known_hosts host 端点绑定（Task 8 义务①，防 MITM changed 强提醒）；
 /// 0005 notifications（Task 12，spec §7 应用内通知中心——明文面，无 *_enc 列，
-/// 不涉 scan_registry）；history 表 Task 15 单独成迁移。
+/// 不涉 scan_registry）；0006 secrets 密封 KV（Task 13 AI BYOK，value_enc 已
+/// 登记 scan_registry）；history 表 Task 15 单独成迁移。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
     (3, include_str!("../migrations/0003_hosts_username.sql")),
     (4, include_str!("../migrations/0004_known_hosts_host_binding.sql")),
     (5, include_str!("../migrations/0005_notifications.sql")),
+    (6, include_str!("../migrations/0006_secrets.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -587,6 +589,12 @@ pub fn scan_registry() -> &'static [SecretColumn] {
             table: "credentials",
             column: "totp_secret_enc",
             field: "totp_secret",
+        },
+        // Task 13（0006）：AI provider api key 密封 KV
+        SecretColumn {
+            table: "secrets",
+            column: "value_enc",
+            field: "value",
         },
     ]
 }

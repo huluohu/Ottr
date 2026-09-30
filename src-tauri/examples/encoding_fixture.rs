@@ -22,7 +22,7 @@ use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
-use ottr_lib::{forward_pty_loop, SessionCloseReason, SessionCounters};
+use ottr_lib::{forward_pty_loop, SessionCloseReason, SessionCounters, TextTail};
 use ottr_term::encoding::{Encoding, StreamDecoder};
 use ottr_term::Decoder;
 
@@ -184,7 +184,8 @@ async fn run() -> Result<String, String> {
         Box::new(channel.make_writer()) as Box<dyn tokio::io::AsyncWrite + Unpin + Send>
     );
     let forward = tauri::async_runtime::spawn(async move {
-        forward_pty_loop(&mut channel, &on_data, &counters, &decoder, "fixture", &cancel_handle).await
+        let text_tail = TextTail::new();
+        forward_pty_loop(&mut channel, &on_data, &counters, &decoder, &text_tail, "fixture", &cancel_handle).await
     });
     let stage = Stage { decoded, writer };
 

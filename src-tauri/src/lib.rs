@@ -27,6 +27,8 @@ use tokio::sync::Notify;
 
 use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession};
 use ottr_term::encoding::{Encoding, StreamDecoder};
+use ottr_term::ring::RingBuffer;
+use ottr_term::stripper::Stripper;
 use ottr_vault::{Hosts, KnownHostState, KnownHosts};
 
 pub mod keys;
@@ -181,10 +183,50 @@ struct SessionEntry {
     /// 会话流式解码器（Task 9，A9）：合批 flush 后、IPC 前解码；
     /// `set_session_encoding` 即切即生效（残字节按旧编码结算回传前端）。
     decoder: Arc<Mutex<StreamDecoder>>,
+    /// 会话文本尾缓冲（Task 13 AI 诊断）：转发循环解码后的文本剥 ANSI 入环，
+    /// `session_tail` 命令按字节取尾（输出尾部 8KB 喂 AI）。
+    text_tail: Arc<TextTail>,
     /// 取消信号：`drop_session` 触发，转发循环 select 到即就地退出（进程端任务取消）。
     cancel: Arc<Notify>,
     /// FilePanel 复用的 SFTP 客户端（Task 10，懒开 + 缓存；表项移除即消亡）。
     sftp: SftpSlot,
+}
+
+/// 会话文本尾缓冲（Task 13）：Stripper（剥 ANSI，跨 chunk 状态）→ RingBuffer
+/// （默认 10_000 行）。与前端转发互不影响——ring 吃的是同一份解码后文本的
+/// 剥离副本；`session_tail` 按字节取尾（spec §6 输出尾部 8KB）。
+pub struct TextTail {
+    stripper: Mutex<Stripper>,
+    ring: Mutex<RingBuffer>,
+}
+
+impl Default for TextTail {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TextTail {
+    /// pub = example/驱动脚本直驱面（与 forward_pty_loop 同一约定）。
+    pub fn new() -> Self {
+        TextTail {
+            stripper: Mutex::new(Stripper::new()),
+            ring: Mutex::new(RingBuffer::new()),
+        }
+    }
+
+    /// 喂入一段解码后的终端文本（合批 flush 的剥离副本）。
+    fn push(&self, text: &[u8]) {
+        let mut ring = self.ring.lock().unwrap();
+        self.stripper.lock().unwrap().feed(text, &mut *ring);
+    }
+
+    /// 取最后 `limit` 字节（完整行对齐；UTF-8 校验由入环前的 Stripper 保证，
+    /// 此处 lossy 仅作纵深防御）。环空/limit=0 → 空串。
+    fn tail(&self, limit: usize) -> String {
+        let bytes = self.ring.lock().unwrap().tail_bytes(limit);
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
 }
 
 /// 每会话缓存的 [`SftpClient`]（懒开）。
@@ -620,6 +662,7 @@ async fn open_and_register(
     let counters = Arc::new(SessionCounters::default());
     let cancel = Arc::new(Notify::new());
     let decoder = Arc::new(Mutex::new(StreamDecoder::new(initial_encoding)));
+    let text_tail = Arc::new(TextTail::new());
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
     // session 进 Arc（Task 10）：会话表项持一份（SFTP/传输按 rustId 复用同一
@@ -634,6 +677,7 @@ async fn open_and_register(
             writer,
             counters: Arc::clone(&counters),
             decoder: Arc::clone(&decoder),
+            text_tail: Arc::clone(&text_tail),
             cancel: Arc::clone(&cancel),
             sftp: Arc::new(Mutex::new(None)),
         },
@@ -653,6 +697,7 @@ async fn open_and_register(
             &on_data,
             &counters,
             &decoder,
+            &text_tail,
             &session_id,
             &cancel,
         )
@@ -783,6 +828,20 @@ fn session_stats(state: State<'_, AppState>, id: String) -> Result<SessionStats,
         .get(&id)
         .map(|e| snapshot(&e.counters))
         .ok_or_else(|| format!("no such session: {id}"))
+}
+
+/// `session_tail` 单次取尾上限（1 MiB；诊断面 8KB，上限只防误传爆内存）。
+const TAIL_MAX_BYTES: u32 = 1 << 20;
+
+/// 会话输出尾部（Task 13，spec §6 AI 诊断取数面）：最后 `bytes` 字节的
+/// 剥 ANSI 纯文本（UTF-8，\n 分行）。未知会话显式报错（标签已关/重连中）。
+#[tauri::command]
+fn session_tail(state: State<'_, AppState>, id: String, bytes: u32) -> Result<String, String> {
+    let sessions = state.sessions.lock().unwrap();
+    let entry = sessions
+        .get(&id)
+        .ok_or_else(|| format!("no such session: {id}"))?;
+    Ok(entry.text_tail.tail(bytes.min(TAIL_MAX_BYTES) as usize))
 }
 
 /// 延迟测量取数通道：前端测完 POST JSON，这里合并 Rust 侧计数后落盘。
@@ -1477,11 +1536,14 @@ struct SessionClosedPayload {
 #[allow(unused_assignments)] // last_flush 的最后一次赋值在 break 路径上不被读取（预期）
 /// 合批转发循环。pub = 驱动脚本/example 直驱面（T9 真夹具三段验证走本函数，
 /// 与正式会话同一代码路径）；常规入口经 attach_*。
+/// `text_tail`（Task 13）：每批解码后的文本剥 ANSI 副本入会话尾缓冲
+/// （`session_tail` 命令的消费源，AI 诊断输出尾部 8KB）。
 pub async fn forward_pty_loop(
     channel: &mut russh::Channel<russh::client::Msg>,
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
     decoder: &Mutex<StreamDecoder>,
+    text_tail: &TextTail,
     session_id: &str,
     cancel: &Notify,
 ) -> SessionCloseReason {
@@ -1512,6 +1574,7 @@ pub async fn forward_pty_loop(
                 on_data,
                 counters,
                 decoder,
+                text_tail,
                 session_id,
             )
             .await
@@ -1604,6 +1667,7 @@ fn flush_decoder_tail(buf: &mut Vec<u8>, decoder: &Mutex<StreamDecoder>) {
 /// PTY 字节解码为 UTF-8 文本再发。批尾不完整序列滞留 Decoder（≤3B）随下批
 /// 转发；解码输出为空（全部滞留）时不发空帧。forwarded_bytes 按解码后文本
 /// 字节记账（有损变换 + 残字滞留，与 pty_read_bytes 不再逐批恒等，见字段文档）。
+#[allow(clippy::too_many_arguments)] // decoder/text_tail/session_id 皆必需面
 async fn flush_batch(
     buf: &mut Vec<u8>,
     deadline: &mut Option<Instant>,
@@ -1611,6 +1675,7 @@ async fn flush_batch(
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
     decoder: &Mutex<StreamDecoder>,
+    text_tail: &TextTail,
     session_id: &str,
 ) -> bool {
     *deadline = None;
@@ -1623,6 +1688,8 @@ async fn flush_batch(
     if text.is_empty() {
         return true; // 全部为批尾残字，滞留待下批（不丢，不发空帧）
     }
+    // 文本尾缓冲（Task 13）：剥离副本入环（AI 诊断取数面，不影响前端转发）
+    text_tail.push(text.as_bytes());
     let n = text.len();
     let payload = text.into_bytes();
     match on_data.send(InvokeResponseBody::Raw(payload)) {
@@ -1707,6 +1774,12 @@ pub fn run() {
             set_session_encoding,
             drop_session,
             session_stats,
+            session_tail,
+            // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
+            vault::secret_set,
+            vault::secret_get,
+            vault::secret_delete,
+            vault::secret_contains,
             // Task 10（A5）：SFTP 文件面板 + 传输队列
             sftp_list,
             sftp_realpath,
@@ -1931,6 +2004,7 @@ mod tests {
             Ok(())
         });
         let counters = SessionCounters::default();
+        let text_tail = TextTail::new();
         // 默认 UTF-8：GBK 批 → 替换符乱码（ASCII 段保真）
         let decoder = Mutex::new(StreamDecoder::default());
         let mut buf = GBK.to_vec();
@@ -1942,6 +2016,7 @@ mod tests {
             &chan,
             &counters,
             &decoder,
+            &text_tail,
             "t-utf8",
         ));
         assert!(ok);
@@ -1964,6 +2039,7 @@ mod tests {
             &chan,
             &counters,
             &decoder,
+            &text_tail,
             "t-gbk",
         ));
         assert!(ok);
@@ -1983,6 +2059,7 @@ mod tests {
             &chan,
             &counters,
             &decoder,
+            &text_tail,
             "t-torn",
         ));
         assert!(ok);
@@ -1995,6 +2072,7 @@ mod tests {
             &chan,
             &counters,
             &decoder,
+            &text_tail,
             "t-torn2",
         ));
         assert!(ok);
@@ -2002,5 +2080,55 @@ mod tests {
             String::from_utf8(captured.lock().unwrap().clone()).unwrap(),
             "中!"
         );
+    }
+
+    // --- Task 13（AI 诊断）：TextTail 尾缓冲（剥 ANSI 副本入环） ---------------
+
+    /// flush_batch 把解码后文本剥 ANSI 推进 TextTail：session_tail 的取数面。
+    /// GBK 批解出的中文 + ANSI 颜色序列 → 尾缓冲里是纯文本。
+    #[test]
+    fn flush_batch_feeds_stripped_text_into_text_tail() {
+        use tauri::ipc::{Channel, InvokeResponseBody};
+
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = Arc::clone(&captured);
+        let chan = Channel::new(move |body: InvokeResponseBody| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                sink.lock().unwrap().extend_from_slice(&bytes);
+            }
+            Ok(())
+        });
+        let counters = SessionCounters::default();
+        let text_tail = TextTail::new();
+        let decoder = Mutex::new(StreamDecoder::default());
+        let mut deadline = Some(Instant::now());
+
+        // 含 OSC133（133;D;1）+ CSI 颜色的批：前端照常转发（OSC 由 xterm 消费），
+        // 尾缓冲里只剩纯文本行。
+        let payload = b"\x1b]133;D;1\x07ls: cannot access '/x'\n\x1b[31mExit 1\x1b[0m\n";
+        let mut buf = payload.to_vec();
+        let ok = tauri::async_runtime::block_on(flush_batch(
+            &mut buf,
+            &mut deadline,
+            4096,
+            &chan,
+            &counters,
+            &decoder,
+            &text_tail,
+            "t-tail",
+        ));
+        assert!(ok);
+        // 前端转发面不受影响（剥 ANSI 前的原样解码文本）
+        let forwarded = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+        assert!(forwarded.contains("133;D;1"));
+        // 尾缓冲：纯文本、无转义序列
+        let tail = text_tail.tail(8192);
+        assert_eq!(tail, "ls: cannot access '/x'\nExit 1");
+        assert!(!tail.contains('\x1b'));
+        // 字节口径截尾
+        assert_eq!(text_tail.tail(6), "Exit 1");
+        // 空环 / limit=0
+        assert_eq!(TextTail::new().tail(100), "");
+        assert_eq!(text_tail.tail(0), "");
     }
 }

@@ -55,6 +55,10 @@ pub fn clipboard_clear_secs_from(raw: Option<u64>) -> Option<u64> {
     }
 }
 
+/// AI 单请求 token 上限（Task 13 成本护栏）：写入侧上限 8192（缺省 1024，
+/// 前端读侧兜底）。
+pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
+
 /// settings_set 的已知安全键校验（越界/类型错显式拒绝，不静默收敛——写入侧
 /// 拒绝比读取侧收敛更能暴露前端 bug；读取侧仍收敛兜底，见 *_from）。
 pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), String> {
@@ -70,6 +74,15 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
     match key {
         SETTING_AUTOLOCK => u64_in_range(value, AUTOLOCK_MAX_MINUTES),
         SETTING_CLIPBOARD => u64_in_range(value, CLIPBOARD_MAX_SECS),
+        // Task 13：AI 成本护栏（单请求 max_tokens 上限）与诊断自动触发开关
+        "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
+        "ai.enabled" => {
+            if value.is_boolean() {
+                Ok(())
+            } else {
+                Err("ai.enabled expects a boolean".to_string())
+            }
+        }
         "ui.theme" => {
             let s = value
                 .as_str()

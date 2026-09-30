@@ -8,6 +8,7 @@ pub mod crypto;
 pub mod entities;
 pub mod master_key;
 pub mod notifications;
+pub mod secrets;
 pub mod settings;
 pub mod store;
 
@@ -19,6 +20,7 @@ pub use entities::{
 };
 pub use master_key::MasterKey;
 pub use notifications::{Notification, NotificationInput, Notifications};
+pub use secrets::Secrets;
 pub use settings::Settings;
 pub use store::{KeyMode, Vault};
 

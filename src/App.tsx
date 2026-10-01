@@ -27,6 +27,7 @@ import { ForwardPanel } from "./forward/ForwardPanel";
 import { JumpChainEditor } from "./hosts/JumpChainEditor";
 import { DiagnosePanel } from "./ai/DiagnosePanel";
 import { AISettings } from "./ai/AISettings";
+import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
 import { setAiSettingsOpener } from "./ai/aiStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
@@ -123,6 +124,9 @@ function HomeLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // T15：⌘R 历史搜索面板（registry history.search；终端内放行 PTY 见 registry）
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Phase 2 B1（Task 6）：⌘J NL→命令输入条（registry ai.nl2cmd；全局直呼，
+  // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
+  const [nlOpen, setNlOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
@@ -198,6 +202,13 @@ function HomeLayout() {
           break;
         case "history.search":
           setHistoryOpen((v) => !v);
+          break;
+        case "ai.nl2cmd":
+          // 打开 = 清场 + 聚焦 pane 的 cwd 锚点（OSC7 活值）；关闭 = 顺带清场
+          // （在途请求 abort，panel 卸载后 store 不留尾巴）。副作用在 updater
+          // 外（StrictMode 下 updater 可能双调）。
+          nlBegin();
+          setNlOpen((v) => !v);
           break;
         case "hosts.new":
           setForm({ mode: "new", groupId: null });
@@ -525,6 +536,13 @@ function HomeLayout() {
           setHistoryOpen(false);
         }}
         plat={PLATFORM}
+      />
+      {/* Phase 2 B1（Task 6）⌘J NL→命令输入条：底部锚定；生成结果走公共
+          InsertRow 的 danger 三档确认插终端（聚焦 pane 的 rustId 面板内解析）。 */}
+      <NLCommandPanel
+        open={nlOpen}
+        onClose={() => setNlOpen(false)}
+        onOpenSettings={() => setAiSettingsOpen(true)}
       />
     </div>
   );

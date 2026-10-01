@@ -237,3 +237,45 @@ describe("终端聚焦守卫（matchActionEvent inTerminal）", () => {
     container.remove();
   });
 });
+
+// Phase 2 B1（Task 6）：⌘J NL→命令——「全局直呼」裁定（简报）：呼出键与 ⌘K
+// 同类，终端聚焦时**也命中**（终端里恰恰是主使用场景）；⌘K/⌘J 是 terminalSafe
+// 守卫仅有的两个无 Shift 例外。
+describe("T6/B1：ai.nl2cmd（⌘J 全局直呼）", () => {
+  it("三平台键位：mac ⌘J / win/linux Ctrl+J", () => {
+    expect(shortcutLabel("ai.nl2cmd", "mac")).toBe("⌘J");
+    expect(shortcutLabel("ai.nl2cmd", "win")).toBe("Ctrl+J");
+    expect(shortcutLabel("ai.nl2cmd", "linux")).toBe("Ctrl+J");
+  });
+
+  it("终端内也命中（⌘J 非 Shift 系，走 ⌘K 同款呼出键例外）", () => {
+    expect(matchActionEvent(keyEvent({ key: "j", metaKey: true }), "mac", true)).toBe("ai.nl2cmd");
+    expect(matchActionEvent(keyEvent({ key: "j", ctrlKey: true }), "win", true)).toBe("ai.nl2cmd");
+    expect(matchActionEvent(keyEvent({ key: "j", ctrlKey: true }), "linux", true)).toBe("ai.nl2cmd");
+    // 对照：终端外照常命中
+    expect(matchActionEvent(keyEvent({ key: "j", metaKey: true }), "mac", false)).toBe("ai.nl2cmd");
+    expect(matchActionEvent(keyEvent({ key: "j", ctrlKey: true }), "win", false)).toBe("ai.nl2cmd");
+  });
+
+  it("Shift/Alt 修饰严格匹配：⌘⇧J 不命中（防与未来分屏类键位串扰）", () => {
+    expect(matchActionEvent(keyEvent({ key: "J", metaKey: true, shiftKey: true }), "mac")).toBeNull();
+    expect(matchActionEvent(keyEvent({ key: "j", metaKey: true, altKey: true }), "mac")).toBeNull();
+  });
+
+  it("无键位冲突；labelKey 双语词典在位（⌘K 面板条目渲染面）", async () => {
+    for (const p of ["mac", "win", "linux"] as const) {
+      expect(findConflicts(p)).toEqual([]);
+    }
+    const def = ACTIONS.find((a) => a.id === "ai.nl2cmd");
+    expect(def).toBeTruthy();
+    const { default: zh } = await import("../i18n/zh-CN.json");
+    const { default: en } = await import("../i18n/en-US.json");
+    const labelKey = def!.labelKey.split(".").slice(1);
+    let node: Record<string, unknown> = zh.ai as Record<string, unknown>;
+    for (const k of labelKey) node = node[k] as Record<string, unknown>;
+    expect(typeof node).toBe("string");
+    let enNode: Record<string, unknown> = en.ai as Record<string, unknown>;
+    for (const k of labelKey) enNode = enNode[k] as Record<string, unknown>;
+    expect(typeof enNode).toBe("string");
+  });
+});

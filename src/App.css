@@ -705,6 +705,41 @@ button[data-active="true"] {
   user-select: none;
 }
 
+/* --- Phase 2 B1 ⌘J NL→命令输入条：palette 骨架，锚定底部（输入条语义：
+       视线不离开终端下沿；交互复用 overlay 范式） --- */
+.palette-overlay.nl2cmd-overlay {
+  align-items: flex-end;
+  padding: 16px 16px 12vh;
+}
+.palette.nl2cmd {
+  width: min(680px, 100%);
+}
+.nl-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nl-input-row .palette-input {
+  flex: 1;
+  width: auto;
+}
+.nl2cmd-stream {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.nl2cmd-result {
+  margin-top: 8px;
+}
+
 /* --- A12 自绘标题栏（Task 14，win/linux；mac 不渲染走原生） --- */
 .titlebar {
   position: relative;

@@ -28,6 +28,7 @@ export type ActionId =
   | "lang.toggle"
   | "session.splitRight"
   | "session.splitDown"
+  | "ai.nl2cmd"
   | "vault.lock"
   | "app.quit";
 
@@ -46,9 +47,9 @@ export interface ActionDef {
   /** 绑定键位；缺省 = 无全局键（仅面板/菜单可及）。 */
   keys?: KeysPerPlatform;
   /** 终端聚焦守卫候选标记（评审 M-4，fix round 1）：事件 target 在终端容器内
-   * 时，只有「带此标记 **且** 键位带 Shift」的动作可被拦截（⌘K 唯一例外，
-   * 见 terminalSafeHit）——终端第一公民是 Ctrl 系控制键（EOF = Ctrl+D），裸
-   * Ctrl 系键位永不入表。防未来新增键重蹈「全局劫持终端输入」的覆辙。 */
+   * 时，只有「带此标记 **且** 键位带 Shift」的动作可被拦截（⌘K/⌘J 面板呼出键
+   * 例外，见 terminalSafeHit）——终端第一公民是 Ctrl 系控制键（EOF = Ctrl+D），
+   * 裸 Ctrl 系键位永不入表。防未来新增键重蹈「全局劫持终端输入」的覆辙。 */
   terminalSafe?: boolean;
 }
 
@@ -112,6 +113,19 @@ export const ACTIONS: readonly ActionDef[] = [
     id: "session.splitDown",
     labelKey: "terminal.splitDown",
     keys: { mac: "CmdOrCtrl+Shift+D" },
+    terminalSafe: true,
+  },
+  {
+    // 【Phase 2 B1（Task 6）⌘J 裁定：全局直呼】NL→命令输入条是**呼出键**，
+    // 与 ⌘K 同类（见 terminalSafeHit 例外）：终端聚焦时也命中——用户正盯着
+    // 提示符想「这步该敲什么」，此刻恰恰要呼出。mac ⌘J 无终端冲突；win/linux
+    // Ctrl+J 是 readline accept-line（= Enter），此处为裁定换取的劫持面，
+    // 换来的是与 ⌘K 完全对称的「随处可呼」语义（代价已在评审记录挂账）。
+    // 刻意不进 mac 原生菜单（同 history.search 教训：菜单 chord 绕过
+    // matchActionEvent 守卫；本键恰恰要守卫放行，无菜单反而语义纯净）。
+    id: "ai.nl2cmd",
+    labelKey: "ai.nl2cmd.title",
+    keys: { mac: "CmdOrCtrl+J", win: "Ctrl+J", linux: "Ctrl+J" },
     terminalSafe: true,
   },
   { id: "vault.lock", labelKey: "security.lockNow" },
@@ -200,9 +214,10 @@ export function matchesAccelerator(e: KeyboardEvent, accel: string): boolean {
 
 /** 遍历总表匹配键盘事件（全局监听入口）；命中返回 ActionId。
  * `inTerminal`（评审 M-4 终端聚焦守卫）：事件 target 在终端容器内时，只放行
- * 「terminalSafe 且键位带 Shift」的分屏键与 ⌘K 例外，其余一律 null——调用方对
- * null 不 preventDefault，击键原样到达 PTY。mac ⌘D 不带 Shift 故被前端守卫
- * 拦下：无碍——mac 菜单 chord 在 AppKit 层先于 webview 消费，⌘D 分屏走菜单路径。 */
+ * 「terminalSafe 且键位带 Shift」的分屏键与 ⌘K/⌘J 面板呼出键例外，其余一律
+ * null——调用方对 null 不 preventDefault，击键原样到达 PTY。mac ⌘D 不带 Shift
+ * 故被前端守卫拦下：无碍——mac 菜单 chord 在 AppKit 层先于 webview 消费，
+ * ⌘D 分屏走菜单路径。 */
 export function matchActionEvent(
   e: KeyboardEvent,
   plat: Platform,
@@ -218,12 +233,17 @@ export function matchActionEvent(
   return null;
 }
 
-/** 终端内放行判定：terminalSafe 标记 + 键位带 Shift（⌘K 唯一例外）。
+/** 终端内放行判定：terminalSafe 标记 + 键位带 Shift（⌘K/⌘J 面板呼出键例外）。
  * 双条件缺一不可——标记防新增裸 Ctrl 键重蹈覆辙，Shift 条件把「带 Shift 的
- * 分屏键」语义钉在数据上而非注释里。 */
+ * 分屏键」语义钉在数据上而非注释里；palette.toggle / ai.nl2cmd 是唯一的
+ * 无 Shift 例外：呼出键必须随处可及（终端内恰恰是主使用场景）。 */
 function terminalSafeHit(def: ActionDef, accel: string): boolean {
   if (!def.terminalSafe) return false;
-  return parseAccelerator(accel).shift || def.id === "palette.toggle";
+  return (
+    parseAccelerator(accel).shift ||
+    def.id === "palette.toggle" ||
+    def.id === "ai.nl2cmd"
+  );
 }
 
 /** 终端聚焦判定（App 全局监听用）：事件 target 落在 `[data-terminal]` 容器内。

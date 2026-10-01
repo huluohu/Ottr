@@ -24,6 +24,8 @@ export interface MenuContext {
   /** 终端当前有选中内容（复制项可用性）。 */
   hasSelection: boolean;
   copyOnSelect: boolean;
+  /** 智能补全开关（Task 8 B8；Tab 驱动，无快捷键）。 */
+  completionEnabled: boolean;
   /** 当前会话编码覆盖（"" = 未设置）。 */
   encoding: string;
 }
@@ -31,7 +33,7 @@ export interface MenuContext {
 /**
  * 菜单模型（简报：复制/粘贴/搜索/清屏/编码子菜单 + 分屏/选择即复制）。
  * id 一览：copy paste search clear encoding?（含子菜单）splitRight splitDown
- * closePane copyOnSelect。
+ * closePane copyOnSelect completion。
  */
 export function buildContextMenu(ctx: MenuContext, t: TFunction): ContextMenuItem[] {
   return [
@@ -56,27 +58,36 @@ export function buildContextMenu(ctx: MenuContext, t: TFunction): ContextMenuIte
       })),
     },
     { id: "copyOnSelect", label: t("terminal.copyOnSelect"), checked: ctx.copyOnSelect },
+    { id: "completion", label: t("terminal.completion"), checked: ctx.completionEnabled },
   ];
 }
 
-// --- 会话级终端设置（选择即复制 / 编码覆盖；localStorage 过渡，settings 表迁移点） ---
+// --- 会话级终端设置（选择即复制/智能补全 / 编码覆盖；localStorage 过渡，settings 表迁移点） ---
 
 const SETTINGS_KEY = "ottr.settings.terminal";
 
 export interface TerminalSettings {
   copyOnSelect: boolean;
+  /** 智能补全（Task 8 B8）：默认开（简报裁定 completion.enabled 默认 true）。 */
+  completionEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: TerminalSettings = { copyOnSelect: false };
+const DEFAULT_SETTINGS: TerminalSettings = { copyOnSelect: false, completionEnabled: true };
 
 export function loadTerminalSettings(): TerminalSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<TerminalSettings>;
-      if (typeof parsed.copyOnSelect === "boolean") {
-        return { copyOnSelect: parsed.copyOnSelect };
-      }
+      // 字段独立回退（旧存量只有 copyOnSelect）：缺省各自落默认值
+      return {
+        copyOnSelect:
+          typeof parsed.copyOnSelect === "boolean" ? parsed.copyOnSelect : DEFAULT_SETTINGS.copyOnSelect,
+        completionEnabled:
+          typeof parsed.completionEnabled === "boolean"
+            ? parsed.completionEnabled
+            : DEFAULT_SETTINGS.completionEnabled,
+      };
     }
   } catch {
     // 损坏/不可用 → 默认值

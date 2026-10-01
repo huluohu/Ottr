@@ -18,7 +18,6 @@
 // 远端回显时差：onData 时本地回显未必到达，控制器维护 pending 增量（乐观击键
 // 影子），refresh 时与缓冲现值对账（endsWith 即丢弃）。引擎数据源 = 当前行
 // 文本（buffer.getLine 提取，按单元格宽换算列→字符索引，CJK 宽字符不漂移）。
-import type { IDisposable } from "@xterm/xterm";
 import { stripPromptPrefix } from "../history/format";
 
 // ---------------------------------------------------------------------------
@@ -207,14 +206,14 @@ export function suggest(
 // 双变参数，同 CommandWatch MinimalTerm 惯例）
 // ---------------------------------------------------------------------------
 
-export interface GhostCell {
-  chars: string;
-  width: number;
+export interface GhostCellView {
+  getChars(): string;
+  getWidth(): number;
 }
 
 export interface GhostBufferLine {
   translateToString(trimRight: boolean): string;
-  getCell(x: number, cell: GhostCell): GhostCell | undefined;
+  getCell(x: number): GhostCellView | undefined;
 }
 
 export interface GhostMarker {
@@ -300,13 +299,14 @@ export function clipToCells(text: string, maxCells: number): string {
 export function lineTextUpToColumn(line: GhostBufferLine, colX: number): string {
   let text = "";
   let width = 0;
-  const cell: GhostCell = { chars: "", width: 1 };
   for (let x = 0; width < colX && x < 5000; x++) {
-    const got = line.getCell(x, cell);
-    if (!got) break;
-    text += got.chars === "" ? " " : got.chars;
-    if (got.width === 0) continue; // 组合字符：不占列
-    width += got.width;
+    const cell = line.getCell(x);
+    if (!cell) break;
+    const chars = cell.getChars();
+    text += chars === "" ? " " : chars;
+    const w = cell.getWidth();
+    if (w === 0) continue; // 组合字符：不占列
+    width += w;
   }
   return text;
 }
@@ -496,5 +496,3 @@ function isPrintable(data: string): boolean {
   }
   return true;
 }
-
-export type { IDisposable };

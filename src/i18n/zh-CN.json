@@ -249,6 +249,7 @@
     "hostKeyRejected": "主机密钥确认未通过，未连接",
     "reconnectHint": "双击左侧主机可发起连接",
     "copyOnSelect": "选择即复制",
+    "completion": "输入补全建议（Tab 采纳）",
     "searchPlaceholder": "搜索终端内容…",
     "searchPrev": "上一个",
     "searchNext": "下一个",

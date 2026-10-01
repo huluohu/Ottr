@@ -22,6 +22,13 @@
 // controller（传输态吞键入，Ctrl-C 即中止）；文件选择走 tauri-plugin-dialog，
 // 本地文件 IO 走 trzsz fs 垫片（trzsz/fsShim.ts → commands/trzsz_fs.rs）。终端区
 // 拖拽文件 → 询问「trz 上传 / 插入路径」（TrzszDropDialog）。
+//
+// 智能补全（Phase 2 Task 8，B8）：fish 风格 ghost text——GhostController 挂在
+// onData **前置位**（先于 trzsz）：有 ghost 时 Tab 拦截采纳（补全剩余文本走
+// writeToSession 同一出口）、Esc 忽略；无 ghost 一切透传 shell。渲染是 xterm
+// decoration 纯视觉层（PTY 零污染）；建议来源 = 历史缓存（history/cache.ts，
+// history_search 空 query 复用 + onCommandFinished 增量）+ 内置命令表
+// （terminal/completion.ts 纯引擎）。开关在右键菜单（默认开）。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -46,6 +53,8 @@ import {
   type SearchResultSummary,
 } from "./SearchAddon";
 import { createTrzszController, type TrzszController } from "./trzsz/TrzszController";
+import { GhostController } from "./completion";
+import { completionHistory } from "../history/cache";
 import {
   buildContextMenu,
   loadTerminalSettings,
@@ -213,6 +222,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
   const trzszRef = useRef<TrzszController | null>(null);
+  const ghostRef = useRef<GhostController | null>(null);
   const prevStatus = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
@@ -262,20 +272,22 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     applyTermTheme(term, resolved);
     // trzsz 过滤器（B10 下半）：先于 sink 装配——PTY 出口与击键都经它中转。
     // write_session 沿用原 onData 体（rustId 实时读 store；重连自动跟随）。
+    // 击键出口单点化：trzsz 透传与 ghost Tab 采纳共用同一写入闭包。
+    const writeToSession = (input: string | Uint8Array): void => {
+      const session = useSessionStore
+        .getState()
+        .sessions.find((x) => x.id === sessionId);
+      if (!session?.rustId) return; // 未连接：击键落空（横幅已提示状态）
+      const bytes =
+        typeof input === "string" ? new TextEncoder().encode(input) : input;
+      void invoke("write_session", {
+        id: session.rustId,
+        bytes: Array.from(bytes),
+      }).catch(() => {});
+    };
     const trzsz = createTrzszController({
       writeToTerminal: (output) => term.write(output),
-      sendToServer: (input) => {
-        const session = useSessionStore
-          .getState()
-          .sessions.find((x) => x.id === sessionId);
-        if (!session?.rustId) return; // 未连接：击键落空（横幅已提示状态）
-        const bytes =
-          typeof input === "string" ? new TextEncoder().encode(input) : input;
-        void invoke("write_session", {
-          id: session.rustId,
-          bytes: Array.from(bytes),
-        }).catch(() => {});
-      },
+      sendToServer: writeToSession,
       chooseSendFiles: async () => {
         try {
           const { open } = await import("@tauri-apps/plugin-dialog");
@@ -331,10 +343,16 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // T13 报错即诊：OSC133 命令边界监听（shell 集成片段发 A/C/D 标记）；
     // D;code≠0 → aiStore.onCommandFailed（ai.enabled 总开关在 store 内现读）。
     // T15 历史入库：onCommandFinished（全量命令完成，含 exit 0）→ history_insert
-    // （fire-and-forget，见 src/history/record.ts）。
+    // （fire-and-forget，见 src/history/record.ts）。B8：同一事件流增量喂补全缓存。
+    const firstSession = useSessionStore
+      .getState()
+      .sessions.find((x) => x.id === sessionId);
+    if (firstSession) void completionHistory.ensure(firstSession.hostId); // 补全历史冷启动拉取
     let watch: IDisposable | null = null;
     try {
       watch = createCommandWatch(term, {
+        // B8：新提示符 = 旧输入行消失，ghost 全量清态
+        onPromptStart: () => ghostRef.current?.reset(),
         onCommandDone: ({ exitCode, command }) => {
           const session = useSessionStore
             .getState()
@@ -357,14 +375,34 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           if (!session) return;
           noteCwd(sessionId, ev.cwd); // B1 ⌘J：OSC7 cwd 活值记账（null 不覆盖）
           recordCommand({ hostId: session.hostId, sessionId }, ev);
+          completionHistory.append(session.hostId, ev.command); // B8：MRU 喂缓存
         },
       });
     } catch {
       // parser 不可用（测试环境极简 fake）不阻塞终端装配
     }
 
-    // 击键 → trzsz 过滤器 → PTY（传输态库吞键入；空闲透传原路写入）
+    // B8 智能补全（fish 风格 ghost text）：decoration 视觉层 + onData 前置按键
+    // 语义（有 ghost 拦 Tab 采纳/Esc 忽略/打字刷新）；采纳写入走 writeToSession
+    // 同一出口。禁用态一切透传零渲染（PTY 纯净性，completion.test.ts 钉死）。
+    const ghost = new GhostController(term, {
+      sources: () => {
+        const s = useSessionStore
+          .getState()
+          .sessions.find((x) => x.id === sessionId);
+        return s
+          ? completionHistory.sources(s.hostId)
+          : { hostHistory: [], globalHistory: [] };
+      },
+      enabled: () => loadTerminalSettings().completionEnabled,
+      onAccept: writeToSession,
+    });
+    ghost.setColor(terminalThemes[resolved].brightBlack ?? "#808080"); // 语义令牌：ANSI 注释灰
+    ghostRef.current = ghost;
+
+    // 击键 → ghost 前置语义 → trzsz 过滤器 → PTY（传输态库吞键入；空闲透传）
     const onData = term.onData((d) => {
+      if (ghost.handleData(d)) return; // Tab 采纳/Esc 忽略已消费，不进 PTY
       trzsz.processTerminalInput(d);
     });
 
@@ -394,6 +432,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       onSelectionChange.dispose();
       onData.dispose();
       watch?.dispose();
+      ghost.dispose();
+      ghostRef.current = null;
       trzsz.dispose();
       trzszRef.current = null;
       void revokeTrzsz(); // 会话关闭兜底撤销（I-1：授权不活过终端实例）
@@ -410,6 +450,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   // --- 主题跟随（resolved 驱动：手动切换与 system 模式的 OS 切换都实时生效） ---
   useEffect(() => {
     if (termRef.current) applyTermTheme(termRef.current, resolved);
+    // B8：ghost 灰字随主题换（ANSI brightBlack = 注释灰语义令牌）
+    ghostRef.current?.setColor(terminalThemes[resolved].brightBlack ?? "#808080");
   }, [resolved]);
 
   // --- 粘贴拦截（宿主捕获阶段，先于 xterm 的 textarea 监听） ---
@@ -470,6 +512,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
+    ghostRef.current?.reset(); // 状态迁移（断连/重连中）输入行语义失效 → 清 ghost
     const first = prevStatus.current === null;
     prevStatus.current = status;
     if (first && status === "connecting") {
@@ -527,6 +570,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const ctx: MenuContext = {
       hasSelection: term?.hasSelection() ?? false,
       copyOnSelect: loadTerminalSettings().copyOnSelect,
+      completionEnabled: loadTerminalSettings().completionEnabled,
       encoding: useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.encoding ?? "utf-8",
     };
     const width = 220;
@@ -585,7 +629,17 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         store.closePane(sessionId);
         break;
       case "copyOnSelect":
-        saveTerminalSettings({ copyOnSelect: !loadTerminalSettings().copyOnSelect });
+        // 设置全量覆写：先读后写（新字段不丢，Task 8 起 TerminalSettings 多字段）
+        saveTerminalSettings({
+          ...loadTerminalSettings(),
+          copyOnSelect: !loadTerminalSettings().copyOnSelect,
+        });
+        break;
+      case "completion":
+        saveTerminalSettings({
+          ...loadTerminalSettings(),
+          completionEnabled: !loadTerminalSettings().completionEnabled,
+        });
         break;
       default:
         if (id.startsWith("encoding:")) {

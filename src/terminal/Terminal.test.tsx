@@ -98,7 +98,7 @@ afterEach(() => {
   cleanup();
   useSessionStore.setState({ sessions: [], activeId: null, trees: {}, activePane: {}, searchSessionId: null });
   localStorage.clear();
-  saveTerminalSettings({ copyOnSelect: false });
+  saveTerminalSettings({ copyOnSelect: false, completionEnabled: true });
 });
 
 describe("PasteConfirmDialog（粘贴确认弹层）", () => {
@@ -130,7 +130,7 @@ describe("PasteConfirmDialog（粘贴确认弹层）", () => {
 describe("buildContextMenu（菜单模型）", () => {
   it("无选中：复制禁用；编码子菜单当前项打勾；选择即复制状态透传", () => {
     const items = buildContextMenu(
-      { hasSelection: false, copyOnSelect: true, encoding: "gbk" },
+      { hasSelection: false, copyOnSelect: true, completionEnabled: true, encoding: "gbk" },
       tStub,
     );
     const copy = items.find((i) => i.id === "copy")!;
@@ -142,7 +142,7 @@ describe("buildContextMenu（菜单模型）", () => {
   });
 
   it("有选中：复制可用；简报菜单面齐备（复制/粘贴/搜索/清屏/编码）", () => {
-    const items = buildContextMenu({ hasSelection: true, copyOnSelect: false, encoding: "utf-8" }, tStub);
+    const items = buildContextMenu({ hasSelection: true, copyOnSelect: false, completionEnabled: false, encoding: "utf-8" }, tStub);
     expect(items.find((i) => i.id === "copy")!.disabled).toBe(false);
     for (const id of ["copy", "paste", "search", "clear", "encoding", "splitRight", "splitDown", "closePane"]) {
       expect(items.some((i) => i.id === id), `缺菜单项 ${id}`).toBe(true);
@@ -153,7 +153,7 @@ describe("buildContextMenu（菜单模型）", () => {
 describe("ContextMenuView（菜单渲染）", () => {
   it("点击菜单项上抛动作 id；编码子菜单点开并选择", () => {
     const onAction = vi.fn();
-    const items = buildContextMenu({ hasSelection: true, copyOnSelect: false, encoding: "utf-8" }, tStub);
+    const items = buildContextMenu({ hasSelection: true, copyOnSelect: false, completionEnabled: false, encoding: "utf-8" }, tStub);
     render(<ContextMenuView x={10} y={10} items={items} onAction={onAction} testPrefix="t1" />);
     expect(screen.getByTestId("ctx-menu-t1")).toBeTruthy();
     fireEvent.click(screen.getByTestId("ctx-copy"));
@@ -166,7 +166,7 @@ describe("ContextMenuView（菜单渲染）", () => {
 
   it("禁用项点击不上抛", () => {
     const onAction = vi.fn();
-    const items = buildContextMenu({ hasSelection: false, copyOnSelect: false, encoding: "utf-8" }, tStub);
+    const items = buildContextMenu({ hasSelection: false, copyOnSelect: false, completionEnabled: false, encoding: "utf-8" }, tStub);
     render(<ContextMenuView x={0} y={0} items={items} onAction={onAction} testPrefix="t2" />);
     const copy = screen.getByTestId("ctx-copy") as HTMLButtonElement;
     expect(copy.disabled).toBe(true);
@@ -200,8 +200,38 @@ describe("SessionTerminal 右键唤起菜单（集成）", () => {
 
   it("设置读写：copyOnSelect 开关持久化", () => {
     expect(loadTerminalSettings().copyOnSelect).toBe(false);
-    saveTerminalSettings({ copyOnSelect: true });
+    saveTerminalSettings({ copyOnSelect: true, completionEnabled: true });
     expect(loadTerminalSettings().copyOnSelect).toBe(true);
+  });
+});
+
+describe("智能补全开关（Task 8 B8）", () => {
+  it("菜单模型：completion 项在位且 checked 透传（默认开）", () => {
+    const items = buildContextMenu(
+      { hasSelection: false, copyOnSelect: false, completionEnabled: true, encoding: "utf-8" },
+      tStub,
+    );
+    const item = items.find((i) => i.id === "completion")!;
+    expect(item).toBeTruthy();
+    expect(item.checked).toBe(true);
+    const off = buildContextMenu(
+      { hasSelection: false, copyOnSelect: false, completionEnabled: false, encoding: "utf-8" },
+      tStub,
+    );
+    expect(off.find((i) => i.id === "completion")!.checked).toBe(false);
+  });
+
+  it("设置默认值：completionEnabled 默认开；存量 localStorage（无该字段）回退默认开", () => {
+    localStorage.clear();
+    expect(loadTerminalSettings().completionEnabled).toBe(true);
+    // 旧版本存量：只有 copyOnSelect
+    localStorage.setItem("ottr.settings.terminal", JSON.stringify({ copyOnSelect: true }));
+    const loaded = loadTerminalSettings();
+    expect(loaded.copyOnSelect).toBe(true);
+    expect(loaded.completionEnabled).toBe(true);
+    // 关闭后持久化
+    saveTerminalSettings({ copyOnSelect: true, completionEnabled: false });
+    expect(loadTerminalSettings().completionEnabled).toBe(false);
   });
 });
 

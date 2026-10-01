@@ -250,6 +250,7 @@
     "hostKeyRejected": "Host key confirmation rejected; not connected",
     "reconnectHint": "Double-click a host in the sidebar to connect",
     "copyOnSelect": "Copy on select",
+    "completion": "Input suggestions (Tab accepts)",
     "searchPlaceholder": "Search terminal…",
     "searchPrev": "Previous",
     "searchNext": "Next",

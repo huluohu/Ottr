@@ -14,7 +14,7 @@ import {
   suggest,
   type CompletionSources,
   type GhostBufferLine,
-  type GhostCell,
+  type GhostCellView,
   type GhostDecoration,
   type GhostMarker,
   type GhostDecorationOptions,
@@ -134,8 +134,14 @@ interface FakeOpts {
   cellRows?: Array<Array<[string, number]>>;
 }
 
-/** 单元格行视图：cells 为变长词块序列（每项 = 一组连续单元格的拼接字符串
- * 与宽度）。测试里直接给每格 [chars, width]。 */
+function makeCell(chars: string, width: number): GhostCellView {
+  return {
+    getChars: () => chars,
+    getWidth: () => width,
+  };
+}
+
+/** 单元格行视图：cells 为逐格 [chars, width] 序列（宽字符一格计 2 列）。 */
 function cellLineView(cells: Array<[string, number]>): GhostBufferLine {
   return {
     translateToString(trimRight: boolean): string {
@@ -143,12 +149,9 @@ function cellLineView(cells: Array<[string, number]>): GhostBufferLine {
       if (trimRight) text = text.replace(/\s+$/, "");
       return text;
     },
-    getCell(x: number, cell: GhostCell): GhostCell | undefined {
+    getCell(x: number): GhostCellView | undefined {
       const got = cells[x];
-      if (!got) return undefined;
-      cell.chars = got[0];
-      cell.width = got[1];
-      return cell;
+      return got ? makeCell(got[0], got[1]) : undefined;
     },
   };
 }

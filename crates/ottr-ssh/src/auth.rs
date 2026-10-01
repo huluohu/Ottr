@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use russh::client::{Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 
+use crate::forward::RemoteForwardRouter;
 use crate::{Error, KeyError};
 
 /// host key 策略回调：入参为 `SHA256:…` 形式的指纹，返回是否接受该主机密钥。
@@ -46,6 +47,12 @@ pub(crate) struct ClientAuthHandler {
     host_key_fingerprints: Arc<Mutex<Vec<String>>>,
     /// 策略拒绝时的服务器指纹（Some 即发生过拒绝）。
     host_key_rejected: Arc<Mutex<Option<String>>>,
+    /// remote(-R) 转发的入站路由（Phase 2 Task 1）：sshd 侧监听端口收到连接时
+    /// 以 `forwarded-tcpip` channel 打开到达本回调——按 (connected_address,
+    /// connected_port) 查表投递给 remote runner（见 forward.rs
+    /// RemoteForwardRouter）。None（绝大多数连接）= 默认行为：接受后无人消费、
+    /// channel 随 drop 关闭。
+    forward_router: Option<RemoteForwardRouter>,
 }
 
 impl ClientAuthHandler {
@@ -54,12 +61,14 @@ impl ClientAuthHandler {
         host_key_bytes: Arc<Mutex<Vec<u8>>>,
         host_key_fingerprints: Arc<Mutex<Vec<String>>>,
         host_key_rejected: Arc<Mutex<Option<String>>>,
+        forward_router: Option<RemoteForwardRouter>,
     ) -> Self {
         Self {
             policy,
             host_key_bytes,
             host_key_fingerprints,
             host_key_rejected,
+            forward_router,
         }
     }
 }
@@ -93,6 +102,29 @@ impl russh::client::Handler for ClientAuthHandler {
             *self.host_key_rejected.lock().unwrap() = Some(fingerprint);
         }
         Ok(accept)
+    }
+
+    /// 服务端在 -R 监听端口上收到入站连接（`forwarded-tcpip` channel open）。
+    /// 有路由登记 → accept 并投递给 remote runner；无登记（该端口的转发已停/
+    /// bind_port=0 的注册竞态窗口）→ reply 落 drop = 自动拒绝（客户端看到
+    /// connection refused，重试即成功）。
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::client::Msg>,
+        connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: russh::client::ChannelOpenHandle,
+        _session: &mut russh::client::Session,
+    ) -> Result<(), Self::Error> {
+        // 先 accept 再投递：路由失败（转发已停）时丢弃已接受的 channel = 立即
+        // 关闭，效果等同拒绝且不拖垮连接。
+        reply.accept().await;
+        if let Some(router) = &self.forward_router {
+            router.route(connected_address, connected_port, channel);
+        }
+        Ok(())
     }
 }
 

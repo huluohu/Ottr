@@ -19,6 +19,7 @@ use crate::{AuthMethod, Error, Result, SshTransport};
 fn handshake_parts(
     host_key_cb: HostKeyPolicy,
     keepalive_interval: Option<Duration>,
+    forward_router: Option<crate::forward::RemoteForwardRouter>,
 ) -> (
     Arc<client::Config>,
     ClientAuthHandler,
@@ -34,6 +35,7 @@ fn handshake_parts(
         Arc::clone(&host_key_bytes),
         Arc::clone(&host_key_fingerprints),
         Arc::clone(&host_key_rejected),
+        forward_router,
     );
     let config = Arc::new(client::Config {
         inactivity_timeout: None,
@@ -79,12 +81,15 @@ pub async fn connect(
     auth: AuthMethod,
     host_key_cb: HostKeyPolicy,
 ) -> Result<SshSession> {
-    connect_with_keepalive(addr, port, username, auth, host_key_cb, None).await
+    connect_with_keepalive(addr, port, username, auth, host_key_cb, None, None).await
 }
 
 /// [`connect`] 的 keepalive 变体（Phase 1 会话管理消费）：交互式长连会话传
 /// `Some(Duration::from_secs(60))` 开启传输层 keepalive；短生命周期连接
 /// （deploy/exec）用 [`connect`]（interval=None，行为与 Phase 0 完全一致）。
+/// `forward_router`（Phase 2 Task 1）：remote(-R) 转发的入站路由表——会话上
+/// 要跑 -R 转发时传 Some（连接的 Handler 据此接收 `forwarded-tcpip` channel）；
+/// None 时远端转发的入站连接被默认拒绝（与 Phase 0/1 行为一致）。
 pub async fn connect_with_keepalive(
     addr: &str,
     port: u16,
@@ -92,9 +97,10 @@ pub async fn connect_with_keepalive(
     auth: AuthMethod,
     host_key_cb: HostKeyPolicy,
     keepalive_interval: Option<Duration>,
+    forward_router: Option<crate::forward::RemoteForwardRouter>,
 ) -> Result<SshSession> {
     let (config, handler, host_key_bytes, host_key_fingerprints, host_key_rejected) =
-        handshake_parts(host_key_cb, keepalive_interval);
+        handshake_parts(host_key_cb, keepalive_interval, forward_router);
 
     let mut handle = match client::connect(config, (addr, port), handler).await {
         Ok(handle) => handle,
@@ -124,7 +130,7 @@ where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     let (config, handler, host_key_bytes, host_key_fingerprints, host_key_rejected) =
-        handshake_parts(host_key_cb, None);
+        handshake_parts(host_key_cb, None, None);
 
     let mut handle = match client::connect_stream(config, stream, handler).await {
         Ok(handle) => handle,
@@ -254,6 +260,30 @@ impl SshSession {
             .channel_open_direct_tcpip(host, port as u32, "127.0.0.1", 0)
             .await?;
         Ok(channel.into_stream())
+    }
+
+    /// 请求服务端监听 `(address, port)` 并把入站连接以 `forwarded-tcpip`
+    /// channel 转回客户端（-R 远端转发的登记动作；入站接收面 =
+    /// [`crate::forward::RemoteForwardRouter] 挂进 Handler 的路由表）。
+    /// `port = 0` 时由服务端选择，返回值为实际端口（OpenSSH 语义）；
+    /// 服务端拒绝（RequestDenied，如 AllowTcpForwarding no / 端口被占）→
+    /// [`Error::Protocol`]。
+    pub async fn tcpip_forward(&self, address: &str, port: u16) -> Result<u16> {
+        self.handle
+            .tcpip_forward(address, port as u32)
+            .await
+            .map(|bound| bound as u16)
+            .map_err(Error::from)
+    }
+
+    /// 撤销 [`tcpip_forward`](SshSession::tcpip_forward) 的服务端监听
+    /// （转发停止/runner 收尾时调用；会话已死时无害错误，调用方 best-effort）。
+    pub async fn cancel_tcpip_forward(&self, address: &str, port: u16) -> Result<()> {
+        self.handle
+            .cancel_tcpip_forward(address, port as u32)
+            .await
+            .map(|_| ())
+            .map_err(Error::from)
     }
 }
 

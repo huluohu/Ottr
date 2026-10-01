@@ -27,6 +27,9 @@
 //       （Task 15 统一历史搜索 ⌘R：明文面，锁定可读写——写入源是前端
 //       CommandWatch 的命令完成事件，见 src/history/record.ts）
 //       history_list_session summary_insert summary_list
+//       recording_start recording_stop recording_list recording_search
+//       recording_read recording_delete recording_export
+//       （Phase 3 Task 5 会话录制 B3：tee 在 Rust flush_batch，明文面同 history）
 //       （Phase 2 Task 7 会话纪要：数据源命令序列（明文面）+ 摘要密文面
 //       （summary_enc 已登记 scan_registry，summary_insert/list 过锁定门卫））
 //       pf_list pf_create pf_update pf_delete pf_set_enabled pf_start pf_stop
@@ -272,6 +275,35 @@ export interface SummaryInput {
   session_id: string;
   summary: string;
   command_count: number;
+}
+
+// --- 会话录制（Phase 3 Task 5，B3；Rust recordings.rs + commands/recording.rs）---
+
+/** Rust `recordings::RecordingEntry` 同构（录制元数据行；asciinema 原始流在
+ * path 指向的 .cast 文件，不入库；明文面）。 */
+export interface RecordingEntry {
+  id: number;
+  host_id: number;
+  path: string;
+  /** 秒（浮点；空录制 = 0）。 */
+  duration: number;
+  /** FTS 索引指针 `recordings_fts:{id}`。 */
+  text_index_path: string;
+  created_at: number;
+}
+
+/** Rust `recordings::RecordingHit` 同构（entry 展平 + 命中上下文窗口）。 */
+export interface RecordingHit extends RecordingEntry {
+  snippet: string;
+}
+
+/** Rust `recording_read` 载荷（`commands::recording::RecordingData` 同构）：
+ * v2 解析后的 header + 事件流（回放器取数面；事件已过合法性校验）。 */
+export interface RecordingData {
+  entry: RecordingEntry;
+  header: { version: number; width: number; height: number; timestamp: number };
+  events: { time: number; data: string }[];
+  duration: number;
 }
 
 // --- 告警规则（Phase 3 Task 3，B5；Rust alert_rules.rs + commands ar_*）-------
@@ -615,6 +647,22 @@ export const vaultApi = {
     remove: (id: number) => invoke<void>("nc_delete", { id }),
     /** 明文 config 单点出库（测试发送/管线挂载取一次）。 */
     revealConfig: (id: number) => invoke<Record<string, unknown>>("nc_reveal_config", { id }),
+  },
+  /** 会话录制（Phase 3 Task 5，B3）：start/stop = 运行面（会话表槽位 tee），
+   * list/search/read/delete/export = vault 明文面 + .cast 文件面（同 history
+   * 锁定语义）。导出经前端 redact（T13），原文导出需二次确认。 */
+  recordings: {
+    start: (rustId: string, hostId: number) => invoke<string>("recording_start", { rustId, hostId }),
+    stop: (rustId: string) => invoke<RecordingEntry>("recording_stop", { rustId }),
+    list: (hostId: number | null, limit?: number) =>
+      invoke<RecordingEntry[]>("recording_list", { hostId, limit: limit ?? null }),
+    search: (query: string, hostId: number | null, limit?: number) =>
+      invoke<RecordingHit[]>("recording_search", { query, hostId, limit: limit ?? null }),
+    read: (id: number) => invoke<RecordingData>("recording_read", { id }),
+    remove: (id: number) => invoke<void>("recording_delete", { id }),
+    /** 导出（events 已按需脱敏；path=null = 下载目录默认名）。返回落盘路径。 */
+    export: (id: number, events: { time: number; data: string }[], path: string | null) =>
+      invoke<string>("recording_export", { id, events, path }),
   },
   /** SMTP 渠道发送（Phase 3 Task 3，B5；Rust lettre，commands/notify.rs）：
    * 分发与「发送测试」共用（测试 = 固定测试主题正文真发）。 */

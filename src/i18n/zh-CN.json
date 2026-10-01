@@ -151,7 +151,8 @@
     "tabHistory": "历史",
     "tabSummaries": "纪要",
     "emptySummaries": "还没有会话纪要——会话结束（≥3 条命令）时自动生成",
-    "commands": "{{count}} 条命令"
+    "commands": "{{count}} 条命令",
+    "tabRecordings": "录制"
   },
   "titlebar": {
     "menu": "菜单",
@@ -797,5 +798,25 @@
     "differsBadge": "与多数派不同",
     "execFailed": "发起失败",
     "notConnectedHint": "{{count}} 台未连接（执行时按失败结算）"
+  },
+  "recording": {
+    "startLabel": "录制",
+    "stopLabel": "停止录制",
+    "startTitle": "开始录制本会话（输出方向，敏感内容默认不录）",
+    "stopTitle": "停止录制并保存",
+    "empty": "还没有录制——在终端工具栏点「录制」开始",
+    "loading": "检索中…",
+    "emptyContent": "（空录制）",
+    "searchError": "录制检索失败：{{message}}",
+    "playerTitle": "录制回放 #{{id}}",
+    "close": "关闭回放",
+    "play": "播放",
+    "pause": "暂停",
+    "timeline": "时间轴",
+    "speed": "倍速",
+    "exportRedacted": "导出（脱敏）",
+    "exportRaw": "导出原文…",
+    "exportRawConfirm": "确认导出原文？（含敏感内容）",
+    "exportHint": "导出默认按脱敏规则替换 IP/密码/邮箱/主机名；原文导出需二次确认。"
   }
 }

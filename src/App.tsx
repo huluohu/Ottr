@@ -47,6 +47,7 @@ import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
 import { HistorySearch } from "./history/HistorySearch";
+import { RecordToggle } from "./history/RecordToggle";
 import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
 import {
@@ -466,8 +467,7 @@ function HomeLayout() {
           <main className="main-area terminal-mode" data-testid="main-area">
             <div className="tabbar-row">
               <TabBar />
-              <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
-                {!filesOnly && (
+              <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>                {!filesOnly && (
                   <button
                     data-testid="view-terminal"
                     data-active={!filesVisible && !procsVisible}
@@ -504,6 +504,14 @@ function HomeLayout() {
                   </button>
                 )}
               </div>
+              {/* Phase 3 Task 5（B3）：会话录制开关（默认关——敏感面显式动作才录；
+                  断线时 Rust 循环收尾自动入库）。 */}
+              {!filesOnly && (
+                <RecordToggle
+                  rustId={rootSession?.rustId ?? null}
+                  hostId={rootSession?.hostId ?? null}
+                />
+              )}
             </div>
             {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢。
                 T13：AI 诊断面板 = 终端视图的右侧栏（文件视图让位——面板依赖终端选区）。

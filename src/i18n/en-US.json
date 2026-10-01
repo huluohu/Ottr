@@ -151,7 +151,8 @@
     "tabHistory": "History",
     "tabSummaries": "Summaries",
     "emptySummaries": "No session summaries yet — generated when a session (≥3 commands) ends",
-    "commands": "{{count}} commands"
+    "commands": "{{count}} commands",
+    "tabRecordings": "Recordings"
   },
   "titlebar": {
     "menu": "Menu",
@@ -798,5 +799,25 @@
     "differsBadge": "differs from majority",
     "execFailed": "Failed to start",
     "notConnectedHint": "{{count}} not connected (will settle as failed)"
+  },
+  "recording": {
+    "startLabel": "Record",
+    "stopLabel": "Stop",
+    "startTitle": "Start recording this session (output only; not enabled by default)",
+    "stopTitle": "Stop recording and save",
+    "empty": "No recordings yet — click “Record” in the terminal toolbar",
+    "loading": "Searching…",
+    "emptyContent": "(empty recording)",
+    "searchError": "Recording search failed: {{message}}",
+    "playerTitle": "Recording replay #{{id}}",
+    "close": "Close replay",
+    "play": "Play",
+    "pause": "Pause",
+    "timeline": "Timeline",
+    "speed": "Speed",
+    "exportRedacted": "Export (redacted)",
+    "exportRaw": "Export raw…",
+    "exportRawConfirm": "Export raw content? (may contain secrets)",
+    "exportHint": "Exports are redacted (IPs/passwords/emails/hostnames) by default; raw export requires explicit confirmation."
   }
 }

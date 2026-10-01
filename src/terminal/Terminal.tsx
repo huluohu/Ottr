@@ -596,8 +596,12 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const first = prevStatus.current === null;
     prevStatus.current = status;
     if (first && status === "connecting") {
-      // 首连中（挂载即 connecting）：连接横幅
-      term.writeln(`\x1b[2m[ottr] ${t("terminal.connecting")}\x1b[0m`);
+      // 首连中（挂载即 connecting）：连接横幅（T12 验收小修：i18n 插值参数
+      // 漏传导致 {{host}} 字面量直出——hostName 缺席时退回空串）
+      const host = useSessionStore
+        .getState()
+        .sessions.find((s) => s.id === sessionId)?.hostName;
+      term.writeln(`\x1b[2m[ottr] ${t("terminal.connecting", { host: host ?? "" })}\x1b[0m`);
       return;
     }
     if (first) return; // 恢复的静默标签（disconnected）不写历史横幅

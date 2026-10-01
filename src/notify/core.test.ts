@@ -23,6 +23,7 @@ import {
   disposeNotifyEvents,
   initNotifyEvents,
   notify,
+  onHostKeyChanged,
   onSessionClosed,
   onTransferEnd,
   rateKeyOf,
@@ -30,6 +31,7 @@ import {
   setNotifyPorts,
   useNotifyStore,
   type NotificationEvent,
+  type NotifyKind,
   type NotifyPorts,
 } from "./core";
 import type { Notification } from "../vault/api";
@@ -101,7 +103,7 @@ function baseEvent(over: Partial<NotificationEvent> = {}): NotificationEvent {
   };
 }
 
-function resetStore(muted: [] = []) {
+function resetStore(muted: NotifyKind[] = []) {
   useNotifyStore.setState({ items: [], unread: 0, muted });
   mockedInvoke.mockReset();
   resetRateLimiter();
@@ -346,7 +348,34 @@ describe("事件源分派（不改事件源，core.ts 订阅富化）", () => {
     expect(await onSessionClosed({ id: "pty-7", reason: "ipc_failed" })).toBe(true);
   });
 
-  it("initNotifyEvents：注册 transfer-end/session-closed 监听并拉初始态（幂等）", async () => {
+  it("onHostKeyChanged（B9 指纹巡检）：kind=security 落库，host_id=null、端点进 body/payload", async () => {
+    echoInsert();
+    expect(
+      await onHostKeyChanged({
+        host_key: "[10.0.0.9]:22",
+        anchor: "SHA256:OLDKEY",
+        seen: ["SHA256:NEWKEY"],
+      }),
+    ).toBe(true);
+    const row = useNotifyStore.getState().items[0];
+    expect(row.kind).toBe("security");
+    expect(row.severity).toBe("error");
+    expect(row.host_id).toBeNull();
+    expect(row.title_key).toBe("notify.title.hostKeyChanged");
+    expect(row.body).toBe("[10.0.0.9]:22");
+    expect(row.payload).toMatchObject({
+      host_key: "[10.0.0.9]:22",
+      anchor: "SHA256:OLDKEY",
+      seen: ["SHA256:NEWKEY"],
+    });
+    // 静音位：security 可独立静音（管线入口丢弃）
+    resetStore(["security"]);
+    expect(
+      await onHostKeyChanged({ host_key: "h:1", anchor: "a", seen: [] }),
+    ).toBe(false);
+  });
+
+  it("initNotifyEvents：注册 transfer-end/session-closed/host-key-changed 监听并拉初始态（幂等）", async () => {
     mockedInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "notify_list") return [];
       if (cmd === "notify_unread_count") return 3;
@@ -356,6 +385,7 @@ describe("事件源分派（不改事件源，core.ts 订阅富化）", () => {
     await initNotifyEvents();
     expect(listenHandlers.has("ottr://transfer-end")).toBe(true);
     expect(listenHandlers.has("ottr://session-closed")).toBe(true);
+    expect(listenHandlers.has("ottr://host-key-changed")).toBe(true);
     expect(useNotifyStore.getState().unread).toBe(3);
     // 幂等：二次调用不重复注册
     await initNotifyEvents();

@@ -13,6 +13,7 @@
 //       snippets_list snippets_get snippets_search snippets_create snippets_update
 //       snippets_delete
 //       known_hosts_list known_hosts_upsert known_hosts_verify known_hosts_mark_changed
+//       known_hosts_delete known_hosts_probe known_hosts_audit_run（B9 生命周期收口）
 //       import_ssh_config export_hosts_csv（Task 5 导入/导出）
 //       key_generate key_inspect key_export key_deploy（Task 6 密钥管理，src-tauri keys.rs）
 //       vault_security_status vault_unlock vault_lock vault_upgrade_to_master_password
@@ -174,6 +175,26 @@ export interface KnownHost {
   verified: boolean;
   changed_at: number | null;
   state: KnownHostState;
+}
+
+/** `ottr://host-key-changed` 事件载荷（Rust HostKeyChangedPayload 同构，B9
+ * 指纹巡检；seen = 本次观测集，锚消失时在场钥匙 = 新锚候选面）。 */
+export interface HostKeyChangedPayload {
+  host_key: string;
+  anchor: string;
+  seen: string[];
+}
+
+/** `known_hosts_audit_run` 单条 changed 回执（Rust ChangedEntry 同构）。 */
+export interface KnownHostChangedEntry {
+  row: KnownHost;
+  seen: string[];
+}
+
+/** `known_hosts_audit_run` 一轮巡检回执（Rust AuditOutcome 同构）。 */
+export interface HostKeyAuditOutcome {
+  checked: number;
+  changed: KnownHostChangedEntry[];
 }
 
 /** Rust `keygen::KeyAlgorithm` 同构（serde lowercase）。 */
@@ -535,6 +556,12 @@ export const vaultApi = {
       invoke<KnownHost>("known_hosts_verify", { hostKey, fingerprint }),
     markChanged: (hostKey: string, fingerprint: string) =>
       invoke<KnownHost>("known_hosts_mark_changed", { hostKey, fingerprint }),
+    /** 删除 = 忘记该端点（B9 管理页）：下次连接重走 TOFU。返回是否有行被删。 */
+    remove: (hostKey: string) => invoke<boolean>("known_hosts_delete", { hostKey }),
+    /** 单端点探测（管理页「检查」取证面）：观测到的指纹集；空集 = 不可达。 */
+    probe: (hostKey: string) => invoke<string[]>("known_hosts_probe", { hostKey }),
+    /** 手动全量巡检一轮（探测 + changed 落账 + 通知事件），返回巡检回执。 */
+    auditRun: () => invoke<HostKeyAuditOutcome>("known_hosts_audit_run"),
   },
   /** 密钥管理（Task 6，A4；Rust 侧 src-tauri/src/keys.rs）。
    * 导出调用契约（裁定 #2）：加密私钥必须先经 keyInspect 验证 passphrase

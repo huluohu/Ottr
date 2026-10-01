@@ -23,6 +23,7 @@ import type { TransferEndPayload } from "../files/TransferStore";
 import { useTransferStore } from "../files/TransferStore";
 import type { SessionClosedPayload } from "../session/SessionStore";
 import { useSessionStore } from "../session/SessionStore";
+import type { HostKeyChangedPayload } from "../vault/api";
 
 // ---------------------------------------------------------------------------
 // 类型（事件源 → 管线入参；kind 是静音键）
@@ -30,8 +31,9 @@ import { useSessionStore } from "../session/SessionStore";
 
 /** 事件类别（T13 起 AI 诊断完成入管线——迁移 0005 kind 列无约束）。
  * 静音键按 kind：ai 诊断完成通知可独立静音（NotificationCenter 类型区）。
- * Phase 3 Task 3（B5）：告警规则引擎的事件走 "alert"（同样可独立静音）。 */
-export type NotifyKind = "transfer" | "session" | "ai" | "alert";
+ * Phase 3 Task 3（B5）：告警规则引擎的事件走 "alert"（同样可独立静音）。
+ * Phase 3 Task 6（B9）：主机指纹巡检的 changed 告警走 "security"（独立静音位）。 */
+export type NotifyKind = "transfer" | "session" | "ai" | "alert" | "security";
 /** severity 合法集（Rust notifications::SEVERITIES / DB CHECK 同集）。 */
 export type NotifySeverity = "info" | "success" | "warning" | "error";
 
@@ -277,6 +279,21 @@ export function onSessionClosed(payload: SessionClosedPayload): Promise<boolean>
   });
 }
 
+/** `ottr://host-key-changed` → security 告警（B9 指纹巡检）：巡检核在 Rust 侧
+ * 已完成 mark_changed 落账，这里只进通知管线（①中心 + ②系统 + ③渠道）。
+ * host_id 恒 null——端点键（address:port）与 hosts 行是弱关联（删主机重建
+ * 不换端点），限频按 kind 聚合即可（同轮多端点漂移合并成一条恰是想要的）。 */
+export function onHostKeyChanged(payload: HostKeyChangedPayload): Promise<boolean> {
+  return notify({
+    kind: "security",
+    severity: "error",
+    host_id: null,
+    title_key: "notify.title.hostKeyChanged",
+    body: payload.host_key,
+    payload: { host_key: payload.host_key, anchor: payload.anchor, seen: payload.seen },
+  });
+}
+
 let wired = false;
 const unlisteners: UnlistenFn[] = [];
 
@@ -293,6 +310,11 @@ export async function initNotifyEvents(): Promise<void> {
   unlisteners.push(
     await listen<SessionClosedPayload>("ottr://session-closed", (e) => {
       void onSessionClosed(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen<HostKeyChangedPayload>("ottr://host-key-changed", (e) => {
+      void onHostKeyChanged(e.payload);
     }),
   );
   await useNotifyStore.getState().bootstrap();

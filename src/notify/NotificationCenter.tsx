@@ -13,7 +13,8 @@ import { useNotifyStore, type NotifyKind } from "./core";
 const BADGE_CAP = 99;
 
 // Phase 3 Task 3（B5）：告警事件独立静音位（规则引擎事件走 kind="alert"）。
-const MUTABLE_KINDS: NotifyKind[] = ["transfer", "session", "ai", "alert"];
+// Phase 3 Task 6（B9）：指纹巡检 changed 告警独立静音位（kind="security"）。
+const MUTABLE_KINDS: NotifyKind[] = ["transfer", "session", "ai", "alert", "security"];
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString(undefined, {

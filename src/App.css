@@ -3043,3 +3043,89 @@ button[data-active="true"] {
   font-size: 0.78em;
   margin: 0;
 }
+
+/* --- KnownHostsManager（Phase 3 Task 6，B9）：known_hosts 管理页 --- */
+.kh-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.kh-toolbar h3 {
+  margin: 0;
+  font-size: 0.95em;
+}
+.kh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8em;
+}
+.kh-table th,
+.kh-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: top;
+}
+.kh-table th {
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+.kh-fp {
+  word-break: break-all;
+  font-size: 0.92em;
+}
+.kh-ts {
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.kh-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.9em;
+  border: 1px solid var(--border-subtle);
+}
+.kh-badge-ok {
+  color: var(--color-success-text, #2e7d32);
+}
+.kh-badge-changed {
+  color: var(--color-danger-text, #c62828);
+  border-color: currentColor;
+}
+.kh-badge-pending {
+  color: var(--fg-muted);
+}
+.kh-actions {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.kh-actions .kh-danger {
+  color: var(--color-danger-text, #c62828);
+}
+.kh-seen {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow: auto;
+}
+.kh-seen li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kh-seen code {
+  word-break: break-all;
+  font-size: 0.85em;
+}
+.kh-probe-dialog,
+.kh-delete-dialog {
+  max-width: 560px;
+}

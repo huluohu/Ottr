@@ -405,6 +405,8 @@
     "editOverwritten": "已覆盖远端「{{name}}」",
     "editClosed": "已停止编辑「{{name}}」",
     "editFailed": "编辑失败：{{message}}",
+    "editTooLarge": "「{{name}}」超出编辑大小上限（10 MB）",
+    "remoteGone": "远端「{{name}}」已被删除，已停止编辑",
     "errOctalMode": "权限需为 3-4 位八进制数（如 644、0755）",
     "opFailed": "操作失败：{{message}}",
     "uploadFailed": "上传失败：{{message}}",

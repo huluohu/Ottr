@@ -40,9 +40,9 @@ pub use commands::forward::ForwardManager;
 // Phase 2 Task 3（B10 上半）：远端编辑生命周期核公开给夹具集成测试
 // （tests/remote_edit_fixture.rs：下载→编辑→回传→冲突→覆盖→清理全链）。
 pub use commands::remote_edit::{
-    close_all_edits, edit_close, edit_close_session, edit_dismiss, edit_open, edit_poll,
-    edit_save, poll_decision, sweep_stale_edits, temp_path_for, temp_root, EditEntry, EditMap,
-    EditPollStatus, LocalDecision, LocalStamp,
+    apply_save_bookkeeping, close_all_edits, edit_close, edit_close_session, edit_dismiss,
+    edit_open, edit_poll, edit_save, local_stamp, poll_decision, sweep_stale_edits, temp_path_for,
+    temp_root, EditEntry, EditMap, EditPollStatus, LocalDecision, LocalStamp,
 };
 
 // ---------------------------------------------------------------------------

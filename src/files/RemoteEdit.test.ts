@@ -91,6 +91,25 @@ describe("RemoteEditManager", () => {
     ).toBe(calls);
   });
 
+  it("remote_gone（Fix round 1 M-2）：一次性 onRemoteGone + 停轮询", async () => {
+    vi.useFakeTimers();
+    mockedInvoke.mockResolvedValue({ local_path: "/tmp/x" });
+    await remoteEdits.open("pty-0", "/a");
+    const onRemoteGone = vi.fn();
+    remoteEdits.callbacks = { onRemoteGone };
+    mockedInvoke.mockImplementation(() => poll("remote_gone"));
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS);
+    expect(onRemoteGone).toHaveBeenCalledTimes(1);
+    expect(onRemoteGone).toHaveBeenCalledWith("pty-0", "/a");
+    expect(remoteEdits.isActive("pty-0", "/a")).toBe(false);
+    const calls = mockedInvoke.mock.calls.filter((c) => c[0] === "remote_edit_poll").length;
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS * 2);
+    // 远端已删：轮询必须停（不再打死循环）
+    expect(
+      mockedInvoke.mock.calls.filter((c) => c[0] === "remote_edit_poll").length,
+    ).toBe(calls);
+  });
+
   it("慢链路防重入：poll 未返回期间 interval 再触发不再叠加 invoke", async () => {
     vi.useFakeTimers();
     mockedInvoke.mockResolvedValue({ local_path: "/tmp/x" });

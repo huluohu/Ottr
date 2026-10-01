@@ -318,6 +318,29 @@ describe("FilePanel", () => {
     });
     expect(screen.queryByTestId("file-dialog")).toBeNull();
   });
+
+  it("超限拒绝（M-1）：remote_edit_open 报 too large → 专用提示，不起轮询", async () => {
+    mockListings();
+    mockedInvoke.mockImplementation((_cmd: string, args?: { path?: string }) => {
+      if (_cmd === "remote_edit_open") {
+        return Promise.reject(new Error("file too large to edit (20971520 bytes > 10485760): /x"));
+      }
+      return (mockListingsDispatcher as (cmd: string, a: { path?: string }) => Promise<unknown>)(
+        _cmd,
+        args ?? { path: "" },
+      );
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("big100");
+    });
+    fireEvent.contextMenu(screen.getByText("big100"));
+    fireEvent.click(screen.getByText(/Edit "big100"/));
+    await waitFor(() => {
+      expect(screen.getByTestId("file-notice").textContent).toContain("too large to edit");
+    });
+    expect(remoteEdits.isActive("pty-0", "/home/spike/big100")).toBe(false);
+  });
 });
 
 /** mockListings 的分发体（编辑流用例复用同一目录数据）。 */

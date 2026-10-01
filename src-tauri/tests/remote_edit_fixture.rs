@@ -15,10 +15,11 @@ use std::process::Command;
 use std::sync::Arc;
 
 use ottr_lib::{
-    edit_close, edit_open, edit_poll, edit_dismiss, edit_save, temp_path_for, temp_root,
-    EditMap, EditPollStatus,
+    apply_save_bookkeeping, edit_close, edit_dismiss, edit_open, edit_poll, edit_save,
+    local_stamp, temp_path_for, temp_root, EditMap, EditPollStatus,
 };
 use ottr_ssh::{AuthMethod, SshSession, connect};
+use ottr_transfer::ops::RemoteSnapshot;
 use ottr_transfer::SftpClient;
 use russh::ChannelMsg;
 use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
@@ -160,6 +161,21 @@ async fn remote_edit_end_to_end() {
         "v1\n",
         "downloaded copy must match remote content"
     );
+    // Fix round 1 I-2：副本 0600、哈希/会话目录 0700（编辑对象常是敏感文件）
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &std::path::Path| {
+            std::fs::metadata(p).unwrap().permissions().mode() & 0o777
+        };
+        assert_eq!(mode(&temp), 0o600, "temp copy must not be world-readable");
+        assert_eq!(mode(temp.parent().unwrap()), 0o700, "hash dir must be 0700");
+        assert_eq!(
+            mode(temp.parent().unwrap().parent().unwrap()),
+            0o700,
+            "session dir must be 0700"
+        );
+    }
     assert!(
         edits.lock().unwrap().get(&sid).is_some_and(|m| m.contains_key(&remote)),
         "edit session must be registered"
@@ -265,6 +281,162 @@ async fn remote_edit_end_to_end() {
     );
 
     // 清理远端
+    let _ = exec(&session, &format!("rm -f {remote}")).await;
+    let _ = session.disconnect().await;
+}
+
+/// Fix round 1 I-1：**await 窗口内二次保存（追尾）→ 最终态最终回传**。
+/// do_save 的 read→write_remote_text().await 窗口（VS Code afterDelay=1s 够
+/// 得着）里编辑器又存了一版：远端拿到的是读时旧内容。修复前会把「新指纹」
+/// 记进 saved_local → 下一轮 poll 判 Unchanged → 最终态静默分叉丢失。这里用
+/// 与 do_save 完全相同的原语序列（读前指纹/读/二次保存/写远端）+ 生产同款
+/// 记账函数（apply_save_bookkeeping）确定性复刻该交错，断言：记账被拒绝
+/// （saved_local 不动、pending 武装）→ 后续 poll 重传 → 远端 == 最终态。
+#[tokio::test]
+async fn await_window_second_save_eventually_syncs() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let client = SftpClient::open(&session).await.expect("sftp open");
+
+    let sid = format!("e2e-tail-{}", std::process::id());
+    let remote = format!("/tmp/ottr-t3-tail-{}.txt", std::process::id());
+    let edits: EditMap = EditMap::default();
+    exec(&session, &format!("printf 'v1\\n' > {remote}")).await;
+
+    let temp = edit_open(&edits, &client, &sid, &remote).await.expect("edit_open");
+    std::fs::write(&temp, b"v2 first save\n").expect("first local edit");
+    assert_eq!(
+        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 1"),
+        EditPollStatus::QUIET,
+    );
+    assert_eq!(
+        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 2"),
+        EditPollStatus::SAVED,
+        "v2 must sync normally"
+    );
+    assert_eq!(
+        client.open_remote_text(&remote).await.expect("read"),
+        b"v2 first save\n"
+    );
+
+    // --- 复刻 do_save 的 read→write await 窗口（同一原语序列 + 生产记账函数）---
+    std::fs::write(&temp, b"v3 second save\n").expect("local edit (the read)");
+    let stamp_at_read = local_stamp(&temp).expect("stamp before read");
+    let payload = std::fs::read(&temp).expect("read temp (do_save 的读)");
+    // 【窗口内】编辑器二次保存（await 期间发生的真实场景）
+    std::fs::write(&temp, b"v4 final state\n").expect("second save INSIDE await window");
+    // do_save 继续：把读到的旧内容写远端
+    let after = client
+        .write_remote_text(&remote, &payload)
+        .await
+        .expect("write (old content wins the race)");
+    {
+        let mut map = edits.lock().unwrap();
+        let entry = map
+            .get_mut(&sid)
+            .and_then(|m| m.get_mut(&remote))
+            .expect("entry alive");
+        let booked = apply_save_bookkeeping(
+            entry,
+            stamp_at_read,
+            local_stamp(&temp),
+            RemoteSnapshot::capture(&after),
+        );
+        assert!(!booked, "drifted stamp must NOT be booked (I-1)");
+        assert_ne!(
+            entry.saved_local.mtime_ns,
+            local_stamp(&temp).unwrap().mtime_ns,
+            "saved_local must stay armed at the pre-drift stamp"
+        );
+        assert!(entry.pending.is_some(), "pending must be armed to the drift");
+    }
+    // 修复前的失败态正是「记账了新指纹」→ poll Unchanged → v4 永不回传。
+    // 修复后：pending 已武装到当前指纹 → 下一轮 poll 即 Ready 重传最终态。
+    assert_eq!(
+        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 3"),
+        EditPollStatus::SAVED,
+        "armed pending re-transfers the final state on the next poll"
+    );
+    assert_eq!(
+        client.open_remote_text(&remote).await.expect("read"),
+        b"v4 final state\n",
+        "remote must converge to the LAST local state (no silent fork)"
+    );
+
+    assert!(edit_close(&edits, &sid, &remote));
+    let _ = exec(&session, &format!("rm -f {remote}")).await;
+    let _ = session.disconnect().await;
+}
+
+/// Fix round 1 M-2：远端被第三方删除 → poll 返回一次性 `remote_gone`（不是
+/// 静默 Err 死循环）、编辑会话自清（表项 + 临时副本零残留）。
+#[tokio::test]
+async fn remote_deleted_reports_remote_gone_and_cleans() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let client = SftpClient::open(&session).await.expect("sftp open");
+
+    let sid = format!("e2e-rmgone-{}", std::process::id());
+    let remote = format!("/tmp/ottr-t3-rmgone-{}.txt", std::process::id());
+    let edits: EditMap = EditMap::default();
+    exec(&session, &format!("printf 'v1\\n' > {remote}")).await;
+
+    let temp = edit_open(&edits, &client, &sid, &remote).await.expect("edit_open");
+    // 第三方删除远端文件 + 本地有未回传修改
+    exec(&session, &format!("rm -f {remote}")).await;
+    std::fs::write(&temp, b"local edit, remote deleted\n").expect("local edit");
+
+    assert_eq!(
+        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 1"),
+        EditPollStatus::QUIET,
+        "debounce first"
+    );
+    assert_eq!(
+        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 2"),
+        EditPollStatus::REMOTE_GONE,
+        "deleted remote must surface as one-shot remote_gone, not a silent error loop"
+    );
+    assert!(!edits.lock().unwrap().contains_key(&sid), "session entry must self-clean");
+    assert!(!temp.exists(), "temp copy must be cleaned");
+    assert!(!temp_root().join(&sid).exists(), "no residue");
+
+    let _ = session.disconnect().await;
+}
+
+/// Fix round 1 M-1：超过 10MB 上限的文件拒绝编辑（显式错误，不进轮询）。
+#[tokio::test]
+async fn oversize_edit_is_rejected() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let client = SftpClient::open(&session).await.expect("sftp open");
+
+    let sid = format!("e2e-big-{}", std::process::id());
+    let remote = format!("/tmp/ottr-t3-big-{}.bin", std::process::id());
+    let edits: EditMap = EditMap::default();
+    // 11MB > 10MB 上限
+    exec(
+        &session,
+        &format!("dd if=/dev/zero of={remote} bs=1048576 count=11 2>/dev/null"),
+    )
+    .await;
+
+    let err = edit_open(&edits, &client, &sid, &remote)
+        .await
+        .err()
+        .expect("oversize must be rejected");
+    assert!(
+        err.contains("too large"),
+        "error must name the size limit, got: {err}"
+    );
+    assert!(
+        !edits.lock().unwrap().get(&sid).is_some_and(|m| !m.is_empty()),
+        "no edit session may be registered for an oversize file"
+    );
+    assert!(
+        !temp_path_for(&sid, &remote).exists(),
+        "no temp copy may be created for an oversize file"
+    );
+
     let _ = exec(&session, &format!("rm -f {remote}")).await;
     let _ = session.disconnect().await;
 }

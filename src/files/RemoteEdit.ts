@@ -17,7 +17,7 @@ export interface EditOpened {
 
 /** remote_edit_poll / remote_edit_save 结果（Rust EditPollStatus 同构）。 */
 export interface EditPollStatus {
-  status: "quiet" | "saved" | "conflict" | "gone";
+  status: "quiet" | "saved" | "conflict" | "gone" | "remote_gone";
 }
 
 export function remoteEditOpen(id: string, remote: string): Promise<EditOpened> {
@@ -40,6 +40,8 @@ export interface EditCallbacks {
   onSaved?: (id: string, remote: string) => void;
   /** 回传前冲突（远端已被第三方改动）：UI 应弹「覆盖？」对话框。 */
   onConflict?: (id: string, remote: string) => void;
+  /** 远端文件被第三方删除（Fix round 1 M-2）：一次性提示，轮询已自停。 */
+  onRemoteGone?: (id: string, remote: string) => void;
 }
 
 type Listener = () => void;
@@ -116,6 +118,13 @@ class RemoteEditManager {
         // 会话已被 Rust 侧清理（关闭/断连/临时件被删）：停轮询即可
         this.stopPolling(id, remote);
         this.notify();
+        return;
+      }
+      if (st.status === "remote_gone") {
+        // 远端文件被第三方删除（Rust 已自清会话）：停轮询 + 一次性提示
+        this.stopPolling(id, remote);
+        this.notify();
+        this.callbacks.onRemoteGone?.(id, remote);
         return;
       }
       if (st.status === "saved") this.callbacks.onSaved?.(id, remote);

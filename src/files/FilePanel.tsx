@@ -105,6 +105,9 @@ export function FilePanel({ session }: { session: Session }) {
       onConflict: (id, path) => {
         if (id === rustId) setConflictPath(path);
       },
+      onRemoteGone: (id, path) => {
+        if (id === rustId) showNotice(t("files.remoteGone", { name: fileNameOf(path) }));
+      },
     };
     return () => {
       remoteEdits.callbacks = {};
@@ -117,7 +120,13 @@ export function FilePanel({ session }: { session: Session }) {
       await remoteEdits.open(rustId, path);
       showNotice(t("files.editOpened", { name: fileNameOf(path) }));
     } catch (e) {
-      showNotice(t("files.editFailed", { message: String(e) }));
+      const msg = String(e);
+      // 超限拒绝（M-1，Rust MAX_EDIT_BYTES=10MB）单列提示，其余走通用失败
+      if (msg.includes("too large")) {
+        showNotice(t("files.editTooLarge", { name: fileNameOf(path) }));
+      } else {
+        showNotice(t("files.editFailed", { message: msg }));
+      }
     }
   }
 

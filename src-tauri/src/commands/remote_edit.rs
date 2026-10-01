@@ -31,7 +31,7 @@
 //! （poll 拿不到 SFTP 即整会话自清——重连换 rustId 后旧会话天然不可达）/
 //! App 退出（lib.rs RunEvent::Exit → [`close_all_edits`]）/ 24h 惰性清扫
 //! （open 时 best-effort，漏网残留兜底）。
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -40,6 +40,11 @@ use ottr_transfer::ops::RemoteSnapshot;
 use ottr_transfer::SftpClient;
 
 use super::state::AppState;
+
+/// 编辑对象大小上限（Fix round 1 M-1）：编辑链路是全量读/全量写 + 每次保存
+/// 全量回传，10MB 是「文本编辑」语义的合理上界；超限显式拒绝（提示语见
+/// files.editTooLarge），不静默吞大文件也不给它一条 2s 全量回传的通道。
+pub const MAX_EDIT_BYTES: u64 = 10 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // 状态与纯函数（单测面，无 SFTP / 无 Tauri 依赖）
@@ -74,10 +79,11 @@ impl LocalStamp {
 /// 一条远端编辑会话（字段语义见模块注释）。
 #[derive(Debug, Clone)]
 pub struct EditEntry {
-    pub(crate) temp_path: PathBuf,
-    pub(crate) snapshot: RemoteSnapshot,
-    pub(crate) saved_local: LocalStamp,
-    pub(crate) pending: Option<LocalStamp>,
+    /// pub：夹具 e2e（tests/remote_edit_fixture.rs）断言记账/追尾语义用。
+    pub temp_path: PathBuf,
+    pub snapshot: RemoteSnapshot,
+    pub saved_local: LocalStamp,
+    pub pending: Option<LocalStamp>,
 }
 
 /// 轮询的本地侧判定（纯状态机；SFTP 动作由调用方按 `Ready` 执行）。
@@ -146,8 +152,70 @@ pub fn temp_path_for(id: &str, remote: &str) -> PathBuf {
         .join(name)
 }
 
-fn local_stamp(path: &Path) -> Option<LocalStamp> {
+/// 本地副本指纹取样（pub：夹具 e2e 复刻 do_save 的 await 窗口时用同一原语）。
+pub fn local_stamp(path: &Path) -> Option<LocalStamp> {
     std::fs::metadata(path).ok().map(|m| LocalStamp::of(&m))
+}
+
+// --- 私有权限面（Fix round 1 I-2，对齐 keys.rs 先例） ------------------------
+// 编辑对象常是 .env / authorized_keys 这类敏感文件；Linux 的 /tmp 是 1777，
+// 缺省 755/644 = 路径可预测且世界可读。root/session/哈希目录一律 0700、副本
+// 文件 0600（先建再写，不经历 0644 中间态）。
+
+#[cfg(unix)]
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .recursive(true)
+        .create(path)
+}
+
+#[cfg(not(unix))]
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(path)
+}
+
+#[cfg(unix)]
+fn write_private_file(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    f.write_all(data)
+}
+
+#[cfg(not(unix))]
+fn write_private_file(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, data)
+}
+
+/// 创建哈希目录链并把整条链（含 root 本身）收紧到 0700。DirBuilder::mode
+/// 只作用于**新建**组件——旧版本/早前运行留下的 0755 目录必须显式收紧
+/// （Fix round 1 I-2）。
+fn ensure_private_dir_chain(parent: &Path) -> std::io::Result<()> {
+    create_private_dir(parent)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_root();
+        let mut dir = Some(parent);
+        while let Some(d) = dir {
+            if !d.starts_with(&root) {
+                break;
+            }
+            let _ = std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700));
+            if d == root {
+                break;
+            }
+            dir = d.parent();
+        }
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -164,17 +232,28 @@ pub async fn edit_open(
     id: &str,
     remote: &str,
 ) -> Result<PathBuf, String> {
-    sweep_stale_edits(&temp_root(), Duration::from_secs(24 * 3600), SystemTime::now());
+    // 惰性清扫带活会话名单（Fix round 1 I-3）：目录 mtime 是**创建时刻**语义，
+    // 长开 >24h 的活会话目录会被误判陈旧——清扫绝不碰 EditMap 内在册的 sid，
+    // 否则 open 别的文件时会把活会话的未回传修改整树删掉。
+    let active: HashSet<String> = edits.lock().unwrap().keys().cloned().collect();
+    sweep_stale_edits(&temp_root(), Duration::from_secs(24 * 3600), SystemTime::now(), &active);
     if let Some(e) = edits.lock().unwrap().get(id).and_then(|m| m.get(remote)) {
         return Ok(e.temp_path.clone());
     }
     let stat = client.stat(remote).await.map_err(|e| e.to_string())?;
+    if stat.size > MAX_EDIT_BYTES {
+        return Err(format!(
+            "file too large to edit ({} bytes > {MAX_EDIT_BYTES}): {remote}",
+            stat.size
+        ));
+    }
     let data = client.open_remote_text(remote).await.map_err(|e| e.to_string())?;
     let temp_path = temp_path_for(id, remote);
     if let Some(parent) = temp_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("create_dir_all {parent:?}: {e}"))?;
+        ensure_private_dir_chain(parent).map_err(|e| format!("create_dir_all {parent:?}: {e}"))?;
     }
-    std::fs::write(&temp_path, &data).map_err(|e| format!("write temp {temp_path:?}: {e}"))?;
+    write_private_file(&temp_path, &data)
+        .map_err(|e| format!("write temp {temp_path:?}: {e}"))?;
     let saved_local = local_stamp(&temp_path)
         .ok_or_else(|| format!("temp file vanished right after write: {temp_path:?}"))?;
     edits.lock().unwrap().entry(id.to_string()).or_default().insert(
@@ -219,7 +298,17 @@ pub async fn edit_poll(
         LocalDecision::Ready => {
             // 锁不跨 await：快照比对用克隆态，回传成功后才回写表（前端对同一
             // 文件串行轮询，竞态窗口无害；即便交错，回写值等价）。
-            let stat = client.stat(remote).await.map_err(|e| e.to_string())?;
+            let stat = match client.stat(remote).await {
+                Ok(s) => s,
+                Err(_) if !matches!(client.exists(remote).await, Ok(true)) => {
+                    // 远端被第三方删除（Fix round 1 M-2）：静默 Err 会让前端
+                    // 每 2s 撞一次错死循环——自清编辑会话并返回一次性
+                    // remote_gone，前端 surface 提示 + 停轮询。
+                    edit_close(edits, id, remote);
+                    return Ok(EditPollStatus::REMOTE_GONE);
+                }
+                Err(e) => return Err(e.to_string()),
+            };
             if entry.snapshot.conflicts_with(&stat) {
                 store_pending(edits, id, remote, new_pending);
                 return Ok(EditPollStatus::CONFLICT);
@@ -255,6 +344,11 @@ pub async fn edit_save(
 }
 
 /// 共享回传尾：读本地副本 → 单通道覆盖写 → 快照更新为写后 stat、指纹记账。
+/// 追尾安全（Fix round 1 I-1）：**读前读后各取一次指纹**——await 写远端的
+/// 窗口内编辑器二次保存（VS Code afterDelay=1s 够得着）时，远端拿到的是读时
+/// 旧内容；此时绝不把「新指纹」记进 saved_local（那会让下一轮 poll 判
+/// Unchanged → 二次保存静默分叉丢失），而是保持 saved_local 不动 + pending
+/// 武装到当前指纹，下一轮 poll 必然重传最终态。
 async fn do_save(
     edits: &EditMap,
     client: &SftpClient,
@@ -268,22 +362,43 @@ async fn do_save(
             .map(|e| e.temp_path.clone())
             .ok_or_else(|| format!("no such edit session: {id} {remote}"))?
     };
+    let stamp_at_read =
+        local_stamp(&temp_path).ok_or_else(|| format!("temp file gone: {temp_path:?}"))?;
     let data = std::fs::read(&temp_path).map_err(|e| format!("read temp {temp_path:?}: {e}"))?;
     let after = client
         .write_remote_text(remote, &data)
         .await
         .map_err(|e| e.to_string())?;
-    let saved_local = local_stamp(&temp_path)
-        .ok_or_else(|| format!("temp file vanished before save bookkeeping: {temp_path:?}"))?;
+    let stamp_after = local_stamp(&temp_path);
     {
         let mut map = edits.lock().unwrap();
         if let Some(e) = map.get_mut(id).and_then(|m| m.get_mut(remote)) {
-            e.snapshot = RemoteSnapshot::capture(&after);
-            e.saved_local = saved_local;
-            e.pending = None;
+            apply_save_bookkeeping(e, stamp_at_read, stamp_after, RemoteSnapshot::capture(&after));
         }
     }
     Ok(EditPollStatus::SAVED)
+}
+
+/// 回传记账（纯函数，追尾语义单测面）：快照无条件更新为写后 stat；仅当
+/// `stamp_after == stamp_at_read`（await 窗口无二次保存）才记 saved_local 并
+/// 解除武装；漂移则 pending 武装到当前指纹。返回是否完成了记账（false =
+/// 有追尾，等下一轮重传）。pub：夹具 e2e 用同一函数复刻追尾场景。
+pub fn apply_save_bookkeeping(
+    entry: &mut EditEntry,
+    stamp_at_read: LocalStamp,
+    stamp_after: Option<LocalStamp>,
+    snapshot_after: RemoteSnapshot,
+) -> bool {
+    entry.snapshot = snapshot_after;
+    if stamp_after.as_ref() == Some(&stamp_at_read) {
+        entry.saved_local = stamp_at_read;
+        entry.pending = None;
+        return true;
+    }
+    if let Some(cur) = stamp_after {
+        entry.pending = Some(cur);
+    }
+    false
 }
 
 fn store_pending(edits: &EditMap, id: &str, remote: &str, pending: Option<LocalStamp>) {
@@ -307,13 +422,17 @@ pub fn edit_dismiss(edits: &EditMap, id: &str, remote: &str) -> Result<(), Strin
 }
 
 /// 显式关闭：删临时副本 + 摘表 + 顺手清空了的哈希/会话目录（只清 temp_root
-/// 内的路径，越界路径只删文件不动目录）。返回是否摘到了条目。
+/// 内的路径，越界路径只删文件不动目录）。内层表空了连外层 sid 键一并摘除
+/// （会话表不残留空壳）。返回是否摘到了条目。
 pub fn edit_close(edits: &EditMap, id: &str, remote: &str) -> bool {
-    let entry = edits
-        .lock()
-        .unwrap()
-        .get_mut(id)
-        .and_then(|m| m.remove(remote));
+    let entry = {
+        let mut map = edits.lock().unwrap();
+        let entry = map.get_mut(id).and_then(|m| m.remove(remote));
+        if map.get(id).is_some_and(|inner| inner.is_empty()) {
+            map.remove(id);
+        }
+        entry
+    };
     let Some(entry) = entry else {
         return false;
     };
@@ -359,12 +478,22 @@ fn cleanup_empty_dirs(temp_path: &Path) {
 
 /// 24h 惰性清扫：temp_root 下 mtime 早于 max_age 的会话目录整树删除
 /// （best-effort，返回删除数；挂账路径——正常关闭已即时清，这里只兜漏网）。
-pub fn sweep_stale_edits(root: &Path, max_age: Duration, now: SystemTime) -> usize {
+/// `active_sids` = EditMap 在册会话（Fix round 1 I-3）：一律跳过——目录
+/// mtime 是创建时刻语义，长开的活会话不能按「旧」删掉未回传的修改。
+pub fn sweep_stale_edits(
+    root: &Path,
+    max_age: Duration,
+    now: SystemTime,
+    active_sids: &HashSet<String>,
+) -> usize {
     let Ok(entries) = std::fs::read_dir(root) else {
         return 0;
     };
     let mut removed = 0;
     for entry in entries.flatten() {
+        if active_sids.contains(entry.file_name().to_string_lossy().as_ref()) {
+            continue; // 活会话（EditMap 在册）：绝不清扫
+        }
         let stale = entry
             .metadata()
             .ok()
@@ -382,7 +511,9 @@ pub fn sweep_stale_edits(root: &Path, max_age: Duration, now: SystemTime) -> usi
 // tauri 命令面（薄包装：State 提取 + sftp_for；核心逻辑全在上方可测函数）
 // ---------------------------------------------------------------------------
 
-/// 轮询/保存结果（serde 直出前端）。`gone` = 编辑会话已不存在（前端停轮询）。
+/// 轮询/保存结果（serde 直出前端）。`gone` = 编辑会话已不存在（前端停轮询）；
+/// `remote_gone` = 远端文件被第三方删除（Fix round 1 M-2：一次性提示 +
+/// 停轮询，会话已自清）。
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
 pub struct EditPollStatus {
     pub status: &'static str,
@@ -393,6 +524,7 @@ impl EditPollStatus {
     pub const SAVED: EditPollStatus = EditPollStatus { status: "saved" };
     pub const CONFLICT: EditPollStatus = EditPollStatus { status: "conflict" };
     pub const GONE: EditPollStatus = EditPollStatus { status: "gone" };
+    pub const REMOTE_GONE: EditPollStatus = EditPollStatus { status: "remote_gone" };
 }
 
 #[derive(serde::Serialize)]
@@ -618,15 +750,20 @@ mod tests {
         assert_eq!(close_all_edits(&edits), 0);
     }
 
-    /// 24h 惰性清扫：老目录整树删、新目录保留（mtime 用 touch -t 钉旧）。
+    /// 24h 惰性清扫：老目录整树删、新目录保留（mtime 用 touch -t 钉旧）；
+    /// EditMap 在册的活会话（I-3）即便目录 mtime 陈旧也绝不清扫。
     #[test]
     fn sweep_removes_only_stale_session_dirs() {
         let root = temp_root().join(format!("ut-sweep-{}", std::process::id()));
         let old = root.join("old-sid");
         let fresh = root.join("fresh-sid");
+        // 活会话：目录 mtime 钉到 2020（>24h 陈旧），但在册 → 必须跳过
+        let live = root.join("live-sid-0");
         std::fs::create_dir_all(&old).unwrap();
         std::fs::create_dir_all(&fresh).unwrap();
+        std::fs::create_dir_all(&live).unwrap();
         std::fs::write(old.join("f.txt"), b"old").unwrap();
+        std::fs::write(live.join("unsaved.txt"), b"precious").unwrap();
         // BSD/GNU touch 都支持 -t；钉到 2020-01-01（远早于 24h）
         let touched = std::process::Command::new("touch")
             .args(["-t", "202001010000"])
@@ -634,12 +771,98 @@ mod tests {
             .status()
             .expect("run touch");
         assert!(touched.success(), "touch -t must work on this platform");
+        let touched_live = std::process::Command::new("touch")
+            .args(["-t", "202001010000"])
+            .arg(&live)
+            .status()
+            .expect("run touch");
+        assert!(touched_live.success());
 
-        let removed = sweep_stale_edits(&root, Duration::from_secs(24 * 3600), SystemTime::now());
+        let mut active = HashSet::new();
+        active.insert("live-sid-0".to_string());
+        let removed = sweep_stale_edits(
+            &root,
+            Duration::from_secs(24 * 3600),
+            SystemTime::now(),
+            &active,
+        );
         assert_eq!(removed, 1, "exactly the stale dir is removed");
         assert!(!old.exists());
         assert!(fresh.exists(), "fresh dir must survive");
+        assert!(
+            live.join("unsaved.txt").is_file(),
+            "I-3: stale-mtime live session must NEVER be swept (unsaved edits)"
+        );
 
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Fix round 1 I-1：回传记账的追尾语义——await 窗口无二次保存才记账；
+    /// 漂移则 saved_local 不动 + pending 武装到当前指纹（下一轮必重传）。
+    #[test]
+    fn save_bookkeeping_is_tailsafe() {
+        let mut entry = EditEntry {
+            temp_path: PathBuf::from("/x"),
+            snapshot: RemoteSnapshot { size: 1, mtime: 1 },
+            saved_local: LocalStamp { mtime_ns: 100, size: 5 },
+            pending: Some(LocalStamp { mtime_ns: 200, size: 6 }),
+        };
+        let at_read = LocalStamp { mtime_ns: 200, size: 6 };
+        let after = RemoteSnapshot { size: 6, mtime: 2 };
+
+        // 无追尾：读时 == 写后 → 记账 + 解除武装
+        assert!(apply_save_bookkeeping(&mut entry, at_read.clone(), Some(at_read.clone()), after));
+        assert_eq!(entry.saved_local, at_read);
+        assert_eq!(entry.pending, None);
+        assert_eq!(entry.snapshot, after);
+
+        // 追尾：窗口内编辑器又保存（指纹漂移）→ 绝不记账（否则下一轮 poll 判
+        // Unchanged，最终态静默分叉）；pending 武装到当前指纹
+        let drifted = LocalStamp { mtime_ns: 300, size: 9 };
+        assert!(!apply_save_bookkeeping(
+            &mut entry,
+            at_read.clone(),
+            Some(drifted.clone()),
+            after
+        ));
+        assert_eq!(
+            entry.saved_local, at_read,
+            "saved_local must stay armed at the pre-drift stamp"
+        );
+        assert_eq!(entry.pending, Some(drifted.clone()));
+        assert_eq!(entry.snapshot, after, "snapshot tracks the actual remote write");
+
+        // 窗口内临时件被删：不记账、pending 不动（下一轮 TempGone 自清）
+        let mut entry2 = EditEntry {
+            temp_path: PathBuf::from("/x"),
+            snapshot: RemoteSnapshot { size: 1, mtime: 1 },
+            saved_local: at_read.clone(),
+            pending: None,
+        };
+        assert!(!apply_save_bookkeeping(&mut entry2, at_read.clone(), None, after));
+        assert_eq!(entry2.saved_local, at_read);
+        assert_eq!(entry2.pending, None);
+    }
+
+    /// Fix round 1 I-2：临时目录链 0700、副本文件 0600（unix）；递归创建的
+    /// 预存组件也收紧（DirBuilder::mode 只作用于新建）。
+    #[cfg(unix)]
+    #[test]
+    fn temp_copy_permissions_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let session = temp_root().join(format!("ut-perm-{}", std::process::id()));
+        let hash = session.join("abcdef0123");
+        ensure_private_dir_chain(&hash).unwrap();
+        let file = hash.join("f.txt");
+        write_private_file(&file, b"x").unwrap();
+        assert_eq!(mode(&hash), 0o700, "hash dir must be private");
+        assert_eq!(mode(&session), 0o700, "session dir must be private");
+        assert_eq!(mode(&file), 0o600, "temp copy must be 0600");
+        // 预存目录再次收紧（模拟旧版本建的 0755 目录）
+        std::fs::set_permissions(&hash, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_private_dir_chain(&hash).unwrap();
+        assert_eq!(mode(&hash), 0o700, "pre-existing dirs must be hardened");
+        std::fs::remove_dir_all(&session).unwrap();
     }
 }

@@ -264,6 +264,9 @@ pub(crate) struct AppState {
     /// Arc 化：attach 成功的 on_session_up 挂钩要 spawn 脱离借用的事务
     /// （'static async），Manager 需可克隆的共享句柄。
     pub(crate) forwards: Arc<super::forward::ForwardManager>,
+    /// 远端文件本地编辑会话表（Phase 2 Task 3，commands/remote_edit.rs）：
+    /// session id → (远端路径 → 临时副本/远端快照/本地指纹)。
+    pub(crate) edits: super::remote_edit::EditMap,
 }
 
 pub(crate) static SESSION_SEQ: AtomicU64 = AtomicU64::new(0);

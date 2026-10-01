@@ -37,6 +37,13 @@ pub(crate) use commands::state::AppState;
 pub use commands::state::{SessionCounters, TextTail};
 // Phase 2 Task 1（B7）：ForwardManager 公开给夹具集成测试（真容器断线恢复链）。
 pub use commands::forward::ForwardManager;
+// Phase 2 Task 3（B10 上半）：远端编辑生命周期核公开给夹具集成测试
+// （tests/remote_edit_fixture.rs：下载→编辑→回传→冲突→覆盖→清理全链）。
+pub use commands::remote_edit::{
+    close_all_edits, edit_close, edit_close_session, edit_dismiss, edit_open, edit_poll,
+    edit_save, poll_decision, sweep_stale_edits, temp_path_for, temp_root, EditEntry, EditMap,
+    EditPollStatus, LocalDecision, LocalStamp,
+};
 
 // ---------------------------------------------------------------------------
 // 入口
@@ -192,6 +199,12 @@ pub fn run() {
             commands::transfer::sftp_download,
             commands::transfer::sftp_upload,
             commands::transfer::transfer_cancel,
+            // 远端文件本地编辑（Phase 2 Task 3，B10 上半；命令域 commands/remote_edit.rs）
+            commands::remote_edit::remote_edit_open,
+            commands::remote_edit::remote_edit_poll,
+            commands::remote_edit::remote_edit_save,
+            commands::remote_edit::remote_edit_dismiss,
+            commands::remote_edit::remote_edit_close,
             // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
             #[cfg(debug_assertions)]
             commands::spike::spike_report_latency,
@@ -271,6 +284,14 @@ pub fn run() {
             keys::key_export,
             keys::key_deploy
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // App 退出清理（Phase 2 Task 3）：编辑临时目录随进程收尾。
+            // RunEvent::Exit 对 quit_app / 菜单退出 / 正常退出路径统一触发；
+            // 异常死亡的漏网残留由 24h 惰性清扫兜底（remote_edit 模块文档）。
+            if let tauri::RunEvent::Exit = event {
+                commands::remote_edit::close_all_edits(&app.state::<AppState>().edits);
+            }
+        });
 }

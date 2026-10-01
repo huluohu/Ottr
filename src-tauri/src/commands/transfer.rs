@@ -25,7 +25,8 @@ use super::state::{
 //     失败重试 / 应用重启后同身份重传自动断点续传。
 
 /// 取会话的 SFTP 客户端（懒开 + 缓存；会话不存在/已死显式报错）。
-async fn sftp_for(state: &AppState, id: &str) -> Result<Arc<ottr_transfer::SftpClient>, String> {
+/// pub(crate)：remote_edit 域（Phase 2 Task 3）复用同一条懒开通道。
+pub(crate) async fn sftp_for(state: &AppState, id: &str) -> Result<Arc<ottr_transfer::SftpClient>, String> {
     let (session, cached) = {
         let sessions = state.sessions.lock().unwrap();
         let e = sessions

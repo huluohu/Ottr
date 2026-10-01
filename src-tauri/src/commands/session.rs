@@ -611,6 +611,9 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
     let cancel = Arc::new(Notify::new());
     let decoder = Arc::new(Mutex::new(StreamDecoder::new(initial_encoding)));
     let text_tail = Arc::new(TextTail::new());
+    // 会话录制槽位（Phase 3 Task 5）：注册即空槽；recording_start 放入、
+    // flush_batch tee、stop 命令/循环退出 finalize（槽位归循环收尾任务一份）。
+    let recorder: super::recording::RecorderSlot = Arc::new(Mutex::new(None));
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
     // session 进 Arc（Task 10）：会话表项持一份（SFTP/传输按 rustId 复用同一
@@ -630,6 +633,9 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
             cancel: Arc::clone(&cancel),
             sftp: Arc::new(Mutex::new(None)),
             forward_router: forward_router.clone(),
+            recorder: Arc::clone(&recorder),
+            cols: cols.min(u16::MAX as u32) as u16,
+            rows: rows.min(u16::MAX as u32) as u16,
         },
     );
 
@@ -649,6 +655,10 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
     // Error / 摘除（断线恢复链的上半段；重连恢复挂在 attach_host_session 成功
     // 处的 on_session_up）。close_event 即 ui_face 开关——spike 面无转发可收。
     let forward_close_app = close_event.clone();
+    // 录制自动收尾（Phase 3 Task 5）：会话消亡（断线/关标签）→ 槽位若仍有
+    // handle = 用户没手动停 → 自动 finalize + 入库（审计痕迹不随连接死亡丢失）。
+    // vault 从 app 取（ui_face 才有 close_event；spike 面只落文件留日志）。
+    let exit_recorder = Arc::clone(&recorder);
     tauri::async_runtime::spawn(async move {
         let reason = forward_pty_loop(
             &mut channel,
@@ -656,11 +666,20 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
             &counters,
             &decoder,
             &text_tail,
+            &recorder,
             &session_id,
             &cancel,
         )
         .await;
         sessions.lock().unwrap().remove(&session_id);
+        {
+            let vault_app = forward_close_app.as_ref();
+            let vault = vault_app.map(|app| app.state::<VaultState>());
+            super::recording::auto_finalize_on_exit(
+                &exit_recorder,
+                vault.as_deref().map(|vs| vs.0.as_ref()),
+            );
+        }
         if let Some(app) = &forward_close_app {
             app.state::<AppState>().forwards.session_down(&session_id);
             // 监控采样同点收尾（Phase 3 Task 1）：会话消亡 → 采样任务摘除即停
@@ -922,16 +941,20 @@ struct SessionClosedPayload {
 }
 
 #[allow(unused_assignments)] // last_flush 的最后一次赋值在 break 路径上不被读取（预期）
+#[allow(clippy::too_many_arguments)] // recorder（Task 5）加入后 8 参——皆必需面（直驱契约不变）
 /// 合批转发循环。pub = 驱动脚本/example 直驱面（T9 真夹具三段验证走本函数，
 /// 与正式会话同一代码路径）；常规入口经 attach_*。
 /// `text_tail`（Task 13）：每批解码后的文本剥 ANSI 副本入会话尾缓冲
 /// （`session_tail` 命令的消费源，AI 诊断输出尾部 8KB）。
+/// `recorder`（Phase 3 Task 5，B3）：录制激活时每批解码后文本 tee 副本入
+/// asciinema 编码器（try_send 非阻塞，不影响转发；驱动面传空槽位即可）。
 pub async fn forward_pty_loop(
     channel: &mut russh::Channel<russh::client::Msg>,
     on_data: &Channel<InvokeResponseBody>,
     counters: &SessionCounters,
     decoder: &Mutex<StreamDecoder>,
     text_tail: &TextTail,
+    recorder: &super::recording::RecorderSlot,
     session_id: &str,
     cancel: &Notify,
 ) -> SessionCloseReason {
@@ -963,6 +986,7 @@ pub async fn forward_pty_loop(
                 counters,
                 decoder,
                 text_tail,
+                recorder,
                 session_id,
             )
             .await
@@ -1055,7 +1079,7 @@ fn flush_decoder_tail(buf: &mut Vec<u8>, decoder: &Mutex<StreamDecoder>) {
 /// PTY 字节解码为 UTF-8 文本再发。批尾不完整序列滞留 Decoder（≤3B）随下批
 /// 转发；解码输出为空（全部滞留）时不发空帧。forwarded_bytes 按解码后文本
 /// 字节记账（有损变换 + 残字滞留，与 pty_read_bytes 不再逐批恒等，见字段文档）。
-#[allow(clippy::too_many_arguments)] // decoder/text_tail/session_id 皆必需面
+#[allow(clippy::too_many_arguments)] // decoder/text_tail/recorder/session_id 皆必需面
 async fn flush_batch(
     buf: &mut Vec<u8>,
     deadline: &mut Option<Instant>,
@@ -1064,6 +1088,7 @@ async fn flush_batch(
     counters: &SessionCounters,
     decoder: &Mutex<StreamDecoder>,
     text_tail: &TextTail,
+    recorder: &super::recording::RecorderSlot,
     session_id: &str,
 ) -> bool {
     *deadline = None;
@@ -1078,6 +1103,12 @@ async fn flush_batch(
     }
     // 文本尾缓冲（Task 13）：剥离副本入环（AI 诊断取数面，不影响前端转发）
     text_tail.push(text.as_bytes());
+    // 录制 tee（Phase 3 Task 5，B3）：与前端 xterm 同源的解码文本副本入录制器
+    // （try_send 非阻塞——队列满/已停 = 丢该批并计数，转发热路径零等待；
+    // 录制开关不影响终端流纯净性：tee 只读副本，字节账面与不录完全一致）。
+    if let Some(handle) = recorder.lock().unwrap().as_ref() {
+        handle.send(text.as_bytes());
+    }
     let n = text.len();
     let payload = text.into_bytes();
     match on_data.send(InvokeResponseBody::Raw(payload)) {
@@ -1242,6 +1273,10 @@ pub async fn inject_shell_integration(
 mod tests {
     use super::*;
     use crate::commands::state::RAW_HEAD_CAP;
+    /// 测试用空录制槽位（不录制的 flush_batch 调用共用）。
+    fn empty_recorder() -> crate::commands::recording::RecorderSlot {
+        Arc::new(Mutex::new(None))
+    }
     use std::collections::HashMap;
     use std::sync::atomic::AtomicU64;
 
@@ -1404,6 +1439,7 @@ mod tests {
             &counters,
             &decoder,
             &text_tail,
+            &empty_recorder(),
             "t-utf8",
         ));
         assert!(ok);
@@ -1433,6 +1469,7 @@ mod tests {
             &counters,
             &decoder,
             &text_tail,
+            &empty_recorder(),
             "t-gbk",
         ));
         assert!(ok);
@@ -1453,6 +1490,7 @@ mod tests {
             &counters,
             &decoder,
             &text_tail,
+            &empty_recorder(),
             "t-torn",
         ));
         assert!(ok);
@@ -1466,6 +1504,7 @@ mod tests {
             &counters,
             &decoder,
             &text_tail,
+            &empty_recorder(),
             "t-torn2",
         ));
         assert!(ok);
@@ -1570,6 +1609,7 @@ mod tests {
             &counters,
             &decoder,
             &text_tail,
+            &empty_recorder(),
             "t-tail",
         ));
         assert!(ok);

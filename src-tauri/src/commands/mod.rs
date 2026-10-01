@@ -20,6 +20,9 @@ pub mod batch;
 // 采样任务 owner，ForwardManager 同款模式）+ monitor_start/stop +
 // ottr://monitor 事件推前端。
 pub mod monitor;
+// 会话录制命令域（Phase 3 Task 5，B3）：RecordingHandle（tee 写盘线程 owner）
+// + recording_start/stop/read/list/search/delete/export + 会话退出自动收尾。
+pub mod recording;
 // SMTP 通知命令域（Phase 3 Task 3，B5 渠道全矩阵）：smtp_send 单命令
 // （lettre tokio1 + native-tls；选型与安全面论证见模块文档）。其余 11 渠道
 // 适配器在前端 fetch（src/notify/channels/*），不经 Rust。

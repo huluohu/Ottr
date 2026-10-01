@@ -36,6 +36,12 @@ pub use commands::session::{
 };
 pub(crate) use commands::state::AppState;
 pub use commands::state::{SessionCounters, TextTail};
+// Phase 3 Task 5（B3）：录制面公开给夹具集成测试（tests/recording_fixture.rs
+// 真容器全链：tee → auto-finalize → parse/FTS/export）与 example 直驱。
+pub use commands::recording::{
+    auto_finalize_on_exit, export_recording, read_recording, ExportEvent, RecorderSlot,
+    RecordingHandle,
+};
 // Phase 2 Task 1（B7）：ForwardManager 公开给夹具集成测试（真容器断线恢复链）。
 pub use commands::forward::ForwardManager;
 // Phase 3 Task 4（B6）：批量执行池核公开给夹具集成测试（tests/batch_fixture.rs：
@@ -300,6 +306,15 @@ pub fn run() {
             vault::history_list_session,
             vault::summary_insert,
             vault::summary_list,
+            // Phase 3 Task 5（B3）：会话录制审计回放（明文面，同 history 锁定语义；
+            // tee 挂接在 flush_batch，导出经前端 redact，commands/recording.rs）
+            commands::recording::recording_start,
+            commands::recording::recording_stop,
+            commands::recording::recording_list,
+            commands::recording::recording_search,
+            commands::recording::recording_read,
+            commands::recording::recording_delete,
+            commands::recording::recording_export,
             security::vault_copy_credential_secret,
             // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
             vault::hosts_list,

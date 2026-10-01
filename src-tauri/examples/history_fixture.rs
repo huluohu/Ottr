@@ -298,6 +298,8 @@ async fn run() -> Result<(), String> {
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
     let forward_tail = Arc::clone(&text_tail);
+    // 录制槽位（Task 5）：夹具驱动不录制，传空槽位（同一代码路径契约）。
+    let recorder_slot: ottr_lib::RecorderSlot = Arc::new(std::sync::Mutex::new(None));
     tauri::async_runtime::spawn(async move {
         let _ = forward_pty_loop(
             &mut channel,
@@ -305,6 +307,7 @@ async fn run() -> Result<(), String> {
             &counters,
             &decoder,
             &forward_tail,
+            &recorder_slot,
             "history-fixture",
             &cancel_handle,
         )

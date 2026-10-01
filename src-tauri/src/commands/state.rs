@@ -130,6 +130,13 @@ pub(crate) struct SessionEntry {
     /// 连接（connect_with_keepalive 的 forward_router 参数），转发命令域按会话
     /// 取用。克隆零成本（内部 Arc）。
     pub(crate) forward_router: ottr_ssh::RemoteForwardRouter,
+    /// 会话录制器槽位（Phase 3 Task 5，B3）：None = 未录制；recording_start
+    /// 放入 handle、转发循环 flush_batch tee 副本、stop/循环退出 finalize。
+    pub(crate) recorder: super::recording::RecorderSlot,
+    /// PTY 初始尺寸（录制 header 的 width/height 面；运行期 resize 不追踪——
+    /// asciinema "r" 事件挂账，见 task-5-report）。
+    pub(crate) cols: u16,
+    pub(crate) rows: u16,
 }
 
 /// 会话文本缓冲（Task 13 尾环 + fix 1/5 头部原始探针）：

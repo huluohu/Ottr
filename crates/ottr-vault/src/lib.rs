@@ -13,6 +13,7 @@ pub mod jump_chains;
 pub mod master_key;
 pub mod notifications;
 pub mod notify_channels;
+pub mod recordings;
 pub mod secrets;
 pub mod settings;
 pub mod store;
@@ -41,6 +42,11 @@ pub use secrets::Secrets;
 pub use settings::Settings;
 pub use store::{KeyMode, Vault};
 pub use summaries::{SessionSummaries, SummaryEntry, SummaryInput, SUMMARIES_LIST_LIMIT};
+// 录制审计回放（Phase 3 Task 5，B3；asciinema 原始流在 .cast 文件，本 crate 只供表+FTS）
+pub use recordings::{
+    RecordingEntry, RecordingHit, RecordingInput, Recordings, RECORDINGS_SEARCH_LIMIT,
+    TEXT_INDEX_PREFIX,
+};
 
 use std::fmt;
 

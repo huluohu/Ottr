@@ -43,6 +43,7 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
     Hosts::create(
         vault,
         HostInput {
+            protocol: Default::default(),
             name: "web-01".into(),
             group_id: None,
             tags: vec!["prod".into()],
@@ -308,6 +309,7 @@ fn locked_vault_keeps_plain_metadata_usable_but_rejects_keyed_ops() {
     Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "meta-only".into(),
             group_id: None,
             tags: vec![],

@@ -134,6 +134,7 @@ async fn forward_recovers_after_container_restart() {
     let host_id = ottr_vault::Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "fx".into(),
             group_id: None,
             tags: vec![],
@@ -296,6 +297,7 @@ async fn manager_start_bind_failure_keeps_rich_error() {
     let host_id = ottr_vault::Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "fx".into(),
             group_id: None,
             tags: vec![],
@@ -366,6 +368,7 @@ async fn manager_start_remote_rejection_keeps_rich_error() {
     let host_id = ottr_vault::Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "fx".into(),
             group_id: None,
             tags: vec![],

@@ -15,6 +15,9 @@ pub mod jump;
 // 远端文件本地编辑域（Phase 2 Task 3，B10 上半）：编辑会话表 + 轮询防抖 +
 // 冲突检测回传 + 清理（显式关闭/会话消失/App 退出/24h 惰性清扫）。
 pub mod remote_edit;
+// FTP/FTPS 会话域（Phase 2 Task 5，B10 下半第二后端）：ftp_attach_host_session
+// + 会话表分派支撑（面板命令面在 transfer.rs 按 id 路由，命令名不变）。
+pub mod ftp;
 pub mod session;
 // spike 命令面生产闸门（Task 0 Step 4，终审C-2/BL-002）：Phase 0 测量/取数命令
 // 不进 release 产物——`spike_report_file` 是 webview 可达的任意路径写原语（路径

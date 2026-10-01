@@ -194,6 +194,7 @@ pub fn import_entries(vault: &Vault, outcome: ParseOutcome) -> ottr_vault::Resul
         Hosts::create(
             vault,
             HostInput {
+                protocol: Default::default(),
                 name: entry.host,
                 group_id: None,
                 tags: vec![],
@@ -276,6 +277,7 @@ mod tests {
         Hosts::create(
             &vault,
             HostInput {
+                protocol: Default::default(),
                 name: "预置重复机".into(),
                 group_id: None,
                 tags: vec![],

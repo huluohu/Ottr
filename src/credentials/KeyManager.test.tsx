@@ -29,6 +29,7 @@ const hostRow: Host = {
   address: "127.0.0.1",
   port: 2222,
   username: "spike",
+  protocol: "ssh",
   credential_id: 5,
   jump_chain_id: null,
   encoding_override: null,

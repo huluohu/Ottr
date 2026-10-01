@@ -15,14 +15,14 @@ use std::process::Command;
 use std::sync::Arc;
 
 use ottr_lib::{
-    apply_save_bookkeeping, edit_close, edit_dismiss, edit_open, edit_poll, edit_save,
-    local_stamp, temp_path_for, temp_root, EditMap, EditPollStatus,
+    apply_save_bookkeeping, edit_close, edit_dismiss, edit_open, edit_poll, edit_save, local_stamp,
+    temp_path_for, temp_root, EditMap, EditPollStatus,
 };
-use ottr_ssh::{AuthMethod, SshSession, connect};
+use ottr_ssh::{connect, AuthMethod, SshSession};
 use ottr_transfer::ops::RemoteSnapshot;
 use ottr_transfer::SftpClient;
+use russh::keys::{parse_public_key_base64, HashAlg, PublicKey};
 use russh::ChannelMsg;
-use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
@@ -165,9 +165,7 @@ async fn remote_edit_end_to_end() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mode = |p: &std::path::Path| {
-            std::fs::metadata(p).unwrap().permissions().mode() & 0o777
-        };
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&temp), 0o600, "temp copy must not be world-readable");
         assert_eq!(mode(temp.parent().unwrap()), 0o700, "hash dir must be 0700");
         assert_eq!(
@@ -177,7 +175,11 @@ async fn remote_edit_end_to_end() {
         );
     }
     assert!(
-        edits.lock().unwrap().get(&sid).is_some_and(|m| m.contains_key(&remote)),
+        edits
+            .lock()
+            .unwrap()
+            .get(&sid)
+            .is_some_and(|m| m.contains_key(&remote)),
         "edit session must be registered"
     );
 
@@ -185,9 +187,13 @@ async fn remote_edit_end_to_end() {
     std::fs::write(&temp, b"v2 edited by user\n").expect("simulate edit");
 
     // --- 3. 轮询：首轮防抖，次轮自动回传 ------------------------------------
-    let p1 = edit_poll(&edits, &client, &sid, &remote).await.expect("poll 1");
+    let p1 = edit_poll(&edits, &client, &sid, &remote)
+        .await
+        .expect("poll 1");
     assert_eq!(p1, EditPollStatus::QUIET, "first observation must debounce");
-    let p2 = edit_poll(&edits, &client, &sid, &remote).await.expect("poll 2");
+    let p2 = edit_poll(&edits, &client, &sid, &remote)
+        .await
+        .expect("poll 2");
     assert_eq!(p2, EditPollStatus::SAVED, "stable change must auto-save");
 
     // --- 4. 远端内容对上（独立 sha256 取证 + 字节比对）-----------------------
@@ -202,38 +208,52 @@ async fn remote_edit_end_to_end() {
     );
 
     // --- 5. 第三方改写远端 → 冲突侦出（不回传）-------------------------------
-    exec(&session, &format!("printf 'third-party line\\n' >> {remote}")).await;
+    exec(
+        &session,
+        &format!("printf 'third-party line\\n' >> {remote}"),
+    )
+    .await;
     std::fs::write(&temp, b"v3 local only\n").expect("second local edit");
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 3"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 3"),
         EditPollStatus::QUIET,
         "debounce again"
     );
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 4"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 4"),
         EditPollStatus::CONFLICT,
         "third-party remote change must be detected as conflict"
     );
     assert!(
-        String::from_utf8_lossy(&client.open_remote_text(&remote).await.expect("read")).contains("third-party line"),
+        String::from_utf8_lossy(&client.open_remote_text(&remote).await.expect("read"))
+            .contains("third-party line"),
         "conflict must NOT silently overwrite the remote"
     );
 
     // --- 6. 「保留本地」裁定：不再重弹，远端不动 ------------------------------
     edit_dismiss(&edits, &sid, &remote).expect("dismiss");
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 5"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 5"),
         EditPollStatus::QUIET,
         "dismissed conflict must not re-fire while local is unchanged"
     );
     assert!(
-        String::from_utf8_lossy(&client.open_remote_text(&remote).await.expect("read")).contains("third-party line"),
+        String::from_utf8_lossy(&client.open_remote_text(&remote).await.expect("read"))
+            .contains("third-party line"),
         "dismiss must not touch the remote"
     );
 
     // --- 7. 「覆盖」裁定：强制回传成功，sha256 对上 ---------------------------
     assert_eq!(
-        edit_save(&edits, &client, &sid, &remote, true).await.expect("force save"),
+        edit_save(&edits, &client, &sid, &remote, true)
+            .await
+            .expect("force save"),
         EditPollStatus::SAVED,
     );
     assert_eq!(
@@ -249,11 +269,15 @@ async fn remote_edit_end_to_end() {
     // --- 8. 覆盖后快照已更新为写后 stat：再编辑自动回传不再误报冲突 ----------
     std::fs::write(&temp, b"v4 after overwrite\n").expect("third local edit");
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 6"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 6"),
         EditPollStatus::QUIET,
     );
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 7"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 7"),
         EditPollStatus::SAVED,
         "post-overwrite snapshot must be fresh: no false conflict"
     );
@@ -263,20 +287,29 @@ async fn remote_edit_end_to_end() {
     );
 
     // --- 9. 显式关闭：临时副本 + 表项 + 目录链零残留 --------------------------
-    assert!(edit_close(&edits, &sid, &remote), "close must remove the session entry");
+    assert!(
+        edit_close(&edits, &sid, &remote),
+        "close must remove the session entry"
+    );
     assert!(!temp.exists(), "temp copy must be removed on close");
     assert!(
         !temp_root().join(&sid).exists(),
         "emptied session temp dir must be removed (no residue)"
     );
     assert!(
-        !edits.lock().unwrap().get(&sid).is_some_and(|m| !m.is_empty()),
+        !edits
+            .lock()
+            .unwrap()
+            .get(&sid)
+            .is_some_and(|m| !m.is_empty()),
         "edit table entry must be gone"
     );
 
     // --- 10. 会话消失的轮询：幂等 gone（前端停轮询信号）-----------------------
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 8"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 8"),
         EditPollStatus::GONE,
     );
 
@@ -303,14 +336,20 @@ async fn await_window_second_save_eventually_syncs() {
     let edits: EditMap = EditMap::default();
     exec(&session, &format!("printf 'v1\\n' > {remote}")).await;
 
-    let temp = edit_open(&edits, &client, &sid, &remote).await.expect("edit_open");
+    let temp = edit_open(&edits, &client, &sid, &remote)
+        .await
+        .expect("edit_open");
     std::fs::write(&temp, b"v2 first save\n").expect("first local edit");
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 1"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 1"),
         EditPollStatus::QUIET,
     );
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 2"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 2"),
         EditPollStatus::SAVED,
         "v2 must sync normally"
     );
@@ -348,12 +387,17 @@ async fn await_window_second_save_eventually_syncs() {
             local_stamp(&temp).unwrap().mtime_ns,
             "saved_local must stay armed at the pre-drift stamp"
         );
-        assert!(entry.pending.is_some(), "pending must be armed to the drift");
+        assert!(
+            entry.pending.is_some(),
+            "pending must be armed to the drift"
+        );
     }
     // 修复前的失败态正是「记账了新指纹」→ poll Unchanged → v4 永不回传。
     // 修复后：pending 已武装到当前指纹 → 下一轮 poll 即 Ready 重传最终态。
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 3"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 3"),
         EditPollStatus::SAVED,
         "armed pending re-transfers the final state on the next poll"
     );
@@ -381,22 +425,31 @@ async fn remote_deleted_reports_remote_gone_and_cleans() {
     let edits: EditMap = EditMap::default();
     exec(&session, &format!("printf 'v1\\n' > {remote}")).await;
 
-    let temp = edit_open(&edits, &client, &sid, &remote).await.expect("edit_open");
+    let temp = edit_open(&edits, &client, &sid, &remote)
+        .await
+        .expect("edit_open");
     // 第三方删除远端文件 + 本地有未回传修改
     exec(&session, &format!("rm -f {remote}")).await;
     std::fs::write(&temp, b"local edit, remote deleted\n").expect("local edit");
 
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 1"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 1"),
         EditPollStatus::QUIET,
         "debounce first"
     );
     assert_eq!(
-        edit_poll(&edits, &client, &sid, &remote).await.expect("poll 2"),
+        edit_poll(&edits, &client, &sid, &remote)
+            .await
+            .expect("poll 2"),
         EditPollStatus::REMOTE_GONE,
         "deleted remote must surface as one-shot remote_gone, not a silent error loop"
     );
-    assert!(!edits.lock().unwrap().contains_key(&sid), "session entry must self-clean");
+    assert!(
+        !edits.lock().unwrap().contains_key(&sid),
+        "session entry must self-clean"
+    );
     assert!(!temp.exists(), "temp copy must be cleaned");
     assert!(!temp_root().join(&sid).exists(), "no residue");
 
@@ -429,7 +482,11 @@ async fn oversize_edit_is_rejected() {
         "error must name the size limit, got: {err}"
     );
     assert!(
-        !edits.lock().unwrap().get(&sid).is_some_and(|m| !m.is_empty()),
+        !edits
+            .lock()
+            .unwrap()
+            .get(&sid)
+            .is_some_and(|m| !m.is_empty()),
         "no edit session may be registered for an oversize file"
     );
     assert!(

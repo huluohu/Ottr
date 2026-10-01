@@ -28,6 +28,7 @@ function makeSession(over: Partial<Session> = {}): Session {
     address: "127.0.0.1",
     port: 2222,
     username: "spike",
+    protocol: "ssh",
     status: "connected",
     rustId: "pty-0",
     attempt: 0,
@@ -77,6 +78,28 @@ afterEach(() => {
 });
 
 describe("FilePanel", () => {
+  it("FTP 后端切换（Phase 2 Task 5）：同命令面照常工作，编辑入口按协议隐藏", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession({ protocol: "ftp" })} />);
+    // 初载走同一组 sftp_* 命令（Rust 侧按会话表分派到 FtpClient，前端零感知）
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("sftp_realpath", { id: "pty-0", path: "." }),
+    );
+    await waitFor(() => expect(screen.getAllByRole("option").length).toBeGreaterThan(0));
+
+    // 远端条目右键：菜单出现，但**无「编辑」项**（远端编辑是 SFTP 专属能力）
+    // 双栏 options 含本地侧：定位远端文件行（big100）再呼出菜单
+    const remoteRow = screen
+      .getAllByRole("option")
+      .find((el) => (el.textContent ?? "").includes("big100"));
+    expect(remoteRow).toBeDefined();
+    fireEvent.contextMenu(remoteRow!);
+    const menu = await screen.findByTestId("file-ctx-menu");
+    const labels = [...menu.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.some((l) => /edit/i.test(l))).toBe(false);
+    expect(labels.some((l) => /download/i.test(l))).toBe(true);
+  });
+
   it("未连接：显示提示，不发起任何 SFTP 命令", () => {
     mockListings();
     render(<FilePanel session={makeSession({ rustId: null, status: "disconnected" })} />);

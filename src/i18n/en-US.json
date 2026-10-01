@@ -72,7 +72,11 @@
     "saveFailed": "Save failed: {{message}}",
     "save": "Save host",
     "chain": "Jump chain",
-    "chainNone": "Direct (no jump)"
+    "chainNone": "Direct (no jump)",
+    "protocol": "Protocol",
+    "protocol_ssh": "SSH",
+    "protocol_ftp": "FTP",
+    "protocol_ftps": "FTPS"
   },
   "hostTree": {
     "searchPlaceholder": "Search hosts (name/notes)…",
@@ -152,7 +156,9 @@
     "copyPassword": "Copy password",
     "copyPasswordAria": "Copy password of credential {{id}}",
     "copied": "Copied",
-    "copyFailed": "Copy failed: {{message}}"
+    "copyFailed": "Copy failed: {{message}}",
+    "kind_ftp": "FTP password",
+    "kind_ftps": "FTPS password"
   },
   "credentialForm": {
     "newTitle": "New Credential",
@@ -435,7 +441,8 @@
       "retryAria": "Retry transfer {{name}}",
       "dismissAria": "Remove record {{name}}",
       "errorText": "Error: {{message}}"
-    }
+    },
+    "ftpNoEdit": "Remote edit is not available for FTP sessions"
   },
   "forward": {
     "title": "Port forwards",

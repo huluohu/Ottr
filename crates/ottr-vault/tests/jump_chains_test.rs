@@ -18,6 +18,7 @@ fn seed_host(vault: &Vault, name: &str) -> i64 {
     Hosts::create(
         vault,
         HostInput {
+            protocol: Default::default(),
             name: name.into(),
             group_id: None,
             tags: vec![],
@@ -162,6 +163,7 @@ fn delete_unbinds_referencing_hosts() {
             vault,
             id,
             HostInput {
+                protocol: Default::default(),
                 name: host.name.clone(),
                 group_id: host.group_id,
                 tags: host.tags.clone(),
@@ -360,6 +362,7 @@ fn delete_last_hop_host_cascades_chain_and_unbinds_referencing_hosts() {
             vault,
             id,
             HostInput {
+                protocol: Default::default(),
                 name: host.name.clone(),
                 group_id: host.group_id,
                 tags: host.tags.clone(),

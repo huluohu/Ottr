@@ -16,6 +16,7 @@ fn open_vault(dir: &std::path::Path) -> Vault {
 
 fn host_input(name: &str) -> HostInput {
     HostInput {
+        protocol: Default::default(),
         name: name.into(),
         group_id: None,
         tags: vec![],

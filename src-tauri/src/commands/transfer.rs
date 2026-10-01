@@ -26,7 +26,18 @@ use super::state::{
 
 /// 取会话的 SFTP 客户端（懒开 + 缓存；会话不存在/已死显式报错）。
 /// pub(crate)：remote_edit 域（Phase 2 Task 3）复用同一条懒开通道。
-pub(crate) async fn sftp_for(state: &AppState, id: &str) -> Result<Arc<ottr_transfer::SftpClient>, String> {
+/// **SFTP 专属**：FTP 会话（Phase 2 Task 5）在此显式报错——远端编辑依赖
+/// SFTP 的读写原语（open_remote_text/write_remote_text），FTP 面板本期
+/// 不提供编辑（FilePanel 菜单按协议隐藏，前端接线）。
+pub(crate) async fn sftp_for(
+    state: &AppState,
+    id: &str,
+) -> Result<Arc<ottr_transfer::SftpClient>, String> {
+    if state.ftp_sessions.lock().unwrap().contains_key(id) {
+        return Err(format!(
+            "session {id} is an FTP/FTPS session: remote edit requires SSH (SFTP)"
+        ));
+    }
     let (session, cached) = {
         let sessions = state.sessions.lock().unwrap();
         let e = sessions
@@ -57,14 +68,92 @@ pub(crate) async fn sftp_for(state: &AppState, id: &str) -> Result<Arc<ottr_tran
     Ok(client)
 }
 
+/// FilePanel 远端操作客户端的两态（Phase 2 Task 5）：SSH 会话 → SFTP，
+/// FTP/FTPS 会话 → FtpClient。命令面（sftp_* 命令名不变）按会话表分派，
+/// 前端零感知。
+pub(crate) enum FileClient {
+    Sftp(Arc<ottr_transfer::SftpClient>),
+    Ftp(Arc<ottr_transfer::FtpClient>),
+}
+
+impl FileClient {
+    /// stat 单路径（预 stat 总长 / 面板查询共用）。
+    pub(crate) async fn stat(&self, path: &str) -> ottr_transfer::Result<ottr_transfer::DirEntry> {
+        match self {
+            FileClient::Sftp(c) => c.stat(path).await,
+            FileClient::Ftp(c) => c.stat(path).await,
+        }
+    }
+
+    /// 路径解析（FTP 仅 `.` 展开，见 ftp.rs 模块文档）。
+    pub(crate) async fn realpath(&self, path: &str) -> ottr_transfer::Result<String> {
+        match self {
+            FileClient::Sftp(c) => c.realpath(path).await,
+            FileClient::Ftp(c) => c.realpath(path).await,
+        }
+    }
+
+    /// 新建目录。
+    pub(crate) async fn mkdir(&self, path: &str) -> ottr_transfer::Result<()> {
+        match self {
+            FileClient::Sftp(c) => c.mkdir(path).await,
+            FileClient::Ftp(c) => c.mkdir(path).await,
+        }
+    }
+
+    /// 重命名。
+    pub(crate) async fn rename(&self, from: &str, to: &str) -> ottr_transfer::Result<()> {
+        match self {
+            FileClient::Sftp(c) => c.rename(from, to).await,
+            FileClient::Ftp(c) => c.rename(from, to).await,
+        }
+    }
+
+    /// 删除文件。
+    pub(crate) async fn remove_file(&self, path: &str) -> ottr_transfer::Result<()> {
+        match self {
+            FileClient::Sftp(c) => c.remove_file(path).await,
+            FileClient::Ftp(c) => c.remove_file(path).await,
+        }
+    }
+
+    /// 删除空目录。
+    pub(crate) async fn remove_dir(&self, path: &str) -> ottr_transfer::Result<()> {
+        match self {
+            FileClient::Sftp(c) => c.remove_dir(path).await,
+            FileClient::Ftp(c) => c.remove_dir(path).await,
+        }
+    }
+
+    /// chmod（`mode` 为完整 POSIX 权限位；FTP 走 SITE CHMOD，仅 9 位语义）。
+    pub(crate) async fn chmod(&self, path: &str, mode: u32) -> ottr_transfer::Result<()> {
+        match self {
+            FileClient::Sftp(c) => c.chmod(path, mode).await,
+            FileClient::Ftp(c) => c.chmod(path, mode & 0o777).await,
+        }
+    }
+}
+
+/// 取会话的远端操作客户端（SSH 表优先，FTP 表兜底；都未命中显式报错）。
+async fn file_client_for(state: &AppState, id: &str) -> Result<FileClient, String> {
+    if state.sessions.lock().unwrap().contains_key(id) {
+        return Ok(FileClient::Sftp(sftp_for(state, id).await?));
+    }
+    super::ftp::ftp_for(state, id).await.map(FileClient::Ftp)
+}
+
 #[tauri::command]
 pub(crate) async fn sftp_list(
     state: State<'_, AppState>,
     id: String,
     path: String,
 ) -> Result<Vec<ottr_transfer::DirEntry>, String> {
-    let client = sftp_for(&state, &id).await?;
-    client.list_dir(&path).await.map_err(|e| e.to_string())
+    let client = file_client_for(&state, &id).await?;
+    match client {
+        FileClient::Sftp(c) => c.list_dir(&path).await,
+        FileClient::Ftp(c) => c.list_dir(&path).await,
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -73,7 +162,7 @@ pub(crate) async fn sftp_realpath(
     id: String,
     path: String,
 ) -> Result<String, String> {
-    let client = sftp_for(&state, &id).await?;
+    let client = file_client_for(&state, &id).await?;
     client.realpath(&path).await.map_err(|e| e.to_string())
 }
 
@@ -83,7 +172,7 @@ pub(crate) async fn sftp_mkdir(
     id: String,
     path: String,
 ) -> Result<(), String> {
-    let client = sftp_for(&state, &id).await?;
+    let client = file_client_for(&state, &id).await?;
     client.mkdir(&path).await.map_err(|e| e.to_string())
 }
 
@@ -94,7 +183,7 @@ pub(crate) async fn sftp_rename(
     from: String,
     to: String,
 ) -> Result<(), String> {
-    let client = sftp_for(&state, &id).await?;
+    let client = file_client_for(&state, &id).await?;
     client.rename(&from, &to).await.map_err(|e| e.to_string())
 }
 
@@ -107,7 +196,7 @@ pub(crate) async fn sftp_remove(
     path: String,
     is_dir: bool,
 ) -> Result<(), String> {
-    let client = sftp_for(&state, &id).await?;
+    let client = file_client_for(&state, &id).await?;
     let r = if is_dir {
         client.remove_dir(&path).await
     } else {
@@ -131,7 +220,7 @@ pub(crate) async fn sftp_chmod(
             "invalid mode {mode} (0o{mode:o}): must be within 0..=0o777"
         ));
     }
-    let client = sftp_for(&state, &id).await?;
+    let client = file_client_for(&state, &id).await?;
     client.chmod(&path, mode).await.map_err(|e| e.to_string())
 }
 
@@ -406,12 +495,25 @@ pub(crate) async fn sftp_download(
     remote: String,
     local: Option<String>,
 ) -> Result<TransferStarted, String> {
-    let (session, endpoint) = {
-        let sessions = state.sessions.lock().unwrap();
-        let e = sessions
-            .get(&id)
-            .ok_or_else(|| format!("no such session: {id}"))?;
-        (Arc::clone(&e.session), e.endpoint.clone())
+    // 传输后端分派（Phase 2 Task 5）：SSH 会话 → SshSession（SFTP 并行分块），
+    // FTP 会话 → FtpClient（线性 + REST）。端点为 journal scope 身份（两种
+    // 后端同语义：跨主机不共享续传）。
+    enum Backend {
+        Ssh(Arc<ottr_ssh::SshSession>),
+        Ftp(Arc<ottr_transfer::FtpClient>),
+    }
+    let ssh_lookup = state
+        .sessions
+        .lock()
+        .unwrap()
+        .get(&id)
+        .map(|e| (Arc::clone(&e.session), e.endpoint.clone()));
+    let (backend, endpoint) = match ssh_lookup {
+        Some((session, endpoint)) => (Backend::Ssh(session), endpoint),
+        None => (
+            Backend::Ftp(super::ftp::ftp_for(&state, &id).await?),
+            super::ftp::ftp_endpoint(&state, &id)?,
+        ),
     };
     let local = match local {
         Some(p) => PathBuf::from(p),
@@ -427,7 +529,7 @@ pub(crate) async fn sftp_download(
     };
     // 预 stat 总长（begin 载荷 + journal 身份）；失败不阻塞——传输内部会再 stat
     // 并以同一错误失败，保持单一错误路径。
-    let total = sftp_for(&state, &id)
+    let total = file_client_for(&state, &id)
         .await?
         .stat(&remote)
         .await
@@ -453,16 +555,32 @@ pub(crate) async fn sftp_download(
         journal.clone(),
     );
     let fut = async move {
-        session
-            .download(
-                &remote_fut,
-                &local_fut,
-                SFTP_CHUNKS,
-                &journal_fut,
-                &cancel_fut,
-                Some(hook),
-            )
-            .await
+        match &backend {
+            Backend::Ssh(session) => {
+                session
+                    .download(
+                        &remote_fut,
+                        &local_fut,
+                        SFTP_CHUNKS,
+                        &journal_fut,
+                        &cancel_fut,
+                        Some(hook),
+                    )
+                    .await
+            }
+            Backend::Ftp(client) => {
+                client
+                    .download(
+                        &remote_fut,
+                        &local_fut,
+                        SFTP_CHUNKS,
+                        &journal_fut,
+                        &cancel_fut,
+                        Some(hook),
+                    )
+                    .await
+            }
+        }
     };
     spawn_transfer(
         state.transfers.clone(),
@@ -490,14 +608,20 @@ pub(crate) async fn sftp_upload(
     local: String,
     remote_dir: String,
 ) -> Result<TransferStarted, String> {
-    let session = {
-        let sessions = state.sessions.lock().unwrap();
-        Arc::clone(
-            &sessions
-                .get(&id)
-                .ok_or_else(|| format!("no such session: {id}"))?
-                .session,
-        )
+    // 传输后端分派（与 sftp_download 同款）：SSH → SshSession，FTP → FtpClient。
+    enum Backend {
+        Ssh(Arc<ottr_ssh::SshSession>),
+        Ftp(Arc<ottr_transfer::FtpClient>),
+    }
+    let ssh_lookup = state
+        .sessions
+        .lock()
+        .unwrap()
+        .get(&id)
+        .map(|e| Arc::clone(&e.session));
+    let backend = match ssh_lookup {
+        Some(session) => Backend::Ssh(session),
+        None => Backend::Ftp(super::ftp::ftp_for(&state, &id).await?),
     };
     let local_path = PathBuf::from(&local);
     let total = std::fs::metadata(&local_path)
@@ -533,16 +657,32 @@ pub(crate) async fn sftp_upload(
         journal.clone(),
     );
     let fut = async move {
-        session
-            .upload(
-                &local_fut,
-                &remote_fut,
-                SFTP_CHUNKS,
-                &journal_fut,
-                &cancel_fut,
-                Some(hook),
-            )
-            .await
+        match &backend {
+            Backend::Ssh(session) => {
+                session
+                    .upload(
+                        &local_fut,
+                        &remote_fut,
+                        SFTP_CHUNKS,
+                        &journal_fut,
+                        &cancel_fut,
+                        Some(hook),
+                    )
+                    .await
+            }
+            Backend::Ftp(client) => {
+                client
+                    .upload(
+                        &local_fut,
+                        &remote_fut,
+                        SFTP_CHUNKS,
+                        &journal_fut,
+                        &cancel_fut,
+                        Some(hook),
+                    )
+                    .await
+            }
+        }
     };
     spawn_transfer(
         state.transfers.clone(),

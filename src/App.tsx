@@ -304,6 +304,11 @@ function HomeLayout() {
   const rootSession = activeSession
     ? (sessions.find((s) => s.id === (activeSession.paneOf ?? activeSession.id)) ?? null)
     : null;
+  // FTP/FTPS 会话（Phase 2 Task 5）：无 PTY 终端——主区强制文件视图
+  // （filesOnly），「终端」切换按钮隐藏；SSH 会话维持双视图切换。
+  const filesOnly =
+    rootSession?.protocol === "ftp" || rootSession?.protocol === "ftps";
+  const filesVisible = filesOpen || filesOnly;
 
   return (
     <div className="app-shell">
@@ -379,18 +384,20 @@ function HomeLayout() {
             <div className="tabbar-row">
               <TabBar />
               <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
-                <button
-                  data-testid="view-terminal"
-                  data-active={!filesOpen}
-                  aria-pressed={!filesOpen}
-                  onClick={() => setFilesOpen(false)}
-                >
-                  {t("files.viewTerminal")}
-                </button>
+                {!filesOnly && (
+                  <button
+                    data-testid="view-terminal"
+                    data-active={!filesOpen}
+                    aria-pressed={!filesOpen}
+                    onClick={() => setFilesOpen(false)}
+                  >
+                    {t("files.viewTerminal")}
+                  </button>
+                )}
                 <button
                   data-testid="view-files"
-                  data-active={filesOpen}
-                  aria-pressed={filesOpen}
+                  data-active={filesVisible}
+                  aria-pressed={filesVisible}
                   onClick={() => setFilesOpen(true)}
                 >
                   {t("files.viewFiles")}
@@ -402,12 +409,16 @@ function HomeLayout() {
             <div className="term-main-row">
               {/* data-terminal = 终端聚焦守卫的判定容器（评审 M-4）：覆盖全部
                   pane（含 xterm 隐藏 textarea），文件视图/AI 面板在其外不受守卫。 */}
-              <div className="term-area-holder" data-hidden={filesOpen} data-terminal="">
+              <div
+                className="term-area-holder"
+                data-hidden={filesVisible}
+                data-terminal=""
+              >
                 <TerminalArea />
               </div>
-              {!filesOpen && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}
+              {!filesVisible && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}
             </div>
-            {filesOpen && rootSession && <FilePanel session={rootSession} />}
+            {filesVisible && rootSession && <FilePanel session={rootSession} />}
           </main>
         ) : (
           <main className="main-area" data-testid="main-area">

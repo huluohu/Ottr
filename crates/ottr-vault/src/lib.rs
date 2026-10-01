@@ -18,8 +18,8 @@ pub mod store;
 pub use crypto::{aad, Cipher};
 pub use entities::{
     host_endpoint_key, Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials,
-    Host, HostGroup, HostGroups, HostInput, Hosts, KnownHost, KnownHostState, KnownHosts,
-    SecretField, Snippet, SnippetInput, Snippets,
+    Host, HostGroup, HostGroups, HostInput, HostProtocol, Hosts, KnownHost, KnownHostState,
+    KnownHosts, SecretField, Snippet, SnippetInput, Snippets,
 };
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};
 pub use history::{History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT};

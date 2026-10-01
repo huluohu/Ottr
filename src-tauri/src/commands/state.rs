@@ -214,6 +214,17 @@ impl TextTail {
 /// 每会话缓存的 [`SftpClient`]（懒开）。
 pub(crate) type SftpSlot = Arc<Mutex<Option<Arc<ottr_transfer::SftpClient>>>>;
 
+/// FTP/FTPS 文件会话表项（Phase 2 Task 5）：客户端句柄 + 端点身份。
+/// FTP 会话无 PTY/终端（纯文件面），与 SSH 会话表平行、按 id 前缀区分。
+pub(crate) struct FtpSessionEntry {
+    pub(crate) client: Arc<ottr_transfer::FtpClient>,
+    /// `host:port`（下载 journal 的 scope 身份，与 SSH 端点同语义）。
+    pub(crate) endpoint: String,
+}
+
+/// FTP/FTPS 会话表（id → 表项；drop_session / disconnect_all 统一清收）。
+pub(crate) type FtpSessionMap = Arc<Mutex<HashMap<String, FtpSessionEntry>>>;
+
 /// 会话表（Arc 共享：命令面与转发循环收尾任务都要增删）。
 pub(crate) type SessionMap = Arc<Mutex<HashMap<String, SessionEntry>>>;
 
@@ -256,6 +267,8 @@ pub(crate) type TransferMap = Arc<Mutex<HashMap<String, TransferEntry>>>;
 #[derive(Default)]
 pub(crate) struct AppState {
     pub(crate) sessions: SessionMap,
+    /// FTP/FTPS 文件会话表（Phase 2 Task 5，commands/ftp.rs 注册）。
+    pub(crate) ftp_sessions: FtpSessionMap,
     pub(crate) host_key_asks: HostKeyAsks,
     /// 在途传输的取消令牌（Task 10）：键 = transfer_id；传输结束由任务自清。
     pub(crate) transfers: TransferMap,

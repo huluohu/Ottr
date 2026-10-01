@@ -164,6 +164,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::session::attach_session,
             commands::session::attach_host_session,
+            // FTP/FTPS 文件会话（Phase 2 Task 5；命令域 commands/ftp.rs）
+            commands::ftp::ftp_attach_host_session,
             commands::session::host_key_decision,
             commands::session::write_session,
             commands::encoding::set_session_encoding,

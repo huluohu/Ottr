@@ -773,14 +773,19 @@ async fn close_after_failed_attach(
 /// send_failed = 批内残余` 显式失衡），随后统一 disconnect、连接关闭。
 #[tauri::command]
 pub(crate) async fn drop_session(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let entry = state
-        .sessions
-        .lock()
-        .unwrap()
-        .remove(&id)
-        .ok_or_else(|| format!("no such session: {id}"))?;
-    entry.cancel.notify_one();
-    Ok(())
+    // SSH 会话优先（含 PTY/转发循环收尾）；FTP 文件会话（Phase 2 Task 5）=
+    // 移除表项 + 优雅 QUIT（best-effort，无转发循环可拆）。
+    if let Some(entry) = state.sessions.lock().unwrap().remove(&id) {
+        entry.cancel.notify_one();
+        return Ok(());
+    }
+    if let Some(entry) = state.ftp_sessions.lock().unwrap().remove(&id) {
+        tauri::async_runtime::spawn(async move {
+            entry.client.quit().await;
+        });
+        return Ok(());
+    }
+    Err(format!("no such session: {id}"))
 }
 
 /// 应用退出（A12，Task 14）：命令面板「退出」/ macOS 菜单 ⌘Q / 托盘菜单共用。
@@ -810,7 +815,22 @@ pub(crate) fn disconnect_all_inner(sessions: &SessionMap) -> usize {
 /// 断开全部会话（命令面：托盘动作共用同一实现核；返回断开条数）。
 #[tauri::command]
 pub(crate) fn session_disconnect_all(state: State<'_, AppState>) -> Result<usize, String> {
-    Ok(disconnect_all_inner(&state.sessions))
+    let mut n = disconnect_all_inner(&state.sessions);
+    // FTP 文件会话同语义收尾（无转发循环，QUIT 即可）
+    let drained: Vec<super::state::FtpSessionEntry> = state
+        .ftp_sessions
+        .lock()
+        .unwrap()
+        .drain()
+        .map(|(_, e)| e)
+        .collect();
+    n += drained.len();
+    for entry in drained {
+        tauri::async_runtime::spawn(async move {
+            entry.client.quit().await;
+        });
+    }
+    Ok(n)
 }
 
 /// 击键写入（输入方向，字节直传 PTY；spike 台账：传输编码允许 JSON 数组）。

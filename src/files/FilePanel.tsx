@@ -362,15 +362,21 @@ export function FilePanel({ session }: { session: Session }) {
             : []),
           ...(selectedEntry && !selectedEntry.is_dir
             ? [
-                selectedRemotePath && editing.includes(selectedRemotePath)
-                  ? {
-                      label: t("files.menu.stopEdit", { name: selectedEntry.name }),
-                      action: () => void stopEditing(selectedRemotePath),
-                    }
-                  : {
-                      label: t("files.menu.edit", { name: selectedEntry.name }),
-                      action: () => void startEditing(selectedRemotePath ?? ""),
-                    },
+                // 远端编辑（Phase 2 Task 3）走 SFTP 读写原语——FTP/FTPS 会话
+                // 无此能力，编辑入口按协议隐藏（Rust 侧 sftp_for 同样显式拒绝）。
+                ...(session.protocol === "ssh"
+                  ? [
+                      selectedRemotePath && editing.includes(selectedRemotePath)
+                        ? {
+                            label: t("files.menu.stopEdit", { name: selectedEntry.name }),
+                            action: () => void stopEditing(selectedRemotePath),
+                          }
+                        : {
+                            label: t("files.menu.edit", { name: selectedEntry.name }),
+                            action: () => void startEditing(selectedRemotePath ?? ""),
+                          },
+                    ]
+                  : []),
                 {
                   label: t("files.menu.download", { name: selectedEntry.name }),
                   action: () => openEntry("remote", selectedEntry),

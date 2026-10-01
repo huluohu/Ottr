@@ -17,6 +17,7 @@ fn open_vault(dir: &std::path::Path) -> Vault {
 
 fn host_input(name: &str, notes: &str) -> HostInput {
     HostInput {
+        protocol: Default::default(),
         name: name.into(),
         group_id: None,
         tags: vec![],
@@ -740,12 +741,41 @@ fn host_endpoint_key_formats() {
 fn migration_0004_preserves_legacy_rows() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("vault.db");
-    // 手工搭一个最小 v3 库（meta + 旧 known_hosts 形状；0004 只触碰 known_hosts）。
+    // 手工搭一个 v3 库（meta + 0002 已落地的 hosts/credentials 形状 + 旧
+    // known_hosts 形状；0004 只触碰 known_hosts。0010 起后续迁移会 ALTER
+    // hosts / 重建 credentials——真实 v3 库必然带有 0002 的实体表，夹具同形）。
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
              INSERT INTO meta VALUES ('schema_version', '3');
+             CREATE TABLE credentials (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 kind TEXT NOT NULL CHECK (kind IN ('password', 'key', 'totp')),
+                 secret_enc      BLOB,
+                 key_pub         TEXT,
+                 passphrase_enc  BLOB,
+                 totp_secret_enc BLOB,
+                 created_at      INTEGER NOT NULL,
+                 updated_at      INTEGER NOT NULL
+             );
+             CREATE TABLE hosts (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 group_id INTEGER,
+                 tags TEXT NOT NULL DEFAULT '[]',
+                 address TEXT NOT NULL,
+                 port INTEGER NOT NULL DEFAULT 22,
+                 username TEXT,
+                 credential_id INTEGER REFERENCES credentials (id) ON DELETE SET NULL,
+                 jump_chain_id INTEGER,
+                 encoding_override TEXT,
+                 theme_override TEXT,
+                 monitor_enabled INTEGER NOT NULL DEFAULT 0,
+                 notes TEXT,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );
              CREATE TABLE known_hosts (
                  fingerprint TEXT PRIMARY KEY,
                  first_seen  INTEGER NOT NULL,
@@ -811,5 +841,131 @@ fn migration_0004_fresh_schema_has_host_binding() {
     assert_eq!(
         vault.schema_version().unwrap(),
         ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 0010_ftp_ftps（Phase 2 Task 5）：hosts.protocol + credentials.kind CHECK 放开
+// ---------------------------------------------------------------------------
+
+#[test]
+fn migration_0010_host_protocol_roundtrip_and_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
+
+    // 缺省 = ssh（存量语义零迁移）；显式 ftp/ftps 往返一致
+    let plain = Hosts::create(&vault, host_input("legacy", "")).unwrap();
+    assert_eq!(plain.protocol, ottr_vault::HostProtocol::Ssh);
+
+    let mut input = host_input("nas", "ftp box");
+    input.protocol = ottr_vault::HostProtocol::Ftp;
+    input.address = "192.168.1.50".into();
+    input.port = 21;
+    let ftp = Hosts::create(&vault, input.clone()).unwrap();
+    assert_eq!(ftp.protocol, ottr_vault::HostProtocol::Ftp);
+    assert_eq!(
+        Hosts::get(&vault, ftp.id).unwrap().unwrap().protocol,
+        ottr_vault::HostProtocol::Ftp
+    );
+
+    input.protocol = ottr_vault::HostProtocol::Ftps;
+    input.port = 990;
+    let ftps = Hosts::create(&vault, input).unwrap();
+    let updated = Hosts::get(&vault, ftps.id).unwrap().unwrap();
+    assert_eq!(updated.protocol, ottr_vault::HostProtocol::Ftps);
+
+    // update 全量替换携带 protocol（表单编辑不改协议也不丢）
+    let mut edit = host_input("nas", "ftp box");
+    edit.protocol = ottr_vault::HostProtocol::Ftps;
+    edit.notes = Some("edited".into());
+    let after = Hosts::update(&vault, ftp.id, edit).unwrap();
+    assert_eq!(after.protocol, ottr_vault::HostProtocol::Ftps);
+
+    // 非法协议值被 CHECK 拒绝（DB 层完整性，非仅应用层）
+    let conn = vault.connection();
+    let bad = conn.execute(
+        "INSERT INTO hosts (name, tags, address, port, protocol, monitor_enabled, created_at, updated_at)
+         VALUES ('x', '[]', '1.2.3.4', 22, 'gopher', 0, 0, 0)",
+        [],
+    );
+    assert!(bad.is_err(), "protocol CHECK must reject unknown values");
+}
+
+#[test]
+fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+
+    // 0010 重建后：kind=ftp/ftps 可写入并读回（CHECK 放开），密文通道照常
+    let input = CredentialInput {
+        kind: CredentialKind::Ftp,
+        secret: Some("ftp-secret".into()),
+        key_pub: None,
+        passphrase: None,
+        totp_secret: None,
+    };
+    let cred = Credentials::create(&vault, &input).unwrap();
+    assert_eq!(cred.kind, CredentialKind::Ftp);
+    let revealed = Credentials::reveal(&vault, cred.id, SecretField::Secret)
+        .unwrap()
+        .expect("secret survives table rebuild pipeline");
+    assert_eq!(revealed, "ftp-secret");
+
+    let ftps = Credentials::create(
+        &vault,
+        &CredentialInput {
+            kind: CredentialKind::Ftps,
+            secret: Some("ftps-secret".into()),
+            key_pub: None,
+            passphrase: None,
+            totp_secret: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(ftps.kind, CredentialKind::Ftps);
+
+    // kind 更新到新值面（UI 分型切换）
+    let patch = CredentialPatch {
+        kind: Some(CredentialKind::Ftps),
+        secret: None,
+        key_pub: None,
+        passphrase: None,
+        totp_secret: None,
+    };
+    let changed = Credentials::update(&vault, cred.id, &patch).unwrap();
+    assert_eq!(changed.kind, CredentialKind::Ftps);
+
+    // 密文纪律：secret_enc 仍为密文（直读库文件不含明文）。连接守卫在块内
+    // 释放——connection() 是互斥锁，持锁调 Credentials::* 会自锁死。
+    {
+        let conn = vault.connection();
+        let raw: Vec<u8> = conn
+            .query_row(
+                "SELECT secret_enc FROM credentials WHERE id = ?1",
+                [cred.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!raw.is_empty());
+        let raw_str = raw.iter().map(|&b| b as char).collect::<String>();
+        assert!(
+            !raw_str.contains("ftp-secret"),
+            "plaintext must never touch disk"
+        );
+    }
+
+    // AUTOINCREMENT 水位在重建中保留：删最大 id 行后新行不复用 id
+    // （重建本身等价于一次「水位重放」——迁移 SQL 把旧 seq 搬进新表）
+    Credentials::delete(&vault, ftps.id).unwrap();
+    let next = Credentials::create(&vault, &password_input("after-migration")).unwrap();
+    assert!(
+        next.id > ftps.id,
+        "credentials id 复用（0010 重建丢水位）：{} vs {}",
+        ftps.id,
+        next.id
     );
 }

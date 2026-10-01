@@ -21,6 +21,7 @@ const existing: Host = {
   address: "10.0.0.5",
   port: 22,
   username: null,
+  protocol: "ssh",
   credential_id: null,
   jump_chain_id: null,
   encoding_override: null,
@@ -117,10 +118,38 @@ describe("HostForm", () => {
           address: "10.0.0.9",
           port: 22022,
           username: "root",
+          protocol: "ssh",
           tags: ["prod", "nginx"],
           encoding_override: null,
           notes: null,
         }),
+      }),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("协议选择（Phase 2 Task 5）：FTP 端口默认跟随（22→21），载荷带 protocol", async () => {
+    listResponses();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_create") {
+        return Promise.resolve({ ...existing, id: 13, name: "nas" });
+      }
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    const onClose = vi.fn();
+    render(<HostForm host={null} defaultGroupId={null} onClose={onClose} />);
+    fill("192.168.1.50", "22");
+    fireEvent.change(screen.getByTestId("form-protocol"), { target: { value: "ftp" } });
+    // 端口仍在默认值上 → 跟随新协议默认 21；用户自定义端口不动（此处未验，见注释语义）
+    await waitFor(() => expect(screen.getByTestId("form-port").value).toBe("21"));
+    fireEvent.change(screen.getByTestId("form-name"), { target: { value: "nas" } });
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("hosts_create", {
+        input: expect.objectContaining({ protocol: "ftp", port: 21 }),
       }),
     );
     await waitFor(() => expect(onClose).toHaveBeenCalled());

@@ -120,9 +120,19 @@ pub fn poll_decision(
 pub fn sanitize_id(id: &str) -> String {
     let s: String = id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    if s.is_empty() { "_".into() } else { s }
+    if s.is_empty() {
+        "_".into()
+    } else {
+        s
+    }
 }
 
 /// 编辑临时根：`$TMPDIR/ottr-edit`。
@@ -144,12 +154,12 @@ pub fn temp_path_for(id: &str, remote: &str) -> PathBuf {
     let dirhash = {
         use sha2::Digest;
         let digest = sha2::Sha256::digest(dir.as_bytes());
-        digest[..5].iter().map(|b| format!("{b:02x}")).collect::<String>()
+        digest[..5]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     };
-    temp_root()
-        .join(sanitize_id(id))
-        .join(dirhash)
-        .join(name)
+    temp_root().join(sanitize_id(id)).join(dirhash).join(name)
 }
 
 /// 本地副本指纹取样（pub：夹具 e2e 复刻 do_save 的 await 窗口时用同一原语）。
@@ -236,7 +246,12 @@ pub async fn edit_open(
     // 长开 >24h 的活会话目录会被误判陈旧——清扫绝不碰 EditMap 内在册的 sid，
     // 否则 open 别的文件时会把活会话的未回传修改整树删掉。
     let active: HashSet<String> = edits.lock().unwrap().keys().cloned().collect();
-    sweep_stale_edits(&temp_root(), Duration::from_secs(24 * 3600), SystemTime::now(), &active);
+    sweep_stale_edits(
+        &temp_root(),
+        Duration::from_secs(24 * 3600),
+        SystemTime::now(),
+        &active,
+    );
     if let Some(e) = edits.lock().unwrap().get(id).and_then(|m| m.get(remote)) {
         return Ok(e.temp_path.clone());
     }
@@ -247,24 +262,31 @@ pub async fn edit_open(
             stat.size
         ));
     }
-    let data = client.open_remote_text(remote).await.map_err(|e| e.to_string())?;
+    let data = client
+        .open_remote_text(remote)
+        .await
+        .map_err(|e| e.to_string())?;
     let temp_path = temp_path_for(id, remote);
     if let Some(parent) = temp_path.parent() {
         ensure_private_dir_chain(parent).map_err(|e| format!("create_dir_all {parent:?}: {e}"))?;
     }
-    write_private_file(&temp_path, &data)
-        .map_err(|e| format!("write temp {temp_path:?}: {e}"))?;
+    write_private_file(&temp_path, &data).map_err(|e| format!("write temp {temp_path:?}: {e}"))?;
     let saved_local = local_stamp(&temp_path)
         .ok_or_else(|| format!("temp file vanished right after write: {temp_path:?}"))?;
-    edits.lock().unwrap().entry(id.to_string()).or_default().insert(
-        remote.to_string(),
-        EditEntry {
-            temp_path: temp_path.clone(),
-            snapshot: RemoteSnapshot::capture(&stat),
-            saved_local,
-            pending: None,
-        },
-    );
+    edits
+        .lock()
+        .unwrap()
+        .entry(id.to_string())
+        .or_default()
+        .insert(
+            remote.to_string(),
+            EditEntry {
+                temp_path: temp_path.clone(),
+                snapshot: RemoteSnapshot::capture(&stat),
+                saved_local,
+                pending: None,
+            },
+        );
     Ok(temp_path)
 }
 
@@ -284,7 +306,11 @@ pub async fn edit_poll(
             None => return Ok(EditPollStatus::GONE),
         }
     };
-    let (decision, new_pending) = poll_decision(&entry.saved_local, &entry.pending, local_stamp(&entry.temp_path));
+    let (decision, new_pending) = poll_decision(
+        &entry.saved_local,
+        &entry.pending,
+        local_stamp(&entry.temp_path),
+    );
     match decision {
         LocalDecision::TempGone => {
             edit_close(edits, id, remote);
@@ -373,7 +399,12 @@ async fn do_save(
     {
         let mut map = edits.lock().unwrap();
         if let Some(e) = map.get_mut(id).and_then(|m| m.get_mut(remote)) {
-            apply_save_bookkeeping(e, stamp_at_read, stamp_after, RemoteSnapshot::capture(&after));
+            apply_save_bookkeeping(
+                e,
+                stamp_at_read,
+                stamp_after,
+                RemoteSnapshot::capture(&after),
+            );
         }
     }
     Ok(EditPollStatus::SAVED)
@@ -402,7 +433,12 @@ pub fn apply_save_bookkeeping(
 }
 
 fn store_pending(edits: &EditMap, id: &str, remote: &str, pending: Option<LocalStamp>) {
-    if let Some(e) = edits.lock().unwrap().get_mut(id).and_then(|m| m.get_mut(remote)) {
+    if let Some(e) = edits
+        .lock()
+        .unwrap()
+        .get_mut(id)
+        .and_then(|m| m.get_mut(remote))
+    {
         e.pending = pending;
     }
 }
@@ -524,7 +560,9 @@ impl EditPollStatus {
     pub const SAVED: EditPollStatus = EditPollStatus { status: "saved" };
     pub const CONFLICT: EditPollStatus = EditPollStatus { status: "conflict" };
     pub const GONE: EditPollStatus = EditPollStatus { status: "gone" };
-    pub const REMOTE_GONE: EditPollStatus = EditPollStatus { status: "remote_gone" };
+    pub const REMOTE_GONE: EditPollStatus = EditPollStatus {
+        status: "remote_gone",
+    };
 }
 
 #[derive(serde::Serialize)]
@@ -614,7 +652,8 @@ fn open_in_editor(path: &Path) -> Result<(), String> {
         c.arg(path);
         c
     };
-    cmd.spawn().map_err(|e| format!("spawn editor for {path:?}: {e}"))?;
+    cmd.spawn()
+        .map_err(|e| format!("spawn editor for {path:?}: {e}"))?;
     Ok(())
 }
 
@@ -633,10 +672,16 @@ mod tests {
         let a = temp_path_for("pty-0", "/home/spike/notes.txt");
         assert_eq!(
             a,
-            root.join("pty-0").join(a.parent().unwrap().file_name().unwrap()).join("notes.txt"),
+            root.join("pty-0")
+                .join(a.parent().unwrap().file_name().unwrap())
+                .join("notes.txt"),
             "extension must survive for editor syntax highlighting"
         );
-        assert_eq!(temp_path_for("pty-0", "/home/spike/notes.txt"), a, "stable derivation");
+        assert_eq!(
+            temp_path_for("pty-0", "/home/spike/notes.txt"),
+            a,
+            "stable derivation"
+        );
 
         // 同名不同目录：哈希段不同（不得共享临时件）
         let b = temp_path_for("pty-0", "/var/www/notes.txt");
@@ -659,7 +704,10 @@ mod tests {
         // 恶意 id 消毒：路径分隔符折叠为 _，不逃出 ottr-edit
         let evil = temp_path_for("../../etc", "/x/f.txt");
         let evil_s = evil.to_string_lossy();
-        assert!(!evil_s.contains("../"), "sanitized id must not traverse: {evil_s}");
+        assert!(
+            !evil_s.contains("../"),
+            "sanitized id must not traverse: {evil_s}"
+        );
         assert!(evil.starts_with(&root));
 
         // 根路径与无斜杠路径不 panic
@@ -670,7 +718,10 @@ mod tests {
     /// 轮询防抖状态机（TDD 核心）：未变 / 首见防抖 / 稳定就绪 / 临时件消失。
     #[test]
     fn poll_decision_state_machine() {
-        let saved = LocalStamp { mtime_ns: 100, size: 5 };
+        let saved = LocalStamp {
+            mtime_ns: 100,
+            size: 5,
+        };
         // 未变：Unchanged 且清 pending
         let cur = saved.clone();
         assert_eq!(
@@ -678,13 +729,19 @@ mod tests {
             (LocalDecision::Unchanged, None)
         );
         // 首见变化：Debounce + 记 pending
-        let v2 = LocalStamp { mtime_ns: 200, size: 6 };
+        let v2 = LocalStamp {
+            mtime_ns: 200,
+            size: 6,
+        };
         assert_eq!(
             poll_decision(&saved, &None, Some(v2.clone())),
             (LocalDecision::Debounce, Some(v2.clone()))
         );
         // 编辑器写盘中（mtime 抖动）：重置回 Debounce，绝不保存半截内容
-        let v3 = LocalStamp { mtime_ns: 300, size: 9 };
+        let v3 = LocalStamp {
+            mtime_ns: 300,
+            size: 9,
+        };
         assert_eq!(
             poll_decision(&saved, &Some(v2.clone()), Some(v3.clone())),
             (LocalDecision::Debounce, Some(v3.clone()))
@@ -695,7 +752,10 @@ mod tests {
             (LocalDecision::Ready, Some(v3))
         );
         // 临时件消失：TempGone（自清信号）
-        assert_eq!(poll_decision(&saved, &None, None), (LocalDecision::TempGone, None));
+        assert_eq!(
+            poll_decision(&saved, &None, None),
+            (LocalDecision::TempGone, None)
+        );
     }
 
     /// edit_close：删临时副本 + 摘表 + 清空了的目录链；重复 close 幂等 false。
@@ -711,7 +771,10 @@ mod tests {
             EditEntry {
                 temp_path: temp.clone(),
                 snapshot: RemoteSnapshot { size: 4, mtime: 1 },
-                saved_local: LocalStamp { mtime_ns: 1, size: 4 },
+                saved_local: LocalStamp {
+                    mtime_ns: 1,
+                    size: 4,
+                },
                 pending: None,
             },
         );
@@ -720,7 +783,10 @@ mod tests {
         assert!(edit_close(&edits, &id, "/home/spike/ut.txt"));
         assert!(!temp.exists(), "temp file must be removed");
         assert!(!session_dir.exists(), "emptied session dir must be removed");
-        assert!(!edit_close(&edits, &id, "/home/spike/ut.txt"), "second close is a no-op");
+        assert!(
+            !edit_close(&edits, &id, "/home/spike/ut.txt"),
+            "second close is a no-op"
+        );
     }
 
     /// edit_close_session / close_all_edits：整会话清理（跨多文件）。
@@ -732,17 +798,18 @@ mod tests {
             let temp = temp_path_for(&id, name);
             std::fs::create_dir_all(temp.parent().unwrap()).unwrap();
             std::fs::write(&temp, b"x").unwrap();
-            edits
-                .lock()
-                .unwrap()
-                .entry(id.clone())
-                .or_default()
-                .insert(name.to_string(), EditEntry {
+            edits.lock().unwrap().entry(id.clone()).or_default().insert(
+                name.to_string(),
+                EditEntry {
                     temp_path: temp,
                     snapshot: RemoteSnapshot { size: 1, mtime: 1 },
-                    saved_local: LocalStamp { mtime_ns: 1, size: 1 },
+                    saved_local: LocalStamp {
+                        mtime_ns: 1,
+                        size: 1,
+                    },
                     pending: None,
-                });
+                },
+            );
         }
         assert_eq!(edit_close_session(&edits, &id), 2);
         assert!(!temp_root().join(&id).exists(), "session dir must be gone");
@@ -804,21 +871,38 @@ mod tests {
         let mut entry = EditEntry {
             temp_path: PathBuf::from("/x"),
             snapshot: RemoteSnapshot { size: 1, mtime: 1 },
-            saved_local: LocalStamp { mtime_ns: 100, size: 5 },
-            pending: Some(LocalStamp { mtime_ns: 200, size: 6 }),
+            saved_local: LocalStamp {
+                mtime_ns: 100,
+                size: 5,
+            },
+            pending: Some(LocalStamp {
+                mtime_ns: 200,
+                size: 6,
+            }),
         };
-        let at_read = LocalStamp { mtime_ns: 200, size: 6 };
+        let at_read = LocalStamp {
+            mtime_ns: 200,
+            size: 6,
+        };
         let after = RemoteSnapshot { size: 6, mtime: 2 };
 
         // 无追尾：读时 == 写后 → 记账 + 解除武装
-        assert!(apply_save_bookkeeping(&mut entry, at_read.clone(), Some(at_read.clone()), after));
+        assert!(apply_save_bookkeeping(
+            &mut entry,
+            at_read.clone(),
+            Some(at_read.clone()),
+            after
+        ));
         assert_eq!(entry.saved_local, at_read);
         assert_eq!(entry.pending, None);
         assert_eq!(entry.snapshot, after);
 
         // 追尾：窗口内编辑器又保存（指纹漂移）→ 绝不记账（否则下一轮 poll 判
         // Unchanged，最终态静默分叉）；pending 武装到当前指纹
-        let drifted = LocalStamp { mtime_ns: 300, size: 9 };
+        let drifted = LocalStamp {
+            mtime_ns: 300,
+            size: 9,
+        };
         assert!(!apply_save_bookkeeping(
             &mut entry,
             at_read.clone(),
@@ -830,7 +914,10 @@ mod tests {
             "saved_local must stay armed at the pre-drift stamp"
         );
         assert_eq!(entry.pending, Some(drifted.clone()));
-        assert_eq!(entry.snapshot, after, "snapshot tracks the actual remote write");
+        assert_eq!(
+            entry.snapshot, after,
+            "snapshot tracks the actual remote write"
+        );
 
         // 窗口内临时件被删：不记账、pending 不动（下一轮 TempGone 自清）
         let mut entry2 = EditEntry {
@@ -839,7 +926,12 @@ mod tests {
             saved_local: at_read.clone(),
             pending: None,
         };
-        assert!(!apply_save_bookkeeping(&mut entry2, at_read.clone(), None, after));
+        assert!(!apply_save_bookkeeping(
+            &mut entry2,
+            at_read.clone(),
+            None,
+            after
+        ));
         assert_eq!(entry2.saved_local, at_read);
         assert_eq!(entry2.pending, None);
     }

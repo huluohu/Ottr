@@ -33,6 +33,7 @@ fn seed_host(vault: &Vault) -> i64 {
     Hosts::create(
         vault,
         HostInput {
+            protocol: Default::default(),
             name: "fx".into(),
             group_id: None,
             tags: vec![],
@@ -157,6 +158,7 @@ fn list_filters_by_host_and_enabled() {
     let h2 = Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "second".into(),
             group_id: None,
             tags: vec![],

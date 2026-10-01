@@ -1,5 +1,6 @@
-// CredentialForm（Task 6，A3）：新建/编辑凭据，三类字段面：
-//   password → secret（显隐切换）；key → 私钥 PEM + key_pub + passphrase（恒遮蔽）；
+// CredentialForm（Task 6，A3）：新建/编辑凭据，五类字段面（Phase 2 Task 5 起
+//   kind 扩展 ftp/ftps——密码型，字段面与 password 相同，仅协议归属不同）：
+//   password/ftp/ftps → secret（显隐切换）；key → 私钥 PEM + key_pub + passphrase（恒遮蔽）；
 //   totp → totp_secret（base32 粗检）。
 // 明文纪律：编辑模式不回填现有密钥（明文只经 credentials.reveal 单点出库），
 // 留空 = CredentialPatch null = 保留现值（Rust 侧「未重输的密钥不重密封」）。
@@ -15,7 +16,11 @@ export interface CredentialFormProps {
   onClose: () => void;
 }
 
-const KINDS: CredentialKind[] = ["password", "key", "totp"];
+/** 凭据类型候选（Phase 2 Task 5：+ ftp/ftps——密码型，见 kind_ftp/kind_ftps）。 */
+const KINDS: CredentialKind[] = ["password", "key", "totp", "ftp", "ftps"];
+
+/** 密码型凭据（secret 字段面与 password 完全一致）。 */
+const PASSWORD_LIKE: CredentialKind[] = ["password", "ftp", "ftps"];
 
 /** TOTP secret base32 粗检（裁定 #6）：RFC 4648 字符集（A-Z、2-7）+ `=` 填充，
  * 忽略空格；只查字符集与最短长度（8），不校验 padding 对齐——粗检把 obviously
@@ -47,16 +52,19 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
 
   function validate(): boolean {
     // 编辑模式密钥留空 = 保留现值（patch null），只拦「新建必填」与「重输格式错」
-    if (kind === "password" || kind === "key") {
+    if (PASSWORD_LIKE.includes(kind)) {
       if (secret.trim() === "") {
         if (credential == null) {
-          setError(
-            t(kind === "password" ? "credentialForm.errSecretRequired" : "credentialForm.errPrivateKeyRequired"),
-          );
+          setError(t("credentialForm.errSecretRequired"));
           return false;
         }
-      } else if (kind === "key" && !looksLikePrivateKey(secret)) {
-        setError(t("credentialForm.errPrivateKeyMalformed"));
+      }
+    } else if (kind === "key" && secret.trim() !== "" && !looksLikePrivateKey(secret)) {
+      setError(t("credentialForm.errPrivateKeyMalformed"));
+      return false;
+    } else if (kind === "key" && secret.trim() === "") {
+      if (credential == null) {
+        setError(t("credentialForm.errPrivateKeyRequired"));
         return false;
       }
     }
@@ -138,40 +146,43 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
           </select>
         </label>
 
-        {(kind === "password" || kind === "key") && (
+        {PASSWORD_LIKE.includes(kind) && (
           <label>
-            <span>{kind === "password" ? t("credentialForm.secret") : t("credentialForm.privateKey")}</span>
-            {kind === "password" ? (
-              <span className="secret-field">
-                <input
-                  data-testid="cred-secret"
-                  type={showSecret ? "text" : "password"}
-                  value={secret}
-                  placeholder={editing ? t("credentialForm.keepSecret") : t("credentialForm.secretPlaceholder")}
-                  autoComplete="off"
-                  onChange={(e) => setSecret(e.currentTarget.value)}
-                />
-                <button
-                  type="button"
-                  className="secret-toggle"
-                  data-testid="cred-toggle-secret"
-                  aria-pressed={showSecret}
-                  aria-label={showSecret ? t("credentialForm.hide") : t("credentialForm.reveal")}
-                  onClick={() => setShowSecret((v) => !v)}
-                >
-                  {showSecret ? t("credentialForm.hide") : t("credentialForm.reveal")}
-                </button>
-              </span>
-            ) : (
-              <textarea
-                data-testid="cred-private-key"
+            <span>{t("credentialForm.secret")}</span>
+            <span className="secret-field">
+              <input
+                data-testid="cred-secret"
+                type={showSecret ? "text" : "password"}
                 value={secret}
-                rows={5}
-                spellCheck={false}
-                placeholder={editing ? t("credentialForm.keepSecret") : t("credentialForm.privateKeyPlaceholder")}
+                placeholder={editing ? t("credentialForm.keepSecret") : t("credentialForm.secretPlaceholder")}
+                autoComplete="off"
                 onChange={(e) => setSecret(e.currentTarget.value)}
               />
-            )}
+              <button
+                type="button"
+                className="secret-toggle"
+                data-testid="cred-toggle-secret"
+                aria-pressed={showSecret}
+                aria-label={showSecret ? t("credentialForm.hide") : t("credentialForm.reveal")}
+                onClick={() => setShowSecret((v) => !v)}
+              >
+                {showSecret ? t("credentialForm.hide") : t("credentialForm.reveal")}
+              </button>
+            </span>
+          </label>
+        )}
+
+        {kind === "key" && (
+          <label>
+            <span>{t("credentialForm.privateKey")}</span>
+            <textarea
+              data-testid="cred-private-key"
+              value={secret}
+              rows={5}
+              spellCheck={false}
+              placeholder={editing ? t("credentialForm.keepSecret") : t("credentialForm.privateKeyPlaceholder")}
+              onChange={(e) => setSecret(e.currentTarget.value)}
+            />
           </label>
         )}
 

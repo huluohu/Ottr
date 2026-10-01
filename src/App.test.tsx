@@ -31,6 +31,7 @@ const web: Host = {
   address: "10.0.0.1",
   port: 2222,
   username: "deploy",
+  protocol: "ssh",
   credential_id: null,
   jump_chain_id: null,
   encoding_override: null,

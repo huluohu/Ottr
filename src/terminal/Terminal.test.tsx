@@ -73,6 +73,7 @@ function sess(over: Partial<Session> & Pick<Session, "id">): Session {
     address: "10.0.0.1",
     port: 22,
     username: "deploy",
+    protocol: "ssh",
     status: "connected",
     rustId: "pty-1",
     attempt: 0,

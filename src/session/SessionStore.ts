@@ -23,7 +23,7 @@
 // 不自动连接（安全考虑：无人值守窗口重开不应悄悄发起 SSH 连接）。
 import { create } from "zustand";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { Host } from "../vault/api";
+import type { Host, HostProtocol } from "../vault/api";
 import {
   closeLeaf,
   leaf,
@@ -72,6 +72,8 @@ export interface Session {
   address: string;
   port: number;
   username: string | null;
+  /** 主机协议（Phase 2 Task 5）：ftp/ftps = 纯文件会话（无 PTY 终端）。 */
+  protocol: HostProtocol;
   status: SessionStatus;
   /** 当前 Rust 侧会话 id（attach 成功后非空；重连期间清空）。 */
   rustId: string | null;
@@ -359,6 +361,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       address: host.address,
       port: host.port,
       username: host.username,
+      protocol: host.protocol ?? "ssh",
       status: "disconnected",
       rustId: null,
       attempt: 0,
@@ -466,6 +469,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }),
     }));
 
+    // FTP/FTPS 会话（Phase 2 Task 5）：纯文件面——无 PTY、无 on_data 通道、
+    // 无 host key TOFU（Rust 侧 ftp_attach 直接连，不产生 host-key-ask 事件）。
+    const isFtp = session.protocol === "ftp" || session.protocol === "ftps";
     const chan = new Channel<unknown>();
     const sink = sinks.get(id);
     chan.onmessage = (m) => {
@@ -478,12 +484,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const size = sink?.getSize() ?? { cols: 80, rows: 24 };
 
     try {
-      const rustId = await invoke<string>("attach_host_session", {
-        hostId: session.hostId,
-        cols: size.cols,
-        rows: size.rows,
-        onData: chan,
-      });
+      const rustId = isFtp
+        ? await invoke<string>("ftp_attach_host_session", { hostId: session.hostId })
+        : await invoke<string>("attach_host_session", {
+            hostId: session.hostId,
+            cols: size.cols,
+            rows: size.rows,
+            onData: chan,
+          });
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) {
         // 孤儿收尾（评审 I-1，fix 1/5）：标签已关/手动断开/已换代期间 attach 才
         // 成功——rustId 若不落地就没人持有（closeTab 时 rustId 还是 null 无可
@@ -679,6 +687,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       address: root.address,
       port: root.port,
       username: root.username,
+      protocol: root.protocol,
       status: "disconnected",
       rustId: null,
       attempt: 0,

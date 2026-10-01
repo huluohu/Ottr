@@ -42,7 +42,10 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-export type CredentialKind = "password" | "key" | "totp";
+/** 凭据类型（Rust CredentialKind 同构；ftp/ftps = FTP 密码型凭据，Phase 2 Task 5）。 */
+export type CredentialKind = "password" | "key" | "totp" | "ftp" | "ftps";
+/** 主机协议（Rust HostProtocol 同构；ftp/ftps = 文件传输会话，无 PTY 终端）。 */
+export type HostProtocol = "ssh" | "ftp" | "ftps";
 export type KnownHostState = "ok" | "changed" | "pending";
 /** credentials.reveal 的字段选择（Rust SecretField 同构，serde snake_case）。
  * 注：此处 totp_secret 为用户原样输入，不做 normalize（去空格/大写化）——
@@ -66,6 +69,7 @@ export interface Host {
   address: string;
   port: number;
   username: string | null;
+  protocol: HostProtocol;
   credential_id: number | null;
   jump_chain_id: number | null;
   encoding_override: string | null;
@@ -84,6 +88,7 @@ export interface HostInput {
   address: string;
   port: number;
   username: string | null;
+  protocol: HostProtocol;
   credential_id: number | null;
   jump_chain_id: number | null;
   encoding_override: string | null;

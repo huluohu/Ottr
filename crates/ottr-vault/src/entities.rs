@@ -208,13 +208,17 @@ fn row_to_group(row: &Row) -> rusqlite::Result<HostGroup> {
 // Credentials
 // ---------------------------------------------------------------------------
 
-/// 凭据类型（serde 小写，DB CHECK 同名约束）。
+/// 凭据类型（serde 小写，DB CHECK 同名约束——0001 建 CHECK，0010 放开
+/// ftp/ftps）。FTP/FTPS 凭据 = 密码型（secret 通道密封），与 SSH 密码凭据
+/// 同存储面，只在 UI/连接分派时区分协议（Phase 2 Task 5）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CredentialKind {
     Password,
     Key,
     Totp,
+    Ftp,
+    Ftps,
 }
 
 impl CredentialKind {
@@ -223,7 +227,14 @@ impl CredentialKind {
             Self::Password => "password",
             Self::Key => "key",
             Self::Totp => "totp",
+            Self::Ftp => "ftp",
+            Self::Ftps => "ftps",
         }
+    }
+
+    /// 凭据是否为密码型（password/ftp/ftps 共用 secret 通道；连接分派用）。
+    pub fn is_password_like(self) -> bool {
+        matches!(self, Self::Password | Self::Ftp | Self::Ftps)
     }
 }
 
@@ -234,6 +245,8 @@ impl std::str::FromStr for CredentialKind {
             "password" => Ok(Self::Password),
             "key" => Ok(Self::Key),
             "totp" => Ok(Self::Totp),
+            "ftp" => Ok(Self::Ftp),
+            "ftps" => Ok(Self::Ftps),
             other => Err(VaultError::InvalidInput(format!(
                 "unknown credential kind: {other}"
             ))),
@@ -483,9 +496,45 @@ fn row_to_credential(row: &Row) -> rusqlite::Result<Credential> {
 // Hosts
 // ---------------------------------------------------------------------------
 
+/// 主机协议（0010 迁移，Phase 2 Task 5）：ssh | ftp | ftps。`None`/缺省 =
+/// ssh（存量行零迁移）；FTP/FTPS 主机为文件传输会话（无 PTY 终端）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum HostProtocol {
+    #[default]
+    Ssh,
+    Ftp,
+    Ftps,
+}
+
+impl HostProtocol {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ssh => "ssh",
+            Self::Ftp => "ftp",
+            Self::Ftps => "ftps",
+        }
+    }
+}
+
+impl std::str::FromStr for HostProtocol {
+    type Err = VaultError;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "ssh" => Ok(Self::Ssh),
+            "ftp" => Ok(Self::Ftp),
+            "ftps" => Ok(Self::Ftps),
+            other => Err(VaultError::InvalidInput(format!(
+                "unknown host protocol: {other}"
+            ))),
+        }
+    }
+}
+
 /// 主机。tags 为 JSON 列；credential_id / group_id 可空、FK ON DELETE SET NULL；
 /// jump_chain_id 的目标表（jump_chains）未建，暂无 FK（0002 迁移注释）。
 /// username（0003 迁移）为登录用户名，可空（未指定时连接侧回退当前用户）。
+/// protocol（0010 迁移）为主机协议，缺省 ssh（FilePanel 后端切换依据）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Host {
     pub id: i64,
@@ -495,6 +544,7 @@ pub struct Host {
     pub address: String,
     pub port: i64,
     pub username: Option<String>,
+    pub protocol: HostProtocol,
     pub credential_id: Option<i64>,
     pub jump_chain_id: Option<i64>,
     pub encoding_override: Option<String>,
@@ -514,6 +564,9 @@ pub struct HostInput {
     pub address: String,
     pub port: i64,
     pub username: Option<String>,
+    /// serde default：旧调用面（测试/驱动脚本）不传 = ssh（0010 语义兼容）。
+    #[serde(default)]
+    pub protocol: HostProtocol,
     pub credential_id: Option<i64>,
     pub jump_chain_id: Option<i64>,
     pub encoding_override: Option<String>,
@@ -532,10 +585,10 @@ impl Hosts {
         let conn = vault.connection();
         let tx = conn.unchecked_transaction()?;
         tx.execute(
-            "INSERT INTO hosts (name, group_id, tags, address, port, username,
+            "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
                                 credential_id, jump_chain_id, encoding_override, theme_override,
                                 monitor_enabled, notes, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
             params![
                 input.name,
                 input.group_id,
@@ -543,6 +596,7 @@ impl Hosts {
                 input.address,
                 input.port,
                 input.username,
+                input.protocol.as_str(),
                 input.credential_id,
                 input.jump_chain_id,
                 input.encoding_override,
@@ -562,6 +616,7 @@ impl Hosts {
             address: input.address,
             port: input.port,
             username: input.username,
+            protocol: input.protocol,
             credential_id: input.credential_id,
             jump_chain_id: input.jump_chain_id,
             encoding_override: input.encoding_override,
@@ -587,10 +642,10 @@ impl Hosts {
             .ok_or_else(|| VaultError::NotFound(format!("host id={id}")))?;
         tx.execute(
             "UPDATE hosts SET name = ?1, group_id = ?2, tags = ?3, address = ?4, port = ?5,
-                              username = ?6, credential_id = ?7, jump_chain_id = ?8,
-                              encoding_override = ?9, theme_override = ?10,
-                              monitor_enabled = ?11, notes = ?12, updated_at = ?13
-             WHERE id = ?14",
+                              username = ?6, protocol = ?7, credential_id = ?8, jump_chain_id = ?9,
+                              encoding_override = ?10, theme_override = ?11,
+                              monitor_enabled = ?12, notes = ?13, updated_at = ?14
+             WHERE id = ?15",
             params![
                 input.name,
                 input.group_id,
@@ -598,6 +653,7 @@ impl Hosts {
                 input.address,
                 input.port,
                 input.username,
+                input.protocol.as_str(),
                 input.credential_id,
                 input.jump_chain_id,
                 input.encoding_override,
@@ -617,6 +673,7 @@ impl Hosts {
             address: input.address,
             port: input.port,
             username: input.username,
+            protocol: input.protocol,
             credential_id: input.credential_id,
             jump_chain_id: input.jump_chain_id,
             encoding_override: input.encoding_override,
@@ -734,6 +791,7 @@ impl Hosts {
 fn row_to_host(row: &Row) -> rusqlite::Result<Host> {
     let tags_raw: String = row.get("tags")?;
     let tags = list_from_json(&tags_raw).map_err(|e| conv_failure(row, "tags", e))?;
+    let protocol: String = row.get("protocol")?;
     Ok(Host {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -742,6 +800,9 @@ fn row_to_host(row: &Row) -> rusqlite::Result<Host> {
         address: row.get("address")?,
         port: row.get("port")?,
         username: row.get("username")?,
+        protocol: protocol
+            .parse()
+            .map_err(|e: VaultError| conv_failure(row, "protocol", e))?,
         credential_id: row.get("credential_id")?,
         jump_chain_id: row.get("jump_chain_id")?,
         encoding_override: row.get("encoding_override")?,

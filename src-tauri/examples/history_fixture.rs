@@ -387,6 +387,7 @@ async fn run() -> Result<(), String> {
     let host = Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "fixture-web01".into(),
             group_id: None,
             tags: vec![],

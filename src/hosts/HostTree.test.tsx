@@ -23,6 +23,7 @@ function makeHost(overrides: Partial<Host>): Host {
     address: "10.0.0.1",
     port: 22,
     username: null,
+    protocol: "ssh",
     credential_id: null,
     jump_chain_id: null,
     encoding_override: null,

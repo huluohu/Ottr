@@ -143,6 +143,7 @@ fn delete_host_sets_notification_host_id_null() {
     let host = Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "web-01".into(),
             group_id: None,
             tags: vec![],

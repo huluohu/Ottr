@@ -211,6 +211,11 @@ pub(crate) async fn resolve_credential_auth(
             ottr_vault::CredentialKind::Totp => Err(
                 "totp credential cannot authenticate deployment (keyboard-interactive unsupported for deploy)".to_string(),
             ),
+            // FTP/FTPS 凭据是密码型但不服务 SSH 认证（attach_host_session 分派面
+            // 会走 ftp_attach 路径，不经此处；防御性显式拒绝，Phase 2 Task 5）。
+            ottr_vault::CredentialKind::Ftp | ottr_vault::CredentialKind::Ftps => Err(
+                "ftp/ftps credential cannot authenticate SSH sessions (bind it to an FTP host)".to_string(),
+            ),
         }
     })
     .await

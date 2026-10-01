@@ -72,7 +72,11 @@
     "saveFailed": "保存失败：{{message}}",
     "save": "保存主机",
     "chain": "跳板链",
-    "chainNone": "直连（不经跳板）"
+    "chainNone": "直连（不经跳板）",
+    "protocol": "协议",
+    "protocol_ssh": "SSH",
+    "protocol_ftp": "FTP",
+    "protocol_ftps": "FTPS"
   },
   "hostTree": {
     "searchPlaceholder": "搜索主机（名称/备注）…",
@@ -151,7 +155,9 @@
     "copyPassword": "复制密码",
     "copyPasswordAria": "复制凭据 {{id}} 的密码",
     "copied": "已复制",
-    "copyFailed": "复制失败：{{message}}"
+    "copyFailed": "复制失败：{{message}}",
+    "kind_ftp": "FTP 密码",
+    "kind_ftps": "FTPS 密码"
   },
   "credentialForm": {
     "newTitle": "新建凭据",
@@ -434,7 +440,8 @@
       "retryAria": "重试传输 {{name}}",
       "dismissAria": "移除记录 {{name}}",
       "errorText": "错误：{{message}}"
-    }
+    },
+    "ftpNoEdit": "FTP 会话不支持远端编辑"
   },
   "forward": {
     "title": "端口转发",

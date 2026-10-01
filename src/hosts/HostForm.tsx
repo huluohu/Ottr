@@ -6,7 +6,7 @@
 // 凭据创建/编辑属 Task 6 域，此处只从现有凭据中选择绑定。
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { Host, HostInput } from "../vault/api";
+import type { Host, HostInput, HostProtocol } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 
 export interface HostFormProps {
@@ -21,6 +21,12 @@ export interface HostFormProps {
  * utf-8/gbk/gb18030；big5 等无解码器的候选移除，防「存了就乱码」的静默陷阱）。 */
 const ENCODINGS = ["utf-8", "gbk", "gb18030"];
 
+/** 协议候选（Phase 2 Task 5）：ssh = 终端 + 文件；ftp/ftps = 纯文件会话。 */
+const PROTOCOLS: HostProtocol[] = ["ssh", "ftp", "ftps"];
+
+/** 协议默认端口（协议切换时若端口仍是某个默认值则跟随切换，避免「改协议忘改端口」）。 */
+const DEFAULT_PORTS: Record<HostProtocol, number> = { ssh: 22, ftp: 21, ftps: 990 };
+
 export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   const { t } = useTranslation();
   const hostGroups = useVaultStore((s) => s.hostGroups);
@@ -33,6 +39,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   const [address, setAddress] = useState(host?.address ?? "");
   const [port, setPort] = useState(String(host?.port ?? 22));
   const [username, setUsername] = useState(host?.username ?? "");
+  const [protocol, setProtocol] = useState<HostProtocol>(host?.protocol ?? "ssh");
   const [groupId, setGroupId] = useState<string>(String(host?.group_id ?? defaultGroupId ?? ""));
   const [credentialId, setCredentialId] = useState<string>(
     host?.credential_id != null ? String(host.credential_id) : "",
@@ -79,6 +86,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
       address: addr,
       port: Number(port.trim()),
       username: username.trim() === "" ? null : username.trim(),
+      protocol,
       credential_id: credentialId === "" ? null : Number(credentialId),
       jump_chain_id: jumpChainId === "" ? null : Number(jumpChainId),
       encoding_override: encoding === "" ? null : encoding,
@@ -144,6 +152,31 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
               placeholder={t("hostForm.usernamePlaceholder")}
               onChange={(e) => setUsername(e.currentTarget.value)}
             />
+          </label>
+        </div>
+        <div className="form-row">
+          {/* 协议（Phase 2 Task 5）：ssh = 终端 + 文件面板；ftp/ftps = 纯文件
+              会话（FilePanel 后端切换依据，Rust 侧 ftp_attach 承接）。 */}
+          <label>
+            <span>{t("hostForm.protocol")}</span>
+            <select
+              data-testid="form-protocol"
+              value={protocol}
+              onChange={(e) => {
+                const next = e.currentTarget.value as HostProtocol;
+                setProtocol(next);
+                // 端口仍在「某个协议默认值」上时跟随新协议默认（用户自定义不动）
+                if (Object.values(DEFAULT_PORTS).includes(Number(port.trim()))) {
+                  setPort(String(DEFAULT_PORTS[next]));
+                }
+              }}
+            >
+              {PROTOCOLS.map((p) => (
+                <option key={p} value={p}>
+                  {t(`hostForm.protocol_${p}`)}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         {(errors.address || errors.port) && (

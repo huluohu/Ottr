@@ -156,6 +156,20 @@ impl ForwardStats {
         self.set(ForwardState::Error(message.into()));
     }
 
+    /// 失败落账的**保序变体**：当前已处于 Error（例如 start_forward 失败路径
+    /// 已落账的富消息——"bind 127.0.0.1:8080 failed: …" / "remote forward on
+    /// … rejected: …"，携带端口与语义上下文）时**不覆盖**。上层包装
+    /// （ForwardManager::start）对底层 Err 只持有薄壳错误（Error::Io Display
+    /// 等），富消息只存在于第一次落账——I-1 fix 1/5：覆盖会把端口/端点上下文
+    /// 抹掉，故外层失败留痕一律走本方法。
+    pub fn set_error_if_unset(&self, message: impl Into<String>) {
+        let mut slot = self.state.lock().expect("forward stats poisoned");
+        if matches!(*slot, Some(ForwardState::Error(_))) {
+            return;
+        }
+        *slot = Some(ForwardState::Error(message.into()));
+    }
+
     /// 任务收尾的停止落账：**仅当**此前处于 Starting/Active 才落 Stopped——
     /// 会话断开路径先 `set_error` 再取消令牌，任务收尾时状态已是 Error，
     /// 本方法不覆盖（错误终态优先于停止终态，UI 状态灯不失真）。
@@ -389,11 +403,16 @@ async fn start_dynamic(
                                 Ok((host, port)) => {
                                     let channel =
                                         s.open_direct_tcpip_stream(&host, port).await;
-                                    // 成功应答必须在泵数据前写回（RFC1928）；
-                                    // 失败路径由 pump 函数内 conn_failed 计数。
-                                    if channel.is_ok() {
-                                        let _ = socks5_reply(&mut tcp, SOCKS5_REP_SUCCESS).await;
-                                    }
+                                    // 应答必须在泵数据前写回（RFC1928 时序）：
+                                    // 成功 = REP 0；channel 打不开（目标拒绝/
+                                    // 会话已死）= REP 1（M-2 fix 1/5：客户端
+                                    // 已发 CONNECT 在等应答，不回写就挂到超时）。
+                                    let rep = if channel.is_ok() {
+                                        SOCKS5_REP_SUCCESS
+                                    } else {
+                                        SOCKS5_REP_GENERAL_FAILURE
+                                    };
+                                    let _ = socks5_reply(&mut tcp, rep).await;
                                     pump_tcp_to_channel(tcp, channel, st, child).await;
                                 }
                                 Err(()) => {
@@ -695,5 +714,36 @@ impl<S: AsyncWrite> AsyncWrite for CountedStream<S> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         self.inner.as_mut().poll_shutdown(cx)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 单测（I-1 fix 1/5）：错误留痕的保序语义——富消息只落一次，薄壳错误不覆盖。
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// set_error_if_unset：Error 已在（start_forward 落账的富消息）→ 保留；
+    /// 非 Error 状态（防御路径）→ 落账。与 set_error（无条件覆盖，owner 面：
+    /// session_down）的语义分野由此钉死。
+    #[test]
+    fn set_error_if_unset_preserves_first_rich_message() {
+        let stats = ForwardStats::shared();
+        // 非 Error 起点落账成功
+        stats.set_error_if_unset("poor shell message");
+        assert_eq!(
+            stats.snapshot().state,
+            ForwardState::Error("poor shell message".into())
+        );
+        // 已是 Error → 富消息保留，薄壳不覆盖
+        stats.set_error("bind 127.0.0.1:8080 failed: Address already in use");
+        stats.set_error_if_unset("network error: Address already in use");
+        assert_eq!(
+            stats.snapshot().state,
+            ForwardState::Error("bind 127.0.0.1:8080 failed: Address already in use".into()),
+            "Manager 侧的薄壳留痕不得覆盖 start_forward 的富消息"
+        );
     }
 }

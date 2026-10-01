@@ -98,9 +98,13 @@ impl ForwardManager {
         // JoinHandle 即刻 detach：任务退出由令牌/错误驱动，Manager 不阻塞等待
         // （断连收尾毫秒级；错误路径下 stats 已带终态，无泄漏面）。
         if let Err(e) = &outcome {
-            // 监听/登记失败：start_forward 已把 Error 落进 stats；此处显式留痕
-            // ——错误状态也要在面板可见，不能无声无息。
-            stats.set_error(e.to_string());
+            // 监听/登记失败留痕（错误状态必须在面板可见）。I-1 fix 1/5：
+            // start_forward 的失败路径**已落账富消息**（"bind 127.0.0.1:8080
+            // failed: …" / "remote forward on … rejected: …"，携带端口与语义），
+            // 此处手里的 Err 只是薄壳（Error::Io Display 等）——走保序变体
+            // set_error_if_unset：仅当状态还不是 Error 才落（防御性，理论上
+            // 失败路径恒已落账），绝不覆盖富消息。
+            stats.set_error_if_unset(e.to_string());
         }
         self.runs.lock().expect("forwards poisoned").insert(
             row_id,

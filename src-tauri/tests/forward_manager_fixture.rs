@@ -242,3 +242,191 @@ async fn forward_recovers_after_container_restart() {
     let _ = session1.disconnect().await;
     let _ = session2.disconnect().await;
 }
+
+// ---------------------------------------------------------------------------
+// I-1 fix 1/5 守卫（Manager 层，走生产路径）：ForwardManager::start 失败留痕
+// 不得覆盖 start_forward 已落账的富消息（端口/端点上下文）。pf_start 命令体
+// 对 Tauri State 的依赖（无 app harness 不可直调），这里直驱其委托的
+// manager.start——与命令面逐字同一调用（vault 行 → ForwardSpec 同构造）。
+// ---------------------------------------------------------------------------
+
+/// vault 行直建（bind_port 覆盖），返回 row id。
+fn seed_row(vault: &Vault, host_id: i64, kind: VaultKind, bind_port: u16) -> i64 {
+    PortForwards::create(
+        vault,
+        &PortForwardInput {
+            host_id,
+            kind,
+            bind_addr: "127.0.0.1".into(),
+            bind_port,
+            target_host: Some("localhost".into()),
+            target_port: Some(PORT),
+            enabled: true,
+            auto_reconnect: true,
+        },
+    )
+    .unwrap()
+    .id
+}
+
+/// 断言快照落在 Error 且文本包含全部片段（富消息保护的核心断言）。
+fn expect_rich_error(snapshot: ottr_ssh::ForwardStatsSnapshot, fragments: &[&str]) {
+    match snapshot.state {
+        ForwardState::Error(ref msg) => {
+            for f in fragments {
+                assert!(msg.contains(f), "Error 文本缺 {f:?}：{msg}");
+            }
+        }
+        other => panic!("必须落 Error，got {other:?}"),
+    }
+}
+
+/// Manager.start（= pf_start 的生产路径）bind 冲突：Error 文本必须保留
+/// start_forward 落账的富消息（"bind 127.0.0.1:<port> failed: …"），
+/// 不得被薄壳 "network error: …"（Error::Io Display）覆盖。
+#[tokio::test(flavor = "multi_thread")]
+async fn manager_start_bind_failure_keeps_rich_error() {
+    if !fixture_up().await {
+        println!("SKIP manager_start_bind_failure_keeps_rich_error: fixture down");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Vault::open_with(dir.path(), &ottr_vault::master_key::InMemoryStorage::new())
+        .expect("open in-memory vault");
+    let host_id = ottr_vault::Hosts::create(
+        &vault,
+        HostInput {
+            name: "fx".into(),
+            group_id: None,
+            tags: vec![],
+            address: HOST.into(),
+            port: PORT as i64,
+            username: Some(USER.into()),
+            credential_id: None,
+            jump_chain_id: None,
+            encoding_override: None,
+            theme_override: None,
+            monitor_enabled: false,
+            notes: None,
+        },
+    )
+    .unwrap()
+    .id;
+
+    // 占住端口 → 行的 bind_port 指向它 → Manager.start 必败。
+    let blocker = tokio::net::TcpListener::bind((HOST, 0)).await.unwrap();
+    let taken = blocker.local_addr().unwrap().port();
+    let row_id = seed_row(&vault, host_id, VaultKind::Local, taken);
+
+    let manager = ottr_lib::ForwardManager::default();
+    let router = RemoteForwardRouter::new();
+    let session = connect_session(&router).await;
+    let spec = ForwardSpec {
+        kind: ForwardKind::Local,
+        bind_addr: "127.0.0.1".into(),
+        bind_port: taken,
+        target_host: Some("localhost".into()),
+        target_port: Some(PORT),
+    };
+    let snapshot = manager
+        .start(
+            row_id,
+            host_id,
+            "sess-fx",
+            true,
+            spec,
+            Arc::clone(&session),
+            router,
+        )
+        .await;
+
+    expect_rich_error(snapshot, &["bind", &taken.to_string()]);
+    // Manager 层可见性不变：失败也留痕（面板能看到 Error 灯），文本同源。
+    match manager.snapshot(row_id).unwrap().state {
+        ForwardState::Error(ref msg) => assert!(msg.contains("bind"), "留痕同源: {msg}"),
+        other => panic!("注册表快照必须 Error，got {other:?}"),
+    }
+
+    manager.stop(row_id);
+    session.disconnect().await.ok();
+}
+
+/// Manager.start（-R 同理）：同端口重复登记被 sshd 拒绝（RequestDenied），
+/// Error 文本必须保留 "remote forward on 127.0.0.1:<port> rejected: …"
+/// 的端点上下文，不得被薄壳协议错误串覆盖。
+#[tokio::test(flavor = "multi_thread")]
+async fn manager_start_remote_rejection_keeps_rich_error() {
+    if !fixture_up().await {
+        println!("SKIP manager_start_remote_rejection_keeps_rich_error: fixture down");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Vault::open_with(dir.path(), &ottr_vault::master_key::InMemoryStorage::new())
+        .expect("open in-memory vault");
+    let host_id = ottr_vault::Hosts::create(
+        &vault,
+        HostInput {
+            name: "fx".into(),
+            group_id: None,
+            tags: vec![],
+            address: HOST.into(),
+            port: PORT as i64,
+            username: Some(USER.into()),
+            credential_id: None,
+            jump_chain_id: None,
+            encoding_override: None,
+            theme_override: None,
+            monitor_enabled: false,
+            notes: None,
+        },
+    )
+    .unwrap()
+    .id;
+
+    // 容器内仅有 sshd（2222）；挑一个空闲固定端口给 -A 成功登记，第二个同端口
+    // 登记必被服务端拒绝（bind: Address already in use → RequestDenied）。
+    const R_PORT: u16 = 45678;
+    let row_a = seed_row(&vault, host_id, VaultKind::Remote, R_PORT);
+    let row_b = seed_row(&vault, host_id, VaultKind::Remote, R_PORT);
+
+    let manager = ottr_lib::ForwardManager::default();
+    let router = RemoteForwardRouter::new();
+    let session = connect_session(&router).await;
+    let remote_spec = |bind: u16| ForwardSpec {
+        kind: ForwardKind::Remote,
+        bind_addr: "127.0.0.1".into(),
+        bind_port: bind,
+        target_host: Some(HOST.into()),
+        target_port: Some(PORT),
+    };
+
+    let a = manager
+        .start(
+            row_a,
+            host_id,
+            "sess-fx",
+            true,
+            remote_spec(R_PORT),
+            Arc::clone(&session),
+            router.clone(),
+        )
+        .await;
+    assert_eq!(a.state, ForwardState::Active, "-A 首次登记必须成功");
+
+    let b = manager
+        .start(
+            row_b,
+            host_id,
+            "sess-fx",
+            true,
+            remote_spec(R_PORT),
+            Arc::clone(&session),
+            router,
+        )
+        .await;
+    expect_rich_error(b, &["remote forward", "rejected", &R_PORT.to_string()]);
+
+    manager.stop(row_a);
+    manager.stop(row_b);
+    session.disconnect().await.ok();
+}

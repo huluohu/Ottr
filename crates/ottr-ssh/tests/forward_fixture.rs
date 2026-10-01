@@ -301,7 +301,13 @@ async fn dynamic_forward_socks5_carries_ssh() {
     session.disconnect().await.ok();
 }
 
-// --- 启动失败路径：bind 冲突 → Error 留痕（同步返回 Err + 状态可读）-----------
+// --- 启动失败路径：bind 冲突 → 富消息留痕（I-1 fix 1/5 的前提面）--------------
+//
+// 本用例钉住不变量的**库层前提**：start_forward 失败时同步返回 Err，且 Error
+// 状态已带上富消息（"bind 127.0.0.1:<port> failed: …"，端口+语义）。
+// 生产路径（ForwardManager::start 不得覆盖该富消息）由 Manager 层守卫测试
+// 承接：src-tauri/tests/forward_manager_fixture.rs 的
+// manager_start_*_keeps_rich_error 两例。
 
 #[tokio::test(flavor = "multi_thread")]
 async fn start_failure_surfaces_as_error_state() {
@@ -339,5 +345,69 @@ async fn start_failure_surfaces_as_error_state() {
         }
         other => panic!("失败必须落 Error 留痕: {other:?}"),
     }
+    session.disconnect().await.ok();
+}
+
+// --- M-2 fix 1/5：SOCKS5 CONNECT 后目标打不开 → 必须回写 REP=1 ----------------
+//
+// 客户端发完 CONNECT 就在等应答；channel 打不开（direct-tcpip 被服务端拒绝）
+// 时不回写 REP 会让客户端挂到自身超时。夹具容器 127.0.0.1:9 无监听 →
+// CHANNEL_OPEN_FAILURE 同步返回 → 断言收到 REP=1（general failure）。
+
+#[tokio::test(flavor = "multi_thread")]
+async fn dynamic_forward_replies_rep1_when_target_unreachable() {
+    if !fixture_up().await {
+        return skip("socks-rep1");
+    }
+    let router = RemoteForwardRouter::new();
+    let session = connect_fixture(Some(router.clone())).await;
+    let spec = ForwardSpec {
+        kind: ForwardKind::Dynamic,
+        bind_addr: "127.0.0.1".into(),
+        bind_port: 0,
+        target_host: None,
+        target_port: None,
+    };
+    let (bound, stats, cancel) = start_and_expect_active(Arc::clone(&session), &router, spec).await;
+
+    // 完整 SOCKS5 问候 + CONNECT 到容器内无监听端口（discard/9）。
+    let mut sock = tokio::net::TcpStream::connect((HOST, bound))
+        .await
+        .expect("connect socks");
+    sock.write_all(&[0x05, 0x01, 0x00]).await.expect("greeting");
+    let mut method = [0u8; 2];
+    sock.read_exact(&mut method).await.expect("method reply");
+    assert_eq!(method, [0x05, 0x00]);
+    let mut req = vec![0x05, 0x01, 0x00, 0x01];
+    req.extend_from_slice(&[127, 0, 0, 1]);
+    req.extend_from_slice(&9u16.to_be_bytes());
+    sock.write_all(&req).await.expect("connect request");
+
+    // 应答 10 字节：VER=5、REP=1（general failure）。
+    let mut reply = [0u8; 10];
+    tokio::time::timeout(Duration::from_secs(5), sock.read_exact(&mut reply))
+        .await
+        .expect("reply timeout（不回写 REP 客户端就挂死）")
+        .expect("reply read");
+    assert_eq!(reply[0], 0x05);
+    assert_eq!(
+        reply[1], 0x01,
+        "channel 打不开必须回 REP=1，got {}",
+        reply[1]
+    );
+
+    // 连接级失败可见（conn_failed 计数），转发本体不受影响。
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    while tokio::time::Instant::now() < deadline && stats.snapshot().conn_errors == 0 {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(stats.snapshot().conn_errors >= 1, "失败连接必须计数");
+    assert_eq!(
+        stats.snapshot().state,
+        ForwardState::Active,
+        "单连接失败不降转发状态"
+    );
+
+    cancel.cancel();
     session.disconnect().await.ok();
 }

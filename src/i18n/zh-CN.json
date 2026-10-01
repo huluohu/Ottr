@@ -385,6 +385,8 @@
       "rename": "重命名「{{name}}」",
       "chmod": "更改权限「{{name}}」",
       "delete": "删除「{{name}}」",
+      "edit": "编辑「{{name}}」",
+      "stopEdit": "停止编辑「{{name}}」",
       "download": "下载「{{name}}」"
     },
     "dlg": {
@@ -392,8 +394,17 @@
       "renameTitle": "重命名「{{name}}」",
       "chmodTitle": "「{{name}}」的权限（八进制，如 644）",
       "deleteTitle": "删除「{{name}}」",
-      "deleteConfirm": "确定删除吗？此操作不可撤销（目录须为空）。"
+      "deleteConfirm": "确定删除吗？此操作不可撤销（目录须为空）。",
+      "conflictTitle": "远端文件已变更",
+      "conflictConfirm": "「{{name}}」在你开始编辑后于远端被修改。用本地修改覆盖远端副本？",
+      "conflictOverwrite": "覆盖远端",
+      "keepLocal": "保留本地"
     },
+    "editOpened": "正在编辑「{{name}}」，保存后自动回传",
+    "editSaved": "已回传「{{name}}」",
+    "editOverwritten": "已覆盖远端「{{name}}」",
+    "editClosed": "已停止编辑「{{name}}」",
+    "editFailed": "编辑失败：{{message}}",
     "errOctalMode": "权限需为 3-4 位八进制数（如 644、0755）",
     "opFailed": "操作失败：{{message}}",
     "uploadFailed": "上传失败：{{message}}",

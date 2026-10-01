@@ -386,6 +386,8 @@
       "rename": "Rename \"{{name}}\"",
       "chmod": "Change permissions of \"{{name}}\"",
       "delete": "Delete \"{{name}}\"",
+      "edit": "Edit \"{{name}}\"",
+      "stopEdit": "Stop editing \"{{name}}\"",
       "download": "Download \"{{name}}\""
     },
     "dlg": {
@@ -393,8 +395,17 @@
       "renameTitle": "Rename \"{{name}}\"",
       "chmodTitle": "Permissions of \"{{name}}\" (octal, e.g. 644)",
       "deleteTitle": "Delete \"{{name}}\"",
-      "deleteConfirm": "Delete permanently? This cannot be undone (folders must be empty)."
+      "deleteConfirm": "Delete permanently? This cannot be undone (folders must be empty).",
+      "conflictTitle": "Remote file changed",
+      "conflictConfirm": "\"{{name}}\" was modified on the remote host after you started editing. Overwrite the remote copy with your local edits?",
+      "conflictOverwrite": "Overwrite remote",
+      "keepLocal": "Keep local"
     },
+    "editOpened": "Editing \"{{name}}\" — changes save back automatically",
+    "editSaved": "Synced \"{{name}}\" to remote",
+    "editOverwritten": "Overwrote remote \"{{name}}\"",
+    "editClosed": "Stopped editing \"{{name}}\"",
+    "editFailed": "Edit failed: {{message}}",
     "errOctalMode": "Permissions must be 3-4 octal digits (e.g. 644, 0755)",
     "opFailed": "Operation failed: {{message}}",
     "uploadFailed": "Upload failed: {{message}}",

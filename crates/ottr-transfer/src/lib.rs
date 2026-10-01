@@ -6,7 +6,7 @@
 //!
 //! ## russh 类型边界（trait 隔离裁定的延伸）
 //!
-//! [`sftp::FileTransfer`] 的签名只含 crate 自有类型（`TransferStats`/`Error`）
+//! [`FileTransfer`] trait 的签名只含 crate 自有类型（`TransferStats`/`Error`）
 //! 与 std 类型。实现内部需要从既有 SSH 会话开 SFTP 子系统流——该流是 russh
 //! `ChannelStream`（[`ottr_ssh::SshSession::open_sftp_stream`] 的返回类型）。
 //! 此处对 russh 类型的依赖与 ottr-ssh `SshTransport::Channel` **同等待遇**：
@@ -18,11 +18,58 @@ pub mod sftp;
 
 pub use ops::{DirEntry, RemoteSnapshot, SftpClient};
 pub use sftp::{
-    CHUNK_SIZE, CancelToken, FileTransfer, ProgressHook, TransferProgress, TransferStats,
-    download_parallel, journal_file_name, journal_header, upload_parallel,
+    CHUNK_SIZE, CancelToken, ProgressHook, TransferProgress, TransferStats, download_parallel,
+    journal_file_name, journal_header, upload_parallel,
 };
 
 use std::fmt;
+use std::path::Path;
+
+/// 文件传输收口 trait（Task 10 简报 Step 1；Phase 2 Task 5 通用化重构）：
+/// 上传/下载 + 断点续传。消费方（src-tauri 传输命令、bench、测试）依赖本 trait
+/// 而非具体后端，传输后端可替换（SFTP = [`sftp`] 模块实现；FTP/FTPS = ftp
+/// 模块实现，Phase 2 Task 5）。
+///
+/// ## 通用性核查结论（Task 5 Step 1，先重构后实现）
+///
+/// Phase 1 收口版 trait 本就**无 SFTP 类型泄漏**（签名只含 crate 自有类型与
+/// std 类型）；SFTP 特有面在其**命名与周边自由函数**——「parallel」是 SFTP
+/// 单通道流水线策略的命名泄漏，并行分块 + journal 机制整体留在 [`sftp`] 模块
+/// （= 事实上的 SFTP extension surface：`download_parallel`/`upload_parallel`
+/// 自由函数、journal 帮手，仅 SFTP 消费面使用）。本重构把 trait 迁到 crate
+/// 根并去「parallel」命名：[`FileTransfer::download`] / [`FileTransfer::upload`]。
+/// 迁移验收 = `tests/sftp_test.rs`（自由函数面）**断言零改动**。
+///
+/// 签名只含 crate 自有类型与 std 类型；russh 类型只出现在 SFTP 实现内部
+/// （边界裁定见 crate 文档，与 `SshTransport::Channel` 例外同等待遇）。
+pub trait FileTransfer {
+    /// 下载：远端 `remote` → 本地 `local`。SFTP 语义见 [`sftp::download_parallel`]。
+    ///
+    /// `chunks` 是并发提示（并行后端的 worker 数）；FTP 这类**线性后端忽略
+    /// 该值**（单控制连接顺序传输，简报裁定）。`journal_path` 是断点续传
+    /// journal 位置——语义按后端各自实现（SFTP = chunk 粒度续传；FTP 下载 =
+    /// REST 偏移续传、上传 = 以远端实际大小为准的 APPE 续传）。
+    fn download(
+        &self,
+        remote: &str,
+        local: &Path,
+        chunks: usize,
+        journal_path: &Path,
+        cancel: &CancelToken,
+        progress: Option<ProgressHook>,
+    ) -> impl Future<Output = Result<TransferStats>> + Send;
+
+    /// 上传：本地 `local` → 远端 `remote`。语义同 [`FileTransfer::download`]。
+    fn upload(
+        &self,
+        local: &Path,
+        remote: &str,
+        chunks: usize,
+        journal_path: &Path,
+        cancel: &CancelToken,
+        progress: Option<ProgressHook>,
+    ) -> impl Future<Output = Result<TransferStats>> + Send;
+}
 
 /// crate 统一错误。**不含任何 russh / russh-sftp 类型**（I-1 同款纪律）：
 /// 底层错误在产生点即被映射为自有变体，类型擦除为 `Box<dyn Error>` 后经

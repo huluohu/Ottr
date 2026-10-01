@@ -673,39 +673,8 @@ pub async fn upload_parallel(
     })
 }
 
-/// 文件传输收口 trait（Task 10 简报 Step 1）：并行分块上传/下载 + journal v1
-/// 断点续传。消费方（src-tauri 传输命令、bench、测试）依赖本 trait 而非自由
-/// 函数，传输后端可替换（trait 消费方不动）。
-///
-/// 签名只含 crate 自有类型与 std 类型；russh `ChannelStream` 只出现在实现
-/// 内部（经 [`ottr_ssh::SshSession::open_sftp_stream`]），边界裁定见 crate
-/// 文档（与 `SshTransport::Channel` 例外同等待遇）。
-pub trait FileTransfer {
-    /// 并行分块下载：远端 `remote` → 本地 `local`。语义同 [`download_parallel`]。
-    fn download_parallel(
-        &self,
-        remote: &str,
-        local: &Path,
-        chunks: usize,
-        journal_path: &Path,
-        cancel: &CancelToken,
-        progress: Option<ProgressHook>,
-    ) -> impl Future<Output = Result<TransferStats>> + Send;
-
-    /// 并行分块上传：本地 `local` → 远端 `remote`。语义同 [`upload_parallel`]。
-    fn upload_parallel(
-        &self,
-        local: &Path,
-        remote: &str,
-        chunks: usize,
-        journal_path: &Path,
-        cancel: &CancelToken,
-        progress: Option<ProgressHook>,
-    ) -> impl Future<Output = Result<TransferStats>> + Send;
-}
-
-impl FileTransfer for SshSession {
-    fn download_parallel(
+impl crate::FileTransfer for SshSession {
+    fn download(
         &self,
         remote: &str,
         local: &Path,
@@ -717,7 +686,7 @@ impl FileTransfer for SshSession {
         download_parallel(self, remote, local, chunks, journal_path, cancel, progress)
     }
 
-    fn upload_parallel(
+    fn upload(
         &self,
         local: &Path,
         remote: &str,

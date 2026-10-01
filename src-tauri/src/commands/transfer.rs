@@ -454,7 +454,7 @@ pub(crate) async fn sftp_download(
     );
     let fut = async move {
         session
-            .download_parallel(
+            .download(
                 &remote_fut,
                 &local_fut,
                 SFTP_CHUNKS,
@@ -534,7 +534,7 @@ pub(crate) async fn sftp_upload(
     );
     let fut = async move {
         session
-            .upload_parallel(
+            .upload(
                 &local_fut,
                 &remote_fut,
                 SFTP_CHUNKS,

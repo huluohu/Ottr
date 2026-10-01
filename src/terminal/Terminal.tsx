@@ -16,6 +16,12 @@
 // 粘贴纪律：宿主 div 捕获阶段拦截 paste 事件（先于 xterm 的 textarea 监听），
 // assessPaste（src/ai/danger.ts，Task 13 分级的单一来源）判定 none → 放行原生
 // 粘贴；warn/danger → 弹确认层，确认后 term.paste() 走同一写入路径。
+//
+// trzsz（Phase 2 Task 4，B10 下半）：TrzszFilter 挂在**本地数据出口**——PTY 输出
+// 经 sink.write 进 controller（空闲透传 / 传输态拦截协议帧），击键经 onData 进
+// controller（传输态吞键入，Ctrl-C 即中止）；文件选择走 tauri-plugin-dialog，
+// 本地文件 IO 走 trzsz fs 垫片（trzsz/fsShim.ts → commands/trzsz_fs.rs）。终端区
+// 拖拽文件 → 询问「trz 上传 / 插入路径」（TrzszDropDialog）。
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -38,6 +44,7 @@ import {
   SearchController,
   type SearchResultSummary,
 } from "./SearchAddon";
+import { createTrzszController, type TrzszController } from "./trzsz/TrzszController";
 import {
   buildContextMenu,
   loadTerminalSettings,
@@ -152,14 +159,63 @@ export function EncodingHintBar({ sessionId }: { sessionId: string }) {
   );
 }
 
+/** 终端区拖拽落点对话框（Phase 2 Task 4，B10 下半）：文件拖入终端 pane 后询问
+ * 「trz 上传」（TrzszController.uploadFiles，远端须装 trzsz）或「插入路径」
+ * （单引号转义后 term.paste，与 SFTP 上传无关的纯文本插入）。 */
+export function TrzszDropDialog({
+  paths,
+  onUpload,
+  onInsert,
+  onCancel,
+}: {
+  paths: string[];
+  onUpload: () => void;
+  onInsert: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const names = paths.map((p) => p.split("/").pop() ?? p).join("、");
+  return (
+    <div className="overlay" role="presentation" onMouseDown={onCancel}>
+      <div
+        className="dialog trzsz-drop-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("terminal.trzszDropAria")}
+        onMouseDown={(e) => e.stopPropagation()}
+        data-testid="trzsz-drop-dialog"
+      >
+        <h2>{t("terminal.trzszDropTitle")}</h2>
+        <p data-testid="trzsz-drop-files">{t("terminal.trzszDropHint", { count: paths.length, names })}</p>
+        <div className="form-actions">
+          <button onClick={onCancel}>{t("common.cancel")}</button>
+          <button data-testid="trzsz-drop-insert" onClick={onInsert}>
+            {t("terminal.trzszDropInsert")}
+          </button>
+          <button className="btn-accent" data-testid="trzsz-drop-upload" onClick={onUpload}>
+            {t("terminal.trzszDropUpload")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 拖拽路径 → shell 安全插入形态（单引号包裹，内部 ' 转义为 '\''）。 */
+export function quotePathsForShell(paths: string[]): string {
+  return paths.map((p) => `'${p.replace(/'/g, `'\\''`)}'`).join(" ");
+}
+
 export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const { resolved } = useTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
+  const trzszRef = useRef<TrzszController | null>(null);
   const prevStatus = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
+  const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
 
   const status = useSessionStore(
     (s) => s.sessions.find((x) => x.id === sessionId)?.status ?? "disconnected",
@@ -191,8 +247,58 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       }
     }
     applyTermTheme(term, resolved);
+    // trzsz 过滤器（B10 下半）：先于 sink 装配——PTY 出口与击键都经它中转。
+    // write_session 沿用原 onData 体（rustId 实时读 store；重连自动跟随）。
+    const trzsz = createTrzszController({
+      writeToTerminal: (output) => term.write(output),
+      sendToServer: (input) => {
+        const session = useSessionStore
+          .getState()
+          .sessions.find((x) => x.id === sessionId);
+        if (!session?.rustId) return; // 未连接：击键落空（横幅已提示状态）
+        const bytes =
+          typeof input === "string" ? new TextEncoder().encode(input) : input;
+        void invoke("write_session", {
+          id: session.rustId,
+          bytes: Array.from(bytes),
+        }).catch(() => {});
+      },
+      chooseSendFiles: async () => {
+        try {
+          const { open } = await import("@tauri-apps/plugin-dialog");
+          const picked = await open({
+            multiple: true,
+            title: t("terminal.trzszDropUpload"),
+          });
+          if (Array.isArray(picked)) return picked;
+          return picked ? [picked] : undefined;
+        } catch {
+          return undefined; // 对话框失败按取消处理（= 拒绝传输，服务端安全收尾）
+        }
+      },
+      chooseSaveDirectory: async () => {
+        try {
+          const { open } = await import("@tauri-apps/plugin-dialog");
+          const picked = await open({
+            directory: true,
+            title: t("terminal.trzszDropTitle"),
+          });
+          return typeof picked === "string" ? picked : undefined;
+        } catch {
+          return undefined;
+        }
+      },
+      onError: (message) => {
+        // 典型失败：远端未装 trzsz（uploadFiles 3s 无魔串「Upload does not start」）
+        const text = message.includes("Upload does not start")
+          ? t("terminal.trzszUploadNoStart")
+          : t("terminal.trzszUploadFailed", { message });
+        term.writeln(`\x1b[33m[ottr] ${text}\x1b[0m`);
+      },
+    });
+    trzszRef.current = trzsz;
     registerSink(sessionId, {
-      write: (bytes) => term.write(bytes),
+      write: (bytes) => trzsz.processServerOutput(bytes),
       getSize: () => {
         try {
           fit.fit();
@@ -238,16 +344,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       // parser 不可用（测试环境极简 fake）不阻塞终端装配
     }
 
-    // 击键 → PTY（rustId 实时读 store；重连换会话 id 后自动跟随）
+    // 击键 → trzsz 过滤器 → PTY（传输态库吞键入；空闲透传原路写入）
     const onData = term.onData((d) => {
-      const session = useSessionStore
-        .getState()
-        .sessions.find((x) => x.id === sessionId);
-      if (!session?.rustId) return; // 未连接：击键落空（横幅已提示状态）
-      void invoke("write_session", {
-        id: session.rustId,
-        bytes: Array.from(new TextEncoder().encode(d)),
-      }).catch(() => {});
+      trzsz.processTerminalInput(d);
     });
 
     // 选择即复制（可配，右键菜单切换；设置即时读 localStorage 免订阅）
@@ -267,6 +366,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       } catch {
         // xterm 对退化尺寸抛错可忽略
       }
+      trzsz.setTerminalColumns(term.cols); // 进度条按列宽重绘
     });
     if (hostRef.current) ro.observe(hostRef.current);
 
@@ -275,6 +375,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       onSelectionChange.dispose();
       onData.dispose();
       watch?.dispose();
+      trzsz.dispose();
+      trzszRef.current = null;
       unregisterSearch(sessionId);
       unregisterSink(sessionId);
       term.dispose();
@@ -306,6 +408,42 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     el.addEventListener("paste", onPaste, true);
     return () => el.removeEventListener("paste", onPaste, true);
   }, []);
+
+  // --- 终端区拖拽（B10 下半 Step 2）：Tauri onDragDropEvent 落点命中本 pane →
+  // 询问「trz 上传 / 插入路径」；非 Tauri 环境（测试）拖拽能力缺席即缺席。
+  useEffect(() => {
+    if (!hostRef.current) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const off = await getCurrentWebview().onDragDropEvent((ev) => {
+          const p = ev.payload as unknown as {
+            type: "enter" | "over" | "drop" | "leave";
+            paths?: string[];
+            position: { x: number; y: number };
+          };
+          if (p.type !== "drop") return;
+          // 物理像素 → 逻辑像素；落点须命中本会话的终端 pane
+          const x = p.position.x / (window.devicePixelRatio || 1);
+          const y = p.position.y / (window.devicePixelRatio || 1);
+          const hit = document.elementFromPoint(x, y)?.closest("[data-session-id]");
+          if (hit?.getAttribute("data-session-id") !== sessionId) return;
+          const paths = p.paths ?? [];
+          if (paths.length > 0) setPendingDrop(paths);
+        });
+        if (cancelled) off();
+        else unlisten = off;
+      } catch {
+        // 非 Tauri 环境：拖拽能力缺席不阻塞终端
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [sessionId]);
 
   // --- 状态横幅（写入终端流；跳过挂载首帧的 disconnected 初值） ---
   useEffect(() => {
@@ -464,6 +602,22 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           onConfirm={() => {
             termRef.current?.paste(pendingPaste);
             setPendingPaste(null);
+          }}
+        />
+      )}
+      {pendingDrop !== null && (
+        <TrzszDropDialog
+          paths={pendingDrop}
+          onCancel={() => setPendingDrop(null)}
+          onUpload={() => {
+            const paths = pendingDrop;
+            setPendingDrop(null);
+            void trzszRef.current?.uploadFiles(paths);
+          }}
+          onInsert={() => {
+            const text = quotePathsForShell(pendingDrop);
+            setPendingDrop(null);
+            termRef.current?.paste(text); // 走 onData → trzsz → write_session 同路
           }}
         />
       )}

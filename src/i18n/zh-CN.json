@@ -258,7 +258,14 @@
     "encodingHint": "检测到 {{encoding}} 编码，切换？",
     "encodingHintAccept": "切换为 {{encoding}}",
     "encodingHintDismiss": "不再提示",
-    "encodingBadgeAria": "切换会话编码（当前 {{encoding}}，点击循环）"
+    "encodingBadgeAria": "切换会话编码（当前 {{encoding}}，点击循环）",
+    "trzszDropTitle": "拖入文件到终端",
+    "trzszDropHint": "{{count}} 个文件：{{names}}",
+    "trzszDropUpload": "trz 上传",
+    "trzszDropInsert": "插入路径",
+    "trzszUploadFailed": "trzsz 上传失败：{{message}}",
+    "trzszUploadNoStart": "远端未启动 trzsz 传输（服务器未安装 trzsz？）",
+    "trzszDropAria": "拖入文件动作对话框"
   },
   "ai": {
     "title": "AI 助手",

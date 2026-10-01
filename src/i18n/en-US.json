@@ -259,7 +259,14 @@
     "encodingHint": "{{encoding}} encoding detected. Switch?",
     "encodingHintAccept": "Switch to {{encoding}}",
     "encodingHintDismiss": "Don't ask again",
-    "encodingBadgeAria": "Switch session encoding (current {{encoding}}, click to cycle)"
+    "encodingBadgeAria": "Switch session encoding (current {{encoding}}, click to cycle)",
+    "trzszDropTitle": "Drop files to terminal",
+    "trzszDropHint": "{{count}} file(s): {{names}}",
+    "trzszDropUpload": "Upload via trz",
+    "trzszDropInsert": "Insert paths",
+    "trzszUploadFailed": "trzsz upload failed: {{message}}",
+    "trzszUploadNoStart": "Remote did not start trzsz (is trzsz installed on the server?)",
+    "trzszDropAria": "Dropped files action dialog"
   },
   "ai": {
     "title": "AI Assistant",

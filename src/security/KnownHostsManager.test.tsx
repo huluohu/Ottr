@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import "../i18n";
+import i18n from "../i18n";
 import { vaultApi, type KnownHost } from "../vault/api";
 import { KnownHostsManager } from "./KnownHostsManager";
 
@@ -76,7 +77,11 @@ describe("KnownHostsManager", () => {
     expect(screen.getByTestId("kh-row-10.0.0.1:22")).toBeTruthy();
     expect(screen.getByTestId("kh-row-10.0.0.2:22")).toBeTruthy();
     expect(screen.getByText("SHA256:OKKEY")).toBeTruthy();
-    expect(screen.getByTestId("kh-state-10.0.0.3:22").textContent).toContain("已变更");
+    // 状态徽标走词典（语言中立——词典驱动断言，防止硬编码某语言文案）
+    expect(screen.getByTestId("kh-state-10.0.0.3:22").textContent).toBe(
+      i18n.t("knownHosts.state_changed"),
+    );
+    expect(i18n.t("knownHosts.state_changed")).not.toBe("knownHosts.state_changed");
     expect(screen.getByTestId("kh-audit-now")).toBeTruthy();
     unmount();
 

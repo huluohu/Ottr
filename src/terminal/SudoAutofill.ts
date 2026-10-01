@@ -38,13 +38,17 @@ export class SudoPromptDetector {
   /** -Infinity：首次命中永不在冷却（0 初值会把早期时间戳误判为窗内）。 */
   private lastFireAt = Number.NEGATIVE_INFINITY;
 
-  /** 喂入一段终端输出文本；命中未冷却的提示 → true（并清账重开窗口）。 */
+  /** 喂入一段终端输出文本；命中未冷却的提示 → true（并清账重开窗口）。
+   * 冷却内的命中同样清账（I-2，fix round 1）：blocked 但保留 tail 的话，之后
+   * 任意输出块会在冷却过期后携陈旧 tail 再次命中 → 把密码打进无关的提示符。
+   * 清账不破坏错密重试：sudo 的第二次完整提示在后续 chunk 重达，照常触发。 */
   feed(text: string, now: number): boolean {
     if (text) this.tail = (this.tail + text).slice(-TAIL_KEEP);
     if (!SUDO_PROMPT_RE.test(this.tail)) return false;
-    if (now - this.lastFireAt < SUDO_COOLDOWN_MS) return false;
-    this.lastFireAt = now;
+    const blocked = now - this.lastFireAt < SUDO_COOLDOWN_MS;
     this.tail = "";
+    if (blocked) return false;
+    this.lastFireAt = now;
     return true;
   }
 

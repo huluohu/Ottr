@@ -163,7 +163,7 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
             let n = value
                 .as_u64()
                 .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
-            if n < HOSTKEY_AUDIT_INTERVAL_MIN_SECS || n > HOSTKEY_AUDIT_INTERVAL_MAX_SECS {
+            if !(HOSTKEY_AUDIT_INTERVAL_MIN_SECS..=HOSTKEY_AUDIT_INTERVAL_MAX_SECS).contains(&n) {
                 return Err(format!(
                     "security.hostkey_audit_interval_secs must be {}-{}, got {n}",
                     HOSTKEY_AUDIT_INTERVAL_MIN_SECS, HOSTKEY_AUDIT_INTERVAL_MAX_SECS
@@ -213,9 +213,7 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
 /// 失焦时刻现读自动锁定配置。`None` = 不计时（关闭 / keyring 模式无锁概念 /
 /// 已锁定 / settings 读取失败安全侧不断锁——读取失败按默认值走，见 *_from）。
 fn autolock_minutes(app: &AppHandle) -> Option<u64> {
-    let Some(vault) = app.try_state::<VaultState>() else {
-        return None;
-    };
+    let vault = app.try_state::<VaultState>()?;
     if vault.0.mode() != KeyMode::Password || vault.0.is_locked() {
         return None;
     }
@@ -229,6 +227,7 @@ fn autolock_minutes(app: &AppHandle) -> Option<u64> {
 ///   本计时器让位最新一轮（旧计时器绝不打新状态）；
 /// * `!focused`——已重新聚焦即放弃（用户在场）；
 /// * `!is_locked`——已锁定（手动/前一轮）不重复锁、不重发事件。
+///
 /// 单测见本模块 `auto_lock_fire_matrix`。
 pub fn auto_lock_should_fire(
     gen_snapshot: u64,

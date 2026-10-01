@@ -49,6 +49,18 @@ describe("SudoPromptDetector", () => {
     expect(d.feed(FIXTURE_PROMPT, 1_000 + SUDO_COOLDOWN_MS)).toBe(true);
   });
 
+  it("blocked 命中清账（I-2 回归）：冷却内的陈旧 tail 不再随后续输出块再触发", () => {
+    const d = new SudoPromptDetector();
+    expect(d.feed(FIXTURE_PROMPT, 1_000)).toBe(true); // 真命中 → 填充
+    // 2s 内误命中（输出里又出现提示样文本）：blocked，但 tail 必须清
+    expect(d.feed(FIXTURE_PROMPT, 1_500)).toBe(false);
+    // 冷却过期后任意无关输出进来：陈旧 tail 已清，不得再次触发
+    // （否则 = 明文密码打进用户当前的普通提示符）
+    expect(d.feed("user@host:~$ ls\r\n", 1_000 + SUDO_COOLDOWN_MS + 1)).toBe(false);
+    // 错密重试不破坏：sudo 的**完整**提示随后 chunk 重达 → 照常触发
+    expect(d.feed(FIXTURE_PROMPT, 1_000 + SUDO_COOLDOWN_MS + 2)).toBe(true);
+  });
+
   it("reset 清账：重连后历史缓冲不再命中", () => {
     const d = new SudoPromptDetector();
     d.feed("…[sudo] password for spike: ", 1_000);

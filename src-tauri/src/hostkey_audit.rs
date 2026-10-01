@@ -20,7 +20,7 @@
 //! （监听同事件 → notify(kind=security)）。手动巡检命令
 //! [`known_hosts_audit_run`] 与调度器走同一条 [`audit_round`]，事件形状一致。
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -234,9 +234,30 @@ pub async fn audit_round(vault: Arc<Vault>, app: &AppHandle) -> Result<AuditOutc
 /// 才跑，避免每次启动都出网）。
 static LAST_RUN_SECS: AtomicU64 = AtomicU64::new(0);
 
-/// 调度心跳（60s）。vault 未就绪 / 锁定 / 开关关 / 未到间隔 → 本轮跳过。
-/// 巡检是明文面读取（known_hosts）+ 出网，锁定态跳过 = 不在密文库不可读时
-/// 做信任判定（安全侧：解锁后下一心跳补跑）。
+/// 巡检轮 in-flight 守卫（M-1，fix round 1）：心跳 60s，端点一多单轮可能超
+/// 心跳——不守卫则上一轮未完下一跳又起一轮（自重叠双轮：重复出网 + 事件双发）。
+/// CAS 抢占，error 路径同样释放（defer 风格 guard）。
+static ROUND_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+/// 抢占成功时的释放 guard（Drop 置 false——error/panic 路径统一收尾）。
+struct RoundGuard;
+impl Drop for RoundGuard {
+    fn drop(&mut self) {
+        ROUND_IN_FLIGHT.store(false, Ordering::Relaxed);
+    }
+}
+
+/// 尝试抢占巡检轮执行权；false = 已有一轮在跑（调用方跳过本轮）。
+fn try_begin_round() -> Option<RoundGuard> {
+    ROUND_IN_FLIGHT
+        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+        .ok()
+        .map(|_| RoundGuard)
+}
+
+/// 调度心跳（60s）。vault 未就绪 / 锁定 / 开关关 / 未到间隔 / 上一轮未完 →
+/// 本轮跳过。巡检是明文面读取（known_hosts）+ 出网，锁定态跳过 = 不在密文库
+/// 不可读时做信任判定（安全侧：解锁后下一心跳补跑）。
 pub fn spawn_audit_scheduler(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
@@ -267,6 +288,10 @@ pub fn spawn_audit_scheduler(app: AppHandle) {
             if now.saturating_sub(LAST_RUN_SECS.load(Ordering::Relaxed)) < interval.as_secs() {
                 continue;
             }
+            // in-flight 抢占：上一轮未完（端点多于心跳预算）本轮让位
+            let Some(_guard) = try_begin_round() else {
+                continue;
+            };
             match audit_round(state.0.clone(), &app).await {
                 Ok(o) => {
                     LAST_RUN_SECS.store(now, Ordering::Relaxed);
@@ -280,6 +305,7 @@ pub fn spawn_audit_scheduler(app: AppHandle) {
                 }
                 Err(e) => eprintln!("[hostkey-audit] round failed: {e}"),
             }
+            drop(_guard); // 显式收尾（语义面；Drop 本可兜底）
         }
     });
 }
@@ -339,10 +365,8 @@ mod tests {
     fn classify_probe_matrix() {
         let anchor = "SHA256:ANCHOR".to_string();
         // 锚在观测集（单枚/多枚超集）→ Match
-        assert_eq!(
-            classify_probe(&anchor, &[anchor.clone()]),
-            ProbeVerdict::Match
-        );
+        let single = vec![anchor.clone()];
+        assert_eq!(classify_probe(&anchor, &single), ProbeVerdict::Match);
         assert_eq!(
             classify_probe(
                 &anchor,
@@ -507,5 +531,19 @@ mod tests {
             assert_eq!(parse_endpoint_key(&key), Some((addr.to_string(), port)));
         }
         assert_eq!(parse_endpoint_key("legacy:SHA256:x"), None);
+    }
+
+    /// 巡检轮 in-flight 守卫（M-1，fix round 1）：CAS 抢占互斥——持锁期间第二
+    /// 次抢占失败；guard Drop（含 error 路径）释放后可再抢。单测进程内无其他
+    /// try_begin_round 调用方（调度器不在单测里 spawn），静态位确定性空闲。
+    #[test]
+    fn round_guard_is_mutually_exclusive_and_released_on_drop() {
+        let g1 = try_begin_round();
+        assert!(g1.is_some(), "空闲态首次抢占必须成功");
+        assert!(try_begin_round().is_none(), "持锁期间第二次抢占必须失败");
+        drop(g1);
+        let g2 = try_begin_round();
+        assert!(g2.is_some(), "Drop 释放后应可再抢");
+        drop(g2); // 归还静态位，不污染后续测试
     }
 }

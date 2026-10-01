@@ -32,6 +32,10 @@ pub const HISTORY_KEEP_ROWS: i64 = 50_000;
 /// ⌘R 面板单次搜索返回上限（Tauri 命令面 `limit` 缺省同值）。
 pub const HISTORY_SEARCH_LIMIT: usize = 50;
 
+/// 会话命令序列取数上限（Task 7 纪要数据源；prompt 体量护栏——超长会话只
+/// 摘要最近 N 条，id DESC 取尾再反转为时序）。
+pub const HISTORY_SESSION_LIMIT: usize = 200;
+
 fn now_ts() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -164,6 +168,33 @@ impl History {
         let rows = stmt
             .query_map(args.as_slice(), row_to_entry)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// 会话维度的命令序列（Task 7 会话纪要的数据源契约）：某会话
+    /// （host_id + session_id）最近 `limit` 条命令，**按 id 升序（≈ ts 时序）**
+    /// 返回——纪要 prompt 按时间顺序装配。明文面：锁定可读（同 insert/search）。
+    /// limit 缺省 [`HISTORY_SESSION_LIMIT`]（超长会话只摘最近 N 条，prompt 体量
+    /// 护栏；DELETE 路径不存在——history 只插入与滚动清理）。
+    pub fn list_session(
+        vault: &Vault,
+        host_id: i64,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<Vec<HistoryEntry>> {
+        let conn = vault.connection();
+        let mut stmt = conn.prepare(
+            "SELECT * FROM history
+             WHERE host_id = ?1 AND session_id = ?2
+             ORDER BY id DESC LIMIT ?3",
+        )?;
+        let mut rows = stmt
+            .query_map(
+                params![host_id, session_id, limit.max(1) as i64],
+                row_to_entry,
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.reverse(); // DESC 取尾（最近优先）→ 反转为时序
         Ok(rows)
     }
 }

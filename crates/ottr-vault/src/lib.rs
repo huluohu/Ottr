@@ -14,6 +14,7 @@ pub mod notifications;
 pub mod secrets;
 pub mod settings;
 pub mod store;
+pub mod summaries;
 
 pub use crypto::{aad, Cipher};
 pub use entities::{
@@ -22,13 +23,17 @@ pub use entities::{
     KnownHosts, SecretField, Snippet, SnippetInput, Snippets,
 };
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};
-pub use history::{History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT};
+pub use history::{
+    History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT,
+    HISTORY_SESSION_LIMIT,
+};
 pub use jump_chains::{JumpChain, JumpChainInput, JumpChains};
 pub use master_key::MasterKey;
 pub use notifications::{Notification, NotificationInput, Notifications};
 pub use secrets::Secrets;
 pub use settings::Settings;
 pub use store::{KeyMode, Vault};
+pub use summaries::{SessionSummaries, SummaryEntry, SummaryInput, SUMMARIES_LIST_LIMIT};
 
 use std::fmt;
 

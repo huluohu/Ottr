@@ -32,8 +32,9 @@ use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
     CredentialInput, CredentialPatch, Credentials, History, HistoryEntry, HistoryInput, Host,
     HostGroups, HostInput, Hosts, KeyMode, KnownHosts, Notification, NotificationInput,
-    Notifications, SecretField, Secrets, Settings, SnippetInput, Snippets, Vault, VaultError,
-    HISTORY_SEARCH_LIMIT,
+    Notifications, SecretField, Secrets, SessionSummaries, Settings, SnippetInput, Snippets,
+    SummaryEntry, SummaryInput, Vault, VaultError, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT,
+    SUMMARIES_LIST_LIMIT,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -324,6 +325,52 @@ pub fn history_search(
         &query,
         host_id,
         limit.unwrap_or(HISTORY_SEARCH_LIMIT as u32) as usize,
+    ))
+}
+
+/// 会话维度的命令序列（Phase 2 Task 7 纪要数据源）：id 升序（≈ts 时序），
+/// `limit` 缺省 [`HISTORY_SESSION_LIMIT`]。明文面（锁定可读，同 history_search）。
+#[tauri::command]
+pub fn history_list_session(
+    state: State<'_, VaultState>,
+    host_id: i64,
+    session_id: String,
+    limit: Option<u32>,
+) -> CmdResult<Vec<HistoryEntry>> {
+    cmd(History::list_session(
+        &state.0,
+        host_id,
+        &session_id,
+        limit.unwrap_or(HISTORY_SESSION_LIMIT as u32) as usize,
+    ))
+}
+
+// --- session_summaries（Phase 2 Task 7，B1 会话纪要）--------------------------
+// 密文面（summary_enc 已登记 scan_registry）：**过 ensure_unlocked 门卫**，与
+// secrets 同一锁定语义——纪要生成是断开时的后台尽力而为任务（前端 fire-and-
+// forget 吞错误），锁定时插入被拒即静默丢弃；面板读取同样解锁后可用。
+
+#[tauri::command]
+pub fn summary_insert(
+    state: State<'_, VaultState>,
+    input: SummaryInput,
+) -> CmdResult<SummaryEntry> {
+    ensure_unlocked(&state.0)?;
+    cmd(SessionSummaries::insert(&state.0, &input))
+}
+
+/// `host_id` 缺省 = 跨主机；`limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。
+#[tauri::command]
+pub fn summary_list(
+    state: State<'_, VaultState>,
+    host_id: Option<i64>,
+    limit: Option<u32>,
+) -> CmdResult<Vec<SummaryEntry>> {
+    ensure_unlocked(&state.0)?;
+    cmd(SessionSummaries::list(
+        &state.0,
+        host_id,
+        limit.unwrap_or(SUMMARIES_LIST_LIMIT as u32) as usize,
     ))
 }
 

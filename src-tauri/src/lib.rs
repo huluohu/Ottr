@@ -266,6 +266,11 @@ pub fn run() {
             // Task 15（spec §5）：统一历史搜索 ⌘R（明文面，锁定可读写）
             vault::history_insert,
             vault::history_search,
+            // Phase 2 Task 7（B1）：会话纪要——数据源命令序列（明文面）+
+            // 摘要密文面（summary_insert/list 过锁定门卫，同 secrets）
+            vault::history_list_session,
+            vault::summary_insert,
+            vault::summary_list,
             security::vault_copy_credential_secret,
             // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
             vault::hosts_list,

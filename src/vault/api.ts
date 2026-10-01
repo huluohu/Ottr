@@ -26,6 +26,9 @@
 //       history_insert history_search
 //       （Task 15 统一历史搜索 ⌘R：明文面，锁定可读写——写入源是前端
 //       CommandWatch 的命令完成事件，见 src/history/record.ts）
+//       history_list_session summary_insert summary_list
+//       （Phase 2 Task 7 会话纪要：数据源命令序列（明文面）+ 摘要密文面
+//       （summary_enc 已登记 scan_registry，summary_insert/list 过锁定门卫））
 //       pf_list pf_create pf_update pf_delete pf_set_enabled pf_start pf_stop
 //       （Phase 2 Task 1 端口转发中心，B7 上半；配置面过锁定门卫，运行面
 //       ForwardManager 在 src-tauri commands/forward.rs）
@@ -246,6 +249,28 @@ export interface HistoryInput {
   session_id: string | null;
 }
 
+/** Rust `summaries::SummaryEntry` 同构（Phase 2 Task 7 会话纪要行）。
+ * summary 为开封后的明文（密文只在 summary_enc 列，list 单点出库）；明文面
+ * 消费方是 ⌘R 纪要页签。 */
+export interface SummaryEntry {
+  id: number;
+  host_id: number;
+  session_id: string;
+  summary: string;
+  /** 摘要覆盖的命令条数（面板徽标 + 溯源面）。 */
+  command_count: number;
+  /** 秒级 Unix 时间（upsert 时 = 最新一次生成时刻）。 */
+  ts: number;
+}
+
+/** Rust `summaries::SummaryInput` 同构（summary_insert 载荷，snake_case）。 */
+export interface SummaryInput {
+  host_id: number;
+  session_id: string;
+  summary: string;
+  command_count: number;
+}
+
 /** Rust `vault_upgrade_to_master_password` 进度事件载荷（ottr://reencrypt-progress）。 */
 export interface ReencryptProgress {
   done: number;
@@ -443,6 +468,22 @@ export const vaultApi = {
         hostId,
         limit: limit ?? null,
       }),
+    /** 会话命令序列（Task 7 纪要数据源）：id 升序（≈ts 时序）；limit 缺省 200。 */
+    listSession: (hostId: number, sessionId: string, limit?: number) =>
+      invoke<HistoryEntry[]>("history_list_session", {
+        hostId,
+        sessionId,
+        limit: limit ?? null,
+      }),
+  },
+  /** 会话纪要（Phase 2 Task 7，B1）：摘要密文面（AES-256-GCM 密封落盘、锁定即
+   * 拒，同 secrets）。写入源 = 会话断开时的后台生成链（src/ai/summary.ts
+   * fire-and-forget）；读取面 = ⌘R 面板「纪要」页签。 */
+  summaries: {
+    insert: (input: SummaryInput) => invoke<SummaryEntry>("summary_insert", { input }),
+    /** 最近纪要（id DESC）；hostId=null 跨主机；limit 缺省 50。 */
+    list: (hostId: number | null, limit?: number) =>
+      invoke<SummaryEntry[]>("summary_list", { hostId, limit: limit ?? null }),
   },
   /** secrets 密文 KV（Task 13，AI BYOK）：provider api key 等，AES-256-GCM 密封
    * 落盘、锁定即拒（"vault is locked..."）。key 逻辑名 = `ai.apikey.<providerId>`。

@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 10;
+pub const LATEST_SCHEMA_VERSION: u32 = 11;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -104,7 +104,8 @@ impl KeyMode {
 /// 明文配置面，无 *_enc 列，不动 scan_registry）；0010 ftp_ftps（Phase 2
 /// Task 5——hosts.protocol 列 + credentials.kind CHECK 放开 ftp/ftps 的表
 /// 重建：密文列原样平移、无新增密文列，不动 scan_registry；AUTOINCREMENT
-/// 水位搬移防 id 复用，见迁移文件头）。
+/// 水位搬移防 id 复用，见迁移文件头）；0011 session_summaries（Phase 2
+/// Task 7，B1 会话纪要——summary_enc 密文列**已登记 scan_registry**，见下）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
@@ -119,6 +120,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (8, include_str!("../migrations/0008_port_forwards.sql")),
     (9, include_str!("../migrations/0009_jump_chains.sql")),
     (10, include_str!("../migrations/0010_ftp_ftps.sql")),
+    (11, include_str!("../migrations/0011_session_summaries.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -603,6 +605,12 @@ pub fn scan_registry() -> &'static [SecretColumn] {
             table: "secrets",
             column: "value_enc",
             field: "value",
+        },
+        // Task 7（0011）：会话纪要摘要（内容含命令序列——敏感面走密封通道）
+        SecretColumn {
+            table: "session_summaries",
+            column: "summary_enc",
+            field: "summary",
         },
     ]
 }

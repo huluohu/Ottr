@@ -127,8 +127,16 @@ const lastSeen = new Map<string, number>();
  * +1，下一条放行时把计数注入 payload.suppressed 后清零。 */
 const suppressedCount = new Map<string, number>();
 
-/** 限频 key：kind + host_id（同主机同类事件聚合；无主机按 kind 聚合）。 */
+/** 限频 key：kind + host_id（同主机同类事件聚合；无主机按 kind 聚合）。
+ * 【I-1（fix round 1）】alert 类细化含 rule_id（`alert:host:rule`）——「同
+ * rule 60s 窗口合并」的直译语义：同主机不同规则各自独立开窗，规则 2 的告警
+ * 不再被规则 1 的窗口吞掉（否则 suppressed 计数并入他规则事件、按错误
+ * channel_ids 路由）；其余 kind 维持 Phase 1 口径不变。 */
 export function rateKeyOf(event: NotificationEvent): string {
+  if (event.kind === "alert") {
+    const ruleId = event.payload?.["rule_id"] ?? "-";
+    return `alert:${event.host_id ?? "-"}:${ruleId}`;
+  }
   return `${event.kind}:${event.host_id ?? "-"}`;
 }
 

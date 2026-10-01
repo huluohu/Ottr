@@ -696,7 +696,6 @@
     "noChannels": "No channels yet. Add one to reach DingTalk/Feishu/Telegram and more.",
     "addChannel": "Add channel",
     "channelFormTitle": "Channel",
-    "fieldName": "Name (note only)",
     "fieldKind": "Kind",
     "fieldEnabled": "Enabled",
     "errKindRequired": "Pick a channel kind",

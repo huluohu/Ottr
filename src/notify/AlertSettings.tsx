@@ -33,7 +33,6 @@ const CHANNEL_KINDS: ChannelKind[] = [
 
 interface ChannelDraft {
   id: number | null;
-  name: string;
   kind: ChannelKind;
   enabled: boolean;
   /** 表单原始输入（string 面；数字字段保存时转） */
@@ -53,7 +52,7 @@ interface RuleDraft {
 }
 
 function emptyChannelDraft(): ChannelDraft {
-  return { id: null, name: "", kind: "dingtalk", enabled: true, config: {}, original: null };
+  return { id: null, kind: "dingtalk", enabled: true, config: {}, original: null };
 }
 
 function emptyRuleDraft(): RuleDraft {

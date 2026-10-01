@@ -695,7 +695,6 @@
     "noChannels": "还没有渠道。点「添加渠道」接入钉钉/飞书/Telegram 等。",
     "addChannel": "添加渠道",
     "channelFormTitle": "渠道配置",
-    "fieldName": "名称（仅备注用）",
     "fieldKind": "类型",
     "fieldEnabled": "启用",
     "errKindRequired": "请选择渠道类型",

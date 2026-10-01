@@ -24,6 +24,7 @@ import {
 } from "./rules";
 import type { AlertRule } from "../vault/api";
 import type { MonitorMetrics } from "../monitor/monitorStore";
+import type { NotificationEvent } from "./core";
 import { disposeAlertEngine } from "./rules";
 
 function rule(over: Partial<AlertRule> = {}): AlertRule {
@@ -309,3 +310,163 @@ describe("M-1 聚合计数（管线级，core.ts 清偿挂账）", () => {
     expect(PROCESS_POLL_MS).toBe(60_000);
   });
 });
+
+describe("I-1（fix round 1）：聚合 key 细化含 rule_id + 水位只在放行后推进", () => {
+  function alertEvent(ruleId: number, hostId = 7) {
+    return {
+      kind: "alert" as const,
+      severity: "warning" as const,
+      host_id: hostId,
+      title_key: "alert.title.disk",
+      body: "web-01",
+      payload: { rule_id: ruleId, channel_ids: [ruleId] },
+    };
+  }
+
+  it("rateKeyOf：alert 按 rule_id 分窗（同主机两规则不同 key），其余 kind 维持口径", async () => {
+    const { rateKeyOf } = await import("./core");
+    expect(rateKeyOf(alertEvent(1))).toBe("alert:7:1");
+    expect(rateKeyOf(alertEvent(2))).toBe("alert:7:2"); // 同主机不同规则：不同 key
+    expect(rateKeyOf(alertEvent(1, 8))).toBe("alert:8:1"); // 不同主机：不同 key
+    expect(rateKeyOf({ ...alertEvent(1), kind: "transfer", payload: {} })).toBe("transfer:7");
+    expect(rateKeyOf({ ...alertEvent(1), kind: "transfer", host_id: null, payload: {} })).toBe(
+      "transfer:-",
+    );
+  });
+
+  /** 真管线集成底座：core.notify 全真（假时钟 + invoke echo）+ 按渠道 id 订阅的假渠道。 */
+  async function wireRealPipeline(clock: { t: number }) {
+    const core = await import("./core");
+    const { setNotifyPorts, resetRateLimiter, channels, useNotifyStore } = core;
+    const inv = (await import("@tauri-apps/api/core")).invoke as unknown as Mock;
+    inv.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "notify_insert") {
+        const input = args!.input as { kind: string };
+        return { id: 1, ...input, read: false, ts: 1 };
+      }
+      return {};
+    });
+    useNotifyStore.setState({ items: [], unread: 0, muted: [] });
+    resetRateLimiter();
+    setNotifyPorts({ now: () => clock.t, focused: () => true, system: async () => {} });
+    channels.length = 0;
+    const received: { id: number; events: NotificationEvent[] }[] = [1, 2].map((id) => ({
+      id,
+      events: [],
+    }));
+    for (const c of received) {
+      channels.push({
+        name: `fake#${c.id}`,
+        send: async (e) => void c.events.push(e),
+        test: async () => {},
+        subscribed: (e) => {
+          const ids = e.payload?.["channel_ids"];
+          return e.kind === "alert" && Array.isArray(ids) && (ids as number[]).includes(c.id);
+        },
+      });
+    }
+    return { core, received };
+  }
+
+  function engineWithRealNotify(
+    rules: AlertRule[],
+    notify: (e: NotificationEvent) => Promise<boolean>,
+    touch: Mock,
+    clock: { t: number },
+  ): AlertEngine {
+    const engine = new AlertEngine();
+    (engine as unknown as { rules: AlertRule[] }).rules = rules;
+    setAlertEngineDeps({
+      now: () => clock.t, // 引擎与管线共用同一假时钟
+      notify,
+      touchFired: touch,
+      fetchProcesses: async () => [],
+      hostByRustId: (rustId) =>
+        rustId === "pty-1" ? { hostId: 7, hostName: "web-01" } : null,
+      sessionByHost: (hostId) =>
+        hostId === 7 ? { rustId: "pty-1", hostName: "web-01" } : null,
+    });
+    return engine;
+  }
+
+  function diskMetrics(percent: number): MonitorMetrics {
+    return {
+      cpu_percent: 10,
+      mem_used_percent: 10,
+      mem_total_kb: 1,
+      mem_used_kb: 1,
+      load_one: 0,
+      load_five: 0,
+      load_fifteen: 0,
+      net_rx_bps: 0,
+      net_tx_bps: 0,
+      disk: [{ filesystem: "x", total_kb: 1, used_kb: 1, avail_kb: 0, used_percent: percent, mount: "/" }],
+    };
+  }
+
+  it("同主机两规则同刻 fire：各自窗口放行、各自渠道按 channel_ids 收到自己的告警", async () => {
+    const clock = { t: 3_000_000 };
+    const { received } = await wireRealPipeline(clock);
+    const touch = vi.fn(async () => {});
+    const engine = engineWithRealNotify(
+      [
+        rule({ id: 1, host_id: 7, channels: [1], params: { mount: "/", threshold: 90 } }),
+        rule({ id: 2, host_id: 7, channels: [2], params: { mount: "/", threshold: 80 } }),
+      ],
+      (await import("./core")).notify,
+      touch,
+      clock,
+    );
+
+    await engine.onMonitorSample("pty-1", diskMetrics(95)); // 两规则同刻越阈
+    await waitForTick();
+    expect(received[0].events).toHaveLength(1); // 规则 1 渠道只收规则 1
+    expect(received[1].events).toHaveLength(1); // 规则 2 渠道只收规则 2（不被规则 1 窗口吞）
+    expect(received[0].events[0].payload?.["rule_id"]).toBe(1);
+    expect(received[0].events[0].payload?.["channel_ids"]).toEqual([1]);
+    expect(received[1].events[0].payload?.["rule_id"]).toBe(2);
+    expect(received[1].events[0].payload?.["channel_ids"]).toEqual([2]);
+    expect(touch).toHaveBeenCalledTimes(2); // 两规则水位各自回写（nowSec = ms/1000）
+    expect(touch).toHaveBeenCalledWith(1, 3_000);
+    expect(touch).toHaveBeenCalledWith(2, 3_000);
+  });
+
+  it("同规则被聚合时不回写水位；出窗后重放且 suppressed 结算", async () => {
+    const clock = { t: 3_000_000 };
+    const { received } = await wireRealPipeline(clock);
+    const touch = vi.fn(async () => {});
+    const engine = engineWithRealNotify(
+      [rule({ id: 2, host_id: 7, channels: [2], params: { mount: "/", threshold: 90 } })],
+      (await import("./core")).notify,
+      touch,
+      clock,
+    );
+    const above = diskMetrics(95);
+    const below = diskMetrics(50);
+
+    // t0：放行开窗（水位 = nowSec 3000）
+    await engine.onMonitorSample("pty-1", above);
+    expect(touch).toHaveBeenCalledTimes(1);
+    expect(touch).toHaveBeenCalledWith(2, 3_000);
+    // t0+10s：恢复→再越阈重 fire → 落自身窗口内被聚合 → 水位不推进、不回写
+    await engine.onMonitorSample("pty-1", below); // rearm
+    clock.t += 10_000;
+    await engine.onMonitorSample("pty-1", above);
+    expect(touch).toHaveBeenCalledTimes(1); // 被聚合吞掉：不回写
+    // t0+61s：出窗重放（恢复→越阈）→ 放行 + suppressed 结算 + 水位推进
+    await engine.onMonitorSample("pty-1", below);
+    clock.t += 51_000;
+    await engine.onMonitorSample("pty-1", above);
+    expect(touch).toHaveBeenCalledTimes(2);
+    expect(touch).toHaveBeenLastCalledWith(2, 3_061);
+    await waitForTick();
+    const pushed = received[1].events;
+    expect(pushed).toHaveLength(2); // 首条 + 出窗重放条
+    expect(pushed[1].payload?.["suppressed"]).toBe(1); // 窗口内聚合 1 条随行
+  });
+});
+
+/** 微任务排空（fire-and-forget 的 notify 链路落定）。 */
+async function waitForTick(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 0));
+}

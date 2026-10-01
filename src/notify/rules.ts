@@ -113,7 +113,7 @@ export function tickProcess(state: RuleEvalState, present: boolean): RuleAction 
   return null;
 }
 
-/** 静音窗判定："HH:MM-HH:MM"（本地时区，可跨午夜；start==end = 恒静音）。 */
+/** 静音窗判定："HH:MM-HH:MM"（本地时区，可跨午夜；start==end = 空窗，恒不静音）。 */
 export function muteWindowContains(window: string, date: Date): boolean {
   const [start, end] = window.split("-");
   const toMin = (s: string): number => {
@@ -334,9 +334,12 @@ export class AlertEngine {
   }
 
   /** 告警放行面：静音窗 → 规则级 rate_limit（last_fired 水位）→ notify →
-   * 回写水位。fire 后无论管线是否放行都落水位（管线聚合是第二道防线的
-   * 语义：本规则至少尝试过一次）。公开（非 private）供单测直驱 fire 判定
-   * ——限频/静音窗/水位回写的 TDD 面与 tick_* 同级。 */
+   * **放行才回写水位**。【I-1（fix round 1）】水位乐观写入 + 未放行回滚：
+   * 写在前 = notify 在途时挡住同规则并发重入（风暴守卫）；管线返回 false
+   * （被 60s 窗口聚合 / kind 静音）= 本次告警未真正送达——不推进 last_fired
+   * 也不 touchFired，规则级 rate_limit 不被聚合吞掉的告警挤后，出窗后自然
+   * 重放。公开（非 private）供单测直驱 fire 判定——限频/静音窗/水位回写的
+   * TDD 面与 tick_* 同级。 */
   async applyAction(
     rule: AlertRule,
     hostName: string,
@@ -358,11 +361,20 @@ export class AlertEngine {
     if (rule.rate_limit > 0 && last !== undefined && nowSec - last < rule.rate_limit) {
       return; // 规则级限频（管线 60s 之外的第二档）
     }
-    this.lastFired.set(rule.id, nowSec);
+    const prevWatermark = last;
+    this.lastFired.set(rule.id, nowSec); // 乐观写（挡 notify 在途重入）
+    let released: boolean;
     try {
-      await deps.notify(alertEventOf(rule, hostName, value));
+      released = await deps.notify(alertEventOf(rule, hostName, value));
     } catch (e) {
       console.warn("[alerts] notify failed:", e);
+      released = true; // notify 契约 = 尽力而为不抛；假件异常按已投递计（水位照推进）
+    }
+    if (!released) {
+      // 被聚合/静音吞掉：回滚水位——不回写 DB，出窗后重放不丢
+      if (prevWatermark === undefined) this.lastFired.delete(rule.id);
+      else this.lastFired.set(rule.id, prevWatermark);
+      return;
     }
     try {
       await deps.touchFired(rule.id, nowSec);

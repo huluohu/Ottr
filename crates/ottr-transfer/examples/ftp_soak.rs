@@ -69,7 +69,10 @@ async fn run(hold: u64) -> String {
         eprintln!("[ftp-soak] round {} begin", rounds + 1);
         let mut round_err = None;
         // 上传 → 下载 → 下载件 size 校验 → 清理（任一步失败记一轮错误，连接重建再续）。
-        match client.upload(&tmp, remote, 1, &journal_up, &cancel, None).await {
+        match client
+            .upload(&tmp, remote, 1, &journal_up, &cancel, None)
+            .await
+        {
             Ok(s) => {
                 bytes += s.total_bytes;
                 let _ = std::fs::remove_file(&journal_up); // done 即删
@@ -117,6 +120,8 @@ async fn run(hold: u64) -> String {
     let _ = std::fs::remove_file(&tmp);
     format!(
         "mode=ftp-soak hold={hold}s ftp_rounds={rounds} ftp_bytes={bytes} errors={errors}{}",
-        first_err.map(|e| format!(" first_err={e}")).unwrap_or_default()
+        first_err
+            .map(|e| format!(" first_err={e}"))
+            .unwrap_or_default()
     )
 }

@@ -16,7 +16,8 @@ use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::summaries::{SessionSummaries, SummaryInput};
 use ottr_vault::Vault;
 
-const SUMMARY_SAMPLE: &str = "T12-sample: 用户在 prod-db-01 上执行了 rm -rf /tmp/scratch 且密码=hunter2 被纪要复述";
+const SUMMARY_SAMPLE: &str =
+    "T12-sample: 用户在 prod-db-01 上执行了 rm -rf /tmp/scratch 且密码=hunter2 被纪要复述";
 
 fn main() {
     let dir = "/tmp/ottr-t12/summary-seal";

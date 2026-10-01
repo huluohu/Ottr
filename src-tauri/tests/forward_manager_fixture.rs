@@ -146,6 +146,7 @@ async fn forward_recovers_after_container_restart() {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )
@@ -309,6 +310,7 @@ async fn manager_start_bind_failure_keeps_rich_error() {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )
@@ -380,6 +382,7 @@ async fn manager_start_remote_rejection_keeps_rich_error() {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )

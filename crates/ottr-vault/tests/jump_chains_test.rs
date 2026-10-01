@@ -30,6 +30,7 @@ fn seed_host(vault: &Vault, name: &str) -> i64 {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )
@@ -175,6 +176,7 @@ fn delete_unbinds_referencing_hosts() {
                 encoding_override: host.encoding_override.clone(),
                 theme_override: host.theme_override.clone(),
                 monitor_enabled: host.monitor_enabled,
+                is_production: false,
                 notes: host.notes.clone(),
             },
         )
@@ -374,6 +376,7 @@ fn delete_last_hop_host_cascades_chain_and_unbinds_referencing_hosts() {
                 encoding_override: host.encoding_override.clone(),
                 theme_override: host.theme_override.clone(),
                 monitor_enabled: host.monitor_enabled,
+                is_production: false,
                 notes: host.notes.clone(),
             },
         )

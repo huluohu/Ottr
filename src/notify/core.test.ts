@@ -250,6 +250,7 @@ describe("事件源分派（不改事件源，core.ts 订阅富化）", () => {
           encoding: "utf-8",
           encodingOverride: "utf-8",
           encodingHint: null,
+          isProduction: false,
         },
       ],
       activeId: "t1",
@@ -302,6 +303,7 @@ describe("事件源分派（不改事件源，core.ts 订阅富化）", () => {
           encoding: "utf-8",
           encodingOverride: "utf-8",
           encodingHint: null,
+          isProduction: false,
         },
         {
           id: "t2",
@@ -320,6 +322,7 @@ describe("事件源分派（不改事件源，core.ts 订阅富化）", () => {
           encoding: "utf-8",
           encodingOverride: "utf-8",
           encodingHint: null,
+          isProduction: false,
         },
       ],
       activeId: "t2",

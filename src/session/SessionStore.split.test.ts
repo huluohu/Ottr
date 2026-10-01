@@ -34,6 +34,7 @@ const hostA: Host = {
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: null,
   created_at: 1,
   updated_at: 1,
@@ -69,6 +70,7 @@ function sess(over: Partial<Session> & Pick<Session, "id">): Session {
     encoding: "utf-8",
     encodingOverride: "utf-8",
     encodingHint: null,
+    isProduction: false,
     ...over,
   };
 }

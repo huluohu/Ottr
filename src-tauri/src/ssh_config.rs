@@ -206,6 +206,7 @@ pub fn import_entries(vault: &Vault, outcome: ParseOutcome) -> ottr_vault::Resul
                 encoding_override: None,
                 theme_override: None,
                 monitor_enabled: false,
+                is_production: false,
                 notes: entry.identity_file.map(|f| format!("IdentityFile: {f}")),
             },
         )?;
@@ -289,6 +290,7 @@ mod tests {
                 encoding_override: None,
                 theme_override: None,
                 monitor_enabled: false,
+                is_production: false,
                 notes: None,
             },
         )

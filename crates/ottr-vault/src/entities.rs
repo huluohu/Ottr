@@ -535,6 +535,8 @@ impl std::str::FromStr for HostProtocol {
 /// jump_chain_id 的目标表（jump_chains）未建，暂无 FK（0002 迁移注释）。
 /// username（0003 迁移）为登录用户名，可空（未指定时连接侧回退当前用户）。
 /// protocol（0010 迁移）为主机协议，缺省 ssh（FilePanel 后端切换依据）。
+/// is_production（0012 迁移）为生产环境标记——终端红框 + 页签 PROD 徽标 +
+/// danger 输入提醒的消费依据（B11 防呆），缺省 false。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Host {
     pub id: i64,
@@ -550,6 +552,7 @@ pub struct Host {
     pub encoding_override: Option<String>,
     pub theme_override: Option<String>,
     pub monitor_enabled: bool,
+    pub is_production: bool,
     pub notes: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -572,6 +575,9 @@ pub struct HostInput {
     pub encoding_override: Option<String>,
     pub theme_override: Option<String>,
     pub monitor_enabled: bool,
+    /// serde default：旧载荷不传 = 非生产（0012 语义兼容——标记是显式动作）。
+    #[serde(default)]
+    pub is_production: bool,
     pub notes: Option<String>,
 }
 
@@ -587,8 +593,8 @@ impl Hosts {
         tx.execute(
             "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
                                 credential_id, jump_chain_id, encoding_override, theme_override,
-                                monitor_enabled, notes, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+                                monitor_enabled, is_production, notes, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
             params![
                 input.name,
                 input.group_id,
@@ -602,6 +608,7 @@ impl Hosts {
                 input.encoding_override,
                 input.theme_override,
                 input.monitor_enabled,
+                input.is_production,
                 input.notes,
                 ts,
             ],
@@ -622,6 +629,7 @@ impl Hosts {
             encoding_override: input.encoding_override,
             theme_override: input.theme_override,
             monitor_enabled: input.monitor_enabled,
+            is_production: input.is_production,
             notes: input.notes,
             created_at: ts,
             updated_at: ts,
@@ -644,8 +652,9 @@ impl Hosts {
             "UPDATE hosts SET name = ?1, group_id = ?2, tags = ?3, address = ?4, port = ?5,
                               username = ?6, protocol = ?7, credential_id = ?8, jump_chain_id = ?9,
                               encoding_override = ?10, theme_override = ?11,
-                              monitor_enabled = ?12, notes = ?13, updated_at = ?14
-             WHERE id = ?15",
+                              monitor_enabled = ?12, is_production = ?13, notes = ?14,
+                              updated_at = ?15
+             WHERE id = ?16",
             params![
                 input.name,
                 input.group_id,
@@ -659,6 +668,7 @@ impl Hosts {
                 input.encoding_override,
                 input.theme_override,
                 input.monitor_enabled,
+                input.is_production,
                 input.notes,
                 ts,
                 id,
@@ -679,6 +689,7 @@ impl Hosts {
             encoding_override: input.encoding_override,
             theme_override: input.theme_override,
             monitor_enabled: input.monitor_enabled,
+            is_production: input.is_production,
             notes: input.notes,
             created_at,
             updated_at: ts,
@@ -808,6 +819,7 @@ fn row_to_host(row: &Row) -> rusqlite::Result<Host> {
         encoding_override: row.get("encoding_override")?,
         theme_override: row.get("theme_override")?,
         monitor_enabled: row.get("monitor_enabled")?,
+        is_production: row.get::<_, i64>("is_production")? != 0,
         notes: row.get("notes")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,

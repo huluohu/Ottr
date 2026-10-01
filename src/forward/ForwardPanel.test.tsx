@@ -33,6 +33,7 @@ function host(over: Partial<Host> = {}): Host {
     encoding_override: null,
     theme_override: null,
     monitor_enabled: false,
+    is_production: false,
     notes: null,
     created_at: 0,
     updated_at: 0,
@@ -75,6 +76,7 @@ function seedSession(over: Partial<Session> = {}) {
     encodingOverride: "utf-8",
     encoding: "utf-8",
     encodingHint: null,
+    isProduction: false,
     ...over,
   };
   useSessionStore.setState({ sessions: [session] });

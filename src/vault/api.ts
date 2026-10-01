@@ -78,6 +78,8 @@ export interface Host {
   encoding_override: string | null;
   theme_override: string | null;
   monitor_enabled: boolean;
+  /** 生产环境主机标记（B11 防呆）：终端红框 + PROD 徽标 + danger 输入提醒。 */
+  is_production: boolean;
   notes: string | null;
   created_at: number;
   updated_at: number;
@@ -97,6 +99,7 @@ export interface HostInput {
   encoding_override: string | null;
   theme_override: string | null;
   monitor_enabled: boolean;
+  is_production: boolean;
   notes: string | null;
 }
 

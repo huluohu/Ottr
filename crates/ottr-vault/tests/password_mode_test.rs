@@ -55,6 +55,7 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )
@@ -321,6 +322,7 @@ fn locked_vault_keeps_plain_metadata_usable_but_rejects_keyed_ops() {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )

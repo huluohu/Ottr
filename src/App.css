@@ -406,7 +406,8 @@ button[data-active="true"] {
 }
 .import-sources button[data-active="true"] {
   border-color: var(--color-accent);
-  color: var(--color-accent);
+  /* 文字场景走 accent-text（tokens 纪律：accent 作字面对比度不足） */
+  color: var(--color-accent-text);
   font-weight: 600;
 }
 .import-pick-row {
@@ -965,6 +966,18 @@ button[data-active="true"] {
   color: var(--color-warning);
   font-variant-numeric: tabular-nums;
 }
+/* 生产环境主机（Phase 2 Task 11，B11 防呆）：页签 PROD 徽标 + 终端红框 */
+.tab-prod {
+  flex: none;
+  font-size: 0.66em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-on-danger, #fff);
+  background: var(--color-danger);
+  border-radius: 4px;
+  padding: 1px 4px;
+  line-height: 1.3;
+}
 .tab-close {
   border: none;
   background: none;
@@ -1019,6 +1032,16 @@ button[data-active="true"] {
   outline: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
   outline-offset: -1px;
 }
+/* 生产环境主机 pane（B11）：常驻红框（聚焦红实线、非聚焦红半透明——所有
+   会话 DOM 常驻，切标签也保持可见的防呆信号） */
+.term-pane[data-production="true"] {
+  outline: 2px solid color-mix(in srgb, var(--color-danger) 55%, transparent);
+  outline-offset: -2px;
+}
+.term-pane[data-production="true"][data-focused="true"] {
+  outline: 2px solid var(--color-danger);
+  outline-offset: -2px;
+}
 .session-term {
   width: 100%;
   height: 100%;
@@ -1057,6 +1080,54 @@ button[data-active="true"] {
   font-size: 1em;
   line-height: 1;
   padding: 0 2px;
+}
+/* 危险输入提醒条（Phase 2 Task 11，B11）：编码提示条同位（终端顶部浮层），
+   红边红字——danger red/yellow 档命中时的行内防呆 */
+.danger-hint {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 92%;
+  padding: 4px 10px;
+  border: 1px solid var(--color-danger);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--color-danger);
+  font-size: 0.8em;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-danger) 18%, transparent);
+}
+.danger-hint-title {
+  font-weight: 700;
+}
+.danger-hint-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.danger-hint button {
+  color: var(--color-danger);
+  font-size: 1em;
+  line-height: 1;
+  padding: 0 2px;
+}
+/* 表单勾选行（B11 生产标记）：横向布局 + 提示文字弱化 */
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.form-check input {
+  width: auto;
+}
+.form-check-hint {
+  color: var(--fg-muted);
+  font-size: 0.85em;
 }
 
 /* 编码徽标（Task 9）：term-toolbar 右侧，聚焦 pane 的会话编码，点击循环切换 */

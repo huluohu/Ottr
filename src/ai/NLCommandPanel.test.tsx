@@ -65,6 +65,7 @@ const SESSION: Session = {
   encoding: "utf-8",
   encodingOverride: "utf-8",
   encodingHint: null,
+  isProduction: false,
 };
 
 function seedSession(present: boolean) {

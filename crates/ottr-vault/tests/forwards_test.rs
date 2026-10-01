@@ -45,6 +45,7 @@ fn seed_host(vault: &Vault) -> i64 {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )
@@ -170,6 +171,7 @@ fn list_filters_by_host_and_enabled() {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )

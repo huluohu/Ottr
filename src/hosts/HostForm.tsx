@@ -48,6 +48,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
     host?.jump_chain_id != null ? String(host.jump_chain_id) : "",
   );
   const [encoding, setEncoding] = useState(host?.encoding_override ?? "");
+  const [production, setProduction] = useState(host?.is_production ?? false);
   const [tagsText, setTagsText] = useState((host?.tags ?? []).join(", "));
   const [notes, setNotes] = useState(host?.notes ?? "");
   const [errors, setErrors] = useState<{ address?: string; port?: string }>({});
@@ -92,6 +93,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
       encoding_override: encoding === "" ? null : encoding,
       theme_override: host?.theme_override ?? null,
       monitor_enabled: host?.monitor_enabled ?? false,
+      is_production: production,
       notes: notes.trim() === "" ? null : notes.trim(),
     };
     try {
@@ -249,6 +251,19 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
             </select>
           </label>
         </div>
+
+        {/* 生产环境标记（Phase 2 Task 11，B11 防呆）：终端红框 + 页签 PROD 徽标
+            + danger 输入提醒的消费依据。显式勾选，导入/编辑不臆测。 */}
+        <label className="form-check" data-testid="form-production-row">
+          <input
+            type="checkbox"
+            data-testid="form-production"
+            checked={production}
+            onChange={(e) => setProduction(e.currentTarget.checked)}
+          />
+          <span>{t("hostForm.production")}</span>
+          <span className="form-check-hint">{t("hostForm.productionHint")}</span>
+        </label>
 
         <label>
           <span>{t("hostForm.tags")}</span>

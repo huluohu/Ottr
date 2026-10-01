@@ -29,6 +29,7 @@ fn host_input(name: &str, notes: &str) -> HostInput {
         encoding_override: None,
         theme_override: None,
         monitor_enabled: false,
+        is_production: false,
         notes: Some(notes.into()),
     }
 }
@@ -1050,5 +1051,75 @@ fn migration_0010_preserves_sequence_watermark_from_v9_db_with_delete_history() 
         next.id > 2,
         "0010 rebuild lost the AUTOINCREMENT watermark: new row id {} reuses deleted id 2",
         next.id
+    );
+}
+
+#[test]
+fn migration_0012_is_production_default_false_and_roundtrip() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
+
+    // 缺省 = 非生产（存量语义零迁移；标记是显式动作）
+    let plain = Hosts::create(&vault, host_input("plain", "")).unwrap();
+    assert!(!plain.is_production);
+    assert!(!Hosts::get(&vault, plain.id).unwrap().unwrap().is_production);
+
+    // 显式标记往返一致；update 全量替换不丢标记
+    let mut marked = host_input("prod-db", "production");
+    marked.is_production = true;
+    let created = Hosts::create(&vault, marked.clone()).unwrap();
+    assert!(
+        Hosts::get(&vault, created.id)
+            .unwrap()
+            .unwrap()
+            .is_production
+    );
+    let mut edit = host_input("prod-db", "edited");
+    edit.is_production = true;
+    edit.notes = Some("edited".into());
+    let after = Hosts::update(&vault, created.id, edit).unwrap();
+    assert!(
+        after.is_production,
+        "full-replace update must carry the flag"
+    );
+
+    // 非法布尔被 CHECK 拒绝（DB 层完整性，非仅应用层）
+    let conn = vault.connection();
+    let bad = conn.execute(
+        "INSERT INTO hosts (name, tags, address, port, protocol, monitor_enabled, is_production, created_at, updated_at)
+         VALUES ('x', '[]', '1.2.3.4', 22, 'ssh', 0, 2, 0, 0)",
+        [],
+    );
+    assert!(bad.is_err(), "is_production CHECK must reject non-0/1");
+}
+
+#[test]
+fn migration_0012_legacy_v11_rows_default_to_zero() {
+    // v11 库（无 is_production 列）打开即补列，存量行按非生产处理
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let vault = open_vault(dir.path());
+        Hosts::create(&vault, host_input("legacy-row", "")).unwrap();
+    }
+    // 手工把 schema_version 拨回 11 + 摘掉 is_production 列 → 模拟旧库重开
+    let db = dir.path().join("vault.db");
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    conn.execute_batch(
+        "UPDATE meta SET value='11' WHERE key='schema_version';
+         ALTER TABLE hosts DROP COLUMN is_production;",
+    )
+    .unwrap();
+    drop(conn);
+
+    let vault = open_vault(dir.path());
+    let host = Hosts::get(&vault, 1).unwrap().unwrap();
+    assert_eq!(host.name, "legacy-row");
+    assert!(
+        !host.is_production,
+        "v11 rows must migrate to non-production"
     );
 }

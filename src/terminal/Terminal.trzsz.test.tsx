@@ -52,6 +52,7 @@ function sess(over: Partial<Session> & Pick<Session, "id">): Session {
     encoding: "utf-8",
     encodingOverride: "utf-8",
     encodingHint: null,
+    isProduction: false,
     ...over,
   };
 }

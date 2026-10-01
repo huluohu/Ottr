@@ -44,7 +44,7 @@ import {
   type TerminalThemeSetting,
 } from "../theme/terminalThemeStore";
 import type { ITheme } from "@xterm/xterm";
-import { assessPaste } from "../ai/danger";
+import { assessPaste, InputDangerWatch, type DangerFinding } from "../ai/danger";
 import { useAiStore } from "../ai/aiStore";
 import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
@@ -179,6 +179,36 @@ export function EncodingHintBar({ sessionId }: { sessionId: string }) {
   );
 }
 
+/** 危险输入提醒条（Phase 2 Task 11，B11）：当前输入行命中 danger red/yellow
+ * 档时行内提示（限频由 InputDangerWatch 管）；回车执行/手动关闭即撤。 */
+export function DangerHintBar({
+  finding,
+  onDismiss,
+}: {
+  finding: DangerFinding;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="danger-hint" data-testid="danger-hint" role="alert">
+      <span className="danger-hint-title">{t("terminal.dangerInputTitle")}</span>
+      <span className="danger-hint-text">
+        {t("terminal.dangerInputHint", {
+          rule: t(`ai.danger.${finding.kind}`, { defaultValue: finding.kind }),
+          excerpt: finding.excerpt,
+        })}
+      </span>
+      <button
+        data-testid="danger-hint-dismiss"
+        aria-label={t("terminal.dangerInputDismiss")}
+        onClick={onDismiss}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 /** 终端区拖拽落点对话框（Phase 2 Task 4，B10 下半）：文件拖入终端 pane 后询问
  * 「trz 上传」（TrzszController.uploadFiles，远端须装 trzsz）或「插入路径」
  * （单引号转义后 term.paste，与 SFTP 上传无关的纯文本插入）。 */
@@ -241,6 +271,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
+  // B11 危险输入提醒：观察面（限频器）+ 当前输入行缓冲 + 展示中的命中
+  const inputWatchRef = useRef<InputDangerWatch | null>(null);
+  const lineBufRef = useRef("");
+  const [dangerHint, setDangerHint] = useState<DangerFinding | null>(null);
 
   // 白名单登记/撤销（Fix round 1 I-1）：scope = 前端会话 id；对话框与拖拽上传
   // 返回路径后登记，传输收尾/上传 settle/会话卸载撤销。Rust 侧七命令入口统一校验。
@@ -422,11 +456,33 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     ); // 语义令牌：ANSI 注释灰（跟随当前终端配色，非固定品牌值）
     ghostRef.current = ghost;
 
-    // 击键 → ghost 前置语义 → trzsz 过滤器 → PTY（传输态库吞键入；空闲透传）
+    // 击键 → B11 危险输入观察（旁路，不消费）→ ghost 前置语义 → trzsz 过滤器 →
+    // PTY（传输态库吞键入；空闲透传）
     const onData = term.onData((d) => {
+      observeDangerInput(d);
       if (ghost.handleData(d)) return; // Tab 采纳/Esc 忽略已消费，不进 PTY
       trzsz.processTerminalInput(d);
     });
+
+    // B11 输入侧防呆：维护「当前输入行」缓冲（shell 拥有行编辑，这里只见
+    // 本会话键入的字符——↑召回/Tab 补全不可见，由确认交互兜底）并逐键 classify；
+    // red/yellow 命中 → 行内提醒（同类 30s 限频）；回车清行撤提醒。
+    function observeDangerInput(d: string) {
+      if (d === "\r" || d === "\n") {
+        lineBufRef.current = "";
+        setDangerHint(null);
+        return;
+      }
+      if (d === "\x7f" || d === "\b") {
+        lineBufRef.current = lineBufRef.current.slice(0, -1);
+        return;
+      }
+      if (d.startsWith("\x1b")) return; // 方向键等控制序列（无文本语义）
+      lineBufRef.current = (lineBufRef.current + d).slice(-2000);
+      inputWatchRef.current ??= new InputDangerWatch();
+      const finding = inputWatchRef.current.observe(lineBufRef.current, Date.now());
+      if (finding) setDangerHint(finding);
+    }
 
     // 选择即复制（可配，右键菜单切换；设置即时读 localStorage 免订阅）
     const onSelectionChange = term.onSelectionChange(() => {
@@ -687,6 +743,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="session-term" ref={hostRef} data-session-id={sessionId} onContextMenu={openContextMenu}>
+      {dangerHint && <DangerHintBar finding={dangerHint} onDismiss={() => setDangerHint(null)} />}
       <EncodingHintBar sessionId={sessionId} />
       {menu && (
         <>
@@ -987,6 +1044,8 @@ export function TerminalArea() {
               className="term-pane"
               data-active={rect != null}
               data-focused={focusedPane === session.id}
+              // 生产环境主机（B11）：红色边框防呆（CSS [data-production]）
+              data-production={session.isProduction ? "true" : undefined}
               data-testid={`term-pane-${session.id}`}
               style={
                 rect

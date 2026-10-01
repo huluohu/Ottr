@@ -95,6 +95,9 @@ export interface Session {
   /** detect_hint 提示（Rust `ottr://encoding-hint`）：非空 = 展示
    * 「检测到 GBK，切换？」提示条；接受/忽略后清空（per-host 一次，可关）。 */
   encodingHint: SessionEncoding | null;
+  /** 生产环境主机标记（Phase 2 Task 11，B11）：终端 pane 红框 + TabBar PROD
+   * 徽标的依据；host.is_production 的会话内拷贝（分屏 pane 与标签同源）。 */
+  isProduction: boolean;
 }
 
 // --- 会话编码（Task 9，A9） --------------------------------------------------
@@ -403,6 +406,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encodingOverride: parseSessionEncoding(host.encoding_override) ?? "utf-8",
       encoding: parseSessionEncoding(host.encoding_override) ?? "utf-8",
       encodingHint: null,
+      isProduction: host.is_production ?? false,
     };
     set((st) => {
       const sessions = [...st.sessions, session];
@@ -738,6 +742,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encodingOverride: root.encodingOverride, // pane 与标签同源（重连派生一致）
       encoding: root.encoding, // 分屏 pane 沿用标签的会话编码
       encodingHint: null,
+      isProduction: root.isProduction, // 分屏 pane 沿用标签的生产标记
     };
     set((s0) => ({
       sessions: [...s0.sessions, paneSession],

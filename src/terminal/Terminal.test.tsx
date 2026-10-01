@@ -86,6 +86,7 @@ function sess(over: Partial<Session> & Pick<Session, "id">): Session {
     encoding: "utf-8",
     encodingOverride: "utf-8",
     encodingHint: null,
+    isProduction: false,
     ...over,
   };
 }
@@ -511,5 +512,69 @@ describe("TerminalArea（分屏主区）", () => {
     fireEvent.pointerUp(window, { clientX: -100, clientY: 0, pointerId: 1 });
     const tree = useSessionStore.getState().trees["t-a"];
     expect(tree.kind === "split" && tree.ratio).toBe(0.15);
+  });
+});
+
+describe("B11 防呆（Phase 2 Task 11）：危险输入提醒 + 生产 pane 标记", () => {
+  it("键入 rm -rf…：行内提醒出现；回车撤；普通命令不弹", async () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-b11" })],
+      activeId: "tab-b11",
+      trees: { "tab-b11": { kind: "leaf", id: "tab-b11" } },
+      activePane: { "tab-b11": "tab-b11" },
+    });
+    mockedInvoke.mockImplementation(() => Promise.resolve([]));
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-b11" />
+      </ThemeProvider>,
+    );
+    const term = capturedTerms()[capturedTerms().length - 1]!;
+    // 普通命令：全程无提醒
+    await act(async () => {
+      term.input("ls -la");
+    });
+    expect(screen.queryByTestId("danger-hint")).toBeNull();
+    // 递归强删（red）：提醒出现，带规则名与命中片段
+    await act(async () => {
+      term.input("\r");
+      term.input("rm -rf /tmp/data");
+    });
+    const hint = screen.getByTestId("danger-hint");
+    expect(hint.textContent).toContain("rm -rf /tmp/data");
+    // 回车 = 执行 → 提醒撤
+    await act(async () => {
+      term.input("\r");
+    });
+    expect(screen.queryByTestId("danger-hint")).toBeNull();
+    // 手动关闭路径：再次命中后点 ×
+    await act(async () => {
+      term.input("sudo -i");
+    });
+    expect(screen.getByTestId("danger-hint")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("danger-hint-dismiss"));
+    expect(screen.queryByTestId("danger-hint")).toBeNull();
+  });
+
+  it("TerminalArea：生产会话 pane 带 data-production；普通会话无", () => {
+    useSessionStore.setState({
+      sessions: [
+        sess({ id: "tab-prod", isProduction: true }),
+        sess({ id: "tab-dev", hostId: 2, hostName: "dev-01", rustId: "pty-dev" }),
+      ],
+      activeId: "tab-prod",
+      trees: {
+        "tab-prod": { kind: "leaf", id: "tab-prod" },
+        "tab-dev": { kind: "leaf", id: "tab-dev" },
+      },
+      activePane: { "tab-prod": "tab-prod", "tab-dev": "tab-dev" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalArea />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId("term-pane-tab-prod").getAttribute("data-production")).toBe("true");
+    expect(screen.getByTestId("term-pane-tab-dev").getAttribute("data-production")).toBeNull();
   });
 });

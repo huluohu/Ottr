@@ -26,6 +26,7 @@ const sampleHost: Host = {
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: "生产环境",
   created_at: 100,
   updated_at: 200,
@@ -52,6 +53,7 @@ const sampleInput: HostInput = {
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: "生产环境",
 };
 

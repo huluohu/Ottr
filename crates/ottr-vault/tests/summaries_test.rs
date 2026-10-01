@@ -29,6 +29,7 @@ fn host_input(name: &str) -> HostInput {
         encoding_override: None,
         theme_override: None,
         monitor_enabled: false,
+        is_production: false,
         notes: None,
     }
 }

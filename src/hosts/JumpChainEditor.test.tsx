@@ -33,6 +33,7 @@ function host(over: Partial<Host> = {}): Host {
     encoding_override: null,
     theme_override: null,
     monitor_enabled: false,
+    is_production: false,
     notes: null,
     created_at: 0,
     updated_at: 0,

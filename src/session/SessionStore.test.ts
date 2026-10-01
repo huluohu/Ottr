@@ -41,6 +41,7 @@ const hostA: Host = {
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: null,
   created_at: 1,
   updated_at: 1,

@@ -55,6 +55,13 @@ const hostA: Host = {
 };
 const hostB: Host = { ...hostA, id: 2, name: "db-01", address: "10.0.0.2", credential_id: 8 };
 const hostC: Host = { ...hostA, id: 3, name: "cache-01", address: "10.0.0.3", credential_id: 9 };
+const hostChain: Host = {
+  ...hostA,
+  id: 4,
+  name: "via-chain",
+  jump_chain_id: 7,
+  credential_id: 10,
+};
 
 function resetStore() {
   useSessionStore.setState({
@@ -702,6 +709,56 @@ describe("BL-501 防线（T0）", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(useSessionStore.getState().sessions[0].status).toBe("connected");
     expect(useSessionStore.getState().sessions[0].rustId).toBe("pty-live");
+  });
+
+  it("defer 回归（评审 I-1）：openTab 已存在分支（重连已断线标签）的 connect 同款投递宏任务", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "set_session_encoding"
+        ? Promise.resolve("")
+        : cmd === "attach_host_session"
+          ? Promise.resolve("pty-exist")
+          : Promise.resolve(undefined),
+    );
+    // 先开一个不自动连的标签（⌘K 再点已断线标签的真实前置态）
+    const id = useSessionStore.getState().openTab(hostA, { autoConnect: false });
+    expect(attachCalls()).toHaveLength(0);
+
+    // 第二次 openTab 命中已存在分支：同步期不得发 invoke（与新建分支同款 defer）
+    const id2 = useSessionStore.getState().openTab(hostA);
+    expect(id2).toBe(id);
+    expect(attachCalls()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(attachCalls()).toHaveLength(1);
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("connected");
+    expect(s.rustId).toBe("pty-exist");
+  });
+
+  it("看门狗链式豁免（评审 I-2）：jump_chain 会话 100s 不误复位（Rust 侧 75s×(跳数+1) 预算兜底），迟到成功照常落 connected", async () => {
+    let resolveAttach: (v: string) => void = () => {};
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session")
+        return new Promise<string>((res) => (resolveAttach = res));
+      if (cmd === "set_session_encoding") return Promise.resolve("");
+      if (cmd === "drop_session") return Promise.resolve(undefined);
+      return Promise.reject(new Error(`unexpected: ${cmd}`));
+    });
+    useSessionStore.getState().openTab(hostChain);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+    expect(useSessionStore.getState().sessions[0].jumpChainId).toBe(7);
+
+    // 2 跳链合法最坏 ≈170s > 100s：看门狗不得在此复位（逐跳问询稍慢是合法挂起）
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+    expect(useSessionStore.getState().sessions[0].lastError).toBeNull();
+
+    // Rust 预算内完成 → 照常 connected（无孤儿 drop 误杀）
+    resolveAttach("pty-chain");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connected");
+    expect(useSessionStore.getState().sessions[0].rustId).toBe("pty-chain");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("drop_session", { id: "pty-chain" });
   });
 });
 

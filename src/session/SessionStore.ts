@@ -80,6 +80,10 @@ export interface Session {
   username: string | null;
   /** 主机协议（Phase 2 Task 5）：ftp/ftps = 纯文件会话（无 PTY 终端）。 */
   protocol: HostProtocol;
+  /** 跳板链归属（host.jump_chain_id 会话内拷贝；分屏 pane 与标签同源）：
+   * 非空 = attach 走链式路径，Rust 侧 connect 预算 = 75s×(跳数+1)——
+   * attach 看门狗只护直连（见 ATTACH_WATCHDOG_MS 注释），链式不武装。 */
+  jumpChainId: number | null;
   status: SessionStatus;
   /** 当前 Rust 侧会话 id（attach 成功后非空；重连期间清空）。 */
   rustId: string | null;
@@ -397,6 +401,9 @@ function deferConnect(id: string): void {
 // settle 时，把会话复位为 disconnected（带 lastError），让用户可重试；若丢失的
 // 响应只是迟到，随后照常走守卫路径（gen 未变 → 迟到成功照常落 connected；用户
 // 已重试 → 孤儿分支 drop_session 清掉迟到会话），两条出路都收敛。
+// **只护直连**（评审 I-2，fix 1/5）：链式预算 75s×(跳数+1)（2 跳合法最坏 ≈170s
+// > 100s），前端拿不到跳数、不可缩放——链式不武装，由 Rust 侧全程超时兜底
+// （见 connect() 武装点注释）。
 const ATTACH_WATCHDOG_MS = 100_000;
 const attachWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -453,7 +460,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (existing) {
       set({ activeId: existing.id });
       if (opts?.autoConnect !== false && existing.status === "disconnected") {
-        void get().connect(existing.id);
+        // 同款 deferConnect（评审 I-1，fix 1/5）：set({activeId}) 后同任务同步
+        // connect 与钉死触发面（同步 set → 同任务 invoke）同构——⌘K 再点已断线
+        // 标签即真实路径。scheduleReconnect 的 connect 本就在 retry timer
+        // （宏任务）里，不受影响；此处是漏网之鱼。
+        deferConnect(existing.id);
       }
       return existing.id;
     }
@@ -466,6 +477,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       port: host.port,
       username: host.username,
       protocol: host.protocol ?? "ssh",
+      jumpChainId: host.jump_chain_id ?? null,
       status: "disconnected",
       rustId: null,
       attempt: 0,
@@ -581,7 +593,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         nextRetryAt: null,
       }),
     }));
-    armAttachWatchdog(id, gen);
+    // 看门狗只护直连（评审 I-2，fix 1/5）：链式 connect 预算 = 75s×(跳数+1)
+    // （每跳还各挂 60s 问询），前端无跳数不可缩放——100s 会对逐跳答问询稍慢的
+    // 合法挂起误复位 + 随后孤儿 drop 误杀真会话。链式由 Rust 侧全程 tokio
+    // timeout（75s×(跳数+1) + open_pty/request_shell 各 10s）兜底，命令必 settle；
+    // IPC 响应丢失的触发面已被 deferConnect 结构性移除，链式不再叠第二道兜底。
+    if (session.jumpChainId == null) armAttachWatchdog(id, gen);
 
     // FTP/FTPS 会话（Phase 2 Task 5）：纯文件面——无 PTY、无 on_data 通道、
     // 无 host key TOFU（Rust 侧 ftp_attach 直接连，不产生 host-key-ask 事件）。
@@ -813,6 +830,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       port: root.port,
       username: root.username,
       protocol: root.protocol,
+      jumpChainId: root.jumpChainId, // pane 与标签同源（链式归属随根）
       status: "disconnected",
       rustId: null,
       attempt: 0,

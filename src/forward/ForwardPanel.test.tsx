@@ -67,6 +67,7 @@ function seedSession(over: Partial<Session> = {}) {
     port: 2222,
     username: "spike",
     protocol: "ssh",
+    jumpChainId: null,
     status: "connected",
     rustId: "pty-7",
     attempt: 0,

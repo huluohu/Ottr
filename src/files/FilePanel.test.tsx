@@ -29,6 +29,7 @@ function makeSession(over: Partial<Session> = {}): Session {
     port: 2222,
     username: "spike",
     protocol: "ssh",
+    jumpChainId: null,
     status: "connected",
     rustId: "pty-0",
     attempt: 0,

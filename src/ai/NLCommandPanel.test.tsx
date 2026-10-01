@@ -56,6 +56,7 @@ const SESSION: Session = {
   port: 22,
   username: "ops",
   protocol: "ssh",
+  jumpChainId: null,
   status: "connected",
   rustId: "pty-9",
   attempt: 0,

@@ -1,7 +1,8 @@
 FROM debian:bookworm-slim
 # 注意：Debian 无独立 iconv 包，/usr/bin/iconv 由 libc6 提供
 # zsh：Task 6 spike#11 需要 zsh 注入路径验证（bash 之外的第二 shell）
-RUN apt-get update && apt-get install -y openssh-server zsh curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# sudo：Phase 3 Task 6（B9）sudo 密码自动填充真夹具轮（sudo -S true 场景）
+RUN apt-get update && apt-get install -y openssh-server zsh curl ca-certificates sudo && rm -rf /var/lib/apt/lists/*
 # trzsz（Phase 2 Task 4，B10 下半）：真远端 trz/tsz 一轮端到端（trzsz-go 官方
 # release 二进制，版本钉死保证可复现）。架构取 dpkg --print-architecture
 # （amd64/arm64；TARGETARCH 在部分 builder（OrbStack classic）下不注入）。

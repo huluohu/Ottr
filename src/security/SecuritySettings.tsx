@@ -36,6 +36,11 @@ const AUTOLOCK_CHOICES = [0, 1, 5, 10, 30] as const; // 分钟；0 = 关
 const CLIPBOARD_CHOICES = [0, 10, 30, 60] as const; // 秒；0 = 关
 const THEME_CHOICES: ThemeMode[] = ["light", "dark", "system"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
+// B9 指纹巡检间隔（秒）：1h / 6h / 24h（默认）/ 7d（Rust 校验 60-604800）
+const HOSTKEY_AUDIT_CHOICES = [3_600, 21_600, 86_400, 604_800] as const;
+
+const SETTING_HOSTKEY_AUDIT = "security.hostkey_audit_enabled";
+const SETTING_HOSTKEY_AUDIT_INTERVAL = "security.hostkey_audit_interval_secs";
 
 type WizardStep = "password" | "progress" | "done";
 
@@ -68,6 +73,11 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
   const [closeToTray, setCloseToTray] = useState<boolean | null>(null);
   // Task 15 fix 1/5：shell 集成自动注入开关（⌘R 历史入库/报错即诊的数据源）。
   const [shellIntegration, setShellIntegration] = useState<boolean | null>(null);
+  // B9（Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关（默认关；开启须确认框）。
+  const [hostkeyAudit, setHostkeyAudit] = useState<boolean | null>(null);
+  const [hostkeyAuditInterval, setHostkeyAuditInterval] = useState<number | null>(null);
+  const [sudoAutofill, setSudoAutofill] = useState<boolean | null>(null);
+  const [sudoConfirm, setSudoConfirm] = useState(false);
   // B2 主题生态（Phase 2 Task 9）：配色导入的本地反馈面（选择/清单在全局 store）。
   const themeFileRef = useRef<HTMLInputElement | null>(null);
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
@@ -85,23 +95,30 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
       setUpgrading(false);
       setThemeImportError(null);
       setThemeImportedCount(null);
+      setSudoConfirm(false);
       return;
     }
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void (async () => {
       try {
-        const [a, c, tray, shell] = await Promise.all([
+        const [a, c, tray, shell, audit, auditInterval, sudo] = await Promise.all([
           vaultApi.settings.get<number>("security.autolock_minutes"),
           vaultApi.settings.get<number>("security.clipboard_clear_secs"),
           vaultApi.settings.get<number>("ui.close_to_tray"),
           vaultApi.settings.get<boolean>("shell.integration"),
+          vaultApi.settings.get<boolean>(SETTING_HOSTKEY_AUDIT),
+          vaultApi.settings.get<number>(SETTING_HOSTKEY_AUDIT_INTERVAL),
+          vaultApi.settings.get<boolean>("security.sudo_autofill"),
         ]);
         if (!disposed) {
           setAutolock(a ?? 10);
           setClipboard(c ?? 30);
           setCloseToTray(tray !== 0); // 未设置/非 0 = 开（Rust 侧同口径）
           setShellIntegration(shell !== false); // 未设置 = 开（Rust 侧缺省开同口径）
+          setHostkeyAudit(audit === true); // B9：默认关
+          setHostkeyAuditInterval(auditInterval ?? 86_400);
+          setSudoAutofill(sudo === true); // B9：默认关
         }
       } catch {
         // 非 Tauri 环境 / 后端不可达：控件回落默认值，改动时再报错。
@@ -110,6 +127,9 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
           setClipboard(30);
           setCloseToTray(true);
           setShellIntegration(true);
+          setHostkeyAudit(false);
+          setHostkeyAuditInterval(86_400);
+          setSudoAutofill(false);
         }
       }
       try {
@@ -355,6 +375,100 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
               ))}
             </select>
           </label>
+
+          {/* B9（Task 6）：主机指纹巡检——默认关（主动出网行为），间隔可配 */}
+          <label className="settings-row" data-testid="hostkey-audit-row">
+            <span className="settings-label">{t("security.hostkeyAudit")}</span>
+            <input
+              type="checkbox"
+              data-testid="hostkey-audit-toggle"
+              checked={hostkeyAudit ?? false}
+              onChange={(e) => {
+                const on = e.currentTarget.checked;
+                setHostkeyAudit(on);
+                void saveSetting(SETTING_HOSTKEY_AUDIT, on);
+              }}
+            />
+          </label>
+          {hostkeyAudit && (
+            <label className="settings-row" data-testid="hostkey-audit-interval-row">
+              <span className="settings-label">{t("security.hostkeyAuditInterval")}</span>
+              <select
+                data-testid="hostkey-audit-interval"
+                value={hostkeyAuditInterval ?? 86_400}
+                onChange={(e) => {
+                  const v = Number(e.currentTarget.value);
+                  setHostkeyAuditInterval(v);
+                  void saveSetting(SETTING_HOSTKEY_AUDIT_INTERVAL, v);
+                }}
+              >
+                {HOSTKEY_AUDIT_CHOICES.map((s) => (
+                  <option key={s} value={s}>
+                    {s % 86_400 === 0
+                      ? t("security.auditIntervalDays", { count: s / 86_400 })
+                      : t("security.auditIntervalHours", { count: s / 3_600 })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <p className="settings-hint">{t("security.hostkeyAuditHint")}</p>
+
+          {/* B9（Task 6）：sudo 密码自动填充——安全敏感：默认关 + password
+              （主密码）模式限定 + 开启须确认框说明风险（keyring 模式隐藏） */}
+          {isPasswordMode && (
+            <>
+              <label className="settings-row" data-testid="sudo-autofill-row">
+                <span className="settings-label">{t("security.sudoAutofill")}</span>
+                <input
+                  type="checkbox"
+                  data-testid="sudo-autofill-toggle"
+                  checked={sudoAutofill ?? false}
+                  onChange={(e) => {
+                    const on = e.currentTarget.checked;
+                    if (on) {
+                      setSudoConfirm(true); // 开启走确认框（cancel 时控件保持关）
+                    } else {
+                      setSudoConfirm(false);
+                      setSudoAutofill(false);
+                      void saveSetting("security.sudo_autofill", false);
+                    }
+                  }}
+                />
+              </label>
+              <p className="settings-hint">{t("security.sudoAutofillHint")}</p>
+              {sudoConfirm && (
+                <div className="wizard-step" data-testid="sudo-autofill-dialog">
+                  <p className="dialog-intro">{t("security.sudoAutofillWarn")}</p>
+                  <div className="form-actions">
+                    <button
+                      type="button"
+                      data-testid="sudo-autofill-cancel"
+                      onClick={() => {
+                        setSudoConfirm(false);
+                        setSudoAutofill(false);
+                        void saveSetting("security.sudo_autofill", false);
+                      }}
+                    >
+                      {t("common.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-accent"
+                      data-testid="sudo-autofill-accept"
+                      onClick={() => {
+                        setSudoConfirm(false);
+                        setSudoAutofill(true);
+                        void saveSetting("security.sudo_autofill", true);
+                      }}
+                    >
+                      {t("security.sudoAutofillAccept")}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </section>
 
         {/* --- 外观 / 语言（T2 键面沿用；persist 已迁 vault settings）--- */}

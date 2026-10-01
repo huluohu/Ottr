@@ -37,6 +37,9 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 import { registerSink, unregisterSink, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
+import { useVaultStore } from "../vault/store";
+import { vaultApi } from "../vault/api";
+import { useVaultLockStore } from "../security/VaultLockStore";
 import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
 import {
   resolveTerminalTheme,
@@ -49,6 +52,12 @@ import { useAiStore } from "../ai/aiStore";
 import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
 import { noteCwd, forgetCwd } from "./CwdTracker";
+import {
+  SudoPromptDetector,
+  runSudoAutofill,
+  SUDO_AUTOFILL_SETTING_KEY,
+  type SudoSkipReason,
+} from "./SudoAutofill";
 import {
   getSearch,
   registerSearch,
@@ -275,6 +284,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const inputWatchRef = useRef<InputDangerWatch | null>(null);
   const lineBufRef = useRef("");
   const [dangerHint, setDangerHint] = useState<DangerFinding | null>(null);
+  // B9 sudo 检测器复位柄（状态迁移/重连时清历史缓冲——旧提示文本不得跨连接命中）
+  const sudoResetRef = useRef<(() => void) | null>(null);
 
   // 白名单登记/撤销（Fix round 1 I-1）：scope = 前端会话 id；对话框与拖拽上传
   // 返回路径后登记，传输收尾/上传 settle/会话卸载撤销。Rust 侧七命令入口统一校验。
@@ -336,6 +347,64 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         bytes: Array.from(bytes),
       }).catch(() => {});
     };
+    // B9 sudo 密码自动填充（默认关）：PTY 出口旁路检测 `[sudo] password for`，
+    // 命中 → gate（设置开 + 主密码模式）→ host 绑定 password 凭据 → 前置延迟
+    // （等 sudo tcsetattr，见 SudoAutofill FILL_DELAY_MS）→ writeToSession 填充。
+    const sudoDetector = new SudoPromptDetector();
+    const sudoDecoder = new TextDecoder("utf-8"); // 提示是 ASCII；GBK 流的 ASCII 段同字节
+    async function sudoAutofillEnabled(): Promise<boolean> {
+      // 主密码模式限定（裁定：keyring 模式即使键为 true 也不生效——显式解锁
+      // 语义是这条安全功能的前提）；settings 不可达 = 安全侧默认关。
+      if (useVaultLockStore.getState().mode !== "password") return false;
+      try {
+        return (await vaultApi.settings.get<boolean>(SUDO_AUTOFILL_SETTING_KEY)) === true;
+      } catch {
+        return false;
+      }
+    }
+    /** 取密链：session → host → 绑定凭据；仅 password 类（key/totp/ftp 不适用）。 */
+    async function sudoAutofillSecret(): Promise<{ secret: string | null; reason: SudoSkipReason | null }> {
+      const session = useSessionStore.getState().sessions.find((x) => x.id === sessionId);
+      if (!session) return { secret: null, reason: "no-host" };
+      const { hosts, credentials } = useVaultStore.getState();
+      const host = hosts.find((h) => h.id === session.hostId);
+      const cred =
+        host?.credential_id != null
+          ? credentials.find((c) => c.id === host.credential_id)
+          : undefined;
+      if (!cred) return { secret: null, reason: "no-credential" };
+      if (cred.kind !== "password") return { secret: null, reason: "not-password" };
+      try {
+        const secret = await vaultApi.credentials.reveal(cred.id, "secret");
+        return { secret, reason: null };
+      } catch {
+        return { secret: null, reason: "no-credential" };
+      }
+    }
+    function warnSudo(): void {
+      term.writeln(`\x1b[33m[ottr] ${t("terminal.sudoAutofillUnavailable")}\x1b[0m`);
+    }
+    async function fireSudoAutofill(): Promise<void> {
+      if (!(await sudoAutofillEnabled())) return; // 默认关：完全静默
+      const { secret, reason } = await sudoAutofillSecret();
+      if (secret === null) {
+        // 配置了填充但取不到可用的密码凭据：明说（不是静默吞）
+        if (reason === "no-host" || reason === "no-credential" || reason === "not-password") {
+          warnSudo();
+        }
+        return;
+      }
+      await runSudoAutofill({
+        getSecret: async () => secret,
+        fill: writeToSession,
+        onSkip: warnSudo,
+      });
+    }
+    function observeSudoOutput(bytes: Uint8Array): void {
+      const text = sudoDecoder.decode(bytes, { stream: true });
+      if (text && sudoDetector.feed(text, Date.now())) void fireSudoAutofill();
+    }
+    sudoResetRef.current = () => sudoDetector.reset();
     const trzsz = createTrzszController({
       writeToTerminal: (output) => term.write(output),
       sendToServer: writeToSession,
@@ -379,7 +448,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     });
     trzszRef.current = trzsz;
     registerSink(sessionId, {
-      write: (bytes) => trzsz.processServerOutput(bytes),
+      write: (bytes) => {
+        observeSudoOutput(bytes); // B9 sudo 提示检测（旁路，不改流）
+        trzsz.processServerOutput(bytes);
+      },
       getSize: () => {
         try {
           fit.fit();
@@ -593,6 +665,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const term = termRef.current;
     if (!term) return;
     ghostRef.current?.reset(); // 状态迁移（断连/重连中）输入行语义失效 → 清 ghost
+    sudoResetRef.current?.(); // B9：旧连接的 sudo 提示缓冲随之作废
     const first = prevStatus.current === null;
     prevStatus.current = status;
     if (first && status === "connecting") {

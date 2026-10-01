@@ -103,6 +103,21 @@ describe("OpenAICompatibleProvider 流式", () => {
     expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBe(controller.signal);
   });
 
+  it("stop 序列进请求体（NL→命令 B1）；未传时不带 stop 字段", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      sseResponse(['data: {"choices":[{"delta":{"content":"ls"}}]}\n\ndata: [DONE]\n\n']),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const p = new OpenAICompatibleProvider("https://x/v1", "k", "m");
+    for await (const _ of p.chat(req({ stop: ["\n"] }))) void _;
+    let body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.stop).toEqual(["\n"]);
+    // 未传 stop：请求体不携带该字段（端点行为差异面，缺省即不约束）
+    for await (const _ of p.chat(req())) void _;
+    body = JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty("stop");
+  });
+
   it("testConnection：非流式一发并取 message.content", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       textResponse('{"choices":[{"message":{"content":"pong"}}]}'),
@@ -138,6 +153,18 @@ describe("AnthropicProvider 流式", () => {
     expect(body.system).toBe("你是诊断助手");
     expect(body.max_tokens).toBe(64);
     expect(body.messages).toEqual([{ role: "user", content: "hi" }]);
+  });
+
+  it("stop 序列走 stop_sequences 字段（Anthropic 差异面）", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      sseResponse(['data: {"type":"content_block_delta","delta":{"text":"ls"}}\n\n']),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const p = new AnthropicProvider("https://api.anthropic.com", "k", "m");
+    for await (const _ of p.chat(req({ stop: ["\n"] }))) void _;
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.stop_sequences).toEqual(["\n"]);
+    expect(body).not.toHaveProperty("stop");
   });
 
   it("流内 error 事件显式抛错", async () => {

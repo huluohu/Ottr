@@ -37,6 +37,7 @@ import { assessPaste } from "../ai/danger";
 import { useAiStore } from "../ai/aiStore";
 import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
+import { noteCwd, forgetCwd } from "./CwdTracker";
 import {
   getSearch,
   registerSearch,
@@ -354,6 +355,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             .getState()
             .sessions.find((x) => x.id === sessionId);
           if (!session) return;
+          noteCwd(sessionId, ev.cwd); // B1 ⌘J：OSC7 cwd 活值记账（null 不覆盖）
           recordCommand({ hostId: session.hostId, sessionId }, ev);
         },
       });
@@ -397,6 +399,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       void revokeTrzsz(); // 会话关闭兜底撤销（I-1：授权不活过终端实例）
       unregisterSearch(sessionId);
       unregisterSink(sessionId);
+      forgetCwd(sessionId);
       term.dispose();
       termRef.current = null;
     };

@@ -333,6 +333,15 @@
       "outputTail": "Output tail",
       "explainTarget": "Explain this terminal content"
     },
+    "nl2cmd": {
+      "title": "NL command",
+      "placeholder": "Describe what you want in plain language, press Enter to generate…",
+      "run": "Generate",
+      "thinking": "Generating…",
+      "emptyAnswer": "The model returned no usable command.",
+      "cwd": "Current directory",
+      "prompt": "You are a shell command generator. Convert the user's natural-language intent into one command runnable in a POSIX shell. Rules: output the command only — a single line, no explanation, no comments, no Markdown fences (```), no shell prompt prefix ($); if several intents are present satisfy the primary one; use the most common defaults for uncertain details (paths, package names); do not output echo or any explanatory text. If a \"current directory\" is given, interpret relative paths against it."
+    },
     "settings": {
       "title": "AI settings",
       "general": "General",

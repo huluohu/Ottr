@@ -97,6 +97,8 @@ export class OpenAICompatibleProvider {
         model: this.model,
         stream: true,
         max_tokens: req.maxTokens,
+        // stop 序列（NL→命令）：OpenAI 兼容面字段即 `stop`（string[]）
+        ...(req.stop?.length ? { stop: req.stop } : {}),
         messages: [
           ...(req.system ? [{ role: "system", content: req.system }] : []),
           ...req.messages,

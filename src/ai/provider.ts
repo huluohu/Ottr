@@ -29,6 +29,10 @@ export interface ChatRequest {
   messages: ChatMessage[];
   /** 单请求 token 上限（成本护栏，settings ai.max_tokens，默认 1024）。 */
   maxTokens: number;
+  /** 停止序列（可选；NL→命令场景钉「只输出一条命令」——模型一碰到即收口，
+   * 端点侧兜底，客户端 sanitize 仍兜不服从的端点）。各实现的请求字段名
+   * 差异在各自 provider 内换算（OpenAI `stop` / Anthropic `stop_sequences`）。 */
+  stop?: string[];
   /** 取消信号（面板 abort）。 */
   signal?: AbortSignal;
 }

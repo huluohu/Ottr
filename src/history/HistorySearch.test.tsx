@@ -173,6 +173,65 @@ describe("HistorySearch", () => {
   });
 });
 
+describe("HistorySearch 纪要页签（Task 7，B1）", () => {
+  it("切「纪要」页签 → summary_list 取数并渲染（摘要全文/主机/命令数/时间）；隐藏查询框", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "summary_list"
+        ? Promise.resolve([
+            {
+              id: 9,
+              host_id: 1,
+              session_id: "tab-a",
+              summary: "部署了 docker compose 服务，共 3 条命令。",
+              command_count: 3,
+              ts: 1_760_000_000,
+            },
+            {
+              id: 8,
+              host_id: 2,
+              session_id: "tab-b",
+              summary: "巡检数据库磁盘水位。",
+              command_count: 5,
+              ts: 1_759_900_000,
+            },
+          ])
+        : Promise.resolve([]),
+    );
+    renderPanel();
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("summary-tab"));
+    await act(async () => {});
+    expect(mockedInvoke).toHaveBeenCalledWith("summary_list", { hostId: null, limit: 50 });
+    const items = screen.getAllByTestId("summary-item");
+    expect(items).toHaveLength(2);
+    expect(screen.getByText("部署了 docker compose 服务，共 3 条命令。")).toBeTruthy();
+    // 元信息行：主机 + 命令数徽标
+    const hostsInRows = items.map((el) => el.querySelector(".history-host")?.textContent);
+    expect(hostsInRows).toEqual(["web-01", "db-01"]);
+    expect(screen.getAllByTestId("summary-count").map((el) => el.textContent)).toEqual([
+      "3 条命令",
+      "5 条命令",
+    ]);
+    // 只读面：无查询输入、无插入上抛（Enter 不动作）
+    expect(screen.queryByTestId("history-input")).toBeNull();
+  });
+
+  it("纪要列表为空显示空态；host 过滤随取数下发；Esc 关闭", async () => {
+    mockedInvoke.mockResolvedValue([]);
+    const { onClose } = renderPanel();
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("summary-tab"));
+    await act(async () => {});
+    expect(screen.getByTestId("summary-list").textContent).toContain("还没有会话纪要");
+    fireEvent.change(screen.getByTestId("history-host-filter"), { target: { value: "2" } });
+    await act(async () => {});
+    expect(mockedInvoke).toHaveBeenCalledWith("summary_list", { hostId: 2, limit: 50 });
+    // 键盘处理在 dialog 容器（无输入框页签 Esc 照常关闭）
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
 describe("exitBadgeClass（退出码徽标语义类）", () => {
   it("0=exit-ok / 非 0=exit-fail / null=exit-none", () => {
     expect(exitBadgeClass(0)).toContain("exit-ok");

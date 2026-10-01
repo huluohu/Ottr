@@ -1,0 +1,302 @@
+// 会话纪要链路测试（Phase 2 B1，Task 7）：
+//   * buildSummaryPrompt 纯函数（system i18n 模板 + 编号命令序列）；
+//   * generateSessionSummary 全链（Mock provider）：请求体断言（system/maxTokens
+//     512/单轮无 stop）、**脱敏断言**（password=hunter2 不出现在外发请求体）、
+//     提示符前缀剥离、门槛（<3 命令静默跳过）、入库载荷（command_count）、
+//     通知落库（kind=ai title_key）、失败静默（provider 抛错/入库拒绝不外抛）。
+// invoke 全量 mock（真后端命令已在 Rust 侧接线）；notify 管线用假端口注入。
+// 词典固定 zh-CN（jsdom navigator.language 是 en-US，changeLanguage 拧回中文，
+// 同 HistorySearch.test 惯例）。
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import i18n from "../i18n";
+import type { ChatRequest } from "./provider";
+import {
+  SUMMARY_MAX_TOKENS,
+  buildSummaryPrompt,
+  generateSessionSummary,
+  type SessionEndInfo,
+} from "./summary";
+
+beforeAll(async () => {
+  await i18n.changeLanguage("zh-CN");
+});
+afterAll(async () => {
+  await i18n.changeLanguage("en-US");
+});
+
+const mockedInvoke = invoke as unknown as Mock;
+
+/** 记录请求的 provider 替身（非流式聚合用：两个增量即完整回复）。 */
+class RecordingProvider {
+  readonly requests: ChatRequest[] = [];
+  constructor(private readonly script: string[]) {}
+  async *chat(req: ChatRequest) {
+    this.requests.push(req);
+    for (const chunk of this.script) {
+      yield { text: chunk };
+    }
+  }
+  async testConnection(): Promise<string> {
+    return "mock-ok";
+  }
+}
+
+const REQ: SessionEndInfo = { hostId: 1, id: "tab-e2e", hostName: "web-01" };
+
+const HISTORY_ROWS = [
+  {
+    id: 1,
+    host_id: 1,
+    command: "root@web01:~$ cd /srv/ottr",
+    cwd: null,
+    exit_code: 0,
+    session_id: "tab-e2e",
+    ts: 1_760_000_000,
+  },
+  {
+    id: 2,
+    host_id: 1,
+    command: "root@web01:~$ export password=hunter2",
+    cwd: null,
+    exit_code: 0,
+    session_id: "tab-e2e",
+    ts: 1_760_000_001,
+  },
+  {
+    id: 3,
+    host_id: 1,
+    command: "root@web01:~$ docker compose up -d",
+    cwd: null,
+    exit_code: 0,
+    session_id: "tab-e2e",
+    ts: 1_760_000_002,
+  },
+];
+
+const PROVIDERS = [
+  {
+    id: "p1",
+    name: "DeepSeek",
+    kind: "openai-compatible",
+    baseURL: "https://api.deepseek.com",
+    model: "deepseek-chat",
+  },
+];
+
+function mockBackend(over: {
+  history?: unknown[] | Error;
+  secret?: string | null;
+  insertRow?: unknown;
+} = {}): void {
+  mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+    if (cmd === "settings_get") {
+      switch (args?.key) {
+        case "ai_providers":
+          return PROVIDERS;
+        case "redaction":
+          return { hostname: true, custom: [] };
+        case "ai.enabled":
+          return true;
+        case "ai.max_tokens":
+          return 1024;
+        default:
+          return null;
+      }
+    }
+    if (cmd === "history_list_session") {
+      const rows = over.history === undefined ? HISTORY_ROWS : over.history;
+      if (rows instanceof Error) throw rows;
+      return rows;
+    }
+    if (cmd === "secret_get") {
+      if (over.secret === undefined) return "sk-test";
+      if (over.secret === null) return null;
+      return over.secret;
+    }
+    if (cmd === "summary_insert") {
+      if (over.insertRow instanceof Error) throw over.insertRow;
+      if (over.insertRow === undefined) {
+        return {
+          id: 9,
+          host_id: 1,
+          session_id: "tab-e2e",
+          summary: "x",
+          command_count: 3,
+          ts: 1_760_000_009,
+        };
+      }
+      return over.insertRow;
+    }
+    if (cmd === "notify_insert") {
+      return {
+        id: 10,
+        kind: "ai",
+        severity: "info",
+        host_id: 1,
+        title_key: "notify.title.summaryReady",
+        body: "web-01",
+        payload: null,
+        read: false,
+        ts: 1_760_000_010,
+      };
+    }
+    throw new Error(`unexpected invoke: ${cmd}`);
+  });
+}
+
+/** 收集 summary_insert 载荷（入库断言面）。 */
+function insertedPayloads(): Record<string, unknown>[] {
+  return mockedInvoke.mock.calls
+    .filter(([cmd]) => cmd === "summary_insert")
+    .map(([, args]) => args as Record<string, unknown>);
+}
+
+/** 收集 notify_insert 载荷（通知断言面）。 */
+function notifiedPayloads(): Record<string, unknown>[] {
+  return mockedInvoke.mock.calls
+    .filter(([cmd]) => cmd === "notify_insert")
+    .map(([, args]) => args as Record<string, unknown>);
+}
+
+beforeEach(() => {
+  mockedInvoke.mockReset();
+});
+
+describe("buildSummaryPrompt", () => {
+  it("system = i18n 模板；user = 头段 + 逐条编号命令（顺序即数组序）", () => {
+    const p = buildSummaryPrompt(["cd /srv", "docker compose up -d"]);
+    expect(p.system).toContain("会话纪要");
+    expect(p.user).toBe(
+      "以下是本次会话中依次执行的命令（已脱敏，按时间顺序）:\n1. cd /srv\n2. docker compose up -d",
+    );
+  });
+});
+
+describe("generateSessionSummary", () => {
+  it("全链：请求体（system/maxTokens 512/无 stop）+ 脱敏断言（无明文 hunter2）+ 提示符剥离", async () => {
+    mockBackend();
+    const provider = new RecordingProvider(["部署了 docker compose 服务，共 3 条命令。", "。"]);
+    const ok = await generateSessionSummary(REQ, { provider });
+    expect(ok).toBe(true);
+
+    // 请求体断言：单轮、maxTokens 512（裁定 #2）、无 stop（非钉单行场景）
+    expect(provider.requests).toHaveLength(1);
+    const req = provider.requests[0];
+    expect(req.system).toContain("会话纪要");
+    expect(req.maxTokens).toBe(SUMMARY_MAX_TOKENS);
+    expect(req.stop).toBeUndefined();
+    expect(req.messages).toHaveLength(1);
+
+    // **脱敏断言（裁定 #1）**：命令序列先 redact 再进 prompt——注入
+    // password=hunter2，请求体（system+user 全文）不得出现明文
+    const outgoing = JSON.stringify(req);
+    expect(outgoing).not.toContain("hunter2");
+    expect(req.messages[0].content).toContain("[REDACTED_PASSWORD_1]");
+    // 提示符前缀剥离：prompt 噪声（root@web01:~$）不进请求
+    expect(req.messages[0].content).not.toContain("root@web01");
+    expect(req.messages[0].content).toContain("1. cd /srv/ottr");
+    expect(req.messages[0].content).toContain("3. docker compose up -d");
+
+    // 入库载荷：脱敏后的摘要 + 命令数
+    const inserted = insertedPayloads();
+    expect(inserted).toHaveLength(1);
+    const input = inserted[0].input as Record<string, unknown>;
+    expect(input).toMatchObject({
+      host_id: 1,
+      session_id: "tab-e2e",
+      summary: "部署了 docker compose 服务，共 3 条命令。。",
+      command_count: 3,
+    });
+
+    // 通知落库：kind=ai + summaryReady 标题键（T12 管线，T13 先例）
+    const notified = notifiedPayloads();
+    expect(notified).toHaveLength(1);
+    const nInput = notified[0].input as Record<string, unknown>;
+    expect(nInput).toMatchObject({
+      kind: "ai",
+      severity: "info",
+      host_id: 1,
+      title_key: "notify.title.summaryReady",
+      body: "web-01",
+    });
+  });
+
+  it("门槛：<3 条命令静默跳过（不碰 settings/provider——未成会话不生成）", async () => {
+    mockBackend({ history: HISTORY_ROWS.slice(0, 2) });
+    const provider = new RecordingProvider(["x"]);
+    const ok = await generateSessionSummary(REQ, { provider });
+    expect(ok).toBe(false);
+    expect(provider.requests).toHaveLength(0);
+    const commands = mockedInvoke.mock.calls.filter(([cmd]) => cmd === "settings_get");
+    expect(commands).toHaveLength(0);
+    expect(insertedPayloads()).toHaveLength(0);
+  });
+
+  it("0 条历史（连接失败未成会话）：取数即退出，不生成", async () => {
+    mockBackend({ history: [] });
+    const ok = await generateSessionSummary(REQ, {
+      provider: new RecordingProvider(["x"]),
+    });
+    expect(ok).toBe(false);
+    expect(insertedPayloads()).toHaveLength(0);
+  });
+
+  it("未配置 provider：静默跳过", async () => {
+    mockBackend();
+    mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "history_list_session") return HISTORY_ROWS;
+      if (cmd === "settings_get" && args?.key === "ai_providers") return [];
+      return null;
+    });
+    const ok = await generateSessionSummary(REQ, {
+      provider: new RecordingProvider(["x"]),
+    });
+    expect(ok).toBe(false);
+    expect(insertedPayloads()).toHaveLength(0);
+  });
+
+  it("provider 抛错：恒不外抛（fire-and-forget 纪律），返回 false 不入库", async () => {
+    mockBackend();
+    const broken = {
+      chat: () => {
+        throw new Error("endpoint down");
+      },
+      testConnection: async () => "x",
+    } as unknown as RecordingProvider;
+    const ok = await generateSessionSummary(REQ, { provider: broken });
+    expect(ok).toBe(false);
+    expect(insertedPayloads()).toHaveLength(0);
+    expect(notifiedPayloads()).toHaveLength(0);
+  });
+
+  it("空回复：不入库不通知", async () => {
+    mockBackend();
+    const ok = await generateSessionSummary(REQ, {
+      provider: new RecordingProvider(["   "]),
+    });
+    expect(ok).toBe(false);
+    expect(insertedPayloads()).toHaveLength(0);
+  });
+
+  it("入库失败（vault 锁定等）：静默 false，不外抛", async () => {
+    mockBackend({ insertRow: new Error("vault is locked; unlock with the master password") });
+    const ok = await generateSessionSummary(REQ, {
+      provider: new RecordingProvider(["纪要正文。"]),
+    });
+    expect(ok).toBe(false);
+    expect(notifiedPayloads()).toHaveLength(0);
+  });
+
+  it("history 取数失败：静默 false", async () => {
+    mockBackend({ history: new Error("backend gone") });
+    const ok = await generateSessionSummary(REQ, {
+      provider: new RecordingProvider(["x"]),
+    });
+    expect(ok).toBe(false);
+    expect(insertedPayloads()).toHaveLength(0);
+  });
+});

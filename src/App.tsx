@@ -29,6 +29,8 @@ import { DiagnosePanel } from "./ai/DiagnosePanel";
 import { AISettings } from "./ai/AISettings";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
 import { setAiSettingsOpener } from "./ai/aiStore";
+import { onSessionEnded } from "./ai/summary";
+import { setSessionEndHook } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
@@ -190,6 +192,13 @@ function HomeLayout() {
   useEffect(() => {
     setAiSettingsOpener(() => setAiSettingsOpen(true));
     return () => setAiSettingsOpener(null);
+  }, []);
+
+  // Phase 2 Task 7（B1 会话纪要）：会话收尾钩子注入——closeTab / disconnect /
+  // 重连耗尽时异步生成纪要（onSessionEnded fire-and-forget，失败静默不反噬）。
+  useEffect(() => {
+    setSessionEndHook(onSessionEnded);
+    return () => setSessionEndHook(null);
   }, []);
 
   // A12 动作收口：面板 / 全局快捷键 / （Task 14 后续提交）原生菜单事件、

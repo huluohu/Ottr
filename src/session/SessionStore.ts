@@ -250,6 +250,38 @@ export function isHostKeyRejection(err: string): boolean {
   return err.includes("host key rejected");
 }
 
+// --- 会话结束钩子（Phase 2 Task 7 会话纪要）----------------------------------
+// 「会话收尾」三时机（closeTab / disconnect / 自动重连耗尽转 disconnected）向
+// App 注入的钩子派发一次（消费方 = src/ai/summary.ts onSessionEnded，异步生成
+// 会话纪要）。store 保持纯状态机、不反向依赖 AI 链路（setAiSettingsOpener 同
+// 惯例）；钩子异常绝不反噬状态机（closeTab/disconnect 是用户交互主路径）。
+
+/** 会话收尾信息（钩子入参；纪要生成链只需要归属三元组）。 */
+export interface SessionEndInfo {
+  hostId: number;
+  /** 前端会话 id（标签 uuid，跨重连稳定——history.session_id 同源）。 */
+  id: string;
+  hostName: string;
+}
+
+let sessionEndHook: ((info: SessionEndInfo) => void) | null = null;
+
+/** 注入/摘除会话结束钩子（App 挂载时接 onSessionEnded；null = 摘除）。 */
+export function setSessionEndHook(fn: ((info: SessionEndInfo) => void) | null): void {
+  sessionEndHook = fn;
+}
+
+/** 会话收尾派发（同步返回；钩子自身负责 fire-and-forget 与静默）。 */
+function emitSessionEnded(session: Session): void {
+  const hook = sessionEndHook;
+  if (!hook) return;
+  try {
+    hook({ hostId: session.hostId, id: session.id, hostName: session.hostName });
+  } catch (e) {
+    console.warn("[session] end hook failed:", e);
+  }
+}
+
 // --- store ------------------------------------------------------------------
 
 let seq = 0;
@@ -397,6 +429,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         // 主动 drop：Rust 转发循环就地取消（session-closed=cancelled，事件端忽略）
         void invoke("drop_session", { id: session.rustId }).catch(() => {});
       }
+      // 会话收尾（Task 7 纪要）：关标签 = 会话结束（手动断开也生成，裁定 #1）
+      emitSessionEnded(session);
     }
     const doomedIds = new Set(doomed.map((s) => s.id));
     if (st0.hostKeyAsk && doomedIds.has(st0.hostKeyAsk.sessionId)) {
@@ -441,6 +475,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     if (session?.rustId) {
       void invoke("drop_session", { id: session.rustId }).catch(() => {});
+    }
+    if (session) {
+      // 会话收尾（Task 7 纪要）：手动断开也是会话结束（裁定 #1）
+      emitSessionEnded(session);
     }
     bumpGeneration(id);
     set((st) => ({
@@ -560,6 +598,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const attempt = session.attempt + 1;
     if (attempt > st.settings.maxReconnectAttempts) {
       cancelRetryTimer(id);
+      // 会话收尾（Task 7 纪要）：自动重连耗尽 = 会话终态（异常断开在重连进行中
+      // 不生成——session_id 跨重连稳定，会话可能继续；耗尽才收口）
+      emitSessionEnded(session);
       set((prev) => ({
         sessions: patchSession(prev.sessions, id, {
           status: "disconnected",

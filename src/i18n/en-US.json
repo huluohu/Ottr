@@ -126,7 +126,11 @@
     "hostAll": "All hosts",
     "hostFilter": "Filter by host",
     "insertHint": "Enter inserts into the current terminal",
-    "unknownHost": "unknown host"
+    "unknownHost": "unknown host",
+    "tabHistory": "History",
+    "tabSummaries": "Summaries",
+    "emptySummaries": "No session summaries yet — generated when a session (≥3 commands) ends",
+    "commands": "{{count}} commands"
   },
   "titlebar": {
     "menu": "Menu",
@@ -342,6 +346,10 @@
       "cwd": "Current directory",
       "prompt": "You are a shell command generator. Convert the user's natural-language intent into one command runnable in a POSIX shell. Rules: output the command only — a single line, no explanation, no comments, no Markdown fences (```), no shell prompt prefix ($); if several intents are present satisfy the primary one; use the most common defaults for uncertain details (paths, package names); do not output echo or any explanatory text. If a \"current directory\" is given, interpret relative paths against it."
     },
+    "summary": {
+      "prompt": "You are an ops session chronicler. Given the commands run during one session (redacted, in chronological order), write a 3-5 sentence summary: what was done, what changed, and how it went (exit codes are clues). Rules: output the summary text only — no headings, numbered lists, or Markdown fences; do not restate the commands one by one; be conservative, never invent details beyond the commands; write in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",
+      "header": "Commands executed during this session (redacted, in chronological order)"
+    },
     "settings": {
       "title": "AI settings",
       "general": "General",
@@ -502,7 +510,8 @@
       "transferCancelled": "Transfer cancelled",
       "sessionLost": "Connection lost",
       "aiDone": "Diagnosis ready",
-      "aiExplain": "Explanation ready"
+      "aiExplain": "Explanation ready",
+      "summaryReady": "Session summary ready"
     },
     "kindAi": "AI"
   },

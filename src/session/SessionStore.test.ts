@@ -16,10 +16,12 @@ import {
   OPEN_TABS_KEY,
   reconnectDelayMs,
   registerSink,
+  setSessionEndHook,
   toBytes,
   unregisterSink,
   useSessionStore,
   type Session,
+  type SessionEndInfo,
 } from "./SessionStore";
 import type { Host } from "../vault/api";
 
@@ -584,3 +586,83 @@ describe("⌘R 历史插入（Task 15，insertToFocusedPane）", () => {
 function act<T>(fn: () => T): T {
   return fn();
 }
+
+// ---------------------------------------------------------------------------
+// 会话结束钩子（Phase 2 Task 7 会话纪要）：closeTab / disconnect / 自动重连耗尽
+// 三时机派发；异常断开在重连进行中不派发；钩子异常不反噬状态机。
+// ---------------------------------------------------------------------------
+describe("会话结束钩子（Task 7 会话纪要）", () => {
+  afterEach(() => {
+    setSessionEndHook(null);
+  });
+
+  it("disconnect 派发归属三元组（hostId/id/hostName）；未连接会话也派发（闸门在数据源）", () => {
+    const seen: SessionEndInfo[] = [];
+    setSessionEndHook((info) => seen.push(info));
+    const id = useSessionStore.getState().openTab(hostA, { autoConnect: false });
+    useSessionStore.getState().disconnect(id);
+    expect(seen).toEqual([{ hostId: 1, id, hostName: "web-01" }]);
+    // 状态机不受影响
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+  });
+
+  it("closeTab 对根会话与分屏 pane 各派发一次", async () => {
+    mockedInvoke.mockResolvedValue("pty-1");
+    const seen: SessionEndInfo[] = [];
+    setSessionEndHook((info) => seen.push(info));
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().splitPane(tab, "row");
+    await vi.advanceTimersByTimeAsync(0);
+    const liveIds = useSessionStore.getState().sessions.map((s) => s.id);
+    expect(liveIds).toHaveLength(2);
+    seen.length = 0;
+    useSessionStore.getState().closeTab(tab);
+    expect(seen.map((s) => s.hostId)).toEqual([1, 1]);
+    expect(seen.map((s) => s.id).sort()).toEqual([...liveIds].sort());
+  });
+
+  it("异常断开重连进行中不派发；重连耗尽转 disconnected 时派发一次", async () => {
+    let fail = false;
+    mockedInvoke.mockImplementation((_cmd: string) =>
+      fail ? Promise.reject(new Error("connection refused")) : Promise.resolve("pty-ok"),
+    );
+    useSessionStore.setState({ settings: { maxReconnectAttempts: 1 } });
+    const seen: SessionEndInfo[] = [];
+    setSessionEndHook((info) => seen.push(info));
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    markConnected(id, "pty-ok");
+
+    fail = true;
+    useSessionStore.getState().onSessionClosed({ id: "pty-ok", reason: "closed" });
+    expect(useSessionStore.getState().sessions[0].status).toBe("reconnecting");
+    expect(seen).toEqual([]); // 重连还在路上：会话可能继续，不生成
+
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs(1));
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+    expect(seen).toEqual([{ hostId: 1, id, hostName: "web-01" }]); // 终态收口
+  });
+
+  it("钩子异常不反噬状态机（closeTab 照常收尾）", async () => {
+    mockedInvoke.mockResolvedValue("pty-1");
+    setSessionEndHook(() => {
+      throw new Error("hook boom");
+    });
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(() => useSessionStore.getState().closeTab(id)).not.toThrow();
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-1" });
+  });
+
+  it("未注入钩子（null）时三时机静默 no-op", async () => {
+    mockedInvoke.mockResolvedValue("pty-1");
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(() => {
+      useSessionStore.getState().disconnect(id);
+      useSessionStore.getState().closeTab(id);
+    }).not.toThrow();
+  });
+});

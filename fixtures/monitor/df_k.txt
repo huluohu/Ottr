@@ -1,0 +1,7 @@
+Filesystem     1K-blocks      Used Available Use% Mounted on
+overlay        516489216 102948288 413540928  20% /
+tmpfs              65536         0     65536   0% /dev
+shm              3067904         0   3067904   0% /dev/shm
+/dev/vdb1      516489216 102948288 413540928  20% /etc/hosts
+mac            971350180 535176892 436173288  56% /etc/ssh/hostkeys
+tmpfs                  4         0         4   0% /proc/asound

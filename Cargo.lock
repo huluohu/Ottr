@@ -3328,6 +3328,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "keyring",
+ "ottr-monitor",
  "ottr-ssh",
  "ottr-term",
  "ottr-transfer",
@@ -3357,6 +3358,17 @@ dependencies = [
  "russh",
  "sha2 0.10.9",
  "tokio",
+]
+
+[[package]]
+name = "ottr-monitor"
+version = "0.1.0"
+dependencies = [
+ "ottr-ssh",
+ "russh",
+ "serde",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

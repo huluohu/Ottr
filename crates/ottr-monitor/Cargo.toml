@@ -1,0 +1,20 @@
+[package]
+name = "ottr-monitor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Metrics 事件载荷序列化面（src-tauri tauri::Emitter 直发 JSON）。
+serde = { version = "1", features = ["derive"] }
+# 采样循环：sleep/timeout（time）+ CancellationToken（sync）+ spawn 测试（rt）。
+tokio = { version = "1.53.1", features = ["time", "sync", "rt"] }
+# 取消令牌（ForwardManager 同款 owner 语义：Drop/显式 cancel 即停）。
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
+# collect(session) 经 SshSession::exec 走只读命令白名单（LANG/shell 探测同款
+# 独立 exec 通道先例）；ottr-monitor 不反向被 ottr-ssh 依赖（transfer 同向）。
+ottr-ssh = { path = "../ottr-ssh" }
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+# 真夹具集成测试：known_hosts 指纹解析（与 russh 同版约束，见 ottr-ssh Cargo.toml）
+russh = "0.63.3"

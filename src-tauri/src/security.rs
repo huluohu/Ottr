@@ -52,6 +52,20 @@ pub const SETTING_MONITOR_INTERVAL: &str = "monitor.interval_secs";
 pub const MONITOR_INTERVAL_DEFAULT_SECS: u64 = 5;
 pub const MONITOR_INTERVAL_MAX_SECS: u64 = 3600;
 
+/// 主机指纹巡检开关（Phase 3 Task 6，B9 收口）：settings
+/// `security.hostkey_audit_enabled`，默认关（显式开启——巡检是主动出网行为）。
+pub const SETTING_HOSTKEY_AUDIT: &str = "security.hostkey_audit_enabled";
+/// 巡检间隔（秒）：默认 24h（裁定 #2），下限 60s、上限 7 天。
+pub const SETTING_HOSTKEY_AUDIT_INTERVAL: &str = "security.hostkey_audit_interval_secs";
+pub const HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS: u64 = 24 * 3600;
+pub const HOSTKEY_AUDIT_INTERVAL_MIN_SECS: u64 = 60;
+pub const HOSTKEY_AUDIT_INTERVAL_MAX_SECS: u64 = 7 * 24 * 3600;
+
+/// sudo 密码自动填充开关（Phase 3 Task 6，B9）：settings
+/// `security.sudo_autofill`，默认关（安全敏感——开启须前端确认框说明风险；
+/// 前端另有 password（主密码）模式限定，keyring 模式即使键为 true 也不生效）。
+pub const SETTING_SUDO_AUTOFILL: &str = "security.sudo_autofill";
+
 /// 监控采样间隔配置 → Duration。未配置 = 默认 5s；越界收敛
 /// （下限 1s / 上限 1h——配置错误不断采样，同 *_from 收敛口径）。
 pub fn monitor_interval_from(raw: Option<u64>) -> std::time::Duration {
@@ -78,6 +92,21 @@ pub fn clipboard_clear_secs_from(raw: Option<u64>) -> Option<u64> {
         Some(0) => None,
         Some(n) => Some(n.min(CLIPBOARD_MAX_SECS)),
     }
+}
+
+/// 巡检间隔配置 → Duration。未配置 = 默认 24h；越界收敛到上下界
+/// （配置错误不断巡检——安全侧默认跑，错误配置不得静默关掉巡检）。
+pub fn hostkey_audit_interval_from(raw: Option<u64>) -> Duration {
+    Duration::from_secs(raw.unwrap_or(HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS).clamp(
+        HOSTKEY_AUDIT_INTERVAL_MIN_SECS,
+        HOSTKEY_AUDIT_INTERVAL_MAX_SECS,
+    ))
+}
+
+/// sudo 自动填充开关配置 → bool。`None`/非布尔 = 缺省关（安全敏感——
+/// 只有显式写入 true 才开；配置坏 = 关，安全侧）。
+pub fn sudo_autofill_enabled(raw: Option<&serde_json::Value>) -> bool {
+    raw.and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 /// AI 单请求 token 上限（Task 13 成本护栏）：写入侧上限 8192（缺省 1024，
@@ -120,6 +149,33 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
                 Ok(())
             } else {
                 Err("shell.integration expects a boolean".to_string())
+            }
+        }
+        // B9（Phase 3 Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关
+        SETTING_HOSTKEY_AUDIT => {
+            if value.is_boolean() {
+                Ok(())
+            } else {
+                Err("security.hostkey_audit_enabled expects a boolean".to_string())
+            }
+        }
+        SETTING_HOSTKEY_AUDIT_INTERVAL => {
+            let n = value
+                .as_u64()
+                .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+            if n < HOSTKEY_AUDIT_INTERVAL_MIN_SECS || n > HOSTKEY_AUDIT_INTERVAL_MAX_SECS {
+                return Err(format!(
+                    "security.hostkey_audit_interval_secs must be {}-{}, got {n}",
+                    HOSTKEY_AUDIT_INTERVAL_MIN_SECS, HOSTKEY_AUDIT_INTERVAL_MAX_SECS
+                ));
+            }
+            Ok(())
+        }
+        SETTING_SUDO_AUTOFILL => {
+            if value.is_boolean() {
+                Ok(())
+            } else {
+                Err("security.sudo_autofill expects a boolean".to_string())
             }
         }
         "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
@@ -425,5 +481,63 @@ mod tests {
             Duration::from_secs(MONITOR_INTERVAL_MAX_SECS),
             "越界收敛到上限"
         );
+    }
+
+    #[test]
+    fn hostkey_audit_interval_defaults_and_clamps() {
+        use std::time::Duration;
+        assert_eq!(
+            hostkey_audit_interval_from(None),
+            Duration::from_secs(HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS),
+            "未配置 = 默认 24h"
+        );
+        assert_eq!(
+            hostkey_audit_interval_from(Some(3600)),
+            Duration::from_secs(3600)
+        );
+        assert_eq!(
+            hostkey_audit_interval_from(Some(1)),
+            Duration::from_secs(HOSTKEY_AUDIT_INTERVAL_MIN_SECS),
+            "过短收敛到下限 60s（防把 keyscan 轮转打满）"
+        );
+        assert_eq!(
+            hostkey_audit_interval_from(Some(u64::MAX)),
+            Duration::from_secs(HOSTKEY_AUDIT_INTERVAL_MAX_SECS),
+            "越界收敛到上限 7 天"
+        );
+    }
+
+    #[test]
+    fn sudo_autofill_defaults_off() {
+        assert!(!sudo_autofill_enabled(None), "未配置 = 缺省关（安全敏感）");
+        assert!(!sudo_autofill_enabled(Some(&serde_json::json!(false))));
+        assert!(sudo_autofill_enabled(Some(&serde_json::json!(true))));
+        assert!(
+            !sudo_autofill_enabled(Some(&serde_json::json!("yes"))),
+            "非布尔收敛默认关（安全侧）"
+        );
+    }
+
+    #[test]
+    fn validate_setting_b9_keys() {
+        use serde_json::json;
+        assert_eq!(
+            validate_setting(SETTING_HOSTKEY_AUDIT, &json!(true)),
+            Ok(())
+        );
+        assert!(validate_setting(SETTING_HOSTKEY_AUDIT, &json!("on")).is_err());
+        assert_eq!(
+            validate_setting(SETTING_HOSTKEY_AUDIT_INTERVAL, &json!(86_400)),
+            Ok(())
+        );
+        // 写入侧显式拒绝越界（读取侧才收敛，见 hostkey_audit_interval_from）。
+        assert!(validate_setting(SETTING_HOSTKEY_AUDIT_INTERVAL, &json!(59)).is_err());
+        assert!(validate_setting(SETTING_HOSTKEY_AUDIT_INTERVAL, &json!(604_801)).is_err());
+        assert!(validate_setting(SETTING_HOSTKEY_AUDIT_INTERVAL, &json!("1d")).is_err());
+        assert_eq!(
+            validate_setting(SETTING_SUDO_AUTOFILL, &json!(false)),
+            Ok(())
+        );
+        assert!(validate_setting(SETTING_SUDO_AUTOFILL, &json!(1)).is_err());
     }
 }

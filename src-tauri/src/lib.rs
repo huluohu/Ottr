@@ -13,6 +13,7 @@
 // + send 失败显式计数（send_failed_bytes/send_failed_frames/failed —— M-2 失败策略，
 // flush_batch 文档）经 `session_stats` 可读；`OTTR_BATCH_DEBUG=1` 时逐批打 debug 日志。
 mod commands;
+pub mod hostkey_audit;
 pub mod importers;
 pub mod keys;
 pub mod menu;
@@ -36,6 +37,9 @@ pub use commands::session::{
 };
 pub(crate) use commands::state::AppState;
 pub use commands::state::{snapshot, SessionCounters, SessionStats, TextTail};
+// Phase 3 Task 6（B9）：指纹巡检面公开给夹具集成测试（tests/hostkey_fixture.rs：
+// 真 ssh-keyscan 探测 → classify → mark_changed 全链）。
+pub use hostkey_audit::{audit_once, keyscan_line_fingerprint, probe_endpoint, AuditOutcome};
 // Phase 3 Task 5（B3）：录制面公开给夹具集成测试（tests/recording_fixture.rs
 // 真容器全链：tee → auto-finalize → parse/FTS/export）与 example 直驱。
 pub use commands::recording::{
@@ -156,6 +160,10 @@ pub fn run() {
                                     "[vault] background init ok in {}ms",
                                     t0.elapsed().as_millis()
                                 );
+                                // B9 指纹巡检调度器（Phase 3 Task 6）：vault 就绪
+                                // 后起 60s 心跳（开关默认关；内部自检
+                                // try_state/锁定/间隔，见 hostkey_audit.rs）。
+                                hostkey_audit::spawn_audit_scheduler(handle.clone());
                                 // 初始菜单/托盘在 vault 就绪前以 En 兜底构建；
                                 // 就绪后按 settings ui.language 真值重建纠偏。
                                 menu::on_vault_ready(&handle);
@@ -344,6 +352,10 @@ pub fn run() {
             vault::known_hosts_upsert,
             vault::known_hosts_verify,
             vault::known_hosts_mark_changed,
+            vault::known_hosts_delete,
+            // 指纹巡检（Phase 3 Task 6，B9 收口；模块 hostkey_audit.rs）
+            hostkey_audit::known_hosts_probe,
+            hostkey_audit::known_hosts_audit_run,
             vault::import_ssh_config,
             vault::export_hosts_csv,
             // 迁移导入器（Phase 2 Task 10，B3；命令名契约见 src/vault/api.ts）

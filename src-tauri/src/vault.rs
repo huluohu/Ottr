@@ -615,6 +615,14 @@ pub fn known_hosts_mark_changed(
     cmd(KnownHosts::mark_changed(&state.0, &host_key, &fingerprint))
 }
 
+/// 删除 = 忘记该端点（B9 管理页，Task 6 Phase 3）：行消失后下次连接重走
+/// TOFU（首见 pending）。返回是否有行被删（幂等面）。
+#[tauri::command]
+pub fn known_hosts_delete(state: State<'_, VaultState>, host_key: String) -> CmdResult<bool> {
+    ensure_unlocked(&state.0)?;
+    cmd(KnownHosts::delete(&state.0, &host_key))
+}
+
 // --- 导入 / 导出（Task 5 Step 3）-------------------------------------------
 
 /// 导入 ~/.ssh/config（`path` 缺省时用 `~/.ssh/config`；前端 MVP 无文件选择器，

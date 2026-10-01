@@ -1030,6 +1030,36 @@ pub fn host_endpoint_key(address: &str, port: i64) -> String {
     }
 }
 
+/// [`host_endpoint_key`] 的逆映射（B9 巡检/管理页，Task 6 Phase 3）：
+/// 端点键 → `(address, port)`。IPv6 的方括号形态剥括号还原；`legacy:{fp}`
+/// 虚拟端点（0004 迁移前的存量行）与一切畸形键返回 `None`——巡检面对
+/// parse 失败的行只能「跳过」，绝不拿不可探测的端点做 changed 判定。
+/// 端口须落在 u16 值域（1..=65535；0 端口非可探测端点，一并拒绝）。
+pub fn parse_endpoint_key(host_key: &str) -> Option<(String, i64)> {
+    let (address, port_str) = if let Some(rest) = host_key.strip_prefix('[') {
+        // IPv6："[addr]:port"——先剥方括号，再取 "]:" 之后的端口段
+        let close = rest.find("]:")?;
+        let port = rest[close + 2..].parse::<i64>().ok()?;
+        if port <= 0 || port > u16::MAX as i64 {
+            return None;
+        }
+        return Some((rest[..close].to_string(), port));
+    } else {
+        let idx = host_key.rfind(':')?;
+        (&host_key[..idx], &host_key[idx + 1..])
+    };
+    if address.is_empty() || address.contains(':') || address.contains('[') || address.contains(']')
+    {
+        // 无括号的裸 IPv6（多冒号）不可能是 host_endpoint_key 的产物——拒绝
+        return None;
+    }
+    let port = port_str.parse::<i64>().ok()?;
+    if port <= 0 || port > u16::MAX as i64 {
+        return None;
+    }
+    Some((address.to_string(), port))
+}
+
 /// 主机指纹状态机（0004 起按 host 端点记账）：
 /// `pending`（首见未核验）→ `ok`（用户 verify）→ `changed`（key 变更，verified
 /// 作废）——verify 可再回到 ok。
@@ -1164,6 +1194,18 @@ impl KnownHosts {
                 .query_map([], row_to_known_host)?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
+        })
+    }
+
+    /// 删除 = 忘记该端点（B9 管理页，Task 6 Phase 3）：行消失后下次连接重走
+    /// TOFU（首见 pending）。返回是否有行被删（幂等面：重复删除 = false）。
+    pub fn delete(vault: &Vault, host_key: &str) -> Result<bool> {
+        vault.with_conn(|conn| {
+            let n = conn.execute(
+                "DELETE FROM known_hosts WHERE host_key = ?1",
+                params![host_key],
+            )?;
+            Ok(n > 0)
         })
     }
 }

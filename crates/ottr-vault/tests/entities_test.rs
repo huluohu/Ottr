@@ -736,6 +736,78 @@ fn host_endpoint_key_formats() {
     assert_eq!(host_endpoint_key("fe80::1", 22), "[fe80::1]:22");
 }
 
+/// parse_endpoint_key（B9 巡检/管理页，Task 6 Phase 3）：host_endpoint_key 的
+/// 逆映射——端点键 → (address, port)。legacy 虚拟端点与任意畸形键显式拒绝
+/// （巡检面只吃可探测的端点，parse 失败 = 跳过，绝不误报 changed）。
+#[test]
+fn parse_endpoint_key_roundtrip_and_rejects() {
+    use ottr_vault::{host_endpoint_key, parse_endpoint_key};
+    // 与 host_endpoint_key 互为逆映射（含 IPv6 方括号形态）。
+    assert_eq!(
+        parse_endpoint_key("10.0.0.1:22"),
+        Some(("10.0.0.1".into(), 22))
+    );
+    assert_eq!(
+        parse_endpoint_key("web.example.com:2222"),
+        Some(("web.example.com".into(), 2222))
+    );
+    assert_eq!(
+        parse_endpoint_key("[fe80::1]:22"),
+        Some(("fe80::1".into(), 22))
+    );
+    assert_eq!(
+        parse_endpoint_key(&host_endpoint_key("2001:db8::1", 2200)),
+        Some(("2001:db8::1".into(), 2200))
+    );
+    // 拒绝面：legacy 虚拟端点、无端口、非数字端口、端口越界、空串。
+    assert_eq!(parse_endpoint_key("legacy:SHA256:xxx"), None);
+    assert_eq!(parse_endpoint_key("10.0.0.1"), None);
+    assert_eq!(parse_endpoint_key("10.0.0.1:"), None);
+    assert_eq!(parse_endpoint_key("10.0.0.1:ssh"), None);
+    assert_eq!(parse_endpoint_key("10.0.0.1:-1"), None);
+    assert_eq!(
+        parse_endpoint_key("10.0.0.1:99999"),
+        None,
+        "端口越 u16 范围拒绝"
+    );
+    assert_eq!(parse_endpoint_key(""), None);
+}
+
+/// KnownHosts::delete（B9 管理页，Task 6 Phase 3）：删除 = 忘记该端点——
+/// 行消失后下次连接重走 TOFU（首见 pending）。删除不存在的键返回 false
+/// （幂等面），不影响其他端点。
+#[test]
+fn known_hosts_delete_forgets_endpoint() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let hk = "10.0.0.7:22";
+    KnownHosts::upsert(&vault, hk, "SHA256:FP").unwrap();
+    KnownHosts::verify(&vault, hk, "SHA256:FP").unwrap();
+    KnownHosts::upsert(&vault, "10.0.0.8:22", "SHA256:OTHER").unwrap();
+
+    assert!(
+        KnownHosts::delete(&vault, hk).unwrap(),
+        "存在的行删除返回 true"
+    );
+    assert_eq!(
+        KnownHosts::get(&vault, hk).unwrap(),
+        None,
+        "删除 = 记录消失"
+    );
+    assert_eq!(
+        KnownHosts::list(&vault).unwrap().len(),
+        1,
+        "其他端点不受影响"
+    );
+    // 忘记后再连 = 全新 TOFU（pending 重记，first_seen 刷新）。
+    let fresh = KnownHosts::upsert(&vault, hk, "SHA256:FP").unwrap();
+    assert_eq!(fresh.state, KnownHostState::Pending, "删除后重连重走 TOFU");
+    assert!(
+        !KnownHosts::delete(&vault, "never-seen:22").unwrap(),
+        "删除不存在的键 = false（幂等）"
+    );
+}
+
 /// 0004 迁移三件套①：v3 库（fingerprint 主键）原位升级——存量行以
 /// "legacy:{fingerprint}" 虚拟端点保留（state/changed_at/verified 不丢）。
 #[test]

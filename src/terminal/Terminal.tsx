@@ -22,7 +22,7 @@
 // controller（传输态吞键入，Ctrl-C 即中止）；文件选择走 tauri-plugin-dialog，
 // 本地文件 IO 走 trzsz fs 垫片（trzsz/fsShim.ts → commands/trzsz_fs.rs）。终端区
 // 拖拽文件 → 询问「trz 上传 / 插入路径」（TrzszDropDialog）。
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -217,6 +217,18 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
 
+  // 白名单登记/撤销（Fix round 1 I-1）：scope = 前端会话 id；对话框与拖拽上传
+  // 返回路径后登记，传输收尾/上传 settle/会话卸载撤销。Rust 侧七命令入口统一校验。
+  const grantTrzsz = useCallback(
+    (paths: string[], kind: "file" | "dir") =>
+      invoke("trzsz_grant", { scope: sessionId, paths, kind }).catch(() => undefined),
+    [sessionId],
+  );
+  const revokeTrzsz = useCallback(
+    () => invoke("trzsz_revoke", { scope: sessionId }).catch(() => undefined),
+    [sessionId],
+  );
+
   const status = useSessionStore(
     (s) => s.sessions.find((x) => x.id === sessionId)?.status ?? "disconnected",
   );
@@ -270,8 +282,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             multiple: true,
             title: t("terminal.trzszDropUpload"),
           });
-          if (Array.isArray(picked)) return picked;
-          return picked ? [picked] : undefined;
+          const paths = Array.isArray(picked) ? picked : picked ? [picked] : undefined;
+          if (paths) await grantTrzsz(paths, "file");
+          return paths;
         } catch {
           return undefined; // 对话框失败按取消处理（= 拒绝传输，服务端安全收尾）
         }
@@ -283,10 +296,14 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             directory: true,
             title: t("terminal.trzszDropTitle"),
           });
+          if (typeof picked === "string") await grantTrzsz([picked], "dir");
           return typeof picked === "string" ? picked : undefined;
         } catch {
           return undefined;
         }
+      },
+      onTransfersSettled: () => {
+        void revokeTrzsz();
       },
       onError: (message) => {
         // 典型失败：远端未装 trzsz（uploadFiles 3s 无魔串「Upload does not start」）
@@ -377,6 +394,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       watch?.dispose();
       trzsz.dispose();
       trzszRef.current = null;
+      void revokeTrzsz(); // 会话关闭兜底撤销（I-1：授权不活过终端实例）
       unregisterSearch(sessionId);
       unregisterSink(sessionId);
       term.dispose();
@@ -612,7 +630,12 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           onUpload={() => {
             const paths = pendingDrop;
             setPendingDrop(null);
-            void trzszRef.current?.uploadFiles(paths);
+            // 拖拽路径无对话框，授权在此登记；上传结束（含失败）即撤销
+            void grantTrzsz(paths, "file")
+              .then(() => trzszRef.current?.uploadFiles(paths))
+              .finally(() => {
+                void revokeTrzsz();
+              });
           }}
           onInsert={() => {
             const text = quotePathsForShell(pendingDrop);

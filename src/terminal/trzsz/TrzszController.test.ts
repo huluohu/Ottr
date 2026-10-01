@@ -142,6 +142,29 @@ describe("TrzszController 数据面", () => {
     ctrl.dispose();
   });
 
+  it("传输收尾翻转触发 onTransfersSettled（白名单撤销挂钩）", async () => {
+    // 挂起对答保持传输态（undefined 立即拒绝会在断言前就收尾）
+    let releaseSaveDir: ((v: string) => void) | null = null;
+    const chooseSaveDirectory = vi.fn(
+      () => new Promise<string | undefined>((resolve) => (releaseSaveDir = resolve)),
+    );
+    const settled = vi.fn();
+    const opts = makeOpts({ chooseSaveDirectory, onTransfersSettled: settled });
+    const ctrl = createTrzszController(opts);
+    ctrl.processServerOutput(encoder.encode("::TRZSZ:TRANSFER:S:1.2.0:17000000000300\r\n"));
+    await waitFor(() => chooseSaveDirectory.mock.calls.length > 0);
+    expect(ctrl.isTransferring()).toBe(true);
+    // 传输期间不触发
+    ctrl.processServerOutput(encoder.encode("#CFG:x\r\n"));
+    expect(settled).not.toHaveBeenCalled();
+    // 释放对答 → 收尾；下一批 PTY 输出观测到「传输中 → 空闲」翻转 → 触发
+    (releaseSaveDir as ((v: string) => void) | null)?.("/tmp/ottr-settled-unused");
+    await waitFor(() => !ctrl.isTransferring());
+    ctrl.processServerOutput(encoder.encode("prompt$ "));
+    await waitFor(() => settled.mock.calls.length > 0);
+    ctrl.dispose();
+  });
+
   it("传输态 Ctrl-C 中止（拒绝目录 → 不发 ACT，错误回传后收尾）", async () => {
     let releaseSaveDir: ((v: string | undefined) => void) | null = null;
     const chooseSaveDirectory = vi.fn(

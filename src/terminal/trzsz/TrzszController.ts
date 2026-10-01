@@ -42,6 +42,10 @@ export interface TrzszControllerOptions {
   onError?: (message: string) => void;
   /** 主动上传后等远端 trz 启动的超时（默认 3000ms；测试收紧用）。 */
   dragInitTimeout?: number;
+  /** 传输收尾（检测到「传输中 → 空闲」翻转，随下一批 PTY 输出观测）——
+   * 挂钩白名单撤销（Fix round 1 I-1：授权随传输结束清理）。残漏（收尾后
+   * 再无输出）由 dispose 兜底撤销。 */
+  onTransfersSettled?: () => void;
 }
 
 export interface TrzszController {
@@ -122,6 +126,7 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 export function createTrzszController(options: TrzszControllerOptions): TrzszController {
   let disposed = false;
   let pending: Uint8Array | null = null; // 空闲态留验的魔串部分后缀
+  let sawTransfer = false; // 观测到传输活动（onTransfersSettled 的翻转检测）
 
   const filter = new TrzszFilter({
     writeToTerminal: (output) => {
@@ -147,10 +152,17 @@ export function createTrzszController(options: TrzszControllerOptions): TrzszCon
   return {
     processServerOutput(output: Uint8Array): void {
       if (disposed) return;
-      if (filter.isTransferringFiles()) {
+      const transferring = filter.isTransferringFiles();
+      if (transferring) {
+        sawTransfer = true;
         // 传输态：整块交库（内部缓冲协议帧，进度条经 writeToTerminal 渲染）
         filter.processServerOutput(output);
         return;
+      }
+      if (sawTransfer) {
+        // 「传输中 → 空闲」翻转随本批输出观测到：通知白名单收尾清理
+        sawTransfer = false;
+        options.onTransfersSettled?.();
       }
       let combined = output;
       if (pending) {

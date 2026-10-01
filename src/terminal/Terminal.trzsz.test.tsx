@@ -154,6 +154,14 @@ describe("终端区拖拽 → 询问对话框（trz 上传 / 插入路径）", (
     await waitFor(() => expect(dragHandler).not.toBeNull());
     feedDrop([file]);
     fireEvent.click(screen.getByTestId("trzsz-drop-upload"));
+    // I-1：拖拽路径无对话框，授权在上传前登记（scope=会话 id，kind=file）
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("trzsz_grant", {
+        scope: "tab-1",
+        paths: [file],
+        kind: "file",
+      });
+    });
     // uploadFiles：发 \x03 → 200ms → "trz\r"（经 write_session 下发）
     await waitFor(
       () => {

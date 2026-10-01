@@ -60,6 +60,9 @@ pub fn run() {
         // T11（A7）：自动锁定计时状态（失焦起 N 分钟计时，重聚焦作废；
         // Arc 共享给窗口事件闭包与 spawn 的计时任务）。
         .manage(Arc::new(security::AutoLockState::default()))
+        // Phase 2 Task 4 Fix round 1（I-1）：trzsz 本地文件桥的会话级授权白名单
+        // （授权只来自对话框/拖拽登记 trzsz_grant；七命令入口校验；scope=前端会话 id）。
+        .manage(commands::trzsz_fs::TrzszGrants::default())
         // Task 16.5：vault 后台初始化状态（Builder 链上即 manage——无钥匙链
         // 访问零开销，`vault_init_status` 命令在初始化窗口期即可安全调用）。
         .manage(vault::VaultInit::default())
@@ -208,6 +211,10 @@ pub fn run() {
             commands::remote_edit::remote_edit_dismiss,
             commands::remote_edit::remote_edit_close,
             // trzsz 本地文件桥（Phase 2 Task 4，B10 下半；命令域 commands/trzsz_fs.rs）
+            // Fix round 1（I-1）：grant/revoke 是白名单生命周期（登记即整组替换 /
+            // 传输收尾与会话关闭撤销）；七 fs 命令入口全部过白名单校验。
+            commands::trzsz_fs::trzsz_grant,
+            commands::trzsz_fs::trzsz_revoke,
             commands::trzsz_fs::trzsz_fs_stat,
             commands::trzsz_fs::trzsz_fs_read,
             commands::trzsz_fs::trzsz_fs_write,

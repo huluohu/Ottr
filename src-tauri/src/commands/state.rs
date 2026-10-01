@@ -283,6 +283,9 @@ pub(crate) struct AppState {
     /// 监控采样任务生命周期 owner（Phase 3 Task 1，commands/monitor.rs）：
     /// session id → 采样任务取消令牌（guard Drop 即停）。
     pub(crate) monitors: super::monitor::MonitorManager,
+    /// 批量执行批次注册表（Phase 3 Task 4，commands/batch.rs）：
+    /// batch_id → 取消令牌（batch_cancel 入口；池收尾自摘）。
+    pub(crate) batches: super::batch::BatchManager,
 }
 
 pub(crate) static SESSION_SEQ: AtomicU64 = AtomicU64::new(0);

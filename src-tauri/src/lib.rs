@@ -38,6 +38,11 @@ pub(crate) use commands::state::AppState;
 pub use commands::state::{SessionCounters, TextTail};
 // Phase 2 Task 1（B7）：ForwardManager 公开给夹具集成测试（真容器断线恢复链）。
 pub use commands::forward::ForwardManager;
+// Phase 3 Task 4（B6）：批量执行池核公开给夹具集成测试（tests/batch_fixture.rs：
+// 同容器双连 = 两主机，真 exec 通道跑并发池/超时）。
+pub use commands::batch::{
+    run_batch, BatchResultEvent, BatchStatus, BatchTargetInput, ExecResolver,
+};
 // Phase 2 Task 3（B10 上半）：远端编辑生命周期核公开给夹具集成测试
 // （tests/remote_edit_fixture.rs：下载→编辑→回传→冲突→覆盖→清理全链）。
 pub use commands::remote_edit::{
@@ -195,6 +200,10 @@ pub fn run() {
             // 进程浏览器（Phase 3 Task 2，B4 下半）：ps 只读采集 + kill（防注入）
             commands::monitor::monitor_ps,
             commands::monitor::monitor_kill,
+            // 批量执行（Phase 3 Task 4，B6；commands/batch.rs）：并发池 +
+            // 单主机超时 + ottr://batch-result 逐主机结果事件
+            commands::batch::batch_exec,
+            commands::batch::batch_cancel,
             // 告警规则 + 通知渠道（Phase 3 Task 3，B5；vault 配置面，锁定即拒）
             vault::ar_list,
             vault::ar_create,

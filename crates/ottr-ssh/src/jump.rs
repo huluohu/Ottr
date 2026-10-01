@@ -1,5 +1,9 @@
 //! 跳板链：链式 direct-tcpip 隧道 + 逐跳断点定位（Phase 0 Spike#5，B7「可视化跳板链」核心）。
 //!
+//! **生产入口是 [`crate::jump_session::JumpSession`]**（Phase 2 Task 2）：本模块的
+//! [`connect`] 返回裸 target 会话，中间跳的连接无人持有（russh `Handle::drop`
+//! 不关连接）——生产路径必须用 JumpSession 持有全跳并显式拆除。
+//!
 //! 连接拓扑：
 //!
 //! ```text
@@ -40,8 +44,7 @@
 //! ```
 
 use crate::auth::HostKeyPolicy;
-use crate::connect as direct_connect;
-use crate::russh_impl::{SshSession, connect_stream};
+use crate::russh_impl::SshSession;
 use crate::{AuthMethod, Error};
 
 /// 跳板链上一跳（或目标）的连接规格。
@@ -143,13 +146,52 @@ pub async fn connect(chain: Vec<HopSpec>, target: HopSpec) -> Result<SshSession,
 }
 
 /// 建立一跳的会话：本地 TCP 直连 + 握手 + 认证（第 0 跳与空链直连 target 共用）。
-async fn establish_hop(hop: HopSpec) -> Result<SshSession, Error> {
-    direct_connect(&hop.host, hop.port, &hop.username, hop.auth, hop.host_key).await
+/// `keepalive`：生产链路（[`crate::jump_session::JumpSession`]）传 `Some` 开
+/// 传输层 keepalive；spike 面（[`connect`]）传 None 保持 Phase 0 语义不变。
+pub(crate) async fn establish_hop_with_keepalive(
+    hop: HopSpec,
+    keepalive: Option<std::time::Duration>,
+) -> Result<SshSession, Error> {
+    crate::russh_impl::connect_with_keepalive(
+        &hop.host,
+        hop.port,
+        &hop.username,
+        hop.auth,
+        hop.host_key,
+        keepalive,
+        None,
+    )
+    .await
 }
 
 /// 经 `via` 会话的 direct-tcpip 隧道建立下一跳会话：
 /// 隧道流（服务端侧完成 TCP 连接）→ 在流上握手 + 认证。
-async fn tunnel_to(via: &SshSession, hop: HopSpec) -> Result<SshSession, Error> {
+/// `keepalive`/`router` 语义同 [`establish_hop_with_keepalive`]；`router` 只
+/// 在 target 连接上有意义（-R 入站路由），中间跳恒 None（见 JumpSession 文档）。
+pub(crate) async fn tunnel_to_with(
+    via: &SshSession,
+    hop: HopSpec,
+    keepalive: Option<std::time::Duration>,
+    router: Option<crate::forward::RemoteForwardRouter>,
+) -> Result<SshSession, Error> {
     let stream = via.open_direct_tcpip_stream(&hop.host, hop.port).await?;
-    connect_stream(stream, &hop.username, hop.auth, hop.host_key).await
+    crate::russh_impl::connect_stream_with_keepalive(
+        stream,
+        &hop.username,
+        hop.auth,
+        hop.host_key,
+        keepalive,
+        router,
+    )
+    .await
+}
+
+/// 建立一跳的会话（Phase 0 spike 面：无 keepalive）。
+async fn establish_hop(hop: HopSpec) -> Result<SshSession, Error> {
+    establish_hop_with_keepalive(hop, None).await
+}
+
+/// 经 `via` 会话的 direct-tcpip 隧道建立下一跳会话（Phase 0 spike 面：无 keepalive）。
+async fn tunnel_to(via: &SshSession, hop: HopSpec) -> Result<SshSession, Error> {
+    tunnel_to_with(via, hop, None, None).await
 }

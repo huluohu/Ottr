@@ -129,8 +129,26 @@ pub async fn connect_stream<S>(
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    connect_stream_with_keepalive(stream, username, auth, host_key_cb, None, None).await
+}
+
+/// [`connect_stream`] 的 keepalive/router 变体（Phase 2 Task 2 JumpSession）：
+/// 隧道之上的会话与直连会话语义对齐——长连跳板/target 传 `Some(interval)`
+/// 开传输层 keepalive；remote(-R) 转发的入站路由随 Handler 挂进隧道连接
+/// （链式主机的 -R 与直连主机同一语义）。
+pub async fn connect_stream_with_keepalive<S>(
+    stream: S,
+    username: &str,
+    auth: AuthMethod,
+    host_key_cb: HostKeyPolicy,
+    keepalive_interval: Option<Duration>,
+    forward_router: Option<crate::forward::RemoteForwardRouter>,
+) -> Result<SshSession>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let (config, handler, host_key_bytes, host_key_fingerprints, host_key_rejected) =
-        handshake_parts(host_key_cb, None, None);
+        handshake_parts(host_key_cb, keepalive_interval, forward_router);
 
     let mut handle = match client::connect_stream(config, stream, handler).await {
         Ok(handle) => handle,

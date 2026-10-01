@@ -23,6 +23,7 @@ pub mod auth;
 pub mod deploy;
 pub mod forward;
 pub mod jump;
+pub mod jump_session;
 pub mod keygen;
 pub mod russh_impl;
 pub mod shell_integration;
@@ -34,6 +35,7 @@ pub use forward::{
     RemoteForwardRouter,
 };
 pub use jump::{HopSpec, JumpError};
+pub use jump_session::JumpSession;
 pub use keygen::{KeyAlgorithm, KeyMaterial, PublicKeyInfo, generate, inspect, parse_public_key};
 pub use russh_impl::{RusshTransport, SshSession, connect, connect_with_keepalive};
 

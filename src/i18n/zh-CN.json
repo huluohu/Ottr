@@ -539,7 +539,8 @@
       "aiExplain": "解释完成",
       "summaryReady": "会话纪要已生成"
     },
-    "kindAi": "AI"
+    "kindAi": "AI",
+    "kindAlert": "告警"
   },
   "hostKey": {
     "firstTitle": "首次连接确认",
@@ -662,5 +663,106 @@
     "killForce": "强制终止（SIGKILL）",
     "killForceArmed": "再点一次确认强制终止",
     "killFailed": "终止失败：{{message}}"
+  },
+  "alert": {
+    "sectionTitle": "告警",
+    "settingsTitle": "告警与通知渠道",
+    "suppressedSuffix": "（窗口内聚合 {{count}} 条）",
+    "testTitle": "Ottr 测试告警",
+    "testBody": "收到即渠道打通。",
+    "value": {
+      "cpuSamples": "{{value}}% × {{count}} 采样"
+    },
+    "title": {
+      "disk": "磁盘使用率告警",
+      "cpu": "CPU 负载告警",
+      "process": "进程消失告警",
+      "log": "日志关键字告警"
+    },
+    "body": {
+      "disk": "{{host}} 磁盘 {{mount}} 已用 {{value}}（阈值 {{threshold}}%）",
+      "cpu": "{{host}} CPU 超过 {{threshold}}%（{{value}}）",
+      "process": "{{host}} 进程 {{comm}} 消失"
+    },
+    "label": {
+      "disk": "磁盘{{mount}}",
+      "cpu": "CPU>{{threshold}}% × {{consecutive}}",
+      "process": "进程 {{comm}}"
+    },
+    "kindLog": "日志关键字（延后）",
+    "channelSection": "通知渠道",
+    "channelHint": "渠道是告警的外发面：规则订阅渠道后，触发即推送。token/secret 加密存储。",
+    "noChannels": "还没有渠道。点「添加渠道」接入钉钉/飞书/Telegram 等。",
+    "addChannel": "添加渠道",
+    "channelFormTitle": "渠道配置",
+    "fieldName": "名称（仅备注用）",
+    "fieldKind": "类型",
+    "fieldEnabled": "启用",
+    "errKindRequired": "请选择渠道类型",
+    "errFieldRequired": "存在未填的必填项",
+    "errFieldNumber": "端口必须是数字",
+    "errHeadersInvalid": "请求头不是合法 JSON 对象",
+    "errTemplateInvalid": "模板渲染后不是合法 JSON",
+    "test": "发送测试",
+    "testing": "发送中…",
+    "testOk": "测试消息已发出",
+    "kind": {
+      "dingtalk": "钉钉机器人",
+      "feishu": "飞书机器人",
+      "wecom": "企业微信机器人",
+      "bark": "Bark",
+      "serverchan": "Server酱",
+      "telegram": "Telegram Bot",
+      "discord": "Discord",
+      "slack": "Slack",
+      "smtp": "邮件（SMTP）",
+      "pushover": "Pushover",
+      "ntfy": "ntfy",
+      "webhook": "自定义 Webhook"
+    },
+    "channelField": {
+      "webhook": "Webhook 地址",
+      "dingtalkSecret": "加签 Secret（可选）",
+      "feishuSecret": "加签 Secret（可选）",
+      "barkDeviceKey": "Device Key",
+      "barkServer": "自建服务器（可选）",
+      "serverchanSendKey": "SendKey",
+      "telegramBotToken": "Bot Token",
+      "telegramChatId": "Chat ID",
+      "smtpHost": "SMTP 主机",
+      "smtpPort": "端口",
+      "smtpUsername": "用户名（可选）",
+      "smtpPassword": "密码（可选）",
+      "smtpFrom": "发件人",
+      "smtpTo": "收件人（逗号分隔）",
+      "smtpMode": "TLS 模式",
+      "pushoverToken": "应用 Token",
+      "pushoverUser": "User Key",
+      "ntfyTopic": "Topic",
+      "ntfyServer": "自建服务器（可选）",
+      "ntfyToken": "访问令牌（可选）",
+      "webhookUrl": "URL",
+      "webhookHeaders": "请求头（JSON，可选）",
+      "webhookBodyTemplate": "JSON 模板（可选；变量 host/rule/value/severity/count）"
+    },
+    "ruleSection": "告警规则",
+    "ruleHint": "规则按主机评估：磁盘使用率、CPU 持续超阈、进程消失。日志关键字规则将在后续版本提供。",
+    "noRules": "还没有规则。点「添加规则」为监控主机建一条。",
+    "addRule": "添加规则",
+    "ruleFormTitle": "规则配置",
+    "fieldHost": "主机",
+    "fieldChannels": "订阅渠道（触发时推送）",
+    "fieldRateLimit": "再次告警最小间隔（秒，0 = 仅全局 60s 聚合）",
+    "fieldMuteWindow": "静音时段（可选，HH:MM-HH:MM）",
+    "paramDiskMount": "挂载点",
+    "paramDiskThreshold": "使用率阈值（%）",
+    "paramCpuThreshold": "CPU 阈值（%）",
+    "paramCpuConsecutive": "连续采样数",
+    "paramProcessComm": "进程名（comm）",
+    "errNoHost": "请选择主机",
+    "errNoChannelHint": "还没有可用渠道——先在上方添加渠道，规则才有推送去处。",
+    "lastFired": "上次触发",
+    "never": "从未",
+    "errSaveFailed": "保存失败"
   }
 }

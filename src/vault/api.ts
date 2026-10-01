@@ -274,6 +274,95 @@ export interface SummaryInput {
   command_count: number;
 }
 
+// --- 告警规则（Phase 3 Task 3，B5；Rust alert_rules.rs + commands ar_*）-------
+
+/** 规则类别（Rust RULE_KINDS / DB CHECK 同集）。log = 日志关键字——Phase 3
+ * MVP 裁定延后（评估引擎不实现，CRUD 存储面放行），见 task-3 报告。 */
+export type AlertRuleKind = "disk" | "cpu" | "process" | "log";
+
+/** 类别参数（JSON 对象，Rust 层只保证是对象；字段面按 kind 归引擎消费）：
+ * disk { mount?, threshold }、cpu { threshold, consecutive }、
+ * process { comm }。 */
+export type AlertRuleParams = Record<string, unknown>;
+
+/** Rust `alert_rules::AlertRule` 同构（serde 面无密钥字段；params/channels
+ * 出库即解析后形态）。 */
+export interface AlertRule {
+  id: number;
+  host_id: number;
+  kind: AlertRuleKind;
+  params: AlertRuleParams;
+  /** 订阅渠道 id 数组（notify_channels.id；③外部渠道按此路由）。 */
+  channels: number[];
+  /** 同规则再次告警最小间隔（秒；0 = 只用管线全局 60s 聚合）。 */
+  rate_limit: number;
+  /** "HH:MM-HH:MM" 静音窗（本地时区可跨午夜；null = 不静音）。 */
+  mute_window: string | null;
+  /** 最近触发时刻（秒级 Unix；null = 从未触发）。 */
+  last_fired: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Rust `alert_rules::AlertRuleInput` 同构（create/update 全量替换式提交）。 */
+export interface AlertRuleInput {
+  host_id: number;
+  kind: AlertRuleKind;
+  params: AlertRuleParams;
+  channels: number[];
+  rate_limit: number;
+  mute_window: string | null;
+}
+
+// --- 通知渠道（Phase 3 Task 3，B5；Rust notify_channels.rs + commands nc_*）---
+
+/** 渠道类别（Rust CHANNEL_KINDS / DB CHECK 同集 12 种，spec §3 全矩阵）。 */
+export type ChannelKind =
+  | "dingtalk"
+  | "feishu"
+  | "wecom"
+  | "bark"
+  | "serverchan"
+  | "telegram"
+  | "discord"
+  | "slack"
+  | "smtp"
+  | "pushover"
+  | "ntfy"
+  | "webhook";
+
+/** Rust `notify_channels::NotifyChannel` 同构——不含任何密钥材料
+ * （config_enc 不进结构体；明文 config 只经 nc_reveal_config 单点出库）。 */
+export interface NotifyChannel {
+  id: number;
+  kind: ChannelKind;
+  /** 渠道级文案覆写（可空 JSON 对象；webhook body 模板等）。 */
+  template_overrides: Record<string, unknown> | null;
+  /** 启用位（禁用 = 挂载层跳过挂载）。 */
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Rust `notify_channels::NotifyChannelInput` 同构（config 为明文 JSON 对象，
+ * 存储层整体密封）。 */
+export interface NotifyChannelInput {
+  kind: ChannelKind;
+  config: Record<string, unknown>;
+  template_overrides: Record<string, unknown> | null;
+  enabled: boolean;
+}
+
+/** Rust `notify_channels::NotifyChannelPatch` 同构：config null = 保留现值
+ * （未重输的 token 不重密封）；template_overrides 用嵌套 null 区分
+ * 「不改」（undefined 不传）/「清空」（null）。 */
+export interface NotifyChannelPatch {
+  kind: ChannelKind | null;
+  config: Record<string, unknown> | null;
+  template_overrides: Record<string, unknown> | null;
+  enabled: boolean | null;
+}
+
 /** Rust `vault_upgrade_to_master_password` 进度事件载荷（ottr://reencrypt-progress）。 */
 export interface ReencryptProgress {
   done: number;
@@ -505,6 +594,32 @@ export const vaultApi = {
     /** 存在性（不派生明文——设置页「已保存」标记）。 */
     contains: (key: string) => invoke<boolean>("secret_contains", { key }),
   },
+  /** 告警规则（Phase 3 Task 3，B5）：vault 配置面（锁定即拒，同 hosts）。
+   * 评估引擎在 src/notify/rules.ts（数据源 ottr://monitor + monitor_ps）。 */
+  alertRules: {
+    list: () => invoke<AlertRule[]>("ar_list"),
+    create: (input: AlertRuleInput) => invoke<AlertRule>("ar_create", { input }),
+    update: (id: number, input: AlertRuleInput) => invoke<AlertRule>("ar_update", { id, input }),
+    remove: (id: number) => invoke<void>("ar_delete", { id }),
+    /** 触发水位回写（引擎放行一条告警时调用）。 */
+    touchFired: (id: number, ts: number) => invoke<void>("ar_touch_fired", { id, ts }),
+  },
+  /** 通知渠道（Phase 3 Task 3，B5）：vault 密文面（config_enc 已登记
+   * scan_registry，锁定即拒）。reveal 后的明文 config 只在内存短暂存在
+   * （适配器组装请求），永不落日志/明文存储。 */
+  notifyChannels: {
+    list: () => invoke<NotifyChannel[]>("nc_list"),
+    create: (input: NotifyChannelInput) => invoke<NotifyChannel>("nc_create", { input }),
+    update: (id: number, patch: NotifyChannelPatch) =>
+      invoke<NotifyChannel>("nc_update", { id, patch }),
+    remove: (id: number) => invoke<void>("nc_delete", { id }),
+    /** 明文 config 单点出库（测试发送/管线挂载取一次）。 */
+    revealConfig: (id: number) => invoke<Record<string, unknown>>("nc_reveal_config", { id }),
+  },
+  /** SMTP 渠道发送（Phase 3 Task 3，B5；Rust lettre，commands/notify.rs）：
+   * 分发与「发送测试」共用（测试 = 固定测试主题正文真发）。 */
+  smtpSend: (config: unknown, to: string, subject: string, body: string) =>
+    invoke<void>("smtp_send", { config, to, subject, body }),
   /** 端口转发（Phase 2 Task 1，B7 上半；Rust commands/forward.rs）。
    * list/create/update/delete/setEnabled = vault 配置面（锁定即拒，同 hosts）；
    * start/stop = 运行面（ForwardManager；start 需 rustId 会话在线）。 */

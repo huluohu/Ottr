@@ -12,6 +12,10 @@ pub mod encoding;
 pub mod forward;
 // 跳板链命令域（Phase 2 Task 2，B7 下半）：jc_* 命令 + 链上逐跳规格解析。
 pub mod jump;
+// 监控采集命令域（Phase 3 Task 1，B4 上半）：MonitorManager（per-session
+// 采样任务 owner，ForwardManager 同款模式）+ monitor_start/stop +
+// ottr://monitor 事件推前端。
+pub mod monitor;
 // 远端文件本地编辑域（Phase 2 Task 3，B10 上半）：编辑会话表 + 轮询防抖 +
 // 冲突检测回传 + 清理（显式关闭/会话消失/App 退出/24h 惰性清扫）。
 pub mod remote_edit;

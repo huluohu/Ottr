@@ -663,6 +663,10 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
         sessions.lock().unwrap().remove(&session_id);
         if let Some(app) = &forward_close_app {
             app.state::<AppState>().forwards.session_down(&session_id);
+            // 监控采样同点收尾（Phase 3 Task 1）：会话消亡 → 采样任务摘除即停
+            // （guard Drop 即 cancel；此后 monitor_start 对该 id 也会因会话表
+            // 已清而显式报错，双保险）。
+            app.state::<AppState>().monitors.session_down(&session_id);
         }
         if let Some(app) = &close_event {
             let _ = app.emit(

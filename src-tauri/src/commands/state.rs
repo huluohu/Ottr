@@ -280,6 +280,9 @@ pub(crate) struct AppState {
     /// 远端文件本地编辑会话表（Phase 2 Task 3，commands/remote_edit.rs）：
     /// session id → (远端路径 → 临时副本/远端快照/本地指纹)。
     pub(crate) edits: super::remote_edit::EditMap,
+    /// 监控采样任务生命周期 owner（Phase 3 Task 1，commands/monitor.rs）：
+    /// session id → 采样任务取消令牌（guard Drop 即停）。
+    pub(crate) monitors: super::monitor::MonitorManager,
 }
 
 pub(crate) static SESSION_SEQ: AtomicU64 = AtomicU64::new(0);

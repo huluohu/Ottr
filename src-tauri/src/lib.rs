@@ -189,6 +189,9 @@ pub fn run() {
             commands::jump::jc_update,
             commands::jump::jc_delete,
             commands::jump::jc_test,
+            // 监控采集（Phase 3 Task 1，B4 上半；命令域 commands/monitor.rs）
+            commands::monitor::monitor_start,
+            commands::monitor::monitor_stop,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

@@ -46,6 +46,21 @@ pub fn shell_integration_enabled(raw: Option<&serde_json::Value>) -> bool {
 pub const SETTING_AUTOLOCK: &str = "security.autolock_minutes";
 pub const SETTING_CLIPBOARD: &str = "security.clipboard_clear_secs";
 
+/// 监控采样间隔（Phase 3 Task 1，B4）：settings `monitor.interval_secs`，
+/// 默认 5s（简报定值），上限 1h；下限 1s（防手滑把轮转打满 CPU）。
+pub const SETTING_MONITOR_INTERVAL: &str = "monitor.interval_secs";
+pub const MONITOR_INTERVAL_DEFAULT_SECS: u64 = 5;
+pub const MONITOR_INTERVAL_MAX_SECS: u64 = 3600;
+
+/// 监控采样间隔配置 → Duration。未配置 = 默认 5s；越界收敛
+/// （下限 1s / 上限 1h——配置错误不断采样，同 *_from 收敛口径）。
+pub fn monitor_interval_from(raw: Option<u64>) -> std::time::Duration {
+    std::time::Duration::from_secs(
+        raw.unwrap_or(MONITOR_INTERVAL_DEFAULT_SECS)
+            .clamp(1, MONITOR_INTERVAL_MAX_SECS),
+    )
+}
+
 /// 自动锁定分钟数配置 → `Some(分钟)`（0/关闭 = `None`）。
 /// 未配置 = 默认 10；越界值收敛到上限（配置错误不断开保护）。
 pub fn autolock_minutes_from(raw: Option<u64>) -> Option<u64> {
@@ -84,6 +99,21 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
     match key {
         SETTING_AUTOLOCK => u64_in_range(value, AUTOLOCK_MAX_MINUTES),
         SETTING_CLIPBOARD => u64_in_range(value, CLIPBOARD_MAX_SECS),
+        // Phase 3 Task 1：监控采样间隔（1-3600s，见 monitor_interval_from）
+        SETTING_MONITOR_INTERVAL => {
+            fn mon_range(value: &serde_json::Value) -> Result<(), String> {
+                let n = value
+                    .as_u64()
+                    .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+                if n == 0 || n > MONITOR_INTERVAL_MAX_SECS {
+                    return Err(format!(
+                        "monitor.interval_secs must be 1-{MONITOR_INTERVAL_MAX_SECS}, got {n}"
+                    ));
+                }
+                Ok(())
+            }
+            mon_range(value)
+        }
         // Task 13：AI 成本护栏（单请求 max_tokens 上限）与诊断自动触发开关
         SETTING_SHELL_INTEGRATION => {
             if value.is_boolean() {
@@ -366,5 +396,34 @@ mod tests {
         assert!(validate_setting("ui.theme", &serde_json::json!("solarized")).is_err());
         assert!(validate_setting("ui.theme", &serde_json::json!(1)).is_err());
         assert!(validate_setting("ui.language", &serde_json::json!("fr-FR")).is_err());
+        // Phase 3 Task 1：监控采样间隔（1-3600）写入侧校验
+        assert_eq!(
+            validate_setting(SETTING_MONITOR_INTERVAL, &serde_json::json!(5)),
+            Ok(())
+        );
+        assert!(validate_setting(SETTING_MONITOR_INTERVAL, &serde_json::json!(0)).is_err());
+        assert!(validate_setting(SETTING_MONITOR_INTERVAL, &serde_json::json!(3601)).is_err());
+        assert!(validate_setting(SETTING_MONITOR_INTERVAL, &serde_json::json!("5s")).is_err());
+    }
+
+    #[test]
+    fn monitor_interval_defaults_and_clamps() {
+        use std::time::Duration;
+        assert_eq!(
+            monitor_interval_from(None),
+            Duration::from_secs(MONITOR_INTERVAL_DEFAULT_SECS),
+            "未配置 = 默认 5s"
+        );
+        assert_eq!(monitor_interval_from(Some(10)), Duration::from_secs(10));
+        assert_eq!(
+            monitor_interval_from(Some(0)),
+            Duration::from_secs(1),
+            "0 收敛到下限（不断采样）"
+        );
+        assert_eq!(
+            monitor_interval_from(Some(99_999)),
+            Duration::from_secs(MONITOR_INTERVAL_MAX_SECS),
+            "越界收敛到上限"
+        );
     }
 }

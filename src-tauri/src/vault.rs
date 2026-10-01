@@ -635,6 +635,36 @@ pub fn import_ssh_config(
     cmd(crate::ssh_config::import_entries(&state.0, outcome))
 }
 
+/// 导入 Xshell 会话（Phase 2 Task 10，B3）。`path` = 会话目录或单个 .xsh；
+/// 缺省回落 Windows 惯例会话目录（不存在即报错——mac/Linux 无默认位置）。
+/// 解析规则与去重见 importers::xshell 模块文档；报告同构 ssh-config 导入。
+#[tauri::command]
+pub fn import_xshell_sessions(
+    state: State<'_, VaultState>,
+    path: Option<String>,
+) -> CmdResult<crate::ssh_config::ImportReport> {
+    ensure_unlocked(&state.0)?;
+    let path = path
+        .map(PathBuf::from)
+        .or_else(crate::importers::xshell::default_sessions_dir)
+        .ok_or_else(|| "cannot resolve Xshell sessions directory; pick a folder".to_string())?;
+    cmd(crate::importers::xshell::import_path(&state.0, &path))
+}
+
+/// 导入 Tabby 配置（Phase 2 Task 10，B3）。`path` 必传（配置 JSON 无跨平台
+/// 惯例位置——前端经文件对话框选定）。解析规则见 importers::tabby 模块文档。
+#[tauri::command]
+pub fn import_tabby_config(
+    state: State<'_, VaultState>,
+    path: String,
+) -> CmdResult<crate::ssh_config::ImportReport> {
+    ensure_unlocked(&state.0)?;
+    cmd(crate::importers::tabby::import_path(
+        &state.0,
+        &PathBuf::from(path),
+    ))
+}
+
 /// CSV 导出主机清单。`path` 缺省写到系统下载目录 `ottr-hosts.csv`；返回落盘路径。
 #[tauri::command]
 pub fn export_hosts_csv(

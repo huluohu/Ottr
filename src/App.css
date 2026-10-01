@@ -388,6 +388,42 @@ button[data-active="true"] {
 .import-report p {
   margin: 4px 0;
 }
+/* --- 导入对话框多来源（Phase 2 Task 10，B3 迁移导入器）--- */
+.import-sources {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.import-sources button {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.4));
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.import-sources button[data-active="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.import-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  min-width: 0;
+}
+.import-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .report-added {
   color: var(--color-success);
   font-weight: 600;

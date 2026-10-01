@@ -13,6 +13,7 @@
 // + send 失败显式计数（send_failed_bytes/send_failed_frames/failed —— M-2 失败策略，
 // flush_batch 文档）经 `session_stats` 可读；`OTTR_BATCH_DEBUG=1` 时逐批打 debug 日志。
 mod commands;
+pub mod importers;
 pub mod keys;
 pub mod menu;
 pub mod security;
@@ -302,6 +303,9 @@ pub fn run() {
             vault::known_hosts_mark_changed,
             vault::import_ssh_config,
             vault::export_hosts_csv,
+            // 迁移导入器（Phase 2 Task 10，B3；命令名契约见 src/vault/api.ts）
+            vault::import_xshell_sessions,
+            vault::import_tabby_config,
             // 密钥管理（Task 6，A4；命令名契约见 src/vault/api.ts keys 段）
             keys::key_generate,
             keys::key_inspect,

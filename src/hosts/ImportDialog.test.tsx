@@ -6,6 +6,10 @@ import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
+// B3 迁移导入器：原生路径选择对话框 mock（可注入 picked 值/拒绝）。
+const mockOpen = vi.fn();
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: (...args: unknown[]) => mockOpen(...args) }));
+
 import "../i18n";
 import { ImportDialog } from "./ImportDialog";
 import { useVaultStore } from "../vault/store";
@@ -26,6 +30,7 @@ function listCommandsOk() {
 
 beforeEach(() => {
   mockedInvoke.mockReset();
+  mockOpen.mockReset();
   useVaultStore.setState({ hosts: [], hostGroups: [], credentials: [], loading: false, error: null });
 });
 
@@ -92,5 +97,83 @@ describe("ImportDialog", () => {
     await waitFor(() => expect(screen.getByTestId("import-close")).toBeTruthy());
     fireEvent.click(screen.getByTestId("import-close"));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("ImportDialog 迁移导入器来源（Phase 2 Task 10，B3）", () => {
+  it("Xshell 来源：目录选择后 start 携路径发 import_xshell_sessions；跳过行换语义标签", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "import_xshell_sessions") {
+        return Promise.resolve({ added: 2, skipped_wildcards: 1, skipped_duplicates: 0, errors: ["badport.xsh: Port 'not-a-port' 不可解析"] });
+      }
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    mockOpen.mockResolvedValue("/Users/ottr/Sessions");
+    render(<ImportDialog onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId("import-source-xshell"));
+    expect(screen.getByTestId("import-pick")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("import-pick"));
+    await waitFor(() => expect(screen.getByTestId("import-path").textContent).toBe("/Users/ottr/Sessions"));
+
+    fireEvent.click(screen.getByTestId("import-start"));
+    await waitFor(() => expect(screen.getByTestId("import-report")).toBeTruthy());
+    expect(mockedInvoke).toHaveBeenCalledWith("import_xshell_sessions", { path: "/Users/ottr/Sessions" });
+    expect(screen.getByTestId("import-report").textContent).toContain("Added 2 hosts");
+    expect(screen.getByTestId("import-report").textContent).toContain("Skipped 1 unusable entries/files");
+    expect(screen.getByTestId("import-errors").textContent).toContain("badport.xsh");
+  });
+
+  it("Tabby 来源：未选文件时 start 禁用；选 JSON 后发 import_tabby_config", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "import_tabby_config") {
+        return Promise.resolve({ added: 3, skipped_wildcards: 2, skipped_duplicates: 1, errors: [] });
+      }
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<ImportDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("import-source-tabby"));
+    const start = screen.getByTestId("import-start") as HTMLButtonElement;
+    expect(start.disabled).toBe(true); // 无跨平台惯例位置：必须先选文件
+
+    mockOpen.mockResolvedValue("/Users/ottr/tabby-config.json");
+    fireEvent.click(screen.getByTestId("import-pick"));
+    await waitFor(() => expect((screen.getByTestId("import-start") as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(screen.getByTestId("import-start"));
+    await waitFor(() => expect(screen.getByTestId("import-report")).toBeTruthy());
+    expect(mockedInvoke).toHaveBeenCalledWith("import_tabby_config", { path: "/Users/ottr/tabby-config.json" });
+    expect(screen.getByTestId("import-report").textContent).toContain("No parse errors");
+  });
+
+  it("Xshell 未选路径：start 发 path=null（回落服务端默认会话目录）；切换来源清报告", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "import_xshell_sessions") {
+        return Promise.resolve({ added: 1, skipped_wildcards: 0, skipped_duplicates: 0, errors: [] });
+      }
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<ImportDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("import-source-xshell"));
+    fireEvent.click(screen.getByTestId("import-start")); // 未 pick：null → 服务端默认
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("import_xshell_sessions", { path: null }),
+    );
+
+    // 回 ssh 再进 xshell：pickedPath/报告已清（idle 面重新可见）
+    fireEvent.click(screen.getByTestId("import-close"));
+    fireEvent.click(screen.getByTestId("import-source-ssh"));
+    fireEvent.click(screen.getByTestId("import-source-xshell"));
+    expect(screen.queryByTestId("import-path")).toBeNull();
+    expect(mockOpen).toHaveBeenCalledTimes(0); // 本轮未再 pick
   });
 });

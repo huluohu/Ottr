@@ -366,6 +366,13 @@ export const vaultApi = {
   /** ssh-config 导入（path=null → ~/.ssh/config）。报告供导入完成对话框展示。 */
   importSshConfig: (path: string | null) =>
     invoke<ImportReport>("import_ssh_config", { path }),
+  /** Xshell 会话目录导入（Phase 2 Task 10；path=null → Windows 惯例会话目录，
+   * 不存在时命令报错——mac/Linux 需显式传目录）。报告同构 ssh-config。 */
+  importXshellSessions: (path: string | null) =>
+    invoke<ImportReport>("import_xshell_sessions", { path }),
+  /** Tabby 配置 JSON 导入（Phase 2 Task 10；path 必传——文件对话框选定）。 */
+  importTabbyConfig: (path: string) =>
+    invoke<ImportReport>("import_tabby_config", { path }),
   /** CSV 导出（path=null → 系统下载目录 ottr-hosts.csv），返回落盘路径。 */
   exportHostsCsv: (path: string | null) => invoke<string>("export_hosts_csv", { path }),
   credentials: {

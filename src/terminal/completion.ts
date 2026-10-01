@@ -101,8 +101,9 @@ export const BUILTIN_COMMANDS: readonly string[] = [
   "tar -czf",
   "tar -xzf",
   "mkdir -p",
-  "rm -rf",
   "cp -r",
+  // M-3（评审）：不放 rm -rf——rm+Tab 一步写出危险前缀不妥（产品口味；
+  // 历史里真跑过的话仍会由 host 历史面命中，引擎不特判）
   "chmod +x",
   "ln -s",
   "vim",
@@ -237,6 +238,8 @@ export interface GhostTerm {
   cols: number;
   buffer: {
     active: {
+      /** 主/备缓冲（C-1：alt buffer = 全屏 TUI，ghost 挂起全透传）。 */
+      type: "normal" | "alternate";
       baseY: number;
       cursorY: number;
       cursorX: number;
@@ -302,10 +305,13 @@ export function lineTextUpToColumn(line: GhostBufferLine, colX: number): string 
   for (let x = 0; width < colX && x < 5000; x++) {
     const cell = line.getCell(x);
     if (!cell) break;
+    const w = cell.getWidth();
+    // I-1：width=0 的间隙单元（宽字符右半格）与组合字符单元不追加字符——
+    // 宽字符本体已在上一格 getChars()，把间隙当空格会在 CJK 行文本插幽灵
+    // 空格、令 stripPromptPrefix 失配
+    if (w === 0) continue;
     const chars = cell.getChars();
     text += chars === "" ? " " : chars;
-    const w = cell.getWidth();
-    if (w === 0) continue; // 组合字符：不占列
     width += w;
   }
   return text;
@@ -354,6 +360,12 @@ export class GhostController {
       this.reset();
       return false;
     }
+    // C-1：alt buffer（vim/less 等全屏 TUI）——ghost 挂起，一切按键（含
+    // Tab/Esc）原样透传给 TUI，decoration 不渲染不驻留
+    if (this.term.buffer.active.type === "alternate") {
+      this.reset();
+      return false;
+    }
     if (data === TAB) {
       if (this.suffix !== null) {
         const accepted = this.suffix;
@@ -397,6 +409,11 @@ export class GhostController {
 
   /** 从缓冲现值 + 乐观增量重算 ghost（onData 打字驱动）。 */
   refresh(): void {
+    // C-1：alt buffer 直清（vim 进入时可能残留 normal 态的 ghost）
+    if (this.term.buffer.active.type === "alternate") {
+      this.clearDecoration();
+      return;
+    }
     if (!this.hooks.enabled() || this.dismissed) {
       this.clearDecoration();
       return;

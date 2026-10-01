@@ -130,6 +130,8 @@ interface FakeOpts {
   cursorX?: number;
   baseY?: number;
   cols?: number;
+  /** 缓冲类型（C-1：alternate = 全屏 TUI，ghost 挂起）。 */
+  bufferType?: "normal" | "alternate";
   /** 单元格级行（宽字符建模）：Array<[chars, width]>[]，优先于 rows。 */
   cellRows?: Array<Array<[string, number]>>;
 }
@@ -185,6 +187,7 @@ function fakeTerm(opts: FakeOpts): GhostTerm & {
     decorationOptions,
     buffer: {
       active: {
+        type: opts.bufferType ?? "normal",
         baseY,
         cursorY: opts.cursorY ?? 0,
         cursorX: opts.cursorX ?? 0,
@@ -404,6 +407,46 @@ describe("GhostController：渲染与按键语义", () => {
     expect(term.decorations).toHaveLength(0);
   });
 
+  it("C-1 alt-buffer：vim 全屏 TUI 下零拦截零渲染（Tab/Esc/打字全透传）", () => {
+    const term = fakeTerm({
+      rows: [""],
+      cursorX: 0,
+      cols: 80,
+      bufferType: "alternate",
+    });
+    const onAccept = vi.fn();
+    const controller = new GhostController(term, {
+      sources: () => SRC(["docker ps -a"], []),
+      enabled: () => true,
+      onAccept,
+    });
+    // 即使缓冲行文本可命中（TUI 屏内容不受控）：一切透传、不渲染
+    const passed = type(controller, ["d", "o", "c", "\t", "\x1b", "\r"]);
+    expect(passed).toEqual(["d", "o", "c", "\t", "\x1b", "\r"]);
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(term.decorations).toHaveLength(0);
+  });
+
+  it("C-1 alt-buffer：normal 态 ghost 残留 → 进 TUI 后 refresh 清除、恢复 normal 后重建", () => {
+    const term = fakeTerm({ rows: ["root@h:~$ "], cursorX: 10, cols: 80 });
+    const controller = new GhostController(term, {
+      sources: () => SRC(["docker ps -a"], []),
+      enabled: () => true,
+      onAccept: vi.fn(),
+    });
+    type(controller, ["d", "o", "c"]);
+    expect(liveDecorations(term)).toHaveLength(1);
+    term.buffer.active.type = "alternate"; // 用户进 vim
+    controller.refresh();
+    expect(liveDecorations(term)).toHaveLength(0);
+    // alt 态打字不拦截不渲染
+    expect(controller.handleData("x")).toBe(false);
+    expect(liveDecorations(term)).toHaveLength(0);
+    term.buffer.active.type = "normal"; // 退出 vim：下击键照常重算
+    expect(controller.handleData("d")).toBe(false);
+    expect(liveDecorations(term)).toHaveLength(1);
+  });
+
   it("CJK：缓冲列→字符换算不漂移，ghost 位置含 pending 宽度", () => {
     // 提示符含中文："用户@主机:~$ "（13 格），光标列 13；用户再打 "doc"（pending）
     const prompt = "用户@主机:~$ ";
@@ -438,5 +481,32 @@ describe("GhostController：渲染与按键语义", () => {
     expect(lineTextUpToColumn(view, 4)).toBe("中do");
     expect(lineTextUpToColumn(view, 3)).toBe("中d");
     expect(lineTextUpToColumn(view, 0)).toBe("");
+  });
+
+  it("I-1 宽字符间隙单元（width=0）不产出幽灵空格", () => {
+    // xterm 真实形态：宽字符占 2 列，右半格是 width=0 的空单元
+    const view = cellLineView([
+      ["中", 2],
+      ["", 0],
+      ["a", 1],
+    ]);
+    expect(lineTextUpToColumn(view, 3)).toBe("中a"); // 非 "中 a"（幽灵空格会让 stripPromptPrefix 失配）
+    expect(lineTextUpToColumn(view, 2)).toBe("中");
+    // 组合字符单元（width=0、有 chars）：并入前一格，不重复追加
+    const combining = cellLineView([
+      ["e", 1],
+      ["\u0301", 0],
+      ["x", 1],
+    ]);
+    expect(lineTextUpToColumn(combining, 2)).toBe("ex");
+  });
+
+  it("M-3 内置表不收危险前缀（rm -rf）", () => {
+    expect(BUILTIN_COMMANDS).not.toContain("rm -rf");
+    expect(BUILTIN_COMMANDS).not.toContain("sudo");
+    // 历史面照常：用户真跑过的 rm -rf 仍由 host 历史命中（引擎不特判）
+    expect(suffixOf("rm -rf /tmp/x", ["rm -rf /tmp/x && echo done"])).toBe(
+      " && echo done",
+    );
   });
 });

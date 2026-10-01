@@ -59,6 +59,7 @@ import { ThemeProvider } from "../theme/ThemeContext";
 import { terminalThemes } from "../theme/terminal-themes";
 import { applyTermTheme, ContextMenuView, PasteConfirmDialog, SessionTerminal, TerminalArea } from "./Terminal";
 import { buildContextMenu, loadTerminalSettings, saveTerminalSettings } from "./ContextMenu";
+import { completionHistory } from "../history/cache";
 import { useSessionStore, type Session } from "../session/SessionStore";
 import { Terminal as XTermClass } from "@xterm/xterm";
 
@@ -232,6 +233,48 @@ describe("智能补全开关（Task 8 B8）", () => {
     // 关闭后持久化
     saveTerminalSettings({ copyOnSelect: true, completionEnabled: false });
     expect(loadTerminalSettings().completionEnabled).toBe(false);
+  });
+
+  it("I-3 PTY 纯净性（集成）：ghost 显示时按 Tab——write_session 收 suffix 而非 \\t，打字字节原样透传", async () => {
+    completionHistory.resetForTests();
+    completionHistory.append(5, "docker ps -a");
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-b8", hostId: 5, rustId: "pty-b8" })],
+      activeId: "tab-b8",
+      trees: { "tab-b8": { kind: "leaf", id: "tab-b8" } },
+      activePane: { "tab-b8": "tab-b8" },
+    });
+    const writes: Array<{ id: string; bytes: number[] }> = [];
+    mockedInvoke.mockImplementation((cmd: string, args: { id?: string; bytes?: number[] }) => {
+      if (cmd === "write_session" && args.bytes) {
+        writes.push({ id: args.id ?? "", bytes: args.bytes });
+      }
+      return Promise.resolve([]); // history_search 等 → 空结果（缓存已被 append 预置）
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-b8" />
+      </ThemeProvider>,
+    );
+    const captured = capturedTerms();
+    const term = captured[captured.length - 1];
+    const text = (b: number[]) => new TextDecoder().decode(Uint8Array.from(b));
+    // 打字：ghost 前置语义透传 → trzsz 空闲透传 → write_session 原样字节
+    await act(async () => {
+      term.input("d");
+      term.input("o");
+      term.input("c");
+    });
+    expect(writes.map((w) => text(w.bytes))).toEqual(["d", "o", "c"]);
+    // Tab：ghost 拦截采纳——write_session 收补全剩余文本，\t 不进 PTY
+    await act(async () => {
+      term.input("\t");
+    });
+    expect(writes).toHaveLength(4);
+    expect(text(writes[3].bytes)).toBe("ker ps -a");
+    expect(writes[3].id).toBe("pty-b8");
+    // 全程无任何 \t 字节落 PTY
+    for (const w of writes) expect(text(w.bytes)).not.toContain("\t");
   });
 });
 

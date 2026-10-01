@@ -255,7 +255,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
   // --- 一次性装配：term 实例 + sink 注册 + 击键接线 + 尺寸观测 ---
   useEffect(() => {
-    const term = new XTerm({ cursorBlink: true, fontSize: 13 });
+    // B8：allowProposedApi 开启——ghost text 的 registerDecoration 是 xterm
+    // proposed API（未开则抛 "You must set the allowProposedApi option"）；
+    // 对既有面零行为变化，只解锁装饰 API。
+    const term = new XTerm({ cursorBlink: true, fontSize: 13, allowProposedApi: true });
     const fit = new FitAddon();
     term.loadAddon(fit);
     // URL 检测（A8）：WebLinksAddon 默认 handler（新窗打开链接）
@@ -384,7 +387,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
     // B8 智能补全（fish 风格 ghost text）：decoration 视觉层 + onData 前置按键
     // 语义（有 ghost 拦 Tab 采纳/Esc 忽略/打字刷新）；采纳写入走 writeToSession
-    // 同一出口。禁用态一切透传零渲染（PTY 纯净性，completion.test.ts 钉死）。
+    // 同一出口。挂起面（I-2）：设置关或 trzsz 传输态 → enabled()=false →
+    // handleData 全透传零渲染（Tab 归 trzsz 管辖，采纳不旁路传输态拦截）。
+    // alt buffer（C-1）在控制器内判 buffer.active.type。
     const ghost = new GhostController(term, {
       sources: () => {
         const s = useSessionStore
@@ -394,7 +399,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           ? completionHistory.sources(s.hostId)
           : { hostHistory: [], globalHistory: [] };
       },
-      enabled: () => loadTerminalSettings().completionEnabled,
+      enabled: () =>
+        loadTerminalSettings().completionEnabled && !trzsz.isTransferring(),
       onAccept: writeToSession,
     });
     ghost.setColor(terminalThemes[resolved].brightBlack ?? "#808080"); // 语义令牌：ANSI 注释灰

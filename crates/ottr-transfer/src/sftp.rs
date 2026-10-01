@@ -306,7 +306,8 @@ async fn remote_size(sftp: &RawSftpSession, remote: &str) -> Result<u64> {
 }
 
 /// 探测读写子请求块大小：报文上限收窄 + 服务器 limits@openssh.com 明示上限。
-async fn probe_block_sizes(sftp: &RawSftpSession, handle: &str) -> (u32, u32) {
+/// pub(crate)：ops.rs 的单通道小文件读写（Phase 2 Task 3）复用同一探测。
+pub(crate) async fn probe_block_sizes(sftp: &RawSftpSession, handle: &str) -> (u32, u32) {
     let mut read_block = (MAX_PACKET_LEN - READ_OVERHEAD) as u32;
     let mut write_block = ((MAX_PACKET_LEN - WRITE_OVERHEAD).saturating_sub(handle.len() as u64)
         as u32)

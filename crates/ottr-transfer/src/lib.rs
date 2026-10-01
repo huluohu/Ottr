@@ -16,7 +16,7 @@
 pub mod ops;
 pub mod sftp;
 
-pub use ops::{DirEntry, SftpClient};
+pub use ops::{DirEntry, RemoteSnapshot, SftpClient};
 pub use sftp::{
     CHUNK_SIZE, CancelToken, FileTransfer, ProgressHook, TransferProgress, TransferStats,
     download_parallel, journal_file_name, journal_header, upload_parallel,

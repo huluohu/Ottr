@@ -38,7 +38,11 @@ import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 import { registerSink, unregisterSink, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
 import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
-import { terminalThemes } from "../theme/terminal-themes";
+import {
+  resolveTerminalTheme,
+  useTerminalThemeStore,
+  type TerminalThemeSetting,
+} from "../theme/terminalThemeStore";
 import type { ITheme } from "@xterm/xterm";
 import { assessPaste } from "../ai/danger";
 import { useAiStore } from "../ai/aiStore";
@@ -67,12 +71,18 @@ import { dividers, layout, leaf, type Divider, type Rect } from "./split";
 /** 主题同步 xterm 配色（亮/暗两套，A10；T1 terminalThemes 消费）。入参是
  * ThemeContext 的**解析结果**（resolved，非三态 mode）——system 模式下 OS
  * 明暗切换时 resolved 变化驱动本组件 effect 重跑，终端实时换套（简报 I面：
- * useTheme().resolved → xterm theme）。结构化入参便于单测，不绑定 xterm 类。 */
+ * useTheme().resolved → xterm theme）。结构化入参便于单测，不绑定 xterm 类。
+ * Phase 2 Task 9（B2 主题生态）：第三参 = 终端配色选择（缺省读全局 store）——
+ * auto 跟随 resolved；选内置画廊/自定义配色则固定取该套（与界面明暗解耦）。 */
 export function applyTermTheme(
   term: { options: { theme?: ITheme } },
   resolved: ResolvedTheme,
+  setting?: TerminalThemeSetting,
 ): void {
-  term.options.theme = terminalThemes[resolved];
+  term.options.theme = resolveTerminalTheme(
+    resolved,
+    setting ?? useTerminalThemeStore.getState(),
+  );
 }
 
 // 会话编码状态在 SessionStore（Task 9）：T8 的临时 sessionEncoding 内存表已删，
@@ -219,6 +229,10 @@ export function quotePathsForShell(paths: string[]): string {
 export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const { resolved } = useTheme();
+  // 终端配色选择（Phase 2 Task 9，B2）：selection/custom 任一变化都重跑主题 effect
+  // （换画廊套即时生效；自定义主题被重导入覆盖时 custom 引用变化同样刷新）。
+  const termSelection = useTerminalThemeStore((s) => s.selection);
+  const termCustom = useTerminalThemeStore((s) => s.custom);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
   const trzszRef = useRef<TrzszController | null>(null);
@@ -403,7 +417,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         loadTerminalSettings().completionEnabled && !trzsz.isTransferring(),
       onAccept: writeToSession,
     });
-    ghost.setColor(terminalThemes[resolved].brightBlack ?? "#808080"); // 语义令牌：ANSI 注释灰
+    ghost.setColor(
+      resolveTerminalTheme(resolved, useTerminalThemeStore.getState()).brightBlack ?? "#808080",
+    ); // 语义令牌：ANSI 注释灰（跟随当前终端配色，非固定品牌值）
     ghostRef.current = ghost;
 
     // 击键 → ghost 前置语义 → trzsz 过滤器 → PTY（传输态库吞键入；空闲透传）
@@ -453,12 +469,14 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // --- 主题跟随（resolved 驱动：手动切换与 system 模式的 OS 切换都实时生效） ---
+  // --- 主题跟随（resolved 驱动：手动切换与 system 模式的 OS 切换都实时生效；
+  //     B2：终端配色选择（画廊/自定义/auto）变化同样实时生效） ---
   useEffect(() => {
-    if (termRef.current) applyTermTheme(termRef.current, resolved);
+    const setting: TerminalThemeSetting = { selection: termSelection, custom: termCustom };
+    if (termRef.current) applyTermTheme(termRef.current, resolved, setting);
     // B8：ghost 灰字随主题换（ANSI brightBlack = 注释灰语义令牌）
-    ghostRef.current?.setColor(terminalThemes[resolved].brightBlack ?? "#808080");
-  }, [resolved]);
+    ghostRef.current?.setColor(resolveTerminalTheme(resolved, setting).brightBlack ?? "#808080");
+  }, [resolved, termSelection, termCustom]);
 
   // --- 粘贴拦截（宿主捕获阶段，先于 xterm 的 textarea 监听） ---
   useEffect(() => {

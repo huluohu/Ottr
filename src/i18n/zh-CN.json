@@ -34,7 +34,16 @@
     "closeToTray": "关闭窗口时隐藏到托盘",
     "closeToTrayHint": "关闭后 Ottr 常驻系统托盘，可从托盘退出。",
     "shellIntegration": "Shell 集成自动注入",
-    "shellIntegrationHint": "连接时自动探测远端 shell 并注入 OSC 133/OSC 7 片段，驱动历史搜索与报错即诊；已自带集成的远端自动跳过。"
+    "shellIntegrationHint": "连接时自动探测远端 shell 并注入 OSC 133/OSC 7 片段，驱动历史搜索与报错即诊；已自带集成的远端自动跳过。",
+    "terminalTheme": "终端配色",
+    "terminalThemeAuto": "跟随界面",
+    "terminalThemeGallery": "内置主题",
+    "terminalThemeCustom": "导入的配色",
+    "terminalThemeLightTag": "亮色",
+    "terminalThemeHint": "终端配色独立于界面明暗。支持导入 iTerm2（.itermcolors）与 Windows Terminal scheme（.json）文件。",
+    "terminalThemeImport": "导入配色文件…",
+    "terminalThemeImported": "已导入 {{count}} 个配色，已选中第一个。",
+    "terminalThemeImportFailed": "导入失败：{{message}}"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -76,7 +85,9 @@
     "protocol": "协议",
     "protocol_ssh": "SSH",
     "protocol_ftp": "FTP",
-    "protocol_ftps": "FTPS"
+    "protocol_ftps": "FTPS",
+    "production": "生产环境主机",
+    "productionHint": "终端边框标红、页签带 PROD 徽标；输入危险命令时给行内提醒。"
   },
   "hostTree": {
     "searchPlaceholder": "搜索主机（名称/备注）…",
@@ -106,7 +117,16 @@
     "skippedWildcards": "跳过通配/排除模式 {{count}} 条",
     "skippedDuplicates": "跳过重复主机 {{count}} 台",
     "errors": "解析错误（{{count}}）",
-    "noErrors": "无解析错误"
+    "noErrors": "无解析错误",
+    "source": "来源",
+    "sourceSsh": "~/.ssh/config",
+    "sourceXshell": "Xshell 会话目录",
+    "sourceTabby": "Tabby 配置（JSON）",
+    "pickFile": "选择文件…",
+    "pickFolder": "选择目录…",
+    "skippedEntries": "跳过 {{count}} 个不可用条目/文件",
+    "xshellIntro": "选择 Xshell .xsh 会话文件所在目录（或单个 .xsh）。导入主机/端口/用户；按地址+端口+用户去重。",
+    "tabbyIntro": "选择 Tabby 配置 JSON 导出文件。导入其中 SSH 配置；按地址+端口+用户去重。"
   },
   "palette": {
     "title": "命令面板",
@@ -276,7 +296,11 @@
     "trzszDropInsert": "插入路径",
     "trzszUploadFailed": "trzsz 上传失败：{{message}}",
     "trzszUploadNoStart": "远端未启动 trzsz 传输（服务器未安装 trzsz？）",
-    "trzszDropAria": "拖入文件动作对话框"
+    "trzszDropAria": "拖入文件动作对话框",
+    "prodBadgeAria": "生产环境主机",
+    "dangerInputTitle": "注意",
+    "dangerInputHint": "当前输入命中危险规则：{{rule}}（{{excerpt}}）",
+    "dangerInputDismiss": "关闭危险提醒"
   },
   "ai": {
     "title": "AI 助手",
@@ -391,7 +415,8 @@
   },
   "tabs": {
     "list": "会话标签",
-    "closeAria": "关闭标签 {{name}}"
+    "closeAria": "关闭标签 {{name}}",
+    "prodBadge": "PROD"
   },
   "files": {
     "viewSwitch": "主区视图",

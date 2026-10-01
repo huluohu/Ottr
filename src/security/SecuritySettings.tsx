@@ -6,11 +6,19 @@
 // * 手动锁定按钮（password 模式；Task 14 快捷键接 vault_lock 同一命令）；
 // * 外观（主题）/语言两项沿用 T2 词典键——persist 已迁 vault settings
 //   （ThemeContext / i18n index 负责读写，本页只触发 setMode/setLang）。
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { vaultApi, type ReencryptProgress } from "../vault/api";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
+import {
+  AUTO_TERMINAL_THEME_ID,
+  TERMINAL_THEME_GALLERY,
+  type TerminalThemeDef,
+} from "../theme/gallery";
+import { parseItermColors } from "../theme/importers/iterm";
+import { parseWintermSchemes } from "../theme/importers/winterm";
+import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { useVaultLockStore } from "./VaultLockStore";
 
@@ -35,6 +43,12 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
   const { t } = useTranslation();
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
+  // 终端配色（B2 主题生态）：选择/清单全局 store（App 就绪门已 syncFromVault）。
+  const terminalSelection = useTerminalThemeStore((s) => s.selection);
+  const terminalCustom = useTerminalThemeStore((s) => s.custom);
+  const selectTerminalTheme = useTerminalThemeStore((s) => s.select);
+  const removeTerminalTheme = useTerminalThemeStore((s) => s.removeCustom);
+  const selectedCustomDef = terminalCustom.find((t2) => t2.id === terminalSelection) ?? null;
   const lockMode = useVaultLockStore((s) => s.mode);
   const lock = useVaultLockStore((s) => s.lock);
 
@@ -54,6 +68,10 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
   const [closeToTray, setCloseToTray] = useState<boolean | null>(null);
   // Task 15 fix 1/5：shell 集成自动注入开关（⌘R 历史入库/报错即诊的数据源）。
   const [shellIntegration, setShellIntegration] = useState<boolean | null>(null);
+  // B2 主题生态（Phase 2 Task 9）：配色导入的本地反馈面（选择/清单在全局 store）。
+  const themeFileRef = useRef<HTMLInputElement | null>(null);
+  const [themeImportError, setThemeImportError] = useState<string | null>(null);
+  const [themeImportedCount, setThemeImportedCount] = useState<number | null>(null);
 
   // 每次打开：拉配置 + 挂进度事件；关闭：清向导态。
   useEffect(() => {
@@ -65,6 +83,8 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
       setProgress({ done: 0, total: 0 });
       setFieldsDone(null);
       setUpgrading(false);
+      setThemeImportError(null);
+      setThemeImportedCount(null);
       return;
     }
     let disposed = false;
@@ -151,6 +171,45 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
     } catch (err) {
       // 校验失败/后端错误：控件回落（Rust 侧 validate_setting 是权威）。
       setWizardError(String(err));
+    }
+  }
+
+  /** 配色文件导入（B2 Step 3）：按扩展名分派解析器——.itermcolors 走 iTerm2
+   * plist，.json 走 Windows Terminal scheme；其余形态先按 JSON 试、失败再按
+   * plist 试（用户改扩展名的常见习惯）。多 scheme 全部入库，选中间第一个。 */
+  async function importThemeFile(file: File | undefined) {
+    if (!file) return;
+    setThemeImportError(null);
+    setThemeImportedCount(null);
+    try {
+      const text = await file.text();
+      const lower = file.name.toLowerCase();
+      const stamp = Date.now();
+      let defs: TerminalThemeDef[];
+      if (lower.endsWith(".itermcolors")) {
+        const parsed = parseItermColors(text);
+        defs = [{ id: `custom-${stamp}-0`, ...parsed }];
+      } else if (lower.endsWith(".json")) {
+        defs = parseWintermSchemes(text).schemes.map((s, i) => ({
+          id: `custom-${stamp}-${i}`,
+          ...s,
+        }));
+      } else {
+        try {
+          defs = parseWintermSchemes(text).schemes.map((s, i) => ({
+            id: `custom-${stamp}-${i}`,
+            ...s,
+          }));
+        } catch {
+          defs = [{ id: `custom-${stamp}-0`, ...parseItermColors(text) }];
+        }
+      }
+      const { addCustom, select } = useTerminalThemeStore.getState();
+      for (const def of defs) addCustom(def);
+      select(defs[0].id); // 多 scheme 导入选中间第一个（其余在清单可选）
+      setThemeImportedCount(defs.length);
+    } catch (e) {
+      setThemeImportError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -347,6 +406,77 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
             />
           </label>
           <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
+          {/* --- 终端配色（B2 主题生态，Phase 2 Task 9）：auto 跟随界面 /
+              内置画廊 / 自定义（iTerm2 .itermcolors 与 Windows Terminal .json
+              导入，vault settings 持久化）--- */}
+          <label className="settings-row" data-testid="terminal-theme-row">
+            <span className="settings-label">{t("settings.terminalTheme")}</span>
+            <select
+              data-testid="terminal-theme-select"
+              value={terminalSelection}
+              onChange={(e) => selectTerminalTheme(e.currentTarget.value)}
+            >
+              <option value={AUTO_TERMINAL_THEME_ID}>{t("settings.terminalThemeAuto")}</option>
+              <optgroup label={t("settings.terminalThemeGallery")}>
+                {TERMINAL_THEME_GALLERY.map((def) => (
+                  <option key={def.id} value={def.id}>
+                    {def.name}
+                    {def.dark ? "" : ` · ${t("settings.terminalThemeLightTag")}`}
+                  </option>
+                ))}
+              </optgroup>
+              {terminalCustom.length > 0 && (
+                <optgroup label={t("settings.terminalThemeCustom")}>
+                  {terminalCustom.map((def) => (
+                    <option key={def.id} value={def.id}>
+                      {def.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </label>
+          <p className="settings-hint">{t("settings.terminalThemeHint")}</p>
+          <div className="settings-row">
+            <span className="settings-label">{t("settings.terminalThemeImport")}</span>
+            <input
+              ref={themeFileRef}
+              type="file"
+              accept=".itermcolors,.json,application/json,text/xml,text/plain"
+              style={{ display: "none" }}
+              data-testid="terminal-theme-file"
+              onChange={(e) => {
+                void importThemeFile(e.currentTarget.files?.[0]);
+                e.currentTarget.value = ""; // 同名文件重选也触发 onChange
+              }}
+            />
+            <button
+              type="button"
+              data-testid="terminal-theme-import"
+              onClick={() => themeFileRef.current?.click()}
+            >
+              {t("settings.terminalThemeImport")}
+            </button>
+            {selectedCustomDef && (
+              <button
+                type="button"
+                data-testid="terminal-theme-delete"
+                onClick={() => removeTerminalTheme(selectedCustomDef.id)}
+              >
+                {t("common.delete")}
+              </button>
+            )}
+          </div>
+          {themeImportError && (
+            <p className="form-error" data-testid="terminal-theme-error">
+              {t("settings.terminalThemeImportFailed", { message: themeImportError })}
+            </p>
+          )}
+          {themeImportedCount != null && (
+            <p className="settings-hint" data-testid="terminal-theme-imported">
+              {t("settings.terminalThemeImported", { count: themeImportedCount })}
+            </p>
+          )}
         </section>
 
         <section aria-label={t("settings.sectionLanguage")}>

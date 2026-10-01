@@ -49,6 +49,7 @@ import {
   type ActionId,
 } from "./shortcuts/registry";
 import { ThemeProvider, useTheme, syncThemeFromVault, type ThemeMode } from "./theme/ThemeContext";
+import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { useVaultStore } from "./vault/store";
 import type { Host } from "./vault/api";
 import "./theme/tokens.css";
@@ -174,6 +175,9 @@ function HomeLayout() {
       // T17 F1（T16.5 转办）：主题真源对齐/迁移同样必须等 vault 就绪——
       // ThemeProvider 挂载期调用会被未 manage 的 State 拒绝而静默降级缓存。
       void syncThemeFromVault();
+      // B2 主题生态（Phase 2 Task 9）：终端配色选择/自定义清单同点对齐（真源
+      // vault settings `ui.terminalTheme`；缓存镜像先行防闪烁，此处到达后覆盖）。
+      void useTerminalThemeStore.getState().syncFromVault();
       try {
         await useVaultStore.getState().refresh();
       } catch {

@@ -34,7 +34,16 @@
     "closeToTray": "Hide to tray on close",
     "closeToTrayHint": "Ottr stays in the system tray after closing; quit from the tray.",
     "shellIntegration": "Auto shell integration",
-    "shellIntegrationHint": "Detects the remote shell on connect and injects OSC 133/OSC 7 markers that power history search and failure diagnosis; remotes with existing integration are skipped."
+    "shellIntegrationHint": "Detects the remote shell on connect and injects OSC 133/OSC 7 markers that power history search and failure diagnosis; remotes with existing integration are skipped.",
+    "terminalTheme": "Terminal colors",
+    "terminalThemeAuto": "Follow interface",
+    "terminalThemeGallery": "Built-in themes",
+    "terminalThemeCustom": "Imported",
+    "terminalThemeLightTag": "light",
+    "terminalThemeHint": "Terminal colors are independent of the interface light/dark mode. Import iTerm2 (.itermcolors) or Windows Terminal scheme (.json) files.",
+    "terminalThemeImport": "Import color scheme…",
+    "terminalThemeImported": "Imported {{count}} scheme(s); the first is selected.",
+    "terminalThemeImportFailed": "Import failed: {{message}}"
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -76,7 +85,9 @@
     "protocol": "Protocol",
     "protocol_ssh": "SSH",
     "protocol_ftp": "FTP",
-    "protocol_ftps": "FTPS"
+    "protocol_ftps": "FTPS",
+    "production": "Production host",
+    "productionHint": "Marks the terminal border red and the tab with a PROD badge; dangerous input gets an inline reminder."
   },
   "hostTree": {
     "searchPlaceholder": "Search hosts (name/notes)…",
@@ -106,7 +117,16 @@
     "skippedWildcards": "Skipped {{count}} wildcard/exclude patterns",
     "skippedDuplicates": "Skipped {{count}} duplicate hosts",
     "errors": "Parse errors ({{count}})",
-    "noErrors": "No parse errors"
+    "noErrors": "No parse errors",
+    "source": "Source",
+    "sourceSsh": "~/.ssh/config",
+    "sourceXshell": "Xshell sessions folder",
+    "sourceTabby": "Tabby config (JSON)",
+    "pickFile": "Choose file…",
+    "pickFolder": "Choose folder…",
+    "skippedEntries": "Skipped {{count}} unusable entries/files",
+    "xshellIntro": "Pick a folder of Xshell .xsh session files (or a single .xsh). Host/port/user are imported; duplicates by address+port+user are skipped.",
+    "tabbyIntro": "Pick a Tabby config JSON export. SSH profiles are imported; duplicates by address+port+user are skipped."
   },
   "palette": {
     "title": "Command Palette",
@@ -277,7 +297,11 @@
     "trzszDropInsert": "Insert paths",
     "trzszUploadFailed": "trzsz upload failed: {{message}}",
     "trzszUploadNoStart": "Remote did not start trzsz (is trzsz installed on the server?)",
-    "trzszDropAria": "Dropped files action dialog"
+    "trzszDropAria": "Dropped files action dialog",
+    "prodBadgeAria": "Production host",
+    "dangerInputTitle": "Careful",
+    "dangerInputHint": "This input hits a danger rule: {{rule}} ({{excerpt}})",
+    "dangerInputDismiss": "Dismiss danger reminder"
   },
   "ai": {
     "title": "AI Assistant",
@@ -392,7 +416,8 @@
   },
   "tabs": {
     "list": "Session tabs",
-    "closeAria": "Close tab {{name}}"
+    "closeAria": "Close tab {{name}}",
+    "prodBadge": "PROD"
   },
   "files": {
     "viewSwitch": "Main view",

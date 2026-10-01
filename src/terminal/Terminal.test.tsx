@@ -57,6 +57,8 @@ beforeEach(() => {
 import i18n from "../i18n";
 import { ThemeProvider } from "../theme/ThemeContext";
 import { terminalThemes } from "../theme/terminal-themes";
+import { findGalleryTheme } from "../theme/gallery";
+import { resetTerminalThemeStoreForTest, useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { applyTermTheme, ContextMenuView, PasteConfirmDialog, SessionTerminal, TerminalArea } from "./Terminal";
 import { buildContextMenu, loadTerminalSettings, saveTerminalSettings } from "./ContextMenu";
 import { completionHistory } from "../history/cache";
@@ -97,6 +99,7 @@ const tStub = i18nT as unknown as Parameters<typeof buildContextMenu>[1];
 
 afterEach(() => {
   cleanup();
+  resetTerminalThemeStoreForTest();
   useSessionStore.setState({ sessions: [], activeId: null, trees: {}, activePane: {}, searchSessionId: null });
   localStorage.clear();
   saveTerminalSettings({ copyOnSelect: false, completionEnabled: true });
@@ -339,6 +342,36 @@ describe("主题实时跟随（system 模式 OS 明暗切换 → xterm theme）"
       }
     });
     expect(term.options.theme).toBe(terminalThemes.dark); // 实时换套
+  });
+});
+
+describe("终端配色选择（Phase 2 Task 9，B2 主题生态）", () => {
+  it("选内置画廊套：与界面亮暗解耦，store selection 变化即时换套", async () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-gal" })],
+      activeId: "tab-gal",
+      trees: { "tab-gal": { kind: "leaf", id: "tab-gal" } },
+      activePane: { "tab-gal": "tab-gal" },
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-gal" />
+      </ThemeProvider>,
+    );
+    const terms = capturedTerms();
+    const term = terms[terms.length - 1]!;
+    expect(term.options.theme).toBe(terminalThemes.light); // auto 初值跟随界面（亮）
+
+    await act(async () => {
+      useTerminalThemeStore.getState().select("dracula");
+    });
+    const dracula = findGalleryTheme("dracula")!.theme;
+    expect(term.options.theme).toBe(dracula);
+
+    await act(async () => {
+      useTerminalThemeStore.getState().select("auto");
+    });
+    expect(term.options.theme).toBe(terminalThemes.light); // 回 auto 恢复跟随
   });
 });
 

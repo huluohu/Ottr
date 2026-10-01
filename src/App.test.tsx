@@ -12,6 +12,8 @@ vi.mock("./session/events", () => ({ initSessionEvents: vi.fn(async () => {}) })
 vi.mock("./files/events", () => ({ initTransferEvents: vi.fn(async () => {}) }));
 // Phase 3 Task 1（I-1 转办）：监控采样事件接线同上（jsdom 无 Tauri runtime）
 vi.mock("./monitor/events", () => ({ initMonitorEvents: vi.fn(async () => {}) }));
+// Phase 3 Task 4（B6）：批量结果事件接线同上（jsdom 无 Tauri runtime）
+vi.mock("./batch/events", () => ({ initBatchEvents: vi.fn(async () => {}) }));
 // Task 12 通知管线同上：只 stub initNotifyEvents，其余保留真实现。
 vi.mock("./notify/core", async (importOriginal) => {
   const mod = await importOriginal<typeof import("./notify/core")>();

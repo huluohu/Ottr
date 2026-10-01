@@ -41,6 +41,8 @@ import { initMonitorEvents } from "./monitor/events";
 import { MonitorSidebar } from "./monitor/MonitorSidebar";
 import { OverviewPage } from "./monitor/OverviewPage";
 import { ProcessBrowser } from "./monitor/ProcessBrowser";
+import { initBatchEvents } from "./batch/events";
+import { BatchPanel } from "./batch/BatchPanel";
 import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
@@ -154,6 +156,8 @@ function HomeLayout() {
   // （主区视图切换第三视图：终端 | 文件 | 进程，FilePanel 同款挂点）。
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [procsOpen, setProcsOpen] = useState(false);
+  // Phase 3 Task 4（B6）：批量执行（顶栏入口对话框——OverviewPage 同款布局语言）。
+  const [batchOpen, setBatchOpen] = useState(false);
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -205,6 +209,8 @@ function HomeLayout() {
       await initNotifyEvents();
       // Phase 3 Task 1（B4 上半）：监控采样事件接线（ottr://monitor → store）。
       await initMonitorEvents();
+      // Phase 3 Task 4（B6）：批量结果事件接线（ottr://batch-result → store）。
+      await initBatchEvents();
       // Phase 3 Task 3（B5）：告警规则引擎接线（订阅 ottr://monitor 评估 +
       // 进程快照轮询）+ 外部渠道挂载（notify_channels → core.channels）。
       // 都在事件源之后挂（晚挂只漏启动窗口期采样）；挂载失败各自静默降级。
@@ -426,6 +432,14 @@ function HomeLayout() {
         >
           {t("overview.title")}
         </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-batch"
+          aria-label={t("batch.title")}
+          onClick={() => setBatchOpen(true)}
+        >
+          {t("batch.title")}
+        </button>
         <div className="topbar-spacer" />
         <NotificationCenter />
         <ThemeSwitch />
@@ -576,6 +590,9 @@ function HomeLayout() {
           openProcessesView();
         }}
       />
+      {/* Phase 3 Task 4（B6）：批量执行（多选主机 + snippet 变量 + 并发池 +
+          差异高亮结果表；顶栏入口）。 */}
+      <BatchPanel open={batchOpen} onClose={() => setBatchOpen(false)} />
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}

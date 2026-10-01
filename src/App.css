@@ -2695,3 +2695,216 @@ button[data-active="true"] {
   opacity: 0.75;
   padding: 0 4px;
 }
+
+/* 批量执行面板（Phase 3 Task 4，B6）：顶栏入口对话框（OverviewPage 同款
+   overlay/dialog 语言），左列 = HostTree 多选主机、右列 = 命令/变量/参数；
+   结果表 = 状态档色 + 少数派行高亮（令牌色随主题）。 */
+.batch-panel {
+  width: min(1080px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+}
+.batch-cols {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.batch-col-hosts {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.batch-col-hosts h3,
+.batch-vars-wrap h3,
+.batch-results h3 {
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+.batch-hint {
+  font-size: 12px;
+  opacity: 0.75;
+  margin: 8px 0 0;
+}
+.batch-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.batch-form-row label {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.batch-form-row textarea,
+.batch-form-row select {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+/* 多选勾选面：checkbox 视觉（HostTree 行点击即切换） */
+.tree-host[data-checked] .host-row {
+  grid-column: 1 / -1;
+}
+.host-check {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1.5px solid var(--color-border, rgba(128, 128, 128, 0.5));
+  border-radius: 4px;
+  display: inline-block;
+}
+.tree-host[data-checked="true"] .host-check {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.batch-vars {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.batch-vars th,
+.batch-vars td {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  padding: 4px 6px;
+  text-align: left;
+}
+.batch-vars input {
+  width: 100%;
+  min-width: 90px;
+}
+.batch-nc {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--color-warning);
+}
+.batch-params {
+  display: flex;
+  gap: 16px;
+  margin: 8px 0;
+  font-size: 12.5px;
+}
+.batch-params label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.batch-params input {
+  width: 72px;
+}
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.batch-finding {
+  font-size: 11.5px;
+  color: var(--color-warning);
+}
+.batch-exec.armed {
+  color: var(--color-on-danger);
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.batch-progress,
+.batch-summary {
+  font-size: 12.5px;
+  margin: 8px 0 0;
+}
+.batch-results {
+  margin-top: 14px;
+}
+.batch-diff-head {
+  font-size: 12.5px;
+  margin: 4px 0;
+  color: var(--color-success);
+}
+.batch-group summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--color-success);
+}
+.batch-group-output {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  background: var(--color-surface);
+  border-radius: 6px;
+  padding: 8px;
+  overflow: auto;
+  max-height: 200px;
+  white-space: pre-wrap;
+}
+.batch-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.batch-results-table th,
+.batch-results-table td {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+.batch-results-table tr[data-differs="true"] td {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+.batch-status {
+  font-weight: 600;
+}
+.batch-status-ok {
+  color: var(--color-success);
+}
+.batch-status-failed {
+  color: var(--color-danger);
+}
+.batch-status-timeout {
+  color: var(--color-warning);
+}
+.batch-status-canceled {
+  opacity: 0.6;
+}
+.batch-outlier {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--color-warning);
+}
+.batch-err {
+  display: block;
+  font-size: 11px;
+  color: var(--color-danger);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-output summary {
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+.batch-output pre {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  background: var(--color-surface);
+  border-radius: 6px;
+  padding: 8px;
+  overflow: auto;
+  max-height: 220px;
+  white-space: pre-wrap;
+  margin: 4px 0 0;
+}
+/* 差异行级标注（少数派输出中「多数派行集合没有」的行） */
+.batch-diff-line {
+  display: inline;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.batch-truncated {
+  opacity: 0.65;
+  font-size: 11px;
+}
+.batch-stderr {
+  color: var(--color-warning);
+}

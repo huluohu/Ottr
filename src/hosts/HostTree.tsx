@@ -16,11 +16,26 @@ export interface HostTreeProps {
   onEdit: (host: Host) => void;
   onAdd: (groupId: number | null) => void;
   onImport: () => void;
+  /** 多选模式（Phase 3 Task 4，B6 批量执行）：行点击 = 切换勾选；双击打开/
+      编辑/删除/主机管理工具栏全部让位（批量选择面不混管理动作）。 */
+  multiSelect?: boolean;
+  selectedIds?: ReadonlySet<number>;
+  onToggle?: (host: Host) => void;
 }
 
 const SEARCH_DEBOUNCE_MS = 200;
 
-export function HostTree({ selectedId, onSelect, onOpen, onEdit, onAdd, onImport }: HostTreeProps) {
+export function HostTree({
+  selectedId,
+  onSelect,
+  onOpen,
+  onEdit,
+  onAdd,
+  onImport,
+  multiSelect = false,
+  selectedIds,
+  onToggle,
+}: HostTreeProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const hostGroups = useVaultStore((s) => s.hostGroups);
@@ -131,20 +146,23 @@ export function HostTree({ selectedId, onSelect, onOpen, onEdit, onAdd, onImport
         onChange={(e) => setQuery(e.currentTarget.value)}
       />
 
-      <div className="tree-toolbar">
-        <button className="btn-accent" data-testid="add-host" onClick={() => onAdd(null)}>
-          {t("hostTree.addHost")}
-        </button>
-        <button data-testid="add-group" onClick={() => setGrouping((v) => !v)}>
-          {t("hostTree.addGroup")}
-        </button>
-        <button data-testid="import-ssh-config" onClick={onImport}>
-          {t("hostTree.importSshConfig")}
-        </button>
-        <button data-testid="export-csv" onClick={() => void runExport()}>
-          {t("hostTree.exportCsv")}
-        </button>
-      </div>
+      {/* 多选模式（批量执行选择面）：主机管理工具栏让位 */}
+      {!multiSelect && (
+        <div className="tree-toolbar">
+          <button className="btn-accent" data-testid="add-host" onClick={() => onAdd(null)}>
+            {t("hostTree.addHost")}
+          </button>
+          <button data-testid="add-group" onClick={() => setGrouping((v) => !v)}>
+            {t("hostTree.addGroup")}
+          </button>
+          <button data-testid="import-ssh-config" onClick={onImport}>
+            {t("hostTree.importSshConfig")}
+          </button>
+          <button data-testid="export-csv" onClick={() => void runExport()}>
+            {t("hostTree.exportCsv")}
+          </button>
+        </div>
+      )}
 
       {grouping && (
         <div className="tree-new-group">
@@ -198,6 +216,9 @@ export function HostTree({ selectedId, onSelect, onOpen, onEdit, onAdd, onImport
               deletingId={deletingId}
               setDeletingId={setDeletingId}
               onDelete={handleDelete}
+              multiSelect={multiSelect}
+              selectedIds={selectedIds}
+              onToggle={onToggle}
             />
           </section>
         );
@@ -218,6 +239,9 @@ export function HostTree({ selectedId, onSelect, onOpen, onEdit, onAdd, onImport
               deletingId={deletingId}
               setDeletingId={setDeletingId}
               onDelete={handleDelete}
+              multiSelect={multiSelect}
+              selectedIds={selectedIds}
+              onToggle={onToggle}
             />
           </section>
         );
@@ -237,6 +261,9 @@ interface HostItemsProps {
   deletingId: number | null;
   setDeletingId: (id: number | null) => void;
   onDelete: (id: number) => void;
+  multiSelect?: boolean;
+  selectedIds?: ReadonlySet<number>;
+  onToggle?: (host: Host) => void;
 }
 
 function HostItems({
@@ -248,6 +275,9 @@ function HostItems({
   deletingId,
   setDeletingId,
   onDelete,
+  multiSelect = false,
+  selectedIds,
+  onToggle,
 }: HostItemsProps) {
   const { t } = useTranslation();
   return (
@@ -258,6 +288,32 @@ function HostItems({
           address: host.address,
           port: host.port,
         });
+        // 多选模式（批量执行选择面）：行点击 = 切换勾选；管理动作让位
+        if (multiSelect) {
+          const checked = selectedIds?.has(host.id) ?? false;
+          return (
+            <li key={host.id} className="tree-host" data-checked={checked}>
+              <button
+                className="host-row"
+                data-testid={`batch-host-${host.id}`}
+                role="checkbox"
+                aria-checked={checked}
+                onClick={() => onToggle?.(host)}
+              >
+                <span className="host-check" aria-hidden="true" />
+                <span className="host-name">{host.name}</span>
+                <span className="host-subtitle">{subtitle}</span>
+              </button>
+              <span className="host-tags">
+                {host.tags.map((tag) => (
+                  <span key={tag} className="host-tag">
+                    {tag}
+                  </span>
+                ))}
+              </span>
+            </li>
+          );
+        }
         return (
           <li key={host.id} className="tree-host" data-selected={selectedId === host.id}>
             <button

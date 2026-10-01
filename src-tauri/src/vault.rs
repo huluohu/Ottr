@@ -30,11 +30,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
-    CredentialInput, CredentialPatch, Credentials, History, HistoryEntry, HistoryInput, Host,
-    HostGroups, HostInput, Hosts, KeyMode, KnownHosts, Notification, NotificationInput,
-    Notifications, SecretField, Secrets, SessionSummaries, Settings, SnippetInput, Snippets,
-    SummaryEntry, SummaryInput, Vault, VaultError, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT,
-    SUMMARIES_LIST_LIMIT,
+    AlertRule, AlertRuleInput, AlertRules, CredentialInput, CredentialPatch, Credentials, History,
+    HistoryEntry, HistoryInput, Host, HostGroups, HostInput, Hosts, KeyMode, KnownHosts,
+    Notification, NotificationInput, Notifications, NotifyChannel, NotifyChannelInput,
+    NotifyChannelPatch, NotifyChannels, SecretField, Secrets, SessionSummaries, Settings,
+    SnippetInput, Snippets, SummaryEntry, SummaryInput, Vault, VaultError, HISTORY_SEARCH_LIMIT,
+    HISTORY_SESSION_LIMIT, SUMMARIES_LIST_LIMIT,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -726,6 +727,90 @@ fn csv_field(v: &str) -> String {
     } else {
         v.to_string()
     }
+}
+
+// --- alert_rules（Phase 3 Task 3，B5 告警规则——存储侧命令面）------------------
+// 明文面（无 *_enc 列，见 0013 迁移文件头）：**过 ensure_unlocked 门卫**（配置
+// 面与 hosts 同一锁定语义）。规则评估引擎在前端 src/notify/rules.ts（数据源 =
+// ottr://monitor 事件流 + monitor_ps），Rust 只供表 + mark_fired 水位回写。
+
+#[tauri::command]
+pub fn ar_list(state: State<'_, VaultState>) -> CmdResult<Vec<AlertRule>> {
+    ensure_unlocked(&state.0)?;
+    cmd(AlertRules::list(&state.0))
+}
+
+#[tauri::command]
+pub fn ar_create(state: State<'_, VaultState>, input: AlertRuleInput) -> CmdResult<AlertRule> {
+    ensure_unlocked(&state.0)?;
+    cmd(AlertRules::create(&state.0, &input))
+}
+
+#[tauri::command]
+pub fn ar_update(
+    state: State<'_, VaultState>,
+    id: i64,
+    input: AlertRuleInput,
+) -> CmdResult<AlertRule> {
+    ensure_unlocked(&state.0)?;
+    cmd(AlertRules::update(&state.0, id, &input))
+}
+
+#[tauri::command]
+pub fn ar_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
+    ensure_unlocked(&state.0)?;
+    cmd(AlertRules::delete(&state.0, id))
+}
+
+/// 触发水位回写（引擎放行一条告警时调用；规则刚被删 → NotFound 显式浮出）。
+#[tauri::command]
+pub fn ar_touch_fired(state: State<'_, VaultState>, id: i64, ts: i64) -> CmdResult<()> {
+    ensure_unlocked(&state.0)?;
+    cmd(AlertRules::mark_fired(&state.0, id, ts))
+}
+
+// --- notify_channels（Phase 3 Task 3，B5 渠道全矩阵——存储侧命令面）------------
+// 密文面（config_enc 已登记 scan_registry）：**过 ensure_unlocked 门卫**，与
+// secrets/summaries 同一锁定语义。列表不携带密钥材料（serde 面 NotifyChannel
+// 无 config 字段）；明文 config 只经 nc_reveal_config 单点出库（设置页「发送
+// 测试」与管线挂载时取一次）；发信面在 commands/notify.rs（SMTP）与前端
+// fetch 适配器（其余 11 渠道）。
+
+#[tauri::command]
+pub fn nc_list(state: State<'_, VaultState>) -> CmdResult<Vec<NotifyChannel>> {
+    ensure_unlocked(&state.0)?;
+    cmd(NotifyChannels::list(&state.0))
+}
+
+#[tauri::command]
+pub fn nc_create(
+    state: State<'_, VaultState>,
+    input: NotifyChannelInput,
+) -> CmdResult<NotifyChannel> {
+    ensure_unlocked(&state.0)?;
+    cmd(NotifyChannels::create(&state.0, &input))
+}
+
+#[tauri::command]
+pub fn nc_update(
+    state: State<'_, VaultState>,
+    id: i64,
+    patch: NotifyChannelPatch,
+) -> CmdResult<NotifyChannel> {
+    ensure_unlocked(&state.0)?;
+    cmd(NotifyChannels::update(&state.0, id, &patch))
+}
+
+#[tauri::command]
+pub fn nc_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
+    ensure_unlocked(&state.0)?;
+    cmd(NotifyChannels::delete(&state.0, id))
+}
+
+#[tauri::command]
+pub fn nc_reveal_config(state: State<'_, VaultState>, id: i64) -> CmdResult<serde_json::Value> {
+    ensure_unlocked(&state.0)?;
+    cmd(NotifyChannels::reveal_config(&state.0, id))
 }
 
 #[cfg(test)]

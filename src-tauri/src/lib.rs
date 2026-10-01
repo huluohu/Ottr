@@ -195,6 +195,19 @@ pub fn run() {
             // 进程浏览器（Phase 3 Task 2，B4 下半）：ps 只读采集 + kill（防注入）
             commands::monitor::monitor_ps,
             commands::monitor::monitor_kill,
+            // 告警规则 + 通知渠道（Phase 3 Task 3，B5；vault 配置面，锁定即拒）
+            vault::ar_list,
+            vault::ar_create,
+            vault::ar_update,
+            vault::ar_delete,
+            vault::ar_touch_fired,
+            vault::nc_list,
+            vault::nc_create,
+            vault::nc_update,
+            vault::nc_delete,
+            vault::nc_reveal_config,
+            // SMTP 渠道发送（Phase 3 Task 3，B5；commands/notify.rs，lettre）
+            commands::notify::smtp_send,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

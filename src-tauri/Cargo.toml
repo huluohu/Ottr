@@ -34,6 +34,18 @@ ottr-vault = { path = "../crates/ottr-vault" }
 ottr-monitor = { path = "../crates/ottr-monitor" }
 # Phase 2 Task 1：CancellationToken（ForwardManager 运行实例取消树）。
 tokio-util = { version = "0.7", default-features = false }
+# B5（Phase 3 Task 3）：SMTP 通知渠道——lettre 异步发送（tokio1 运行时对齐
+# tauri::async_runtime）。TLS 走 native-tls（macOS Security.framework / Windows
+# schannel / Linux openssl），与 ottr-transfer 的 FTPS 栈（async-native-tls）
+# 同源，不引入第二套 TLS。spec §7 裁定「SMTP 走 Rust 侧 lettre 更稳（二选一
+# spike 定）」——TS 侧无 Node 运行时（nodemailer 不可用），webview 也无裸
+# TCP socket，故 Rust 命令面是唯一可行实现。
+lettre = { version = "0.11", default-features = false, features = [
+    "smtp-transport",
+    "builder",
+    "tokio1",
+    "tokio1-native-tls",
+] }
 # forward 命令域（Phase 2 Task 1）经 ottr-ssh 间接消费 net 面；本 crate 自身
 # commands/* 不直接摸 TCP，net 留给 ottr-ssh。
 tokio = { version = "1", features = ["io-util", "sync", "time"] }

@@ -4,6 +4,7 @@
 //! AES-256-GCM 密封（随机 nonce + AAD 绑定实体，防换绑）→ SQLite WAL 单文件
 //! 落盘（FTS5 检索，见 migrations/）。
 
+pub mod alert_rules;
 pub mod crypto;
 pub mod entities;
 pub mod forwards;
@@ -11,6 +12,7 @@ pub mod history;
 pub mod jump_chains;
 pub mod master_key;
 pub mod notifications;
+pub mod notify_channels;
 pub mod secrets;
 pub mod settings;
 pub mod store;
@@ -30,6 +32,11 @@ pub use history::{
 pub use jump_chains::{JumpChain, JumpChainInput, JumpChains};
 pub use master_key::MasterKey;
 pub use notifications::{Notification, NotificationInput, Notifications};
+pub use notify_channels::{
+    NotifyChannel, NotifyChannelInput, NotifyChannelPatch, NotifyChannels, CHANNEL_KINDS,
+};
+// 告警规则（Phase 3 Task 3，B5；评估引擎在 TS 侧，本 crate 只供表）
+pub use alert_rules::{AlertRule, AlertRuleInput, AlertRules, RULE_KINDS};
 pub use secrets::Secrets;
 pub use settings::Settings;
 pub use store::{KeyMode, Vault};

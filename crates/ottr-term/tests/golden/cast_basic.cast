@@ -1,0 +1,5 @@
+{"version": 2, "width": 80, "height": 24, "timestamp": 1760000000, "env": {"SHELL": "ottr", "TERM": "xterm-256color"}}
+[0.000000,"o","spike@ottr:~$ "]
+[0.512000,"o","echo hello"]
+[0.844500,"o","\r\nhello\r\n"]
+[1.250000,"o","spike@ottr:~$ "]

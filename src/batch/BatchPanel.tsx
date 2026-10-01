@@ -14,7 +14,7 @@
 // * 会话面（R-1 裁定）：已连标签会话复用（host → 活动标签根会话 rustId，
 //   rootRustIdByHost 复用 OverviewPage 纯函数）；未连主机仍下发（session_id
 //   空串）→ Rust resolve 失败 → per-host failed 结果「未连接」，表格如实呈现。
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { HostTree } from "../hosts/HostTree";
 import { rootRustIdByHost } from "../monitor/OverviewPage";
@@ -47,19 +47,24 @@ function firstLine(output: string): string {
   return line.length > 60 ? `${line.slice(0, 60)}…` : line;
 }
 
-/** 差异行渲染（少数派行级标注；非差异行不包 span）。 */
+/** 差异行渲染（少数派行级标注；非差异行不包 span）。行间补 "\n" 文本节点：
+ * `<pre>` 的 white-space 语义靠文本节点换行，相邻 span 无分隔会粘成一行
+ * （Fix round 1 I-2）——textContent 亦因此保留换行（复制/断言两面）。 */
 function DiffOutput({ lines }: { lines: DiffLine[] }) {
   return (
     <>
-      {lines.map((l, i) =>
-        l.differs ? (
-          <span key={i} className="batch-diff-line" data-testid="batch-diff-line">
-            {l.text}
-          </span>
-        ) : (
-          <span key={i}>{l.text}</span>
-        ),
-      )}
+      {lines.map((l, i) => (
+        <Fragment key={i}>
+          {l.differs ? (
+            <span className="batch-diff-line" data-testid="batch-diff-line">
+              {l.text}
+            </span>
+          ) : (
+            <span>{l.text}</span>
+          )}
+          {i < lines.length - 1 ? "\n" : null}
+        </Fragment>
+      ))}
     </>
   );
 }
@@ -135,10 +140,13 @@ export function BatchPanel({ open, onClose }: BatchPanelProps) {
     return { level, findings: [...findings.values()] };
   }, [commands]);
 
-  // 命令/选择变了 → 确认状态机复位（批次是高危动作，不沿用上一次的授权）
+  // 命令/选择/变量变了 → 确认状态机复位（批次是高危动作，不沿用上一次的授权）。
+  // 以重算后的 commands 为键（Fix round 1 I-1）：body/selectedIds/varValues 任一
+  // 变化都会产出新 Map——armed 后只改变量（`rm -rf {{p}}` 的 p → /）也必须重走
+  // 确认，否则一击即以单次确认执行新命令串。
   useEffect(() => {
     setStage("idle");
-  }, [body, selectedIds]);
+  }, [commands]);
 
   const running = batchId !== null && results.length < total;
 

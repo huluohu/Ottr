@@ -202,6 +202,28 @@ describe("BatchPanel", () => {
     expect(screen.getByTestId("batch-execute").dataset.stage).toBe("idle");
   });
 
+  it("Fix round 1 I-1：armed 态改变量 → 确认复位，需重新二击", () => {
+    render(<BatchPanel open onClose={() => {}} />);
+    selectHost(1);
+    fireEvent.change(screen.getByTestId("batch-body"), { target: { value: "rm -rf {{p}}" } });
+    fireEvent.change(screen.getByTestId("batch-var-1-p"), { target: { value: "/tmp/x" } });
+    const btn = screen.getByTestId("batch-execute");
+    fireEvent.click(btn);
+    expect(btn.dataset.stage).toBe("armed");
+    expect(execCalls()).toHaveLength(0);
+    // armed 后只改变量（/tmp/x → /）也必须重走确认——否则一击即执行新命令串
+    fireEvent.change(screen.getByTestId("batch-var-1-p"), { target: { value: "/" } });
+    expect(btn.dataset.stage).toBe("idle");
+    fireEvent.click(btn);
+    expect(btn.dataset.stage).toBe("armed");
+    expect(execCalls()).toHaveLength(0);
+    fireEvent.click(btn);
+    expect(execCalls()).toHaveLength(1);
+    // 执行的是改后的命令串
+    const calls = execCalls();
+    expect((calls[0].targets as { command: string }[])[0].command).toBe("rm -rf /");
+  });
+
   it("结果表：状态档 + 退出码 + 少数派 data-differs 高亮与行级标注", () => {
     act(() => {
       useBatchStore.setState({
@@ -248,6 +270,9 @@ describe("BatchPanel", () => {
     expect(screen.getAllByTestId("batch-diff-line").map((el) => el.textContent)).toEqual([
       "user=spike",
     ]);
+    // Fix round 1 I-2：行间补 "\n" 文本节点——多行输出不粘行，textContent 保留换行
+    const pre = row.querySelector("pre");
+    expect(pre!.textContent).toBe("user=spike\nhome=/root");
   });
 
   it("输出全同的机器折叠为一组（batch-group 摘要）", () => {

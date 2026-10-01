@@ -196,13 +196,24 @@ export function HistorySearch({
               {t("history.tabRecordings")}
             </button>
           </div>
-          {tab === "history" && (
+          {/* 查询框三页签共用（fix round 1/5 I-1）：历史/录制都走 FTS 检索
+              （Rust 层分派，RecordingPanel 消费同一 debouncedQuery）；纪要页签
+              是列表面无检索语义，保持隐藏（既有测试口径）。 */}
+          {tab !== "summaries" && (
             <input
               ref={inputRef}
               className="palette-input"
               value={query}
-              placeholder={t("history.placeholder")}
-              aria-label={t("history.title")}
+              placeholder={
+                tab === "recordings"
+                  ? t("recording.searchPlaceholder")
+                  : t("history.placeholder")
+              }
+              aria-label={
+                tab === "recordings"
+                  ? t("recording.searchPlaceholder")
+                  : t("history.title")
+              }
               data-testid="history-input"
               onChange={(e) => {
                 setQuery(e.currentTarget.value);

@@ -167,17 +167,19 @@ async fn recording_full_chain_fixture() {
         }
         Ok(())
     });
-    let counters = SessionCounters::default();
+    // counters 进 Arc（fix round 1/5 M-6：循环退出后读数做 tee 字节账比对）。
+    let counters = Arc::new(SessionCounters::default());
     let decoder = Mutex::new(StreamDecoder::new(Encoding::Utf8));
     let text_tail = TextTail::new();
     let cancel = Arc::new(tokio::sync::Notify::new());
     let cancel_loop = Arc::clone(&cancel);
     let loop_recorder = Arc::clone(&recorder);
+    let loop_counters = Arc::clone(&counters);
     let loop_task = tokio::spawn(async move {
         forward_pty_loop(
             &mut channel,
             &chan,
-            &counters,
+            &loop_counters,
             &decoder,
             &text_tail,
             &loop_recorder,
@@ -269,6 +271,20 @@ async fn recording_full_chain_fixture() {
             "前端面缺 {marker:?}——tee 侵占转发"
         );
     }
+    // 字节账比对（fix round 1/5 M-6）：转发言账一致（forwarded_bytes == 实收
+    // 捕获通道字节），且 tee 面与转发面同源同量（录制事件数据总字节 ==
+    // forwarded_bytes——录制覆盖全程，tee 无丢批时两者必须严格相等）。
+    let stats = ottr_lib::snapshot(&counters);
+    assert_eq!(
+        stats.forwarded_bytes as usize,
+        captured.lock().unwrap().len(),
+        "转发言账失衡——字节在计数与 IPC 通道之间丢失"
+    );
+    let recorded_total: usize = rec.events.iter().map(|e| e.data.len()).sum();
+    assert_eq!(
+        recorded_total, stats.forwarded_bytes as usize,
+        "tee 面与转发面不同量——tee 侵占或丢批"
+    );
 
     // --- 断言 4：入库行 + FTS 搜到（ASCII / 数字 / CJK 子串）----------------
     let rows = Recordings::list(&vault, Some(host_id), 10).expect("list");

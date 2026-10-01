@@ -35,7 +35,7 @@ pub use commands::session::{
     forward_pty_loop, inject_shell_integration, SessionCloseReason, ShellIntegrationOutcome,
 };
 pub(crate) use commands::state::AppState;
-pub use commands::state::{SessionCounters, TextTail};
+pub use commands::state::{snapshot, SessionCounters, SessionStats, TextTail};
 // Phase 3 Task 5（B3）：录制面公开给夹具集成测试（tests/recording_fixture.rs
 // 真容器全链：tee → auto-finalize → parse/FTS/export）与 example 直驱。
 pub use commands::recording::{

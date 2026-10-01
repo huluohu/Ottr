@@ -128,10 +128,16 @@ impl Recordings {
     /// 同款分派）：≥3 字符走 recordings_fts MATCH（短语引号包裹），超短
     /// （含空）LIKE 兜底；排序 id DESC。
     ///
-    /// 命中上下文（snippet）不用 FTS5 的 `snippet()` aux 函数——rusqlite
-    /// bundled SQLite 未注册它（实测 `wrong number of arguments`），改用纯
-    /// SQL 窗口：trigram 短语命中 ⇒ 子串必在，`instr` 定位首现、前后各开
-    /// ~40 字符共 120 字符窗口；未命中（空查询初始态）取开头 120 字符预览。
+    /// 命中上下文（snippet）：
+    /// * FTS 分支用 FTS5 `snippet()` aux 函数——6 参签名（fix round 1/5 I-2
+    ///   实测定序）：`snippet(table, column, start, end, ellipsis, tokens)`
+    ///   （列在前；首轮误按 `(table,start,end,ellipsis,column)` 调用才报
+    ///   "wrong number of arguments"）。`tokens=24`（trigram 一 token≈3 字符，
+    ///   ≈72 字符上下文）；**大小写不敏感**（trigram 缺省 case-folding——
+    ///   instr 窗口做不到的，这正是改回的理由）。
+    /// * LIKE 分支（超短查询/空查询）不能用 snippet()——aux 函数要求 MATCH
+    ///   上下文；退 instr 定位窗口（大小写敏感，但该分支只服务 <3 字符探针
+    ///   与「最近录制」预览态，非检索主路径）。
     pub fn search(
         vault: &Vault,
         query: &str,
@@ -139,12 +145,13 @@ impl Recordings {
         limit: usize,
     ) -> Result<Vec<RecordingHit>> {
         let q = query.trim();
-        let snip = "substr(recordings_fts.content,
+        let like_snip = "substr(recordings_fts.content,
                      max(1, ifnull(instr(recordings_fts.content, :raw), 0) - 40), 120) AS snip";
         let (match_val, sql): (String, &str) = if q.chars().count() >= 3 {
             (
                 match_query(q),
-                "SELECT r.*, {snip}
+                "SELECT r.*,
+                 snippet(recordings_fts, 0, '[', ']', '…', 24) AS snip
                  FROM recordings_fts JOIN recordings r ON r.id = recordings_fts.recording_id
                  WHERE recordings_fts MATCH :match
                    AND (:host IS NULL OR r.host_id = :host)
@@ -153,31 +160,49 @@ impl Recordings {
         } else {
             (
                 format!("%{}%", escape_like(q)),
-                "SELECT r.*, {snip}
+                "SELECT r.*, {like_snip}
                  FROM recordings_fts JOIN recordings r ON r.id = recordings_fts.recording_id
                  WHERE recordings_fts.content LIKE :match ESCAPE '\\'
                    AND (:host IS NULL OR r.host_id = :host)
                  ORDER BY r.id DESC LIMIT :limit",
             )
         };
-        let sql = sql.replace("{snip}", snip);
+        let sql = sql.replace("{like_snip}", like_snip);
         let limit_i64 = limit.max(1) as i64;
-        let args: [(&str, &dyn rusqlite::ToSql); 4] = [
-            (":match", &match_val),
-            (":host", &host_id),
-            (":limit", &limit_i64),
-            (":raw", &q),
-        ];
+        // 两分支参数面不同：FTS 分支的 snippet() 是列内函数，不吃 :raw
+        // （rusqlite 对「绑定但未使用」的具名参数报 InvalidParameterName），
+        // 故按分支装配——与 history.rs 的「单组参数」纪律在此分叉（参数面
+        // 真实不同，硬凑单组反而引入死参数）。
         let conn = vault.connection();
         let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt
-            .query_map(args.as_slice(), |row| {
+        let rows = if q.chars().count() >= 3 {
+            let args: [(&str, &dyn rusqlite::ToSql); 3] = [
+                (":match", &match_val),
+                (":host", &host_id),
+                (":limit", &limit_i64),
+            ];
+            stmt.query_map(args.as_slice(), |row| {
                 Ok(RecordingHit {
                     entry: row_to_entry(row)?,
                     snippet: row.get("snip")?,
                 })
             })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+            .collect::<rusqlite::Result<Vec<_>>>()?
+        } else {
+            let args: [(&str, &dyn rusqlite::ToSql); 4] = [
+                (":match", &match_val),
+                (":host", &host_id),
+                (":limit", &limit_i64),
+                (":raw", &q),
+            ];
+            stmt.query_map(args.as_slice(), |row| {
+                Ok(RecordingHit {
+                    entry: row_to_entry(row)?,
+                    snippet: row.get("snip")?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+        };
         Ok(rows)
     }
 

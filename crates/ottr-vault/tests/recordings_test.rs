@@ -90,12 +90,19 @@ fn search_hits_cjk_via_fts_with_snippet() {
         "snippet: {}",
         hits[0].snippet
     );
-    assert!(hits[0].snippet.chars().count() <= 120, "窗口 ≤120 字符");
+    // snippet() 高亮标记（fix round 1/5 I-2：6 参签名 `snippet(t, col, start,
+    // end, ellipsis, tokens)`，列在前）
+    assert!(
+        hits[0].snippet.contains("[部署完成]"),
+        "高亮标记: {}",
+        hits[0].snippet
+    );
 
     // ASCII ≥3 字符
     let hits = Recordings::search(&v, "docker logs", None, 50).unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].entry.id, hit_row.id);
+    assert!(hits[0].snippet.contains("[docker logs]"));
 
     // 空查询 = LIKE 全量（两行都回）
     assert_eq!(Recordings::search(&v, "", None, 50).unwrap().len(), 2);
@@ -176,4 +183,25 @@ fn empty_path_is_invalid_and_schema_is_15() {
         Err(ottr_vault::VaultError::InvalidInput(_))
     ));
     assert_eq!(v.schema_version().unwrap(), 15);
+}
+
+/// 大小写不敏感命中 + snippet 上下文（fix round 1/5 I-2 核心回归）：内容大写
+/// 'DOCKER'，小写查询命中（trigram 缺省 case-folding），片段带高亮标记与
+/// 命中词上下文（非「开头预览」退化）。
+#[test]
+fn snippet_is_case_insensitive_with_context() {
+    let v = vault();
+    let h = host(&v, "web-01");
+    let text =
+        "root@web:~$ SYSTEMCTL status DOCKER service\r\nthen some trailing context words here";
+    Recordings::insert(&v, &input(h, "/r/case.cast", 4.0, Some(text))).unwrap();
+
+    let hits = Recordings::search(&v, "docker", None, 50).unwrap();
+    assert_eq!(hits.len(), 1, "小写查询命中大写内容");
+    let snip = &hits[0].snippet;
+    assert!(snip.contains("[DOCKER]"), "高亮标记包裹原词: {snip}");
+    // 上下文保真：命中词两侧相邻词在片段里（tokens=24 trigram ≈ ±36 字符窗口，
+    // 窗口边界可能截断远端长词，断言相邻词不假设整词边界）
+    assert!(snip.contains("status"), "前文上下文: {snip}");
+    assert!(snip.contains("service"), "后文上下文: {snip}");
 }

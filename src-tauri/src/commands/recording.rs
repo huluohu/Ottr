@@ -65,9 +65,11 @@ pub struct RecordingHandle {
 
 impl RecordingHandle {
     /// 起一个录制：创建 0600 文件 + 写 v2 header + 起写盘线程。
+    /// （fix round 1/5 M-2：`File::create` 以 0666&!umask 落盘再 chmod 收紧，
+    /// 中间有宽权限窗口——改 `OpenOptions::mode(0o600)` 创建即按 0600 落盘，
+    /// 原子收紧；finalize 的 restrict_permissions 保留作非 unix/兜底面。）
     pub fn start(path: PathBuf, cols: u16, rows: u16, host_id: i64) -> std::io::Result<Self> {
-        let mut file = std::fs::File::create(&path)?;
-        restrict_permissions(&path);
+        let mut file = open_private_new(&path)?;
         writeln!(
             file,
             "{}",
@@ -182,6 +184,28 @@ fn worker_loop(
         duration,
         text: acc.text,
         error,
+    }
+}
+
+/// 新建 0600 录制文件（unix：创建即按 0600 落盘，无宽权限窗口；`create_new`
+/// 防碰撞误覆盖——文件名带毫秒+序号，撞名即报错安全侧）。非 unix：ACL 语义
+/// 不同，普通创建 + restrict_permissions 兜底（同 restrict_db_permissions 口径）。
+fn open_private_new(path: &Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
     }
 }
 
@@ -340,10 +364,21 @@ pub struct ExportEvent {
 
 /// 回放取数：读 .cast 文件（上限 [`READ_CAP`]）→ ottr-term 解析（v2 合法性
 /// 校验即在此）→ header/events/duration 全量给前端回放器。
+/// （fix round 1/5 M-3：先 `fs::metadata` 预检大小再读——`fs::read` 是读完后
+/// 才看长度，超限文件已整个进了内存，预检让上限真正防爆内存。TOCTOU 窗口
+/// （预检后文件变大）由解析端 UTF-8/大小共同兜底，属可接受余量。）
 pub fn read_recording(vault: &Vault, id: i64) -> Result<RecordingData, String> {
     let entry = Recordings::get(vault, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("recording id={id} not found"))?;
+    let size = std::fs::metadata(&entry.path)
+        .map_err(|e| format!("stat {}: {e}", entry.path))?
+        .len();
+    if size > READ_CAP {
+        return Err(format!(
+            "recording file too large ({size} bytes > {READ_CAP})"
+        ));
+    }
     let bytes = std::fs::read(&entry.path).map_err(|e| format!("read {}: {e}", entry.path))?;
     if bytes.len() as u64 > READ_CAP {
         return Err(format!(
@@ -409,7 +444,10 @@ pub fn export_recording(
 // Tauri 命令（薄封装：目录解析 + State 拆包）
 // ---------------------------------------------------------------------------
 
-/// 录制目录 = app 数据目录 recordings/ 子目录（简报裁定；0700 继承自父目录）。
+/// 录制目录 = app 数据目录 recordings/ 子目录（简报裁定）。目录权限跟随
+/// app 数据目录/umask，**不刻意收紧**（fix round 1/5 M-2 注释更正：原「0700
+/// 继承」表述失准——目录名不敏感、敏感面在文件内容，文件本体创建即 0600
+/// 原子收紧，见 `open_private_new`）。
 fn recordings_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     use tauri::Manager as _;
     app.path()

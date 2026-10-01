@@ -320,18 +320,20 @@ pub(crate) const LANG_PROBE_CMD: &str = "echo $LANG";
 pub(crate) const LANG_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(serde::Serialize)]
-pub(crate) struct SessionStats {
-    pty_read_bytes: u64,
-    forwarded_bytes: u64,
-    frames: u64,
-    input_bytes: u64,
-    writes: u64,
-    send_failed_frames: u64,
-    send_failed_bytes: u64,
-    failed: bool,
+pub struct SessionStats {
+    pub pty_read_bytes: u64,
+    pub forwarded_bytes: u64,
+    pub frames: u64,
+    pub input_bytes: u64,
+    pub writes: u64,
+    pub send_failed_frames: u64,
+    pub send_failed_bytes: u64,
+    pub failed: bool,
 }
 
-pub(crate) fn snapshot(counters: &SessionCounters) -> SessionStats {
+/// 计数器读数（`session_stats` 命令消费）。pub = 夹具集成测试直驱面
+/// （tests/recording_fixture.rs 的 tee 字节账比对；run_batch 同惯例）。
+pub fn snapshot(counters: &SessionCounters) -> SessionStats {
     SessionStats {
         pty_read_bytes: counters.pty_read_bytes.load(Ordering::Relaxed),
         forwarded_bytes: counters.forwarded_bytes.load(Ordering::Relaxed),

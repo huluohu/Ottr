@@ -141,8 +141,14 @@ export function RecordingPlayer({ data, onClose, savePath }: RecordingPlayerProp
           const { save } = await import("@tauri-apps/plugin-dialog");
           path = await save({ defaultPath: suggested });
         } catch {
-          path = null; // 非 Tauri 环境：Rust 侧落下载目录
+          path = null; // 非 Tauri 环境：无对话框即中止（安全侧）
         }
+      }
+      // fix round 1/5 M-3：save() 返回 null = 用户取消 → **中止导出**，绝不
+      // 落默认名（原文导出场景防「顺手确认」写出未脱敏文件到下载目录）。
+      if (path === null) {
+        setExportMsg(t("recording.exportCancelled"));
+        return;
       }
       const written = await invoke<string>("recording_export", {
         id: entry.id,

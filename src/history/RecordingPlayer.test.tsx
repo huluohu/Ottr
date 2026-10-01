@@ -211,6 +211,24 @@ describe("RecordingPlayer", () => {
     expect(rawEvents[2].data).toContain("hunter2");
   });
 
+  it("save 取消（null）即中止导出——不 invoke 不落默认名（fix round 1/5 M-3）", async () => {
+    renderPlayer({ savePath: async () => null });
+    await act(async () => {});
+    // 脱敏导出取消
+    fireEvent.click(screen.getByTestId("player-export-redacted"));
+    await waitFor(() => {
+      expect(screen.getByTestId("player-export-msg").textContent).toContain("已取消导出");
+    });
+    expect(mockedInvoke).not.toHaveBeenCalled();
+    // 原文导出：确认后取消同样中止（未脱敏文件绝不写出）
+    fireEvent.click(screen.getByTestId("player-export-raw"));
+    fireEvent.click(screen.getByTestId("player-export-raw"));
+    await waitFor(() => {
+      expect(screen.getByTestId("player-export-msg").textContent).toContain("已取消导出");
+    });
+    expect(mockedInvoke).not.toHaveBeenCalled();
+  });
+
   it("Esc 关闭回放", async () => {
     const { onClose } = renderPlayer();
     await act(async () => {});

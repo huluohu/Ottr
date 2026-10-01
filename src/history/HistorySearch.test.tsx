@@ -329,4 +329,58 @@ describe("HistorySearch 录制页签（Phase 3 Task 5，B3）", () => {
     await act(async () => {});
     expect(screen.getByTestId("recording-list").textContent).toContain("还没有录制");
   });
+
+  it("录制页签查询框（fix round 1/5 I-1）：键入防抖后带 query 走 recording_search 过滤", async () => {
+    vi.useFakeTimers();
+    const hit12 = {
+      id: 12,
+      host_id: 1,
+      path: "/data/recordings/rec-12.cast",
+      duration: 8,
+      text_index_path: "recordings_fts:12",
+      created_at: 1_760_000_100,
+      snippet: "root@web:~$ [部署完成]",
+    };
+    let searchQuery = "";
+    mockedInvoke.mockImplementation((cmd: string, args: { query: string }) => {
+      if (cmd === "recording_search") {
+        searchQuery = args.query;
+        return Promise.resolve(args.query === "部署" ? [hit12] : []);
+      }
+      return Promise.resolve([]);
+    });
+    renderPanel();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    fireEvent.click(screen.getByTestId("recording-tab"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_search", {
+      query: "",
+      hostId: null,
+      limit: 50,
+    });
+    // 录制页签有输入框且键入驱动检索（防抖 200ms）
+    const input = screen.getByTestId("history-input");
+    expect(input).toBeTruthy();
+    fireEvent.change(input, { target: { value: "部署" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(searchQuery).toBe("");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_search", {
+      query: "部署",
+      hostId: null,
+      limit: 50,
+    });
+    expect(searchQuery).toBe("部署");
+    const items = screen.getAllByTestId("recording-item");
+    expect(items).toHaveLength(1);
+    vi.useRealTimers();
+  });
 });

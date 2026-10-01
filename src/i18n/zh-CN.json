@@ -817,6 +817,9 @@
     "exportRedacted": "导出（脱敏）",
     "exportRaw": "导出原文…",
     "exportRawConfirm": "确认导出原文？（含敏感内容）",
-    "exportHint": "导出默认按脱敏规则替换 IP/密码/邮箱/主机名；原文导出需二次确认。"
+    "exportHint": "导出默认按脱敏规则替换 IP/密码/邮箱/主机名；原文导出需二次确认。",
+    "searchPlaceholder": "搜索录制内容…",
+    "searchAria": "搜索录制内容",
+    "exportCancelled": "已取消导出（未写出文件）"
   }
 }

@@ -10,6 +10,14 @@
 
 use std::collections::VecDeque;
 
+/// [`RingBuffer`] 直挂 [`crate::stripper::TextSink`]（Task 13：转发循环解码后的
+/// 文本经 Stripper 剥 ANSI 后直接入环——ottr-term 内部胶水，避免上层手写中转缓冲）。
+impl crate::stripper::TextSink for RingBuffer {
+    fn text(&mut self, s: &str) {
+        self.push(s.as_bytes());
+    }
+}
+
 /// 默认容量：10_000 行。
 pub const DEFAULT_CAPACITY: usize = 10_000;
 
@@ -88,6 +96,38 @@ impl RingBuffer {
                 out.push(b'\n');
             }
             out.extend_from_slice(line);
+        }
+        out
+    }
+
+    /// 最后 `limit` 字节的最近内容（Task 13 AI 诊断「输出尾部 8KB」的取数面，
+    /// 与 [`tail`] 的行数口径互补）：
+    /// * 按完整行对齐——最旧一侧放不下的行**整行让出**（绝不给半行开头）；
+    /// * 单行自身超限且尚无收成 → 取该行尾 `limit` 字节（保证有产出）；
+    /// * `limit` 为 0 → 空串。残行（pending）不计入，与 [`tail`] 同口径。
+    pub fn tail_bytes(&self, limit: usize) -> Vec<u8> {
+        if limit == 0 {
+            return Vec::new();
+        }
+        let mut parts: Vec<&[u8]> = Vec::new();
+        let mut total = 0usize; // 已收字节数（含行间分隔符）
+        for line in self.lines.iter().rev() {
+            let sep = usize::from(!parts.is_empty());
+            if total + sep + line.len() > limit {
+                if parts.is_empty() && line.len() > limit {
+                    return line[line.len() - limit..].to_vec();
+                }
+                break;
+            }
+            total += sep + line.len();
+            parts.push(line);
+        }
+        let mut out = Vec::with_capacity(total);
+        for (i, part) in parts.iter().rev().enumerate() {
+            if i > 0 {
+                out.push(b'\n');
+            }
+            out.extend_from_slice(part);
         }
         out
     }
@@ -172,5 +212,53 @@ mod tests {
     fn default_capacity_is_10k() {
         let ring = RingBuffer::new();
         assert_eq!(ring.capacity(), 10_000);
+    }
+
+    // --- Task 13（AI 诊断）：tail_bytes 字节口径 ------------------------------
+
+    #[test]
+    fn tail_bytes_returns_last_lines_within_limit() {
+        let mut ring = RingBuffer::with_capacity(10);
+        ring.push(b"a\nbb\nccc\n");
+        // "a\nbb\nccc" = 8 字节；"bb\nccc" = 6 字节
+        assert_eq!(ring.tail_bytes(7), b"bb\nccc".to_vec(), "放不下最旧行整行让出");
+        assert_eq!(ring.tail_bytes(8), b"a\nbb\nccc".to_vec(), "恰好放下全收");
+        assert_eq!(ring.tail_bytes(6), b"bb\nccc".to_vec());
+        assert_eq!(ring.tail_bytes(2), b"cc".to_vec(), "行内截尾");
+    }
+
+    #[test]
+    fn tail_bytes_single_huge_line_yields_its_tail() {
+        let mut ring = RingBuffer::with_capacity(4);
+        ring.push(b"abcdefgh\n");
+        assert_eq!(ring.tail_bytes(3), b"fgh".to_vec());
+    }
+
+    #[test]
+    fn tail_bytes_zero_and_overflow_limits() {
+        let mut ring = RingBuffer::with_capacity(4);
+        ring.push(b"ab\ncd\n");
+        assert_eq!(ring.tail_bytes(0), Vec::<u8>::new());
+        assert_eq!(ring.tail_bytes(1000), b"ab\ncd".to_vec());
+        assert_eq!(ring.tail_bytes(5), b"ab\ncd".to_vec());
+    }
+
+    #[test]
+    fn tail_bytes_drops_oldest_lines_first() {
+        let mut ring = RingBuffer::with_capacity(10);
+        ring.push(b"1\n2\n3\n4\n5\n");
+        // 容量 3 → 剩 "3\n4\n5"；limit=4 放不下 "3"，取 "4\n5"
+        assert_eq!(ring.tail_bytes(4), b"4\n5".to_vec());
+    }
+
+    #[test]
+    fn ring_is_a_text_sink_for_stripper() {
+        // 胶水实现回归：Stripper 剥完的文本直接入环（dyn TextSink 转型无需 trait
+        // 在作用域，故此处只 import Stripper）
+        use crate::stripper::Stripper;
+        let mut ring = RingBuffer::with_capacity(10);
+        let mut st = Stripper::new();
+        st.feed(b"\x1b[31merr\x1b[0m: disk full\n", &mut ring);
+        assert_eq!(ring.tail_bytes(1024), b"err: disk full".to_vec());
     }
 }

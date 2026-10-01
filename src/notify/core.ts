@@ -1,0 +1,375 @@
+// 统一通知管线（Task 12，spec §7）：枢纽在 TS——
+//   notify(event) ─┬─ ① 应用内通知中心（vault notifications 表，Rust 命令落库）
+//                  ├─ ② 系统通知（tauri-plugin-notification；前台静默）
+//                  └─ ③ 外部渠道（Phase 3 挂载，channels 空数组 = 接口先留）
+//
+// 语义裁定（task-12 简报/裁定 #1、#3）：
+//   * 限频聚合：同 key（kind + host_id）60s 窗口内只放行首条——传输连败/重连
+//     风暴聚合成一条，绝不灌表也不弹系统通知；放行才开新窗口（首条时间戳起算）。
+//   * 按 kind 静音（存 vault settings `notify.muted_kinds`）：静音 = 管线入口
+//     丢弃（不落表、不弹、不分发）——「关掉这类通知」的直译语义。
+//   * 系统通知前台静默：窗口持有焦点时只落①不弹②（用户正看着应用，中心
+//     已足够）；失焦（后台/最小化）才弹。Phase 1 定值不做配置项（可配挂账）。
+//   * 事件源不改（T10/T7 既有 Tauri 事件原样订阅）：transfer_end 成功不通知
+//     （噪音），失败/取消通知；session-closed 仅异常断开（closed/ipc_failed）
+//     通知，主动关闭（cancelled）不通知。AI 事件 Phase 1 无（T13 加）。
+// 可测性：Tauri 面（时间/焦点/系统通知）收口在 NotifyPorts 可注入端口；
+// store 纯 zustand，单测直接驱动 notify() + 假端口（见 core.test.ts）。
+import { create } from "zustand";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import i18n from "../i18n";
+import { vaultApi, type Notification, type NotificationInput } from "../vault/api";
+import type { TransferEndPayload } from "../files/TransferStore";
+import { useTransferStore } from "../files/TransferStore";
+import type { SessionClosedPayload } from "../session/SessionStore";
+import { useSessionStore } from "../session/SessionStore";
+
+// ---------------------------------------------------------------------------
+// 类型（事件源 → 管线入参；kind 是静音键）
+// ---------------------------------------------------------------------------
+
+/** 事件类别（T13 起 AI 诊断完成入管线——迁移 0005 kind 列无约束）。
+ * 静音键按 kind：ai 诊断完成通知可独立静音（NotificationCenter 类型区）。 */
+export type NotifyKind = "transfer" | "session" | "ai";
+/** severity 合法集（Rust notifications::SEVERITIES / DB CHECK 同集）。 */
+export type NotifySeverity = "info" | "success" | "warning" | "error";
+
+export interface NotificationEvent {
+  kind: NotifyKind;
+  severity: NotifySeverity;
+  /** 关联主机（可空——事件未必能反查到主机行；限频 key 的一部分）。 */
+  host_id: number | null;
+  /** i18n 词典键（中心渲染与系统通知标题都用 t(title_key)）。 */
+  title_key: string;
+  /** 展示文本（远端路径 / 主机名 / 错误消息——事件自带内容，不进词典）。 */
+  body: string;
+  payload?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// 可注入端口（测试假件注入点；生产 = 默认实现）
+// ---------------------------------------------------------------------------
+
+export interface NotifyPorts {
+  now: () => number;
+  /** 窗口是否持有焦点（②前台静默判定）。 */
+  focused: () => boolean;
+  /** 系统通知②（标题/正文已定型；权限申请与静默丢弃都在实现内）。 */
+  system: (title: string, body: string) => Promise<void>;
+}
+
+/** 默认端口：plugin-notification JS API（macOS 首次调用触发系统授权；未授权
+ * 时请求一次，仍拒绝则静默丢弃——系统通知是尽力而为面，绝不阻塞①落库）。 */
+const defaultPorts: NotifyPorts = {
+  now: () => Date.now(),
+  focused: () => (typeof document !== "undefined" ? document.hasFocus() : false),
+  system: async (title, body) => {
+    const { isPermissionGranted, requestPermission, sendNotification } = await import(
+      "@tauri-apps/plugin-notification"
+    );
+    let granted = await isPermissionGranted();
+    if (!granted) {
+      granted = (await requestPermission()) === "granted";
+    }
+    if (granted) {
+      await sendNotification({ title, body });
+    }
+  },
+};
+
+let ports: NotifyPorts = defaultPorts;
+
+/** 测试注入假端口（传 null 复位默认）。 */
+export function setNotifyPorts(next: NotifyPorts | null): void {
+  ports = next ?? defaultPorts;
+}
+
+// ---------------------------------------------------------------------------
+// ③ 外部渠道分发点（Phase 3 挂载；空数组 = 接口先留）
+// ---------------------------------------------------------------------------
+
+/** 外部通知渠道接口（spec §7③）。Phase 3 实现体（webhook/邮件等）push 进
+ * channels 即挂载——管线对渠道数与失败彼此无感（单渠道失败只记 console）。 */
+export interface NotificationChannel {
+  /** 渠道名（日志/诊断面）。 */
+  name: string;
+  /** 分发一条已放行的事件（限频/静音已在前）。 */
+  send: (event: NotificationEvent) => Promise<void>;
+  /** 渠道连通性自检（设置页「发送测试」用）。 */
+  test: () => Promise<void>;
+}
+
+/** 渠道挂载点（Phase 1 恒空——循环零次，接口形状由 NotificationChannel 定）。 */
+export const channels: NotificationChannel[] = [];
+
+// ---------------------------------------------------------------------------
+// 管线核心
+// ---------------------------------------------------------------------------
+
+/** 限频窗口（裁定 #1 定值 60s）。 */
+export const RATE_WINDOW_MS = 60_000;
+
+/** 同 key 限频表：key → 上次放行时刻（只在放行时刷新——窗口从首条起算）。 */
+const lastSeen = new Map<string, number>();
+
+/** 限频 key：kind + host_id（同主机同类事件聚合；无主机按 kind 聚合）。 */
+export function rateKeyOf(event: NotificationEvent): string {
+  return `${event.kind}:${event.host_id ?? "-"}`;
+}
+
+/** 系统通知标题（事件标题键 → 当前语言文案；i18n/index.ts 不反向依赖本模块，无环）。 */
+function eventTitle(event: NotificationEvent): string {
+  return i18n.t(event.title_key);
+}
+
+/**
+ * 管线入口：静音 → 限频 → ①落库（红点/列表）→ ②系统通知（前台静默）→
+ * ③渠道分发。返回是否放行（测试断言面）。
+ *
+ * 任何一步失败都不抛（通知是尽力而为面）：落库失败跳过①继续②③；②③失败
+ * 只记 console——通知链路故障不得反噬事件源（传输/会话状态机）。
+ */
+export async function notify(event: NotificationEvent): Promise<boolean> {
+  const { muted } = useNotifyStore.getState();
+  if (muted.includes(event.kind)) {
+    return false; // 静音：管线入口丢弃（不落表不弹不分发）
+  }
+  const key = rateKeyOf(event);
+  const now = ports.now();
+  const last = lastSeen.get(key);
+  if (last !== undefined && now - last < RATE_WINDOW_MS) {
+    return false; // 限频：窗口内聚合（不刷新窗口）
+  }
+  lastSeen.set(key, now);
+
+  // ① 应用内通知中心
+  try {
+    const input: NotificationInput = {
+      kind: event.kind,
+      severity: event.severity,
+      host_id: event.host_id,
+      title_key: event.title_key,
+      body: event.body,
+      payload: event.payload ?? null,
+    };
+    const row = await vaultApi.notifications.insert(input);
+    useNotifyStore.getState().onInserted(row);
+  } catch (e) {
+    // 非 Tauri 环境（纯浏览器 dev）/ 后端不可达：①降级，②③照走
+    console.warn("[notify] insert failed:", e);
+  }
+
+  // ② 系统通知（前台静默）
+  if (!ports.focused()) {
+    try {
+      await ports.system(eventTitle(event), event.body);
+    } catch (e) {
+      console.warn("[notify] system notification failed:", e);
+    }
+  }
+
+  // ③ 外部渠道（Phase 3 挂载）
+  for (const channel of channels) {
+    try {
+      await channel.send(event);
+    } catch (e) {
+      console.warn(`[notify] channel ${channel.name} failed:`, e);
+    }
+  }
+  return true;
+}
+
+/** 测试隔离：清空限频表（窗口状态不进 store——进程内瞬态）。 */
+export function resetRateLimiter(): void {
+  lastSeen.clear();
+}
+
+// ---------------------------------------------------------------------------
+// 事件源接线（不改事件源——订阅 T10/T7 既有 Tauri 事件，富化主机上下文）
+// ---------------------------------------------------------------------------
+
+/** `ottr://transfer-end` → 通知失败/取消（成功不通知，噪音裁定）。
+ * 主机上下文：transfer_id → TransferStore 条目（rustId）→ SessionStore 反查
+ * host（host_id 进限频 key + 通知行 host_id）；查不到（应用重启后迟到的
+ * 事件）按无主机聚合，body 退化为 transfer_id。 */
+export function onTransferEnd(payload: TransferEndPayload): Promise<boolean> {
+  if (payload.status === "done") {
+    return Promise.resolve(false); // 成功不通知
+  }
+  const item = useTransferStore
+    .getState()
+    .items.find((it) => it.transferId === payload.transfer_id);
+  const session = item?.rustId
+    ? useSessionStore.getState().sessions.find((s) => s.rustId === item.rustId)
+    : undefined;
+  const failed = payload.status === "failed";
+  const what = item?.remotePath ?? payload.transfer_id;
+  const body = failed ? (payload.message ? `${what} — ${payload.message}` : what) : what;
+  return notify({
+    kind: "transfer",
+    severity: failed ? "error" : "warning",
+    host_id: session?.hostId ?? null,
+    title_key: failed ? "notify.title.transferFailed" : "notify.title.transferCancelled",
+    body,
+    payload: {
+      transfer_id: payload.transfer_id,
+      status: payload.status,
+      remote_path: item?.remotePath ?? null,
+      local_path: item?.localPath ?? null,
+    },
+  });
+}
+
+/** `ottr://session-closed` → 仅异常断开通知（closed/ipc_failed；cancelled =
+ * 主动关闭不通知）。与 SessionStore.onSessionClosed 同门卫：rustId 查不到的
+ * 迟到事件静默（标签已关；那种情况 Rust 侧本来也是 cancelled 收尾）。 */
+export function onSessionClosed(payload: SessionClosedPayload): Promise<boolean> {
+  if (payload.reason === "cancelled") {
+    return Promise.resolve(false); // 主动关闭（关标签/手动断开）
+  }
+  const session = useSessionStore.getState().sessions.find((s) => s.rustId === payload.id);
+  if (!session) {
+    return Promise.resolve(false); // 未知会话（迟到事件）——静默
+  }
+  return notify({
+    kind: "session",
+    severity: "warning",
+    host_id: session.hostId,
+    title_key: "notify.title.sessionLost",
+    body: session.hostName,
+    payload: { session_id: payload.id, reason: payload.reason },
+  });
+}
+
+let wired = false;
+const unlisteners: UnlistenFn[] = [];
+
+/** 注册管线事件监听 + 拉初始态（幂等；StrictMode 双挂载只接一次）。
+ * App 挂载时调用一次（与 initSessionEvents/initTransferEvents 并列）。 */
+export async function initNotifyEvents(): Promise<void> {
+  if (wired) return;
+  wired = true;
+  unlisteners.push(
+    await listen<TransferEndPayload>("ottr://transfer-end", (e) => {
+      void onTransferEnd(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen<SessionClosedPayload>("ottr://session-closed", (e) => {
+      void onSessionClosed(e.payload);
+    }),
+  );
+  await useNotifyStore.getState().bootstrap();
+}
+
+/** 卸载监听（测试/热重载清理用）。 */
+export function disposeNotifyEvents(): void {
+  for (const off of unlisteners) off();
+  unlisteners.length = 0;
+  wired = false;
+}
+
+// ---------------------------------------------------------------------------
+// store（通知中心数据态 + 静音配置；UI 与管线共用）
+// ---------------------------------------------------------------------------
+
+/** vault settings 键：静音的 kind 数组（JSON）。 */
+export const MUTED_SETTING_KEY = "notify.muted_kinds";
+
+interface NotifyStore {
+  items: Notification[];
+  unread: number;
+  /** 静音的 kind 集（管线入口判定 + 中心 UI 开关）。 */
+  muted: NotifyKind[];
+  /** 初始：静音配置 + 列表 + 未读数（失败静默——通知面不可用不阻塞应用）。 */
+  bootstrap: () => Promise<void>;
+  /** ①落库回执进 store（notify() 调用；置顶 + 未读+1）。 */
+  onInserted: (row: Notification) => void;
+  /** 面板打开时刷新（多端一致性兜底）。 */
+  refresh: () => Promise<void>;
+  markRead: (id: number) => Promise<void>;
+  markAllRead: () => Promise<void>;
+  clear: () => Promise<void>;
+  /** 切换 kind 静音（先改本地再落 settings——UI 即时反馈，写失败下次再试）。 */
+  toggleMuted: (kind: NotifyKind) => void;
+}
+
+export const useNotifyStore = create<NotifyStore>((set, get) => ({
+  items: [],
+  unread: 0,
+  muted: [],
+
+  bootstrap: async () => {
+    try {
+      const stored = await vaultApi.settings.get<NotifyKind[]>(MUTED_SETTING_KEY);
+      set({ muted: Array.isArray(stored) ? stored : [] });
+    } catch {
+      // settings 不可达：保持默认（全不静音）
+    }
+    await get().refresh();
+  },
+
+  onInserted: (row) =>
+    set((st) => ({
+      items: [row, ...st.items].slice(0, 200),
+      unread: st.unread + 1,
+    })),
+
+  refresh: async () => {
+    try {
+      const [items, unread] = await Promise.all([
+        vaultApi.notifications.list(200),
+        vaultApi.notifications.unreadCount(),
+      ]);
+      set({ items, unread });
+    } catch {
+      // 后端不可达：保留现状（红点由下次 bootstrap 校正）
+    }
+  },
+
+  markRead: async (id) => {
+    set((st) => {
+      const wasUnread = st.items.some((n) => n.id === id && !n.read);
+      return {
+        items: st.items.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        unread: wasUnread ? st.unread - 1 : st.unread,
+      };
+    });
+    try {
+      await vaultApi.notifications.markRead(id);
+    } catch {
+      // 落库失败：本地已读态保留（下次 refresh 对齐真源）
+    }
+  },
+
+  markAllRead: async () => {
+    set((st) => ({
+      items: st.items.map((n) => ({ ...n, read: true })),
+      unread: 0,
+    }));
+    try {
+      await vaultApi.notifications.markRead(null);
+    } catch {
+      // 同上
+    }
+  },
+
+  clear: async () => {
+    set({ items: [], unread: 0 });
+    try {
+      await vaultApi.notifications.clear();
+    } catch {
+      // 同上
+    }
+  },
+
+  toggleMuted: (kind) => {
+    const muted = get().muted.includes(kind)
+      ? get().muted.filter((k) => k !== kind)
+      : [...get().muted, kind];
+    set({ muted });
+    void vaultApi.settings.set(MUTED_SETTING_KEY, muted).catch(() => {
+      // settings 写失败：会话内静音态仍生效，持久化下次切换时重试
+    });
+  },
+}))

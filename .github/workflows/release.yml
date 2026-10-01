@@ -1,0 +1,117 @@
+# Task 16（Phase 1）：正式发布流水线。
+#
+# 触发：push tag v* → 三矩阵构建 → updater 签名产物 → draft GitHub Release。
+# 沿用 spike.yml（Task 12）已验证的模式，不推翻：
+# - 同一套 Secrets：TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#   （生成：npx tauri signer generate -w ottr-updater.key；公钥已在 tauri.conf.json）
+# - 同一套签名流程：updater 配置走 src-tauri/tauri.updater.conf.json overlay
+#   （--config 合并开启 createUpdaterArtifacts），基础配置不开——本地无签名私钥
+#   也能出包；CI 叠加 overlay 后由 env 私钥签 updater 产物
+# - 同一套平台依赖清单（Linux webkit2gtk-4.1 / Windows NASM）
+#
+# 与 spike 的差异：
+# - 权限 contents: read（build）+ contents: write（release job，建 draft release）
+# - 上传产物收窄为「可分发文件」（去掉裸 .app 目录——draft release 里只放文件，
+#   mac 分发物是 dmg + .app.tar.gz/.sig）
+# - 新增 release job：download-artifact 合流 → gh release create --draft +
+#   upload（gh 为 runner 预装 CLI，免第三方 action）
+# - 挂账（Phase 2 updater 真启用时补）：发布页还需生成 latest.json
+#   （updater endpoint 现为占位 releases.ottr.invalid，见 tauri.conf.json plugins.updater）
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      # russh 默认 feature 走 aws-lc-rs → aws-lc-sys 在 Windows 需要 NASM
+      # 汇编器（spike.yml 同款步骤，真跑失败先查这里）。
+      - name: Ensure NASM (aws-lc-sys assembler)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install -y nasm
+            Add-Content $env:GITHUB_ENV "PATH=$env:PATH;C:\Program Files\NASM"
+          }
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app (updater overlay, artifacts signed)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --config src-tauri/tauri.updater.conf.json
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ottr-${{ matrix.os }}
+          if-no-files-found: error
+          # 注意：workspace 根 Cargo.toml 聚合 members → 构建产物在仓库根
+          # target/release/bundle/，不是 src-tauri/target/（T16 本地构建实测；
+          # spike.yml 同位置写法有同款问题，待其 owner 更正）。
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.app.tar.gz
+            target/release/bundle/msi/*.msi
+            target/release/bundle/msi/*.msi.zip
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/**/*.sig
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create draft GitHub Release and upload installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        # draft：人工核对产物与签名后再手动 publish；重跑时 release 已存在
+        # 则 create 失败、仅重传产物（--clobber 覆盖）。
+        run: |
+          gh release create "$TAG" --draft --title "Ottr $TAG" --generate-notes || true
+          find artifacts -type f -print0 | xargs -0 gh release upload "$TAG" --clobber

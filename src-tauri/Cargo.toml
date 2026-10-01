@@ -18,11 +18,18 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
+# A12（Task 14）：tray-icon = 托盘（TrayIconBuilder）；image-png = 托盘模板位图
+# 解码（Image::from_bytes，icons/tray.png）。菜单 API 无需 feature。
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ottr-ssh = { path = "../crates/ottr-ssh" }
+# Task 9（A9）：转发路径解码（合批后、IPC 前）——ottr-term 流式会话解码器
+ottr-term = { path = "../crates/ottr-term" }
+# Task 10（A5）：SFTP 传输/文件操作（FileTransfer trait + SftpClient ops）
+ottr-transfer = { path = "../crates/ottr-transfer" }
+# Task 5：数据层接线（vault 命令 + ssh-config 导入）
+ottr-vault = { path = "../crates/ottr-vault" }
 tokio = { version = "1", features = ["io-util", "sync", "time"] }
 base64 = "0.22"
 sha2 = "0.10"
@@ -31,6 +38,12 @@ sha2 = "0.10"
 # 正式版由 ottr-term 包装消除，届时移除本依赖。
 russh = "0.63.3"
 tauri-plugin-notification = "2"
+# T11（A7）：剪贴板敏感复制自动清空——arboard（tauri-plugin-clipboard-manager
+# 的同源后端）Rust 侧直用，免插件/Capability 面（前端永不接触明文，见 security.rs）。
+# default-features = false：关 image-data（文本剪贴板够用，少拖 image 依赖树）。
+arboard = { version = "3", default-features = false }
+# 剪贴板明文 String 用后即清（vault 侧裸 key 同源纪律）。
+zeroize = "1"
 
 # keyring v3 无默认 feature（无平台 store 即只剩 mock）；平台 store 按平台 opt-in，
 # 且 sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）——官方推荐按
@@ -44,3 +57,10 @@ keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service"] }
+
+[dev-dependencies]
+# vault 相关单测（tempfile 临时目录 + InMemoryStorage，测试纪律见 ottr-vault）
+tempfile = "3"
+# 终审 A1 回归：进程内 mock sshd 生成 Ed25519 主机密钥（PrivateKey::random
+# 的 rand 版本须与 russh 同源对齐，同款约束见 crates/ottr-ssh Cargo.toml）
+rand = "0.10"

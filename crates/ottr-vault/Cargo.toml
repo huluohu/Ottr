@@ -1,0 +1,44 @@
+[package]
+name = "ottr-vault"
+version = "0.1.0"
+edition = "2021"
+description = "Ottr storage engine and key hierarchy (AES-256-GCM / keyring / SQLite WAL)"
+
+[dependencies]
+# bundled：自带编译 SQLite（≥3.34，含 trigram tokenizer）；FTS5 是 spec §3 的硬约束
+# ——命令历史/录制文本全文检索走 FTS5，CJK 检索统一 tokenize='trigram'（默认 unicode61
+# 会把连续中文当整块导致搜不到）。见 docs/superpowers/specs/2026-09-29-ottr-design.md §3。
+# 注：rusqlite 0.40 起移除了 fts5 feature——bundled 构建在 libsqlite3-sys build.rs
+# 无条件带 -DSQLITE_ENABLE_FTS5（已核对源码），trigram 生效由 store_test 的 smoke 断言兜底。
+rusqlite = { version = "0.40", features = ["bundled"] }
+# zeroize feature：AesGcm 内部 key schedule（AES 轮密钥 + GHash 子钥）ZeroizeOnDrop
+# ——T11 锁定语义（Master Key 内存清掉）依赖此 drop 路径，Task 3 时挂账未开。
+aes-gcm = { version = "0.11", features = ["zeroize"] }
+# Linux 无钥匙链 fallback / 主密码模式：Argon2id 派生（spec §3 密钥层级图）
+argon2 = "0.6"
+hex = "0.4"
+rand = "0.10"
+# 实体结构体的 serde 序列化形态即前端契约（src/vault/api.ts 同构类型，Task 4）；
+# tags/variables 列以 JSON 文本落库（spec §3）。
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# T11 锁定语义：自持密钥字节（派生中间值、盐、校验器明文）用后即清；
+# Cipher 内部 schedule 的清理由上行 aes-gcm zeroize feature 承担
+# （spec §14 backlog 的本任务内联部分，替代 Task 3 的暂不引入裁定）。
+zeroize = "1"
+
+# keyring 平台 store 按 target opt-in——照抄 src-tauri（Phase 0 Task 11 先例）：
+# v3 无默认 feature；sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）。
+# Linux 无 Secret Service → 加密文件 + Argon2id 主密码 fallback（见 master_key.rs 文档）。
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
+
+[dev-dependencies]
+# 测试一律用临时目录（tempfile），绝不触碰真实用户数据目录
+tempfile = "3"

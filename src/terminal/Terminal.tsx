@@ -1,990 +1,765 @@
-// Terminal.tsx（Task 4 产出，Task 5-10 复用）：
-// xterm.js 前端 + `attach_session` 二进制通道（Raw → ArrayBuffer）+ `write_session` 击键写入。
+// 终端体验层（Task 8，A1/A8）：分屏主区 + 单会话终端 + 搜索 + 右键菜单 +
+// URL 检测 + 选择即复制 + 多行/危险粘贴确认。
 //
-// spike 模式（?spike=latency，由 OTTR_SPIKE=latency 自动导航进入）：
-// 1. 先跑通道探针（Raw 16B / Raw 2KB / JSON-base64 对照，typeof+长度对账 → 定案证据）；
-// 2. attach 后等 shell 稳定，`exec cat` 换成纯回显进程（无 prompt 噪声）；
-// 3. 自动打 100 字符（间隔 20ms），performance.now() 记「发出 → term.write 收到回显」；
-// 4. p50/p95 + 帧长对账 JSON POST 给 `spike_report_latency` 落盘 /tmp/ottr-latency.json
-//    （取数机制：scripts/spike-latency.sh 轮询该文件后 kill dev server）。
+// 数据面沿用 Phase 0/Task 7 定案：PTY 输出经 attach_host_session 的二进制 Raw
+// 帧推到 Channel，字节直写 xterm；击键经 write_session 直传 PTY。终端实例按
+// 会话持有（切标签/pane 不丢回显缓冲），ResizeObserver 可见尺寸变化时 fit。
 //
-// 吞吐模式（?spike=throughput，Task 7 / Spike #3，由 OTTR_SPIKE=throughput 自动导航进入）：
-// `ThroughputSpike`（本文件下方具名导出）——rAF 冻结探测 + `cat /tmp/big100` 100MB
-// 全量字节账目（前端收到 vs Rust 转发 vs 104857600+回显开销）+ `&interrupt=1` 自动
-// 中断验证（drop_session → 进程端取消 + UI 立即可用）。
+// 分屏（Task 8）：一个标签一棵 pane 树（SessionStore.trees，树叶 id = 会话 id，
+// 布局/关闭/拖拽的纯函数在 split.ts）。本文件的 TerminalArea 按 bounds 渲染
+// layout() 矩形与 dividers() 命中面；**全部会话的 DOM 常驻**（列表按 key 稳定
+// 复用，只有 style 变化）——切标签/关 pane 不重挂 xterm，滚回不丢。
+//
+// 搜索（⌘F）：SearchController per 会话（SearchAddon.ts 注册表），搜索栏操作
+// 「聚焦 pane」的会话；右键菜单「搜索」等价。
+//
+// 粘贴纪律：宿主 div 捕获阶段拦截 paste 事件（先于 xterm 的 textarea 监听），
+// assessPaste（src/ai/danger.ts，Task 13 分级的单一来源）判定 none → 放行原生
+// 粘贴；warn/danger → 弹确认层，确认后 term.paste() 走同一写入路径。
 import { useEffect, useRef, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
+import { registerSink, unregisterSink, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
+import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
+import { terminalThemes } from "../theme/terminal-themes";
+import type { ITheme } from "@xterm/xterm";
+import { assessPaste } from "../ai/danger";
+import { useAiStore } from "../ai/aiStore";
+import { recordCommand } from "../history/record";
+import { createCommandWatch, type IDisposable } from "./CommandWatch";
+import {
+  getSearch,
+  registerSearch,
+  unregisterSearch,
+  SearchController,
+  type SearchResultSummary,
+} from "./SearchAddon";
+import {
+  buildContextMenu,
+  loadTerminalSettings,
+  saveTerminalSettings,
+  type ContextMenuItem,
+  type MenuContext,
+} from "./ContextMenu";
+import { dividers, layout, leaf, type Divider, type Rect } from "./split";
 
-// Task 2/3 容器化夹具（127.0.0.1:2222，密码 spike-pass，主机指纹 pin 在 Rust 侧）
-const FIXTURE = {
-  host: "127.0.0.1",
-  port: 2222,
-  username: "spike",
-  password: "spike-pass",
-};
-
-// --- 延迟测量参数（简报 Step 3：100 字符、间隔 20ms） ---
-const CHARS = 100;
-const INTERVAL_MS = 20;
-const BOOT_MS = 2000; // 等 shell prompt 稳定
-const CAT_SETTLE_MS = 800; // 等 `exec cat` 生效
-const WARMUP_MAX_CHARS = 600; // 预热上限（自适应提前停）
-const WARMUP_INTERVAL_MS = 5;
-const WARMUP_TARGET_P95 = 30; // 最近 20 个预热回显 p95 低于此值 = 已热，开始正式测量
-const WARMUP_MIN_CHARS = 60; // 至少跑这么久再判稳
-const WARMUP_DRAIN_MS = 300; // 等预热回显排干（'0' 不在 a-z，串窗只会计入 noise）
-const GRACE_MS = 3000; // 等最后一批回显
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/** 阶段打点 → Rust 侧 dev log（自动化排障唯一可观测通道）。 */
-const pageLog = (msg: string) => {
-  void invoke("spike_log", { msg }).catch(() => {});
-};
-
-/** 定案证据：消息的运行时类型与长度（ArrayBuffer=真二进制；string=走了 base64/JSON）。 */
-function classify(m: unknown): string {
-  if (m instanceof ArrayBuffer) return `ArrayBuffer(${m.byteLength})`;
-  if (typeof m === "string") return `string(len=${m.length})`;
-  if (m instanceof Uint8Array) return `Uint8Array(${m.byteLength})`;
-  return `${typeof m}`;
+/** 主题同步 xterm 配色（亮/暗两套，A10；T1 terminalThemes 消费）。入参是
+ * ThemeContext 的**解析结果**（resolved，非三态 mode）——system 模式下 OS
+ * 明暗切换时 resolved 变化驱动本组件 effect 重跑，终端实时换套（简报 I面：
+ * useTheme().resolved → xterm theme）。结构化入参便于单测，不绑定 xterm 类。 */
+export function applyTermTheme(
+  term: { options: { theme?: ITheme } },
+  resolved: ResolvedTheme,
+): void {
+  term.options.theme = terminalThemes[resolved];
 }
 
-/** Rust Raw 帧应为 ArrayBuffer；string 仅在 Raw 失效（fallback/base64 对照）时出现。 */
-function toBytes(m: unknown): Uint8Array {
-  if (m instanceof ArrayBuffer) return new Uint8Array(m);
-  if (m instanceof Uint8Array) return m;
-  if (typeof m === "string") {
-    const bin = atob(m); // base64 fallback 路径
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
+// 会话编码状态在 SessionStore（Task 9）：T8 的临时 sessionEncoding 内存表已删，
+// 右键菜单/徽标/提示条统一走 store.setSessionEncoding（Rust 侧即切即生效）。
+
+// ---------------------------------------------------------------------------
+// 单会话终端（xterm 装配 + 状态横幅 + 右键菜单 + 粘贴确认）
+// ---------------------------------------------------------------------------
+
+interface MenuState {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
+}
+
+/** 粘贴确认弹层（导出供组件测试；verdict 由 assessPaste 现算——纯函数单源）。 */
+export function PasteConfirmDialog({
+  text,
+  onConfirm,
+  onCancel,
+}: {
+  text: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const verdict = assessPaste(text);
+  const preview = text.length > 400 ? `${text.slice(0, 400)}…` : text;
+  return (
+    <div className="overlay paste-confirm" role="dialog" aria-modal="true" aria-label={t("terminal.pasteTitle")}>
+      <div className="dialog paste-dialog" data-testid="paste-confirm">
+        <h2>{t("terminal.pasteTitle")}</h2>
+        {verdict.findings.length > 0 && (
+          <>
+            <p className="paste-warning">{t("terminal.pasteDanger")}</p>
+            <ul className="paste-findings" data-testid="paste-findings">
+              {verdict.findings.map((f) => (
+                <li key={f.kind}>
+                  <code>{f.excerpt}</code>
+                  {" — "}
+                  {t(`ai.danger.${f.kind}`, { defaultValue: f.kind })}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {verdict.multiline && <p>{t("terminal.pasteMultiline")}</p>}
+        <pre data-testid="paste-preview">{preview}</pre>
+        <div className="form-actions">
+          <button onClick={onCancel}>{t("common.cancel")}</button>
+          <button
+            className={verdict.level === "danger" ? "btn-danger" : "btn-accent"}
+            data-testid="paste-confirm-button"
+            onClick={onConfirm}
+          >
+            {t("terminal.pasteConfirm")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 编码检测提示条（Task 9，A9）：Rust detect_hint 命中 GBK 家族后展示
+ * 「检测到 GBK 编码，切换？」；「切换」= acceptEncodingHint（切编码 + 同 host
+ * 记一次性可关），「忽略」= dismissEncodingHint。 */
+export function EncodingHintBar({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
+  const hint = useSessionStore(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.encodingHint ?? null,
+  );
+  if (!hint) return null;
+  return (
+    <div className="encoding-hint" data-testid="encoding-hint" role="status">
+      <span className="encoding-hint-text">
+        {t("terminal.encodingHint", { encoding: encodingName(hint) })}
+      </span>
+      <button
+        className="encoding-hint-accept"
+        data-testid="encoding-hint-accept"
+        onClick={() => useSessionStore.getState().acceptEncodingHint(sessionId)}
+      >
+        {t("terminal.encodingHintAccept", { encoding: encodingName(hint) })}
+      </button>
+      <button
+        className="encoding-hint-dismiss"
+        aria-label={t("terminal.encodingHintDismiss")}
+        data-testid="encoding-hint-dismiss"
+        onClick={() => useSessionStore.getState().dismissEncodingHint(sessionId)}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+export function SessionTerminal({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
+  const { resolved } = useTheme();
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const termRef = useRef<XTerm | null>(null);
+  const prevStatus = useRef<string | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [pendingPaste, setPendingPaste] = useState<string | null>(null);
+
+  const status = useSessionStore(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.status ?? "disconnected",
+  );
+  const attempt = useSessionStore(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.attempt ?? 0,
+  );
+  const nextRetryAt = useSessionStore(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.nextRetryAt ?? null,
+  );
+  const lastError = useSessionStore(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.lastError ?? null,
+  );
+
+  // --- 一次性装配：term 实例 + sink 注册 + 击键接线 + 尺寸观测 ---
+  useEffect(() => {
+    const term = new XTerm({ cursorBlink: true, fontSize: 13 });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    // URL 检测（A8）：WebLinksAddon 默认 handler（新窗打开链接）
+    term.loadAddon(new WebLinksAddon());
+    termRef.current = term;
+    const search = new SearchController(term);
+    if (hostRef.current) {
+      try {
+        term.open(hostRef.current);
+      } catch {
+        // 布局未就绪（隐藏窗格/测试环境）不阻塞；恢复可见时 RO 会再 fit
+      }
+    }
+    applyTermTheme(term, resolved);
+    registerSink(sessionId, {
+      write: (bytes) => term.write(bytes),
+      getSize: () => {
+        try {
+          fit.fit();
+        } catch {
+          // 尺寸不可测（隐藏/未布局）→ xterm 默认值仍有效
+        }
+        return { cols: term.cols, rows: term.rows };
+      },
+    });
+    registerSearch(sessionId, search);
+
+    // T13 报错即诊：OSC133 命令边界监听（shell 集成片段发 A/C/D 标记）；
+    // D;code≠0 → aiStore.onCommandFailed（ai.enabled 总开关在 store 内现读）。
+    // T15 历史入库：onCommandFinished（全量命令完成，含 exit 0）→ history_insert
+    // （fire-and-forget，见 src/history/record.ts）。
+    let watch: IDisposable | null = null;
+    try {
+      watch = createCommandWatch(term, {
+        onCommandDone: ({ exitCode, command }) => {
+          const session = useSessionStore
+            .getState()
+            .sessions.find((x) => x.id === sessionId);
+          if (!session) return;
+          useAiStore.getState().onCommandFailed({
+            kind: "diagnose",
+            sessionId,
+            rustId: session.rustId,
+            hostId: session.hostId,
+            hostName: session.hostName,
+            exitCode,
+            command,
+          });
+        },
+        onCommandFinished: (ev) => {
+          const session = useSessionStore
+            .getState()
+            .sessions.find((x) => x.id === sessionId);
+          if (!session) return;
+          recordCommand({ hostId: session.hostId, sessionId }, ev);
+        },
+      });
+    } catch {
+      // parser 不可用（测试环境极简 fake）不阻塞终端装配
+    }
+
+    // 击键 → PTY（rustId 实时读 store；重连换会话 id 后自动跟随）
+    const onData = term.onData((d) => {
+      const session = useSessionStore
+        .getState()
+        .sessions.find((x) => x.id === sessionId);
+      if (!session?.rustId) return; // 未连接：击键落空（横幅已提示状态）
+      void invoke("write_session", {
+        id: session.rustId,
+        bytes: Array.from(new TextEncoder().encode(d)),
+      }).catch(() => {});
+    });
+
+    // 选择即复制（可配，右键菜单切换；设置即时读 localStorage 免订阅）
+    const onSelectionChange = term.onSelectionChange(() => {
+      if (!loadTerminalSettings().copyOnSelect) return;
+      if (term.hasSelection()) {
+        void navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+      }
+    });
+
+    // 可见尺寸变化 → fit（切标签/拖分隔条/窗口缩放）。0 尺寸（隐藏）跳过。
+    const ro = new ResizeObserver(() => {
+      const el = hostRef.current;
+      if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+      try {
+        fit.fit();
+      } catch {
+        // xterm 对退化尺寸抛错可忽略
+      }
+    });
+    if (hostRef.current) ro.observe(hostRef.current);
+
+    return () => {
+      ro.disconnect();
+      onSelectionChange.dispose();
+      onData.dispose();
+      watch?.dispose();
+      unregisterSearch(sessionId);
+      unregisterSink(sessionId);
+      term.dispose();
+      termRef.current = null;
+    };
+    // sessionId 是组件身份（key 绑定），mode 变化走单独 effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // --- 主题跟随（resolved 驱动：手动切换与 system 模式的 OS 切换都实时生效） ---
+  useEffect(() => {
+    if (termRef.current) applyTermTheme(termRef.current, resolved);
+  }, [resolved]);
+
+  // --- 粘贴拦截（宿主捕获阶段，先于 xterm 的 textarea 监听） ---
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (text === "") return;
+      if (assessPaste(text).level !== "none") {
+        // warn/danger：拦下原生路径，交确认层；确认后 term.paste 同路写入
+        e.preventDefault();
+        e.stopPropagation();
+        setPendingPaste(text);
+      }
+    };
+    el.addEventListener("paste", onPaste, true);
+    return () => el.removeEventListener("paste", onPaste, true);
+  }, []);
+
+  // --- 状态横幅（写入终端流；跳过挂载首帧的 disconnected 初值） ---
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    const first = prevStatus.current === null;
+    prevStatus.current = status;
+    if (first && status === "connecting") {
+      // 首连中（挂载即 connecting）：连接横幅
+      term.writeln(`\x1b[2m[ottr] ${t("terminal.connecting")}\x1b[0m`);
+      return;
+    }
+    if (first) return; // 恢复的静默标签（disconnected）不写历史横幅
+    switch (status) {
+      case "connected":
+        if (attempt === 0) break; // 首连成功：shell 输出即反馈，不打横幅
+        term.writeln(`\x1b[2m[ottr] ${t("terminal.reconnected")}\x1b[0m`);
+        break;
+      case "reconnecting": {
+        const seconds = nextRetryAt ? Math.max(1, Math.round((nextRetryAt - Date.now()) / 1000)) : 0;
+        term.writeln(
+          `\x1b[33m[ottr] ${t("terminal.reconnecting", {
+            seconds,
+            attempt,
+            max: useSessionStore.getState().settings.maxReconnectAttempts,
+          })}\x1b[0m`,
+        );
+        break;
+      }
+      case "disconnected":
+        if (lastError) {
+          term.writeln(
+            isHostKeyRejection(lastError)
+              ? `\x1b[31m[ottr] ${t("terminal.hostKeyRejected")}\x1b[0m`
+              : `\x1b[31m[ottr] ${t("terminal.connectFailed", { message: lastError })}\x1b[0m`,
+          );
+        }
+        if (attempt === 0) {
+          term.writeln(`\x1b[2m[ottr] ${t("terminal.reconnectHint")}\x1b[0m`);
+        } else {
+          term.writeln(
+            `\x1b[31m[ottr] ${t("terminal.reconnectExhausted", {
+              max: useSessionStore.getState().settings.maxReconnectAttempts,
+            })}\x1b[0m`,
+          );
+        }
+        break;
+      default:
+        break;
+    }
+    // attempt 变化（重连计数推进）不单独写横幅——reconnecting 分支已带计数
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, lastError]);
+
+  // --- 右键菜单 ---
+  function openContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const term = termRef.current;
+    const ctx: MenuContext = {
+      hasSelection: term?.hasSelection() ?? false,
+      copyOnSelect: loadTerminalSettings().copyOnSelect,
+      encoding: useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.encoding ?? "utf-8",
+    };
+    const width = 220;
+    setMenu({
+      x: Math.min(e.clientX, window.innerWidth - width),
+      y: Math.min(e.clientY, window.innerHeight - 320),
+      items: buildContextMenu(ctx, t),
+    });
   }
-  throw new Error(`unexpected channel message type: ${typeof m}`);
-}
 
-// --- 击键回显测量状态机 ---
-type Harness = {
-  mode: "boot" | "typing" | "done";
-  sent: { code: number; t0: number }[];
-  latencies: number[];
-  expected: number; // 下一个待匹配回显字符的下标
-  noise: number; // 不匹配期望字符的杂散字节（cat 模式下应为 0）
-};
-
-function feed(h: Harness, bytes: Uint8Array, now: number): void {
-  if (h.mode !== "typing") return;
-  for (const b of bytes) {
-    const next = h.sent[h.expected];
-    if (next !== undefined && b === next.code) {
-      h.latencies.push(now - next.t0);
-      h.expected++;
-    } else {
-      h.noise++;
+  function runMenuAction(id: string) {
+    setMenu(null);
+    const term = termRef.current;
+    const store = useSessionStore.getState();
+    const session = store.sessions.find((s) => s.id === sessionId);
+    switch (id) {
+      case "copy":
+        if (term?.hasSelection()) {
+          void navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+        }
+        break;
+      case "explain":
+        // T13 选中解释：选区文本 → AI 面板单轮（不受 ai.enabled 管，显式动作）
+        if (term?.hasSelection()) {
+          useAiStore.getState().openExplain({
+            kind: "explain",
+            sessionId,
+            hostId: session?.hostId ?? null,
+            hostName: session?.hostName ?? "",
+            text: term.getSelection(),
+          });
+        }
+        break;
+      case "paste":
+        void navigator.clipboard
+          ?.readText()
+          .then((text) => {
+            if (text !== "") requestPaste(text);
+          })
+          .catch(() => {});
+        break;
+      case "search":
+        store.openSearch(sessionId);
+        break;
+      case "clear":
+        term?.clear();
+        break;
+      case "splitRight":
+      case "splitDown": {
+        const tabId = session?.paneOf ?? sessionId;
+        store.setActivePane(tabId, sessionId); // 分裂发生在右键的 pane 上
+        store.splitPane(tabId, id === "splitRight" ? "row" : "column");
+        break;
+      }
+      case "closePane":
+        store.closePane(sessionId);
+        break;
+      case "copyOnSelect":
+        saveTerminalSettings({ copyOnSelect: !loadTerminalSettings().copyOnSelect });
+        break;
+      default:
+        if (id.startsWith("encoding:")) {
+          // Task 9：切换走 store（Rust 侧 set_session_encoding 即切即生效）
+          const enc = id.slice("encoding:".length) as SessionEncoding;
+          store.setSessionEncoding(sessionId, enc);
+        }
+        break;
     }
   }
-}
 
-function p95Of(xs: number[]): number {
-  if (!xs.length) return Infinity;
-  const s = [...xs].sort((a, b) => a - b);
-  return s[Math.ceil(0.95 * s.length) - 1];
-}
-
-/** 通道探针：spike_probe_channel 在同一 Channel 上发三种帧，前端逐个记录 typeof/长度。 */
-async function runProbe(): Promise<Record<string, string>> {
-  const chan = new Channel<unknown>();
-  const got: unknown[] = [];
-  chan.onmessage = (m) => got.push(m);
-  await invoke("spike_probe_channel", { onProbe: chan });
-  const deadline = Date.now() + 5000;
-  while (got.length < 3 && Date.now() < deadline) await sleep(20);
-  return {
-    raw_16b: got[0] !== undefined ? classify(got[0]) : "MISSING",
-    raw_2048b: got[1] !== undefined ? classify(got[1]) : "MISSING",
-    json_b64_16b: got[2] !== undefined ? classify(got[2]) : "MISSING",
-  };
-}
-
-export default function OttrTerminal({ spike }: { spike?: "latency" }) {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const startedRef = useRef(false);
-  const [badge, setBadge] = useState(
-    spike === "latency" ? "spike:latency 初始化…" : "connecting 127.0.0.1:2222…",
-  );
-
-  useEffect(() => {
-    // StrictMode dev 双挂载防护：spike 页生命周期 = 窗口生命周期，只 attach 一次
-    // （正式使用时 Task 5+ 按会话生命周期重建组件/通道）。
-    // 注意不能在 cleanup 里置 disposed 标志去打断测量流程——StrictMode 的
-    // effect→cleanup→effect 会把唯一在跑的 IIFE 标记为 disposed，导致测量中断。
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    void (async () => {
-      // 看门狗：流程卡死（WebKit 偶发停滞）时也要落一份失败报告，
-      // 驱动脚本才能快速失败并拿到卡住的阶段，而不是干等超时。
-      let lastStage = "mounted";
-      const watchdog = setTimeout(() => {
-        pageLog(`watchdog fired at stage=${lastStage}`);
-        void invoke("spike_report_latency", {
-          payload: JSON.stringify({
-            error: "flow stalled",
-            stage: lastStage,
-            elapsed_ms: 120_000,
-          }),
-        }).catch(() => {});
-      }, 120_000);
-      const clearWatchdog = () => clearTimeout(watchdog);
-      const stage = (msg: string) => {
-        lastStage = msg.length > 80 ? msg.slice(0, 80) : msg;
-        pageLog(msg);
-      };
-
-      const term = new XTerm({ cursorBlink: true, fontSize: 13 });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      if (hostRef.current) term.open(hostRef.current);
-      try {
-        fit.fit();
-      } catch {
-        // 布局未就绪不影响测量（cols/rows 已有默认值）
-      }
-
-      // --- 1. 二进制通道定案探针 ---
-      stage("mounted, running probe");
-      let probe: Record<string, string> | null = null;
-      if (spike === "latency") {
-        try {
-          probe = await runProbe();
-          term.writeln(`[probe] ${JSON.stringify(probe)}`);
-          stage(`probe done: ${JSON.stringify(probe)}`);
-        } catch (e) {
-          term.writeln(`[probe] failed: ${e}`);
-          stage(`probe failed: ${e}`);
-        }
-      }
-
-      // --- 2. attach：PTY 输出经 Raw 帧推到 chan ---
-      const chan = new Channel<unknown>();
-      const harness: Harness = { mode: "boot", sent: [], latencies: [], expected: 0, noise: 0 };
-      // 预热专用 harness：'0' 字符的回显匹配，用于判稳（不计入正式样本）
-      const warmup: Harness = { mode: "boot", sent: [], latencies: [], expected: 0, noise: 0 };
-      let activeHarness = warmup;
-      let frames = 0;
-      let frontBytes = 0;
-      let firstType = "";
-      let base64Seen = false;
-      const frameSizes: number[] = [];
-
-      chan.onmessage = (m) => {
-        frames++;
-        if (!firstType) firstType = classify(m);
-        if (typeof m === "string") base64Seen = true;
-        let bytes: Uint8Array;
-        try {
-          bytes = toBytes(m);
-        } catch {
-          return;
-        }
-        frameSizes.push(bytes.length);
-        frontBytes += bytes.length;
-        term.write(bytes);
-        feed(activeHarness, bytes, performance.now());
-      };
-
-      let id: string;
-      // attach 重试：spike 观测到偶发连接停滞（Rust 侧已限时 15s 失败），
-      // 重试一次即可绕过，不影响测量语义。
-      let attachErr: unknown = null;
-      id = "";
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          stage(`attach attempt ${attempt}`);
-          id = await invoke<string>("attach_session", {
-            host: FIXTURE.host,
-            port: FIXTURE.port,
-            username: FIXTURE.username,
-            password: FIXTURE.password,
-            cols: term.cols,
-            rows: term.rows,
-            onData: chan,
-          });
-          attachErr = null;
-          break;
-        } catch (e) {
-          attachErr = e;
-          stage(`attach attempt ${attempt} failed: ${e}`);
-          await sleep(1000);
-        }
-      }
-      if (attachErr !== null) {
-        const e = attachErr;
-        term.writeln(`\r\n[attach failed] ${e}`);
-        setBadge(`attach 失败: ${e}`);
-        // 失败也要落报告，驱动脚本才不会白等超时（报告带 error 字段便于排障）
-        try {
-          await invoke("spike_report_latency", {
-            payload: JSON.stringify({ error: String(e), stage: "attach" }),
-          });
-        } catch {
-          // 上报本身失败则只能靠日志排障
-        }
-        clearWatchdog();
-        return;
-      }
-
-      // 击键 → PTY（与真人输入同一路径；spike 台账允许 JSON 数组编码）
-      const sendInput = (text: string) =>
-        invoke("write_session", {
-          id,
-          bytes: Array.from(new TextEncoder().encode(text)),
-        });
-      term.onData((d) => {
-        void sendInput(d);
-      });
-      stage(`attached as ${id}`);
-
-      if (spike !== "latency") {
-        setBadge(`已连接 127.0.0.1:2222（首帧 ${firstType}）`);
-        return;
-      }
-
-      // --- 3. 自动打字测量 ---
-      term.writeln(`[spike] ${BOOT_MS}ms 后开始打 ${CHARS} 字符（间隔 ${INTERVAL_MS}ms）…`);
-      await sleep(BOOT_MS);
-      await sendInput("exec cat\n"); // 纯回显进程：内核 tty 逐键回显，无 prompt 噪声
-      await sleep(CAT_SETTLE_MS);
-
-      // --- 3a. 自适应预热：跑热 JIT/xterm 渲染器/IPC 路径，直到回显 p95 判稳
-      // 或达上限。冷启动会把样本抬高数百 ms（一次性成本），必须挡在测量窗之外。
-      term.writeln(`[spike] 预热（自适应，目标 p95 < ${WARMUP_TARGET_P95}ms）…`);
-      warmup.mode = "typing";
-      const warmupT0 = performance.now();
-      for (let i = 0; i < WARMUP_MAX_CHARS; i++) {
-        warmup.sent.push({ code: 48, t0: performance.now() }); // '0'
-        await sendInput("0"); // '0' 不在测量字符集 a-z 内：串窗只计入 noise，不会错配
-        await sleep(WARMUP_INTERVAL_MS);
-        if (i >= WARMUP_MIN_CHARS && i % 20 === 0) {
-          const recent = warmup.latencies.slice(-20);
-          const covered = warmup.expected >= i - 5; // 回显基本跟上
-          if (covered && p95Of(recent) < WARMUP_TARGET_P95) break;
-        }
-      }
-      warmup.mode = "done";
-      const warmupMs = performance.now() - warmupT0;
-      const warmupP95 = p95Of(warmup.latencies.slice(-20));
-      stage(
-        `warmup done: chars=${warmup.sent.length} echoed=${warmup.expected} p95=${warmupP95?.toFixed(1)}ms ${warmupMs.toFixed(0)}ms`,
-      );
-      await sleep(WARMUP_DRAIN_MS); // 回显排干，防预热字符串进测量窗
-
-      activeHarness = harness; // 切回正式测量 harness
-      harness.mode = "typing";
-      const typingStart = performance.now();
-      for (let i = 0; i < CHARS; i++) {
-        const ch = String.fromCharCode(97 + (i % 26));
-        // t0 = 发出时刻；先登记再 invoke，防回显早于 invoke 应答到达时漏匹配
-        harness.sent.push({ code: ch.charCodeAt(0), t0: performance.now() });
-        await sendInput(ch);
-        await sleep(INTERVAL_MS);
-      }
-      const typingMs = performance.now() - typingStart;
-      const graceDeadline = performance.now() + GRACE_MS;
-      while (harness.expected < CHARS && performance.now() < graceDeadline) await sleep(50);
-      harness.mode = "done";
-      stage(
-        `typing done: n=${harness.latencies.length} expected=${harness.expected} noise=${harness.noise}`,
-      );
-
-      // --- 4. 统计 + 回传报告 ---
-      const xs = [...harness.latencies].sort((a, b) => a - b);
-      const pct = (q: number) =>
-        xs.length ? +xs[Math.ceil(q * xs.length) - 1].toFixed(2) : null;
-      const p50 = pct(0.5);
-      const p95 = pct(0.95);
-      const report = {
-        meta: {
-          host: `${FIXTURE.host}:${FIXTURE.port}`,
-          user: FIXTURE.username,
-          chars: CHARS,
-          interval_ms: INTERVAL_MS,
-          boot_ms: BOOT_MS,
-          warmup: {
-            target_p95_ms: WARMUP_TARGET_P95,
-            actual_p95_ms: warmup.latencies.length ? +warmupP95.toFixed(2) : null,
-            chars_sent: warmup.sent.length,
-            chars_echoed: warmup.expected,
-            ms: +warmupMs.toFixed(1),
-            drain_ms: WARMUP_DRAIN_MS,
-          },
-          typing_ms: +typingMs.toFixed(1),
-          // 合批窗口/上限的实际生效值以报告 rust 段为准（spike 实验会改变窗口）
-          ua: navigator.userAgent,
-          measured_at: new Date().toISOString(),
-        },
-        latency: {
-          n: xs.length,
-          p50,
-          p95,
-          min: xs.length ? +xs[0].toFixed(2) : null,
-          max: xs.length ? +xs[xs.length - 1].toFixed(2) : null,
-          samples: harness.latencies.map((v) => +v.toFixed(2)),
-        },
-        channel: {
-          typeof_first: firstType,
-          base64_seen: base64Seen,
-          frames,
-          front_bytes: frontBytes,
-          frame_sizes: frameSizes,
-          probe,
-        },
-        echo_noise_bytes: harness.noise,
-      };
-      try {
-        const path = await invoke<string>("spike_report_latency", {
-          payload: JSON.stringify(report),
-        });
-        stage(`report written: ${path}`);
-        const verdict =
-          !base64Seen && firstType.startsWith("ArrayBuffer")
-            ? "binary(ArrayBuffer)"
-            : "NOT-binary(见 probe)";
-        setBadge(
-          `p50 ${p50}ms | p95 ${p95}ms | n=${xs.length} | 通道=${verdict} | report=${path}`,
-        );
-        term.writeln(
-          `\r\n[spike] done: n=${xs.length} p50=${p50}ms p95=${p95}ms 通道=${verdict}`,
-        );
-        term.writeln(`[spike] report -> ${path}`);
-        clearWatchdog();
-      } catch (e) {
-        setBadge(`report 上报失败: ${e}`);
-        term.writeln(`\r\n[spike] report 上报失败: ${e}`);
-        pageLog(`report 上报失败: ${e}`);
-      }
-    })();
-  }, [spike]);
-
-  return (
-    <div className="spike-root">
-      <div className="spike-badge" id="spike-badge">
-        {badge}
-      </div>
-      <div className="spike-term" ref={hostRef} />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Task 13 / Spike #12：xterm.js 渲染压力（?spike=render，由 OTTR_SPIKE=render
-// 自动导航进入；驱动脚本 scripts/spike-desktop-api.sh render）。
-//
-// 测什么（简报 Step 2）：
-// 1. 【冷启动首响·T4 挂账补充】页面挂载即 attach 夹具：记 attach invoke →
-//    首帧字节到达的耗时（含 connect+auth+PTY+首字节，dev server 刚起后的
-//    第一次 attach）。attach 失败不阻断渲染测量（ttfb 记 null + error）。
-// 2. 【写入】一次性 write 10_000 行含色文本（256 色 ANSI 轮换 + 行号），
-//    `term.write(data, cb)` 回调计时（xterm 解析+入缓冲），再等两拍 rAF
-//    记「首帧渲染完成」。
-// 3. 【滚动】写完后逐帧 `scrollLines(±1)` 跑 SCROLL_FRAMES 帧，rAF 帧长
-//    avg/p50/p95/max（滚动流畅度的自动部分；主观评分归 runbook）。
-// 4. 【IME #14 mac 可自动化部分】记录 xterm 隐藏 textarea（组合输入事件
-//    通路载体）是否存在——xterm.js 6.0 内置 IME 组合支持，本页未注册任何
-//    attachCustomKeyEventHandler（无拦截风险）；真实组合输入三端人工验证
-//    归 docs/runbooks/spike-win-linux.md。
-//
-// 报告经 `spike_report_file` 落盘 /tmp/ottr-render.json（spike 白名单路径）。
-// 注意：本页数字 = macOS WebKit 真机形态；CI 软件渲染数字仅作回归基线，
-// ≠ 真机 GPU 数字（报告注明）；WebView2/WebKitGTK 专项归 runbook。
-// ---------------------------------------------------------------------------
-
-const RENDER_LINES = 10_000;
-const SCROLL_FRAMES = 180; // 滚动测量帧数（3s @60fps）
-
-/** 构造 L 行含色文本：256 色 ANSI 前景轮换 + 行号 + 填充列（~90 列宽）。 */
-function buildColoredLines(lines: number): string {
-  const parts: string[] = [];
-  for (let i = 0; i < lines; i++) {
-    const color = i % 256;
-    parts.push(`\x1b[38;5;${color}mline ${String(i).padStart(5, "0")} │ ${"ottr-render-".repeat(7)}\x1b[0m`);
+  /** 粘贴入口（菜单/确认层共用）：level=none 直接写，否则弹确认。 */
+  function requestPaste(text: string) {
+    const verdict = assessPaste(text);
+    if (verdict.level === "none") {
+      termRef.current?.paste(text);
+    } else {
+      setPendingPaste(text);
+    }
   }
-  return parts.join("\r\n");
-}
-
-/** 一轮 rAF。 */
-const nextFrame = () => new Promise<number>((res) => {
-  const t0 = performance.now();
-  requestAnimationFrame(() => res(performance.now() - t0));
-});
-
-export function RenderSpike() {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const startedRef = useRef(false);
-  const [badge, setBadge] = useState("spike:render 初始化…");
-
-  useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    void (async () => {
-      let lastStage = "mounted";
-      const watchdog = setTimeout(() => {
-        pageLog(`watchdog fired at stage=${lastStage}`);
-        void invoke("spike_report_file", {
-          path: "/tmp/ottr-render.json",
-          payload: JSON.stringify({ mode: "render", error: "flow stalled", stage: lastStage }),
-        }).catch(() => {});
-      }, 90_000);
-      const clearWatchdog = () => clearTimeout(watchdog);
-      const stage = (msg: string) => {
-        lastStage = msg.length > 80 ? msg.slice(0, 80) : msg;
-        pageLog(msg);
-      };
-
-      const report: Record<string, unknown> = {
-        mode: "render",
-        meta: {
-          lines: RENDER_LINES,
-          scroll_frames: SCROLL_FRAMES,
-          ua: navigator.userAgent,
-          note: "mac=WebKit 真机；CI 软件渲染数字仅作回归基线≠真机 GPU",
-          measured_at: new Date().toISOString(),
-        },
-      };
-
-      // --- 1. 冷启动首响：挂载即 attach（dev server 刚起后的第一次） ---
-      const term = new XTerm({ fontSize: 13 });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      if (hostRef.current) term.open(hostRef.current);
-      try {
-        fit.fit();
-      } catch {
-        // 布局未就绪不影响测量
-      }
-
-      const chan = new Channel<unknown>();
-      let attach0 = 0;
-      let ttfbMs: number | null = null;
-      chan.onmessage = (m) => {
-        if (ttfbMs === null && attach0 > 0) {
-          ttfbMs = +(performance.now() - attach0).toFixed(1);
-          stage(`cold ttfb ${ttfbMs}ms`);
-        }
-        try {
-          term.write(toBytes(m));
-        } catch {
-          // 忽略非二进制帧
-        }
-      };
-
-      let id = "";
-      let attachErr: unknown = null;
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          stage(`attach attempt ${attempt}`);
-          attach0 = performance.now();
-          id = await invoke<string>("attach_session", {
-            host: FIXTURE.host,
-            port: FIXTURE.port,
-            username: FIXTURE.username,
-            password: FIXTURE.password,
-            cols: term.cols,
-            rows: term.rows,
-            onData: chan,
-          });
-          attachErr = null;
-          break;
-        } catch (e) {
-          attachErr = e;
-          stage(`attach attempt ${attempt} failed: ${e}`);
-          await sleep(1000);
-        }
-      }
-      if (attachErr === null) {
-        // 等首帧（最多 15s：connect 15s 限时 + 余量）
-        const deadline = performance.now() + 15_000;
-        while (ttfbMs === null && performance.now() < deadline) await sleep(20);
-        report.cold_start = {
-          attach_to_first_byte_ms: ttfbMs,
-          includes: "connect+auth+open_pty+shell+首字节（dev server 刚起后首 attach）",
-        };
-        stage(`cold start ttfb=${ttfbMs}ms`);
-      } else {
-        report.cold_start = { attach_to_first_byte_ms: null, error: String(attachErr) };
-        stage(`attach failed, render-only: ${attachErr}`);
-      }
-
-      // --- 2. 一次性写 10_000 行含色文本 ---
-      const data = buildColoredLines(RENDER_LINES);
-      const write0 = performance.now();
-      await new Promise<void>((res) => term.write(data, () => res()));
-      const writeMs = +(performance.now() - write0).toFixed(1);
-      const raf1 = await nextFrame();
-      const raf2 = await nextFrame(); // 第二拍 = 写入后稳定帧长参考
-      report.write = {
-        lines: RENDER_LINES,
-        bytes: data.length,
-        write_callback_ms: writeMs,
-        first_frame_after_write_ms: +raf1.toFixed(2),
-        steady_frame_ms: +raf2.toFixed(2),
-      };
-      stage(`write done: ${writeMs}ms`);
-
-      // --- 3. 滚动 rAF 帧长 ---
-      const deltas: number[] = [];
-      for (let i = 0; i < SCROLL_FRAMES; i++) {
-        term.scrollLines(i % 8 < 4 ? 3 : -3); // 下滚 4 帧上滚 4 帧（滚动条活动）
-        deltas.push(await nextFrame());
-      }
-      const sorted = [...deltas].sort((a, b) => a - b);
-      const pct = (q: number) => +sorted[Math.ceil(q * sorted.length) - 1].toFixed(2);
-      const avg = +(deltas.reduce((a, b) => a + b, 0) / deltas.length).toFixed(2);
-      report.scroll = {
-        frames: SCROLL_FRAMES,
-        avg_frame_ms: avg,
-        p50_frame_ms: pct(0.5),
-        p95_frame_ms: pct(0.95),
-        max_frame_ms: +sorted[sorted.length - 1].toFixed(2),
-        avg_fps: +(1000 / avg).toFixed(1),
-      };
-      stage(`scroll done: avg ${avg}ms`);
-
-      // --- 4. IME 组合输入通路存在性（#14 mac 可自动化部分） ---
-      report.ime_path = {
-        xterm_helper_textarea_present:
-          document.querySelector(".xterm-helper-textarea") !== null,
-        custom_key_handler_registered: false, // 本页无 attachCustomKeyEventHandler（代码事实）
-        note: "xterm.js 6.0 内置 IME 组合（textarea 通路）；真实组合输入三端人工验证归 runbook",
-      };
-
-      // --- 清理 + 回传 ---
-      if (id) {
-        await invoke("drop_session", { id }).catch(() => {});
-      }
-      try {
-        const path = await invoke<string>("spike_report_file", {
-          path: "/tmp/ottr-render.json",
-          payload: JSON.stringify(report),
-        });
-        stage(`report written: ${path}`);
-      const scroll = report.scroll as {
-        avg_frame_ms: number;
-        avg_fps: number;
-      };
-      setBadge(
-        `write ${writeMs}ms | scroll avg ${scroll.avg_frame_ms}ms (~${scroll.avg_fps}fps) | ttfb ${ttfbMs ?? "n/a"}ms | report=${path}`,
-      );
-      term.writeln(`\r\n[spike] done: write=${writeMs}ms scroll_avg=${scroll.avg_frame_ms}ms report=${path}`);
-        clearWatchdog();
-      } catch (e) {
-        setBadge(`report 上报失败: ${e}`);
-        stage(`report 上报失败: ${e}`);
-      }
-    })();
-  }, []);
 
   return (
-    <div className="spike-root">
-      <div className="spike-badge" id="spike-badge">
-        {badge}
-      </div>
-      <div className="spike-term" ref={hostRef} />
+    <div className="session-term" ref={hostRef} data-session-id={sessionId} onContextMenu={openContextMenu}>
+      <EncodingHintBar sessionId={sessionId} />
+      {menu && (
+        <>
+          <div className="ctx-overlay" onMouseDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
+          <ContextMenuView x={menu.x} y={menu.y} items={menu.items} onAction={runMenuAction} testPrefix={sessionId} />
+        </>
+      )}
+      {pendingPaste !== null && (
+        <PasteConfirmDialog
+          text={pendingPaste}
+          onCancel={() => setPendingPaste(null)}
+          onConfirm={() => {
+            termRef.current?.paste(pendingPaste);
+            setPendingPaste(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 右键菜单渲染（含一级子菜单：编码）。纯展示：动作经 onAction(id) 上抛。 */
+export function ContextMenuView({
+  x,
+  y,
+  items,
+  onAction,
+  testPrefix,
+}: {
+  x: number;
+  y: number;
+  items: ContextMenuItem[];
+  onAction: (id: string) => void;
+  testPrefix: string;
+}) {
+  const [openSub, setOpenSub] = useState<string | null>(null);
+  const { t } = useTranslation();
+  return (
+    <div
+      className="ctx-menu"
+      role="menu"
+      aria-label={t("terminal.menuAria")}
+      style={{ left: x, top: y }}
+      data-testid={`ctx-menu-${testPrefix}`}
+    >
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className="ctx-menu-row"
+          onMouseEnter={() => setOpenSub(item.children ? item.id : null)}
+        >
+          <button
+            role="menuitem"
+            className={`ctx-menu-item${item.danger ? " danger" : ""}`}
+            data-checked={item.checked === true}
+            disabled={item.disabled === true}
+            data-testid={`ctx-${item.id}`}
+            onClick={() => {
+              if (item.children) {
+                setOpenSub(openSub === item.id ? null : item.id);
+              } else {
+                onAction(item.id);
+              }
+            }}
+          >
+            <span>{item.label}</span>
+            <span className="ctx-hint">{item.children ? "›" : item.checked ? "✓" : ""}</span>
+          </button>
+          {item.children && openSub === item.id && (
+            <div className="ctx-submenu" role="menu">
+              {item.children.map((sub) => (
+                <button
+                  key={sub.id}
+                  role="menuitem"
+                  className="ctx-menu-item"
+                  data-checked={sub.checked === true}
+                  data-testid={`ctx-${sub.id}`}
+                  onClick={() => onAction(sub.id)}
+                >
+                  <span>{sub.label}</span>
+                  <span className="ctx-hint">{sub.checked ? "✓" : ""}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Task 7 / Spike #3：100MB 吞吐与背压测量（?spike=throughput）
-// 由 OTTR_SPIKE=throughput 自动导航进入；&interrupt=1 追加自动中断验证（Step 4）。
-// 报告经 spike_report_latency 通道落盘（T4 既有取数机制复用，名称沿用），
-// 驱动脚本 scripts/spike-throughput.sh 轮询取数。
+// 分屏主区（布局渲染 + 分隔条拖拽 + 搜索栏 + ⌘F）
 // ---------------------------------------------------------------------------
 
-const BIG_FILE = "/tmp/big100";
-const BIG_FILE_BYTES = 104_857_600;
-const FREEZE_GAP_MS = 250; // 简报 Step 1：帧间隔 > 250ms 计一次冻结
-const FREEZE_SUSPEND_MS = 5000; // >5s 视为 rAF 停摆（窗口被遮挡/节流），单列不计冻结
-const THP_BOOT_MS = 1500; // 等 shell prompt 稳定
-const THP_POLL_MS = 200; // Rust 计数轮询周期（兼作 UI 活动信号：徽标 5Hz 刷新）
-const THP_STABLE_POLLS = 6; // 连续 6 拍（≈1.2s）PTY 读无增长且前端追平 → 传输结束
-const THP_TIMEOUT_MS = 120_000; // 传输硬超时（页面看门狗 150s 兜底）
-const INTERRUPT_AT_BYTES = 8 * 1024 * 1024; // interrupt=1：收到 8MiB 后自动 drop_session
-
-type RustStats = {
-  pty_read_bytes: number;
-  forwarded_bytes: number;
-  frames: number;
-  input_bytes: number;
-  writes: number;
-  send_failed_frames: number;
-  send_failed_bytes: number;
-  failed: boolean;
-};
-
-function summarizeSizes(sizes: number[]): {
-  count: number;
-  min: number;
-  max: number;
-  avg: number;
-  first10: number[];
-} {
-  if (!sizes.length) return { count: 0, min: 0, max: 0, avg: 0, first10: [] };
-  return {
-    count: sizes.length,
-    min: sizes.reduce((a, b) => Math.min(a, b), Infinity),
-    max: sizes.reduce((a, b) => Math.max(a, b), 0),
-    avg: +(sizes.reduce((a, b) => a + b, 0) / sizes.length).toFixed(1),
-    first10: sizes.slice(0, 10),
-  };
-}
-
-export function ThroughputSpike() {
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const startedRef = useRef(false);
-  const [badge, setBadge] = useState("spike:throughput 初始化…");
+function SearchBar({ sessionId }: { sessionId: string }) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+  const [summary, setSummary] = useState<SearchResultSummary | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    void (async () => {
-      const interrupt =
-        new URLSearchParams(window.location.search).get("interrupt") === "1";
-
-      // 看门狗：卡死也落失败报告，驱动脚本才能快速失败并拿到卡住阶段（同 Task 4）。
-      let lastStage = "mounted";
-      const watchdog = setTimeout(() => {
-        pageLog(`watchdog fired at stage=${lastStage}`);
-        void invoke("spike_report_latency", {
-          payload: JSON.stringify({
-            mode: "throughput",
-            error: "flow stalled",
-            stage: lastStage,
-          }),
-        }).catch(() => {});
-      }, 150_000);
-      const clearWatchdog = () => clearTimeout(watchdog);
-      const stage = (msg: string) => {
-        lastStage = msg.length > 80 ? msg.slice(0, 80) : msg;
-        pageLog(msg);
-      };
-
-      // --- Step 1: rAF 冻结探测器（整场运行：attach、传输、中断全程） ---
-      let freezes = 0;
-      let rafSuspended = 0; // >5s 的 rAF 停摆（遮挡/节流），不与真冻结混计
-      let maxGapMs = 0;
-      let rafFrames = 0;
-      let lastFrame = performance.now();
-      let rafAlive = true;
-      const rafStep = (t: number) => {
-        if (!rafAlive) return;
-        const gap = t - lastFrame;
-        lastFrame = t;
-        rafFrames++;
-        if (gap > maxGapMs) maxGapMs = gap;
-        if (gap > FREEZE_SUSPEND_MS) rafSuspended++;
-        else if (gap > FREEZE_GAP_MS) freezes++;
-        requestAnimationFrame(rafStep);
-      };
-      requestAnimationFrame(rafStep);
-
-      const term = new XTerm({ fontSize: 13 });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      if (hostRef.current) term.open(hostRef.current);
-      try {
-        fit.fit();
-      } catch {
-        // 布局未就绪不影响测量
-      }
-
-      // --- Step 2: attach + 前端字节计数（term.write 收到的每一帧） ---
-      const chan = new Channel<unknown>();
-      let frames = 0;
-      let frontBytes = 0;
-      let lastDataAt = 0;
-      let firstType = "";
-      let base64Seen = false;
-      const frameSizes: number[] = [];
-      chan.onmessage = (m) => {
-        frames++;
-        if (!firstType) firstType = classify(m);
-        if (typeof m === "string") base64Seen = true;
-        let bytes: Uint8Array;
-        try {
-          bytes = toBytes(m);
-        } catch {
-          return;
-        }
-        frameSizes.push(bytes.length);
-        frontBytes += bytes.length;
-        lastDataAt = performance.now();
-        term.write(bytes);
-      };
-
-      // attach 重试一次（同 Task 4：偶发连接停滞，Rust 侧已限时失败）
-      let id = "";
-      let attachErr: unknown = null;
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          stage(`attach attempt ${attempt}`);
-          id = await invoke<string>("attach_session", {
-            host: FIXTURE.host,
-            port: FIXTURE.port,
-            username: FIXTURE.username,
-            password: FIXTURE.password,
-            cols: term.cols,
-            rows: term.rows,
-            onData: chan,
-          });
-          attachErr = null;
-          break;
-        } catch (e) {
-          attachErr = e;
-          stage(`attach attempt ${attempt} failed: ${e}`);
-          await sleep(1000);
-        }
-      }
-      if (attachErr !== null) {
-        term.writeln(`\r\n[attach failed] ${attachErr}`);
-        setBadge(`attach 失败: ${attachErr}`);
-        await invoke("spike_report_latency", {
-          payload: JSON.stringify({
-            mode: "throughput",
-            error: String(attachErr),
-            stage: "attach",
-          }),
-        }).catch(() => {});
-        clearWatchdog();
-        return;
-      }
-      stage(`attached as ${id}`);
-
-      const sendInput = (text: string) =>
-        invoke("write_session", {
-          id,
-          bytes: Array.from(new TextEncoder().encode(text)),
-        });
-
-      await sleep(THP_BOOT_MS);
-      term.writeln(`[spike] cat ${BIG_FILE}（${BIG_FILE_BYTES} B）…`);
-
-      // --- 传输 + 轮询（轮询兼作 UI 活动信号：React 徽标 5Hz 刷新） ---
-      const t0 = performance.now();
-      lastDataAt = t0;
-      let stats: RustStats | null = null;
-      let maxLagBytes = 0; // 背压信号：Rust 已转发 − 前端已收到的最大积压
-      const lagTrace: { t_ms: number; front: number; rust: number }[] = []; // 每 10 拍采样（2s 粒度）
-      let pollN = 0;
-      let stable = 0;
-      let lastRead = -1;
-      let interruptInfo: Record<string, unknown> | null = null;
-      let endedBy: "completed" | "interrupted" | "timeout" | "failed" = "timeout";
-
-      await sendInput(`cat ${BIG_FILE}\n`);
-
-      while (performance.now() - t0 < THP_TIMEOUT_MS) {
-        await sleep(THP_POLL_MS);
-        let s: RustStats;
-        try {
-          s = await invoke<RustStats>("session_stats", { id });
-        } catch (e) {
-          stage(`session_stats failed: ${e}`);
-          endedBy = "failed";
-          break;
-        }
-        stats = s;
-        pollN++;
-        const lag = Math.max(0, s.forwarded_bytes - frontBytes);
-        if (lag > maxLagBytes) maxLagBytes = lag;
-        if (pollN % 10 === 1) {
-          lagTrace.push({
-            t_ms: +(performance.now() - t0).toFixed(0),
-            front: frontBytes,
-            rust: s.forwarded_bytes,
-          });
-        }
-        setBadge(
-          `接收 ${(frontBytes / 1048576).toFixed(1)} / 100.0 MiB | Rust 已转发 ${s.forwarded_bytes} | 冻结 ${freezes} | maxGap ${maxGapMs.toFixed(0)}ms`,
-        );
-        if (s.failed || s.send_failed_bytes > 0) {
-          stage(`session failed flag on: send_failed_bytes=${s.send_failed_bytes}`);
-          endedBy = "failed";
-          break;
-        }
-        // --- Step 4（interrupt=1）：到达阈值即自动 drop session ---
-        if (interrupt && frontBytes >= INTERRUPT_AT_BYTES) {
-          const atBytes = frontBytes;
-          const atStats = s;
-          const dropReq0 = performance.now();
-          await invoke("drop_session", { id });
-          const dropInvokeMs = performance.now() - dropReq0;
-          // UI 立即可用证据 1：drop 返回后到下一次 rAF 帧的时距
-          const nextFrameMs = await new Promise<number>((res) => {
-            const t = performance.now();
-            requestAnimationFrame(() => res(performance.now() - t));
-          });
-          // 证据 2：旧会话已从进程端移除（session_stats 必须报 no such session）
-          let postDropStats: string;
-          try {
-            await invoke("session_stats", { id });
-            postDropStats = "STILL-ALIVE(取消失效!)";
-          } catch (e) {
-            postDropStats = `gone ok: ${e}`;
-          }
-          // 证据 3：立刻新开会话并打字回显（真实可用性）
-          const chan2 = new Channel<unknown>();
-          let postText = "";
-          const dec = new TextDecoder();
-          chan2.onmessage = (m) => {
-            try {
-              const b = toBytes(m);
-              postText = (postText + dec.decode(b)).slice(-2000);
-            } catch {
-              // 忽略非二进制帧
-            }
-          };
-          const attach2_0 = performance.now();
-          const id2 = await invoke<string>("attach_session", {
-            host: FIXTURE.host,
-            port: FIXTURE.port,
-            username: FIXTURE.username,
-            password: FIXTURE.password,
-            cols: term.cols,
-            rows: term.rows,
-            onData: chan2,
-          });
-          const postAttachMs = performance.now() - attach2_0;
-          const echo0 = performance.now();
-          await invoke("write_session", {
-            id: id2,
-            bytes: Array.from(new TextEncoder().encode("echo post-drop-ok\n")),
-          });
-          let echoOk = false;
-          const echoDeadline = performance.now() + 5000;
-          while (performance.now() < echoDeadline) {
-            await sleep(50);
-            if (postText.includes("post-drop-ok")) {
-              echoOk = true;
-              break;
-            }
-          }
-          interruptInfo = {
-            trigger_bytes: INTERRUPT_AT_BYTES,
-            front_bytes_at_drop: atBytes,
-            stats_at_drop: atStats,
-            drop_invoke_ms: +dropInvokeMs.toFixed(2),
-            next_frame_after_drop_ms: +nextFrameMs.toFixed(2),
-            post_drop_stats_check: postDropStats,
-            post_drop_attach_ms: +postAttachMs.toFixed(2),
-            post_drop_session: id2,
-            post_drop_echo_ok: echoOk,
-            post_drop_echo_ms:
-              echoOk ? +(performance.now() - echo0).toFixed(2) : -1,
-            freezes_at_drop: freezes,
-          };
-          stage(
-            `interrupted: drop=${dropInvokeMs.toFixed(1)}ms nextFrame=${nextFrameMs.toFixed(1)}ms reattach=${postAttachMs.toFixed(0)}ms echo_ok=${echoOk}`,
-          );
-          endedBy = "interrupted";
-          break;
-        }
-        // --- 完成判定：PTY 读停 + 前端追平 Rust ---
-        if (s.pty_read_bytes === lastRead && s.pty_read_bytes > 0 && lag <= 4096) {
-          stable++;
-          if (stable >= THP_STABLE_POLLS) {
-            endedBy = "completed";
-            break;
-          }
-        } else {
-          stable = 0;
-          lastRead = s.pty_read_bytes;
-        }
-      }
-      rafAlive = false; // 冻结计数止于传输/中断结束（报告时刻即计数快照）
-      const elapsedMs = performance.now() - t0;
-      // 吞吐分母 = 最后一个数据字节到达时刻（剔除结束判定的 ~1.2s 稳定尾）
-      const dataMs = Math.max(lastDataAt - t0, 1);
-      const rateBytes = endedBy === "completed" ? BIG_FILE_BYTES : frontBytes;
-      const account = stats
-        ? {
-            rust_pty_read_bytes: stats.pty_read_bytes,
-            rust_forwarded_bytes: stats.forwarded_bytes,
-            rust_frames: stats.frames,
-            rust_send_failed_frames: stats.send_failed_frames,
-            rust_send_failed_bytes: stats.send_failed_bytes,
-            rust_failed_flag: stats.failed,
-            front_bytes: frontBytes,
-            front_frames: frames,
-            diff_front_vs_rust: frontBytes - stats.forwarded_bytes,
-            // 完整跑才有意义：文件字节数之外的 shell 回显 + PTY ONLCR 展开开销
-            overhead_vs_file: endedBy === "completed" ? frontBytes - BIG_FILE_BYTES : null,
-          }
-        : null;
-
-      // --- Step 3: 三方账目 + 耗时 + 冻结计数回传报告 ---
-      const report = {
-        mode: "throughput",
-        ended_by: endedBy,
-        meta: {
-          file: BIG_FILE,
-          file_bytes: BIG_FILE_BYTES,
-          interrupt,
-          ua: navigator.userAgent,
-          measured_at: new Date().toISOString(),
-        },
-        transfer: {
-          elapsed_ms: +elapsedMs.toFixed(1),
-          data_ms: +dataMs.toFixed(1),
-          mib_per_s: +((rateBytes / 1048576) / (dataMs / 1000)).toFixed(2),
-          mb_per_s: +((rateBytes / 1e6) / (dataMs / 1000)).toFixed(2),
-          max_ipc_lag_bytes: maxLagBytes,
-          lag_trace_2s: lagTrace,
-        },
-        freeze: {
-          threshold_ms: FREEZE_GAP_MS,
-          freezes,
-          raf_suspended_gt_5s: rafSuspended,
-          max_frame_gap_ms: +maxGapMs.toFixed(1),
-          raf_frames: rafFrames,
-        },
-        account,
-        channel: {
-          typeof_first: firstType,
-          base64_seen: base64Seen,
-          frame_sizes: summarizeSizes(frameSizes),
-        },
-        interrupt: interruptInfo,
-      };
-      try {
-        const path = await invoke<string>("spike_report_latency", {
-          payload: JSON.stringify(report),
-        });
-        stage(`report written: ${path}`);
-        const mbps = report.transfer.mib_per_s;
-        setBadge(`${endedBy} | ${mbps} MiB/s | 冻结 ${freezes} | report=${path}`);
-        term.writeln(
-          `\r\n[spike] ${endedBy}: ${mbps} MiB/s 冻结=${freezes} report=${path}`,
-        );
-        clearWatchdog();
-      } catch (e) {
-        setBadge(`report 上报失败: ${e}`);
-        stage(`report 上报失败: ${e}`);
-      }
-    })();
+    inputRef.current?.focus();
+    inputRef.current?.select();
   }, []);
 
+  function doSearch(dir: "next" | "prev") {
+    if (query === "") return;
+    const ctrl = getSearch(sessionId);
+    if (!ctrl) return;
+    const found = dir === "next" ? ctrl.findNext(query) : ctrl.findPrevious(query);
+    setSummary(
+      ctrl.lastResult ?? (found ? null : { resultIndex: -1, resultCount: 0 }),
+    );
+  }
+
+  function close() {
+    getSearch(sessionId)?.close();
+    useSessionStore.getState().openSearch(null);
+  }
+
   return (
-    <div className="spike-root">
-      <div className="spike-badge" id="spike-badge">
-        {badge}
+    <div className="search-bar" data-testid="search-bar" role="search">
+      <input
+        ref={inputRef}
+        value={query}
+        placeholder={t("terminal.searchPlaceholder")}
+        data-testid="search-input"
+        onChange={(e) => setQuery(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            doSearch(e.shiftKey ? "prev" : "next");
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            close();
+          }
+        }}
+      />
+      <button data-testid="search-prev" aria-label={t("terminal.searchPrev")} onClick={() => doSearch("prev")}>
+        ↑
+      </button>
+      <button data-testid="search-next" aria-label={t("terminal.searchNext")} onClick={() => doSearch("next")}>
+        ↓
+      </button>
+      <span className="search-count" data-testid="search-count">
+        {summary === null
+          ? ""
+          : summary.resultCount > 0 && summary.resultIndex >= 0
+            ? `${summary.resultIndex + 1}/${summary.resultCount}`
+            : t("terminal.searchNoResult")}
+      </span>
+      <button data-testid="search-close" aria-label={t("common.close")} onClick={close}>
+        ×
+      </button>
+    </div>
+  );
+}
+
+/** 分屏终端主区（App.tsx 挂载）。bounds 驱动纯布局（split.ts），分隔条拖拽
+ * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。 */
+export function TerminalArea() {
+  const { t } = useTranslation();
+  const sessions = useSessionStore((s) => s.sessions);
+  const activeId = useSessionStore((s) => s.activeId);
+  const trees = useSessionStore((s) => s.trees);
+  const activePaneMap = useSessionStore((s) => s.activePane);
+  const searchSessionId = useSessionStore((s) => s.searchSessionId);
+  const stackRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ divider: Divider } | null>(null);
+  const [bounds, setBounds] = useState<Rect>({ x: 0, y: 0, w: 0, h: 0 });
+
+  // 容器尺寸 → 布局输入（拖侧栏/窗口缩放都会触发）
+  useEffect(() => {
+    const el = stackRef.current;
+    if (!el) return;
+    const measure = () => setBounds({ x: 0, y: 0, w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const activeTree = activeId != null ? (trees[activeId] ?? leaf(activeId)) : null;
+  const rects = activeTree ? layout(activeTree, bounds) : new Map<string, Rect>();
+  const dividerList = activeTree ? dividers(activeTree, bounds) : [];
+  const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
+
+  // 编码徽标（Task 9）：聚焦 pane 的当前会话编码，点击循环 utf-8→gbk→gb18030。
+  const activeEncoding = useSessionStore((s) =>
+    focusedPane != null
+      ? (s.sessions.find((x) => x.id === focusedPane)?.encoding ?? null)
+      : null,
+  );
+
+  // ⌘F / Ctrl+F 呼出聚焦 pane 的搜索；Esc 由搜索栏自处理
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        const store = useSessionStore.getState();
+        const target =
+          store.activeId != null ? (store.activePane[store.activeId] ?? store.activeId) : null;
+        store.openSearch(target);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  function startDrag(divider: Divider) {
+    return (e: React.PointerEvent) => {
+      e.preventDefault();
+      dragRef.current = { divider };
+      // ratio 由指针在命中面内的相对位置直接换算（split.ts 内 clamp 到活口）
+      const onMove = (ev: PointerEvent) => {
+        const d = dragRef.current?.divider;
+        const store = useSessionStore.getState();
+        if (!d || store.activeId == null) return;
+        const ratio =
+          d.dir === "row"
+            ? (ev.clientX - d.rect.x) / Math.max(1, d.rect.w)
+            : (ev.clientY - d.rect.y) / Math.max(1, d.rect.h);
+        store.setPaneRatio(store.activeId, d.path, ratio); // split.ts 内 clamp
+      };
+      const onUp = () => {
+        dragRef.current = null;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    };
+  }
+
+  return (
+    <div className="term-area">
+      <div className="term-toolbar">
+        <button
+          data-testid="split-right"
+          disabled={activeId == null}
+          onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
+        >
+          {t("terminal.splitRight")}
+        </button>
+        <button
+          data-testid="split-down"
+          disabled={activeId == null}
+          onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
+        >
+          {t("terminal.splitDown")}
+        </button>
+        {activeEncoding != null && (
+          <button
+            className="encoding-badge"
+            data-testid="encoding-badge"
+            data-encoding={activeEncoding}
+            aria-label={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
+            title={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
+            style={{ marginLeft: "auto" }}
+            onClick={() =>
+              useSessionStore
+                .getState()
+                .setSessionEncoding(focusedPane as string, nextEncoding(activeEncoding))
+            }
+          >
+            {encodingName(activeEncoding)}
+          </button>
+        )}
       </div>
-      <div className="spike-term" ref={hostRef} />
+      <div className="term-stack" ref={stackRef} data-testid="term-stack">
+        {sessions.map((session) => {
+          const rect = rects.get(session.id);
+          return (
+            <div
+              key={session.id}
+              className="term-pane"
+              data-active={rect != null}
+              data-focused={focusedPane === session.id}
+              data-testid={`term-pane-${session.id}`}
+              style={
+                rect
+                  ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h }
+                  : undefined
+              }
+              onMouseDown={() => {
+                if (activeId != null) {
+                  useSessionStore.getState().setActivePane(activeId, session.id);
+                }
+              }}
+            >
+              <SessionTerminal sessionId={session.id} />
+            </div>
+          );
+        })}
+        {dividerList.map((d, i) => (
+          <div
+            key={`divider-${i}`}
+            role="separator"
+            aria-label={t("terminal.splitAria")}
+            aria-orientation={d.dir === "row" ? "vertical" : "horizontal"}
+            className="split-divider"
+            data-dir={d.dir}
+            data-testid={`split-divider-${d.path.join("-") || "root"}`}
+            style={{ left: d.rect.x, top: d.rect.y, width: d.rect.w, height: d.rect.h }}
+            onPointerDown={startDrag(d)}
+          />
+        ))}
+        {searchSessionId != null && <SearchBar sessionId={searchSessionId} />}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,27 @@
+[package]
+name = "ottr-transfer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Phase 0 sftp.rs 迁入（Task 10 Step 1）：并行分块 + journal v1 断点续传。
+# ottr-ssh 依赖 = russh 类型边界的既定例外（与 SshTransport::Channel 同等待遇）：
+# SFTP 子系统流经 SshSession::open_sftp_stream 取自 russh ChannelStream，
+# 本 crate 直接消费；trait 边界（FileTransfer）签名仍是纯自有类型，见 lib.rs。
+ottr-ssh = { path = "../ottr-ssh" }
+russh-sftp = "3.0.1"
+# chunk 内子请求流水线（futures::future::try_join_all，随 Phase 0 sftp.rs 迁入）
+futures = "0.3"
+# Step 2（Task 10）：DirEntry 的 serde 面（src-tauri 命令直出）
+serde = { version = "1", features = ["derive"] }
+# Step 2（Task 10）：CancelToken（AtomicBool）与进度 hook 的原子计数
+tokio = { version = "1", features = ["sync", "time"] }
+# Fix round 1（C-1）：journal 文件名身份派生（sha256 + base64url）
+sha2 = "0.10"
+base64 = "0.22"
+
+[dev-dependencies]
+# 随迁测试（tests/sftp_test.rs）的取证通道：远端 exec（ChannelMsg 匹配）与
+# known_hosts 指纹 pin（russh::keys 解析）——与 Phase 0 原测试一致。
+russh = "0.63.3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }

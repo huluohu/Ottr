@@ -9,8 +9,13 @@
 //! src-tauri commands/jump.rs）。反向链与正向链是**不同的链**。
 //!
 //! FK 语义由存储层承担（0009 偏差记录，SQLite 无法对既有列补 REFERENCES）：
-//! * create/update 校验 hops 非空、无重复、指向的主机存在（= FK 存在性）；
-//! * delete 在事务内把引用该链的 hosts.jump_chain_id 置 NULL（= SET NULL）。
+//! * create/update 校验 hops 非空、无重复、指向的主机存在（= FK 存在性），
+//!   且与写入同事务（M-4 fix：消除「校验通过后、写入前主机被并发删除」的
+//!   悬空窗口）；
+//! * delete 在事务内把引用该链的 hosts.jump_chain_id 置 NULL（= SET NULL）；
+//! * [`remove_host_from_chains`]（Hosts::delete 调用，I-1 fix）：删 hop 主机时
+//!   从各链 hops 中移除该 id（链因此变空 → 级联删链并解绑引用主机——空链无
+//!   跳板意义，且解绑让引用主机回退直连而不是报 hop not found）。
 
 use rusqlite::OptionalExtension;
 use rusqlite::{params, Row};
@@ -49,7 +54,8 @@ pub struct JumpChains;
 impl JumpChains {
     /// 校验（FK 语义的存储层承担面）：名字非空白；hop 非空、无重复、
     /// 指向的主机存在。返回去空白后的名字。
-    fn validate(vault: &Vault, input: &JumpChainInput) -> Result<String> {
+    /// `conn` 由调用方传入事务连接（M-4 fix：校验与写入同事务）。
+    fn validate(conn: &rusqlite::Connection, input: &JumpChainInput) -> Result<String> {
         let name = input.name.trim();
         if name.is_empty() {
             return Err(VaultError::InvalidInput(
@@ -61,7 +67,6 @@ impl JumpChains {
                 "jump chain must contain at least one hop".into(),
             ));
         }
-        let conn = vault.connection();
         let mut seen = std::collections::HashSet::with_capacity(input.hops.len());
         for &host_id in &input.hops {
             if !seen.insert(host_id) {
@@ -84,15 +89,19 @@ impl JumpChains {
     }
 
     pub fn create(vault: &Vault, input: &JumpChainInput) -> Result<JumpChain> {
-        let name = Self::validate(vault, input)?;
         let ts = now_ts();
         let conn = vault.connection();
-        conn.execute(
+        // 校验 + 写入同一事务（M-4 fix）：校验通过后主机被并发删除的窗口内
+        // 写入会整体回滚，不会留下指向不存在主机的链行。
+        let tx = conn.unchecked_transaction()?;
+        let name = Self::validate(&tx, input)?;
+        tx.execute(
             "INSERT INTO jump_chains (name, hops, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?3)",
             params![name, serde_json::to_string(&input.hops)?, ts],
         )?;
-        let id = conn.last_insert_rowid();
+        let id = tx.last_insert_rowid();
+        tx.commit()?;
         Ok(JumpChain {
             id,
             name,
@@ -103,11 +112,13 @@ impl JumpChains {
     }
 
     /// 全量替换式更新（name/hops 同提交）；updated_at 刷新、created_at 保留。
+    /// 校验 + 写入同一事务（M-4 fix，同 create）。
     pub fn update(vault: &Vault, id: i64, input: &JumpChainInput) -> Result<JumpChain> {
-        let name = Self::validate(vault, input)?;
         let ts = now_ts();
         let conn = vault.connection();
-        let created_at: i64 = conn
+        let tx = conn.unchecked_transaction()?;
+        let name = Self::validate(&tx, input)?;
+        let created_at: i64 = tx
             .query_row(
                 "SELECT created_at FROM jump_chains WHERE id = ?1",
                 [id],
@@ -115,10 +126,11 @@ impl JumpChains {
             )
             .optional()?
             .ok_or_else(|| VaultError::NotFound(format!("jump_chain id={id}")))?;
-        conn.execute(
+        tx.execute(
             "UPDATE jump_chains SET name = ?1, hops = ?2, updated_at = ?3 WHERE id = ?4",
             params![name, serde_json::to_string(&input.hops)?, ts, id],
         )?;
+        tx.commit()?;
         Ok(JumpChain {
             id,
             name,
@@ -166,6 +178,46 @@ impl JumpChains {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
+}
+
+/// 删 hop 主机时的 FK 反向补偿（I-1 fix；`Hosts::delete` 在**同一事务**内
+/// 调用）：把 `host_id` 从所有链的 hops 中移除——
+/// * 链仍有余跳 → 原链保留、hops 更新（updated_at 前进；跳序中该 id 直接
+///   摘除，其余相对顺序不变）；
+/// * 链因此变空 → **级联删链** + 解绑引用该链的主机（`jump_chain_id` 置 NULL，
+///   与 [`JumpChains::delete`] 同语义）。空链无跳板意义（评审推荐 a+级联）；
+///   解绑让引用主机回退**直连**而不是连接时报 `hop not found`。
+pub(crate) fn remove_host_from_chains(tx: &rusqlite::Transaction, host_id: i64) -> Result<()> {
+    let mut stmt = tx.prepare("SELECT id, hops FROM jump_chains")?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, i64>("id")?, r.get::<_, String>("hops")?))
+        })?
+        .collect::<rusqlite::Result<Vec<(i64, String)>>>()?;
+    drop(stmt);
+    let ts = now_ts();
+    for (chain_id, hops_json) in rows {
+        // hops 列损坏 → Json 错误穿透，调用方事务回滚（主机不删，安全侧）。
+        let hops: Vec<i64> = serde_json::from_str(&hops_json).map_err(VaultError::Json)?;
+        if !hops.contains(&host_id) {
+            continue;
+        }
+        let remaining: Vec<i64> = hops.into_iter().filter(|h| *h != host_id).collect();
+        if remaining.is_empty() {
+            // 级联删链 + 解绑引用主机（空链不保留；与删链路径同一解绑语义）。
+            tx.execute("DELETE FROM jump_chains WHERE id = ?1", [chain_id])?;
+            tx.execute(
+                "UPDATE hosts SET jump_chain_id = NULL WHERE jump_chain_id = ?1",
+                [chain_id],
+            )?;
+        } else {
+            tx.execute(
+                "UPDATE jump_chains SET hops = ?1, updated_at = ?2 WHERE id = ?3",
+                params![serde_json::to_string(&remaining)?, ts, chain_id],
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn row_to_chain(row: &Row) -> rusqlite::Result<JumpChain> {

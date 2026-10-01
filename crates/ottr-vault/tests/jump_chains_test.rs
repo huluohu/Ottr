@@ -279,3 +279,133 @@ fn validation_rejects_bad_input() {
         Err(VaultError::NotFound(_))
     ));
 }
+
+/// I-1 fix（FK 补偿反向）：删 hop 主机 → 该 id 从各链 hops 摘除（余跳相对
+/// 顺序不变、updated_at 前进），链保留；connect 侧不再报 hop not found
+/// （hops 只含现存主机 id）。
+#[test]
+fn delete_hop_host_removes_it_from_chain_hops() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let ha = seed_host(&vault, "a");
+    let hb = seed_host(&vault, "b");
+    let hc = seed_host(&vault, "c");
+    let chain = JumpChains::create(
+        &vault,
+        &JumpChainInput {
+            name: "c".into(),
+            hops: vec![ha, hb, hc],
+        },
+    )
+    .unwrap();
+
+    Hosts::delete(&vault, hb).unwrap();
+
+    let row = JumpChains::get(&vault, chain.id).unwrap().expect("链保留");
+    assert_eq!(row.hops, vec![ha, hc], "中间 hop 摘除，相对顺序不变");
+    assert_eq!(row.name, "c");
+    assert!(
+        row.updated_at >= chain.updated_at,
+        "hops 变更推进 updated_at"
+    );
+    // 反向不变量：链内所有 hop 都指向现存主机（connect 不再报 not found）。
+    for &hop in &row.hops {
+        assert!(Hosts::get(&vault, hop).unwrap().is_some());
+    }
+    // 不相关的链不动。
+    let other = JumpChains::create(
+        &vault,
+        &JumpChainInput {
+            name: "other".into(),
+            hops: vec![hc],
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        JumpChains::get(&vault, other.id).unwrap().unwrap().hops,
+        vec![hc]
+    );
+}
+
+/// I-1 fix（级联裁定）：链的最后一个 hop 被删 → 链级联删除 + 引用该链的
+/// 主机解绑（jump_chain_id 置 NULL，回退直连——不再报 hop not found）；
+/// 删不存在的 host id → NotFound 且链原样（事务回滚）。
+#[test]
+fn delete_last_hop_host_cascades_chain_and_unbinds_referencing_hosts() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let ha = seed_host(&vault, "a");
+    let hb = seed_host(&vault, "b");
+    let href = seed_host(&vault, "ref");
+    let chain = JumpChains::create(
+        &vault,
+        &JumpChainInput {
+            name: "solo".into(),
+            hops: vec![ha],
+        },
+    )
+    .unwrap();
+    let other_chain = JumpChains::create(
+        &vault,
+        &JumpChainInput {
+            name: "other".into(),
+            hops: vec![hb],
+        },
+    )
+    .unwrap();
+    // 引用主机：一台绑被级联的链（删 hop 后应解绑），一台绑其他链（对照）。
+    let bind = |vault: &Vault, id: i64, chain_id: Option<i64>| {
+        let host = Hosts::get(vault, id).unwrap().unwrap();
+        Hosts::update(
+            vault,
+            id,
+            HostInput {
+                name: host.name.clone(),
+                group_id: host.group_id,
+                tags: host.tags.clone(),
+                address: host.address.clone(),
+                port: host.port,
+                username: host.username.clone(),
+                credential_id: host.credential_id,
+                jump_chain_id: chain_id,
+                encoding_override: host.encoding_override.clone(),
+                theme_override: host.theme_override.clone(),
+                monitor_enabled: host.monitor_enabled,
+                notes: host.notes.clone(),
+            },
+        )
+        .unwrap();
+    };
+    bind(&vault, href, Some(chain.id));
+    bind(&vault, hb, Some(other_chain.id));
+
+    Hosts::delete(&vault, ha).unwrap();
+
+    assert!(
+        JumpChains::get(&vault, chain.id).unwrap().is_none(),
+        "空链必须级联删除"
+    );
+    assert_eq!(Hosts::get(&vault, ha).unwrap(), None, "主机本身已删");
+    assert_eq!(
+        Hosts::get(&vault, href).unwrap().unwrap().jump_chain_id,
+        None,
+        "引用被级联链的主机必须解绑（回退直连，不再报 hop not found）"
+    );
+    assert_eq!(
+        JumpChains::get(&vault, other_chain.id).unwrap(),
+        Some(other_chain.clone()),
+        "其他链不受牵连"
+    );
+    assert_eq!(
+        Hosts::get(&vault, hb).unwrap().unwrap().jump_chain_id,
+        Some(other_chain.id),
+        "其他链的绑定不受牵连"
+    );
+
+    // 删不存在的 id → NotFound，且链表无副作用（事务回滚面）。
+    assert!(matches!(
+        Hosts::delete(&vault, 999_999),
+        Err(VaultError::NotFound(_))
+    ));
+    assert_eq!(JumpChains::list(&vault).unwrap().len(), 1);
+}

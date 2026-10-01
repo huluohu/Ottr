@@ -28,6 +28,7 @@ use crate::russh_impl::SshSession;
 use crate::{Error, RemoteForwardRouter};
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// 一条跳板链上的全部会话（teardown owner）。
@@ -40,6 +41,11 @@ pub struct JumpSession {
     hops: Vec<SshSession>,
     /// 目标会话（Arc：会话表与 JumpSession 共享同一所有者集合）。
     target: Arc<SshSession>,
+    /// 已显式拆除（[`Self::disconnect`] 已被调用过，M-2 fix）：Drop 兜底据此
+    /// 跳过——disconnect 是对全会话的 best-effort 遍历，之后 Drop 再补一轮
+    /// 只会对已关闭的 handle 逐跳产生失败日志（链式关闭 N+1 条噪音），无补救
+    /// 价值；兜底只覆盖「从未显式拆除」的路径。
+    disconnected: AtomicBool,
 }
 
 impl JumpSession {
@@ -81,6 +87,7 @@ impl JumpSession {
             return Ok(JumpSession {
                 hops: Vec::new(),
                 target: Arc::new(target),
+                disconnected: AtomicBool::new(false),
             });
         };
         let mut session = establish_hop_with_keepalive(first, keepalive)
@@ -118,6 +125,7 @@ impl JumpSession {
                 Ok(JumpSession {
                     hops: established,
                     target: Arc::new(target_session),
+                    disconnected: AtomicBool::new(false),
                 })
             }
             Err(source) => {
@@ -144,8 +152,11 @@ impl JumpSession {
 
     /// 显式拆除全链：**target 最先、跳板逆序**（见模块文档的顺序论证）。
     /// 单跳失败不阻断其余（best-effort 遍历），全部成功返回 `Ok(())`，
-    /// 否则返回最后一个错误。
+    /// 否则返回最后一个错误。置 `disconnected` 旗标（M-2 fix）：Drop 兜底
+    /// 据此跳过——拆除已被本轮 best-effort 覆盖，再补一轮只会对已关闭的
+    /// handle 逐跳产生失败日志（链式关闭 N+1 条噪音），无补救价值。
     pub async fn disconnect(&self) -> Result<(), Error> {
+        self.disconnected.store(true, Ordering::SeqCst);
         let mut last: Result<(), Error> = Ok(());
         if let Err(e) = self.target.disconnect().await {
             eprintln!("[jump] target disconnect failed: {e}");
@@ -177,6 +188,11 @@ impl Drop for JumpSession {
         // spawn 后台补断连（毫秒级后台收尾，不阻塞 drop 调用方）；无 runtime
         // 只能裸 drop（russh Handle::drop 不关连接，残余由对端超时兜底——
         // 最后防线，生产路径由 disconnect() 的显式拆除承担契约）。
+        // 已显式拆除（M-2 fix）→ 跳过：对已关闭 handle 的补拆只产生
+        // N+1 条 drop-fallback 日志，无补救价值。
+        if self.disconnected.load(Ordering::SeqCst) {
+            return;
+        }
         if tokio::runtime::Handle::try_current().is_err() {
             return;
         }

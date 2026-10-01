@@ -629,13 +629,20 @@ impl Hosts {
     }
 
     /// 删主机：绑定的凭据/分组实体不动（仅解绑），snippet 的 host_scope 置空。
+    /// 跳板链反向补偿（I-1 fix）：被链 hops 引用的主机在**同一事务**内先从各链
+    /// 摘除（链变空 → 级联删链并解绑引用主机，见
+    /// [`crate::jump_chains::remove_host_from_chains`]）——与库内「删引用清理」
+    /// 惯例一致，不会留下指向已删主机的死 hop id。
     pub fn delete(vault: &Vault, id: i64) -> Result<()> {
-        let n = vault
-            .connection()
-            .execute("DELETE FROM hosts WHERE id = ?1", [id])?;
+        let conn = vault.connection();
+        let tx = conn.unchecked_transaction()?;
+        crate::jump_chains::remove_host_from_chains(&tx, id)?;
+        let n = tx.execute("DELETE FROM hosts WHERE id = ?1", [id])?;
         if n == 0 {
+            // 事务随 tx drop 回滚：链补偿不落账（主机其实不存在）。
             return Err(VaultError::NotFound(format!("host id={id}")));
         }
+        tx.commit()?;
         Ok(())
     }
 

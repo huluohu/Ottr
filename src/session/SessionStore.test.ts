@@ -296,8 +296,56 @@ describe("host key 问询（TOFU）", () => {
     });
     const s = useSessionStore.getState().sessions[0];
     expect(s.status).toBe("disconnected");
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTime(60_000);
     expect(attachCalls()).toHaveLength(1); // 无自动重连
+  });
+
+  // --- Phase 2 Task 2 fix M-3：链式问询的两条新路径 ------------------------
+
+  it("链式问询归属：origin_host_id 指向发起主机 → 归属到它的在途 connect（hop host_id 不是发起方）", async () => {
+    hangAttach();
+    useSessionStore.getState().openTab(hostB); // 经链连接 db-01（id=2）
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+
+    // 问询落在链上 hop 主机（host_id=1，bastion）——origin_host_id=2 才是
+    // 发起连接的主机；归属必须按 origin 找到 db-01 的会话。
+    useSessionStore.getState().onHostKeyAsk({
+      host_id: 1,
+      host_name: "bastion-a",
+      fingerprint: "SHA256:hop1",
+      kind: "first",
+      hop: 0,
+      origin_host_id: 2,
+    });
+    const st = useSessionStore.getState();
+    expect(st.hostKeyAsk).toMatchObject({
+      sessionId: st.sessions[0].id,
+      host_id: 1,
+      hop: 0,
+      origin_host_id: 2,
+    });
+    expect(st.sessions[0].status).toBe("waiting_host_key");
+  });
+
+  it("孤儿问询（跳板链测试连接，无在途 connect）→ 仍弹确认框（sessionId 空哨兵），会话状态不动", async () => {
+    hangAttach();
+    useSessionStore.getState().openTab(hostC);
+    await vi.advanceTimersByTimeAsync(0);
+    // 让唯一会话离开 connecting（孤儿问询的前提：没有任何在途 connect 匹配）。
+    useSessionStore.setState((st) => ({
+      sessions: st.sessions.map((s) => ({ ...s, status: "connected", rustId: "pty-1" })),
+    }));
+
+    useSessionStore.getState().onHostKeyAsk({
+      host_id: 3,
+      host_name: "cache-01",
+      fingerprint: "SHA256:t",
+      kind: "pending",
+    });
+    const st = useSessionStore.getState();
+    expect(st.hostKeyAsk).toMatchObject({ sessionId: "", host_id: 3, kind: "pending" });
+    expect(st.sessions[0].status).toBe("connected"); // 孤儿问询不改会话状态
   });
 });
 

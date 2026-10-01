@@ -2,6 +2,11 @@
 //! 采样任务生命周期 owner，ForwardManager 同款 owner 模式）+ monitor_start/stop
 //! 命令 + `ottr://monitor` 事件推前端。
 //!
+//! Phase 3 Task 2（B4 下半）追加进程浏览器命令面：`monitor_ps`（只读 `ps -eo`
+//! 采集，ottr_monitor::PS_CMD 白名单 ps 追加点）/ `monitor_kill`（写操作；
+//! pid 命令域校验 `validate_pid` + ottr_monitor::kill_cmd 的 u32 入参双重
+//! 防注入；失败携带远端 stderr——EPERM 前端可见）。
+//!
 //! 【事件通道选型】统一全局事件 `ottr://monitor`、会话 id 内嵌载荷（`id` 字段），
 //! 不用 per-session 频道（`ottr://monitor-<id>`）：PTY 合批走 per-session
 //! `Channel` 是因为字节洪流需要独立背压面；监控是 0.2Hz 量级的微小 JSON 快照，
@@ -26,7 +31,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use ottr_monitor::{collect, run_sampling, LoopConfig, Metrics, MonitorGuard, SamplingEnd};
+use ottr_monitor::{
+    collect, collect_ps, kill_process, run_sampling, LoopConfig, Metrics, MonitorGuard, ProcEntry,
+    SamplingEnd,
+};
+use ottr_ssh::SshSession;
 use ottr_vault::Settings;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -208,6 +217,54 @@ pub(crate) fn monitor_stop(state: State<'_, AppState>, id: String) -> Result<(),
     Ok(())
 }
 
+/// 进程浏览器采集（Phase 3 Task 2，B4 下半）：会话内 exec 只读 `ps -eo`
+/// （ottr_monitor::PS_CMD，白名单 ps 追加点）→ 结构化行。
+#[tauri::command]
+pub(crate) async fn monitor_ps(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<ProcEntry>, String> {
+    let session = session_arc(&state, &id)?;
+    collect_ps(&session).await.map_err(|e| e.to_string())
+}
+
+/// pid 命令域校验（防注入第二道防线；第一道在 kill_cmd 的 u32 入参）：
+/// 前端来的 i64 → 正数 u32；0 显式拒绝（`kill 0` = 整个调用方进程组，
+/// 语义危险，绝不是用户想要的「终止某进程」）。负数/越界 try_from 拒。
+fn validate_pid(pid: i64) -> Result<u32, String> {
+    let pid = u32::try_from(pid).map_err(|_| format!("invalid pid: {pid}"))?;
+    if pid == 0 {
+        return Err("invalid pid: 0".into());
+    }
+    Ok(pid)
+}
+
+/// 终止进程（写操作，不在只读白名单内——用户显式确认后由前端调用）。
+/// `force` = SIGKILL（前端二次确认后才置位）；失败携带远端 stderr 原文
+/// （权限不足 EPERM 可见）。
+#[tauri::command]
+pub(crate) async fn monitor_kill(
+    state: State<'_, AppState>,
+    id: String,
+    pid: i64,
+    force: bool,
+) -> Result<(), String> {
+    let pid = validate_pid(pid)?;
+    let session = session_arc(&state, &id)?;
+    kill_process(&session, pid, force).await
+}
+
+/// 会话表查找（monitor_start 同款：Arc 克隆出锁再异步使用）。
+fn session_arc(state: &State<'_, AppState>, id: &str) -> Result<Arc<SshSession>, String> {
+    state
+        .sessions
+        .lock()
+        .unwrap()
+        .get(id)
+        .map(|e| Arc::clone(&e.session))
+        .ok_or_else(|| format!("no such session: {id}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +314,15 @@ mod tests {
         assert!(!token.is_cancelled());
         m.stop("pty-1"); // MonitorRun/Guard Drop → cancel
         assert!(token.is_cancelled(), "摘除必须级联取消（会话断开即停）");
+    }
+
+    /// pid 命令域校验（Task 2 防注入第二道防线）：负数/非 u32/0 拒绝。
+    #[test]
+    fn pid_validation_rejects_zero_negative_and_overflow() {
+        assert_eq!(validate_pid(42), Ok(42));
+        assert_eq!(validate_pid(u32::MAX as i64), Ok(u32::MAX));
+        assert!(validate_pid(0).is_err(), "kill 0 = 全进程组，语义危险");
+        assert!(validate_pid(-1).is_err(), "负数（kill -1 语义面）");
+        assert!(validate_pid((u32::MAX as i64) + 1).is_err(), "越界");
     }
 }

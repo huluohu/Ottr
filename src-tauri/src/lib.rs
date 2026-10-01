@@ -192,6 +192,9 @@ pub fn run() {
             // 监控采集（Phase 3 Task 1，B4 上半；命令域 commands/monitor.rs）
             commands::monitor::monitor_start,
             commands::monitor::monitor_stop,
+            // 进程浏览器（Phase 3 Task 2，B4 下半）：ps 只读采集 + kill（防注入）
+            commands::monitor::monitor_ps,
+            commands::monitor::monitor_kill,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

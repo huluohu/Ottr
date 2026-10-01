@@ -7,6 +7,9 @@
 //!   无 /proc → [`MonitorError::Unsupported`] 优雅降级「不支持」；
 //! * [`parse`]：/proc 文本解析器（严格 TDD，golden = `fixtures/monitor/`
 //!   真实 /proc 快照）；
+//! * [`proc`]：进程浏览器数据面（Phase 3 Task 2）——`ps -eo` 采集解析
+//!   （只读白名单的 ps 追加点 [`PS_CMD`]）+ `kill` 命令构造（`u32` 入参
+//!   结构性防注入）与执行；
 //! * [`metrics`]：两次采样差分 → [`Metrics`]（CPU% 差分/内存水位/
 //!   网络速率；首采样无基线跳过首轮）；
 //! * [`sched`]：采样调度——默认 5s（settings `monitor.interval_secs`
@@ -30,11 +33,13 @@
 pub mod collect;
 pub mod metrics;
 pub mod parse;
+pub mod proc;
 pub mod sched;
 pub mod task;
 
 pub use collect::{COMPOSITE_CMD, MonitorError, collect};
 pub use metrics::{Metrics, RawSample};
 pub use parse::{DiskEntry, LoadAvg, MemInfo, NetCounters, StatCounters};
+pub use proc::{PS_CMD, ProcEntry, collect_ps, kill_cmd, kill_process, parse_ps_eo};
 pub use sched::{DEFAULT_INTERVAL, JITTER_PERCENT, JitterRng, fnv1a, jittered, phase_delay};
 pub use task::{LoopConfig, MonitorGuard, SamplingEnd, run_sampling};

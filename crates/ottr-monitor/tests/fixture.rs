@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ottr_monitor::{Metrics, MonitorError, collect};
+use ottr_monitor::{Metrics, MonitorError, collect, collect_ps, kill_process};
 use ottr_ssh::{AuthMethod, SshSession, connect};
 
 const HOST: &str = "127.0.0.1";
@@ -16,7 +16,6 @@ const PORT: u16 = 2222;
 const USER: &str = "spike";
 const PASSWORD: &str = "spike-pass";
 const KNOWN_HOSTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/known_hosts");
-
 async fn fixture_or_panic() {
     match tokio::time::timeout(
         Duration::from_secs(2),
@@ -140,4 +139,72 @@ fn unsupported_error_display() {
         detail: "no /proc on remote".into(),
     };
     assert!(e.to_string().contains("no /proc on remote"));
+}
+
+// --- Phase 3 Task 2（B4 下半）：进程浏览器（ps 采集 + kill） -----------------
+
+/// 真夹具 ps 采集：行数 > 0（简报口径）+ 行结构合理性（pid 唯一、pid=1 在册、
+/// etime 可换算、占比非负）。
+#[tokio::test]
+async fn collect_ps_rows_over_zero_with_sane_shape() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let rows = tokio::time::timeout(Duration::from_secs(10), collect_ps(&session))
+        .await
+        .expect("collect_ps timed out")
+        .expect("collect_ps failed");
+    assert!(!rows.is_empty(), "ps 行数必须 > 0");
+    let mut pids: Vec<u32> = rows.iter().map(|r| r.pid).collect();
+    pids.sort_unstable();
+    pids.dedup();
+    assert_eq!(pids.len(), rows.len(), "pid 唯一");
+    assert!(rows.iter().any(|r| r.pid == 1), "pid 1（容器 init）必在册");
+    for r in &rows {
+        assert!(r.cpu_percent >= 0.0 && r.mem_percent >= 0.0);
+        assert!(!r.comm.is_empty());
+        assert!(
+            r.etime_secs > 0 || r.etime == "00:00",
+            "etime 可换算: {r:?}"
+        );
+    }
+}
+
+/// kill 全链路（简报口径：kill 一个后台 sleep 进程成功）：exec 起后台
+/// `nohup sleep`（exec 通道关闭后存活，已在容器预验证）→ ps 在册 →
+/// `kill <pid>`（SIGTERM）→ ps 消失。exit 码即真值，无需二次轮询。
+#[tokio::test]
+async fn kill_terminates_spawned_sleep() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+
+    let out = session
+        .exec("nohup sleep 1234 >/dev/null 2>&1 & echo $!")
+        .await
+        .expect("spawn sleep");
+    let pid: u32 = String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse()
+        .expect("spawn 输出 pid");
+
+    let rows = collect_ps(&session).await.expect("collect_ps");
+    assert!(
+        rows.iter()
+            .any(|r| r.pid == pid && r.comm.contains("sleep")),
+        "spawn 的 sleep 必须在册: {pid}"
+    );
+
+    kill_process(&session, pid, false)
+        .await
+        .unwrap_or_else(|e| panic!("kill {pid} failed: {e}"));
+
+    // SIGTERM 对 sleep 即死：确认消失（exit 137/无此进程 = 已不在）
+    let check = session
+        .exec(&format!("ps -p {pid} -o pid="))
+        .await
+        .expect("ps -p check");
+    assert!(
+        String::from_utf8_lossy(&check.stdout).trim().is_empty(),
+        "kill 后进程必须消失: {}",
+        String::from_utf8_lossy(&check.stdout)
+    );
 }

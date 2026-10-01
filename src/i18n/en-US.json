@@ -76,6 +76,7 @@
     "group": "Group",
     "groupNone": "Ungrouped",
     "monitor": "Monitor panel",
+    "monitorHint": "Terminal sidebar mini charts (read-only sampling: cat /proc, df -k).",
     "errAddressRequired": "Host address is required",
     "errPortRange": "Port must be an integer between 1 and 65535",
     "saveFailed": "Save failed: {{message}}",
@@ -620,5 +621,20 @@
     "saveFailed": "Save failed: {{message}}",
     "actionFailed": "Action failed: {{message}}",
     "loadFailed": "Load failed: {{message}}"
+  },
+  "monitor": {
+    "title": "Monitor",
+    "open": "Open monitor sidebar",
+    "close": "Collapse monitor sidebar",
+    "cpu": "CPU",
+    "mem": "Memory",
+    "disk": "Disk",
+    "load": "Load",
+    "net": "Network",
+    "off": "Monitoring is off for this host (Host form → Monitor panel).",
+    "unsupported": "Remote does not support monitoring (Linux /proc only).",
+    "waiting": "Waiting for samples…",
+    "stopped": "Sampling stopped (session lost?) — reconnect to resume.",
+    "monitorHint": "Terminal sidebar mini charts: CPU / memory / disk / load / network. Sampling is read-only (cat /proc, df -k) every 5s."
   }
 }

@@ -34,6 +34,8 @@ import { setSessionEndHook } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
+import { initMonitorEvents } from "./monitor/events";
+import { MonitorSidebar } from "./monitor/MonitorSidebar";
 import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
@@ -188,6 +190,8 @@ function HomeLayout() {
       // T12（spec §7）：通知管线接线（transfer-end / session-closed → 中心）。
       // 在事件源初始化之后挂（管线订阅既有事件，顺序无依赖，晚挂只漏启动窗口期事件）。
       await initNotifyEvents();
+      // Phase 3 Task 1（B4 上半）：监控采样事件接线（ottr://monitor → store）。
+      await initMonitorEvents();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
     })();
   }, [initPhase]);
@@ -429,7 +433,8 @@ function HomeLayout() {
               </div>
             </div>
             {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢。
-                T13：AI 诊断面板 = 终端视图的右侧栏（文件视图让位——面板依赖终端选区）。 */}
+                T13：AI 诊断面板 = 终端视图的右侧栏（文件视图让位——面板依赖终端选区）。
+                Phase 3 Task 1（B4 上半）：监控侧栏同排（折叠竖条常驻，展开盖右侧）。 */}
             <div className="term-main-row">
               {/* data-terminal = 终端聚焦守卫的判定容器（评审 M-4）：覆盖全部
                   pane（含 xterm 隐藏 textarea），文件视图/AI 面板在其外不受守卫。 */}
@@ -441,6 +446,12 @@ function HomeLayout() {
                 <TerminalArea />
               </div>
               {!filesVisible && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}
+              {!filesVisible && (
+                <MonitorSidebar
+                  rustId={rootSession?.rustId ?? null}
+                  enabled={hosts.find((h) => h.id === rootSession?.hostId)?.monitor_enabled ?? false}
+                />
+              )}
             </div>
             {filesVisible && rootSession && <FilePanel session={rootSession} />}
           </main>

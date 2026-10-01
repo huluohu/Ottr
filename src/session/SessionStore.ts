@@ -108,6 +108,11 @@ export interface Session {
   /** 生产环境主机标记（Phase 2 Task 11，B11）：终端 pane 红框 + TabBar PROD
    * 徽标的依据；host.is_production 的会话内拷贝（分屏 pane 与标签同源）。 */
   isProduction: boolean;
+  /** 监控开关（Phase 3 Task 1，B4 上半）：host.monitor_enabled 的会话内拷贝。
+   * attach 成功后按它决定是否 monitor_start（仅标签根会话——分屏 pane 与根
+   * 同主机，多份采样是纯浪费；面板消费面在 MonitorSidebar）。可选 = 存量测试
+   * 夹具/旧构造点不必逐个补字段，消费面统一 `=== true`（缺省关，安全侧）。 */
+  monitorEnabled?: boolean;
 }
 
 // --- 会话编码（Task 9，A9） --------------------------------------------------
@@ -488,6 +493,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encoding: parseSessionEncoding(host.encoding_override) ?? "utf-8",
       encodingHint: null,
       isProduction: host.is_production ?? false,
+      monitorEnabled: host.monitor_enabled ?? false,
     };
     set((st) => {
       const sessions = [...st.sessions, session];
@@ -658,6 +664,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         }),
       }));
       void invoke("set_session_encoding", { id: rustId, encoding: override }).catch(() => {});
+      // 监控采样启动（Phase 3 Task 1，B4 上半）：host 开了监控的标签根会话
+      // attach 成功即开（仅根——分屏 pane 与根同主机，多份采样纯浪费）。
+      // 会话收尾（关标签/断开）由 Rust 侧 session_down 摘除采样任务，前端
+      // 无需对位 stop；重连 = 新 rustId = 新采样窗口。
+      if (session.monitorEnabled && session.paneOf === null) {
+        void invoke("monitor_start", { id: rustId }).catch(() => {});
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       cancelAttachWatchdog(id);
@@ -840,7 +853,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encodingOverride: root.encodingOverride, // pane 与标签同源（重连派生一致）
       encoding: root.encoding, // 分屏 pane 沿用标签的会话编码
       encodingHint: null,
-      isProduction: root.isProduction, // 分屏 pane 沿用标签的生产标记
+      isProduction: root.isProduction, // pane 与标签同源（分屏沿用生产标记）
+      monitorEnabled: root.monitorEnabled, // pane 与标签同源（监控归属一致）
     };
     set((s0) => ({
       sessions: [...s0.sessions, paneSession],

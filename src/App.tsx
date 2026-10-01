@@ -36,6 +36,8 @@ import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
 import { initMonitorEvents } from "./monitor/events";
 import { MonitorSidebar } from "./monitor/MonitorSidebar";
+import { OverviewPage } from "./monitor/OverviewPage";
+import { ProcessBrowser } from "./monitor/ProcessBrowser";
 import { NotificationCenter } from "./notify/NotificationCenter";
 import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
@@ -141,6 +143,11 @@ function HomeLayout() {
   // Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口——链是全局配置面，
   // 主机经 HostForm 的链下拉绑定）。
   const [jumpChainsOpen, setJumpChainsOpen] = useState(false);
+  // Phase 3 Task 2（B4 下半）：多主机总览（顶栏入口对话框——ForwardPanel/
+  // JumpChainEditor 同款「全局面 → 顶栏」布局语言）+ 进程视图开关
+  // （主区视图切换第三视图：终端 | 文件 | 进程，FilePanel 同款挂点）。
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [procsOpen, setProcsOpen] = useState(false);
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -337,6 +344,13 @@ function HomeLayout() {
   const filesOnly =
     rootSession?.protocol === "ftp" || rootSession?.protocol === "ftps";
   const filesVisible = filesOpen || filesOnly;
+  // 进程视图（Phase 3 Task 2）：与文件视图互斥（同一次只看一个）；FTP 会话
+  // 无远端 shell 不入口（filesOnly 已含）。进程表跟随活动标签根会话。
+  const procsVisible = procsOpen && !filesVisible;
+  const openProcessesView = useCallback(() => {
+    setFilesOpen(false);
+    setProcsOpen(true);
+  }, []);
 
   return (
     <div className="app-shell">
@@ -385,6 +399,14 @@ function HomeLayout() {
         >
           {t("jump.title")}
         </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-overview"
+          aria-label={t("overview.title")}
+          onClick={() => setOverviewOpen(true)}
+        >
+          {t("overview.title")}
+        </button>
         <div className="topbar-spacer" />
         <NotificationCenter />
         <ThemeSwitch />
@@ -415,9 +437,12 @@ function HomeLayout() {
                 {!filesOnly && (
                   <button
                     data-testid="view-terminal"
-                    data-active={!filesOpen}
-                    aria-pressed={!filesOpen}
-                    onClick={() => setFilesOpen(false)}
+                    data-active={!filesVisible && !procsVisible}
+                    aria-pressed={!filesVisible && !procsVisible}
+                    onClick={() => {
+                      setFilesOpen(false);
+                      setProcsOpen(false);
+                    }}
                   >
                     {t("files.viewTerminal")}
                   </button>
@@ -426,27 +451,45 @@ function HomeLayout() {
                   data-testid="view-files"
                   data-active={filesVisible}
                   aria-pressed={filesVisible}
-                  onClick={() => setFilesOpen(true)}
+                  onClick={() => {
+                    setFilesOpen(true);
+                    setProcsOpen(false);
+                  }}
                 >
                   {t("files.viewFiles")}
                 </button>
+                {/* Phase 3 Task 2（B4 下半）：进程浏览器视图（SSH 会话专属——
+                    FTP 无远端 shell，filesOnly 时按钮隐藏）。 */}
+                {!filesOnly && (
+                  <button
+                    data-testid="view-processes"
+                    data-active={procsVisible}
+                    aria-pressed={procsVisible}
+                    onClick={openProcessesView}
+                  >
+                    {t("process.title")}
+                  </button>
+                )}
               </div>
             </div>
             {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢。
                 T13：AI 诊断面板 = 终端视图的右侧栏（文件视图让位——面板依赖终端选区）。
-                Phase 3 Task 1（B4 上半）：监控侧栏同排（折叠竖条常驻，展开盖右侧）。 */}
+                Phase 3 Task 1（B4 上半）：监控侧栏同排（折叠竖条常驻，展开盖右侧）。
+                Phase 3 Task 2：进程视图时终端与两侧栏一并让位（全宽表格）。 */}
             <div className="term-main-row">
               {/* data-terminal = 终端聚焦守卫的判定容器（评审 M-4）：覆盖全部
                   pane（含 xterm 隐藏 textarea），文件视图/AI 面板在其外不受守卫。 */}
               <div
                 className="term-area-holder"
-                data-hidden={filesVisible}
+                data-hidden={filesVisible || procsVisible}
                 data-terminal=""
               >
                 <TerminalArea />
               </div>
-              {!filesVisible && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}
-              {!filesVisible && (
+              {!filesVisible && !procsVisible && (
+                <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />
+              )}
+              {!filesVisible && !procsVisible && (
                 <MonitorSidebar
                   rustId={rootSession?.rustId ?? null}
                   enabled={hosts.find((h) => h.id === rootSession?.hostId)?.monitor_enabled ?? false}
@@ -454,6 +497,7 @@ function HomeLayout() {
               )}
             </div>
             {filesVisible && rootSession && <FilePanel session={rootSession} />}
+            {procsVisible && rootSession && <ProcessBrowser rustId={rootSession.rustId} />}
           </main>
         ) : (
           <main className="main-area" data-testid="main-area">
@@ -496,6 +540,21 @@ function HomeLayout() {
       <ForwardPanel open={forwardsOpen} onClose={() => setForwardsOpen(false)} />
       {/* Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口对话框）。 */}
       <JumpChainEditor open={jumpChainsOpen} onClose={() => setJumpChainsOpen(false)} />
+      {/* Phase 3 Task 2（B4 下半）：多主机总览（顶栏入口）。卡片点击 = 跳该
+          主机终端标签；「进程」= 跳标签 + 切进程视图（FTP 主机不入口）。 */}
+      <OverviewPage
+        open={overviewOpen}
+        onClose={() => setOverviewOpen(false)}
+        onOpen={(host) => {
+          openTab(host);
+          setOverviewOpen(false);
+        }}
+        onOpenProcesses={(host) => {
+          openTab(host);
+          setOverviewOpen(false);
+          openProcessesView();
+        }}
+      />
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}

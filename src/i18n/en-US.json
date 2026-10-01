@@ -636,5 +636,32 @@
     "waiting": "Waiting for samples…",
     "stopped": "Sampling stopped (session lost?) — reconnect to resume.",
     "monitorHint": "Terminal sidebar mini charts: CPU / memory / disk / load / network. Sampling is read-only (cat /proc, df -k) every 5s."
+  },
+  "overview": {
+    "title": "Overview",
+    "empty": "No hosts yet — create one with \"New host\" to see it here.",
+    "offHint": "Monitoring off (Host form → Monitor panel).",
+    "notConnected": "Not connected",
+    "procButton": "Processes"
+  },
+  "process": {
+    "title": "Processes",
+    "colPid": "PID",
+    "colPpid": "PPID",
+    "colUser": "USER",
+    "colCpu": "CPU%",
+    "colMem": "MEM%",
+    "colEtime": "ELAPSED",
+    "colComm": "COMMAND",
+    "empty": "No processes",
+    "disconnected": "Session not connected — connect to browse processes.",
+    "loadFailed": "Failed to list processes: {{message}}",
+    "killButton": "Kill",
+    "killTitle": "Terminate process",
+    "killConfirm": "Terminate {{pid}} ({{comm}})? Sends SIGTERM.",
+    "killTerm": "Kill (SIGTERM)",
+    "killForce": "Force kill (SIGKILL)",
+    "killForceArmed": "Click again to confirm force kill",
+    "killFailed": "Kill failed: {{message}}"
   }
 }

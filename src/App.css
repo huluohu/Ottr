@@ -2436,3 +2436,243 @@ button[data-active="true"] {
   stop-color: var(--color-accent, var(--ottr-teal-500));
   stop-opacity: 0.02;
 }
+
+/* --- Phase 3 Task 2（B4 下半）：多主机总览 + 进程浏览器 --------------------- */
+
+/* 总览（顶栏入口对话框）：卡片网格——监控主机实时卡 / 未开启主机灰卡 */
+.overview-panel {
+  width: min(760px, 92vw);
+  max-height: 82vh;
+  overflow-y: auto;
+}
+.overview-empty {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  gap: 10px;
+}
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+}
+.overview-card:hover {
+  border-color: var(--color-accent, var(--ottr-teal-500));
+}
+.overview-card[data-off="true"] {
+  opacity: 0.55;
+}
+.overview-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.overview-light {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--color-surface);
+  border: 1px solid rgba(128, 128, 128, 0.4);
+}
+.overview-light[data-state="live"] {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+.overview-light[data-state="unsupported"] {
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.overview-light[data-state="stopped"] {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.overview-host {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-addr {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  opacity: 0.7;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.overview-metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.overview-metric-label {
+  flex: none;
+  width: 38px;
+  color: var(--fg-muted);
+}
+.overview-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(128, 128, 128, 0.18);
+  overflow: hidden;
+}
+.overview-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent, var(--ottr-teal-500));
+}
+.overview-bar-fill[data-warn="true"] {
+  background: var(--color-danger);
+}
+.overview-metric-value {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.overview-state {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+.overview-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.overview-card-actions button {
+  font-size: 11.5px;
+  padding: 3px 9px;
+}
+.overview-card-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 进程浏览器（主区第三视图）：宽表 + 逐行 kill + 确认条 */
+.proc-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.proc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.proc-title {
+  margin: 0;
+  font-size: 13px;
+}
+.proc-count {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.proc-toolbar-spacer {
+  flex: 1;
+}
+.proc-state {
+  margin: auto;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.proc-table-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.proc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.proc-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  white-space: nowrap;
+}
+.proc-table th button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.proc-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.proc-comm {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.proc-kill-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.proc-kill-btn:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.proc-confirm {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+.proc-confirm p {
+  margin: 0;
+  font-size: 12.5px;
+}
+.proc-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.proc-confirm-actions button[data-armed="true"] {
+  color: #fff;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}

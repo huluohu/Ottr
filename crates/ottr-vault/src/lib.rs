@@ -8,6 +8,7 @@ pub mod crypto;
 pub mod entities;
 pub mod forwards;
 pub mod history;
+pub mod jump_chains;
 pub mod master_key;
 pub mod notifications;
 pub mod secrets;
@@ -22,6 +23,7 @@ pub use entities::{
 };
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};
 pub use history::{History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT};
+pub use jump_chains::{JumpChain, JumpChainInput, JumpChains};
 pub use master_key::MasterKey;
 pub use notifications::{Notification, NotificationInput, Notifications};
 pub use secrets::Secrets;

@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 8;
+pub const LATEST_SCHEMA_VERSION: u32 = 9;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -100,7 +100,8 @@ impl KeyMode {
 /// 登记 scan_registry）；0007 history 命令历史 + FTS5（Task 15，spec §5 文本层
 /// 消费方③——明文面，无 *_enc 列，不涉 scan_registry）；0008 port_forwards
 /// （Phase 2 Task 1，spec §3 B7 上半——明文配置面，无 *_enc 列，不动
-/// scan_registry）。
+/// scan_registry）；0009 jump_chains（Phase 2 Task 2，spec §3 B7 下半——
+/// 明文配置面，无 *_enc 列，不动 scan_registry）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
@@ -113,6 +114,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (6, include_str!("../migrations/0006_secrets.sql")),
     (7, include_str!("../migrations/0007_history.sql")),
     (8, include_str!("../migrations/0008_port_forwards.sql")),
+    (9, include_str!("../migrations/0009_jump_chains.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。

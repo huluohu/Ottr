@@ -6,9 +6,7 @@
 //! 守卫；锁定态可读写不另测——settings 同语义）。
 
 use ottr_vault::master_key::InMemoryStorage;
-use ottr_vault::{
-    HostInput, Hosts, NotificationInput, Notifications, Vault, VaultError,
-};
+use ottr_vault::{HostInput, Hosts, NotificationInput, Notifications, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
     Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
@@ -145,6 +143,7 @@ fn delete_host_sets_notification_host_id_null() {
     let host = Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "web-01".into(),
             group_id: None,
             tags: vec![],
@@ -156,6 +155,7 @@ fn delete_host_sets_notification_host_id_null() {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )

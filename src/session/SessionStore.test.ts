@@ -16,10 +16,12 @@ import {
   OPEN_TABS_KEY,
   reconnectDelayMs,
   registerSink,
+  setSessionEndHook,
   toBytes,
   unregisterSink,
   useSessionStore,
   type Session,
+  type SessionEndInfo,
 } from "./SessionStore";
 import type { Host } from "../vault/api";
 
@@ -33,11 +35,13 @@ const hostA: Host = {
   address: "10.0.0.1",
   port: 22,
   username: "deploy",
+  protocol: "ssh",
   credential_id: 7,
   jump_chain_id: null,
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: null,
   created_at: 1,
   updated_at: 1,
@@ -296,8 +300,56 @@ describe("host key 问询（TOFU）", () => {
     });
     const s = useSessionStore.getState().sessions[0];
     expect(s.status).toBe("disconnected");
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTime(60_000);
     expect(attachCalls()).toHaveLength(1); // 无自动重连
+  });
+
+  // --- Phase 2 Task 2 fix M-3：链式问询的两条新路径 ------------------------
+
+  it("链式问询归属：origin_host_id 指向发起主机 → 归属到它的在途 connect（hop host_id 不是发起方）", async () => {
+    hangAttach();
+    useSessionStore.getState().openTab(hostB); // 经链连接 db-01（id=2）
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+
+    // 问询落在链上 hop 主机（host_id=1，bastion）——origin_host_id=2 才是
+    // 发起连接的主机；归属必须按 origin 找到 db-01 的会话。
+    useSessionStore.getState().onHostKeyAsk({
+      host_id: 1,
+      host_name: "bastion-a",
+      fingerprint: "SHA256:hop1",
+      kind: "first",
+      hop: 0,
+      origin_host_id: 2,
+    });
+    const st = useSessionStore.getState();
+    expect(st.hostKeyAsk).toMatchObject({
+      sessionId: st.sessions[0].id,
+      host_id: 1,
+      hop: 0,
+      origin_host_id: 2,
+    });
+    expect(st.sessions[0].status).toBe("waiting_host_key");
+  });
+
+  it("孤儿问询（跳板链测试连接，无在途 connect）→ 仍弹确认框（sessionId 空哨兵），会话状态不动", async () => {
+    hangAttach();
+    useSessionStore.getState().openTab(hostC);
+    await vi.advanceTimersByTimeAsync(0);
+    // 让唯一会话离开 connecting（孤儿问询的前提：没有任何在途 connect 匹配）。
+    useSessionStore.setState((st) => ({
+      sessions: st.sessions.map((s) => ({ ...s, status: "connected", rustId: "pty-1" })),
+    }));
+
+    useSessionStore.getState().onHostKeyAsk({
+      host_id: 3,
+      host_name: "cache-01",
+      fingerprint: "SHA256:t",
+      kind: "pending",
+    });
+    const st = useSessionStore.getState();
+    expect(st.hostKeyAsk).toMatchObject({ sessionId: "", host_id: 3, kind: "pending" });
+    expect(st.sessions[0].status).toBe("connected"); // 孤儿问询不改会话状态
   });
 });
 
@@ -535,3 +587,83 @@ describe("⌘R 历史插入（Task 15，insertToFocusedPane）", () => {
 function act<T>(fn: () => T): T {
   return fn();
 }
+
+// ---------------------------------------------------------------------------
+// 会话结束钩子（Phase 2 Task 7 会话纪要）：closeTab / disconnect / 自动重连耗尽
+// 三时机派发；异常断开在重连进行中不派发；钩子异常不反噬状态机。
+// ---------------------------------------------------------------------------
+describe("会话结束钩子（Task 7 会话纪要）", () => {
+  afterEach(() => {
+    setSessionEndHook(null);
+  });
+
+  it("disconnect 派发归属三元组（hostId/id/hostName）；未连接会话也派发（闸门在数据源）", () => {
+    const seen: SessionEndInfo[] = [];
+    setSessionEndHook((info) => seen.push(info));
+    const id = useSessionStore.getState().openTab(hostA, { autoConnect: false });
+    useSessionStore.getState().disconnect(id);
+    expect(seen).toEqual([{ hostId: 1, id, hostName: "web-01" }]);
+    // 状态机不受影响
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+  });
+
+  it("closeTab 对根会话与分屏 pane 各派发一次", async () => {
+    mockedInvoke.mockResolvedValue("pty-1");
+    const seen: SessionEndInfo[] = [];
+    setSessionEndHook((info) => seen.push(info));
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().splitPane(tab, "row");
+    await vi.advanceTimersByTimeAsync(0);
+    const liveIds = useSessionStore.getState().sessions.map((s) => s.id);
+    expect(liveIds).toHaveLength(2);
+    seen.length = 0;
+    useSessionStore.getState().closeTab(tab);
+    expect(seen.map((s) => s.hostId)).toEqual([1, 1]);
+    expect(seen.map((s) => s.id).sort()).toEqual([...liveIds].sort());
+  });
+
+  it("异常断开重连进行中不派发；重连耗尽转 disconnected 时派发一次", async () => {
+    let fail = false;
+    mockedInvoke.mockImplementation((_cmd: string) =>
+      fail ? Promise.reject(new Error("connection refused")) : Promise.resolve("pty-ok"),
+    );
+    useSessionStore.setState({ settings: { maxReconnectAttempts: 1 } });
+    const seen: SessionEndInfo[] = [];
+    setSessionEndHook((info) => seen.push(info));
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    markConnected(id, "pty-ok");
+
+    fail = true;
+    useSessionStore.getState().onSessionClosed({ id: "pty-ok", reason: "closed" });
+    expect(useSessionStore.getState().sessions[0].status).toBe("reconnecting");
+    expect(seen).toEqual([]); // 重连还在路上：会话可能继续，不生成
+
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs(1));
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+    expect(seen).toEqual([{ hostId: 1, id, hostName: "web-01" }]); // 终态收口
+  });
+
+  it("钩子异常不反噬状态机（closeTab 照常收尾）", async () => {
+    mockedInvoke.mockResolvedValue("pty-1");
+    setSessionEndHook(() => {
+      throw new Error("hook boom");
+    });
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(() => useSessionStore.getState().closeTab(id)).not.toThrow();
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-1" });
+  });
+
+  it("未注入钩子（null）时三时机静默 no-op", async () => {
+    mockedInvoke.mockResolvedValue("pty-1");
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(() => {
+      useSessionStore.getState().disconnect(id);
+      useSessionStore.getState().closeTab(id);
+    }).not.toThrow();
+  });
+});

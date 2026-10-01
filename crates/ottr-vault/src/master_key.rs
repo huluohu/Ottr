@@ -103,9 +103,7 @@ impl MasterKey {
 
 fn decode_key(raw: &str) -> Result<RawKey> {
     let bytes = hex::decode(raw.trim()).map_err(|_| VaultError::CorruptedMasterKey)?;
-    bytes
-        .try_into()
-        .map_err(|_| VaultError::CorruptedMasterKey)
+    bytes.try_into().map_err(|_| VaultError::CorruptedMasterKey)
 }
 
 /// Argon2id 派生原语（spec §3 密钥层级图的 fallback 分支）：Linux 无 Secret

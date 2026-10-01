@@ -208,13 +208,17 @@ fn row_to_group(row: &Row) -> rusqlite::Result<HostGroup> {
 // Credentials
 // ---------------------------------------------------------------------------
 
-/// 凭据类型（serde 小写，DB CHECK 同名约束）。
+/// 凭据类型（serde 小写，DB CHECK 同名约束——0001 建 CHECK，0010 放开
+/// ftp/ftps）。FTP/FTPS 凭据 = 密码型（secret 通道密封），与 SSH 密码凭据
+/// 同存储面，只在 UI/连接分派时区分协议（Phase 2 Task 5）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CredentialKind {
     Password,
     Key,
     Totp,
+    Ftp,
+    Ftps,
 }
 
 impl CredentialKind {
@@ -223,7 +227,14 @@ impl CredentialKind {
             Self::Password => "password",
             Self::Key => "key",
             Self::Totp => "totp",
+            Self::Ftp => "ftp",
+            Self::Ftps => "ftps",
         }
+    }
+
+    /// 凭据是否为密码型（password/ftp/ftps 共用 secret 通道；连接分派用）。
+    pub fn is_password_like(self) -> bool {
+        matches!(self, Self::Password | Self::Ftp | Self::Ftps)
     }
 }
 
@@ -234,6 +245,8 @@ impl std::str::FromStr for CredentialKind {
             "password" => Ok(Self::Password),
             "key" => Ok(Self::Key),
             "totp" => Ok(Self::Totp),
+            "ftp" => Ok(Self::Ftp),
+            "ftps" => Ok(Self::Ftps),
             other => Err(VaultError::InvalidInput(format!(
                 "unknown credential kind: {other}"
             ))),
@@ -483,9 +496,47 @@ fn row_to_credential(row: &Row) -> rusqlite::Result<Credential> {
 // Hosts
 // ---------------------------------------------------------------------------
 
+/// 主机协议（0010 迁移，Phase 2 Task 5）：ssh | ftp | ftps。`None`/缺省 =
+/// ssh（存量行零迁移）；FTP/FTPS 主机为文件传输会话（无 PTY 终端）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum HostProtocol {
+    #[default]
+    Ssh,
+    Ftp,
+    Ftps,
+}
+
+impl HostProtocol {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ssh => "ssh",
+            Self::Ftp => "ftp",
+            Self::Ftps => "ftps",
+        }
+    }
+}
+
+impl std::str::FromStr for HostProtocol {
+    type Err = VaultError;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "ssh" => Ok(Self::Ssh),
+            "ftp" => Ok(Self::Ftp),
+            "ftps" => Ok(Self::Ftps),
+            other => Err(VaultError::InvalidInput(format!(
+                "unknown host protocol: {other}"
+            ))),
+        }
+    }
+}
+
 /// 主机。tags 为 JSON 列；credential_id / group_id 可空、FK ON DELETE SET NULL；
 /// jump_chain_id 的目标表（jump_chains）未建，暂无 FK（0002 迁移注释）。
 /// username（0003 迁移）为登录用户名，可空（未指定时连接侧回退当前用户）。
+/// protocol（0010 迁移）为主机协议，缺省 ssh（FilePanel 后端切换依据）。
+/// is_production（0012 迁移）为生产环境标记——终端红框 + 页签 PROD 徽标 +
+/// danger 输入提醒的消费依据（B11 防呆），缺省 false。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Host {
     pub id: i64,
@@ -495,11 +546,13 @@ pub struct Host {
     pub address: String,
     pub port: i64,
     pub username: Option<String>,
+    pub protocol: HostProtocol,
     pub credential_id: Option<i64>,
     pub jump_chain_id: Option<i64>,
     pub encoding_override: Option<String>,
     pub theme_override: Option<String>,
     pub monitor_enabled: bool,
+    pub is_production: bool,
     pub notes: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -514,11 +567,17 @@ pub struct HostInput {
     pub address: String,
     pub port: i64,
     pub username: Option<String>,
+    /// serde default：旧调用面（测试/驱动脚本）不传 = ssh（0010 语义兼容）。
+    #[serde(default)]
+    pub protocol: HostProtocol,
     pub credential_id: Option<i64>,
     pub jump_chain_id: Option<i64>,
     pub encoding_override: Option<String>,
     pub theme_override: Option<String>,
     pub monitor_enabled: bool,
+    /// serde default：旧载荷不传 = 非生产（0012 语义兼容——标记是显式动作）。
+    #[serde(default)]
+    pub is_production: bool,
     pub notes: Option<String>,
 }
 
@@ -532,10 +591,10 @@ impl Hosts {
         let conn = vault.connection();
         let tx = conn.unchecked_transaction()?;
         tx.execute(
-            "INSERT INTO hosts (name, group_id, tags, address, port, username,
+            "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
                                 credential_id, jump_chain_id, encoding_override, theme_override,
-                                monitor_enabled, notes, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
+                                monitor_enabled, is_production, notes, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
             params![
                 input.name,
                 input.group_id,
@@ -543,11 +602,13 @@ impl Hosts {
                 input.address,
                 input.port,
                 input.username,
+                input.protocol.as_str(),
                 input.credential_id,
                 input.jump_chain_id,
                 input.encoding_override,
                 input.theme_override,
                 input.monitor_enabled,
+                input.is_production,
                 input.notes,
                 ts,
             ],
@@ -562,11 +623,13 @@ impl Hosts {
             address: input.address,
             port: input.port,
             username: input.username,
+            protocol: input.protocol,
             credential_id: input.credential_id,
             jump_chain_id: input.jump_chain_id,
             encoding_override: input.encoding_override,
             theme_override: input.theme_override,
             monitor_enabled: input.monitor_enabled,
+            is_production: input.is_production,
             notes: input.notes,
             created_at: ts,
             updated_at: ts,
@@ -587,10 +650,11 @@ impl Hosts {
             .ok_or_else(|| VaultError::NotFound(format!("host id={id}")))?;
         tx.execute(
             "UPDATE hosts SET name = ?1, group_id = ?2, tags = ?3, address = ?4, port = ?5,
-                              username = ?6, credential_id = ?7, jump_chain_id = ?8,
-                              encoding_override = ?9, theme_override = ?10,
-                              monitor_enabled = ?11, notes = ?12, updated_at = ?13
-             WHERE id = ?14",
+                              username = ?6, protocol = ?7, credential_id = ?8, jump_chain_id = ?9,
+                              encoding_override = ?10, theme_override = ?11,
+                              monitor_enabled = ?12, is_production = ?13, notes = ?14,
+                              updated_at = ?15
+             WHERE id = ?16",
             params![
                 input.name,
                 input.group_id,
@@ -598,11 +662,13 @@ impl Hosts {
                 input.address,
                 input.port,
                 input.username,
+                input.protocol.as_str(),
                 input.credential_id,
                 input.jump_chain_id,
                 input.encoding_override,
                 input.theme_override,
                 input.monitor_enabled,
+                input.is_production,
                 input.notes,
                 ts,
                 id,
@@ -617,11 +683,13 @@ impl Hosts {
             address: input.address,
             port: input.port,
             username: input.username,
+            protocol: input.protocol,
             credential_id: input.credential_id,
             jump_chain_id: input.jump_chain_id,
             encoding_override: input.encoding_override,
             theme_override: input.theme_override,
             monitor_enabled: input.monitor_enabled,
+            is_production: input.is_production,
             notes: input.notes,
             created_at,
             updated_at: ts,
@@ -629,13 +697,20 @@ impl Hosts {
     }
 
     /// 删主机：绑定的凭据/分组实体不动（仅解绑），snippet 的 host_scope 置空。
+    /// 跳板链反向补偿（I-1 fix）：被链 hops 引用的主机在**同一事务**内先从各链
+    /// 摘除（链变空 → 级联删链并解绑引用主机，见
+    /// [`crate::jump_chains::remove_host_from_chains`]）——与库内「删引用清理」
+    /// 惯例一致，不会留下指向已删主机的死 hop id。
     pub fn delete(vault: &Vault, id: i64) -> Result<()> {
-        let n = vault
-            .connection()
-            .execute("DELETE FROM hosts WHERE id = ?1", [id])?;
+        let conn = vault.connection();
+        let tx = conn.unchecked_transaction()?;
+        crate::jump_chains::remove_host_from_chains(&tx, id)?;
+        let n = tx.execute("DELETE FROM hosts WHERE id = ?1", [id])?;
         if n == 0 {
+            // 事务随 tx drop 回滚：链补偿不落账（主机其实不存在）。
             return Err(VaultError::NotFound(format!("host id={id}")));
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -727,6 +802,7 @@ impl Hosts {
 fn row_to_host(row: &Row) -> rusqlite::Result<Host> {
     let tags_raw: String = row.get("tags")?;
     let tags = list_from_json(&tags_raw).map_err(|e| conv_failure(row, "tags", e))?;
+    let protocol: String = row.get("protocol")?;
     Ok(Host {
         id: row.get("id")?,
         name: row.get("name")?,
@@ -735,11 +811,15 @@ fn row_to_host(row: &Row) -> rusqlite::Result<Host> {
         address: row.get("address")?,
         port: row.get("port")?,
         username: row.get("username")?,
+        protocol: protocol
+            .parse()
+            .map_err(|e: VaultError| conv_failure(row, "protocol", e))?,
         credential_id: row.get("credential_id")?,
         jump_chain_id: row.get("jump_chain_id")?,
         encoding_override: row.get("encoding_override")?,
         theme_override: row.get("theme_override")?,
         monitor_enabled: row.get("monitor_enabled")?,
+        is_production: row.get::<_, i64>("is_production")? != 0,
         notes: row.get("notes")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -1038,7 +1118,11 @@ impl KnownHosts {
     /// **信任锚（fingerprint）保留原值不覆盖**——用户拒绝疑似 MITM 后，行内仍
     /// 钉着原钥匙；新指纹是否接管信任由 verify 在用户显式接受后决定。
     /// 未入库端点直接以 changed 状态入库（首次即为 changed 的异常流）。
-    pub fn mark_changed(vault: &Vault, host_key: &str, _seen_fingerprint: &str) -> Result<KnownHost> {
+    pub fn mark_changed(
+        vault: &Vault,
+        host_key: &str,
+        _seen_fingerprint: &str,
+    ) -> Result<KnownHost> {
         let ts = now_ts();
         vault.with_conn(|conn| {
             let updated = conn.execute(

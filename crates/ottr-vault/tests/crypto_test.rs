@@ -32,7 +32,10 @@ fn fixed_key_vector_roundtrip_and_structure() {
     // 正常路径 seal（随机 nonce）往返一致。
     let sealed = cipher.seal(PLAINTEXT, "credentials:42:secret").unwrap();
     assert_eq!(sealed.len(), 12 + PLAINTEXT.len() + 16);
-    assert_eq!(cipher.open(&sealed, "credentials:42:secret").unwrap(), PLAINTEXT);
+    assert_eq!(
+        cipher.open(&sealed, "credentials:42:secret").unwrap(),
+        PLAINTEXT
+    );
 
     // 往返：open 还原明文。
     let opened = cipher.open(&blob, "credentials:42:secret").unwrap();
@@ -52,11 +55,17 @@ fn aad_mismatch_must_err() {
     ] {
         match cipher.open(&blob, tampered) {
             Err(VaultError::Crypto(_)) => {}
-            other => panic!("AAD 换绑 {tampered} 应报 Crypto 错，实际 {:?}", other.is_ok()),
+            other => panic!(
+                "AAD 换绑 {tampered} 应报 Crypto 错，实际 {:?}",
+                other.is_ok()
+            ),
         }
     }
     // 原始 AAD 仍可解。
-    assert_eq!(cipher.open(&blob, "credentials:42:secret").unwrap(), PLAINTEXT);
+    assert_eq!(
+        cipher.open(&blob, "credentials:42:secret").unwrap(),
+        PLAINTEXT
+    );
 }
 
 #[test]
@@ -84,7 +93,10 @@ fn nonce_unique_across_1000_seals() {
 #[test]
 fn aad_helper_follows_discipline() {
     // AAD 纪律字符串由 helper 统一构造："{table}:{row_id}:{field}"。
-    assert_eq!(ottr_vault::aad("credentials", 42, "secret"), "credentials:42:secret");
+    assert_eq!(
+        ottr_vault::aad("credentials", 42, "secret"),
+        "credentials:42:secret"
+    );
 }
 
 #[test]

@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import zhCN from "../i18n/zh-CN.json";
 import enUS from "../i18n/en-US.json";
-import { DANGER_RULES, assessPaste, classify, isMultiline, scanDanger } from "./danger";
+import { DANGER_RULES, InputDangerWatch, assessPaste, classify, isMultiline, scanDanger } from "./danger";
 
 describe("isMultiline", () => {
   it("LF / CRLF / CR 均算多行", () => {
@@ -184,5 +184,41 @@ describe("assessPaste 分级（T8 语义回归：粘贴面对 red/yellow 同档�
   });
   it("yellow 级规则在粘贴面同样要确认（sudo reboot 弹层）", () => {
     expect(assessPaste("sudo reboot").level).toBe("danger");
+  });
+});
+
+describe("InputDangerWatch（B11 输入侧提醒：red/yellow 触发 + 同类 30s 限频）", () => {
+  it("red 命中返回 finding；green 不打扰", () => {
+    const watch = new InputDangerWatch();
+    const hit = watch.observe("rm -rf build", 1000);
+    expect(hit?.level).toBe("red");
+    expect(hit?.kind).toBe("recursive-delete");
+    expect(watch.observe("ls -la", 1100)).toBeNull(); // 普通命令静默
+  });
+
+  it("yellow 命中（sudo）也触发", () => {
+    const watch = new InputDangerWatch();
+    expect(watch.observe("sudo systemctl restart nginx", 1000)?.level).toBe("yellow");
+  });
+
+  it("同类 30s 限频：窗口内重复命中静默，换 kind 不受影响", () => {
+    const watch = new InputDangerWatch(30_000);
+    expect(watch.observe("sudo apt install htop", 0)).not.toBeNull();
+    expect(watch.observe("sudo apt remove htop", 29_999)).toBeNull(); // 同 kind 限频
+    expect(watch.observe("chmod -R 777 /tmp/x", 29_999)).not.toBeNull(); // 异 kind 独立计时
+    // 窗口过后同类再次提醒
+    expect(watch.observe("sudo -i", 30_000)).not.toBeNull();
+  });
+
+  it("取最高档命中展示：red 段里 yellow 规则不抢占", () => {
+    const watch = new InputDangerWatch();
+    const hit = watch.observe("sudo rm -rf /", 1000);
+    expect(hit?.level).toBe("red");
+  });
+
+  it("限频按 kind 记账：red 提醒后 yellow 的 recursive-delete 变体也静默", () => {
+    const watch = new InputDangerWatch(30_000);
+    expect(watch.observe("rm -rf build", 0)).not.toBeNull();
+    expect(watch.observe("rm -fr build2", 10_000)).toBeNull();
   });
 });

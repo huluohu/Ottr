@@ -162,3 +162,31 @@ export function assessPaste(text: string): {
   if (multiline) return { level: "warn", findings, multiline };
   return { level: "none", findings, multiline };
 }
+
+/**
+ * 输入侧危险提醒（Phase 2 Task 11，B11 收口）：击键流上滚动的**当前输入行**
+ * 逐次 classify——red/yellow 档命中 → 行内提醒（green 不打扰）。防打扰双闸：
+ *   * 同类规则 30s 限频（minIntervalMs 可注入供测试）——rm -rf 提醒过后紧随的
+ *     重复编辑不刷屏；
+ *   * green 纯静默（sudo 类日常命令反复出现也不弹）。
+ * 边界如实声明：shell 拥有输入行，本观察面只看得到**本会话键入的字符**
+ * （↑ 历史召回/Tab 补全产生的文本不可见——那部分由确认交互/粘贴确认兜底），
+ * 是 best-effort 预检而非行编辑器。
+ */
+export class InputDangerWatch {
+  private readonly lastRemindedAt = new Map<string, number>();
+
+  constructor(private readonly minIntervalMs: number = 30_000) {}
+
+  /** 观察当前输入行累积文本（逐键膨胀；now 注入便于测试）。返回应展示的命中：
+   * 无命中 / green / 同类限频窗口内 → null。 */
+  observe(text: string, now: number): DangerFinding | null {
+    const { level, findings } = classify(text);
+    if (level === "green") return null;
+    const top = findings.find((f) => f.level === level) ?? findings[0];
+    const last = this.lastRemindedAt.get(top.kind);
+    if (last !== undefined && now - last < this.minIntervalMs) return null;
+    this.lastRemindedAt.set(top.kind, now);
+    return top;
+  }
+}

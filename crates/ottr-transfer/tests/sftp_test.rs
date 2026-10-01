@@ -16,12 +16,12 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
+use ottr_ssh::{AuthMethod, SshSession, connect};
+use ottr_transfer::Error as TransferError;
 use ottr_transfer::sftp::{
-    CancelToken, CHUNK_SIZE, JOURNAL_MAGIC, TransferStats, download_parallel, journal_header,
+    CHUNK_SIZE, CancelToken, JOURNAL_MAGIC, TransferStats, download_parallel, journal_header,
     upload_parallel,
 };
-use ottr_transfer::Error as TransferError;
-use ottr_ssh::{AuthMethod, SshSession, connect};
 use russh::ChannelMsg;
 use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
@@ -614,7 +614,10 @@ async fn redownload_after_done_requires_journal_deletion_to_retransfer() {
     )
     .await
     .expect("first download");
-    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
+    assert_eq!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await
+    );
 
     // 危害面实证：删本地、保留完整 journal → 重下全命中 → 本地成稀疏全零文件
     std::fs::remove_file(&p.local_a).expect("delete local file");
@@ -657,7 +660,10 @@ async fn redownload_after_done_requires_journal_deletion_to_retransfer() {
         fresh.chunks_resumed, 0,
         "after done-deletion the re-download must transfer ALL chunks"
     );
-    assert_eq!(sha256_local(&p.local_a), sha256_remote(&session, &p.remote_a).await);
+    assert_eq!(
+        sha256_local(&p.local_a),
+        sha256_remote(&session, &p.remote_a).await
+    );
 
     cleanup_remote(&session, &p).await;
     cleanup_local(&p);

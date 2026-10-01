@@ -2,3 +2,6 @@
 spike_ed25519*
 hostkeys/
 known_hosts
+# ftpd 自签证书（spike-ftpd.sh 生成，勿入库）
+ftpd/cert.pem
+ftpd/key.pem

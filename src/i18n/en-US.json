@@ -34,7 +34,16 @@
     "closeToTray": "Hide to tray on close",
     "closeToTrayHint": "Ottr stays in the system tray after closing; quit from the tray.",
     "shellIntegration": "Auto shell integration",
-    "shellIntegrationHint": "Detects the remote shell on connect and injects OSC 133/OSC 7 markers that power history search and failure diagnosis; remotes with existing integration are skipped."
+    "shellIntegrationHint": "Detects the remote shell on connect and injects OSC 133/OSC 7 markers that power history search and failure diagnosis; remotes with existing integration are skipped.",
+    "terminalTheme": "Terminal colors",
+    "terminalThemeAuto": "Follow interface",
+    "terminalThemeGallery": "Built-in themes",
+    "terminalThemeCustom": "Imported",
+    "terminalThemeLightTag": "light",
+    "terminalThemeHint": "Terminal colors are independent of the interface light/dark mode. Import iTerm2 (.itermcolors) or Windows Terminal scheme (.json) files.",
+    "terminalThemeImport": "Import color scheme…",
+    "terminalThemeImported": "Imported {{count}} scheme(s); the first is selected.",
+    "terminalThemeImportFailed": "Import failed: {{message}}"
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -70,7 +79,15 @@
     "errAddressRequired": "Host address is required",
     "errPortRange": "Port must be an integer between 1 and 65535",
     "saveFailed": "Save failed: {{message}}",
-    "save": "Save host"
+    "save": "Save host",
+    "chain": "Jump chain",
+    "chainNone": "Direct (no jump)",
+    "protocol": "Protocol",
+    "protocol_ssh": "SSH",
+    "protocol_ftp": "FTP",
+    "protocol_ftps": "FTPS",
+    "production": "Production host",
+    "productionHint": "Marks the terminal border red and the tab with a PROD badge; dangerous input gets an inline reminder."
   },
   "hostTree": {
     "searchPlaceholder": "Search hosts (name/notes)…",
@@ -100,7 +117,16 @@
     "skippedWildcards": "Skipped {{count}} wildcard/exclude patterns",
     "skippedDuplicates": "Skipped {{count}} duplicate hosts",
     "errors": "Parse errors ({{count}})",
-    "noErrors": "No parse errors"
+    "noErrors": "No parse errors",
+    "source": "Source",
+    "sourceSsh": "~/.ssh/config",
+    "sourceXshell": "Xshell sessions folder",
+    "sourceTabby": "Tabby config (JSON)",
+    "pickFile": "Choose file…",
+    "pickFolder": "Choose folder…",
+    "skippedEntries": "Skipped {{count}} unusable entries/files",
+    "xshellIntro": "Pick a folder of Xshell .xsh session files (or a single .xsh). Host/port/user are imported; duplicates by address+port+user are skipped.",
+    "tabbyIntro": "Pick a Tabby config JSON export. SSH profiles are imported; duplicates by address+port+user are skipped."
   },
   "palette": {
     "title": "Command Palette",
@@ -120,7 +146,11 @@
     "hostAll": "All hosts",
     "hostFilter": "Filter by host",
     "insertHint": "Enter inserts into the current terminal",
-    "unknownHost": "unknown host"
+    "unknownHost": "unknown host",
+    "tabHistory": "History",
+    "tabSummaries": "Summaries",
+    "emptySummaries": "No session summaries yet — generated when a session (≥3 commands) ends",
+    "commands": "{{count}} commands"
   },
   "titlebar": {
     "menu": "Menu",
@@ -150,7 +180,9 @@
     "copyPassword": "Copy password",
     "copyPasswordAria": "Copy password of credential {{id}}",
     "copied": "Copied",
-    "copyFailed": "Copy failed: {{message}}"
+    "copyFailed": "Copy failed: {{message}}",
+    "kind_ftp": "FTP password",
+    "kind_ftps": "FTPS password"
   },
   "credentialForm": {
     "newTitle": "New Credential",
@@ -238,6 +270,7 @@
     "hostKeyRejected": "Host key confirmation rejected; not connected",
     "reconnectHint": "Double-click a host in the sidebar to connect",
     "copyOnSelect": "Copy on select",
+    "completion": "Input suggestions (Tab accepts)",
     "searchPlaceholder": "Search terminal…",
     "searchPrev": "Previous",
     "searchNext": "Next",
@@ -257,7 +290,18 @@
     "encodingHint": "{{encoding}} encoding detected. Switch?",
     "encodingHintAccept": "Switch to {{encoding}}",
     "encodingHintDismiss": "Don't ask again",
-    "encodingBadgeAria": "Switch session encoding (current {{encoding}}, click to cycle)"
+    "encodingBadgeAria": "Switch session encoding (current {{encoding}}, click to cycle)",
+    "trzszDropTitle": "Drop files to terminal",
+    "trzszDropHint": "{{count}} file(s): {{names}}",
+    "trzszDropUpload": "Upload via trz",
+    "trzszDropInsert": "Insert paths",
+    "trzszUploadFailed": "trzsz upload failed: {{message}}",
+    "trzszUploadNoStart": "Remote did not start trzsz (is trzsz installed on the server?)",
+    "trzszDropAria": "Dropped files action dialog",
+    "prodBadgeAria": "Production host",
+    "dangerInputTitle": "Careful",
+    "dangerInputHint": "This input hits a danger rule: {{rule}} ({{excerpt}})",
+    "dangerInputDismiss": "Dismiss danger reminder"
   },
   "ai": {
     "title": "AI Assistant",
@@ -318,6 +362,19 @@
       "outputTail": "Output tail",
       "explainTarget": "Explain this terminal content"
     },
+    "nl2cmd": {
+      "title": "NL command",
+      "placeholder": "Describe what you want in plain language, press Enter to generate…",
+      "run": "Generate",
+      "thinking": "Generating…",
+      "emptyAnswer": "The model returned no usable command.",
+      "cwd": "Current directory",
+      "prompt": "You are a shell command generator. Convert the user's natural-language intent into one command runnable in a POSIX shell. Rules: output the command only — a single line, no explanation, no comments, no Markdown fences (```), no shell prompt prefix ($); if several intents are present satisfy the primary one; use the most common defaults for uncertain details (paths, package names); do not output echo or any explanatory text. If a \"current directory\" is given, interpret relative paths against it."
+    },
+    "summary": {
+      "prompt": "You are an ops session chronicler. Given the commands run during one session (redacted, in chronological order), write a 3-5 sentence summary: what was done, what changed, and how it went (exit codes are clues). Rules: output the summary text only — no headings, numbered lists, or Markdown fences; do not restate the commands one by one; be conservative, never invent details beyond the commands; write in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",
+      "header": "Commands executed during this session (redacted, in chronological order)"
+    },
     "settings": {
       "title": "AI settings",
       "general": "General",
@@ -359,7 +416,8 @@
   },
   "tabs": {
     "list": "Session tabs",
-    "closeAria": "Close tab {{name}}"
+    "closeAria": "Close tab {{name}}",
+    "prodBadge": "PROD"
   },
   "files": {
     "viewSwitch": "Main view",
@@ -384,6 +442,8 @@
       "rename": "Rename \"{{name}}\"",
       "chmod": "Change permissions of \"{{name}}\"",
       "delete": "Delete \"{{name}}\"",
+      "edit": "Edit \"{{name}}\"",
+      "stopEdit": "Stop editing \"{{name}}\"",
       "download": "Download \"{{name}}\""
     },
     "dlg": {
@@ -391,8 +451,19 @@
       "renameTitle": "Rename \"{{name}}\"",
       "chmodTitle": "Permissions of \"{{name}}\" (octal, e.g. 644)",
       "deleteTitle": "Delete \"{{name}}\"",
-      "deleteConfirm": "Delete permanently? This cannot be undone (folders must be empty)."
+      "deleteConfirm": "Delete permanently? This cannot be undone (folders must be empty).",
+      "conflictTitle": "Remote file changed",
+      "conflictConfirm": "\"{{name}}\" was modified on the remote host after you started editing. Overwrite the remote copy with your local edits?",
+      "conflictOverwrite": "Overwrite remote",
+      "keepLocal": "Keep local"
     },
+    "editOpened": "Editing \"{{name}}\" — changes save back automatically",
+    "editSaved": "Synced \"{{name}}\" to remote",
+    "editOverwritten": "Overwrote remote \"{{name}}\"",
+    "editClosed": "Stopped editing \"{{name}}\"",
+    "editFailed": "Edit failed: {{message}}",
+    "editTooLarge": "\"{{name}}\" is too large to edit (limit 10 MB)",
+    "remoteGone": "Remote file \"{{name}}\" was deleted — editing stopped",
     "errOctalMode": "Permissions must be 3-4 octal digits (e.g. 644, 0755)",
     "opFailed": "Operation failed: {{message}}",
     "uploadFailed": "Upload failed: {{message}}",
@@ -413,7 +484,42 @@
       "retryAria": "Retry transfer {{name}}",
       "dismissAria": "Remove record {{name}}",
       "errorText": "Error: {{message}}"
-    }
+    },
+    "ftpNoEdit": "Remote edit is not available for FTP sessions"
+  },
+  "forward": {
+    "title": "Port forwards",
+    "empty": "No port forwards yet. Click \"Add\" to set up -L/-R/-D forwarding for any host.",
+    "add": "Add forward",
+    "addTitle": "Add port forward",
+    "editTitle": "Edit port forward",
+    "host": "Host",
+    "kindLabel": "Type",
+    "kind": {
+      "local": "Local -L",
+      "remote": "Remote -R",
+      "dynamic": "Dynamic -D (SOCKS5)"
+    },
+    "kindDynamic": "SOCKS5 proxy",
+    "bindAddr": "Bind address",
+    "bindPort": "Bind port",
+    "bindPortAuto": "0 = auto",
+    "targetHost": "Target host",
+    "targetHostPlaceholder": "Resolved from the remote side (-L)",
+    "targetPort": "Target port",
+    "enabled": "Auto-start",
+    "enabledHint": "Start this forward automatically when the session connects",
+    "autoReconnect": "Auto-resume after disconnect",
+    "start": "Start",
+    "stop": "Stop",
+    "needSession": "Host is not connected; connect first to start forwarding",
+    "errHostRequired": "Choose a host",
+    "errBindPort": "Bind port must be an integer 0-65535",
+    "errTargetRequired": "Enter a target host",
+    "errTargetPort": "Target port must be an integer 1-65535",
+    "saveFailed": "Save failed: {{message}}",
+    "actionFailed": "Action failed: {{message}}",
+    "loadFailed": "Load failed: {{message}}"
   },
   "notify": {
     "bellAria": "Notification center",
@@ -430,7 +536,8 @@
       "transferCancelled": "Transfer cancelled",
       "sessionLost": "Connection lost",
       "aiDone": "Diagnosis ready",
-      "aiExplain": "Explanation ready"
+      "aiExplain": "Explanation ready",
+      "summaryReady": "Session summary ready"
     },
     "kindAi": "AI"
   },
@@ -444,7 +551,8 @@
     "fingerprint": "Fingerprint",
     "reject": "Refuse",
     "trust": "Trust & connect",
-    "acceptAnyway": "Connect anyway"
+    "acceptAnyway": "Connect anyway",
+    "hopLabel": "Hop {{hop}}"
   },
   "security": {
     "mode": "Key mode",
@@ -486,5 +594,31 @@
       "failedHint": "The system keychain may have denied access. Restart the app to retry; if it keeps failing, reinstall or contact support.",
       "quit": "Quit"
     }
+  },
+  "jump": {
+    "title": "Jump chains",
+    "empty": "No jump chains yet. Click \"Add\" to create one, then bind it to a host in the host form.",
+    "add": "Add jump chain",
+    "addTitle": "Add jump chain",
+    "editTitle": "Edit jump chain",
+    "chainName": "Chain name",
+    "chainNamePlaceholder": "e.g. office → prod",
+    "hops": "Hop sequence (local toward target)",
+    "addHop": "Add hop",
+    "host": "Jump host",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeHop": "Remove hop",
+    "test": "Test connection",
+    "testing": "Testing…",
+    "testOk": "Connected ({{elapsed}}s)",
+    "testFail": "Connection failed",
+    "testFailHop": "failed at hop {{hop}}",
+    "noHosts": "No hosts available — create hosts in the host tree first.",
+    "errNameRequired": "Chain name is required",
+    "errHopsRequired": "At least one hop is required",
+    "saveFailed": "Save failed: {{message}}",
+    "actionFailed": "Action failed: {{message}}",
+    "loadFailed": "Load failed: {{message}}"
   }
 }

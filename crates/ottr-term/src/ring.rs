@@ -221,7 +221,11 @@ mod tests {
         let mut ring = RingBuffer::with_capacity(10);
         ring.push(b"a\nbb\nccc\n");
         // "a\nbb\nccc" = 8 字节；"bb\nccc" = 6 字节
-        assert_eq!(ring.tail_bytes(7), b"bb\nccc".to_vec(), "放不下最旧行整行让出");
+        assert_eq!(
+            ring.tail_bytes(7),
+            b"bb\nccc".to_vec(),
+            "放不下最旧行整行让出"
+        );
         assert_eq!(ring.tail_bytes(8), b"a\nbb\nccc".to_vec(), "恰好放下全收");
         assert_eq!(ring.tail_bytes(6), b"bb\nccc".to_vec());
         assert_eq!(ring.tail_bytes(2), b"cc".to_vec(), "行内截尾");

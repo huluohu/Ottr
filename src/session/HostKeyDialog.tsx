@@ -18,6 +18,13 @@ export function HostKeyDialog() {
         <h2 className={changed ? "host-key-changed-title" : undefined}>
           {changed ? t("hostKey.changedTitle") : t("hostKey.firstTitle")}
         </h2>
+        {/* 跳板链逐跳问询（Phase 2 Task 2）：带「第 N 跳」标识（hop 0 起计，
+            展示用 1 起的人类序号——与断点定位文案同源语义）。 */}
+        {ask.hop != null && (
+          <p className="host-key-hop" data-testid="host-key-hop">
+            {t("hostKey.hopLabel", { hop: ask.hop + 1 })}
+          </p>
+        )}
         <p className="dialog-intro">
           {ask.kind === "pending"
             ? t("hostKey.pendingIntro", { host: ask.host_name })

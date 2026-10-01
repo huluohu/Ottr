@@ -181,7 +181,9 @@ impl AutoLockState {
             // 焦点事件让位最新一轮；已重新聚焦 / 已锁定（手动或前一轮）不重复。
             let gen_current = state.generation.load(Ordering::SeqCst);
             let focused = state.focused.load(Ordering::SeqCst);
-            let is_locked = app.try_state::<VaultState>().is_some_and(|v| v.0.is_locked());
+            let is_locked = app
+                .try_state::<VaultState>()
+                .is_some_and(|v| v.0.is_locked());
             if auto_lock_should_fire(gen, gen_current, focused, is_locked) {
                 if let Some(vault) = app.try_state::<VaultState>() {
                     vault.0.lock();
@@ -212,7 +214,8 @@ pub fn clipboard_copy_with_autoclear(
     let mut text = text;
     let copy_result = (|| -> Result<(), String> {
         let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard open: {e}"))?;
-        cb.set_text(text.as_str()).map_err(|e| format!("clipboard write: {e}"))
+        cb.set_text(text.as_str())
+            .map_err(|e| format!("clipboard write: {e}"))
     })();
     text.zeroize();
     copy_result?;
@@ -264,7 +267,11 @@ mod tests {
 
     #[test]
     fn autolock_minutes_config_table() {
-        assert_eq!(autolock_minutes_from(None), Some(10), "未配置 = 默认 10 分钟");
+        assert_eq!(
+            autolock_minutes_from(None),
+            Some(10),
+            "未配置 = 默认 10 分钟"
+        );
         assert_eq!(autolock_minutes_from(Some(0)), None, "0 = 关闭");
         assert_eq!(autolock_minutes_from(Some(1)), Some(1));
         assert_eq!(autolock_minutes_from(Some(10)), Some(10));
@@ -277,7 +284,11 @@ mod tests {
 
     #[test]
     fn clipboard_secs_config_table() {
-        assert_eq!(clipboard_clear_secs_from(None), Some(30), "未配置 = 默认 30s");
+        assert_eq!(
+            clipboard_clear_secs_from(None),
+            Some(30),
+            "未配置 = 默认 30s"
+        );
         assert_eq!(clipboard_clear_secs_from(Some(0)), None, "0 = 关闭");
         assert_eq!(clipboard_clear_secs_from(Some(30)), Some(30));
         assert_eq!(
@@ -292,7 +303,10 @@ mod tests {
         assert!(shell_integration_enabled(None), "未配置 = 缺省开");
         assert!(shell_integration_enabled(Some(&serde_json::json!(true))));
         assert!(!shell_integration_enabled(Some(&serde_json::json!(false))));
-        assert!(shell_integration_enabled(Some(&serde_json::json!("yes"))), "非布尔收敛默认开");
+        assert!(
+            shell_integration_enabled(Some(&serde_json::json!("yes"))),
+            "非布尔收敛默认开"
+        );
     }
 
     #[test]
@@ -313,12 +327,30 @@ mod tests {
     #[test]
     fn validate_setting_rejects_out_of_range_and_type_errors() {
         // 合法值放行。
-        assert_eq!(validate_setting(SETTING_AUTOLOCK, &serde_json::json!(10)), Ok(()));
-        assert_eq!(validate_setting(SETTING_AUTOLOCK, &serde_json::json!(0)), Ok(()));
-        assert_eq!(validate_setting(SETTING_CLIPBOARD, &serde_json::json!(30)), Ok(()));
-        assert_eq!(validate_setting("ui.theme", &serde_json::json!("dark")), Ok(()));
-        assert_eq!(validate_setting("ui.language", &serde_json::json!("zh-CN")), Ok(()));
-        assert_eq!(validate_setting("unknown.key", &serde_json::json!(1)), Ok(()));
+        assert_eq!(
+            validate_setting(SETTING_AUTOLOCK, &serde_json::json!(10)),
+            Ok(())
+        );
+        assert_eq!(
+            validate_setting(SETTING_AUTOLOCK, &serde_json::json!(0)),
+            Ok(())
+        );
+        assert_eq!(
+            validate_setting(SETTING_CLIPBOARD, &serde_json::json!(30)),
+            Ok(())
+        );
+        assert_eq!(
+            validate_setting("ui.theme", &serde_json::json!("dark")),
+            Ok(())
+        );
+        assert_eq!(
+            validate_setting("ui.language", &serde_json::json!("zh-CN")),
+            Ok(())
+        );
+        assert_eq!(
+            validate_setting("unknown.key", &serde_json::json!(1)),
+            Ok(())
+        );
         // Task 15 fix 1/5：shell.integration 布尔校验注册
         assert_eq!(
             validate_setting(SETTING_SHELL_INTEGRATION, &serde_json::json!(false)),

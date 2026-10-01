@@ -30,7 +30,10 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
         vault,
         &CredentialInput {
             kind: CredentialKind::Key,
-            secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\nseed-b\n-----END OPENSSH PRIVATE KEY-----".into()),
+            secret: Some(
+                "-----BEGIN OPENSSH PRIVATE KEY-----\nseed-b\n-----END OPENSSH PRIVATE KEY-----"
+                    .into(),
+            ),
             key_pub: Some("ssh-ed25519 AAAA seed-b".into()),
             passphrase: None,
             totp_secret: None,
@@ -40,6 +43,7 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
     Hosts::create(
         vault,
         HostInput {
+            protocol: Default::default(),
             name: "web-01".into(),
             group_id: None,
             tags: vec!["prod".into()],
@@ -51,6 +55,7 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )
@@ -111,8 +116,16 @@ fn upgrade_roundtrip_reencrypts_all_fields_and_reopens() {
     assert!(!reopened.is_locked());
     for (id, field, want) in [
         (id_a, ottr_vault::SecretField::Secret, "s3cret-password-α"),
-        (id_a, ottr_vault::SecretField::Passphrase, "folder-passphrase"),
-        (id_a, ottr_vault::SecretField::TotpSecret, "JBSWY3DPEHPK3PXP"),
+        (
+            id_a,
+            ottr_vault::SecretField::Passphrase,
+            "folder-passphrase",
+        ),
+        (
+            id_a,
+            ottr_vault::SecretField::TotpSecret,
+            "JBSWY3DPEHPK3PXP",
+        ),
         (
             id_b,
             ottr_vault::SecretField::Secret,
@@ -289,11 +302,15 @@ fn locked_vault_keeps_plain_metadata_usable_but_rejects_keyed_ops() {
     let vault = Vault::open_password_only(dir.path()).unwrap();
     // 锁定态（尚未设置过主密码）：明文面可用（锁定屏需要读配置）。
     Settings::set_str(&vault, "ui.theme", "dark").unwrap();
-    assert_eq!(Settings::get_str(&vault, "ui.theme").unwrap().as_deref(), Some("dark"));
+    assert_eq!(
+        Settings::get_str(&vault, "ui.theme").unwrap().as_deref(),
+        Some("dark")
+    );
     // 明文实体（hosts 无密文列）写读可用。
     Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "meta-only".into(),
             group_id: None,
             tags: vec![],
@@ -305,6 +322,7 @@ fn locked_vault_keeps_plain_metadata_usable_but_rejects_keyed_ops() {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )
@@ -363,10 +381,11 @@ fn upgrade_rejects_weak_passwords() {
     let storage = InMemoryStorage::new();
     let vault = Vault::open_with(dir.path(), &storage).unwrap();
     for weak in ["", "short", "1234567"] {
-        let err = vault
-            .set_master_password(weak, &mut |_, _| {})
-            .unwrap_err();
-        assert!(matches!(err, VaultError::InvalidInput(_)), "{weak:?}: {err:?}");
+        let err = vault.set_master_password(weak, &mut |_, _| {}).unwrap_err();
+        assert!(
+            matches!(err, VaultError::InvalidInput(_)),
+            "{weak:?}: {err:?}"
+        );
     }
     // 恰好 8 字符（下边界）放行。
     vault
@@ -414,7 +433,10 @@ fn fallback_refuses_keyring_mode_vault_when_keychain_dead() {
     let err = Vault::open_password_only(dir.path())
         .err()
         .expect("keyring-mode vault must refuse password-only open");
-    assert!(matches!(err, VaultError::MasterKeyUnreachable), "实际 {err:?}");
+    assert!(
+        matches!(err, VaultError::MasterKeyUnreachable),
+        "实际 {err:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -429,12 +451,21 @@ fn keyring_error_classification() {
     assert!(!keyring_error_is_unavailable(&keyring::Error::NoEntry));
     // 后端不可达（Linux 无 Secret Service 的典型面）→ 不可用。
     let platform: Box<dyn std::error::Error + Send + Sync> = "no secret service".into();
-    assert!(keyring_error_is_unavailable(&keyring::Error::PlatformFailure(platform)));
+    assert!(keyring_error_is_unavailable(
+        &keyring::Error::PlatformFailure(platform)
+    ));
     let access: Box<dyn std::error::Error + Send + Sync> = "dbus unavailable".into();
-    assert!(keyring_error_is_unavailable(&keyring::Error::NoStorageAccess(access)));
+    assert!(keyring_error_is_unavailable(
+        &keyring::Error::NoStorageAccess(access)
+    ));
     // 条目内容问题（服务在、数据坏）→ 不算不可用，走显式损坏错误面。
-    assert!(!keyring_error_is_unavailable(&keyring::Error::BadEncoding(vec![0xff])));
-    assert!(!keyring_error_is_unavailable(&keyring::Error::TooLong("account".into(), 255)));
+    assert!(!keyring_error_is_unavailable(&keyring::Error::BadEncoding(
+        vec![0xff]
+    )));
+    assert!(!keyring_error_is_unavailable(&keyring::Error::TooLong(
+        "account".into(),
+        255
+    )));
     // Display 可用性冒烟。
     let _ = keyring::Error::PlatformFailure("x".into()).to_string();
 }
@@ -450,17 +481,34 @@ fn settings_roundtrip_and_type_convenience() {
 
     assert_eq!(Settings::get(&vault, "ui.theme").unwrap(), None);
     Settings::set_str(&vault, "ui.theme", "dark").unwrap();
-    assert_eq!(Settings::get_str(&vault, "ui.theme").unwrap().as_deref(), Some("dark"));
+    assert_eq!(
+        Settings::get_str(&vault, "ui.theme").unwrap().as_deref(),
+        Some("dark")
+    );
     // upsert 覆盖。
     Settings::set_str(&vault, "ui.theme", "light").unwrap();
-    assert_eq!(Settings::get_str(&vault, "ui.theme").unwrap().as_deref(), Some("light"));
+    assert_eq!(
+        Settings::get_str(&vault, "ui.theme").unwrap().as_deref(),
+        Some("light")
+    );
 
     Settings::set_u64(&vault, "security.autolock_minutes", 10).unwrap();
-    assert_eq!(Settings::get_u64(&vault, "security.autolock_minutes").unwrap(), Some(10));
+    assert_eq!(
+        Settings::get_u64(&vault, "security.autolock_minutes").unwrap(),
+        Some(10)
+    );
     // 类型不符 → None（get_str 对 number）。
-    assert_eq!(Settings::get_str(&vault, "security.autolock_minutes").unwrap(), None);
+    assert_eq!(
+        Settings::get_str(&vault, "security.autolock_minutes").unwrap(),
+        None
+    );
     // 结构体值（JSON 对象）也可存取。
-    Settings::set(&vault, "ai.provider", &serde_json::json!({"name": "openai"})).unwrap();
+    Settings::set(
+        &vault,
+        "ai.provider",
+        &serde_json::json!({"name": "openai"}),
+    )
+    .unwrap();
     assert_eq!(
         Settings::get(&vault, "ai.provider").unwrap(),
         Some(serde_json::json!({"name": "openai"}))
@@ -468,7 +516,10 @@ fn settings_roundtrip_and_type_convenience() {
     // 损坏 JSON 显式报错（不静默当未设置）。
     vault
         .connection()
-        .execute("UPDATE settings SET value = '{broken' WHERE key = 'ui.theme'", [])
+        .execute(
+            "UPDATE settings SET value = '{broken' WHERE key = 'ui.theme'",
+            [],
+        )
         .unwrap();
     assert!(Settings::get(&vault, "ui.theme").is_err());
     // 还原后重开：设置持久（幂等 open）。
@@ -510,7 +561,9 @@ fn reencrypt_scan_covers_all_enc_columns() {
     };
     let mut dynamic: Vec<(String, String)> = Vec::new();
     for table in &tables {
-        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap();
         let columns = stmt
             .query_map([], |r| r.get::<_, String>(1))
             .unwrap()

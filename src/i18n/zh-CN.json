@@ -34,7 +34,16 @@
     "closeToTray": "关闭窗口时隐藏到托盘",
     "closeToTrayHint": "关闭后 Ottr 常驻系统托盘，可从托盘退出。",
     "shellIntegration": "Shell 集成自动注入",
-    "shellIntegrationHint": "连接时自动探测远端 shell 并注入 OSC 133/OSC 7 片段，驱动历史搜索与报错即诊；已自带集成的远端自动跳过。"
+    "shellIntegrationHint": "连接时自动探测远端 shell 并注入 OSC 133/OSC 7 片段，驱动历史搜索与报错即诊；已自带集成的远端自动跳过。",
+    "terminalTheme": "终端配色",
+    "terminalThemeAuto": "跟随界面",
+    "terminalThemeGallery": "内置主题",
+    "terminalThemeCustom": "导入的配色",
+    "terminalThemeLightTag": "亮色",
+    "terminalThemeHint": "终端配色独立于界面明暗。支持导入 iTerm2（.itermcolors）与 Windows Terminal scheme（.json）文件。",
+    "terminalThemeImport": "导入配色文件…",
+    "terminalThemeImported": "已导入 {{count}} 个配色，已选中第一个。",
+    "terminalThemeImportFailed": "导入失败：{{message}}"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -70,7 +79,15 @@
     "errAddressRequired": "主机地址不能为空",
     "errPortRange": "端口必须是 1-65535 的整数",
     "saveFailed": "保存失败：{{message}}",
-    "save": "保存主机"
+    "save": "保存主机",
+    "chain": "跳板链",
+    "chainNone": "直连（不经跳板）",
+    "protocol": "协议",
+    "protocol_ssh": "SSH",
+    "protocol_ftp": "FTP",
+    "protocol_ftps": "FTPS",
+    "production": "生产环境主机",
+    "productionHint": "终端边框标红、页签带 PROD 徽标；输入危险命令时给行内提醒。"
   },
   "hostTree": {
     "searchPlaceholder": "搜索主机（名称/备注）…",
@@ -100,7 +117,16 @@
     "skippedWildcards": "跳过通配/排除模式 {{count}} 条",
     "skippedDuplicates": "跳过重复主机 {{count}} 台",
     "errors": "解析错误（{{count}}）",
-    "noErrors": "无解析错误"
+    "noErrors": "无解析错误",
+    "source": "来源",
+    "sourceSsh": "~/.ssh/config",
+    "sourceXshell": "Xshell 会话目录",
+    "sourceTabby": "Tabby 配置（JSON）",
+    "pickFile": "选择文件…",
+    "pickFolder": "选择目录…",
+    "skippedEntries": "跳过 {{count}} 个不可用条目/文件",
+    "xshellIntro": "选择 Xshell .xsh 会话文件所在目录（或单个 .xsh）。导入主机/端口/用户；按地址+端口+用户去重。",
+    "tabbyIntro": "选择 Tabby 配置 JSON 导出文件。导入其中 SSH 配置；按地址+端口+用户去重。"
   },
   "palette": {
     "title": "命令面板",
@@ -120,7 +146,11 @@
     "hostAll": "全部主机",
     "hostFilter": "按主机过滤",
     "insertHint": "回车插入当前终端",
-    "unknownHost": "未知主机"
+    "unknownHost": "未知主机",
+    "tabHistory": "历史",
+    "tabSummaries": "纪要",
+    "emptySummaries": "还没有会话纪要——会话结束（≥3 条命令）时自动生成",
+    "commands": "{{count}} 条命令"
   },
   "titlebar": {
     "menu": "菜单",
@@ -149,7 +179,9 @@
     "copyPassword": "复制密码",
     "copyPasswordAria": "复制凭据 {{id}} 的密码",
     "copied": "已复制",
-    "copyFailed": "复制失败：{{message}}"
+    "copyFailed": "复制失败：{{message}}",
+    "kind_ftp": "FTP 密码",
+    "kind_ftps": "FTPS 密码"
   },
   "credentialForm": {
     "newTitle": "新建凭据",
@@ -237,6 +269,7 @@
     "hostKeyRejected": "主机密钥确认未通过，未连接",
     "reconnectHint": "双击左侧主机可发起连接",
     "copyOnSelect": "选择即复制",
+    "completion": "输入补全建议（Tab 采纳）",
     "searchPlaceholder": "搜索终端内容…",
     "searchPrev": "上一个",
     "searchNext": "下一个",
@@ -256,7 +289,18 @@
     "encodingHint": "检测到 {{encoding}} 编码，切换？",
     "encodingHintAccept": "切换为 {{encoding}}",
     "encodingHintDismiss": "不再提示",
-    "encodingBadgeAria": "切换会话编码（当前 {{encoding}}，点击循环）"
+    "encodingBadgeAria": "切换会话编码（当前 {{encoding}}，点击循环）",
+    "trzszDropTitle": "拖入文件到终端",
+    "trzszDropHint": "{{count}} 个文件：{{names}}",
+    "trzszDropUpload": "trz 上传",
+    "trzszDropInsert": "插入路径",
+    "trzszUploadFailed": "trzsz 上传失败：{{message}}",
+    "trzszUploadNoStart": "远端未启动 trzsz 传输（服务器未安装 trzsz？）",
+    "trzszDropAria": "拖入文件动作对话框",
+    "prodBadgeAria": "生产环境主机",
+    "dangerInputTitle": "注意",
+    "dangerInputHint": "当前输入命中危险规则：{{rule}}（{{excerpt}}）",
+    "dangerInputDismiss": "关闭危险提醒"
   },
   "ai": {
     "title": "AI 助手",
@@ -317,6 +361,19 @@
       "outputTail": "输出尾部",
       "explainTarget": "解释以下终端内容"
     },
+    "nl2cmd": {
+      "title": "NL 命令",
+      "placeholder": "用自然语言描述你想做的事，回车生成命令…",
+      "run": "生成",
+      "thinking": "生成中…",
+      "emptyAnswer": "模型没有返回可用的命令。",
+      "cwd": "当前目录",
+      "prompt": "你是 Shell 命令生成器。把用户的自然语言意图转换成一条可直接在 POSIX shell 里执行的命令。规则：只输出命令本身——一行，不加任何解释、注释、Markdown 围栏（```）或提示符前缀（$）；多个意图时只满足主要意图；不确定的细节（路径/包名等）用最常见的默认值；不输出 echo 说明性文字。若给出「当前目录」，把它当作命令的运行目录来解释相对路径。"
+    },
+    "summary": {
+      "prompt": "你是运维会话纪要撰写员。根据一次会话中依次执行的命令序列（已脱敏、按时间顺序），写一份 3-5 句的纪要：做了什么、改了什么、结果如何（退出码可作线索）。规则：只输出纪要正文——不加标题、编号列表或 Markdown 围栏；不逐条复述命令；推断克制，命令之外的信息不要编造；使用界面语言。[REDACTED_*] 是脱敏占位符，原样保留，不要猜测其内容。",
+      "header": "以下是本次会话中依次执行的命令（已脱敏，按时间顺序）"
+    },
     "settings": {
       "title": "AI 设置",
       "general": "通用",
@@ -358,7 +415,8 @@
   },
   "tabs": {
     "list": "会话标签",
-    "closeAria": "关闭标签 {{name}}"
+    "closeAria": "关闭标签 {{name}}",
+    "prodBadge": "PROD"
   },
   "files": {
     "viewSwitch": "主区视图",
@@ -383,6 +441,8 @@
       "rename": "重命名「{{name}}」",
       "chmod": "更改权限「{{name}}」",
       "delete": "删除「{{name}}」",
+      "edit": "编辑「{{name}}」",
+      "stopEdit": "停止编辑「{{name}}」",
       "download": "下载「{{name}}」"
     },
     "dlg": {
@@ -390,8 +450,19 @@
       "renameTitle": "重命名「{{name}}」",
       "chmodTitle": "「{{name}}」的权限（八进制，如 644）",
       "deleteTitle": "删除「{{name}}」",
-      "deleteConfirm": "确定删除吗？此操作不可撤销（目录须为空）。"
+      "deleteConfirm": "确定删除吗？此操作不可撤销（目录须为空）。",
+      "conflictTitle": "远端文件已变更",
+      "conflictConfirm": "「{{name}}」在你开始编辑后于远端被修改。用本地修改覆盖远端副本？",
+      "conflictOverwrite": "覆盖远端",
+      "keepLocal": "保留本地"
     },
+    "editOpened": "正在编辑「{{name}}」，保存后自动回传",
+    "editSaved": "已回传「{{name}}」",
+    "editOverwritten": "已覆盖远端「{{name}}」",
+    "editClosed": "已停止编辑「{{name}}」",
+    "editFailed": "编辑失败：{{message}}",
+    "editTooLarge": "「{{name}}」超出编辑大小上限（10 MB）",
+    "remoteGone": "远端「{{name}}」已被删除，已停止编辑",
     "errOctalMode": "权限需为 3-4 位八进制数（如 644、0755）",
     "opFailed": "操作失败：{{message}}",
     "uploadFailed": "上传失败：{{message}}",
@@ -412,7 +483,42 @@
       "retryAria": "重试传输 {{name}}",
       "dismissAria": "移除记录 {{name}}",
       "errorText": "错误：{{message}}"
-    }
+    },
+    "ftpNoEdit": "FTP 会话不支持远端编辑"
+  },
+  "forward": {
+    "title": "端口转发",
+    "empty": "暂无端口转发。点击「添加」为任意主机配置 -L/-R/-D 转发。",
+    "add": "添加转发",
+    "addTitle": "添加端口转发",
+    "editTitle": "编辑端口转发",
+    "host": "主机",
+    "kindLabel": "类型",
+    "kind": {
+      "local": "本地 -L",
+      "remote": "远端 -R",
+      "dynamic": "动态 -D (SOCKS5)"
+    },
+    "kindDynamic": "SOCKS5 代理",
+    "bindAddr": "监听地址",
+    "bindPort": "监听端口",
+    "bindPortAuto": "0 = 自动",
+    "targetHost": "目标主机",
+    "targetHostPlaceholder": "从远端视角解析（-L）",
+    "targetPort": "目标端口",
+    "enabled": "自动启动",
+    "enabledHint": "会话建立后自动启动该转发",
+    "autoReconnect": "断线自动恢复",
+    "start": "启动",
+    "stop": "停止",
+    "needSession": "主机未连接，先连接再启动转发",
+    "errHostRequired": "请选择主机",
+    "errBindPort": "监听端口需为 0-65535 的整数",
+    "errTargetRequired": "请填写目标主机",
+    "errTargetPort": "目标端口需为 1-65535 的整数",
+    "saveFailed": "保存失败：{{message}}",
+    "actionFailed": "操作失败：{{message}}",
+    "loadFailed": "加载失败：{{message}}"
   },
   "notify": {
     "bellAria": "通知中心",
@@ -429,7 +535,8 @@
       "transferCancelled": "传输已取消",
       "sessionLost": "连接已断开",
       "aiDone": "诊断完成",
-      "aiExplain": "解释完成"
+      "aiExplain": "解释完成",
+      "summaryReady": "会话纪要已生成"
     },
     "kindAi": "AI"
   },
@@ -443,7 +550,8 @@
     "fingerprint": "指纹",
     "reject": "拒绝连接",
     "trust": "信任并连接",
-    "acceptAnyway": "仍要连接"
+    "acceptAnyway": "仍要连接",
+    "hopLabel": "第 {{hop}} 跳"
   },
   "security": {
     "mode": "密钥模式",
@@ -485,5 +593,31 @@
       "failedHint": "可能是系统钥匙链拒绝了访问。请重启应用重试；若持续失败，请重新安装或联系支持。",
       "quit": "退出"
     }
+  },
+  "jump": {
+    "title": "跳板链",
+    "empty": "暂无跳板链。点击「添加」创建链，然后在主机表单中绑定使用。",
+    "add": "添加跳板链",
+    "addTitle": "添加跳板链",
+    "editTitle": "编辑跳板链",
+    "chainName": "链名",
+    "chainNamePlaceholder": "例如：办公网 → 生产",
+    "hops": "跳板序列（自本机向目标逐跳）",
+    "addHop": "添加一跳",
+    "host": "跳板主机",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "removeHop": "移除该跳",
+    "test": "测试连接",
+    "testing": "测试中…",
+    "testOk": "连接成功（{{elapsed}}s）",
+    "testFail": "连接失败",
+    "testFailHop": "第 {{hop}} 跳失败",
+    "noHosts": "暂无可用主机——先在主机树中创建主机，再编排链路。",
+    "errNameRequired": "请填写链名",
+    "errHopsRequired": "至少需要一跳",
+    "saveFailed": "保存失败：{{message}}",
+    "actionFailed": "操作失败：{{message}}",
+    "loadFailed": "加载失败：{{message}}"
   }
 }

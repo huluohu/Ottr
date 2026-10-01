@@ -24,6 +24,7 @@ function makeSession(over: Partial<Session> & Pick<Session, "id" | "hostId" | "h
     address: "10.0.0.1",
     port: 22,
     username: "deploy",
+    protocol: "ssh",
     status: "disconnected",
     rustId: null,
     attempt: 0,
@@ -33,6 +34,7 @@ function makeSession(over: Partial<Session> & Pick<Session, "id" | "hostId" | "h
     encoding: "utf-8",
     encodingOverride: "utf-8",
     encodingHint: null,
+    isProduction: false,
     ...over,
   };
 }
@@ -185,5 +187,20 @@ describe("HostKeyDialog（TOFU 两态）", () => {
         accept: false,
       }),
     );
+  });
+});
+
+describe("TabBar 生产徽标（Phase 2 Task 11，B11）", () => {
+  it("isProduction 会话渲染 PROD 徽标；普通会话无", () => {
+    seedThreeTabs();
+    useSessionStore.setState((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.hostName === "db-01" ? { ...s, isProduction: true } : s,
+      ),
+    }));
+    render(<TabBar />);
+    expect(screen.getByTestId("tab-prod-db-01").textContent).toBe("PROD");
+    expect(screen.queryByTestId("tab-prod-web-01")).toBeNull();
+    expect(screen.queryByTestId("tab-prod-cache-01")).toBeNull();
   });
 });

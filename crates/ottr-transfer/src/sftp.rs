@@ -181,9 +181,10 @@ pub fn journal_file_name(mode: &str, scope: &str, identity_path: &str, total: u6
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
 }
 
-
 /// 断点续传 journal。语义见模块注释的不变量。
-struct Journal {
+/// pub(crate)：FTP 后端（Phase 2 Task 5 ftp.rs）复用同一 v1 格式与读写原语
+/// （身份头/加载校验/追加记录），格式一份、两个后端共享。
+pub(crate) struct Journal {
     file: Mutex<std::fs::File>,
 }
 
@@ -197,7 +198,12 @@ impl Journal {
     ///   **绝不按旧 offset 静默续传**；
     /// - 头部身份与本次传输不一致 → Err，提示删除或更换 journal 文件；
     /// - offset 行损坏按"未完成"处理（容忍尾行半截）。
-    fn load(path: &Path, mode: &str, identity_path: &str, total: u64) -> Result<HashSet<u64>> {
+    pub(crate) fn load(
+        path: &Path,
+        mode: &str,
+        identity_path: &str,
+        total: u64,
+    ) -> Result<HashSet<u64>> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
@@ -238,7 +244,12 @@ impl Journal {
     }
 
     /// 以追加模式打开 journal（不存在则创建）；文件为空时先写入 v1 头部行。
-    fn open(path: &Path, mode: &str, identity_path: &str, total: u64) -> std::io::Result<Self> {
+    pub(crate) fn open(
+        path: &Path,
+        mode: &str,
+        identity_path: &str,
+        total: u64,
+    ) -> std::io::Result<Self> {
         let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -258,7 +269,7 @@ impl Journal {
 
     /// 记录一个已完成 chunk（写行 + flush 到 OS）。
     /// **必须在该 chunk 数据完整落盘之后调用**（模块注释的不变量）。
-    fn record(&self, offset: u64) -> std::io::Result<()> {
+    pub(crate) fn record(&self, offset: u64) -> std::io::Result<()> {
         let mut f = self.file.lock().unwrap();
         f.write_all(format!("{offset}\n").as_bytes())?;
         f.flush()
@@ -307,7 +318,8 @@ async fn remote_size(sftp: &RawSftpSession, remote: &str) -> Result<u64> {
 }
 
 /// 探测读写子请求块大小：报文上限收窄 + 服务器 limits@openssh.com 明示上限。
-async fn probe_block_sizes(sftp: &RawSftpSession, handle: &str) -> (u32, u32) {
+/// pub(crate)：ops.rs 的单通道小文件读写（Phase 2 Task 3）复用同一探测。
+pub(crate) async fn probe_block_sizes(sftp: &RawSftpSession, handle: &str) -> (u32, u32) {
     let mut read_block = (MAX_PACKET_LEN - READ_OVERHEAD) as u32;
     let mut write_block = ((MAX_PACKET_LEN - WRITE_OVERHEAD).saturating_sub(handle.len() as u64)
         as u32)
@@ -673,39 +685,8 @@ pub async fn upload_parallel(
     })
 }
 
-/// 文件传输收口 trait（Task 10 简报 Step 1）：并行分块上传/下载 + journal v1
-/// 断点续传。消费方（src-tauri 传输命令、bench、测试）依赖本 trait 而非自由
-/// 函数，传输后端可替换（trait 消费方不动）。
-///
-/// 签名只含 crate 自有类型与 std 类型；russh `ChannelStream` 只出现在实现
-/// 内部（经 [`ottr_ssh::SshSession::open_sftp_stream`]），边界裁定见 crate
-/// 文档（与 `SshTransport::Channel` 例外同等待遇）。
-pub trait FileTransfer {
-    /// 并行分块下载：远端 `remote` → 本地 `local`。语义同 [`download_parallel`]。
-    fn download_parallel(
-        &self,
-        remote: &str,
-        local: &Path,
-        chunks: usize,
-        journal_path: &Path,
-        cancel: &CancelToken,
-        progress: Option<ProgressHook>,
-    ) -> impl Future<Output = Result<TransferStats>> + Send;
-
-    /// 并行分块上传：本地 `local` → 远端 `remote`。语义同 [`upload_parallel`]。
-    fn upload_parallel(
-        &self,
-        local: &Path,
-        remote: &str,
-        chunks: usize,
-        journal_path: &Path,
-        cancel: &CancelToken,
-        progress: Option<ProgressHook>,
-    ) -> impl Future<Output = Result<TransferStats>> + Send;
-}
-
-impl FileTransfer for SshSession {
-    fn download_parallel(
+impl crate::FileTransfer for SshSession {
+    fn download(
         &self,
         remote: &str,
         local: &Path,
@@ -717,7 +698,7 @@ impl FileTransfer for SshSession {
         download_parallel(self, remote, local, chunks, journal_path, cancel, progress)
     }
 
-    fn upload_parallel(
+    fn upload(
         &self,
         local: &Path,
         remote: &str,
@@ -744,10 +725,16 @@ mod tests {
 
         let up_a = journal_file_name("up", "/Users/me/a.bin", "/srv/x.bin", 1000);
         let up_b = journal_file_name("up", "/Users/me/b.bin", "/srv/x.bin", 1000);
-        assert_ne!(up_a, up_b, "cross-source same remote must NOT share a journal");
+        assert_ne!(
+            up_a, up_b,
+            "cross-source same remote must NOT share a journal"
+        );
 
         let a2 = journal_file_name("down", "10.0.0.1:22", "/tmp/x.bin", 1000);
-        assert_eq!(a1, a2, "same identity must derive the same name (resume hits)");
+        assert_eq!(
+            a1, a2,
+            "same identity must derive the same name (resume hits)"
+        );
         assert_ne!(
             journal_file_name("down", "10.0.0.1:22", "/tmp/x.bin", 1000),
             journal_file_name("up", "10.0.0.1:22", "/tmp/x.bin", 1000),

@@ -107,11 +107,12 @@ pub fn generate(
         },
         KeyAlgorithm::Rsa => SshAlgorithm::Rsa { hash: None },
     };
-    let mut key = russh::keys::PrivateKey::random(&mut rand::rng(), ssh_alg)
-        .map_err(|e| KeyError::Invalid {
+    let mut key = russh::keys::PrivateKey::random(&mut rand::rng(), ssh_alg).map_err(|e| {
+        KeyError::Invalid {
             message: format!("key generation failed: {e}"),
             source: Some(Box::new(e)),
-        })?;
+        }
+    })?;
     key.set_comment(comment);
     // 加密必须在 set_comment 之后（comment 进加密段）；
     // encrypt 产出新值（原值未加密），覆盖即可。

@@ -20,7 +20,9 @@ impl Secrets {
     /// 写入/覆盖一个密文项（upsert；锁定 → [`VaultError::Locked`]）。
     pub fn set(vault: &Vault, key: &str, plain: &str) -> Result<()> {
         if key.trim().is_empty() {
-            return Err(VaultError::InvalidInput("secret key must not be empty".into()));
+            return Err(VaultError::InvalidInput(
+                "secret key must not be empty".into(),
+            ));
         }
         let cipher = vault.cipher()?;
         let conn = vault.connection();
@@ -86,11 +88,9 @@ impl Secrets {
     /// 是否存在某密文项（不派生明文——设置页「已保存 key」标记用）。
     pub fn contains(vault: &Vault, key: &str) -> Result<bool> {
         let conn = vault.connection();
-        let n: i64 = conn.query_row(
-            "SELECT count(*) FROM secrets WHERE key = ?1",
-            [key],
-            |r| r.get(0),
-        )?;
+        let n: i64 = conn.query_row("SELECT count(*) FROM secrets WHERE key = ?1", [key], |r| {
+            r.get(0)
+        })?;
         Ok(n > 0)
     }
 }

@@ -26,6 +26,15 @@
 //       history_insert history_search
 //       （Task 15 统一历史搜索 ⌘R：明文面，锁定可读写——写入源是前端
 //       CommandWatch 的命令完成事件，见 src/history/record.ts）
+//       history_list_session summary_insert summary_list
+//       （Phase 2 Task 7 会话纪要：数据源命令序列（明文面）+ 摘要密文面
+//       （summary_enc 已登记 scan_registry，summary_insert/list 过锁定门卫））
+//       pf_list pf_create pf_update pf_delete pf_set_enabled pf_start pf_stop
+//       （Phase 2 Task 1 端口转发中心，B7 上半；配置面过锁定门卫，运行面
+//       ForwardManager 在 src-tauri commands/forward.rs）
+//       jc_list jc_create jc_update jc_delete jc_test
+//       （Phase 2 Task 2 跳板链，B7 下半；配置面过锁定门卫，测试连接面
+//       jc_test 在 src-tauri commands/jump.rs）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -36,7 +45,10 @@
 
 import { invoke } from "@tauri-apps/api/core";
 
-export type CredentialKind = "password" | "key" | "totp";
+/** 凭据类型（Rust CredentialKind 同构；ftp/ftps = FTP 密码型凭据，Phase 2 Task 5）。 */
+export type CredentialKind = "password" | "key" | "totp" | "ftp" | "ftps";
+/** 主机协议（Rust HostProtocol 同构；ftp/ftps = 文件传输会话，无 PTY 终端）。 */
+export type HostProtocol = "ssh" | "ftp" | "ftps";
 export type KnownHostState = "ok" | "changed" | "pending";
 /** credentials.reveal 的字段选择（Rust SecretField 同构，serde snake_case）。
  * 注：此处 totp_secret 为用户原样输入，不做 normalize（去空格/大写化）——
@@ -60,11 +72,14 @@ export interface Host {
   address: string;
   port: number;
   username: string | null;
+  protocol: HostProtocol;
   credential_id: number | null;
   jump_chain_id: number | null;
   encoding_override: string | null;
   theme_override: string | null;
   monitor_enabled: boolean;
+  /** 生产环境主机标记（B11 防呆）：终端红框 + PROD 徽标 + danger 输入提醒。 */
+  is_production: boolean;
   notes: string | null;
   created_at: number;
   updated_at: number;
@@ -78,11 +93,13 @@ export interface HostInput {
   address: string;
   port: number;
   username: string | null;
+  protocol: HostProtocol;
   credential_id: number | null;
   jump_chain_id: number | null;
   encoding_override: string | null;
   theme_override: string | null;
   monitor_enabled: boolean;
+  is_production: boolean;
   notes: string | null;
 }
 
@@ -235,10 +252,106 @@ export interface HistoryInput {
   session_id: string | null;
 }
 
+/** Rust `summaries::SummaryEntry` 同构（Phase 2 Task 7 会话纪要行）。
+ * summary 为开封后的明文（密文只在 summary_enc 列，list 单点出库）；明文面
+ * 消费方是 ⌘R 纪要页签。 */
+export interface SummaryEntry {
+  id: number;
+  host_id: number;
+  session_id: string;
+  summary: string;
+  /** 摘要覆盖的命令条数（面板徽标 + 溯源面）。 */
+  command_count: number;
+  /** 秒级 Unix 时间（upsert 时 = 最新一次生成时刻）。 */
+  ts: number;
+}
+
+/** Rust `summaries::SummaryInput` 同构（summary_insert 载荷，snake_case）。 */
+export interface SummaryInput {
+  host_id: number;
+  session_id: string;
+  summary: string;
+  command_count: number;
+}
+
 /** Rust `vault_upgrade_to_master_password` 进度事件载荷（ottr://reencrypt-progress）。 */
 export interface ReencryptProgress {
   done: number;
   total: number;
+}
+
+// --- 端口转发（Phase 2 Task 1，B7 上半；Rust commands/forward.rs）-------------
+
+export type ForwardKind = "local" | "remote" | "dynamic";
+
+/** 运行态（Rust ForwardRuntimeView 同构）。state：starting/active/error/stopped。 */
+export interface ForwardRuntime {
+  session_id: string;
+  state: "starting" | "active" | "error" | "stopped";
+  error: string | null;
+  /** 写入 SSH 方向字节（客户端→目标）。 */
+  tx_bytes: number;
+  /** 读出 SSH 方向字节（目标→客户端）。 */
+  rx_bytes: number;
+  connections: number;
+  conn_errors: number;
+  /** 实际绑定端口（bind_port=0 时为分配值）。 */
+  bound_port: number;
+}
+
+/** Rust `PortForwardView` 同构：配置 + 运行态拼接（runtime=null = 未运行）。 */
+export interface PortForwardView {
+  id: number;
+  host_id: number;
+  host_name: string;
+  kind: ForwardKind;
+  bind_addr: string;
+  /** 0 = 本机动态分配（local）/ 服务端选择（remote）。 */
+  bind_port: number;
+  target_host: string | null;
+  target_port: number | null;
+  enabled: boolean;
+  auto_reconnect: boolean;
+  runtime: ForwardRuntime | null;
+}
+
+/** Rust `PortForwardInput` 同构（create/update 载荷；dynamic 的 target 传 null）。 */
+export interface PortForwardInput {
+  host_id: number;
+  kind: ForwardKind;
+  bind_addr: string;
+  bind_port: number;
+  target_host: string | null;
+  target_port: number | null;
+  enabled: boolean;
+  auto_reconnect: boolean;
+}
+
+// --- 跳板链（Phase 2 Task 2，B7 下半；Rust commands/jump.rs）----------------
+
+/** Rust `entities::JumpChain` 同构：hops = host_id 有序数组（顺序即连接序，
+ * 末位之后接 target = 引用本链的 hosts 行）。 */
+export interface JumpChain {
+  id: number;
+  name: string;
+  hops: number[];
+  created_at: number;
+  updated_at: number;
+}
+
+/** Rust `entities::JumpChainInput` 同构（create/update 全量替换式提交）。 */
+export interface JumpChainInput {
+  name: string;
+  hops: number[];
+}
+
+/** Rust `jump::JumpTestResult` 同构（jc_test 载荷）。hop = 失败跳序号
+ * （0 起，末位索引 = target；null = 非跳点失败如超时）。 */
+export interface JumpTestResult {
+  ok: boolean;
+  hop: number | null;
+  error: string | null;
+  elapsed_ms: number;
 }
 
 export const vaultApi = {
@@ -256,6 +369,13 @@ export const vaultApi = {
   /** ssh-config 导入（path=null → ~/.ssh/config）。报告供导入完成对话框展示。 */
   importSshConfig: (path: string | null) =>
     invoke<ImportReport>("import_ssh_config", { path }),
+  /** Xshell 会话目录导入（Phase 2 Task 10；path=null → Windows 惯例会话目录，
+   * 不存在时命令报错——mac/Linux 需显式传目录）。报告同构 ssh-config。 */
+  importXshellSessions: (path: string | null) =>
+    invoke<ImportReport>("import_xshell_sessions", { path }),
+  /** Tabby 配置 JSON 导入（Phase 2 Task 10；path 必传——文件对话框选定）。 */
+  importTabbyConfig: (path: string) =>
+    invoke<ImportReport>("import_tabby_config", { path }),
   /** CSV 导出（path=null → 系统下载目录 ottr-hosts.csv），返回落盘路径。 */
   exportHostsCsv: (path: string | null) => invoke<string>("export_hosts_csv", { path }),
   credentials: {
@@ -358,6 +478,22 @@ export const vaultApi = {
         hostId,
         limit: limit ?? null,
       }),
+    /** 会话命令序列（Task 7 纪要数据源）：id 升序（≈ts 时序）；limit 缺省 200。 */
+    listSession: (hostId: number, sessionId: string, limit?: number) =>
+      invoke<HistoryEntry[]>("history_list_session", {
+        hostId,
+        sessionId,
+        limit: limit ?? null,
+      }),
+  },
+  /** 会话纪要（Phase 2 Task 7，B1）：摘要密文面（AES-256-GCM 密封落盘、锁定即
+   * 拒，同 secrets）。写入源 = 会话断开时的后台生成链（src/ai/summary.ts
+   * fire-and-forget）；读取面 = ⌘R 面板「纪要」页签。 */
+  summaries: {
+    insert: (input: SummaryInput) => invoke<SummaryEntry>("summary_insert", { input }),
+    /** 最近纪要（id DESC）；hostId=null 跨主机；limit 缺省 50。 */
+    list: (hostId: number | null, limit?: number) =>
+      invoke<SummaryEntry[]>("summary_list", { hostId, limit: limit ?? null }),
   },
   /** secrets 密文 KV（Task 13，AI BYOK）：provider api key 等，AES-256-GCM 密封
    * 落盘、锁定即拒（"vault is locked..."）。key 逻辑名 = `ai.apikey.<providerId>`。
@@ -368,6 +504,34 @@ export const vaultApi = {
     delete: (key: string) => invoke<void>("secret_delete", { key }),
     /** 存在性（不派生明文——设置页「已保存」标记）。 */
     contains: (key: string) => invoke<boolean>("secret_contains", { key }),
+  },
+  /** 端口转发（Phase 2 Task 1，B7 上半；Rust commands/forward.rs）。
+   * list/create/update/delete/setEnabled = vault 配置面（锁定即拒，同 hosts）；
+   * start/stop = 运行面（ForwardManager；start 需 rustId 会话在线）。 */
+  portForwards: {
+    list: (hostId: number | null) => invoke<PortForwardView[]>("pf_list", { hostId }),
+    create: (input: PortForwardInput) => invoke<PortForwardView>("pf_create", { input }),
+    update: (id: number, input: PortForwardInput) =>
+      invoke<PortForwardView>("pf_update", { id, input }),
+    remove: (id: number) => invoke<void>("pf_delete", { id }),
+    setEnabled: (id: number, enabled: boolean) =>
+      invoke<void>("pf_set_enabled", { id, enabled }),
+    /** 在指定会话上启动；未知会话/配置缺失 → reject（前端提示先连接主机）。 */
+    start: (id: number, sessionId: string) =>
+      invoke<ForwardRuntime>("pf_start", { id, sessionId }),
+    stop: (id: number) => invoke<boolean>("pf_stop", { id }),
+  },
+  /** 跳板链（Phase 2 Task 2，B7 下半；Rust commands/jump.rs）。
+   * list/create/update/remove = vault 配置面（锁定即拒，同 hosts）；
+   * test = 连接面（jc_test：按传入 hop 序列建真实链，末位当 target，
+   * 逐跳 TOFU 会弹确认框；成功即拆不留连接）。 */
+  jumpChains: {
+    list: () => invoke<JumpChain[]>("jc_list"),
+    create: (input: JumpChainInput) => invoke<JumpChain>("jc_create", { input }),
+    update: (id: number, input: JumpChainInput) =>
+      invoke<JumpChain>("jc_update", { id, input }),
+    remove: (id: number) => invoke<void>("jc_delete", { id }),
+    test: (hops: number[]) => invoke<JumpTestResult>("jc_test", { hops }),
   },
   /** 会话输出尾部（Task 13，AI 诊断取数面）：最后 bytes 字节的剥 ANSI 纯文本。
    * 未知会话（已关/重连中）显式报错——调用方 catch 降级（空输出照发诊断）。 */

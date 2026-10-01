@@ -5,7 +5,11 @@ edition = "2024"
 
 [dependencies]
 russh = "0.63.3"
-tokio = "1.53.1"
+# forward.rs（Phase 2 Task 1）：TcpListener/TcpStream（net）+ copy_bidirectional
+# （io-util）+ 取消/超时需要的 sync/time/rt 面。
+tokio = { version = "1.53.1", features = ["net", "io-util", "sync", "time", "rt"] }
+# forward.rs：CancellationToken（父令牌 → 每连接子令牌的取消树）。
+tokio-util = { version = "0.7", default-features = false }
 # Task 6 keygen：与 russh 同版（0.10）的 rng —— PrivateKey::random 的 R: CryptoRng
 # 必须与 russh 的 rand_core 同 major，跨版本 trait 不兼容
 rand = "0.10"

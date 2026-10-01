@@ -23,9 +23,14 @@ import { TabBar } from "./session/TabBar";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { TerminalArea } from "./terminal/Terminal";
 import { FilePanel } from "./files/FilePanel";
+import { ForwardPanel } from "./forward/ForwardPanel";
+import { JumpChainEditor } from "./hosts/JumpChainEditor";
 import { DiagnosePanel } from "./ai/DiagnosePanel";
 import { AISettings } from "./ai/AISettings";
+import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
 import { setAiSettingsOpener } from "./ai/aiStore";
+import { onSessionEnded } from "./ai/summary";
+import { setSessionEndHook } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
@@ -44,6 +49,7 @@ import {
   type ActionId,
 } from "./shortcuts/registry";
 import { ThemeProvider, useTheme, syncThemeFromVault, type ThemeMode } from "./theme/ThemeContext";
+import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { useVaultStore } from "./vault/store";
 import type { Host } from "./vault/api";
 import "./theme/tokens.css";
@@ -121,9 +127,18 @@ function HomeLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // T15：⌘R 历史搜索面板（registry history.search；终端内放行 PTY 见 registry）
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Phase 2 B1（Task 6）：⌘J NL→命令输入条（registry ai.nl2cmd；全局直呼，
+  // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
+  const [nlOpen, setNlOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  // Phase 2 Task 1（B7）：端口转发中心（顶栏入口——转发是全局配置面：
+  // 面板列全部主机的转发、运行态跨标签可见；绑定主机经表单下拉选择）。
+  const [forwardsOpen, setForwardsOpen] = useState(false);
+  // Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口——链是全局配置面，
+  // 主机经 HostForm 的链下拉绑定）。
+  const [jumpChainsOpen, setJumpChainsOpen] = useState(false);
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -160,6 +175,9 @@ function HomeLayout() {
       // T17 F1（T16.5 转办）：主题真源对齐/迁移同样必须等 vault 就绪——
       // ThemeProvider 挂载期调用会被未 manage 的 State 拒绝而静默降级缓存。
       void syncThemeFromVault();
+      // B2 主题生态（Phase 2 Task 9）：终端配色选择/自定义清单同点对齐（真源
+      // vault settings `ui.terminalTheme`；缓存镜像先行防闪烁，此处到达后覆盖）。
+      void useTerminalThemeStore.getState().syncFromVault();
       try {
         await useVaultStore.getState().refresh();
       } catch {
@@ -180,6 +198,13 @@ function HomeLayout() {
     return () => setAiSettingsOpener(null);
   }, []);
 
+  // Phase 2 Task 7（B1 会话纪要）：会话收尾钩子注入——closeTab / disconnect /
+  // 重连耗尽时异步生成纪要（onSessionEnded fire-and-forget，失败静默不反噬）。
+  useEffect(() => {
+    setSessionEndHook(onSessionEnded);
+    return () => setSessionEndHook(null);
+  }, []);
+
   // A12 动作收口：面板 / 全局快捷键 / （Task 14 后续提交）原生菜单事件、
   // 汉堡菜单——一处 action 多入口，全部汇到 handleAction。
   const handleAction = useCallback(
@@ -190,6 +215,13 @@ function HomeLayout() {
           break;
         case "history.search":
           setHistoryOpen((v) => !v);
+          break;
+        case "ai.nl2cmd":
+          // 打开 = 清场 + 聚焦 pane 的 cwd 锚点（OSC7 活值）；关闭 = 顺带清场
+          // （在途请求 abort，panel 卸载后 store 不留尾巴）。副作用在 updater
+          // 外（StrictMode 下 updater 可能双调）。
+          nlBegin();
+          setNlOpen((v) => !v);
           break;
         case "hosts.new":
           setForm({ mode: "new", groupId: null });
@@ -296,6 +328,11 @@ function HomeLayout() {
   const rootSession = activeSession
     ? (sessions.find((s) => s.id === (activeSession.paneOf ?? activeSession.id)) ?? null)
     : null;
+  // FTP/FTPS 会话（Phase 2 Task 5）：无 PTY 终端——主区强制文件视图
+  // （filesOnly），「终端」切换按钮隐藏；SSH 会话维持双视图切换。
+  const filesOnly =
+    rootSession?.protocol === "ftp" || rootSession?.protocol === "ftps";
+  const filesVisible = filesOpen || filesOnly;
 
   return (
     <div className="app-shell">
@@ -328,6 +365,22 @@ function HomeLayout() {
         >
           {t("ai.title")}
         </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-forwards"
+          aria-label={t("forward.title")}
+          onClick={() => setForwardsOpen(true)}
+        >
+          {t("forward.title")}
+        </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-jump-chains"
+          aria-label={t("jump.title")}
+          onClick={() => setJumpChainsOpen(true)}
+        >
+          {t("jump.title")}
+        </button>
         <div className="topbar-spacer" />
         <NotificationCenter />
         <ThemeSwitch />
@@ -355,18 +408,20 @@ function HomeLayout() {
             <div className="tabbar-row">
               <TabBar />
               <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
-                <button
-                  data-testid="view-terminal"
-                  data-active={!filesOpen}
-                  aria-pressed={!filesOpen}
-                  onClick={() => setFilesOpen(false)}
-                >
-                  {t("files.viewTerminal")}
-                </button>
+                {!filesOnly && (
+                  <button
+                    data-testid="view-terminal"
+                    data-active={!filesOpen}
+                    aria-pressed={!filesOpen}
+                    onClick={() => setFilesOpen(false)}
+                  >
+                    {t("files.viewTerminal")}
+                  </button>
+                )}
                 <button
                   data-testid="view-files"
-                  data-active={filesOpen}
-                  aria-pressed={filesOpen}
+                  data-active={filesVisible}
+                  aria-pressed={filesVisible}
                   onClick={() => setFilesOpen(true)}
                 >
                   {t("files.viewFiles")}
@@ -378,12 +433,16 @@ function HomeLayout() {
             <div className="term-main-row">
               {/* data-terminal = 终端聚焦守卫的判定容器（评审 M-4）：覆盖全部
                   pane（含 xterm 隐藏 textarea），文件视图/AI 面板在其外不受守卫。 */}
-              <div className="term-area-holder" data-hidden={filesOpen} data-terminal="">
+              <div
+                className="term-area-holder"
+                data-hidden={filesVisible}
+                data-terminal=""
+              >
                 <TerminalArea />
               </div>
-              {!filesOpen && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}
+              {!filesVisible && <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />}
             </div>
-            {filesOpen && rootSession && <FilePanel session={rootSession} />}
+            {filesVisible && rootSession && <FilePanel session={rootSession} />}
           </main>
         ) : (
           <main className="main-area" data-testid="main-area">
@@ -422,6 +481,10 @@ function HomeLayout() {
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
       <SecuritySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
+      {/* Phase 2 Task 1（B7 上半）：端口转发中心（顶栏入口对话框）。 */}
+      <ForwardPanel open={forwardsOpen} onClose={() => setForwardsOpen(false)} />
+      {/* Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口对话框）。 */}
+      <JumpChainEditor open={jumpChainsOpen} onClose={() => setJumpChainsOpen(false)} />
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}
@@ -486,6 +549,13 @@ function HomeLayout() {
           setHistoryOpen(false);
         }}
         plat={PLATFORM}
+      />
+      {/* Phase 2 B1（Task 6）⌘J NL→命令输入条：底部锚定；生成结果走公共
+          InsertRow 的 danger 三档确认插终端（聚焦 pane 的 rustId 面板内解析）。 */}
+      <NLCommandPanel
+        open={nlOpen}
+        onClose={() => setNlOpen(false)}
+        onOpenSettings={() => setAiSettingsOpen(true)}
       />
     </div>
   );

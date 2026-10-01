@@ -16,7 +16,10 @@ fn open_mem() -> Vault {
 fn set_get_roundtrip() {
     let vault = open_mem();
     Secrets::set(&vault, "ai.apikey.p1", "sk-test-123").unwrap();
-    assert_eq!(Secrets::get(&vault, "ai.apikey.p1").unwrap().as_deref(), Some("sk-test-123"));
+    assert_eq!(
+        Secrets::get(&vault, "ai.apikey.p1").unwrap().as_deref(),
+        Some("sk-test-123")
+    );
     assert!(Secrets::contains(&vault, "ai.apikey.p1").unwrap());
     assert!(!Secrets::contains(&vault, "ai.apikey.p2").unwrap());
     assert_eq!(Secrets::get(&vault, "missing").unwrap(), None);
@@ -35,7 +38,10 @@ fn secret_is_sealed_at_rest() {
         }
     }
     let raw_str = String::from_utf8_lossy(&raw);
-    assert!(!raw_str.contains("sk-PLAINTEXT-VALUE"), "明文不得出现在库文件里");
+    assert!(
+        !raw_str.contains("sk-PLAINTEXT-VALUE"),
+        "明文不得出现在库文件里"
+    );
     // 键名本身是逻辑名（非敏感），允许出现（检索/删除按 key 定位）
     assert!(raw_str.contains("ai.apikey.p1"), "键名（逻辑名）应可检索");
 }
@@ -48,7 +54,9 @@ fn upsert_overwrites_same_key_single_row() {
     assert_eq!(Secrets::get(&vault, "k").unwrap().as_deref(), Some("v2"));
     let conn = vault.connection();
     let n: i64 = conn
-        .query_row("SELECT count(*) FROM secrets WHERE key = 'k'", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM secrets WHERE key = 'k'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(n, 1, "upsert 不新增行");
 }
@@ -84,10 +92,7 @@ fn locked_vault_rejects_secret_io() {
         Secrets::set(&vault, "k", "v"),
         Err(VaultError::Locked)
     ));
-    assert!(matches!(
-        Secrets::get(&vault, "k"),
-        Err(VaultError::Locked)
-    ));
+    assert!(matches!(Secrets::get(&vault, "k"), Err(VaultError::Locked)));
 }
 
 #[test]

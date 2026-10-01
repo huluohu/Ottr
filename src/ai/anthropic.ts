@@ -31,6 +31,8 @@ export class AnthropicProvider {
         model: this.model,
         max_tokens: req.maxTokens,
         stream: true,
+        // stop 序列（NL→命令）：Anthropic 面字段名 = stop_sequences
+        ...(req.stop?.length ? { stop_sequences: req.stop } : {}),
         ...(req.system ? { system: req.system } : {}),
         messages: req.messages,
       }),

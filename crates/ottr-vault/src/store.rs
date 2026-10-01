@@ -36,14 +36,14 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use zeroize::Zeroize;
 
 use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 7;
+pub const LATEST_SCHEMA_VERSION: u32 = 12;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -98,15 +98,35 @@ impl KeyMode {
 /// 0005 notifications（Task 12，spec §7 应用内通知中心——明文面，无 *_enc 列，
 /// 不涉 scan_registry）；0006 secrets 密封 KV（Task 13 AI BYOK，value_enc 已
 /// 登记 scan_registry）；0007 history 命令历史 + FTS5（Task 15，spec §5 文本层
-/// 消费方③——明文面，无 *_enc 列，不涉 scan_registry）。
+/// 消费方③——明文面，无 *_enc 列，不涉 scan_registry）；0008 port_forwards
+/// （Phase 2 Task 1，spec §3 B7 上半——明文配置面，无 *_enc 列，不动
+/// scan_registry）；0009 jump_chains（Phase 2 Task 2，spec §3 B7 下半——
+/// 明文配置面，无 *_enc 列，不动 scan_registry）；0010 ftp_ftps（Phase 2
+/// Task 5——hosts.protocol 列 + credentials.kind CHECK 放开 ftp/ftps 的表
+/// 重建：密文列原样平移、无新增密文列，不动 scan_registry；AUTOINCREMENT
+/// 水位搬移防 id 复用，见迁移文件头）；0011 session_summaries（Phase 2
+/// Task 7，B1 会话纪要——summary_enc 密文列**已登记 scan_registry**，见下）；
+/// 0012 hosts.is_production（Phase 2 Task 11，B11 防呆完善——明文布尔补列，
+/// 无 *_enc 列，不动 scan_registry 与表结构其余部分）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
     (3, include_str!("../migrations/0003_hosts_username.sql")),
-    (4, include_str!("../migrations/0004_known_hosts_host_binding.sql")),
+    (
+        4,
+        include_str!("../migrations/0004_known_hosts_host_binding.sql"),
+    ),
     (5, include_str!("../migrations/0005_notifications.sql")),
     (6, include_str!("../migrations/0006_secrets.sql")),
     (7, include_str!("../migrations/0007_history.sql")),
+    (8, include_str!("../migrations/0008_port_forwards.sql")),
+    (9, include_str!("../migrations/0009_jump_chains.sql")),
+    (10, include_str!("../migrations/0010_ftp_ftps.sql")),
+    (11, include_str!("../migrations/0011_session_summaries.sql")),
+    (
+        12,
+        include_str!("../migrations/0012_hosts_is_production.sql"),
+    ),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -127,9 +147,10 @@ const MODE_PASSWORD: u8 = 1;
 impl Vault {
     /// 生产路径：Master Key 走系统钥匙链（service 见 [`crate::master_key::DEFAULT_SERVICE`]）。
     pub fn open(dir: &Path) -> Result<Vault> {
-        Self::open_with(dir, &crate::master_key::KeyringStorage::new(
-            crate::master_key::DEFAULT_SERVICE,
-        ))
+        Self::open_with(
+            dir,
+            &crate::master_key::KeyringStorage::new(crate::master_key::DEFAULT_SERVICE),
+        )
     }
 
     /// 生产入口（T11）：先探测系统钥匙链可用性再选模式——
@@ -174,7 +195,11 @@ impl Vault {
                 return Err(VaultError::MasterKeyUnreachable);
             }
             None => {
-                set_meta(vault.connection(), META_KEY_MODE, KeyMode::Password.as_str())?;
+                set_meta(
+                    vault.connection(),
+                    META_KEY_MODE,
+                    KeyMode::Password.as_str(),
+                )?;
             }
         }
         vault.mode = AtomicU8::new(MODE_PASSWORD);
@@ -312,8 +337,8 @@ impl Vault {
             (Some(salt_hex), Some(verifier_hex)) => {
                 let salt = decode_salt(&salt_hex)?;
                 let cipher = derive_cipher(password, &salt)?;
-                let verifier = hex::decode(&verifier_hex)
-                    .map_err(|_| VaultError::CorruptedMasterKey)?;
+                let verifier =
+                    hex::decode(&verifier_hex).map_err(|_| VaultError::CorruptedMasterKey)?;
                 // 校验器开封：任何失败（密码错 / blob 坏）统一映射 BadMasterPassword
                 // ——不向调用方泄露「校验器损坏」与「密码错误」的区别。
                 cipher
@@ -328,11 +353,7 @@ impl Vault {
                 rand::fill(&mut salt);
                 let cipher = derive_cipher(password, &salt)?;
                 let verifier = cipher.seal(VERIFIER_PLAINTEXT, &verifier_aad())?;
-                (
-                    cipher,
-                    Some(hex::encode(salt)),
-                    Some(hex::encode(verifier)),
-                )
+                (cipher, Some(hex::encode(salt)), Some(hex::encode(verifier)))
             }
             // 参数半缺 = 库被外部改写，显式报错（同 schema 版本纪律）。
             _ => return Err(VaultError::CorruptedMasterKey),
@@ -427,11 +448,7 @@ impl Vault {
             const RESEAL_BATCH: i64 = 64;
             let mut done = 0usize;
             for (table, cols) in scan_plan() {
-                let col_list = cols
-                    .iter()
-                    .map(|c| c.column)
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                let col_list = cols.iter().map(|c| c.column).collect::<Vec<_>>().join(", ");
                 let sql = format!(
                     "SELECT rowid, {col_list} FROM {table} WHERE rowid > ?1
                      ORDER BY rowid LIMIT {RESEAL_BATCH}"
@@ -473,10 +490,7 @@ impl Vault {
                             };
                             plain.zeroize();
                             tx.execute(
-                                &format!(
-                                    "UPDATE {table} SET {} = ?1 WHERE rowid = ?2",
-                                    col.column
-                                ),
+                                &format!("UPDATE {table} SET {} = ?1 WHERE rowid = ?2", col.column),
                                 params![resealed, row_id],
                             )?;
                             done += 1;
@@ -598,6 +612,12 @@ pub fn scan_registry() -> &'static [SecretColumn] {
             column: "value_enc",
             field: "value",
         },
+        // Task 7（0011）：会话纪要摘要（内容含命令序列——敏感面走密封通道）
+        SecretColumn {
+            table: "session_summaries",
+            column: "summary_enc",
+            field: "summary",
+        },
     ]
 }
 
@@ -625,9 +645,7 @@ fn derive_cipher(password: &str, salt: &[u8]) -> Result<Cipher> {
 
 fn decode_salt(hex_salt: &str) -> Result<[u8; KDF_SALT_LEN]> {
     let bytes = hex::decode(hex_salt.trim()).map_err(|_| VaultError::CorruptedMasterKey)?;
-    bytes
-        .try_into()
-        .map_err(|_| VaultError::CorruptedMasterKey)
+    bytes.try_into().map_err(|_| VaultError::CorruptedMasterKey)
 }
 
 /// 读主密钥模式原始行（meta 缺行 = None）。
@@ -645,9 +663,9 @@ fn read_key_mode_raw(conn: &Connection) -> Result<Option<String>> {
 fn read_key_mode(conn: MutexGuard<'_, Connection>) -> Result<Option<KeyMode>> {
     match read_key_mode_raw(&conn)? {
         None => Ok(None),
-        Some(s) => KeyMode::parse(&s).map(Some).ok_or_else(|| {
-            VaultError::CorruptedSchemaVersion(format!("master_key.mode = {s:?}"))
-        }),
+        Some(s) => KeyMode::parse(&s)
+            .map(Some)
+            .ok_or_else(|| VaultError::CorruptedSchemaVersion(format!("master_key.mode = {s:?}"))),
     }
 }
 

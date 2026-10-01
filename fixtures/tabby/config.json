@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "profiles": [
+    {
+      "id": "p1",
+      "name": "web-01",
+      "type": "ssh",
+      "host": "192.168.1.10",
+      "port": 2222,
+      "user": "deploy"
+    },
+    {
+      "id": "p2",
+      "name": "db-master",
+      "type": "ssh",
+      "host": "10.0.0.5"
+    },
+    {
+      "id": "p3",
+      "name": "cache-01",
+      "type": "ssh",
+      "host": "10.0.0.7",
+      "username": "ops"
+    },
+    {
+      "id": "p4",
+      "name": "serial-box",
+      "type": "serial",
+      "host": "COM3"
+    },
+    {
+      "id": "p5",
+      "name": "no-host",
+      "type": "ssh"
+    },
+    {
+      "id": "p6",
+      "name": "bad-port",
+      "type": "ssh",
+      "host": "10.0.0.99",
+      "port": -1
+    }
+  ]
+}

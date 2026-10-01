@@ -23,7 +23,7 @@
 // 不自动连接（安全考虑：无人值守窗口重开不应悄悄发起 SSH 连接）。
 import { create } from "zustand";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { Host } from "../vault/api";
+import type { Host, HostProtocol } from "../vault/api";
 import {
   closeLeaf,
   leaf,
@@ -40,12 +40,17 @@ export type SessionStatus =
   | "reconnecting"
   | "waiting_host_key";
 
-/** `ottr://host-key-ask` 事件载荷（Rust HostKeyAskPayload 同构，serde snake_case）。 */
+/** `ottr://host-key-ask` 事件载荷（Rust HostKeyAskPayload 同构，serde snake_case）。
+ * 跳板链逐跳问询（Phase 2 Task 2）：host_id = 该跳自己的主机 id（裁定时按它
+ * 落端点信任锚）；hop = 跳序号（0 起，弹窗带「第 N 跳」标识）；origin_host_id =
+ * 发起连接的主机（问询归属在途 connect 的标签）。直连问询两字段缺省。 */
 export interface HostKeyAskPayload {
   host_id: number;
   host_name: string;
   fingerprint: string;
   kind: "first" | "pending" | "changed";
+  hop?: number;
+  origin_host_id?: number;
 }
 
 /** 弹窗态的问询（挂上发起问询的会话）。 */
@@ -67,6 +72,8 @@ export interface Session {
   address: string;
   port: number;
   username: string | null;
+  /** 主机协议（Phase 2 Task 5）：ftp/ftps = 纯文件会话（无 PTY 终端）。 */
+  protocol: HostProtocol;
   status: SessionStatus;
   /** 当前 Rust 侧会话 id（attach 成功后非空；重连期间清空）。 */
   rustId: string | null;
@@ -88,6 +95,9 @@ export interface Session {
   /** detect_hint 提示（Rust `ottr://encoding-hint`）：非空 = 展示
    * 「检测到 GBK，切换？」提示条；接受/忽略后清空（per-host 一次，可关）。 */
   encodingHint: SessionEncoding | null;
+  /** 生产环境主机标记（Phase 2 Task 11，B11）：终端 pane 红框 + TabBar PROD
+   * 徽标的依据；host.is_production 的会话内拷贝（分屏 pane 与标签同源）。 */
+  isProduction: boolean;
 }
 
 // --- 会话编码（Task 9，A9） --------------------------------------------------
@@ -243,6 +253,38 @@ export function isHostKeyRejection(err: string): boolean {
   return err.includes("host key rejected");
 }
 
+// --- 会话结束钩子（Phase 2 Task 7 会话纪要）----------------------------------
+// 「会话收尾」三时机（closeTab / disconnect / 自动重连耗尽转 disconnected）向
+// App 注入的钩子派发一次（消费方 = src/ai/summary.ts onSessionEnded，异步生成
+// 会话纪要）。store 保持纯状态机、不反向依赖 AI 链路（setAiSettingsOpener 同
+// 惯例）；钩子异常绝不反噬状态机（closeTab/disconnect 是用户交互主路径）。
+
+/** 会话收尾信息（钩子入参；纪要生成链只需要归属三元组）。 */
+export interface SessionEndInfo {
+  hostId: number;
+  /** 前端会话 id（标签 uuid，跨重连稳定——history.session_id 同源）。 */
+  id: string;
+  hostName: string;
+}
+
+let sessionEndHook: ((info: SessionEndInfo) => void) | null = null;
+
+/** 注入/摘除会话结束钩子（App 挂载时接 onSessionEnded；null = 摘除）。 */
+export function setSessionEndHook(fn: ((info: SessionEndInfo) => void) | null): void {
+  sessionEndHook = fn;
+}
+
+/** 会话收尾派发（同步返回；钩子自身负责 fire-and-forget 与静默）。 */
+function emitSessionEnded(session: Session): void {
+  const hook = sessionEndHook;
+  if (!hook) return;
+  try {
+    hook({ hostId: session.hostId, id: session.id, hostName: session.hostName });
+  } catch (e) {
+    console.warn("[session] end hook failed:", e);
+  }
+}
+
 // --- store ------------------------------------------------------------------
 
 let seq = 0;
@@ -354,6 +396,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       address: host.address,
       port: host.port,
       username: host.username,
+      protocol: host.protocol ?? "ssh",
       status: "disconnected",
       rustId: null,
       attempt: 0,
@@ -363,6 +406,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encodingOverride: parseSessionEncoding(host.encoding_override) ?? "utf-8",
       encoding: parseSessionEncoding(host.encoding_override) ?? "utf-8",
       encodingHint: null,
+      isProduction: host.is_production ?? false,
     };
     set((st) => {
       const sessions = [...st.sessions, session];
@@ -389,6 +433,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         // 主动 drop：Rust 转发循环就地取消（session-closed=cancelled，事件端忽略）
         void invoke("drop_session", { id: session.rustId }).catch(() => {});
       }
+      // 会话收尾（Task 7 纪要）：关标签 = 会话结束（手动断开也生成，裁定 #1）
+      emitSessionEnded(session);
     }
     const doomedIds = new Set(doomed.map((s) => s.id));
     if (st0.hostKeyAsk && doomedIds.has(st0.hostKeyAsk.sessionId)) {
@@ -434,6 +480,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (session?.rustId) {
       void invoke("drop_session", { id: session.rustId }).catch(() => {});
     }
+    if (session) {
+      // 会话收尾（Task 7 纪要）：手动断开也是会话结束（裁定 #1）
+      emitSessionEnded(session);
+    }
     bumpGeneration(id);
     set((st) => ({
       sessions: patchSession(st.sessions, id, {
@@ -461,6 +511,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }),
     }));
 
+    // FTP/FTPS 会话（Phase 2 Task 5）：纯文件面——无 PTY、无 on_data 通道、
+    // 无 host key TOFU（Rust 侧 ftp_attach 直接连，不产生 host-key-ask 事件）。
+    const isFtp = session.protocol === "ftp" || session.protocol === "ftps";
     const chan = new Channel<unknown>();
     const sink = sinks.get(id);
     chan.onmessage = (m) => {
@@ -473,12 +526,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const size = sink?.getSize() ?? { cols: 80, rows: 24 };
 
     try {
-      const rustId = await invoke<string>("attach_host_session", {
-        hostId: session.hostId,
-        cols: size.cols,
-        rows: size.rows,
-        onData: chan,
-      });
+      const rustId = isFtp
+        ? await invoke<string>("ftp_attach_host_session", { hostId: session.hostId })
+        : await invoke<string>("attach_host_session", {
+            hostId: session.hostId,
+            cols: size.cols,
+            rows: size.rows,
+            onData: chan,
+          });
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) {
         // 孤儿收尾（评审 I-1，fix 1/5）：标签已关/手动断开/已换代期间 attach 才
         // 成功——rustId 若不落地就没人持有（closeTab 时 rustId 还是 null 无可
@@ -547,6 +602,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const attempt = session.attempt + 1;
     if (attempt > st.settings.maxReconnectAttempts) {
       cancelRetryTimer(id);
+      // 会话收尾（Task 7 纪要）：自动重连耗尽 = 会话终态（异常断开在重连进行中
+      // 不生成——session_id 跨重连稳定，会话可能继续；耗尽才收口）
+      emitSessionEnded(session);
       set((prev) => ({
         sessions: patchSession(prev.sessions, id, {
           status: "disconnected",
@@ -576,10 +634,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   onHostKeyAsk: (payload) => {
+    // 归属（Phase 2 Task 2）：链式连接的逐跳问询落在链上 hop 主机上——
+    // origin_host_id 才是发起连接的主机（前端据此找到在途 connect 的标签）；
+    // 直连问询无 origin 字段，host_id 即发起方。
+    const originId = payload.origin_host_id ?? payload.host_id;
     const session = get().sessions.find(
-      (s) => s.hostId === payload.host_id && s.status === "connecting",
+      (s) => s.hostId === originId && s.status === "connecting",
     );
-    if (!session) return; // 非我方发起的问询（无在途 connect）→ Rust 侧 60s 自行超时
+    if (!session) {
+      // 无在途 connect 的问询（跳板链编辑器的「测试连接」/孤儿问询）：仍弹
+      // 确认框——裁定的 host_key_decision 不依赖会话；不弹则 Rust 侧 60s
+      // 超时按拒绝收尾。sessionId 空串 = 无关联会话（弹窗关闭只经裁定按钮）。
+      set({ hostKeyAsk: { ...payload, sessionId: "" } });
+      return;
+    }
     set({
       hostKeyAsk: { ...payload, sessionId: session.id },
       sessions: patchSession(get().sessions, session.id, { status: "waiting_host_key" }),
@@ -664,6 +732,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       address: root.address,
       port: root.port,
       username: root.username,
+      protocol: root.protocol,
       status: "disconnected",
       rustId: null,
       attempt: 0,
@@ -673,6 +742,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encodingOverride: root.encodingOverride, // pane 与标签同源（重连派生一致）
       encoding: root.encoding, // 分屏 pane 沿用标签的会话编码
       encodingHint: null,
+      isProduction: root.isProduction, // 分屏 pane 沿用标签的生产标记
     };
     set((s0) => ({
       sessions: [...s0.sessions, paneSession],

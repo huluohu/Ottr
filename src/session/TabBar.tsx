@@ -41,6 +41,17 @@ export function TabBar() {
           <span className="tab-title" title={session.lastError ?? undefined}>
             {session.hostName}
           </span>
+          {/* 生产环境主机（Phase 2 Task 11，B11）：PROD 徽标（红 pill，防呆一眼辨） */}
+          {session.isProduction && (
+            <span
+              className="tab-prod"
+              data-testid={`tab-prod-${session.hostName}`}
+              aria-label={t("terminal.prodBadgeAria")}
+              title={t("terminal.prodBadgeAria")}
+            >
+              {t("tabs.prodBadge")}
+            </span>
+          )}
           {session.status === "reconnecting" && (
             <span className="tab-retry" data-testid={`tab-retry-${session.hostName}`}>
               {session.attempt}/{max}

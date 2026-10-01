@@ -388,6 +388,43 @@ button[data-active="true"] {
 .import-report p {
   margin: 4px 0;
 }
+/* --- 导入对话框多来源（Phase 2 Task 10，B3 迁移导入器）--- */
+.import-sources {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.import-sources button {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.4));
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.import-sources button[data-active="true"] {
+  border-color: var(--color-accent);
+  /* 文字场景走 accent-text（tokens 纪律：accent 作字面对比度不足） */
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+.import-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  min-width: 0;
+}
+.import-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 .report-added {
   color: var(--color-success);
   font-weight: 600;
@@ -643,6 +680,29 @@ button[data-active="true"] {
   gap: 8px;
   align-items: center;
 }
+.history-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.history-tab {
+  font: inherit;
+  font-size: 0.82em;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.history-tab[data-active="true"] {
+  color: inherit;
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
 .history-toolbar .palette-input {
   flex: 1;
   width: auto;
@@ -703,6 +763,55 @@ button[data-active="true"] {
   color: var(--fg-muted);
   text-align: right;
   user-select: none;
+}
+/* --- Task 7（B1）纪要页签：只读复盘面（摘要全文 + 元信息） --- */
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: default;
+  width: 100%;
+}
+.summary-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.92em;
+  line-height: 1.45;
+}
+
+/* --- Phase 2 B1 ⌘J NL→命令输入条：palette 骨架，锚定底部（输入条语义：
+       视线不离开终端下沿；交互复用 overlay 范式） --- */
+.palette-overlay.nl2cmd-overlay {
+  align-items: flex-end;
+  padding: 16px 16px 12vh;
+}
+.palette.nl2cmd {
+  width: min(680px, 100%);
+}
+.nl-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.nl-input-row .palette-input {
+  flex: 1;
+  width: auto;
+}
+.nl2cmd-stream {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.nl2cmd-result {
+  margin-top: 8px;
 }
 
 /* --- A12 自绘标题栏（Task 14，win/linux；mac 不渲染走原生） --- */
@@ -857,6 +966,18 @@ button[data-active="true"] {
   color: var(--color-warning);
   font-variant-numeric: tabular-nums;
 }
+/* 生产环境主机（Phase 2 Task 11，B11 防呆）：页签 PROD 徽标 + 终端红框 */
+.tab-prod {
+  flex: none;
+  font-size: 0.66em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-on-danger, #fff);
+  background: var(--color-danger);
+  border-radius: 4px;
+  padding: 1px 4px;
+  line-height: 1.3;
+}
 .tab-close {
   border: none;
   background: none;
@@ -911,6 +1032,16 @@ button[data-active="true"] {
   outline: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
   outline-offset: -1px;
 }
+/* 生产环境主机 pane（B11）：常驻红框（聚焦红实线、非聚焦红半透明——所有
+   会话 DOM 常驻，切标签也保持可见的防呆信号） */
+.term-pane[data-production="true"] {
+  outline: 2px solid color-mix(in srgb, var(--color-danger) 55%, transparent);
+  outline-offset: -2px;
+}
+.term-pane[data-production="true"][data-focused="true"] {
+  outline: 2px solid var(--color-danger);
+  outline-offset: -2px;
+}
 .session-term {
   width: 100%;
   height: 100%;
@@ -949,6 +1080,54 @@ button[data-active="true"] {
   font-size: 1em;
   line-height: 1;
   padding: 0 2px;
+}
+/* 危险输入提醒条（Phase 2 Task 11，B11）：编码提示条同位（终端顶部浮层），
+   红边红字——danger red/yellow 档命中时的行内防呆 */
+.danger-hint {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 92%;
+  padding: 4px 10px;
+  border: 1px solid var(--color-danger);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--color-danger);
+  font-size: 0.8em;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-danger) 18%, transparent);
+}
+.danger-hint-title {
+  font-weight: 700;
+}
+.danger-hint-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.danger-hint button {
+  color: var(--color-danger);
+  font-size: 1em;
+  line-height: 1;
+  padding: 0 2px;
+}
+/* 表单勾选行（B11 生产标记）：横向布局 + 提示文字弱化 */
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.form-check input {
+  width: auto;
+}
+.form-check-hint {
+  color: var(--fg-muted);
+  font-size: 0.85em;
 }
 
 /* 编码徽标（Task 9）：term-toolbar 右侧，聚焦 pane 的会话编码，点击循环切换 */
@@ -1907,4 +2086,260 @@ button[data-active="true"] {
 .ai-rule-add input {
   flex: 1;
   min-width: 0;
+}
+
+/* 端口转发中心（Phase 2 Task 1，B7 上半）：顶栏对话框面板。
+   状态灯沿 NotificationCenter 的语义令牌口径（active=success/starting=warning/
+   error=danger/off=surface 灰）。 */
+.forward-panel {
+  width: min(640px, 92vw);
+  max-height: 82vh;
+  overflow-y: auto;
+}
+.forward-empty {
+  opacity: 0.7;
+  font-size: 13px;
+  padding: 12px 2px;
+}
+.forward-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.forward-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+.forward-light {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--color-surface);
+  border: 1px solid rgba(128, 128, 128, 0.4);
+}
+.forward-light[data-state="active"] {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+.forward-light[data-state="starting"] {
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.forward-light[data-state="error"] {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.forward-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.forward-endpoint {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.forward-arrow {
+  opacity: 0.6;
+}
+.forward-meta {
+  font-size: 11.5px;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.forward-err-text {
+  color: var(--color-danger);
+}
+.forward-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.forward-actions button {
+  font-size: 11.5px;
+  padding: 3px 9px;
+}
+.forward-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.forward-form {
+  border-top: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  padding-top: 10px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.forward-form h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.forward-form-flags {
+  display: flex;
+  gap: 16px;
+}
+
+/* 跳板链编辑器（Phase 2 Task 2，B7 下半）：顶栏对话框面板。
+   结构沿 ForwardPanel；hop 行可拖拽排序（data-over 高亮悬停目标，
+   语义令牌：ok=success / fail=danger）。 */
+.jump-editor {
+  width: min(640px, 92vw);
+  max-height: 82vh;
+  overflow-y: auto;
+}
+.jump-empty {
+  opacity: 0.7;
+  font-size: 13px;
+  padding: 12px 2px;
+}
+.jump-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.jump-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+.jump-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.jump-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.jump-hops {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jump-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.jump-actions button {
+  font-size: 11.5px;
+  padding: 3px 9px;
+}
+.jump-form {
+  border-top: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  padding-top: 10px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.jump-form h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.jump-hops-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.jump-hop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jump-hop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px dashed var(--color-border, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+.jump-hop-row[data-over="true"] {
+  border-style: solid;
+  border-color: var(--color-accent, var(--color-border));
+}
+.jump-hop-index {
+  flex: none;
+  width: 18px;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+.jump-hop-row select {
+  flex: 1;
+  min-width: 0;
+}
+.jump-hop-actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.jump-hop-actions button {
+  font-size: 11px;
+  padding: 2px 7px;
+}
+.jump-test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.jump-test-row button {
+  font-size: 12px;
+}
+.jump-test-result {
+  font-size: 12px;
+}
+.jump-test-result[data-ok="true"] {
+  color: var(--color-success);
+}
+.jump-test-result[data-ok="false"] {
+  color: var(--color-danger);
+}
+.host-key-hop {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
 }

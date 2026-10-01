@@ -24,7 +24,7 @@ const existing: Credential = {
 
 function mockLists() {
   mockedInvoke.mockImplementation((cmd: string) => {
-    if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+    if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
       return Promise.resolve([]);
     }
     return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -83,7 +83,7 @@ describe("CredentialForm", () => {
       if (cmd === "credentials_create") {
         return Promise.resolve(existing);
       }
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -120,7 +120,7 @@ describe("CredentialForm", () => {
     mockLists();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "credentials_update") return Promise.resolve(existing);
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -138,7 +138,7 @@ describe("CredentialForm", () => {
   it("编辑模式改 kind：patch.kind 带新值", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "credentials_update") return Promise.resolve(existing);
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));

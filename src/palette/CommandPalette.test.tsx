@@ -17,11 +17,13 @@ const web: Host = {
   address: "10.0.0.1",
   port: 22,
   username: "deploy",
+  protocol: "ssh",
   credential_id: null,
   jump_chain_id: null,
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: null,
   created_at: 1,
   updated_at: 1,
@@ -60,7 +62,7 @@ describe("渲染（空查询）", () => {
     expect(screen.queryByTestId("command-palette")).toBeNull();
   });
 
-  it("命令区（registry 全表 9 项）+ 主机区，键位提示为 Ctrl 系", () => {
+  it("命令区（registry 全表；B1 起 11 项）+ 主机区，键位提示为 Ctrl 系", () => {
     const { items } = renderPalette();
     expect(screen.getByText("命令面板")).toBeTruthy();
     expect(screen.getByText("新建主机")).toBeTruthy();
@@ -71,6 +73,9 @@ describe("渲染（空查询）", () => {
     expect(screen.getByText("Ctrl+,")).toBeTruthy();
     expect(screen.getByText("命令")).toBeTruthy();
     expect(screen.getByText("主机")).toBeTruthy();
+    // Phase 2 B1（Task 6）：⌘K 面板的「NL 命令」条目（registry ai.nl2cmd）
+    expect(screen.getByText("NL 命令")).toBeTruthy();
+    expect(screen.getByText("Ctrl+J")).toBeTruthy();
     expect(items().length).toBe(ACTIONS.length + 2);
   });
 

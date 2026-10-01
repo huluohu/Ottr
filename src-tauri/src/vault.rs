@@ -32,8 +32,9 @@ use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
     CredentialInput, CredentialPatch, Credentials, History, HistoryEntry, HistoryInput, Host,
     HostGroups, HostInput, Hosts, KeyMode, KnownHosts, Notification, NotificationInput,
-    Notifications, SecretField, Secrets, Settings, SnippetInput, Snippets, Vault, VaultError,
-    HISTORY_SEARCH_LIMIT,
+    Notifications, SecretField, Secrets, SessionSummaries, Settings, SnippetInput, Snippets,
+    SummaryEntry, SummaryInput, Vault, VaultError, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT,
+    SUMMARIES_LIST_LIMIT,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -101,7 +102,8 @@ pub fn vault_init_status(init: State<'_, VaultInit>) -> VaultInitStatus {
     init.get()
 }
 
-type CmdResult<T> = Result<T, String>;
+/// vault 域命令的统一返回别名（Phase 2 起新命令域复用，pub(crate)）。
+pub(crate) type CmdResult<T> = Result<T, String>;
 
 fn cmd<T>(r: ottr_vault::Result<T>) -> CmdResult<T> {
     r.map_err(|e: VaultError| e.to_string())
@@ -110,7 +112,8 @@ fn cmd<T>(r: ottr_vault::Result<T>) -> CmdResult<T> {
 /// 锁定门卫（T11）：实体命令统一在入口拒绝锁定态。vault 层只有密钥面操作
 /// 硬性要求密钥（凭据 seal/open），这里把封锁面上收到全部实体读写——遮罩后的
 /// UI 本不该发起这些调用，属防漏兵（settings/安全状态命令不过此门卫）。
-fn ensure_unlocked(vault: &Vault) -> CmdResult<()> {
+/// pub(crate)：Phase 2 新命令域（commands/forward.rs）复用同一门卫。
+pub(crate) fn ensure_unlocked(vault: &Vault) -> CmdResult<()> {
     vault.ensure_unlocked().map_err(|e| e.to_string())
 }
 
@@ -144,7 +147,10 @@ pub fn vault_unlock(
     app: AppHandle,
     password: String,
 ) -> CmdResult<()> {
-    state.0.unlock_with_password(&password).map_err(|e| e.to_string())?;
+    state
+        .0
+        .unlock_with_password(&password)
+        .map_err(|e| e.to_string())?;
     let _ = app.emit("ottr://vault-unlocked", ());
     Ok(())
 }
@@ -184,10 +190,9 @@ pub fn vault_upgrade_to_master_password(
         .map_err(|e| e.to_string())?;
     // 旧 Master Key 条目删除（升级成功的收尾）。失败不致命——残留条目在下次
     // open（password 模式）被兜底清理，且不再参与任何解锁路径。
-    if let Err(e) = ottr_vault::master_key::KeyringStorage::new(
-        ottr_vault::master_key::DEFAULT_SERVICE,
-    )
-    .delete()
+    if let Err(e) =
+        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE)
+            .delete()
     {
         eprintln!("[vault-upgrade] stale keyring entry cleanup failed: {e}");
     }
@@ -198,7 +203,10 @@ pub fn vault_upgrade_to_master_password(
 // --- settings（T11：theme/language 迁 vault + 安全配置）-----------------------
 
 #[tauri::command]
-pub fn settings_get(state: State<'_, VaultState>, key: String) -> CmdResult<Option<serde_json::Value>> {
+pub fn settings_get(
+    state: State<'_, VaultState>,
+    key: String,
+) -> CmdResult<Option<serde_json::Value>> {
     // 明文面：锁定可读（锁定屏要读主题/自动锁定配置，见 ottr-vault settings.rs）。
     cmd(Settings::get(&state.0, &key))
 }
@@ -264,7 +272,10 @@ pub fn notify_insert(
 
 /// `limit` 缺省 200（None → 200；通知中心一屏量级）。
 #[tauri::command]
-pub fn notify_list(state: State<'_, VaultState>, limit: Option<u32>) -> CmdResult<Vec<Notification>> {
+pub fn notify_list(
+    state: State<'_, VaultState>,
+    limit: Option<u32>,
+) -> CmdResult<Vec<Notification>> {
     cmd(Notifications::list(&state.0, limit.unwrap_or(200) as usize))
 }
 
@@ -314,6 +325,52 @@ pub fn history_search(
         &query,
         host_id,
         limit.unwrap_or(HISTORY_SEARCH_LIMIT as u32) as usize,
+    ))
+}
+
+/// 会话维度的命令序列（Phase 2 Task 7 纪要数据源）：id 升序（≈ts 时序），
+/// `limit` 缺省 [`HISTORY_SESSION_LIMIT`]。明文面（锁定可读，同 history_search）。
+#[tauri::command]
+pub fn history_list_session(
+    state: State<'_, VaultState>,
+    host_id: i64,
+    session_id: String,
+    limit: Option<u32>,
+) -> CmdResult<Vec<HistoryEntry>> {
+    cmd(History::list_session(
+        &state.0,
+        host_id,
+        &session_id,
+        limit.unwrap_or(HISTORY_SESSION_LIMIT as u32) as usize,
+    ))
+}
+
+// --- session_summaries（Phase 2 Task 7，B1 会话纪要）--------------------------
+// 密文面（summary_enc 已登记 scan_registry）：**过 ensure_unlocked 门卫**，与
+// secrets 同一锁定语义——纪要生成是断开时的后台尽力而为任务（前端 fire-and-
+// forget 吞错误），锁定时插入被拒即静默丢弃；面板读取同样解锁后可用。
+
+#[tauri::command]
+pub fn summary_insert(
+    state: State<'_, VaultState>,
+    input: SummaryInput,
+) -> CmdResult<SummaryEntry> {
+    ensure_unlocked(&state.0)?;
+    cmd(SessionSummaries::insert(&state.0, &input))
+}
+
+/// `host_id` 缺省 = 跨主机；`limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。
+#[tauri::command]
+pub fn summary_list(
+    state: State<'_, VaultState>,
+    host_id: Option<i64>,
+    limit: Option<u32>,
+) -> CmdResult<Vec<SummaryEntry>> {
+    ensure_unlocked(&state.0)?;
+    cmd(SessionSummaries::list(
+        &state.0,
+        host_id,
+        limit.unwrap_or(SUMMARIES_LIST_LIMIT as u32) as usize,
     ))
 }
 
@@ -578,6 +635,36 @@ pub fn import_ssh_config(
     cmd(crate::ssh_config::import_entries(&state.0, outcome))
 }
 
+/// 导入 Xshell 会话（Phase 2 Task 10，B3）。`path` = 会话目录或单个 .xsh；
+/// 缺省回落 Windows 惯例会话目录（不存在即报错——mac/Linux 无默认位置）。
+/// 解析规则与去重见 importers::xshell 模块文档；报告同构 ssh-config 导入。
+#[tauri::command]
+pub fn import_xshell_sessions(
+    state: State<'_, VaultState>,
+    path: Option<String>,
+) -> CmdResult<crate::ssh_config::ImportReport> {
+    ensure_unlocked(&state.0)?;
+    let path = path
+        .map(PathBuf::from)
+        .or_else(crate::importers::xshell::default_sessions_dir)
+        .ok_or_else(|| "cannot resolve Xshell sessions directory; pick a folder".to_string())?;
+    cmd(crate::importers::xshell::import_path(&state.0, &path))
+}
+
+/// 导入 Tabby 配置（Phase 2 Task 10，B3）。`path` 必传（配置 JSON 无跨平台
+/// 惯例位置——前端经文件对话框选定）。解析规则见 importers::tabby 模块文档。
+#[tauri::command]
+pub fn import_tabby_config(
+    state: State<'_, VaultState>,
+    path: String,
+) -> CmdResult<crate::ssh_config::ImportReport> {
+    ensure_unlocked(&state.0)?;
+    cmd(crate::importers::tabby::import_path(
+        &state.0,
+        &PathBuf::from(path),
+    ))
+}
+
 /// CSV 导出主机清单。`path` 缺省写到系统下载目录 `ottr-hosts.csv`；返回落盘路径。
 #[tauri::command]
 pub fn export_hosts_csv(
@@ -666,7 +753,10 @@ mod tests {
             serde_json::json!({ "status": "ready" })
         );
         assert_eq!(
-            serde_json::to_value(VaultInitStatus::Failed { error: "boom".into() }).unwrap(),
+            serde_json::to_value(VaultInitStatus::Failed {
+                error: "boom".into()
+            })
+            .unwrap(),
             serde_json::json!({ "status": "failed", "error": "boom" })
         );
     }

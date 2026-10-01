@@ -34,6 +34,7 @@ import {
   type LocalEntry,
 } from "./api";
 import { TransferQueue } from "./TransferQueue";
+import { remoteEdits } from "./RemoteEdit";
 import { useTransferStore } from "./TransferStore";
 
 type Side = "local" | "remote";
@@ -73,6 +74,10 @@ export function FilePanel({ session }: { session: Session }) {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<Side | null>(null);
+  /** 本会话在编辑中的远端路径（RemoteEditManager 订阅同步）。 */
+  const [editing, setEditing] = useState<string[]>([]);
+  /** 冲突待裁定的远端路径（非空 = 「远端已变更，覆盖？」对话框开着）。 */
+  const [conflictPath, setConflictPath] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startDownload = useTransferStore((s) => s.startDownload);
   const startUpload = useTransferStore((s) => s.startUpload);
@@ -82,6 +87,72 @@ export function FilePanel({ session }: { session: Session }) {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(null), 4000);
   }, []);
+
+  // --- 远端编辑（Phase 2 Task 3）：编辑态订阅 + 冲突回调接线 -------------------
+  // 管理器是模块级单例：本面板只镜像「本会话在编辑哪些路径」供菜单渲染；
+  // 轮询与临时副本归 Rust 侧（commands/remote_edit.rs）+ 管理器持有。
+  useEffect(() => {
+    const sync = () => setEditing(remoteEdits.activeRemotes(rustId ?? ""));
+    sync();
+    return remoteEdits.subscribe(sync);
+  }, [rustId]);
+
+  useEffect(() => {
+    remoteEdits.callbacks = {
+      onSaved: (id, path) => {
+        if (id === rustId) showNotice(t("files.editSaved", { name: fileNameOf(path) }));
+      },
+      onConflict: (id, path) => {
+        if (id === rustId) setConflictPath(path);
+      },
+      onRemoteGone: (id, path) => {
+        if (id === rustId) showNotice(t("files.remoteGone", { name: fileNameOf(path) }));
+      },
+    };
+    return () => {
+      remoteEdits.callbacks = {};
+    };
+  }, [rustId, showNotice, t]);
+
+  async function startEditing(path: string) {
+    if (!rustId) return;
+    try {
+      await remoteEdits.open(rustId, path);
+      showNotice(t("files.editOpened", { name: fileNameOf(path) }));
+    } catch (e) {
+      const msg = String(e);
+      // 超限拒绝（M-1，Rust MAX_EDIT_BYTES=10MB）单列提示，其余走通用失败
+      if (msg.includes("too large")) {
+        showNotice(t("files.editTooLarge", { name: fileNameOf(path) }));
+      } else {
+        showNotice(t("files.editFailed", { message: msg }));
+      }
+    }
+  }
+
+  async function stopEditing(path: string) {
+    if (!rustId) return;
+    await remoteEdits.close(rustId, path);
+    showNotice(t("files.editClosed", { name: fileNameOf(path) }));
+  }
+
+  /** 冲突裁定：「覆盖远端」= 强制回传并刷新远端列；「保留本地」= Rust 记账。 */
+  async function resolveConflict(overwrite: boolean) {
+    if (!rustId || !conflictPath) return;
+    const path = conflictPath;
+    setConflictPath(null);
+    if (!overwrite) {
+      await remoteEdits.keepLocal(rustId, path);
+      return;
+    }
+    try {
+      await remoteEdits.overwrite(rustId, path);
+      showNotice(t("files.editOverwritten", { name: fileNameOf(path) }));
+      void loadRemote(remote.path);
+    } catch (e) {
+      showNotice(t("files.editFailed", { message: String(e) }));
+    }
+  }
 
   // --- 列目录 ----------------------------------------------------------------
 
@@ -212,6 +283,8 @@ export function FilePanel({ session }: { session: Session }) {
 
   const pane = focus === "local" ? local : remote;
   const selectedEntry = pane.entries.find((e) => e.name === pane.selected) ?? null;
+  const selectedRemotePath =
+    focus === "remote" && selectedEntry ? joinRemote(remote.path, selectedEntry.name) : null;
 
   function navigate(side: Side, path: string) {
     if (side === "local") void loadLocal(path);
@@ -289,6 +362,21 @@ export function FilePanel({ session }: { session: Session }) {
             : []),
           ...(selectedEntry && !selectedEntry.is_dir
             ? [
+                // 远端编辑（Phase 2 Task 3）走 SFTP 读写原语——FTP/FTPS 会话
+                // 无此能力，编辑入口按协议隐藏（Rust 侧 sftp_for 同样显式拒绝）。
+                ...(session.protocol === "ssh"
+                  ? [
+                      selectedRemotePath && editing.includes(selectedRemotePath)
+                        ? {
+                            label: t("files.menu.stopEdit", { name: selectedEntry.name }),
+                            action: () => void stopEditing(selectedRemotePath),
+                          }
+                        : {
+                            label: t("files.menu.edit", { name: selectedEntry.name }),
+                            action: () => void startEditing(selectedRemotePath ?? ""),
+                          },
+                    ]
+                  : []),
                 {
                   label: t("files.menu.download", { name: selectedEntry.name }),
                   action: () => openEntry("remote", selectedEntry),
@@ -470,6 +558,33 @@ export function FilePanel({ session }: { session: Session }) {
           onClose={() => setDialog(null)}
           onConfirm={(v) => void applyDialog(v)}
         />
+      )}
+      {conflictPath && (
+        <div className="overlay" role="presentation" onMouseDown={() => setConflictPath(null)}>
+          <div
+            className="dialog file-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("files.dlg.conflictTitle")}
+            onMouseDown={(e) => e.stopPropagation()}
+            data-testid="file-dialog"
+          >
+            <h2>{t("files.dlg.conflictTitle")}</h2>
+            <p>{t("files.dlg.conflictConfirm", { name: fileNameOf(conflictPath) })}</p>
+            <div className="form-actions">
+              <button data-testid="conflict-keep" onClick={() => void resolveConflict(false)}>
+                {t("files.dlg.keepLocal")}
+              </button>
+              <button
+                className="btn-accent"
+                data-testid="file-dialog-confirm"
+                onClick={() => void resolveConflict(true)}
+              >
+                {t("files.dlg.conflictOverwrite")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -21,7 +21,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
 use ottr_lib::{
-    forward_pty_loop, inject_shell_integration, ShellIntegrationOutcome, SessionCounters, TextTail,
+    forward_pty_loop, inject_shell_integration, SessionCounters, ShellIntegrationOutcome, TextTail,
 };
 use ottr_ssh::{connect, AuthMethod, HostKeyPolicy, SshSession};
 use ottr_vault::{History, HistoryInput, HostInput, Hosts};
@@ -189,9 +189,7 @@ impl StreamReplay {
                 "A" => {} // 提示符行号在重放中无需缓冲坐标
                 "C" => self.pending_cmd = Some(self.last_line.clone()),
                 "D" => self.emit_done(None),
-                d if d.starts_with("D;") => {
-                    self.emit_done(d["D;".len()..].parse::<i64>().ok())
-                }
+                d if d.starts_with("D;") => self.emit_done(d["D;".len()..].parse::<i64>().ok()),
                 _ => {}
             }
         } else if let Some(rest) = body.strip_prefix("7;") {
@@ -258,10 +256,15 @@ async fn main() {
 async fn run() -> Result<(), String> {
     let (policy, pinned_fp) = pinned_host_key_policy();
     eprintln!("[fixture] connect spike@127.0.0.1:2222 (pinned {pinned_fp})");
-    let session: SshSession =
-        connect(HOST, PORT, USER, AuthMethod::Password(PASSWORD.into()), policy)
-            .await
-            .map_err(|e| format!("connect: {e}"))?;
+    let session: SshSession = connect(
+        HOST,
+        PORT,
+        USER,
+        AuthMethod::Password(PASSWORD.into()),
+        policy,
+    )
+    .await
+    .map_err(|e| format!("connect: {e}"))?;
     let mut channel = session
         .open_pty(120, 40)
         .await
@@ -332,7 +335,9 @@ async fn run() -> Result<(), String> {
     let replay_outcome = inject_shell_integration(&writer, &session, &text_tail, true).await;
     println!("[inject] second call -> {replay_outcome:?}");
     if replay_outcome != ShellIntegrationOutcome::SkippedAlreadyIntegrated {
-        return Err(format!("expected SkippedAlreadyIntegrated, got {replay_outcome:?}"));
+        return Err(format!(
+            "expected SkippedAlreadyIntegrated, got {replay_outcome:?}"
+        ));
     }
     let disabled = inject_shell_integration(&writer, &session, &text_tail, false).await;
     println!("[inject] disabled -> {disabled:?}");
@@ -376,11 +381,13 @@ async fn run() -> Result<(), String> {
 
     // 真库落账（tempfile + InMemoryStorage，测试纪律同 ottr-vault tests）
     let dir = tempfile::tempdir().map_err(|e| format!("tempdir: {e}"))?;
-    let vault = ottr_vault::Vault::open_with(dir.path(), &ottr_vault::master_key::InMemoryStorage::new())
-        .map_err(|e| format!("open vault: {e}"))?;
+    let vault =
+        ottr_vault::Vault::open_with(dir.path(), &ottr_vault::master_key::InMemoryStorage::new())
+            .map_err(|e| format!("open vault: {e}"))?;
     let host = Hosts::create(
         &vault,
         HostInput {
+            protocol: Default::default(),
             name: "fixture-web01".into(),
             group_id: None,
             tags: vec![],
@@ -392,6 +399,7 @@ async fn run() -> Result<(), String> {
             encoding_override: None,
             theme_override: None,
             monitor_enabled: false,
+            is_production: false,
             notes: None,
         },
     )

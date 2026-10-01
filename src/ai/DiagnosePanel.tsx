@@ -2,17 +2,17 @@
 // * 诊断（exit_code≠0 自动开）与选中解释（右键）共用本面板；
 // * 流式渲染：普通文本 + ``` 代码块两种块——代码块带「插入终端」按钮 =
 //   danger 分级标注（classify）+ 分档确认（green 直插 / yellow 确认 /
-//   red 二次确认红字），插入 = write_session 直写 PTY（不含换行，回车由用户）；
+//   red 二次确认红字），插入 = write_session 直写 PTY（不含换行，回车由用户）。
+//   代码块行组件已抽为公共 InsertRow（Phase 2 B1：⌘J NL 命令条共用同一
+//   危险确认状态机——安全面单一来源）；
 // * 脱敏口径（fix 1/5 M-1 定案）：面板命令区显示**原文**（本地行为，明文不出
 //   本机）；发送给模型的请求体**已脱敏**（aiStore.run 内 redact 后才装配
 //   messages——见 aiStore 步骤 3），面板以「已脱敏 N 处」标注外发侧命中；
 // * 错误面：noProvider/noKey → 「去设置」按钮（App 注入 openSettings）；
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
-import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { invoke } from "@tauri-apps/api/core";
-import { classify, type TrafficLight } from "./danger";
 import { useAiStore } from "./aiStore";
+import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
 
 /** 从 markdown 形态的回复中提取 ``` 围栏代码块（位置 + 内容），供插终端按钮。 */
 export interface AnswerCodeBlock {
@@ -28,105 +28,6 @@ export function extractCodeBlocks(answer: string): AnswerCodeBlock[] {
     if (code.trim() !== "") blocks.push({ code });
   }
   return blocks;
-}
-
-/** 插入终端的写入面（测试注入点；生产 = write_session 直写 PTY）。 */
-export type TerminalInserter = (rustId: string, text: string) => Promise<void>;
-
-export function defaultInserter(rustId: string, text: string): Promise<void> {
-  return invoke("write_session", { id: rustId, bytes: Array.from(new TextEncoder().encode(text)) });
-}
-
-/** 分档 → 按钮样式/文案的语义键。 */
-function levelKey(level: TrafficLight): string {
-  return level === "red" ? "ai.levelRed" : level === "yellow" ? "ai.levelYellow" : "ai.levelGreen";
-}
-
-/** 代码块行（含 danger 分档与分级确认状态机）。 */
-export function CodeBlockRow({
-  code,
-  rustId,
-  inserter,
-}: {
-  code: string;
-  rustId: string | null;
-  inserter: TerminalInserter;
-}) {
-  const { t } = useTranslation();
-  const verdict = useMemo(() => classify(code), [code]);
-  // 确认状态机：null（未进入）→ "confirm"（yellow 一发/red 第一发）→ red 的 armed
-  const [stage, setStage] = useState<"idle" | "confirm" | "armed" | "inserted" | "failed">("idle");
-
-  function proceed() {
-    if (!rustId) return;
-    void inserter(rustId, code)
-      .then(() => setStage("inserted"))
-      .catch(() => setStage("failed"));
-  }
-
-  function onClick() {
-    if (!rustId || stage === "inserted") return;
-    if (verdict.level === "green") {
-      proceed();
-      return;
-    }
-    if (verdict.level === "yellow") {
-      if (stage === "confirm") {
-        proceed();
-      } else {
-        setStage("confirm");
-      }
-      return;
-    }
-    // red：两次点击（第二次红字），点别处不复位（面板内短路径，简单为上）
-    if (stage === "armed") {
-      proceed();
-    } else {
-      setStage("armed");
-    }
-  }
-
-  const label =
-    stage === "inserted"
-      ? t("ai.inserted")
-      : stage === "armed"
-        ? t("ai.insertConfirmRed")
-        : stage === "confirm"
-          ? t("ai.insertConfirm")
-          : stage === "failed"
-            ? t("ai.insertFailed")
-            : t("ai.insertToTerminal");
-
-  return (
-    <div className="ai-codeblock" data-level={verdict.level} data-testid="ai-codeblock">
-      <div className="ai-codeblock-head">
-        <span className={`ai-level ai-level-${verdict.level}`} data-testid="ai-code-level">
-          {t(levelKey(verdict.level))}
-        </span>
-        {verdict.findings.length > 0 && (
-          <span className="ai-code-findings">
-            {verdict.findings.map((f, i) => (
-              <span key={`${f.kind}-${i}`} className="ai-code-finding">
-                {t(`ai.danger.${f.kind}`, { defaultValue: f.kind })}
-              </span>
-            ))}
-          </span>
-        )}
-        <button
-          className={`ai-insert-btn${stage === "armed" ? " armed" : ""}`}
-          data-testid="ai-insert"
-          data-stage={stage}
-          disabled={!rustId || stage === "inserted"}
-          onClick={onClick}
-        >
-          {label}
-        </button>
-      </div>
-      <pre className="ai-codeblock-code" data-testid="ai-code-text">
-        <code>{code}</code>
-      </pre>
-    </div>
-  );
 }
 
 /** 回复渲染：按围栏代码块切分（流式过程中未闭合的尾部代码块也即时呈现）。 */

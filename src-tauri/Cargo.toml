@@ -30,6 +30,10 @@ ottr-term = { path = "../crates/ottr-term" }
 ottr-transfer = { path = "../crates/ottr-transfer" }
 # Task 5：数据层接线（vault 命令 + ssh-config 导入）
 ottr-vault = { path = "../crates/ottr-vault" }
+# Phase 2 Task 1：CancellationToken（ForwardManager 运行实例取消树）。
+tokio-util = { version = "0.7", default-features = false }
+# forward 命令域（Phase 2 Task 1）经 ottr-ssh 间接消费 net 面；本 crate 自身
+# commands/* 不直接摸 TCP，net 留给 ottr-ssh。
 tokio = { version = "1", features = ["io-util", "sync", "time"] }
 base64 = "0.22"
 sha2 = "0.10"
@@ -38,6 +42,9 @@ sha2 = "0.10"
 # 正式版由 ottr-term 包装消除，届时移除本依赖。
 russh = "0.63.3"
 tauri-plugin-notification = "2"
+# Phase 2 Task 4（B10 下半）：trzsz 传输的文件/目录选择（chooseSendFiles /
+# chooseSaveDirectory 走原生对话框；JS 侧 @tauri-apps/plugin-dialog）。
+tauri-plugin-dialog = "2"
 # T11（A7）：剪贴板敏感复制自动清空——arboard（tauri-plugin-clipboard-manager
 # 的同源后端）Rust 侧直用，免插件/Capability 面（前端永不接触明文，见 security.rs）。
 # default-features = false：关 image-data（文本剪贴板够用，少拖 image 依赖树）。

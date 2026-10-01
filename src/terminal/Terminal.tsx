@@ -16,7 +16,20 @@
 // 粘贴纪律：宿主 div 捕获阶段拦截 paste 事件（先于 xterm 的 textarea 监听），
 // assessPaste（src/ai/danger.ts，Task 13 分级的单一来源）判定 none → 放行原生
 // 粘贴；warn/danger → 弹确认层，确认后 term.paste() 走同一写入路径。
-import { useEffect, useRef, useState } from "react";
+//
+// trzsz（Phase 2 Task 4，B10 下半）：TrzszFilter 挂在**本地数据出口**——PTY 输出
+// 经 sink.write 进 controller（空闲透传 / 传输态拦截协议帧），击键经 onData 进
+// controller（传输态吞键入，Ctrl-C 即中止）；文件选择走 tauri-plugin-dialog，
+// 本地文件 IO 走 trzsz fs 垫片（trzsz/fsShim.ts → commands/trzsz_fs.rs）。终端区
+// 拖拽文件 → 询问「trz 上传 / 插入路径」（TrzszDropDialog）。
+//
+// 智能补全（Phase 2 Task 8，B8）：fish 风格 ghost text——GhostController 挂在
+// onData **前置位**（先于 trzsz）：有 ghost 时 Tab 拦截采纳（补全剩余文本走
+// writeToSession 同一出口）、Esc 忽略；无 ghost 一切透传 shell。渲染是 xterm
+// decoration 纯视觉层（PTY 零污染）；建议来源 = 历史缓存（history/cache.ts，
+// history_search 空 query 复用 + onCommandFinished 增量）+ 内置命令表
+// （terminal/completion.ts 纯引擎）。开关在右键菜单（默认开）。
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -25,12 +38,17 @@ import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 import { registerSink, unregisterSink, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
 import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
-import { terminalThemes } from "../theme/terminal-themes";
+import {
+  resolveTerminalTheme,
+  useTerminalThemeStore,
+  type TerminalThemeSetting,
+} from "../theme/terminalThemeStore";
 import type { ITheme } from "@xterm/xterm";
-import { assessPaste } from "../ai/danger";
+import { assessPaste, InputDangerWatch, type DangerFinding } from "../ai/danger";
 import { useAiStore } from "../ai/aiStore";
 import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
+import { noteCwd, forgetCwd } from "./CwdTracker";
 import {
   getSearch,
   registerSearch,
@@ -38,6 +56,9 @@ import {
   SearchController,
   type SearchResultSummary,
 } from "./SearchAddon";
+import { createTrzszController, type TrzszController } from "./trzsz/TrzszController";
+import { GhostController } from "./completion";
+import { completionHistory } from "../history/cache";
 import {
   buildContextMenu,
   loadTerminalSettings,
@@ -50,12 +71,18 @@ import { dividers, layout, leaf, type Divider, type Rect } from "./split";
 /** 主题同步 xterm 配色（亮/暗两套，A10；T1 terminalThemes 消费）。入参是
  * ThemeContext 的**解析结果**（resolved，非三态 mode）——system 模式下 OS
  * 明暗切换时 resolved 变化驱动本组件 effect 重跑，终端实时换套（简报 I面：
- * useTheme().resolved → xterm theme）。结构化入参便于单测，不绑定 xterm 类。 */
+ * useTheme().resolved → xterm theme）。结构化入参便于单测，不绑定 xterm 类。
+ * Phase 2 Task 9（B2 主题生态）：第三参 = 终端配色选择（缺省读全局 store）——
+ * auto 跟随 resolved；选内置画廊/自定义配色则固定取该套（与界面明暗解耦）。 */
 export function applyTermTheme(
   term: { options: { theme?: ITheme } },
   resolved: ResolvedTheme,
+  setting?: TerminalThemeSetting,
 ): void {
-  term.options.theme = terminalThemes[resolved];
+  term.options.theme = resolveTerminalTheme(
+    resolved,
+    setting ?? useTerminalThemeStore.getState(),
+  );
 }
 
 // 会话编码状态在 SessionStore（Task 9）：T8 的临时 sessionEncoding 内存表已删，
@@ -152,14 +179,114 @@ export function EncodingHintBar({ sessionId }: { sessionId: string }) {
   );
 }
 
+/** 危险输入提醒条（Phase 2 Task 11，B11）：当前输入行命中 danger red/yellow
+ * 档时行内提示（限频由 InputDangerWatch 管）；回车执行/手动关闭即撤。 */
+export function DangerHintBar({
+  finding,
+  onDismiss,
+}: {
+  finding: DangerFinding;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="danger-hint" data-testid="danger-hint" role="alert">
+      <span className="danger-hint-title">{t("terminal.dangerInputTitle")}</span>
+      <span className="danger-hint-text">
+        {t("terminal.dangerInputHint", {
+          rule: t(`ai.danger.${finding.kind}`, { defaultValue: finding.kind }),
+          excerpt: finding.excerpt,
+        })}
+      </span>
+      <button
+        data-testid="danger-hint-dismiss"
+        aria-label={t("terminal.dangerInputDismiss")}
+        onClick={onDismiss}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+/** 终端区拖拽落点对话框（Phase 2 Task 4，B10 下半）：文件拖入终端 pane 后询问
+ * 「trz 上传」（TrzszController.uploadFiles，远端须装 trzsz）或「插入路径」
+ * （单引号转义后 term.paste，与 SFTP 上传无关的纯文本插入）。 */
+export function TrzszDropDialog({
+  paths,
+  onUpload,
+  onInsert,
+  onCancel,
+}: {
+  paths: string[];
+  onUpload: () => void;
+  onInsert: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const names = paths.map((p) => p.split("/").pop() ?? p).join("、");
+  return (
+    <div className="overlay" role="presentation" onMouseDown={onCancel}>
+      <div
+        className="dialog trzsz-drop-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("terminal.trzszDropAria")}
+        onMouseDown={(e) => e.stopPropagation()}
+        data-testid="trzsz-drop-dialog"
+      >
+        <h2>{t("terminal.trzszDropTitle")}</h2>
+        <p data-testid="trzsz-drop-files">{t("terminal.trzszDropHint", { count: paths.length, names })}</p>
+        <div className="form-actions">
+          <button onClick={onCancel}>{t("common.cancel")}</button>
+          <button data-testid="trzsz-drop-insert" onClick={onInsert}>
+            {t("terminal.trzszDropInsert")}
+          </button>
+          <button className="btn-accent" data-testid="trzsz-drop-upload" onClick={onUpload}>
+            {t("terminal.trzszDropUpload")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 拖拽路径 → shell 安全插入形态（单引号包裹，内部 ' 转义为 '\''）。 */
+export function quotePathsForShell(paths: string[]): string {
+  return paths.map((p) => `'${p.replace(/'/g, `'\\''`)}'`).join(" ");
+}
+
 export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const { resolved } = useTheme();
+  // 终端配色选择（Phase 2 Task 9，B2）：selection/custom 任一变化都重跑主题 effect
+  // （换画廊套即时生效；自定义主题被重导入覆盖时 custom 引用变化同样刷新）。
+  const termSelection = useTerminalThemeStore((s) => s.selection);
+  const termCustom = useTerminalThemeStore((s) => s.custom);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
+  const trzszRef = useRef<TrzszController | null>(null);
+  const ghostRef = useRef<GhostController | null>(null);
   const prevStatus = useRef<string | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
+  const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
+  // B11 危险输入提醒：观察面（限频器）+ 当前输入行缓冲 + 展示中的命中
+  const inputWatchRef = useRef<InputDangerWatch | null>(null);
+  const lineBufRef = useRef("");
+  const [dangerHint, setDangerHint] = useState<DangerFinding | null>(null);
+
+  // 白名单登记/撤销（Fix round 1 I-1）：scope = 前端会话 id；对话框与拖拽上传
+  // 返回路径后登记，传输收尾/上传 settle/会话卸载撤销。Rust 侧七命令入口统一校验。
+  const grantTrzsz = useCallback(
+    (paths: string[], kind: "file" | "dir") =>
+      invoke("trzsz_grant", { scope: sessionId, paths, kind }).catch(() => undefined),
+    [sessionId],
+  );
+  const revokeTrzsz = useCallback(
+    () => invoke("trzsz_revoke", { scope: sessionId }).catch(() => undefined),
+    [sessionId],
+  );
 
   const status = useSessionStore(
     (s) => s.sessions.find((x) => x.id === sessionId)?.status ?? "disconnected",
@@ -176,7 +303,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
   // --- 一次性装配：term 实例 + sink 注册 + 击键接线 + 尺寸观测 ---
   useEffect(() => {
-    const term = new XTerm({ cursorBlink: true, fontSize: 13 });
+    // B8：allowProposedApi 开启——ghost text 的 registerDecoration 是 xterm
+    // proposed API（未开则抛 "You must set the allowProposedApi option"）；
+    // 对既有面零行为变化，只解锁装饰 API。
+    const term = new XTerm({ cursorBlink: true, fontSize: 13, allowProposedApi: true });
     const fit = new FitAddon();
     term.loadAddon(fit);
     // URL 检测（A8）：WebLinksAddon 默认 handler（新窗打开链接）
@@ -191,8 +321,65 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       }
     }
     applyTermTheme(term, resolved);
+    // trzsz 过滤器（B10 下半）：先于 sink 装配——PTY 出口与击键都经它中转。
+    // write_session 沿用原 onData 体（rustId 实时读 store；重连自动跟随）。
+    // 击键出口单点化：trzsz 透传与 ghost Tab 采纳共用同一写入闭包。
+    const writeToSession = (input: string | Uint8Array): void => {
+      const session = useSessionStore
+        .getState()
+        .sessions.find((x) => x.id === sessionId);
+      if (!session?.rustId) return; // 未连接：击键落空（横幅已提示状态）
+      const bytes =
+        typeof input === "string" ? new TextEncoder().encode(input) : input;
+      void invoke("write_session", {
+        id: session.rustId,
+        bytes: Array.from(bytes),
+      }).catch(() => {});
+    };
+    const trzsz = createTrzszController({
+      writeToTerminal: (output) => term.write(output),
+      sendToServer: writeToSession,
+      chooseSendFiles: async () => {
+        try {
+          const { open } = await import("@tauri-apps/plugin-dialog");
+          const picked = await open({
+            multiple: true,
+            title: t("terminal.trzszDropUpload"),
+          });
+          const paths = Array.isArray(picked) ? picked : picked ? [picked] : undefined;
+          if (paths) await grantTrzsz(paths, "file");
+          return paths;
+        } catch {
+          return undefined; // 对话框失败按取消处理（= 拒绝传输，服务端安全收尾）
+        }
+      },
+      chooseSaveDirectory: async () => {
+        try {
+          const { open } = await import("@tauri-apps/plugin-dialog");
+          const picked = await open({
+            directory: true,
+            title: t("terminal.trzszDropTitle"),
+          });
+          if (typeof picked === "string") await grantTrzsz([picked], "dir");
+          return typeof picked === "string" ? picked : undefined;
+        } catch {
+          return undefined;
+        }
+      },
+      onTransfersSettled: () => {
+        void revokeTrzsz();
+      },
+      onError: (message) => {
+        // 典型失败：远端未装 trzsz（uploadFiles 3s 无魔串「Upload does not start」）
+        const text = message.includes("Upload does not start")
+          ? t("terminal.trzszUploadNoStart")
+          : t("terminal.trzszUploadFailed", { message });
+        term.writeln(`\x1b[33m[ottr] ${text}\x1b[0m`);
+      },
+    });
+    trzszRef.current = trzsz;
     registerSink(sessionId, {
-      write: (bytes) => term.write(bytes),
+      write: (bytes) => trzsz.processServerOutput(bytes),
       getSize: () => {
         try {
           fit.fit();
@@ -207,10 +394,16 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // T13 报错即诊：OSC133 命令边界监听（shell 集成片段发 A/C/D 标记）；
     // D;code≠0 → aiStore.onCommandFailed（ai.enabled 总开关在 store 内现读）。
     // T15 历史入库：onCommandFinished（全量命令完成，含 exit 0）→ history_insert
-    // （fire-and-forget，见 src/history/record.ts）。
+    // （fire-and-forget，见 src/history/record.ts）。B8：同一事件流增量喂补全缓存。
+    const firstSession = useSessionStore
+      .getState()
+      .sessions.find((x) => x.id === sessionId);
+    if (firstSession) void completionHistory.ensure(firstSession.hostId); // 补全历史冷启动拉取
     let watch: IDisposable | null = null;
     try {
       watch = createCommandWatch(term, {
+        // B8：新提示符 = 旧输入行消失，ghost 全量清态
+        onPromptStart: () => ghostRef.current?.reset(),
         onCommandDone: ({ exitCode, command }) => {
           const session = useSessionStore
             .getState()
@@ -231,24 +424,65 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             .getState()
             .sessions.find((x) => x.id === sessionId);
           if (!session) return;
+          noteCwd(sessionId, ev.cwd); // B1 ⌘J：OSC7 cwd 活值记账（null 不覆盖）
           recordCommand({ hostId: session.hostId, sessionId }, ev);
+          completionHistory.append(session.hostId, ev.command); // B8：MRU 喂缓存
         },
       });
     } catch {
       // parser 不可用（测试环境极简 fake）不阻塞终端装配
     }
 
-    // 击键 → PTY（rustId 实时读 store；重连换会话 id 后自动跟随）
-    const onData = term.onData((d) => {
-      const session = useSessionStore
-        .getState()
-        .sessions.find((x) => x.id === sessionId);
-      if (!session?.rustId) return; // 未连接：击键落空（横幅已提示状态）
-      void invoke("write_session", {
-        id: session.rustId,
-        bytes: Array.from(new TextEncoder().encode(d)),
-      }).catch(() => {});
+    // B8 智能补全（fish 风格 ghost text）：decoration 视觉层 + onData 前置按键
+    // 语义（有 ghost 拦 Tab 采纳/Esc 忽略/打字刷新）；采纳写入走 writeToSession
+    // 同一出口。挂起面（I-2）：设置关或 trzsz 传输态 → enabled()=false →
+    // handleData 全透传零渲染（Tab 归 trzsz 管辖，采纳不旁路传输态拦截）。
+    // alt buffer（C-1）在控制器内判 buffer.active.type。
+    const ghost = new GhostController(term, {
+      sources: () => {
+        const s = useSessionStore
+          .getState()
+          .sessions.find((x) => x.id === sessionId);
+        return s
+          ? completionHistory.sources(s.hostId)
+          : { hostHistory: [], globalHistory: [] };
+      },
+      enabled: () =>
+        loadTerminalSettings().completionEnabled && !trzsz.isTransferring(),
+      onAccept: writeToSession,
     });
+    ghost.setColor(
+      resolveTerminalTheme(resolved, useTerminalThemeStore.getState()).brightBlack ?? "#808080",
+    ); // 语义令牌：ANSI 注释灰（跟随当前终端配色，非固定品牌值）
+    ghostRef.current = ghost;
+
+    // 击键 → B11 危险输入观察（旁路，不消费）→ ghost 前置语义 → trzsz 过滤器 →
+    // PTY（传输态库吞键入；空闲透传）
+    const onData = term.onData((d) => {
+      observeDangerInput(d);
+      if (ghost.handleData(d)) return; // Tab 采纳/Esc 忽略已消费，不进 PTY
+      trzsz.processTerminalInput(d);
+    });
+
+    // B11 输入侧防呆：维护「当前输入行」缓冲（shell 拥有行编辑，这里只见
+    // 本会话键入的字符——↑召回/Tab 补全不可见，由确认交互兜底）并逐键 classify；
+    // red/yellow 命中 → 行内提醒（同类 30s 限频）；回车清行撤提醒。
+    function observeDangerInput(d: string) {
+      if (d === "\r" || d === "\n") {
+        lineBufRef.current = "";
+        setDangerHint(null);
+        return;
+      }
+      if (d === "\x7f" || d === "\b") {
+        lineBufRef.current = lineBufRef.current.slice(0, -1);
+        return;
+      }
+      if (d.startsWith("\x1b")) return; // 方向键等控制序列（无文本语义）
+      lineBufRef.current = (lineBufRef.current + d).slice(-2000);
+      inputWatchRef.current ??= new InputDangerWatch();
+      const finding = inputWatchRef.current.observe(lineBufRef.current, Date.now());
+      if (finding) setDangerHint(finding);
+    }
 
     // 选择即复制（可配，右键菜单切换；设置即时读 localStorage 免订阅）
     const onSelectionChange = term.onSelectionChange(() => {
@@ -267,6 +501,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       } catch {
         // xterm 对退化尺寸抛错可忽略
       }
+      trzsz.setTerminalColumns(term.cols); // 进度条按列宽重绘
     });
     if (hostRef.current) ro.observe(hostRef.current);
 
@@ -275,8 +510,14 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       onSelectionChange.dispose();
       onData.dispose();
       watch?.dispose();
+      ghost.dispose();
+      ghostRef.current = null;
+      trzsz.dispose();
+      trzszRef.current = null;
+      void revokeTrzsz(); // 会话关闭兜底撤销（I-1：授权不活过终端实例）
       unregisterSearch(sessionId);
       unregisterSink(sessionId);
+      forgetCwd(sessionId);
       term.dispose();
       termRef.current = null;
     };
@@ -284,10 +525,14 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // --- 主题跟随（resolved 驱动：手动切换与 system 模式的 OS 切换都实时生效） ---
+  // --- 主题跟随（resolved 驱动：手动切换与 system 模式的 OS 切换都实时生效；
+  //     B2：终端配色选择（画廊/自定义/auto）变化同样实时生效） ---
   useEffect(() => {
-    if (termRef.current) applyTermTheme(termRef.current, resolved);
-  }, [resolved]);
+    const setting: TerminalThemeSetting = { selection: termSelection, custom: termCustom };
+    if (termRef.current) applyTermTheme(termRef.current, resolved, setting);
+    // B8：ghost 灰字随主题换（ANSI brightBlack = 注释灰语义令牌）
+    ghostRef.current?.setColor(resolveTerminalTheme(resolved, setting).brightBlack ?? "#808080");
+  }, [resolved, termSelection, termCustom]);
 
   // --- 粘贴拦截（宿主捕获阶段，先于 xterm 的 textarea 监听） ---
   useEffect(() => {
@@ -307,15 +552,56 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     return () => el.removeEventListener("paste", onPaste, true);
   }, []);
 
+  // --- 终端区拖拽（B10 下半 Step 2）：Tauri onDragDropEvent 落点命中本 pane →
+  // 询问「trz 上传 / 插入路径」；非 Tauri 环境（测试）拖拽能力缺席即缺席。
+  useEffect(() => {
+    if (!hostRef.current) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        const off = await getCurrentWebview().onDragDropEvent((ev) => {
+          const p = ev.payload as unknown as {
+            type: "enter" | "over" | "drop" | "leave";
+            paths?: string[];
+            position: { x: number; y: number };
+          };
+          if (p.type !== "drop") return;
+          // 物理像素 → 逻辑像素；落点须命中本会话的终端 pane
+          const x = p.position.x / (window.devicePixelRatio || 1);
+          const y = p.position.y / (window.devicePixelRatio || 1);
+          const hit = document.elementFromPoint(x, y)?.closest("[data-session-id]");
+          if (hit?.getAttribute("data-session-id") !== sessionId) return;
+          const paths = p.paths ?? [];
+          if (paths.length > 0) setPendingDrop(paths);
+        });
+        if (cancelled) off();
+        else unlisten = off;
+      } catch {
+        // 非 Tauri 环境：拖拽能力缺席不阻塞终端
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [sessionId]);
+
   // --- 状态横幅（写入终端流；跳过挂载首帧的 disconnected 初值） ---
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
+    ghostRef.current?.reset(); // 状态迁移（断连/重连中）输入行语义失效 → 清 ghost
     const first = prevStatus.current === null;
     prevStatus.current = status;
     if (first && status === "connecting") {
-      // 首连中（挂载即 connecting）：连接横幅
-      term.writeln(`\x1b[2m[ottr] ${t("terminal.connecting")}\x1b[0m`);
+      // 首连中（挂载即 connecting）：连接横幅（T12 验收小修：i18n 插值参数
+      // 漏传导致 {{host}} 字面量直出——hostName 缺席时退回空串）
+      const host = useSessionStore
+        .getState()
+        .sessions.find((s) => s.id === sessionId)?.hostName;
+      term.writeln(`\x1b[2m[ottr] ${t("terminal.connecting", { host: host ?? "" })}\x1b[0m`);
       return;
     }
     if (first) return; // 恢复的静默标签（disconnected）不写历史横幅
@@ -368,6 +654,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const ctx: MenuContext = {
       hasSelection: term?.hasSelection() ?? false,
       copyOnSelect: loadTerminalSettings().copyOnSelect,
+      completionEnabled: loadTerminalSettings().completionEnabled,
       encoding: useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.encoding ?? "utf-8",
     };
     const width = 220;
@@ -426,7 +713,17 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         store.closePane(sessionId);
         break;
       case "copyOnSelect":
-        saveTerminalSettings({ copyOnSelect: !loadTerminalSettings().copyOnSelect });
+        // 设置全量覆写：先读后写（新字段不丢，Task 8 起 TerminalSettings 多字段）
+        saveTerminalSettings({
+          ...loadTerminalSettings(),
+          copyOnSelect: !loadTerminalSettings().copyOnSelect,
+        });
+        break;
+      case "completion":
+        saveTerminalSettings({
+          ...loadTerminalSettings(),
+          completionEnabled: !loadTerminalSettings().completionEnabled,
+        });
         break;
       default:
         if (id.startsWith("encoding:")) {
@@ -450,6 +747,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="session-term" ref={hostRef} data-session-id={sessionId} onContextMenu={openContextMenu}>
+      {dangerHint && <DangerHintBar finding={dangerHint} onDismiss={() => setDangerHint(null)} />}
       <EncodingHintBar sessionId={sessionId} />
       {menu && (
         <>
@@ -464,6 +762,27 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           onConfirm={() => {
             termRef.current?.paste(pendingPaste);
             setPendingPaste(null);
+          }}
+        />
+      )}
+      {pendingDrop !== null && (
+        <TrzszDropDialog
+          paths={pendingDrop}
+          onCancel={() => setPendingDrop(null)}
+          onUpload={() => {
+            const paths = pendingDrop;
+            setPendingDrop(null);
+            // 拖拽路径无对话框，授权在此登记；上传结束（含失败）即撤销
+            void grantTrzsz(paths, "file")
+              .then(() => trzszRef.current?.uploadFiles(paths))
+              .finally(() => {
+                void revokeTrzsz();
+              });
+          }}
+          onInsert={() => {
+            const text = quotePathsForShell(pendingDrop);
+            setPendingDrop(null);
+            termRef.current?.paste(text); // 走 onData → trzsz → write_session 同路
           }}
         />
       )}
@@ -729,6 +1048,8 @@ export function TerminalArea() {
               className="term-pane"
               data-active={rect != null}
               data-focused={focusedPane === session.id}
+              // 生产环境主机（B11）：红色边框防呆（CSS [data-production]）
+              data-production={session.isProduction ? "true" : undefined}
               data-testid={`term-pane-${session.id}`}
               style={
                 rect

@@ -19,6 +19,13 @@ tokio = { version = "1", features = ["sync", "time"] }
 # Fix round 1（C-1）：journal 文件名身份派生（sha256 + base64url）
 sha2 = "0.10"
 base64 = "0.22"
+# FTP/FTPS 第二后端（Phase 2 Task 5）：suppaftp 12（tokio 运行时 + native-tls
+# FTPS 显式/隐式；`deprecated` 只为 connect_secure_implicit——pyftpdlib 夹具
+# 只支持显式，隐式路径客户端能力保留）。被动模式为 suppaftp 默认。
+suppaftp = { version = "12.1.1", features = ["tokio", "tokio-async-native-tls", "deprecated"] }
+# FTPS 连接器构造面（accept_invalid_certs 可配）：与 suppaftp 内部同版本同源
+# （async-native-tls 0.6，runtime 对齐 tokio）。
+async-native-tls = { version = "0.6", default-features = false, features = ["runtime-tokio"] }
 
 [dev-dependencies]
 # 随迁测试（tests/sftp_test.rs）的取证通道：远端 exec（ChannelMsg 匹配）与

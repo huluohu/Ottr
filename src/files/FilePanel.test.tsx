@@ -1,6 +1,7 @@
 // FilePanel 组件测试（Task 10 Step 4）：双栏渲染 / 路径栏导航 / 右键菜单 /
 // 操作对话框（mkdir/chmod/delete 走 Rust 命令）。invoke 全量 mock。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// Phase 2 Task 3 增补：右键「编辑」挂点 + 冲突对话框（fake timers 驱动轮询）。
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -14,6 +15,7 @@ vi.mock("@tauri-apps/api/webview", () => ({
 
 import "../i18n";
 import { FilePanel } from "./FilePanel";
+import { EDIT_POLL_MS, remoteEdits } from "./RemoteEdit";
 import type { Session } from "../session/SessionStore";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -26,6 +28,7 @@ function makeSession(over: Partial<Session> = {}): Session {
     address: "127.0.0.1",
     port: 2222,
     username: "spike",
+    protocol: "ssh",
     status: "connected",
     rustId: "pty-0",
     attempt: 0,
@@ -35,6 +38,7 @@ function makeSession(over: Partial<Session> = {}): Session {
     encoding: "utf-8",
     encodingOverride: "utf-8",
     encodingHint: null,
+    isProduction: false,
     ...over,
   };
 }
@@ -70,9 +74,33 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  remoteEdits.resetForTests();
+  vi.useRealTimers();
 });
 
 describe("FilePanel", () => {
+  it("FTP 后端切换（Phase 2 Task 5）：同命令面照常工作，编辑入口按协议隐藏", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession({ protocol: "ftp" })} />);
+    // 初载走同一组 sftp_* 命令（Rust 侧按会话表分派到 FtpClient，前端零感知）
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("sftp_realpath", { id: "pty-0", path: "." }),
+    );
+    await waitFor(() => expect(screen.getAllByRole("option").length).toBeGreaterThan(0));
+
+    // 远端条目右键：菜单出现，但**无「编辑」项**（远端编辑是 SFTP 专属能力）
+    // 双栏 options 含本地侧：定位远端文件行（big100）再呼出菜单
+    const remoteRow = screen
+      .getAllByRole("option")
+      .find((el) => (el.textContent ?? "").includes("big100"));
+    expect(remoteRow).toBeDefined();
+    fireEvent.contextMenu(remoteRow!);
+    const menu = await screen.findByTestId("file-ctx-menu");
+    const labels = [...menu.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.some((l) => /edit/i.test(l))).toBe(false);
+    expect(labels.some((l) => /download/i.test(l))).toBe(true);
+  });
+
   it("未连接：显示提示，不发起任何 SFTP 命令", () => {
     mockListings();
     render(<FilePanel session={makeSession({ rustId: null, status: "disconnected" })} />);
@@ -213,4 +241,141 @@ describe("FilePanel", () => {
       });
     });
   });
+
+  // --- Phase 2 Task 3：右键「编辑」→ 冲突 → 裁定 --------------------------------
+
+  it("右键「编辑」：remote_edit_open 后菜单变「停止编辑」（轮询已启动）", async () => {
+    mockListings();
+    mockedInvoke.mockImplementation((_cmd: string, args?: { path?: string }) => {
+      if (_cmd === "remote_edit_open") {
+        return Promise.resolve({ local_path: "/tmp/ottr-edit/pty-0/x/big100" });
+      }
+      return (mockListingsDispatcher as (cmd: string, a: { path?: string }) => Promise<unknown>)(
+        _cmd,
+        args ?? { path: "" },
+      );
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("big100");
+    });
+    fireEvent.contextMenu(screen.getByText("big100"));
+    expect(screen.getByTestId("file-ctx-menu").textContent).toContain('Edit "big100"');
+    fireEvent.click(screen.getByText(/Edit "big100"/));
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("remote_edit_open", {
+        id: "pty-0",
+        remote: "/home/spike/big100",
+      });
+    });
+    expect(await screen.findByTestId("file-notice").then((el) => el.textContent)).toContain(
+      "Editing",
+    );
+    // 重新右键：同一文件现在应显示「停止编辑」
+    fireEvent.contextMenu(screen.getByText("big100"));
+    expect(screen.getByTestId("file-ctx-menu").textContent).toContain('Stop editing "big100"');
+    mockedInvoke.mockClear();
+    fireEvent.click(screen.getByText(/Stop editing "big100"/));
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("remote_edit_close", {
+        id: "pty-0",
+        remote: "/home/spike/big100",
+      });
+    });
+  });
+
+  it("冲突对话框：轮询报 conflict 弹「覆盖？」；覆盖 → remote_edit_save(force)，保留 → dismiss", async () => {
+    vi.useFakeTimers();
+    mockedInvoke.mockImplementation((_cmd: string, args?: { path?: string; remote?: string }) => {
+      if (_cmd === "remote_edit_open") {
+        return Promise.resolve({ local_path: "/tmp/ottr-edit/pty-0/x/big100" });
+      }
+      if (_cmd === "remote_edit_poll") {
+        return Promise.resolve({ status: "conflict" });
+      }
+      return (mockListingsDispatcher as (cmd: string, a: { path?: string }) => Promise<unknown>)(
+        _cmd,
+        args ?? { path: "" },
+      );
+    });
+    render(<FilePanel session={makeSession()} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(screen.getByTestId("file-list-remote").textContent).toContain("big100");
+    fireEvent.contextMenu(screen.getByText("big100"));
+    fireEvent.click(screen.getByText(/Edit "big100"/));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    // 轮询到 conflict → 对话框
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(EDIT_POLL_MS);
+    });
+    const dialog = screen.getByTestId("file-dialog");
+    expect(dialog.textContent).toContain("Remote file changed");
+    expect(dialog.textContent).toContain("Overwrite the remote copy");
+    // 「保留本地」→ remote_edit_dismiss（Rust 记账，轮询不重弹）
+    fireEvent.click(screen.getByTestId("conflict-keep"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("remote_edit_dismiss", {
+      id: "pty-0",
+      remote: "/home/spike/big100",
+    });
+    expect(screen.queryByTestId("file-dialog")).toBeNull();
+    // 再次冲突（mock 常返 conflict，等价「远端又一次被改」）→ 「覆盖远端」→
+    // remote_edit_save force:true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(EDIT_POLL_MS);
+    });
+    expect(screen.getByTestId("file-dialog").textContent).toContain("Remote file changed");
+    fireEvent.click(screen.getByTestId("file-dialog-confirm"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("remote_edit_save", {
+      id: "pty-0",
+      remote: "/home/spike/big100",
+      force: true,
+    });
+    expect(screen.queryByTestId("file-dialog")).toBeNull();
+  });
+
+  it("超限拒绝（M-1）：remote_edit_open 报 too large → 专用提示，不起轮询", async () => {
+    mockListings();
+    mockedInvoke.mockImplementation((_cmd: string, args?: { path?: string }) => {
+      if (_cmd === "remote_edit_open") {
+        return Promise.reject(new Error("file too large to edit (20971520 bytes > 10485760): /x"));
+      }
+      return (mockListingsDispatcher as (cmd: string, a: { path?: string }) => Promise<unknown>)(
+        _cmd,
+        args ?? { path: "" },
+      );
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("big100");
+    });
+    fireEvent.contextMenu(screen.getByText("big100"));
+    fireEvent.click(screen.getByText(/Edit "big100"/));
+    await waitFor(() => {
+      expect(screen.getByTestId("file-notice").textContent).toContain("too large to edit");
+    });
+    expect(remoteEdits.isActive("pty-0", "/home/spike/big100")).toBe(false);
+  });
 });
+
+/** mockListings 的分发体（编辑流用例复用同一目录数据）。 */
+function mockListingsDispatcher(_cmd: string, args: { path?: string }): Promise<unknown> {
+  if (_cmd === "local_home") return Promise.resolve("/Users/me");
+  if (_cmd === "sftp_realpath") return Promise.resolve("/home/spike");
+  if (_cmd === "local_list") {
+    return Promise.resolve(args.path === "/Users/me" ? localEntries : []);
+  }
+  if (_cmd === "sftp_list") {
+    return Promise.resolve(args.path === "/home/spike" ? remoteEntries : []);
+  }
+  return Promise.resolve(undefined as unknown as never);
+}

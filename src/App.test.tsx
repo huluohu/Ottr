@@ -31,11 +31,13 @@ const web: Host = {
   address: "10.0.0.1",
   port: 2222,
   username: "deploy",
+  protocol: "ssh",
   credential_id: null,
   jump_chain_id: null,
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: null,
   created_at: 1,
   updated_at: 1,
@@ -64,7 +66,7 @@ describe("App 主页布局（集成）", () => {
   it("渲染骨架：顶栏 + 主机树（refresh 后）+ 主区占位；Ctrl+K 呼出/关闭命令面板", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list") return Promise.resolve([web]);
-      if (cmd === "credentials_list" || cmd === "host_groups_list") return Promise.resolve([]);
+      if (cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") return Promise.resolve([]);
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
 
@@ -100,7 +102,7 @@ describe("App 主页布局（集成）", () => {
   // preventDefault（放行 PTY）。
   it("终端聚焦守卫：终端内 Ctrl+D 放行（defaultPrevented=false）、Ctrl+Shift+D 仍拦截、Ctrl+N 被守卫挡", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));

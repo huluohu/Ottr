@@ -21,11 +21,13 @@ const existing: Host = {
   address: "10.0.0.5",
   port: 22,
   username: null,
+  protocol: "ssh",
   credential_id: null,
   jump_chain_id: null,
   encoding_override: null,
   theme_override: null,
   monitor_enabled: false,
+  is_production: false,
   notes: null,
   created_at: 1,
   updated_at: 1,
@@ -33,7 +35,7 @@ const existing: Host = {
 
 function listResponses() {
   mockedInvoke.mockImplementation((cmd: string) => {
-    if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+    if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
       return Promise.resolve([]);
     }
     return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -98,7 +100,7 @@ describe("HostForm", () => {
       if (cmd === "hosts_create") {
         return Promise.resolve({ ...existing, id: 12, name: "gateway" });
       }
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -117,6 +119,7 @@ describe("HostForm", () => {
           address: "10.0.0.9",
           port: 22022,
           username: "root",
+          protocol: "ssh",
           tags: ["prod", "nginx"],
           encoding_override: null,
           notes: null,
@@ -126,11 +129,40 @@ describe("HostForm", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
+  it("协议选择（Phase 2 Task 5）：FTP 端口默认跟随（22→21），载荷带 protocol", async () => {
+    listResponses();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_create") {
+        return Promise.resolve({ ...existing, id: 13, name: "nas" });
+      }
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    const onClose = vi.fn();
+    render(<HostForm host={null} defaultGroupId={null} onClose={onClose} />);
+    fill("192.168.1.50", "22");
+    fireEvent.change(screen.getByTestId("form-protocol"), { target: { value: "ftp" } });
+    // 端口仍在默认值上 → 跟随新协议默认 21；用户自定义端口不动（此处未验，见注释语义）
+    await waitFor(() =>
+      expect((screen.getByTestId("form-port") as HTMLInputElement).value).toBe("21"),
+    );
+    fireEvent.change(screen.getByTestId("form-name"), { target: { value: "nas" } });
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("hosts_create", {
+        input: expect.objectContaining({ protocol: "ftp", port: 21 }),
+      }),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
   it("名称留空以地址兜底（vault 拒绝空名）", async () => {
     listResponses();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_create") return Promise.resolve(existing);
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -149,7 +181,7 @@ describe("HostForm", () => {
     listResponses();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_update") return Promise.resolve(existing);
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -170,7 +202,7 @@ describe("HostForm", () => {
   it("后端报错显示 saveFailed 且不关闭", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_create") return Promise.reject("port conflict");
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -183,5 +215,55 @@ describe("HostForm", () => {
       expect(screen.getByTestId("form-submit-error").textContent).toContain("Save failed"),
     );
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("HostForm 生产标记（Phase 2 Task 11，B11）", () => {
+  function prodResponses() {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_create") return Promise.resolve({ ...existing, id: 20 });
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+  }
+
+  it("默认不勾选；勾选后 hosts_create 载荷 is_production=true", async () => {
+    prodResponses();
+    render(<HostForm host={null} defaultGroupId={null} onClose={vi.fn()} />);
+    const toggle = screen.getByTestId("form-production") as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    fill("10.0.0.5", "22");
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("hosts_create", {
+        input: expect.objectContaining({ is_production: true }),
+      }),
+    );
+  });
+
+  it("编辑模式回显现值；取消勾选提交 is_production=false", async () => {
+    prodResponses();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_update") return Promise.resolve({ ...existing, is_production: false });
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    const prodHost: Host = { ...existing, is_production: true };
+    render(<HostForm host={prodHost} defaultGroupId={null} onClose={vi.fn()} />);
+    expect((screen.getByTestId("form-production") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByTestId("form-production")); // 取消标记
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("hosts_update", {
+        id: 11,
+        input: expect.objectContaining({ is_production: false }),
+      }),
+    );
   });
 });

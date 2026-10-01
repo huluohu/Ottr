@@ -18,6 +18,12 @@
 // keepalive 60s 在 Rust 传输层（russh keepalive_interval，不进数据流），
 // 前端只消费 `ottr://session-closed` 事件驱动重连。
 //
+// BL-501 防线（T0，2026-10-01）：①openTab/splitPane 的新会话 connect 经
+// deferConnect 投递宏任务——同步上下文里 invoke attach 的响应会被 WKWebView
+// IPC 静默丢失（实证见 deferConnect 注释）；②attach 看门狗 100s 兜底复位
+// （Rust 侧限时上限 ≈95s 之后），杜绝「永久正在连接」；③onData sink 每次
+// 现查（同步 connect 时 Terminal 尚未挂载，闭包捕获恒 undefined）。
+//
 // 凭据纪律：前端只持有 host_id；attach_host_session 在 Rust 侧解析/解密凭据，
 // 本 store 永不接触明文。会话恢复（open_host_ids localStorage）只还原标签、
 // 不自动连接（安全考虑：无人值守窗口重开不应悄悄发起 SSH 连接）。
@@ -368,6 +374,69 @@ function cancelRetryTimer(id: string): void {
   }
 }
 
+/** 新建会话的 connect 投递到宏任务（BL-501 根因修复，T0 实证）。
+ * openTab/splitPane 在同一事件处理器里同步 `set()`（zustand +
+ * useSyncExternalStore 触发同步重渲染）后**立刻** invoke attach——该上下文下
+ * WKWebView 的 invoke 响应（及 onData 通道帧）会**静默丢失**：Rust 命令正常
+ * 执行完毕（attach 完整落账、probe/inject 任务全跑完），前端 promise 永不
+ * settle → 永久停留「正在连接」。确定性复现：首连成功 → ✕ 关标签 → ⌘K 重连
+ * （3/3）；连「同运行首个 attach」与「同会话自动重连」均不受影响。投递到
+ * setTimeout(0) 脱开该同步上下文后恢复正常。防御纵深另有 connect() 的
+ * attach 看门狗（ATTACH_WATCHDOG_MS）。 */
+function deferConnect(id: string): void {
+  setTimeout(() => {
+    void useSessionStore.getState().connect(id);
+  }, 0);
+}
+
+// --- attach 看门狗（BL-501 防御纵深，T0） ------------------------------------
+// invoke 响应可能被 WKWebView IPC 层静默丢失（T0 实证：触发面见 deferConnect
+// 注释；Rust 命令侧一切正常完成）。响应一旦丢失，await 永不 settle，会话永久
+// 停留「正在连接」且无任何错误面。看门狗在超出 Rust 侧全部限时上限（TOFU 问询
+// 60s 含于 connect 限时 75s 内 + open_pty/request_shell 各 10s ≈ 95s）后仍无
+// settle 时，把会话复位为 disconnected（带 lastError），让用户可重试；若丢失的
+// 响应只是迟到，随后照常走守卫路径（gen 未变 → 迟到成功照常落 connected；用户
+// 已重试 → 孤儿分支 drop_session 清掉迟到会话），两条出路都收敛。
+const ATTACH_WATCHDOG_MS = 100_000;
+const attachWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
+
+function armAttachWatchdog(id: string, gen: number): void {
+  cancelAttachWatchdog(id);
+  attachWatchdogs.set(
+    id,
+    setTimeout(() => {
+      attachWatchdogs.delete(id);
+      const st = useSessionStore.getState();
+      const session = st.sessions.find((s) => s.id === id);
+      // 守卫：换代/关标签/已 settle（rustId 落地）均不触发；waiting_host_key 也
+      // 覆盖（问询 60s + 决议后握手全程都在 100s 上限内，正常路径到不了这里）。
+      if (
+        gen !== generations.get(id) ||
+        !session ||
+        session.rustId !== null ||
+        (session.status !== "connecting" && session.status !== "waiting_host_key")
+      ) {
+        return;
+      }
+      useSessionStore.setState((prev) => ({
+        sessions: patchSession(prev.sessions, id, {
+          status: "disconnected",
+          lastError: "attach: no response from backend (watchdog)",
+          nextRetryAt: null,
+        }),
+      }));
+    }, ATTACH_WATCHDOG_MS),
+  );
+}
+
+function cancelAttachWatchdog(id: string): void {
+  const t = attachWatchdogs.get(id);
+  if (t !== undefined) {
+    clearTimeout(t);
+    attachWatchdogs.delete(id);
+  }
+}
+
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   activeId: null,
@@ -418,7 +487,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         activePane: { ...st.activePane, [id]: id },
       };
     });
-    if (opts?.autoConnect !== false) void get().connect(id);
+    if (opts?.autoConnect !== false) deferConnect(id);
     return id;
   },
 
@@ -428,6 +497,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const doomed = st0.sessions.filter((s) => s.id === id || s.paneOf === id);
     for (const session of doomed) {
       cancelRetryTimer(session.id);
+      cancelAttachWatchdog(session.id);
       unregisterSink(session.id);
       if (session.rustId) {
         // 主动 drop：Rust 转发循环就地取消（session-closed=cancelled，事件端忽略）
@@ -475,6 +545,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   disconnect: (id) => {
     cancelRetryTimer(id);
+    cancelAttachWatchdog(id);
     // generation 守卫：作废在途 attach（迟到的成功不得覆盖手动态）
     const session = get().sessions.find((s) => s.id === id);
     if (session?.rustId) {
@@ -510,20 +581,22 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         nextRetryAt: null,
       }),
     }));
+    armAttachWatchdog(id, gen);
 
     // FTP/FTPS 会话（Phase 2 Task 5）：纯文件面——无 PTY、无 on_data 通道、
     // 无 host key TOFU（Rust 侧 ftp_attach 直接连，不产生 host-key-ask 事件）。
     const isFtp = session.protocol === "ftp" || session.protocol === "ftps";
     const chan = new Channel<unknown>();
-    const sink = sinks.get(id);
     chan.onmessage = (m) => {
       try {
-        sink?.write(toBytes(m));
+        // sink 每次 onmessage 现查（不闭包捕获）：openTab/splitPane 的同步 connect
+        // 早于 Terminal 挂载注册 sink——捕获时恒为 undefined 会让整段会话输出静默。
+        sinks.get(id)?.write(toBytes(m));
       } catch {
         // 非二进制帧忽略（Phase 0 探针路径不适用于正式会话）
       }
     };
-    const size = sink?.getSize() ?? { cols: 80, rows: 24 };
+    const size = sinks.get(id)?.getSize() ?? { cols: 80, rows: 24 };
 
     try {
       const rustId = isFtp
@@ -534,11 +607,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             rows: size.rows,
             onData: chan,
           });
+      cancelAttachWatchdog(id);
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) {
         // 孤儿收尾（评审 I-1，fix 1/5）：标签已关/手动断开/已换代期间 attach 才
         // 成功——rustId 若不落地就没人持有（closeTab 时 rustId 还是 null 无可
         // drop），Channel send 永不失败、转发循环不退、keepalive 也杀不掉健康
         // 连接上的孤儿（服务端 shell 同样滞留）。best-effort 显式丢弃。
+        // 状态不在此复位（BL-501 终审「复位 connecting」提议的语义裁定，T0）：
+        // gen 失配时状态必已属于更新的 generation——disconnect 自身复位
+        // disconnected、更新 connect 自置 connecting——此处再写状态会**覆盖更新
+        // generation 的在途状态**；`!exists` 支则会话已删、无可复位。两支均无
+        // 「停留 connecting」残留（状态机推演见 task-0 报告），静默返回即正确收尾。
         void invoke("drop_session", { id: rustId }).catch(() => {});
         return;
       }
@@ -564,6 +643,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       void invoke("set_session_encoding", { id: rustId, encoding: override }).catch(() => {});
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      cancelAttachWatchdog(id);
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) return;
       if (isHostKeyRejection(msg)) {
         // 主机密钥被拒（用户拒绝/超时/changed 默认拒）：终态，不自动重连
@@ -750,7 +830,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       activePane: { ...s0.activePane, [tabId]: newId },
     }));
     // 分屏即连同一主机（iTerm 惯例：新 pane 就是新会话）；连接失败走横幅，不连坐原 pane
-    void get().connect(newId);
+    deferConnect(newId);
   },
 
   closePane: (sessionId) => {
@@ -767,6 +847,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const next = closeLeaf(tree, sessionId);
     // 会话收尾（同 closeTab 的 pane 部分；定时器/注册表对已清项幂等）
     cancelRetryTimer(sessionId);
+    cancelAttachWatchdog(sessionId);
     unregisterSink(sessionId);
     if (session.rustId) {
       void invoke("drop_session", { id: session.rustId }).catch(() => {});

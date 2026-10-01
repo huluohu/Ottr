@@ -26,10 +26,13 @@
 //!     chunk 粒度；服务器拒绝 REST 时明确报错，绝不静默全量重传（本地前缀
 //!     字节会被覆盖、用户无从得知）。
 //!   - 上传 = **APPE**（append）：REST 对 STOR 不适用，APPE 只能接在**远端
-//!     实际文件尾**后——续传真值取 `SIZE(remote)`（服务器侧真值），journal
-//!     退为统计/计划面（与 SFTP「journal 即真值」的语义差异，源头是 FTP
-//!     缺少带 ack 的分块写原语）。远端比本次总长还长（同名更大文件的遗留）
-//!     时明确报错——FTP 无 truncate 原语，绝不静默截断。
+//!     实际文件尾**后——偏移真值取 `SIZE(remote)`（服务器侧真值）。**续传
+//!     闸门 = journal（load 成功且有记录）**（Fix round 1 I-1）：journal 缺席
+//!     = 全量重传（STOR 截断覆盖）——远端同长遗留不被静默跳过，恢复与
+//!     SFTP「done 即删 journal → 重传」的对等性（FTP 无分块 ack，journal
+//!     的角色是闸门 + 统计，偏移真值必须另取远端 SIZE）。journal 身份不符 =
+//!     显式报错（同 SFTP）。远端比本次总长还长（同名更大文件的遗留）且
+//!     journal 放行续传时明确报错——FTP 无 truncate 原语，绝不静默截断。
 //!   - **取消**：[`CancelToken`] 在 chunk 边界（1 MiB 记账粒度）检查，ABOR
 //!     中止数据流，journal 保留已完成边界——与 SFTP 取消语义对齐。
 //!
@@ -526,16 +529,24 @@ async fn upload_linear(
 ) -> Result<TransferStats> {
     let started = Instant::now();
     let total = std::fs::metadata(local)?.len();
+    // 续传闸门（Fix round 1 I-1）：**journal load 成功且有记录才允许续传**。
+    // 远端 SIZE 只是偏移真值、不是「该续传」的凭据——无 journal = 全量重传
+    // （STOR 截断覆盖），远端同长遗留不再被静默跳过（与 SFTP「done 即删
+    // journal → 重传」对等；FTP 的真值是远端 SIZE，删 journal 必须同样有效）。
+    // journal 身份不符（换文件/换大小/旧格式）= 显式报错，绝不按旧 offset 续传
+    // （与 SFTP 上传侧同一语义）。
+    let done = Journal::load(journal_path, "up", remote, total)?;
     let mut s = client.lock().await;
-    // 续传真值 = 远端实际大小（无文件 = 0；SIZE 失败按 0 处理即全量 STOR）。
+    // 偏移真值 = 远端实际大小（APPE 只能接在真实文件尾后；无文件 = 0）。
     let remote_size = s.size(remote).await.map(|n| n as u64).unwrap_or(0);
-    if remote_size > total {
+    let resuming = !done.is_empty();
+    let resume_from = if resuming { remote_size.min(total) } else { 0 };
+    if resuming && remote_size > total {
         return Err(plain_error(format!(
             "resume upload {remote}: remote size {remote_size} exceeds transfer total {total} \
              and FTP has no truncate primitive (stale longer tail from an earlier, bigger file)"
         )));
     }
-    let resume_from = remote_size.min(total);
     let chunks_total = total.div_ceil(CHUNK_SIZE) as usize;
     let resumed = ((resume_from / CHUNK_SIZE) as usize).min(chunks_total);
     if resumed > 0 {
@@ -544,13 +555,16 @@ async fn upload_linear(
         );
     }
 
-    // journal = 计划/统计面：身份头 + 前缀补记（真值在远端 SIZE，见模块注释）。
+    // journal 续写：身份头（open 对空文件补写）+ 前缀补记（偏移真值在远端
+    // SIZE；journal 的职责是「闸门 + 统计」，与下载侧「真值」角色刻意区分）。
     let journal = Journal::open(journal_path, "up", remote, total)?;
     for i in 0..resumed {
         let _ = journal.record(i as u64 * CHUNK_SIZE);
     }
 
     if resume_from >= total {
+        // 全命中——**仅在 journal 闸门放行后可达**（resuming = true），即「同
+        // 身份的上一次尝试确已把这些字节推到服务器」（崩溃在 finish 边缘）。
         return Ok(TransferStats {
             total_bytes: total,
             chunks_total,

@@ -969,3 +969,86 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
         next.id
     );
 }
+
+/// M-1 力度补强（Fix round 1）：构造**真实 v9 手工库**——credentials 已删过
+/// 最大 id 行（AUTOINCREMENT seq=2 > max(id)=1），schema_version=9 走真实
+/// 迁移通道 → 0010 重建必须把旧水位搬进新表：迁移后新行 id > 2（不复用已删
+/// 行 id=2）。全新库测试在「无水位搬移也绿」的弱断言面上不设防——删行历史
+/// 只有 seq > max(id) 的库能侦出。
+#[test]
+fn migration_0010_preserves_sequence_watermark_from_v9_db_with_delete_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("vault.db");
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            // v9 形状（0001 meta + 0002 hosts/credentials + 0003 username 已就位，
+            // schema_version=9 → open 时只跑 0010）
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO meta VALUES ('schema_version', '9');
+             CREATE TABLE credentials (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 kind TEXT NOT NULL CHECK (kind IN ('password', 'key', 'totp')),
+                 secret_enc      BLOB,
+                 key_pub         TEXT,
+                 passphrase_enc  BLOB,
+                 totp_secret_enc BLOB,
+                 created_at      INTEGER NOT NULL,
+                 updated_at      INTEGER NOT NULL
+             );
+             CREATE TABLE hosts (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 group_id INTEGER,
+                 tags TEXT NOT NULL DEFAULT '[]',
+                 address TEXT NOT NULL,
+                 port INTEGER NOT NULL DEFAULT 22,
+                 username TEXT,
+                 credential_id INTEGER REFERENCES credentials (id) ON DELETE SET NULL,
+                 jump_chain_id INTEGER,
+                 encoding_override TEXT,
+                 theme_override TEXT,
+                 monitor_enabled INTEGER NOT NULL DEFAULT 0,
+                 notes TEXT,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );
+             INSERT INTO credentials (id, kind, secret_enc, created_at, updated_at)
+                 VALUES (1, 'password', NULL, 1, 1), (2, 'key', NULL, 2, 2);
+             DELETE FROM credentials WHERE id = 2;",
+        )
+        .unwrap();
+        // 确认弱面前提：seq > max(id)（删行历史在 sqlite_sequence 留痕）
+        let seq: i64 = conn
+            .query_row(
+                "SELECT seq FROM sqlite_sequence WHERE name='credentials'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let max_id: i64 = conn
+            .query_row("SELECT COALESCE(MAX(id), 0) FROM credentials", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            (seq, max_id),
+            (2, 1),
+            "fixture must encode a delete history (seq > max id)"
+        );
+    }
+    let vault = open_vault(dir.path());
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
+
+    // 迁移后：新行不复用已删 id=2（水位搬移生效；若 0010 丢水位，AUTOINCREMENT
+    // 从 max(id)=1 起算 → 新行 id=2 = 复用 → AAD 旧密文注入面）
+    let next = Credentials::create(&vault, &password_input("post-migration")).unwrap();
+    assert!(
+        next.id > 2,
+        "0010 rebuild lost the AUTOINCREMENT watermark: new row id {} reuses deleted id 2",
+        next.id
+    );
+}

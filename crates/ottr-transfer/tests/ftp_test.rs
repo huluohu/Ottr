@@ -310,7 +310,7 @@ async fn download_resume_uses_rest_offset() {
         ottr_transfer::CHUNK_SIZE,
         2 * ottr_transfer::CHUNK_SIZE
     );
-    std::fs::write(&journal_b, seeded).expect("seed resume journal");
+    std::fs::write(journal_b, seeded).expect("seed resume journal");
 
     // 本地文件**保留**（journal「前 3 chunk 已完成」的语义前提 = 本地确有
     // 这些字节——与 sftp_test 同一不变量；删文件会让前缀成洞）。
@@ -340,8 +340,10 @@ async fn download_resume_uses_rest_offset() {
     client.quit().await;
 }
 
-/// 上传续传（APPE）：远端已有前 2MiB（真实部分上传），重传同目标 = 从
-/// 远端实际大小追加补齐，sha256 一致（续传真值 = 远端 SIZE 的语义验证）。
+/// 上传续传（APPE）：远端已有前 2MiB（= 一次 5MiB 传输崩溃在 chunk 2 边缘
+/// 的真实形态：同身份 journal 带 2 条记录 + 远端 SIZE=2MiB），重传同目标 =
+/// journal 闸门放行、从远端实际大小追加补齐，sha256 一致（偏移真值 = 远端
+/// SIZE；journal 是闸门——Fix round 1 I-1 后的语义）。
 #[tokio::test]
 async fn upload_resume_appends_from_remote_size() {
     fixture_or_panic().await;
@@ -351,12 +353,18 @@ async fn upload_resume_appends_from_remote_size() {
     let local_a = "/tmp/ottr-t5-upres-a.local";
     let local_part = "/tmp/ottr-t5-upres-part.local";
     let remote_a = "/ottr-t5-upres-a.bin";
+    // 续传 journal 手工预置（sftp_test 下载续传同款手法）：v1 头部绑定
+    // （up + 远端路径 + 5MiB 总长）+ 前 2 chunk offset——模拟崩溃残留
     let journal_a = "/tmp/ottr-t5-upres-a.journal";
     for f in [local_a, local_part, journal_a] {
         let _ = std::fs::remove_file(f);
     }
     make_local_file(local_a, SIZE);
-    // 真实部分上传：源文件前 2MiB 作为独立文件 STOR 上去（= 2 个完整 chunk）
+    // 真实部分上传：源文件前 2MiB 作为独立文件 STOR 上去（= 2 个完整 chunk）。
+    // 用独立 journal：部分上传自己的身份（up + 2MiB）与续传身份（5MiB）不同，
+    // 闸门语义下本来就该各归各（混用会被身份校验拒绝——正确行为）。
+    let journal_part = "/tmp/ottr-t5-upres-part.journal";
+    let _ = std::fs::remove_file(journal_part);
     let part_bytes = std::fs::read(local_a).expect("read source");
     std::fs::write(
         local_part,
@@ -369,7 +377,7 @@ async fn upload_resume_appends_from_remote_size() {
             Path::new(local_part),
             remote_a,
             4,
-            Path::new(journal_a),
+            Path::new(journal_part),
             &CancelToken::new(),
             None,
         )
@@ -379,6 +387,15 @@ async fn upload_resume_appends_from_remote_size() {
         client.size(remote_a).await.expect("part size"),
         2 * ottr_transfer::CHUNK_SIZE
     );
+
+    // 崩溃残留 journal：身份 =（up, remote_a, 5MiB），记录 = 前 2 chunk
+    let seeded = format!(
+        "{}0\n{}\n{}\n",
+        ottr_transfer::journal_header(remote_a, SIZE, "up"),
+        ottr_transfer::CHUNK_SIZE,
+        ottr_transfer::CHUNK_SIZE
+    );
+    std::fs::write(journal_a, seeded).expect("seed resume journal");
 
     let stats = client
         .upload(
@@ -420,7 +437,150 @@ async fn upload_resume_appends_from_remote_size() {
     );
 
     let _ = client.remove_file(remote_a).await;
-    for f in [local_a, local_part, local_b, journal_a] {
+    for f in [local_a, local_part, local_b, journal_a, journal_part] {
+        let _ = std::fs::remove_file(f);
+    }
+    client.quit().await;
+}
+
+/// Fix round 1 I-1 负向用例：**远端同长遗留 + 无 journal = 全量重传**。
+/// 上传完成（app「done 即删 journal」语义）→ 本地同长改内容 → 重传同路径：
+/// 修复前 remote_size == total 早退 Ok（静默 no-op、远端留旧内容）；修复后
+/// journal 闸门挡住——断言实际重新传输（resumed=0）且远端内容被替换。
+#[tokio::test]
+async fn upload_same_length_stale_without_journal_retransfers() {
+    fixture_or_panic().await;
+    let client = FtpClient::connect(HOST, PORT_PLAIN, USER, PASSWORD)
+        .await
+        .expect("connect");
+    let local_a = "/tmp/ottr-t5-stale-a.local";
+    let remote_a = "/ottr-t5-stale-a.bin";
+    let journal_a = "/tmp/ottr-t5-stale-a.journal";
+    for f in [local_a, journal_a] {
+        let _ = std::fs::remove_file(f);
+    }
+    // 内容 A：确定性伪随机（同长改内容要可控）
+    let content_a: Vec<u8> = (0..SIZE as usize).map(|i| (i % 251) as u8).collect();
+    std::fs::write(local_a, &content_a).expect("write content A");
+    let _ = client.remove_file(remote_a).await;
+
+    // 第一次上传成功（journal_a 完整）→ 模拟 app「done 即删」
+    client
+        .upload(
+            Path::new(local_a),
+            remote_a,
+            4,
+            Path::new(journal_a),
+            &CancelToken::new(),
+            None,
+        )
+        .await
+        .expect("first upload");
+    assert!(client.size(remote_a).await.expect("size") == SIZE);
+    std::fs::remove_file(journal_a).expect("app done policy deletes journal");
+
+    // 本地同长改内容（B），重传同路径、journal 缺席
+    let content_b: Vec<u8> = (0..SIZE as usize).map(|i| (i % 241) as u8).collect();
+    assert_eq!(
+        content_b.len(),
+        content_a.len(),
+        "same length is the whole point"
+    );
+    std::fs::write(local_a, &content_b).expect("write content B");
+
+    let stats = client
+        .upload(
+            Path::new(local_a),
+            remote_a,
+            4,
+            Path::new(journal_a),
+            &CancelToken::new(),
+            None,
+        )
+        .await
+        .expect("re-upload must succeed by FULL retransfer");
+    assert_eq!(
+        stats.chunks_resumed, 0,
+        "no journal = no resume gate: equal-length stale remote must NOT be skipped"
+    );
+    assert_eq!(stats.chunks_total, 5, "all 5 chunks must actually transfer");
+
+    // 远端内容确被替换（下载取证）
+    let local_b = "/tmp/ottr-t5-stale-verify.local";
+    let verify_journal = "/tmp/ottr-t5-stale-v.journal";
+    let _ = std::fs::remove_file(local_b);
+    let _ = std::fs::remove_file(verify_journal);
+    client
+        .download(
+            remote_a,
+            Path::new(local_b),
+            4,
+            Path::new(verify_journal),
+            &CancelToken::new(),
+            None,
+        )
+        .await
+        .expect("verify download");
+    assert_eq!(
+        sha256(local_b),
+        sha256(local_a),
+        "remote must hold the NEW same-length content after journal-gated retransfer"
+    );
+
+    let _ = client.remove_file(remote_a).await;
+    for f in [local_a, local_b, journal_a, verify_journal] {
+        let _ = std::fs::remove_file(f);
+    }
+    client.quit().await;
+}
+
+/// 上传 journal 身份不符 = 显式拒绝（闸门语义的另一半：绝不按旧 offset 续传，
+/// 与 sftp_test 的 journal_identity_mismatch 同款钉子，落在上传侧）。
+#[tokio::test]
+async fn upload_journal_identity_mismatch_is_rejected() {
+    fixture_or_panic().await;
+    let client = FtpClient::connect(HOST, PORT_PLAIN, USER, PASSWORD)
+        .await
+        .expect("connect");
+    let local_a = "/tmp/ottr-t5-upid-a.local";
+    let remote_a = "/ottr-t5-upid-a.bin";
+    let journal_a = "/tmp/ottr-t5-upid-a.journal";
+    for f in [local_a, journal_a] {
+        let _ = std::fs::remove_file(f);
+    }
+    make_local_file(local_a, SIZE);
+    let _ = client.remove_file(remote_a).await;
+
+    // journal 声称这次传输是 3MiB（实际本地 5MiB）→ 身份不符，必须拒绝
+    let expected = format!(
+        "{}0\n",
+        ottr_transfer::journal_header(remote_a, 3 * 1024 * 1024, "up")
+    );
+    std::fs::write(journal_a, expected.clone()).expect("seed mismatched journal");
+    let err = client
+        .upload(
+            Path::new(local_a),
+            remote_a,
+            4,
+            Path::new(journal_a),
+            &CancelToken::new(),
+            None,
+        )
+        .await
+        .expect_err("mismatched up journal must be rejected");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("journal") && msg.contains("refusing to resume"),
+        "error must point at the journal, got: {msg}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&journal_a).expect("journal intact"),
+        expected,
+        "journal must be left untouched on rejection"
+    );
+
+    let _ = client.remove_file(remote_a).await;
+    for f in [local_a, journal_a] {
         let _ = std::fs::remove_file(f);
     }
     client.quit().await;
@@ -484,8 +644,7 @@ async fn cancel_at_chunk_boundary_then_resume_completes() {
             Some(hook),
         )
         .await
-        .err()
-        .expect("cancel: expected Err");
+        .expect_err("cancel: expected Err");
     assert!(
         matches!(err, ottr_transfer::Error::Cancelled),
         "must be Error::Cancelled, got: {err}"

@@ -1,7 +1,13 @@
 //! spike 命令域（Task 0 拆分，纯搬家）：Phase 0 spike 测量/取数命令面
 //! （latency 落盘 / log / keyring 三件 / notify / report_file / channel 探针）。
 //! 前端 UI 分支已随多标签重构删除（App.tsx 注释在位）——本模块仅 scripts/验收
-//! 驱动面使用；生产闸门（#[cfg(debug_assertions)]）由 Task 0 Step 4 单独提交。
+//! 驱动面使用。
+//!
+//! **生产闸门（Task 0 Step 4，终审C-2/BL-002）**：整个模块 `#[cfg(debug_assertions)]`
+//! （见 mod.rs 声明处）——release 产物不编译本模块、lib.rs 注册表同步 cfg 门，
+//! webview `invoke("spike_*")` 不可达。`spike_report_file` 是任意路径写原语
+//! （`/tmp/ottr-` 前缀白名单 + 拒 `..` 只是纵深防御，47be0b5）；`spike_keyring_*`
+//! 已隔离 `ottr.spike` service 不涉主钥，但同为 spike 面，一并闸门。
 use base64::Engine as _;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::State;
@@ -143,4 +149,34 @@ pub(crate) async fn spike_probe_channel(
         ))
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// report_file 白名单（终审C-2 同步测试）：合法 spike 报告路径放行、
+    /// 目录逃逸（`..`）与前后缀绕过一律拒绝——写原语的唯一闸门必须钉死。
+    #[test]
+    fn spike_report_file_whitelist_rejects_escape_and_non_tmp() {
+        // 拒绝面：目录逃逸 / 前缀绕过（/tmp/ottr-../../x 可同时满足前后缀）/ 非白名单目录
+        for bad in [
+            "/tmp/ottr-../../etc/passwd",
+            "/tmp/ottr-x/../../../home/u/.zshrc",
+            "/etc/ottr-report.json",
+            "/tmp/report.json",
+            "/tmp/ottr-report.txt",
+            "",
+        ] {
+            let r = spike_report_file(bad.into(), "{}".into());
+            assert!(r.is_err(), "{bad:?} must be rejected");
+            assert!(r.unwrap_err().starts_with("report path not allowed"));
+        }
+        // 放行面：白名单目录内 .json（字面 /tmp 前缀——白名单即 spike 报告约定目录；
+        // 落盘真实成功后清理）
+        let path = format!("/tmp/ottr-t0-gate-test-{}.json", std::process::id());
+        let r = spike_report_file(path.clone(), r#"{"ok":true}"#.into());
+        assert!(r.is_ok(), "whitelisted path must pass: {:?}", r.err());
+        let _ = std::fs::remove_file(&path);
+    }
 }

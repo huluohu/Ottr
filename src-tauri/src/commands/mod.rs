@@ -8,6 +8,11 @@
 //! * Global Constraint「lib.rs 只减不增」：Phase 2 新命令一律进本目录对应域。
 pub mod encoding;
 pub mod session;
+// spike 命令面生产闸门（Task 0 Step 4，终审C-2/BL-002）：Phase 0 测量/取数命令
+// 不进 release 产物——`spike_report_file` 是 webview 可达的任意路径写原语（路径
+// 白名单只是纵深防御）。debug 构建保留供 scripts/验收驱动面；release 构建整个
+// 模块不存在 → 命令未注册、webview invoke 不可达（lib.rs 注册表同步 cfg 门）。
+#[cfg(debug_assertions)]
 pub mod spike;
 pub mod state;
 pub mod transfer;

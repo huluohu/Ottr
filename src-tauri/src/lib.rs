@@ -176,13 +176,29 @@ pub fn run() {
             commands::transfer::sftp_download,
             commands::transfer::sftp_upload,
             commands::transfer::transfer_cancel,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_report_latency,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_probe_channel,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_log,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_keyring_set,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_keyring_get,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_keyring_del,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_notify,
+            // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
+            #[cfg(debug_assertions)]
             commands::spike::spike_report_file,
             // T11（A7）：安全底座——锁定状态机 / 主密码升级 / settings / 剪贴板
             vault::vault_security_status,

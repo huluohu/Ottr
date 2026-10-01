@@ -15,9 +15,9 @@ pub mod store;
 
 pub use crypto::{aad, Cipher};
 pub use entities::{
-    Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials, Host, HostGroup,
-    HostGroups, HostInput, Hosts, KnownHost, KnownHostState, KnownHosts, SecretField, Snippet,
-    SnippetInput, Snippets, host_endpoint_key,
+    host_endpoint_key, Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials,
+    Host, HostGroup, HostGroups, HostInput, Hosts, KnownHost, KnownHostState, KnownHosts,
+    SecretField, Snippet, SnippetInput, Snippets,
 };
 pub use history::{History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT};
 pub use master_key::MasterKey;
@@ -41,7 +41,10 @@ pub enum VaultError {
     /// KDF（Argon2id）派生失败。
     Kdf(String),
     /// 库的 schema 版本高于本程序支持——禁止降级打开以防静默数据损坏。
-    SchemaTooNew { db: u32, app: u32 },
+    SchemaTooNew {
+        db: u32,
+        app: u32,
+    },
     /// meta.schema_version 存在但不是合法版本号——库可能被外部改写。
     /// 必须显式报错而非按 0 处理（按 0 会重跑迁移、静默改写库、掩盖损坏，T3 评审裁定）。
     CorruptedSchemaVersion(String),
@@ -85,7 +88,10 @@ impl fmt::Display for VaultError {
             ),
             Self::InvalidInput(msg) => write!(f, "invalid input: {msg}"),
             Self::NotFound(msg) => write!(f, "not found: {msg}"),
-            Self::Locked => write!(f, "vault is locked; unlock with the master password to continue"),
+            Self::Locked => write!(
+                f,
+                "vault is locked; unlock with the master password to continue"
+            ),
             Self::BadMasterPassword => write!(f, "master password is incorrect"),
             Self::MasterKeyUnreachable => write!(
                 f,

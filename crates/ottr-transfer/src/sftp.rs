@@ -181,7 +181,6 @@ pub fn journal_file_name(mode: &str, scope: &str, identity_path: &str, total: u6
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
 }
 
-
 /// 断点续传 journal。语义见模块注释的不变量。
 struct Journal {
     file: Mutex<std::fs::File>,
@@ -744,10 +743,16 @@ mod tests {
 
         let up_a = journal_file_name("up", "/Users/me/a.bin", "/srv/x.bin", 1000);
         let up_b = journal_file_name("up", "/Users/me/b.bin", "/srv/x.bin", 1000);
-        assert_ne!(up_a, up_b, "cross-source same remote must NOT share a journal");
+        assert_ne!(
+            up_a, up_b,
+            "cross-source same remote must NOT share a journal"
+        );
 
         let a2 = journal_file_name("down", "10.0.0.1:22", "/tmp/x.bin", 1000);
-        assert_eq!(a1, a2, "same identity must derive the same name (resume hits)");
+        assert_eq!(
+            a1, a2,
+            "same identity must derive the same name (resume hits)"
+        );
         assert_ne!(
             journal_file_name("down", "10.0.0.1:22", "/tmp/x.bin", 1000),
             journal_file_name("up", "10.0.0.1:22", "/tmp/x.bin", 1000),

@@ -14,8 +14,8 @@
 
 use std::path::PathBuf;
 
-use ottr_ssh::keygen::{KeyAlgorithm, generate, inspect, parse_public_key};
 use ottr_ssh::KeyError;
+use ottr_ssh::keygen::{KeyAlgorithm, generate, inspect, parse_public_key};
 
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
@@ -29,9 +29,14 @@ fn assert_fingerprint_shape(fp: &str) {
     let body = fp
         .strip_prefix("SHA256:")
         .unwrap_or_else(|| panic!("fingerprint must start with SHA256:, got {fp}"));
-    assert_eq!(body.len(), 43, "sha256 fingerprint body must be 43 chars: {fp}");
+    assert_eq!(
+        body.len(),
+        43,
+        "sha256 fingerprint body must be 43 chars: {fp}"
+    );
     assert!(
-        body.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/'),
+        body.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/'),
         "fingerprint body must be standard base64: {fp}"
     );
 }
@@ -90,7 +95,10 @@ fn keygen_generated_ed25519_roundtrips_through_russh_load() {
     assert_eq!(key.algorithm, KeyAlgorithm::Ed25519);
     assert!(key.private_openssh.contains("BEGIN OPENSSH PRIVATE KEY"));
     assert!(key.public_openssh.starts_with("ssh-ed25519 "));
-    assert!(key.public_openssh.ends_with(" roundtrip-test"), "comment preserved");
+    assert!(
+        key.public_openssh.ends_with(" roundtrip-test"),
+        "comment preserved"
+    );
     assert_fingerprint_shape(&key.fingerprint);
 
     // 私钥 PEM 再经 russh decode_secret_key 加载：指纹一致 = 往返成立

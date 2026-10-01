@@ -265,7 +265,12 @@ fn rowids_never_reused_after_delete() {
     let c1 = Credentials::create(&vault, &password_input("pw")).unwrap();
     Credentials::delete(&vault, c1.id).unwrap();
     let c2 = Credentials::create(&vault, &password_input("pw2")).unwrap();
-    assert!(c2.id > c1.id, "credentials rowid 复用：{} → {}", c1.id, c2.id);
+    assert!(
+        c2.id > c1.id,
+        "credentials rowid 复用：{} → {}",
+        c1.id,
+        c2.id
+    );
 
     let h1 = Hosts::create(&vault, host_input("a", "")).unwrap();
     Hosts::delete(&vault, h1.id).unwrap();
@@ -275,17 +280,34 @@ fn rowids_never_reused_after_delete() {
     let g1 = HostGroups::create(&vault, "g1", None, None).unwrap();
     HostGroups::delete(&vault, g1.id).unwrap();
     let g2 = HostGroups::create(&vault, "g2", None, None).unwrap();
-    assert!(g2.id > g1.id, "host_groups rowid 复用：{} → {}", g1.id, g2.id);
+    assert!(
+        g2.id > g1.id,
+        "host_groups rowid 复用：{} → {}",
+        g1.id,
+        g2.id
+    );
 
     let s1 = Snippets::create(
         &vault,
-        &SnippetInput { name: "s1".into(), body: "x".into(), variables: vec![], tags: vec![], host_scope: None },
+        &SnippetInput {
+            name: "s1".into(),
+            body: "x".into(),
+            variables: vec![],
+            tags: vec![],
+            host_scope: None,
+        },
     )
     .unwrap();
     Snippets::delete(&vault, s1.id).unwrap();
     let s2 = Snippets::create(
         &vault,
-        &SnippetInput { name: "s2".into(), body: "x".into(), variables: vec![], tags: vec![], host_scope: None },
+        &SnippetInput {
+            name: "s2".into(),
+            body: "x".into(),
+            variables: vec![],
+            tags: vec![],
+            host_scope: None,
+        },
     )
     .unwrap();
     assert!(s2.id > s1.id, "snippets rowid 复用：{} → {}", s1.id, s2.id);
@@ -647,10 +669,16 @@ fn same_host_key_rotation_is_changed_not_new_tofu() {
 
     // 服务器换钥（或 MITM）：策略层 get(hk) 命中记录、比对 fingerprint 不一致
     // → mark_changed。换钥后同一端点必须还是**同一条记录**。
-    let known = KnownHosts::get(&vault, hk).unwrap().expect("换钥后记录必须还在");
+    let known = KnownHosts::get(&vault, hk)
+        .unwrap()
+        .expect("换钥后记录必须还在");
     assert_ne!(known.fingerprint, fp_b, "前提：出示的是新指纹");
     let flagged = KnownHosts::mark_changed(&vault, hk, fp_b).unwrap();
-    assert_eq!(flagged.state, KnownHostState::Changed, "同 host 换钥 → changed");
+    assert_eq!(
+        flagged.state,
+        KnownHostState::Changed,
+        "同 host 换钥 → changed"
+    );
     assert!(!flagged.verified);
     assert_eq!(flagged.fingerprint, fp_a, "旧信任锚保留");
 
@@ -659,7 +687,11 @@ fn same_host_key_rotation_is_changed_not_new_tofu() {
     assert_eq!(accepted.state, KnownHostState::Ok);
     assert_eq!(accepted.fingerprint, fp_b);
     assert_eq!(accepted.changed_at, flagged.changed_at);
-    assert_eq!(KnownHosts::list(&vault).unwrap().len(), 1, "换钥不产生第二行");
+    assert_eq!(
+        KnownHosts::list(&vault).unwrap().len(),
+        1,
+        "换钥不产生第二行"
+    );
 }
 
 /// 不同 host 同指纹共存（义务①验收项）：信任按端点记账，指纹相同（如同一
@@ -678,7 +710,10 @@ fn different_hosts_same_fingerprint_coexist() {
 
     // 各自独立流转状态：verify A 不影响 B。
     KnownHosts::verify(&vault, &a.host_key, fp).unwrap();
-    assert_eq!(KnownHosts::get(&vault, &b.host_key).unwrap().unwrap().state, KnownHostState::Pending);
+    assert_eq!(
+        KnownHosts::get(&vault, &b.host_key).unwrap().unwrap().state,
+        KnownHostState::Pending
+    );
     let rows = KnownHosts::list(&vault).unwrap();
     assert_eq!(rows.len(), 2, "不同 host 同指纹必须共存为两行");
 }
@@ -689,7 +724,10 @@ fn different_hosts_same_fingerprint_coexist() {
 fn host_endpoint_key_formats() {
     use ottr_vault::host_endpoint_key;
     assert_eq!(host_endpoint_key("10.0.0.1", 22), "10.0.0.1:22");
-    assert_eq!(host_endpoint_key("web.example.com", 2222), "web.example.com:2222");
+    assert_eq!(
+        host_endpoint_key("web.example.com", 2222),
+        "web.example.com:2222"
+    );
     assert_eq!(host_endpoint_key("fe80::1", 22), "[fe80::1]:22");
 }
 

@@ -103,10 +103,7 @@ fn gbk_safe_cut(bytes: &[u8], gb18030: bool) -> usize {
     let mut i = 0;
     while i < n {
         if (0x81..=0xFE).contains(&bytes[i]) {
-            let seq_len = if gb18030
-                && i + 1 < n
-                && (0x30..=0x39).contains(&bytes[i + 1])
-            {
+            let seq_len = if gb18030 && i + 1 < n && (0x30..=0x39).contains(&bytes[i + 1]) {
                 4
             } else {
                 2
@@ -194,7 +191,10 @@ impl StreamDecoder {
                     Err(e) if e.error_len().is_none() => e.valid_up_to(), // 块尾不完整 → 持有
                     Err(_) => bytes.len(), // 中段坏序列 → 整段结算（损失由 lossy 兜底）
                 };
-                (String::from_utf8_lossy(&bytes[..cut]).into_owned(), &bytes[cut..])
+                (
+                    String::from_utf8_lossy(&bytes[..cut]).into_owned(),
+                    &bytes[cut..],
+                )
             }
             Encoding::Gbk | Encoding::Gb18030 => {
                 let cut = gbk_safe_cut(bytes, self.encoding == Encoding::Gb18030);
@@ -202,7 +202,13 @@ impl StreamDecoder {
                     Encoding::Gb18030 => encoding_rs::GB18030,
                     _ => encoding_rs::GBK,
                 };
-                (decoder.decode_with_bom_removal(&bytes[..cut]).0.into_owned(), &bytes[cut..])
+                (
+                    decoder
+                        .decode_with_bom_removal(&bytes[..cut])
+                        .0
+                        .into_owned(),
+                    &bytes[cut..],
+                )
             }
         }
     }
@@ -493,7 +499,11 @@ mod tests {
     fn stream_gb18030_four_byte_torn_across_chunks_reassembles() {
         let (bytes, _, had_errors) = encoding_rs::GB18030.encode("\u{1F600}中");
         assert!(!had_errors, "sample must be encodable");
-        assert_eq!(bytes.len(), 6, "expect 4-byte sequence + GBK 中(2B): {bytes:02X?}");
+        assert_eq!(
+            bytes.len(),
+            6,
+            "expect 4-byte sequence + GBK 中(2B): {bytes:02X?}"
+        );
         for chunk in 1..8 {
             let mut d = StreamDecoder::new(Encoding::Gb18030);
             let mut out = String::new();
@@ -501,7 +511,10 @@ mod tests {
                 out.push_str(&d.decode_chunk(part));
             }
             out.push_str(&d.finish());
-            assert_eq!(out, "\u{1F600}中", "chunk size {chunk} must reassemble exactly");
+            assert_eq!(
+                out, "\u{1F600}中",
+                "chunk size {chunk} must reassemble exactly"
+            );
             assert_eq!(d.residual_len(), 0, "chunk size {chunk}: finish must drain");
         }
     }
@@ -515,7 +528,11 @@ mod tests {
         assert_eq!(bytes.len(), 4);
         for cut in 1..4 {
             let mut d = StreamDecoder::new(Encoding::Gb18030);
-            assert_eq!(d.decode_chunk(&bytes[..cut]), "", "cut {cut}: held, no replacement");
+            assert_eq!(
+                d.decode_chunk(&bytes[..cut]),
+                "",
+                "cut {cut}: held, no replacement"
+            );
             assert_eq!(d.residual_len(), cut, "cut {cut}: prefix held whole");
             assert_eq!(d.decode_chunk(&bytes[cut..]), "\u{1F600}");
         }

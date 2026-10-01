@@ -6,9 +6,7 @@
 //! 守卫；锁定态可读写不另测——settings 同语义）。
 
 use ottr_vault::master_key::InMemoryStorage;
-use ottr_vault::{
-    HostInput, Hosts, NotificationInput, Notifications, Vault, VaultError,
-};
+use ottr_vault::{HostInput, Hosts, NotificationInput, Notifications, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
     Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")

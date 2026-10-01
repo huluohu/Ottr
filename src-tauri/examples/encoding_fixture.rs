@@ -139,7 +139,10 @@ fn extract_payload(window: &str) -> Result<String, String> {
             escaped(window)
         ));
     }
-    let (prev, last) = (positions[positions.len() - 2], positions[positions.len() - 1]);
+    let (prev, last) = (
+        positions[positions.len() - 2],
+        positions[positions.len() - 1],
+    );
     Ok(window[prev + MARKER.len()..last]
         .trim_matches(|c| c == '\r' || c == '\n')
         .to_string())
@@ -148,9 +151,15 @@ fn extract_payload(window: &str) -> Result<String, String> {
 async fn run() -> Result<String, String> {
     let (policy, pinned_fp) = pinned_host_key_policy();
     eprintln!("[fixture] connect spike@127.0.0.1:2222 (pinned {pinned_fp})");
-    let session = connect(HOST, PORT, USER, AuthMethod::Password(PASSWORD.into()), policy)
-        .await
-        .map_err(|e| format!("connect: {e}"))?;
+    let session = connect(
+        HOST,
+        PORT,
+        USER,
+        AuthMethod::Password(PASSWORD.into()),
+        policy,
+    )
+    .await
+    .map_err(|e| format!("connect: {e}"))?;
     let mut channel = session
         .open_pty(120, 40)
         .await
@@ -185,7 +194,16 @@ async fn run() -> Result<String, String> {
     );
     let forward = tauri::async_runtime::spawn(async move {
         let text_tail = TextTail::new();
-        forward_pty_loop(&mut channel, &on_data, &counters, &decoder, &text_tail, "fixture", &cancel_handle).await
+        forward_pty_loop(
+            &mut channel,
+            &on_data,
+            &counters,
+            &decoder,
+            &text_tail,
+            "fixture",
+            &cancel_handle,
+        )
+        .await
     });
     let stage = Stage { decoded, writer };
 
@@ -210,7 +228,10 @@ async fn run() -> Result<String, String> {
 
     // --- 段 2：切 GBK（= set_session_encoding 的 Decoder 侧动作）→ 原文 -------
     let flushed = decoder_handle.lock().unwrap().set_encoding(Encoding::Gbk);
-    println!("[switch->GBK] residual-settled text: {:?}", escaped(&flushed));
+    println!(
+        "[switch->GBK] residual-settled text: {:?}",
+        escaped(&flushed)
+    );
     let win2 = stage
         .run_line(&format!("echo {MARKER}; gbk-echo; echo {MARKER}"))
         .await?;
@@ -222,7 +243,10 @@ async fn run() -> Result<String, String> {
 
     // --- 段 3：切回 UTF-8 → 与段 1 一致的乱码 --------------------------------
     let flushed = decoder_handle.lock().unwrap().set_encoding(Encoding::Utf8);
-    println!("[switch->UTF-8] residual-settled text: {:?}", escaped(&flushed));
+    println!(
+        "[switch->UTF-8] residual-settled text: {:?}",
+        escaped(&flushed)
+    );
     let win3 = stage
         .run_line(&format!("echo {MARKER}; gbk-echo; echo {MARKER}"))
         .await?;

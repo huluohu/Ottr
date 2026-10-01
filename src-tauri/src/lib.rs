@@ -701,7 +701,12 @@ async fn open_and_register(
         ottr_ssh::connect_with_keepalive(address, port, username, auth, policy, keepalive),
     )
     .await
-    .map_err(|_| format!("connect timed out after {}s ({err_ctx})", connect_timeout.as_secs()))?
+    .map_err(|_| {
+        format!(
+            "connect timed out after {}s ({err_ctx})",
+            connect_timeout.as_secs()
+        )
+    })?
     .map_err(|e| format!("connect failed ({err_ctx}): {e}"))?;
     eprintln!("[attach] connected {username}@{address}:{port}");
 
@@ -785,11 +790,8 @@ async fn open_and_register(
     if let Some(probe_session) = probe_session {
         let probe_id = id.clone();
         tauri::async_runtime::spawn(async move {
-            let probe = tokio::time::timeout(
-                LANG_PROBE_TIMEOUT,
-                probe_session.exec(LANG_PROBE_CMD),
-            )
-            .await;
+            let probe =
+                tokio::time::timeout(LANG_PROBE_TIMEOUT, probe_session.exec(LANG_PROBE_CMD)).await;
             match probe {
                 Ok(Ok(out)) => {
                     let locale = String::from_utf8_lossy(&out.stdout);
@@ -824,8 +826,8 @@ async fn open_and_register(
     if let (Some(inj_session), true) = (inject_session, shell_integration) {
         let inject_id = id.clone();
         tauri::async_runtime::spawn(async move {
-            let outcome = inject_shell_integration(&inject_writer, &inj_session, &inject_tail, true)
-                .await;
+            let outcome =
+                inject_shell_integration(&inject_writer, &inj_session, &inject_tail, true).await;
             eprintln!("[attach:{inject_id}] shell integration: {outcome:?}");
         });
     }
@@ -902,8 +904,7 @@ fn quit_app(app: AppHandle) -> Result<(), String> {
 /// 收尾（重连状态机对 cancelled 不反应，标签回 disconnected），**不另起跨窗口
 /// 事件面**：会话表真源在 Rust 侧，从源头断开对隐藏窗口/多窗口都可靠。
 pub(crate) fn disconnect_all_inner(sessions: &SessionMap) -> usize {
-    let drained: Vec<(String, SessionEntry)> =
-        sessions.lock().unwrap().drain().collect();
+    let drained: Vec<(String, SessionEntry)> = sessions.lock().unwrap().drain().collect();
     let n = drained.len();
     for (_, entry) in &drained {
         entry.cancel.notify_one();
@@ -1050,7 +1051,11 @@ async fn sftp_for(state: &AppState, id: &str) -> Result<Arc<ottr_transfer::SftpC
     if let Some(c) = cached {
         return Ok(c);
     }
-    let client = Arc::new(ottr_transfer::SftpClient::open(&session).await.map_err(|e| e.to_string())?);
+    let client = Arc::new(
+        ottr_transfer::SftpClient::open(&session)
+            .await
+            .map_err(|e| e.to_string())?,
+    );
     // 竞态兜底：两路并发懒开时后到者采用先到者的实例（同会话单客户端）。
     let sessions = state.sessions.lock().unwrap();
     let slot = sessions
@@ -1303,10 +1308,7 @@ fn sweep_stale_journals(dir: &Path) {
 
 /// 进度 hook：100ms 时间窗节流（首帧/末帧必发）转 `ottr://transfer-progress`。
 /// chunk 粒度回调在本地链路可达每秒数百次，直接 emit 会把 IPC 打满。
-fn progress_emitter(
-    app: AppHandle,
-    transfer_id: String,
-) -> ottr_transfer::ProgressHook {
+fn progress_emitter(app: AppHandle, transfer_id: String) -> ottr_transfer::ProgressHook {
     let last = Arc::new(Mutex::new(None::<(Instant, u64)>));
     Arc::new(move |p: ottr_transfer::TransferProgress| {
         let mut guard = last.lock().unwrap();
@@ -1452,11 +1454,22 @@ async fn sftp_download(
     };
     use ottr_transfer::FileTransfer;
     let hook = progress_emitter(app.clone(), transfer_id.clone());
-    let (remote_fut, local_fut, cancel_fut, journal_fut) =
-        (remote.clone(), local.clone(), cancel.clone(), journal.clone());
+    let (remote_fut, local_fut, cancel_fut, journal_fut) = (
+        remote.clone(),
+        local.clone(),
+        cancel.clone(),
+        journal.clone(),
+    );
     let fut = async move {
         session
-            .download_parallel(&remote_fut, &local_fut, SFTP_CHUNKS, &journal_fut, &cancel_fut, Some(hook))
+            .download_parallel(
+                &remote_fut,
+                &local_fut,
+                SFTP_CHUNKS,
+                &journal_fut,
+                &cancel_fut,
+                Some(hook),
+            )
             .await
     };
     spawn_transfer(
@@ -1521,11 +1534,22 @@ async fn sftp_upload(
     };
     use ottr_transfer::FileTransfer;
     let hook = progress_emitter(app.clone(), transfer_id.clone());
-    let (remote_fut, local_fut, cancel_fut, journal_fut) =
-        (remote.clone(), local_path.clone(), cancel.clone(), journal.clone());
+    let (remote_fut, local_fut, cancel_fut, journal_fut) = (
+        remote.clone(),
+        local_path.clone(),
+        cancel.clone(),
+        journal.clone(),
+    );
     let fut = async move {
         session
-            .upload_parallel(&local_fut, &remote_fut, SFTP_CHUNKS, &journal_fut, &cancel_fut, Some(hook))
+            .upload_parallel(
+                &local_fut,
+                &remote_fut,
+                SFTP_CHUNKS,
+                &journal_fut,
+                &cancel_fut,
+                Some(hook),
+            )
             .await
     };
     spawn_transfer(
@@ -1955,12 +1979,11 @@ pub async fn inject_shell_integration(
         return ShellIntegrationOutcome::SkippedDisabled;
     }
     // $SHELL 探测（exec 通道，不进 PTY 数据流；同 LANG 探测先例）
-    let kind = match tokio::time::timeout(LANG_PROBE_TIMEOUT, probe_session.exec("echo $SHELL"))
-        .await
-    {
-        Ok(Ok(out)) => detect_shell_kind(&String::from_utf8_lossy(&out.stdout)),
-        Ok(Err(_)) | Err(_) => return ShellIntegrationOutcome::ProbeFailed,
-    };
+    let kind =
+        match tokio::time::timeout(LANG_PROBE_TIMEOUT, probe_session.exec("echo $SHELL")).await {
+            Ok(Ok(out)) => detect_shell_kind(&String::from_utf8_lossy(&out.stdout)),
+            Ok(Err(_)) | Err(_) => return ShellIntegrationOutcome::ProbeFailed,
+        };
     let Some(kind) = kind else {
         return ShellIntegrationOutcome::SkippedNoShell;
     };
@@ -1989,8 +2012,6 @@ pub async fn inject_shell_integration(
         }
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // 入口
@@ -2091,8 +2112,9 @@ pub fn run() {
                                 menu::on_vault_ready(&handle);
                             }
                             Err(e) => {
-                                tracker
-                                    .set(vault::VaultInitStatus::Failed { error: e.to_string() });
+                                tracker.set(vault::VaultInitStatus::Failed {
+                                    error: e.to_string(),
+                                });
                                 let _ = handle.emit("ottr://vault-init-failed", e.to_string());
                                 eprintln!("[vault] background init failed: {e}");
                             }
@@ -2206,7 +2228,11 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    fn known_host(host_key: &str, fingerprint: &str, state: KnownHostState) -> ottr_vault::KnownHost {
+    fn known_host(
+        host_key: &str,
+        fingerprint: &str,
+        state: KnownHostState,
+    ) -> ottr_vault::KnownHost {
         ottr_vault::KnownHost {
             host_key: host_key.into(),
             fingerprint: fingerprint.into(),
@@ -2262,12 +2288,19 @@ mod tests {
         // 「first」kind 只在策略闭包里于 upsert 之前由 None 分类得出
         // （见 host_key_classification_matches_known_hosts_states）；
         // 已入库的 pending 记录重问时是 "pending"。
-        assert_eq!(host_key_ask_kind(Some(&first), "SHA256:fp"), Some("pending"));
+        assert_eq!(
+            host_key_ask_kind(Some(&first), "SHA256:fp"),
+            Some("pending")
+        );
 
         let verified = KnownHosts::verify(&vault, hk, "SHA256:fp").unwrap();
         assert_eq!(verified.state, KnownHostState::Ok);
         assert!(verified.verified);
-        assert_eq!(host_key_ask_kind(Some(&verified), "SHA256:fp"), None, "ok 后静默放行");
+        assert_eq!(
+            host_key_ask_kind(Some(&verified), "SHA256:fp"),
+            None,
+            "ok 后静默放行"
+        );
 
         // 换钥：同端点同一条记录，changed 强提醒；信任锚保留旧指纹。
         let changed = KnownHosts::mark_changed(&vault, hk, "SHA256:rotated").unwrap();
@@ -2282,7 +2315,10 @@ mod tests {
         let reaccepted = KnownHosts::verify(&vault, hk, "SHA256:rotated").unwrap();
         assert_eq!(reaccepted.state, KnownHostState::Ok);
         assert!(reaccepted.verified);
-        assert_eq!(reaccepted.fingerprint, "SHA256:rotated", "接受后信任锚接管新指纹");
+        assert_eq!(
+            reaccepted.fingerprint, "SHA256:rotated",
+            "接受后信任锚接管新指纹"
+        );
         assert_eq!(reaccepted.changed_at, Some(changed_at), "changed_at 保留");
     }
 
@@ -2303,11 +2339,17 @@ mod tests {
         KnownHosts::verify(&vault, hk, "SHA256:A").unwrap();
 
         // 服务器出示新指纹：分类必须是 changed（不是 first）
-        assert_eq!(host_key_ask_kind(KnownHosts::get(&vault, hk).unwrap().as_ref(), "SHA256:B"), Some("changed"));
+        assert_eq!(
+            host_key_ask_kind(KnownHosts::get(&vault, hk).unwrap().as_ref(), "SHA256:B"),
+            Some("changed")
+        );
         let flagged = KnownHosts::mark_changed(&vault, hk, "SHA256:B").unwrap();
         assert_eq!(flagged.state, KnownHostState::Changed);
         // 拒绝后重连：仍是 changed 强提醒（信任锚还在旧钥匙上，指纹依旧不一致）
-        assert_eq!(host_key_ask_kind(KnownHosts::get(&vault, hk).unwrap().as_ref(), "SHA256:B"), Some("changed"));
+        assert_eq!(
+            host_key_ask_kind(KnownHosts::get(&vault, hk).unwrap().as_ref(), "SHA256:B"),
+            Some("changed")
+        );
         assert_eq!(KnownHosts::list(&vault).unwrap().len(), 1, "换钥不新增记录");
     }
 
@@ -2366,9 +2408,15 @@ mod tests {
         assert!(buf.is_empty());
         let out = captured.lock().unwrap().clone();
         let text = String::from_utf8(out).unwrap();
-        assert!(text.contains('\u{FFFD}'), "utf-8 default must mojibake: {text:?}");
+        assert!(
+            text.contains('\u{FFFD}'),
+            "utf-8 default must mojibake: {text:?}"
+        );
         assert!(text.contains(" GBK "));
-        assert_eq!(counters.forwarded_bytes.load(Ordering::Relaxed) as usize, text.len());
+        assert_eq!(
+            counters.forwarded_bytes.load(Ordering::Relaxed) as usize,
+            text.len()
+        );
         assert_eq!(counters.frames.load(Ordering::Relaxed), 1);
 
         // 切 GBK（set_session_encoding 的 Decoder 侧动作）→ 同批字节解出原文
@@ -2436,7 +2484,13 @@ mod tests {
         assert_eq!(detect_shell_kind("bash"), Some(ShellKind::Bash));
         assert_eq!(detect_shell_kind("/bin/zsh"), Some(ShellKind::Zsh));
         assert_eq!(detect_shell_kind("/usr/bin/zsh\n"), Some(ShellKind::Zsh));
-        for skip in ["/bin/sh", "/usr/bin/fish", "/opt/homebrew/bin/nu", "", "/bin/dash"] {
+        for skip in [
+            "/bin/sh",
+            "/usr/bin/fish",
+            "/opt/homebrew/bin/nu",
+            "",
+            "/bin/dash",
+        ] {
             assert_eq!(detect_shell_kind(skip), None, "{skip:?} must be skipped");
         }
     }
@@ -2454,11 +2508,17 @@ mod tests {
             Some(ShellKind::Zsh)
         );
         // 开关关 → 不注入（探测都省了）
-        assert_eq!(integration_decision(false, Some(ShellKind::Bash), false), None);
+        assert_eq!(
+            integration_decision(false, Some(ShellKind::Bash), false),
+            None
+        );
         // 未识别 shell → 不注入不报错
         assert_eq!(integration_decision(true, None, false), None);
         // 已自带 133 集成（幂等探测）→ 不注入（防双标记双入库）
-        assert_eq!(integration_decision(true, Some(ShellKind::Bash), true), None);
+        assert_eq!(
+            integration_decision(true, Some(ShellKind::Bash), true),
+            None
+        );
     }
 
     /// TextTail 原始头部探针：OSC 133 完整保留（剥 ANSI 前）、截满即停。
@@ -2476,8 +2536,6 @@ mod tests {
         tail.push(&big);
         assert!(tail.raw_head_len() <= RAW_HEAD_CAP);
     }
-
-
 
     /// flush_batch 把解码后文本剥 ANSI 推进 TextTail：session_tail 的取数面。
     /// GBK 批解出的中文 + ANSI 颜色序列 → 尾缓冲里是纯文本。
@@ -2589,11 +2647,9 @@ mod tests {
             connected: AtomicU64::new(0),
             closed: AtomicU64::new(0),
         });
-        let key = russh::keys::PrivateKey::random(
-            &mut rand::rng(),
-            russh::keys::Algorithm::Ed25519,
-        )
-        .expect("mock sshd Ed25519 host key");
+        let key =
+            russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("mock sshd Ed25519 host key");
         let config = Arc::new(russh::server::Config {
             keys: vec![key],
             ..Default::default()
@@ -2627,10 +2683,7 @@ mod tests {
     /// 关闭 ui_face/shell 集成旁路，指纹全放行）。
     async fn attach_against_mock(
         addr: std::net::SocketAddr,
-    ) -> (
-        Result<String, String>,
-        SessionMap,
-    ) {
+    ) -> (Result<String, String>, SessionMap) {
         let sessions: SessionMap = Arc::new(Mutex::new(HashMap::new()));
         let result = open_and_register(
             Arc::clone(&sessions),

@@ -18,13 +18,28 @@ name: spike-build
 
 on:
   push:
-    branches: [phase0-spike]
+    branches: [phase0-spike, phase2, main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # Task 0（Phase 2）fmt 门：rustfmt.toml 政策生效，`cargo fmt --all --check`
+  # 失败即红（终审 BL-003：格式漂移不进主干）。与 build 解耦，秒级失败。
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable (rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
   build:
     strategy:
       fail-fast: false

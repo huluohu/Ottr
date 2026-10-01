@@ -20,17 +20,13 @@ impl Settings {
     pub fn get(vault: &Vault, key: &str) -> Result<Option<serde_json::Value>> {
         let conn = vault.connection();
         let raw: Option<String> = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = ?1",
-                [key],
-                |r| r.get(0),
-            )
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
             .optional()?;
         match raw {
             None => Ok(None),
-            Some(s) => serde_json::from_str(&s)
-                .map(Some)
-                .map_err(Into::into),
+            Some(s) => serde_json::from_str(&s).map(Some).map_err(Into::into),
         }
     }
 

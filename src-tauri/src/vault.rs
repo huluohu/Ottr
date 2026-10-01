@@ -144,7 +144,10 @@ pub fn vault_unlock(
     app: AppHandle,
     password: String,
 ) -> CmdResult<()> {
-    state.0.unlock_with_password(&password).map_err(|e| e.to_string())?;
+    state
+        .0
+        .unlock_with_password(&password)
+        .map_err(|e| e.to_string())?;
     let _ = app.emit("ottr://vault-unlocked", ());
     Ok(())
 }
@@ -184,10 +187,9 @@ pub fn vault_upgrade_to_master_password(
         .map_err(|e| e.to_string())?;
     // 旧 Master Key 条目删除（升级成功的收尾）。失败不致命——残留条目在下次
     // open（password 模式）被兜底清理，且不再参与任何解锁路径。
-    if let Err(e) = ottr_vault::master_key::KeyringStorage::new(
-        ottr_vault::master_key::DEFAULT_SERVICE,
-    )
-    .delete()
+    if let Err(e) =
+        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE)
+            .delete()
     {
         eprintln!("[vault-upgrade] stale keyring entry cleanup failed: {e}");
     }
@@ -198,7 +200,10 @@ pub fn vault_upgrade_to_master_password(
 // --- settings（T11：theme/language 迁 vault + 安全配置）-----------------------
 
 #[tauri::command]
-pub fn settings_get(state: State<'_, VaultState>, key: String) -> CmdResult<Option<serde_json::Value>> {
+pub fn settings_get(
+    state: State<'_, VaultState>,
+    key: String,
+) -> CmdResult<Option<serde_json::Value>> {
     // 明文面：锁定可读（锁定屏要读主题/自动锁定配置，见 ottr-vault settings.rs）。
     cmd(Settings::get(&state.0, &key))
 }
@@ -264,7 +269,10 @@ pub fn notify_insert(
 
 /// `limit` 缺省 200（None → 200；通知中心一屏量级）。
 #[tauri::command]
-pub fn notify_list(state: State<'_, VaultState>, limit: Option<u32>) -> CmdResult<Vec<Notification>> {
+pub fn notify_list(
+    state: State<'_, VaultState>,
+    limit: Option<u32>,
+) -> CmdResult<Vec<Notification>> {
     cmd(Notifications::list(&state.0, limit.unwrap_or(200) as usize))
 }
 
@@ -666,7 +674,10 @@ mod tests {
             serde_json::json!({ "status": "ready" })
         );
         assert_eq!(
-            serde_json::to_value(VaultInitStatus::Failed { error: "boom".into() }).unwrap(),
+            serde_json::to_value(VaultInitStatus::Failed {
+                error: "boom".into()
+            })
+            .unwrap(),
             serde_json::json!({ "status": "failed", "error": "boom" })
         );
     }

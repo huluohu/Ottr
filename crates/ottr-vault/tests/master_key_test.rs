@@ -26,7 +26,10 @@ fn second_load_reuses_key() {
     let second = MasterKey::load_with_storage(&storage).unwrap();
     assert_eq!(first.key(), second.key(), "二次 load 必须复用同一把 key");
     // 复用不重写条目（生成路径只发生一次）。
-    assert_eq!(storage.load().unwrap().as_deref(), raw_after_generate.as_deref());
+    assert_eq!(
+        storage.load().unwrap().as_deref(),
+        raw_after_generate.as_deref()
+    );
 }
 
 #[test]
@@ -35,14 +38,20 @@ fn corrupted_entry_gives_clear_error() {
     let garbage = InMemoryStorage::with_raw("ottr-corrupted-by-external-tool!!");
     match MasterKey::load_with_storage(&garbage) {
         Err(VaultError::CorruptedMasterKey) => {}
-        other => panic!("垃圾条目应报 CorruptedMasterKey，实际 {:?}", other.map(|_| ()).is_err()),
+        other => panic!(
+            "垃圾条目应报 CorruptedMasterKey，实际 {:?}",
+            other.map(|_| ()).is_err()
+        ),
     }
 
     // 合法十六进制但长度不对（32B key 必须 64 hex 字符）。
     let short = InMemoryStorage::with_raw("aabbcc");
     match MasterKey::load_with_storage(&short) {
         Err(VaultError::CorruptedMasterKey) => {}
-        other => panic!("短条目应报 CorruptedMasterKey，实际 {:?}", other.map(|_| ()).is_err()),
+        other => panic!(
+            "短条目应报 CorruptedMasterKey，实际 {:?}",
+            other.map(|_| ()).is_err()
+        ),
     }
 }
 

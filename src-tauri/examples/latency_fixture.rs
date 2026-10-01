@@ -67,9 +67,15 @@ fn pinned_host_key_policy() -> HostKeyPolicy {
 
 async fn run() -> Result<String, String> {
     eprintln!("[latency] connect spike@127.0.0.1:2222 (host key pinned)");
-    let session = connect(HOST, PORT, USER, AuthMethod::Password(PASSWORD.into()), pinned_host_key_policy())
-        .await
-        .map_err(|e| format!("connect: {e}"))?;
+    let session = connect(
+        HOST,
+        PORT,
+        USER,
+        AuthMethod::Password(PASSWORD.into()),
+        pinned_host_key_policy(),
+    )
+    .await
+    .map_err(|e| format!("connect: {e}"))?;
     let mut channel = session
         .open_pty(120, 40)
         .await
@@ -95,10 +101,20 @@ async fn run() -> Result<String, String> {
     let decoder = Arc::new(Mutex::new(StreamDecoder::new(Encoding::Utf8)));
     let cancel = Arc::new(Notify::new());
     let cancel_handle = Arc::clone(&cancel);
-    let mut writer = Box::new(channel.make_writer()) as Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
+    let mut writer =
+        Box::new(channel.make_writer()) as Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
     let forward = tauri::async_runtime::spawn(async move {
         let text_tail = TextTail::new();
-        forward_pty_loop(&mut channel, &on_data, &counters, &decoder, &text_tail, "latency-fixture", &cancel_handle).await
+        forward_pty_loop(
+            &mut channel,
+            &on_data,
+            &counters,
+            &decoder,
+            &text_tail,
+            "latency-fixture",
+            &cancel_handle,
+        )
+        .await
     });
 
     use tokio::io::AsyncWriteExt;

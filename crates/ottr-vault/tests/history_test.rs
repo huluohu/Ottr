@@ -95,7 +95,10 @@ fn search_hits_chinese_via_trigram_and_like_fallback_for_short_queries() {
     let hits = History::search(&vault, "生产环境", None, 10).unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].command, "echo 生产环境部署检查");
-    assert_eq!(History::search(&vault, "境部署", None, 10).unwrap().len(), 1);
+    assert_eq!(
+        History::search(&vault, "境部署", None, 10).unwrap().len(),
+        1
+    );
 
     // 2 字符 / 1 字符：LIKE 兜底必须命中（trigram 对 <3 字符 MATCH 恒 0 行）
     assert_eq!(
@@ -106,14 +109,21 @@ fn search_hits_chinese_via_trigram_and_like_fallback_for_short_queries() {
     assert_eq!(History::search(&vault, "生", None, 10).unwrap().len(), 1);
 
     // ASCII 同语义：≥3 走 FTS、2 字符走 LIKE
-    assert_eq!(History::search(&vault, "docker ps", None, 10).unwrap().len(), 1);
+    assert_eq!(
+        History::search(&vault, "docker ps", None, 10)
+            .unwrap()
+            .len(),
+        1
+    );
     assert_eq!(History::search(&vault, "ps", None, 10).unwrap().len(), 1);
 
     assert!(History::search(&vault, "彻底不存在的检索词", None, 10)
         .unwrap()
         .is_empty());
     // FTS 语法注入字面量化：AND/OR/* 按普通文本检索，不当语法执行
-    assert!(History::search(&vault, "\"docker\" OR ps", None, 10).unwrap().is_empty());
+    assert!(History::search(&vault, "\"docker\" OR ps", None, 10)
+        .unwrap()
+        .is_empty());
     assert_eq!(
         History::search(&vault, "  ", None, 10).unwrap().len(),
         2,
@@ -175,18 +185,18 @@ fn prune_keeps_recent_rows_and_syncs_fts_index() {
     }
 
     let recent = History::search(&vault, "", None, keep + 100).unwrap();
-    assert_eq!(
-        recent.len(),
-        keep,
-        "滚动窗口：恰好保留最近 KEEP 条"
-    );
+    assert_eq!(recent.len(), keep, "滚动窗口：恰好保留最近 KEEP 条");
     assert_eq!(recent[0].command, format!("fill-{}", keep + 9));
     assert!(
-        History::search(&vault, "最早一笔", None, 10).unwrap().is_empty(),
+        History::search(&vault, "最早一笔", None, 10)
+            .unwrap()
+            .is_empty(),
         "被清理的旧命令从 FTS 索引消失（删除触发器回放正确）"
     );
     assert_eq!(
-        History::search(&vault, &format!("fill-{}", keep + 9), None, 10).unwrap().len(),
+        History::search(&vault, &format!("fill-{}", keep + 9), None, 10)
+            .unwrap()
+            .len(),
         1,
         "幸存命令仍可搜（FTS 索引未漂移；取无子串歧义的最新一条）"
     );

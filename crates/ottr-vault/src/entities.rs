@@ -1038,7 +1038,11 @@ impl KnownHosts {
     /// **信任锚（fingerprint）保留原值不覆盖**——用户拒绝疑似 MITM 后，行内仍
     /// 钉着原钥匙；新指纹是否接管信任由 verify 在用户显式接受后决定。
     /// 未入库端点直接以 changed 状态入库（首次即为 changed 的异常流）。
-    pub fn mark_changed(vault: &Vault, host_key: &str, _seen_fingerprint: &str) -> Result<KnownHost> {
+    pub fn mark_changed(
+        vault: &Vault,
+        host_key: &str,
+        _seen_fingerprint: &str,
+    ) -> Result<KnownHost> {
         let ts = now_ts();
         vault.with_conn(|conn| {
             let updated = conn.execute(

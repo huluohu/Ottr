@@ -54,7 +54,11 @@ pub enum Lang {
 
 /// vault settings `ui.language` → 菜单语言。未设置/非法值 → En（中立侧）。
 pub fn lang_from_vault(vault: &ottr_vault::Vault) -> Lang {
-    match ottr_vault::Settings::get_str(vault, LANG_SETTING_KEY).ok().flatten().as_deref() {
+    match ottr_vault::Settings::get_str(vault, LANG_SETTING_KEY)
+        .ok()
+        .flatten()
+        .as_deref()
+    {
         Some("zh-CN") => Lang::Zh,
         _ => Lang::En,
     }
@@ -75,22 +79,118 @@ fn text(lang: Lang, key: &str) -> &'static str {
     let zh = lang == Lang::Zh;
     match key {
         "app" => "Ottr",
-        "settings" => if zh { "设置…" } else { "Settings…" },
-        "file" => if zh { "文件" } else { "File" },
-        "new_host" => if zh { "新建主机" } else { "New Host" },
-        "split_right" => if zh { "向右分屏" } else { "Split Right" },
-        "split_down" => if zh { "向下分屏" } else { "Split Down" },
-        "edit" => if zh { "编辑" } else { "Edit" },
-        "view" => if zh { "视图" } else { "View" },
-        "zoom_in" => if zh { "放大" } else { "Zoom In" },
-        "zoom_out" => if zh { "缩小" } else { "Zoom Out" },
-        "zoom_reset" => if zh { "实际大小" } else { "Actual Size" },
-        "window" => if zh { "窗口" } else { "Window" },
-        "help" => if zh { "帮助" } else { "Help" },
-        "palette" => if zh { "命令面板…" } else { "Command Palette…" },
-        "tray_show" => if zh { "显示主窗口" } else { "Show Main Window" },
-        "tray_disconnect_all" => if zh { "断开全部连接" } else { "Disconnect All" },
-        "tray_quit" => if zh { "退出 Ottr" } else { "Quit Ottr" },
+        "settings" => {
+            if zh {
+                "设置…"
+            } else {
+                "Settings…"
+            }
+        }
+        "file" => {
+            if zh {
+                "文件"
+            } else {
+                "File"
+            }
+        }
+        "new_host" => {
+            if zh {
+                "新建主机"
+            } else {
+                "New Host"
+            }
+        }
+        "split_right" => {
+            if zh {
+                "向右分屏"
+            } else {
+                "Split Right"
+            }
+        }
+        "split_down" => {
+            if zh {
+                "向下分屏"
+            } else {
+                "Split Down"
+            }
+        }
+        "edit" => {
+            if zh {
+                "编辑"
+            } else {
+                "Edit"
+            }
+        }
+        "view" => {
+            if zh {
+                "视图"
+            } else {
+                "View"
+            }
+        }
+        "zoom_in" => {
+            if zh {
+                "放大"
+            } else {
+                "Zoom In"
+            }
+        }
+        "zoom_out" => {
+            if zh {
+                "缩小"
+            } else {
+                "Zoom Out"
+            }
+        }
+        "zoom_reset" => {
+            if zh {
+                "实际大小"
+            } else {
+                "Actual Size"
+            }
+        }
+        "window" => {
+            if zh {
+                "窗口"
+            } else {
+                "Window"
+            }
+        }
+        "help" => {
+            if zh {
+                "帮助"
+            } else {
+                "Help"
+            }
+        }
+        "palette" => {
+            if zh {
+                "命令面板…"
+            } else {
+                "Command Palette…"
+            }
+        }
+        "tray_show" => {
+            if zh {
+                "显示主窗口"
+            } else {
+                "Show Main Window"
+            }
+        }
+        "tray_disconnect_all" => {
+            if zh {
+                "断开全部连接"
+            } else {
+                "Disconnect All"
+            }
+        }
+        "tray_quit" => {
+            if zh {
+                "退出 Ottr"
+            } else {
+                "Quit Ottr"
+            }
+        }
         _ => "",
     }
 }
@@ -124,10 +224,17 @@ pub enum Predef {
 #[derive(Clone, Debug)]
 pub enum MenuNode {
     /// 带动作的普通项。id = 前端 ActionId 或 Rust 专属动作（view.zoom* / tray.*）。
-    Item { id: &'static str, label: &'static str, accelerator: Option<&'static str> },
+    Item {
+        id: &'static str,
+        label: &'static str,
+        accelerator: Option<&'static str>,
+    },
     Predef(Predef),
     Sep,
-    Sub { label: &'static str, items: Vec<MenuNode> },
+    Sub {
+        label: &'static str,
+        items: Vec<MenuNode>,
+    },
 }
 
 /// 应用菜单树（HIG：应用/文件/编辑/视图/窗口/帮助）。
@@ -236,7 +343,11 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
 /// 托盘右键菜单树（三端一致；简报定值：显示主窗 / 断开全部 / 退出）。
 pub fn tray_tree(lang: Lang) -> Vec<MenuNode> {
     vec![
-        MenuNode::Item { id: "tray.show", label: text(lang, "tray_show"), accelerator: None },
+        MenuNode::Item {
+            id: "tray.show",
+            label: text(lang, "tray_show"),
+            accelerator: None,
+        },
         MenuNode::Sep,
         MenuNode::Item {
             id: "tray.disconnect_all",
@@ -244,7 +355,11 @@ pub fn tray_tree(lang: Lang) -> Vec<MenuNode> {
             accelerator: None,
         },
         MenuNode::Sep,
-        MenuNode::Item { id: "tray.quit", label: text(lang, "tray_quit"), accelerator: None },
+        MenuNode::Item {
+            id: "tray.quit",
+            label: text(lang, "tray_quit"),
+            accelerator: None,
+        },
     ]
 }
 
@@ -301,18 +416,17 @@ fn build_submenu<R: Runtime>(
     app: &AppHandle<R>,
     label: &str,
     items: &[MenuNode],
-) -> tauri::Result<tauri::menu::Submenu<R>> {    let mut sb = SubmenuBuilder::new(app, label);
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    let mut sb = SubmenuBuilder::new(app, label);
     for node in items {
         sb = match node {
             MenuNode::Sep => sb.separator(),
             MenuNode::Predef(p) => add_predef(sb, app, *p)?,
-            MenuNode::Item { id, label, accelerator } => sb.item(&MenuItem::with_id(
-                app,
-                *id,
-                *label,
-                true,
-                *accelerator,
-            )?),
+            MenuNode::Item {
+                id,
+                label,
+                accelerator,
+            } => sb.item(&MenuItem::with_id(app, *id, *label, true, *accelerator)?),
             // Phase 1 菜单只有两层；嵌套子菜单出现时再补递归（结构上不可能走到）。
             MenuNode::Sub { .. } => sb,
         };
@@ -328,7 +442,12 @@ fn add_predef<'m, R: Runtime>(
 ) -> tauri::Result<SubmenuBuilder<'m, R, AppHandle<R>>> {
     Ok(match p {
         Predef::About => sb.about(Some(AboutMetadata {
-            name: Some(app.config().product_name.clone().unwrap_or_else(|| "Ottr".into())),
+            name: Some(
+                app.config()
+                    .product_name
+                    .clone()
+                    .unwrap_or_else(|| "Ottr".into()),
+            ),
             version: Some(app.package_info().version.to_string()),
             ..Default::default()
         })),
@@ -570,7 +689,12 @@ mod tests {
         for node in &tree {
             if let MenuNode::Sub { items, .. } = node {
                 for n in items {
-                    if let MenuNode::Item { id, accelerator: Some(a), .. } = n {
+                    if let MenuNode::Item {
+                        id,
+                        accelerator: Some(a),
+                        ..
+                    } = n
+                    {
                         accels.push((id, *a));
                     }
                 }

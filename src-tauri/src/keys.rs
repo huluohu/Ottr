@@ -18,8 +18,8 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager, State};
 
-use ottr_ssh::{AuthMethod, DeployStatus, deploy_public_key};
-use ottr_vault::{Credentials, KnownHosts, KnownHostState, SecretField};
+use ottr_ssh::{deploy_public_key, AuthMethod, DeployStatus};
+use ottr_vault::{Credentials, KnownHostState, KnownHosts, SecretField};
 
 use crate::vault::VaultState;
 
@@ -57,7 +57,10 @@ pub async fn key_generate(
 /// spawn_blocking（评审 M-1）：加密钥解析含 bcrypt KDF（数十~百毫秒级 CPU），
 /// 不卡主线程——与 key_generate 对齐。
 #[tauri::command]
-pub async fn key_inspect(pem: String, passphrase: Option<String>) -> CmdResult<ottr_ssh::KeyMaterial> {
+pub async fn key_inspect(
+    pem: String,
+    passphrase: Option<String>,
+) -> CmdResult<ottr_ssh::KeyMaterial> {
     tauri::async_runtime::spawn_blocking(move || {
         ottr_ssh::keygen::inspect(&pem, passphrase.as_deref()).map_err(|e| e.to_string())
     })
@@ -226,7 +229,15 @@ pub async fn key_deploy(
     username: String,
     public_key: String,
 ) -> CmdResult<KeyDeployReport> {
-    key_deploy_inner(&state, auth_credential_id, address, port, username, public_key).await
+    key_deploy_inner(
+        &state,
+        auth_credential_id,
+        address,
+        port,
+        username,
+        public_key,
+    )
+    .await
 }
 
 /// 命令本体。State 只做解引用——拆 inner 供无 Tauri 运行时的回归测试直接调用
@@ -288,17 +299,14 @@ mod tests {
 
     #[test]
     fn key_generate_ed25519_produces_material_and_inspect_roundtrips() {
-        let m = tauri::async_runtime::block_on(key_generate(
-            "ed25519".into(),
-            None,
-            Some("t".into()),
-        ))
-        .unwrap();
+        let m =
+            tauri::async_runtime::block_on(key_generate("ed25519".into(), None, Some("t".into())))
+                .unwrap();
         assert_eq!(m.algorithm.as_str(), "ed25519");
         assert!(m.fingerprint.starts_with("SHA256:"));
         assert!(m.public_openssh.starts_with("ssh-ed25519 "));
-        let back = tauri::async_runtime::block_on(key_inspect(m.private_openssh.clone(), None))
-            .unwrap();
+        let back =
+            tauri::async_runtime::block_on(key_inspect(m.private_openssh.clone(), None)).unwrap();
         assert_eq!(back.fingerprint, m.fingerprint);
     }
 

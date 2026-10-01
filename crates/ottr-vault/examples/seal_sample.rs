@@ -26,8 +26,8 @@ fn main() {
         let p = format!("{dir}/{f}");
         std::fs::remove_file(&p).ok();
     }
-    let vault = Vault::open_with(std::path::Path::new(dir), &InMemoryStorage::new())
-        .expect("open vault");
+    let vault =
+        Vault::open_with(std::path::Path::new(dir), &InMemoryStorage::new()).expect("open vault");
     let cred = Credentials::create(
         &vault,
         &CredentialInput {

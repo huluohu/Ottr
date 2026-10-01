@@ -119,9 +119,8 @@ impl Notifications {
     /// 最近通知（ts DESC, id DESC 同 ts 保序），`limit` 截断（0 → 空表）。
     pub fn list(vault: &Vault, limit: usize) -> Result<Vec<Notification>> {
         let conn = vault.connection();
-        let mut stmt = conn.prepare(
-            "SELECT * FROM notifications ORDER BY ts DESC, id DESC LIMIT ?1",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT * FROM notifications ORDER BY ts DESC, id DESC LIMIT ?1")?;
         let rows = stmt
             .query_map(params![limit as i64], row_to_notification)?
             .collect::<rusqlite::Result<Vec<_>>>()?;

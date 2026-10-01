@@ -85,7 +85,12 @@ impl SftpClient {
             .realpath(path)
             .await
             .map_err(|e| protocol_error(e, &format!("realpath {path}")))?;
-        Ok(name.files.into_iter().next().map(|f| f.filename).unwrap_or(path.to_string()))
+        Ok(name
+            .files
+            .into_iter()
+            .next()
+            .map(|f| f.filename)
+            .unwrap_or(path.to_string()))
     }
 
     /// stat 单个路径（目录/文件通用；不存在返回 Err）。

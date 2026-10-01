@@ -49,7 +49,10 @@ fn migration_0002_creates_entity_tables_and_fts() {
 
     // 0002 实体表 + 0003（hosts.username）+ 0004（known_hosts host 绑定，Task 8）
     // + 0005（notifications，Task 12）→ 最新版本
-    assert_eq!(vault.schema_version().unwrap(), 7);
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
 
     let conn = vault.connection();
     let tables: Vec<String> = {
@@ -756,7 +759,10 @@ fn migration_0004_preserves_legacy_rows() {
         .unwrap();
     }
     let vault = open_vault(dir.path());
-    assert_eq!(vault.schema_version().unwrap(), 7);
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
 
     let rows = KnownHosts::list(&vault).unwrap();
     assert_eq!(rows.len(), 1, "存量行必须保留，不得静默丢弃重 TOFU");
@@ -796,7 +802,10 @@ fn migration_0004_host_key_is_unique_primary_key() {
 fn migration_0004_fresh_schema_has_host_binding() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
-    assert_eq!(vault.schema_version().unwrap(), 7);
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
     let k = KnownHosts::upsert(&vault, "10.0.0.1:22", "SHA256:X").unwrap();
     assert_eq!(k.host_key, "10.0.0.1:22");
     assert_eq!(

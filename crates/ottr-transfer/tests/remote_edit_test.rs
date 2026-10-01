@@ -15,8 +15,8 @@ use std::process::Command;
 use std::sync::Arc;
 
 use ottr_ssh::{AuthMethod, SshSession, connect};
-use ottr_transfer::ops::RemoteSnapshot;
 use ottr_transfer::SftpClient;
+use ottr_transfer::ops::RemoteSnapshot;
 use russh::ChannelMsg;
 use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
@@ -142,7 +142,9 @@ async fn write_then_read_roundtrip_sha256_matches() {
     let remote = "/tmp/ottr-t3-rw-roundtrip.bin";
 
     // 300_001 字节确定性伪随机（跨 256KiB 报文上限 → ≥2 个写子请求）
-    let payload: Vec<u8> = (0..300_001u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
+    let payload: Vec<u8> = (0..300_001u32)
+        .map(|i| (i.wrapping_mul(2654435761) >> 13) as u8)
+        .collect();
     let local = std::env::temp_dir().join("ottr-t3-rw-roundtrip.local");
     std::fs::write(&local, &payload).expect("write local source");
 
@@ -161,7 +163,10 @@ async fn write_then_read_roundtrip_sha256_matches() {
     );
 
     // 读回 roundtrip：字节级一致
-    let readback = client.open_remote_text(remote).await.expect("open_remote_text");
+    let readback = client
+        .open_remote_text(remote)
+        .await
+        .expect("open_remote_text");
     assert_eq!(readback, payload, "read-back bytes must equal payload");
 
     // 清理
@@ -183,7 +188,10 @@ async fn snapshot_conflict_detects_third_party_change_only() {
     // 独立通道建立远端初值（ground truth 不经被测代码）
     exec(&session, &format!("printf 'v1\\n' > {remote}")).await;
     let first = client.stat(remote).await.expect("stat");
-    assert_eq!(client.open_remote_text(remote).await.expect("read"), b"v1\n");
+    assert_eq!(
+        client.open_remote_text(remote).await.expect("read"),
+        b"v1\n"
+    );
 
     // 下载时快照
     let snap = RemoteSnapshot::capture(&first);

@@ -182,7 +182,9 @@ pub fn journal_file_name(mode: &str, scope: &str, identity_path: &str, total: u6
 }
 
 /// 断点续传 journal。语义见模块注释的不变量。
-struct Journal {
+/// pub(crate)：FTP 后端（Phase 2 Task 5 ftp.rs）复用同一 v1 格式与读写原语
+/// （身份头/加载校验/追加记录），格式一份、两个后端共享。
+pub(crate) struct Journal {
     file: Mutex<std::fs::File>,
 }
 
@@ -196,7 +198,12 @@ impl Journal {
     ///   **绝不按旧 offset 静默续传**；
     /// - 头部身份与本次传输不一致 → Err，提示删除或更换 journal 文件；
     /// - offset 行损坏按"未完成"处理（容忍尾行半截）。
-    fn load(path: &Path, mode: &str, identity_path: &str, total: u64) -> Result<HashSet<u64>> {
+    pub(crate) fn load(
+        path: &Path,
+        mode: &str,
+        identity_path: &str,
+        total: u64,
+    ) -> Result<HashSet<u64>> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
@@ -237,7 +244,12 @@ impl Journal {
     }
 
     /// 以追加模式打开 journal（不存在则创建）；文件为空时先写入 v1 头部行。
-    fn open(path: &Path, mode: &str, identity_path: &str, total: u64) -> std::io::Result<Self> {
+    pub(crate) fn open(
+        path: &Path,
+        mode: &str,
+        identity_path: &str,
+        total: u64,
+    ) -> std::io::Result<Self> {
         let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -257,7 +269,7 @@ impl Journal {
 
     /// 记录一个已完成 chunk（写行 + flush 到 OS）。
     /// **必须在该 chunk 数据完整落盘之后调用**（模块注释的不变量）。
-    fn record(&self, offset: u64) -> std::io::Result<()> {
+    pub(crate) fn record(&self, offset: u64) -> std::io::Result<()> {
         let mut f = self.file.lock().unwrap();
         f.write_all(format!("{offset}\n").as_bytes())?;
         f.flush()

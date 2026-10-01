@@ -221,8 +221,7 @@ impl SftpClient {
             .await
             .map_err(|e| protocol_error(e, &format!("open remote {path}")))?
             .handle;
-        let (read_block, _) =
-            crate::sftp::probe_block_sizes(&self.inner, handle.as_str()).await;
+        let (read_block, _) = crate::sftp::probe_block_sizes(&self.inner, handle.as_str()).await;
         let mut out = Vec::new();
         let mut offset: u64 = 0;
         loop {
@@ -262,8 +261,7 @@ impl SftpClient {
             .await
             .map_err(|e| protocol_error(e, &format!("open remote {path}")))?
             .handle;
-        let (_, write_block) =
-            crate::sftp::probe_block_sizes(&self.inner, handle.as_str()).await;
+        let (_, write_block) = crate::sftp::probe_block_sizes(&self.inner, handle.as_str()).await;
         let mut offset: u64 = 0;
         while offset < data.len() as u64 {
             let end = (offset as usize + write_block as usize).min(data.len());
@@ -328,9 +326,18 @@ mod tests {
     #[test]
     fn snapshot_conflict_semantics() {
         let snap = RemoteSnapshot::capture(&entry(100, 1700000000));
-        assert!(!snap.conflicts_with(&entry(100, 1700000000)), "identical stat: no conflict");
-        assert!(snap.conflicts_with(&entry(101, 1700000000)), "size drift: conflict");
-        assert!(snap.conflicts_with(&entry(100, 1700000001)), "mtime drift: conflict");
+        assert!(
+            !snap.conflicts_with(&entry(100, 1700000000)),
+            "identical stat: no conflict"
+        );
+        assert!(
+            snap.conflicts_with(&entry(101, 1700000000)),
+            "size drift: conflict"
+        );
+        assert!(
+            snap.conflicts_with(&entry(100, 1700000001)),
+            "mtime drift: conflict"
+        );
         assert!(snap.conflicts_with(&entry(0, 0)), "both drift: conflict");
         // 第三方截短到 0 也必须被侦出（空文件不是「没变」）
         assert!(snap.conflicts_with(&entry(0, 1700000000)));

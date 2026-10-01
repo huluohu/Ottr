@@ -54,6 +54,8 @@ pub fn run() {
     tauri::Builder::default()
         // Task 11 / Spike #8：系统通知（macOS 首次调用触发系统授权）。
         .plugin(tauri_plugin_notification::init())
+        // Phase 2 Task 4（B10 下半）：trzsz 传输文件/目录选择（原生对话框）。
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         // T11（A7）：自动锁定计时状态（失焦起 N 分钟计时，重聚焦作废；
         // Arc 共享给窗口事件闭包与 spawn 的计时任务）。
@@ -205,6 +207,14 @@ pub fn run() {
             commands::remote_edit::remote_edit_save,
             commands::remote_edit::remote_edit_dismiss,
             commands::remote_edit::remote_edit_close,
+            // trzsz 本地文件桥（Phase 2 Task 4，B10 下半；命令域 commands/trzsz_fs.rs）
+            commands::trzsz_fs::trzsz_fs_stat,
+            commands::trzsz_fs::trzsz_fs_read,
+            commands::trzsz_fs::trzsz_fs_write,
+            commands::trzsz_fs::trzsz_fs_list,
+            commands::trzsz_fs::trzsz_fs_mkdir,
+            commands::trzsz_fs::trzsz_fs_remove,
+            commands::trzsz_fs::trzsz_fs_check,
             // spike 生产闸门（Task 0 Step 4，BL-002）：release 不注册不可达
             #[cfg(debug_assertions)]
             commands::spike::spike_report_latency,

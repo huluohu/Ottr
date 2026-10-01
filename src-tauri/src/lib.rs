@@ -35,6 +35,8 @@ pub use commands::session::{
 };
 pub(crate) use commands::state::AppState;
 pub use commands::state::{SessionCounters, TextTail};
+// Phase 2 Task 1（B7）：ForwardManager 公开给夹具集成测试（真容器断线恢复链）。
+pub use commands::forward::ForwardManager;
 
 // ---------------------------------------------------------------------------
 // 入口
@@ -158,6 +160,14 @@ pub fn run() {
             commands::session::session_disconnect_all,
             commands::session::session_stats,
             commands::session::session_tail,
+            // 端口转发中心（Phase 2 Task 1，B7 上半；命令域 commands/forward.rs）
+            commands::forward::pf_list,
+            commands::forward::pf_create,
+            commands::forward::pf_update,
+            commands::forward::pf_delete,
+            commands::forward::pf_set_enabled,
+            commands::forward::pf_start,
+            commands::forward::pf_stop,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

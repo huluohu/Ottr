@@ -415,6 +415,40 @@
       "errorText": "Error: {{message}}"
     }
   },
+  "forward": {
+    "title": "Port forwards",
+    "empty": "No port forwards yet. Click \"Add\" to set up -L/-R/-D forwarding for any host.",
+    "add": "Add forward",
+    "addTitle": "Add port forward",
+    "editTitle": "Edit port forward",
+    "host": "Host",
+    "kindLabel": "Type",
+    "kind": {
+      "local": "Local -L",
+      "remote": "Remote -R",
+      "dynamic": "Dynamic -D (SOCKS5)"
+    },
+    "kindDynamic": "SOCKS5 proxy",
+    "bindAddr": "Bind address",
+    "bindPort": "Bind port",
+    "bindPortAuto": "0 = auto",
+    "targetHost": "Target host",
+    "targetHostPlaceholder": "Resolved from the remote side (-L)",
+    "targetPort": "Target port",
+    "enabled": "Auto-start",
+    "enabledHint": "Start this forward automatically when the session connects",
+    "autoReconnect": "Auto-resume after disconnect",
+    "start": "Start",
+    "stop": "Stop",
+    "needSession": "Host is not connected; connect first to start forwarding",
+    "errHostRequired": "Choose a host",
+    "errBindPort": "Bind port must be an integer 0-65535",
+    "errTargetRequired": "Enter a target host",
+    "errTargetPort": "Target port must be an integer 1-65535",
+    "saveFailed": "Save failed: {{message}}",
+    "actionFailed": "Action failed: {{message}}",
+    "loadFailed": "Load failed: {{message}}"
+  },
   "notify": {
     "bellAria": "Notification center",
     "empty": "No notifications",

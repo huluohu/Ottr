@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use base64::Engine as _;
 use russh::ChannelMsg;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Notify;
 
@@ -191,6 +191,19 @@ pub(crate) async fn attach_host_session(
         shell_integration,
     )
     .await
+    // 端口转发自动启动（Phase 2 Task 1，B7）：会话建立成功 → 该主机 enabled
+    // 的转发逐条启动（auto_reconnect=false 且被断线摘除的行跳过，见
+    // commands/forward.rs）。失败不打断连接路径（面板错误灯可见）。spawn 脱离
+    // 本命令的借用（State<'_> 非 'static）：sessions/forwards/vault 各持 Arc。
+    .inspect(|session_id| {
+        let sessions = Arc::clone(&state.sessions);
+        let forwards = Arc::clone(&state.forwards);
+        let vault = Arc::clone(&vault.0);
+        let session_id = session_id.clone();
+        tauri::async_runtime::spawn(async move {
+            super::forward::on_session_up(&sessions, &forwards, &vault, &session_id, host_id).await;
+        });
+    })
 }
 
 /// attach_host_session 的 host key 策略：known_hosts 记账 + 前端确认交互（TOFU）。
@@ -374,6 +387,9 @@ pub(crate) fn host_key_decision(
 /// `ui_face`：正式 UI 面开关（LANG 探测 + shell 集成自动注入两个后台任务，
 /// scripts 驱动面 false 不打扰）；`shell_integration`：settings
 /// `shell.integration` 现读值（关 = 不探测不注入，见 [`inject_shell_integration`]）。
+/// remote(-R) 转发的入站路由（Phase 2 Task 1）由本函数创建：随 Handler 挂进
+/// 连接 + 存会话表项（pf_start/on_session_up 起转发时取用）；无人登记时入站
+/// 默认拒绝，spike 面行为不变。
 #[allow(clippy::too_many_arguments)]
 async fn open_and_register(
     sessions: SessionMap,
@@ -394,9 +410,21 @@ async fn open_and_register(
     shell_integration: bool,
 ) -> Result<String, String> {
     // spike 观测：attach 偶发整体停滞（1/5 频率），故每步限时并打点定位。
+    // remote(-R) 转发的入站路由（Phase 2 Task 1）在 connect 前创建：随 Handler
+    // 挂进连接 + 成功后存会话表项（pf_start/on_session_up 起转发时取用）；
+    // 无人登记时入站默认拒绝，spike 面行为不变。
+    let forward_router = ottr_ssh::RemoteForwardRouter::new();
     let session: SshSession = tokio::time::timeout(
         connect_timeout,
-        ottr_ssh::connect_with_keepalive(address, port, username, auth, policy, keepalive),
+        ottr_ssh::connect_with_keepalive(
+            address,
+            port,
+            username,
+            auth,
+            policy,
+            keepalive,
+            Some(forward_router.clone()),
+        ),
     )
     .await
     .map_err(|_| {
@@ -439,6 +467,7 @@ async fn open_and_register(
             text_tail: Arc::clone(&text_tail),
             cancel: Arc::clone(&cancel),
             sftp: Arc::new(Mutex::new(None)),
+            forward_router: forward_router.clone(),
         },
     );
 
@@ -455,6 +484,10 @@ async fn open_and_register(
     let inject_session = ui_face.then(|| Arc::clone(&session));
     let inject_writer = Arc::clone(&writer);
     let inject_tail = Arc::clone(&text_tail);
+    // 端口转发收尾（Phase 2 Task 1）：会话消亡 → Manager 把该会话的转发标
+    // Error / 摘除（断线恢复链的上半段；重连恢复挂在 attach_host_session 成功
+    // 处的 on_session_up）。close_event 即 ui_face 开关——spike 面无转发可收。
+    let forward_close_app = close_event.clone();
     tauri::async_runtime::spawn(async move {
         let reason = forward_pty_loop(
             &mut channel,
@@ -467,6 +500,9 @@ async fn open_and_register(
         )
         .await;
         sessions.lock().unwrap().remove(&session_id);
+        if let Some(app) = &forward_close_app {
+            app.state::<AppState>().forwards.session_down(&session_id);
+        }
         if let Some(app) = &close_event {
             let _ = app.emit(
                 "ottr://session-closed",

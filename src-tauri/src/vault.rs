@@ -101,7 +101,8 @@ pub fn vault_init_status(init: State<'_, VaultInit>) -> VaultInitStatus {
     init.get()
 }
 
-type CmdResult<T> = Result<T, String>;
+/// vault 域命令的统一返回别名（Phase 2 起新命令域复用，pub(crate)）。
+pub(crate) type CmdResult<T> = Result<T, String>;
 
 fn cmd<T>(r: ottr_vault::Result<T>) -> CmdResult<T> {
     r.map_err(|e: VaultError| e.to_string())
@@ -110,7 +111,8 @@ fn cmd<T>(r: ottr_vault::Result<T>) -> CmdResult<T> {
 /// 锁定门卫（T11）：实体命令统一在入口拒绝锁定态。vault 层只有密钥面操作
 /// 硬性要求密钥（凭据 seal/open），这里把封锁面上收到全部实体读写——遮罩后的
 /// UI 本不该发起这些调用，属防漏兵（settings/安全状态命令不过此门卫）。
-fn ensure_unlocked(vault: &Vault) -> CmdResult<()> {
+/// pub(crate)：Phase 2 新命令域（commands/forward.rs）复用同一门卫。
+pub(crate) fn ensure_unlocked(vault: &Vault) -> CmdResult<()> {
     vault.ensure_unlocked().map_err(|e| e.to_string())
 }
 

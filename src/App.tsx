@@ -23,6 +23,7 @@ import { TabBar } from "./session/TabBar";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { TerminalArea } from "./terminal/Terminal";
 import { FilePanel } from "./files/FilePanel";
+import { ForwardPanel } from "./forward/ForwardPanel";
 import { DiagnosePanel } from "./ai/DiagnosePanel";
 import { AISettings } from "./ai/AISettings";
 import { setAiSettingsOpener } from "./ai/aiStore";
@@ -124,6 +125,9 @@ function HomeLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  // Phase 2 Task 1（B7）：端口转发中心（顶栏入口——转发是全局配置面：
+  // 面板列全部主机的转发、运行态跨标签可见；绑定主机经表单下拉选择）。
+  const [forwardsOpen, setForwardsOpen] = useState(false);
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -328,6 +332,14 @@ function HomeLayout() {
         >
           {t("ai.title")}
         </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-forwards"
+          aria-label={t("forward.title")}
+          onClick={() => setForwardsOpen(true)}
+        >
+          {t("forward.title")}
+        </button>
         <div className="topbar-spacer" />
         <NotificationCenter />
         <ThemeSwitch />
@@ -422,6 +434,8 @@ function HomeLayout() {
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
       <SecuritySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
+      {/* Phase 2 Task 1（B7 上半）：端口转发中心（顶栏入口对话框）。 */}
+      <ForwardPanel open={forwardsOpen} onClose={() => setForwardsOpen(false)} />
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}

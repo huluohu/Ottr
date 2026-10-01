@@ -30,6 +30,10 @@ ottr-term = { path = "../crates/ottr-term" }
 ottr-transfer = { path = "../crates/ottr-transfer" }
 # Task 5：数据层接线（vault 命令 + ssh-config 导入）
 ottr-vault = { path = "../crates/ottr-vault" }
+# Phase 2 Task 1：CancellationToken（ForwardManager 运行实例取消树）。
+tokio-util = { version = "0.7", default-features = false }
+# forward 命令域（Phase 2 Task 1）经 ottr-ssh 间接消费 net 面；本 crate 自身
+# commands/* 不直接摸 TCP，net 留给 ottr-ssh。
 tokio = { version = "1", features = ["io-util", "sync", "time"] }
 base64 = "0.22"
 sha2 = "0.10"

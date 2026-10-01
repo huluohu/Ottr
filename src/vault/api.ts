@@ -26,6 +26,9 @@
 //       history_insert history_search
 //       （Task 15 统一历史搜索 ⌘R：明文面，锁定可读写——写入源是前端
 //       CommandWatch 的命令完成事件，见 src/history/record.ts）
+//       pf_list pf_create pf_update pf_delete pf_set_enabled pf_start pf_stop
+//       （Phase 2 Task 1 端口转发中心，B7 上半；配置面过锁定门卫，运行面
+//       ForwardManager 在 src-tauri commands/forward.rs）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -241,6 +244,53 @@ export interface ReencryptProgress {
   total: number;
 }
 
+// --- 端口转发（Phase 2 Task 1，B7 上半；Rust commands/forward.rs）-------------
+
+export type ForwardKind = "local" | "remote" | "dynamic";
+
+/** 运行态（Rust ForwardRuntimeView 同构）。state：starting/active/error/stopped。 */
+export interface ForwardRuntime {
+  session_id: string;
+  state: "starting" | "active" | "error" | "stopped";
+  error: string | null;
+  /** 写入 SSH 方向字节（客户端→目标）。 */
+  tx_bytes: number;
+  /** 读出 SSH 方向字节（目标→客户端）。 */
+  rx_bytes: number;
+  connections: number;
+  conn_errors: number;
+  /** 实际绑定端口（bind_port=0 时为分配值）。 */
+  bound_port: number;
+}
+
+/** Rust `PortForwardView` 同构：配置 + 运行态拼接（runtime=null = 未运行）。 */
+export interface PortForwardView {
+  id: number;
+  host_id: number;
+  host_name: string;
+  kind: ForwardKind;
+  bind_addr: string;
+  /** 0 = 本机动态分配（local）/ 服务端选择（remote）。 */
+  bind_port: number;
+  target_host: string | null;
+  target_port: number | null;
+  enabled: boolean;
+  auto_reconnect: boolean;
+  runtime: ForwardRuntime | null;
+}
+
+/** Rust `PortForwardInput` 同构（create/update 载荷；dynamic 的 target 传 null）。 */
+export interface PortForwardInput {
+  host_id: number;
+  kind: ForwardKind;
+  bind_addr: string;
+  bind_port: number;
+  target_host: string | null;
+  target_port: number | null;
+  enabled: boolean;
+  auto_reconnect: boolean;
+}
+
 export const vaultApi = {
   hosts: {
     list: () => invoke<Host[]>("hosts_list"),
@@ -368,6 +418,22 @@ export const vaultApi = {
     delete: (key: string) => invoke<void>("secret_delete", { key }),
     /** 存在性（不派生明文——设置页「已保存」标记）。 */
     contains: (key: string) => invoke<boolean>("secret_contains", { key }),
+  },
+  /** 端口转发（Phase 2 Task 1，B7 上半；Rust commands/forward.rs）。
+   * list/create/update/delete/setEnabled = vault 配置面（锁定即拒，同 hosts）；
+   * start/stop = 运行面（ForwardManager；start 需 rustId 会话在线）。 */
+  portForwards: {
+    list: (hostId: number | null) => invoke<PortForwardView[]>("pf_list", { hostId }),
+    create: (input: PortForwardInput) => invoke<PortForwardView>("pf_create", { input }),
+    update: (id: number, input: PortForwardInput) =>
+      invoke<PortForwardView>("pf_update", { id, input }),
+    remove: (id: number) => invoke<void>("pf_delete", { id }),
+    setEnabled: (id: number, enabled: boolean) =>
+      invoke<void>("pf_set_enabled", { id, enabled }),
+    /** 在指定会话上启动；未知会话/配置缺失 → reject（前端提示先连接主机）。 */
+    start: (id: number, sessionId: string) =>
+      invoke<ForwardRuntime>("pf_start", { id, sessionId }),
+    stop: (id: number) => invoke<boolean>("pf_stop", { id }),
   },
   /** 会话输出尾部（Task 13，AI 诊断取数面）：最后 bytes 字节的剥 ANSI 纯文本。
    * 未知会话（已关/重连中）显式报错——调用方 catch 降级（空输出照发诊断）。 */

@@ -7,6 +7,9 @@
 //!   security.rs / ssh_config.rs 模块——不再二次搬家（见 task-0 报告选型论证）；
 //! * Global Constraint「lib.rs 只减不增」：Phase 2 新命令一律进本目录对应域。
 pub mod encoding;
+// 端口转发命令域（Phase 2 Task 1，B7 上半）：ForwardManager + pf_* 命令 +
+// 会话断线/重连挂钩（Phase 2 新域，Global Constraint：新命令进本目录对应域）。
+pub mod forward;
 pub mod session;
 // spike 命令面生产闸门（Task 0 Step 4，终审C-2/BL-002）：Phase 0 测量/取数命令
 // 不进 release 产物——`spike_report_file` 是 webview 可达的任意路径写原语（路径

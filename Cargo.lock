@@ -3232,6 +3232,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tempfile",
  "tokio",
+ "tokio-util",
  "zeroize",
 ]
 
@@ -3256,6 +3257,7 @@ dependencies = [
  "russh",
  "serde",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

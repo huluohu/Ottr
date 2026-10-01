@@ -414,6 +414,40 @@
       "errorText": "错误：{{message}}"
     }
   },
+  "forward": {
+    "title": "端口转发",
+    "empty": "暂无端口转发。点击「添加」为任意主机配置 -L/-R/-D 转发。",
+    "add": "添加转发",
+    "addTitle": "添加端口转发",
+    "editTitle": "编辑端口转发",
+    "host": "主机",
+    "kindLabel": "类型",
+    "kind": {
+      "local": "本地 -L",
+      "remote": "远端 -R",
+      "dynamic": "动态 -D (SOCKS5)"
+    },
+    "kindDynamic": "SOCKS5 代理",
+    "bindAddr": "监听地址",
+    "bindPort": "监听端口",
+    "bindPortAuto": "0 = 自动",
+    "targetHost": "目标主机",
+    "targetHostPlaceholder": "从远端视角解析（-L）",
+    "targetPort": "目标端口",
+    "enabled": "自动启动",
+    "enabledHint": "会话建立后自动启动该转发",
+    "autoReconnect": "断线自动恢复",
+    "start": "启动",
+    "stop": "停止",
+    "needSession": "主机未连接，先连接再启动转发",
+    "errHostRequired": "请选择主机",
+    "errBindPort": "监听端口需为 0-65535 的整数",
+    "errTargetRequired": "请填写目标主机",
+    "errTargetPort": "目标端口需为 1-65535 的整数",
+    "saveFailed": "保存失败：{{message}}",
+    "actionFailed": "操作失败：{{message}}",
+    "loadFailed": "加载失败：{{message}}"
+  },
   "notify": {
     "bellAria": "通知中心",
     "empty": "暂无通知",

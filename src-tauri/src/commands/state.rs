@@ -122,6 +122,10 @@ pub(crate) struct SessionEntry {
     pub(crate) cancel: Arc<Notify>,
     /// FilePanel 复用的 SFTP 客户端（Task 10，懒开 + 缓存；表项移除即消亡）。
     pub(crate) sftp: SftpSlot,
+    /// remote(-R) 转发的入站路由（Phase 2 Task 1）：连接建立时随 Handler 挂进
+    /// 连接（connect_with_keepalive 的 forward_router 参数），转发命令域按会话
+    /// 取用。克隆零成本（内部 Arc）。
+    pub(crate) forward_router: ottr_ssh::RemoteForwardRouter,
 }
 
 /// 会话文本缓冲（Task 13 尾环 + fix 1/5 头部原始探针）：
@@ -231,6 +235,11 @@ pub(crate) struct AppState {
     pub(crate) host_key_asks: HostKeyAsks,
     /// 在途传输的取消令牌（Task 10）：键 = transfer_id；传输结束由任务自清。
     pub(crate) transfers: TransferMap,
+    /// 端口转发生命周期 owner（Phase 2 Task 1，commands/forward.rs）：
+    /// port_forward 行 id → 运行实例（取消令牌 + 状态快照 + 归属会话）。
+    /// Arc 化：attach 成功的 on_session_up 挂钩要 spawn 脱离借用的事务
+    /// （'static async），Manager 需可克隆的共享句柄。
+    pub(crate) forwards: Arc<super::forward::ForwardManager>,
 }
 
 pub(crate) static SESSION_SEQ: AtomicU64 = AtomicU64::new(0);

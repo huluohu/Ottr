@@ -104,7 +104,11 @@ pub struct SessionCounters {
 pub(crate) struct SessionEntry {
     /// 既有 SSH 会话（Task 10）：SFTP 子系统/传输在**同一连接**上开新 channel，
     /// 不新建 SSH 连接。与转发循环共享同一 Arc（循环退出即 disconnect，SFTP
-    /// 与传输随会话生命周期消亡）。
+    /// 与传输随会话生命周期消亡）。链式会话（Phase 2 Task 2）时这里是
+    /// **target** 会话（PTY/SFTP/转发全部开在它上面，消费面与直连同一形状）；
+    /// 全链（每跳 + target）的 JumpSession 由注册阶段的转发循环任务独占持有
+    /// （生命周期与循环严格同界：注册即持有、循环退出即全链显式拆除——与
+    /// 直连路径「循环退出即 disconnect」同一收尾点，不需要第二份引用）。
     pub(crate) session: Arc<SshSession>,
     /// host 端点（`address:port`，Fix round 1 C-1）：下载 journal 的 scope 身份——
     /// 同路径同大小的远端文件在不同主机各用各的 journal，绝不跨主机续传。
@@ -212,6 +216,26 @@ pub(crate) type SftpSlot = Arc<Mutex<Option<Arc<ottr_transfer::SftpClient>>>>;
 
 /// 会话表（Arc 共享：命令面与转发循环收尾任务都要增删）。
 pub(crate) type SessionMap = Arc<Mutex<HashMap<String, SessionEntry>>>;
+
+/// 注册生命周期共享入参（Phase 2 Task 2，commands/session.rs 拆分面）：
+/// 直连 [`crate::commands::session::open_and_register`] 与链式 attach 共用。
+pub(crate) struct RegisterArgs {
+    pub(crate) sessions: SessionMap,
+    pub(crate) close_event: Option<tauri::AppHandle>,
+    /// PTY 所在会话（链式连接时 = target 会话，消费面与直连同一形状）。
+    pub(crate) session: Arc<SshSession>,
+    /// 跳板链 owner（None = 直连）。收尾断开必须经它拆全链（只断 session
+    /// 会留下悬挂跳板连接——russh Handle::drop 不关连接）。
+    pub(crate) chain: Option<Arc<ottr_ssh::JumpSession>>,
+    pub(crate) forward_router: ottr_ssh::RemoteForwardRouter,
+    pub(crate) endpoint: String,
+    pub(crate) cols: u32,
+    pub(crate) rows: u32,
+    pub(crate) on_data: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+    pub(crate) initial_encoding: ottr_term::encoding::Encoding,
+    pub(crate) ui_face: bool,
+    pub(crate) shell_integration: bool,
+}
 
 /// 挂起中的 host key 问询（TOFU 确认框交互）。
 /// key = `"{host_id}:{fingerprint}"`；value = 裁定回传端（`host_key_decision` 发送）。

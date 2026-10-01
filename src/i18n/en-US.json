@@ -70,7 +70,9 @@
     "errAddressRequired": "Host address is required",
     "errPortRange": "Port must be an integer between 1 and 65535",
     "saveFailed": "Save failed: {{message}}",
-    "save": "Save host"
+    "save": "Save host",
+    "chain": "Jump chain",
+    "chainNone": "Direct (no jump)"
   },
   "hostTree": {
     "searchPlaceholder": "Search hosts (name/notes)…",
@@ -478,7 +480,8 @@
     "fingerprint": "Fingerprint",
     "reject": "Refuse",
     "trust": "Trust & connect",
-    "acceptAnyway": "Connect anyway"
+    "acceptAnyway": "Connect anyway",
+    "hopLabel": "Hop {{hop}}"
   },
   "security": {
     "mode": "Key mode",
@@ -520,5 +523,31 @@
       "failedHint": "The system keychain may have denied access. Restart the app to retry; if it keeps failing, reinstall or contact support.",
       "quit": "Quit"
     }
+  },
+  "jump": {
+    "title": "Jump chains",
+    "empty": "No jump chains yet. Click \"Add\" to create one, then bind it to a host in the host form.",
+    "add": "Add jump chain",
+    "addTitle": "Add jump chain",
+    "editTitle": "Edit jump chain",
+    "chainName": "Chain name",
+    "chainNamePlaceholder": "e.g. office → prod",
+    "hops": "Hop sequence (local toward target)",
+    "addHop": "Add hop",
+    "host": "Jump host",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeHop": "Remove hop",
+    "test": "Test connection",
+    "testing": "Testing…",
+    "testOk": "Connected ({{elapsed}}s)",
+    "testFail": "Connection failed",
+    "testFailHop": "failed at hop {{hop}}",
+    "noHosts": "No hosts available — create hosts in the host tree first.",
+    "errNameRequired": "Chain name is required",
+    "errHopsRequired": "At least one hop is required",
+    "saveFailed": "Save failed: {{message}}",
+    "actionFailed": "Action failed: {{message}}",
+    "loadFailed": "Load failed: {{message}}"
   }
 }

@@ -70,7 +70,9 @@
     "errAddressRequired": "主机地址不能为空",
     "errPortRange": "端口必须是 1-65535 的整数",
     "saveFailed": "保存失败：{{message}}",
-    "save": "保存主机"
+    "save": "保存主机",
+    "chain": "跳板链",
+    "chainNone": "直连（不经跳板）"
   },
   "hostTree": {
     "searchPlaceholder": "搜索主机（名称/备注）…",
@@ -477,7 +479,8 @@
     "fingerprint": "指纹",
     "reject": "拒绝连接",
     "trust": "信任并连接",
-    "acceptAnyway": "仍要连接"
+    "acceptAnyway": "仍要连接",
+    "hopLabel": "第 {{hop}} 跳"
   },
   "security": {
     "mode": "密钥模式",
@@ -519,5 +522,31 @@
       "failedHint": "可能是系统钥匙链拒绝了访问。请重启应用重试；若持续失败，请重新安装或联系支持。",
       "quit": "退出"
     }
+  },
+  "jump": {
+    "title": "跳板链",
+    "empty": "暂无跳板链。点击「添加」创建链，然后在主机表单中绑定使用。",
+    "add": "添加跳板链",
+    "addTitle": "添加跳板链",
+    "editTitle": "编辑跳板链",
+    "chainName": "链名",
+    "chainNamePlaceholder": "例如：办公网 → 生产",
+    "hops": "跳板序列（自本机向目标逐跳）",
+    "addHop": "添加一跳",
+    "host": "跳板主机",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "removeHop": "移除该跳",
+    "test": "测试连接",
+    "testing": "测试中…",
+    "testOk": "连接成功（{{elapsed}}s）",
+    "testFail": "连接失败",
+    "testFailHop": "第 {{hop}} 跳失败",
+    "noHosts": "暂无可用主机——先在主机树中创建主机，再编排链路。",
+    "errNameRequired": "请填写链名",
+    "errHopsRequired": "至少需要一跳",
+    "saveFailed": "保存失败：{{message}}",
+    "actionFailed": "操作失败：{{message}}",
+    "loadFailed": "加载失败：{{message}}"
   }
 }

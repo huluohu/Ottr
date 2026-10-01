@@ -40,12 +40,17 @@ export type SessionStatus =
   | "reconnecting"
   | "waiting_host_key";
 
-/** `ottr://host-key-ask` 事件载荷（Rust HostKeyAskPayload 同构，serde snake_case）。 */
+/** `ottr://host-key-ask` 事件载荷（Rust HostKeyAskPayload 同构，serde snake_case）。
+ * 跳板链逐跳问询（Phase 2 Task 2）：host_id = 该跳自己的主机 id（裁定时按它
+ * 落端点信任锚）；hop = 跳序号（0 起，弹窗带「第 N 跳」标识）；origin_host_id =
+ * 发起连接的主机（问询归属在途 connect 的标签）。直连问询两字段缺省。 */
 export interface HostKeyAskPayload {
   host_id: number;
   host_name: string;
   fingerprint: string;
   kind: "first" | "pending" | "changed";
+  hop?: number;
+  origin_host_id?: number;
 }
 
 /** 弹窗态的问询（挂上发起问询的会话）。 */
@@ -576,10 +581,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   onHostKeyAsk: (payload) => {
+    // 归属（Phase 2 Task 2）：链式连接的逐跳问询落在链上 hop 主机上——
+    // origin_host_id 才是发起连接的主机（前端据此找到在途 connect 的标签）；
+    // 直连问询无 origin 字段，host_id 即发起方。
+    const originId = payload.origin_host_id ?? payload.host_id;
     const session = get().sessions.find(
-      (s) => s.hostId === payload.host_id && s.status === "connecting",
+      (s) => s.hostId === originId && s.status === "connecting",
     );
-    if (!session) return; // 非我方发起的问询（无在途 connect）→ Rust 侧 60s 自行超时
+    if (!session) {
+      // 无在途 connect 的问询（跳板链编辑器的「测试连接」/孤儿问询）：仍弹
+      // 确认框——裁定的 host_key_decision 不依赖会话；不弹则 Rust 侧 60s
+      // 超时按拒绝收尾。sessionId 空串 = 无关联会话（弹窗关闭只经裁定按钮）。
+      set({ hostKeyAsk: { ...payload, sessionId: "" } });
+      return;
+    }
     set({
       hostKeyAsk: { ...payload, sessionId: session.id },
       sessions: patchSession(get().sessions, session.id, { status: "waiting_host_key" }),

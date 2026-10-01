@@ -109,11 +109,13 @@ describe("vaultApi（invoke 封装）", () => {
 });
 
 describe("useVaultStore", () => {
-  it("refresh 并发拉取三张列表并清 loading", async () => {
+  it("refresh 并发拉取四张列表（hosts/credentials/groups/jumpChains）并清 loading", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list") return Promise.resolve([sampleHost]);
       if (cmd === "credentials_list") return Promise.resolve([sampleCredential]);
       if (cmd === "host_groups_list") return Promise.resolve([]);
+      if (cmd === "jc_list")
+        return Promise.resolve([{ id: 7, name: "c", hops: [1], created_at: 0, updated_at: 0 }]);
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
 
@@ -122,6 +124,7 @@ describe("useVaultStore", () => {
     expect(state.hosts).toEqual([sampleHost]);
     expect(state.credentials).toEqual([sampleCredential]);
     expect(state.hostGroups).toEqual([]);
+    expect(state.jumpChains).toHaveLength(1);
     expect(state.loading).toBe(false);
     expect(state.error).toBeNull();
   });
@@ -130,7 +133,7 @@ describe("useVaultStore", () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list") return Promise.resolve([]);
       if (cmd === "credentials_list") return Promise.resolve([]);
-      if (cmd === "host_groups_list") return Promise.resolve([]);
+      if (cmd === "host_groups_list" || cmd === "jc_list") return Promise.resolve([]);
       if (cmd === "hosts_delete") return Promise.resolve(undefined);
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
@@ -154,7 +157,7 @@ describe("useVaultStore", () => {
       if (cmd === "host_groups_create") return Promise.resolve(group);
       if (cmd === "host_groups_delete") return Promise.resolve(undefined);
       if (cmd === "hosts_list" || cmd === "credentials_list") return Promise.resolve([]);
-      if (cmd === "host_groups_list") return Promise.resolve([]);
+      if (cmd === "host_groups_list" || cmd === "jc_list") return Promise.resolve([]);
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
 

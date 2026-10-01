@@ -168,6 +168,12 @@ pub fn run() {
             commands::forward::pf_set_enabled,
             commands::forward::pf_start,
             commands::forward::pf_stop,
+            // 跳板链（Phase 2 Task 2，B7 下半；命令域 commands/jump.rs）
+            commands::jump::jc_list,
+            commands::jump::jc_create,
+            commands::jump::jc_update,
+            commands::jump::jc_delete,
+            commands::jump::jc_test,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

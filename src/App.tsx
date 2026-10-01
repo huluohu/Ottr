@@ -24,6 +24,7 @@ import { HostKeyDialog } from "./session/HostKeyDialog";
 import { TerminalArea } from "./terminal/Terminal";
 import { FilePanel } from "./files/FilePanel";
 import { ForwardPanel } from "./forward/ForwardPanel";
+import { JumpChainEditor } from "./hosts/JumpChainEditor";
 import { DiagnosePanel } from "./ai/DiagnosePanel";
 import { AISettings } from "./ai/AISettings";
 import { setAiSettingsOpener } from "./ai/aiStore";
@@ -128,6 +129,9 @@ function HomeLayout() {
   // Phase 2 Task 1（B7）：端口转发中心（顶栏入口——转发是全局配置面：
   // 面板列全部主机的转发、运行态跨标签可见；绑定主机经表单下拉选择）。
   const [forwardsOpen, setForwardsOpen] = useState(false);
+  // Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口——链是全局配置面，
+  // 主机经 HostForm 的链下拉绑定）。
+  const [jumpChainsOpen, setJumpChainsOpen] = useState(false);
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -340,6 +344,14 @@ function HomeLayout() {
         >
           {t("forward.title")}
         </button>
+        <button
+          className="topbar-debug"
+          data-testid="open-jump-chains"
+          aria-label={t("jump.title")}
+          onClick={() => setJumpChainsOpen(true)}
+        >
+          {t("jump.title")}
+        </button>
         <div className="topbar-spacer" />
         <NotificationCenter />
         <ThemeSwitch />
@@ -436,6 +448,8 @@ function HomeLayout() {
       <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
       {/* Phase 2 Task 1（B7 上半）：端口转发中心（顶栏入口对话框）。 */}
       <ForwardPanel open={forwardsOpen} onClose={() => setForwardsOpen(false)} />
+      {/* Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口对话框）。 */}
+      <JumpChainEditor open={jumpChainsOpen} onClose={() => setJumpChainsOpen(false)} />
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}

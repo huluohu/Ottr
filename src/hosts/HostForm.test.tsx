@@ -33,7 +33,7 @@ const existing: Host = {
 
 function listResponses() {
   mockedInvoke.mockImplementation((cmd: string) => {
-    if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+    if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
       return Promise.resolve([]);
     }
     return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -98,7 +98,7 @@ describe("HostForm", () => {
       if (cmd === "hosts_create") {
         return Promise.resolve({ ...existing, id: 12, name: "gateway" });
       }
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -130,7 +130,7 @@ describe("HostForm", () => {
     listResponses();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_create") return Promise.resolve(existing);
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -149,7 +149,7 @@ describe("HostForm", () => {
     listResponses();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_update") return Promise.resolve(existing);
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -170,7 +170,7 @@ describe("HostForm", () => {
   it("后端报错显示 saveFailed 且不关闭", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_create") return Promise.reject("port conflict");
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));

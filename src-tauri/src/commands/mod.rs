@@ -10,6 +10,8 @@ pub mod encoding;
 // 端口转发命令域（Phase 2 Task 1，B7 上半）：ForwardManager + pf_* 命令 +
 // 会话断线/重连挂钩（Phase 2 新域，Global Constraint：新命令进本目录对应域）。
 pub mod forward;
+// 跳板链命令域（Phase 2 Task 2，B7 下半）：jc_* 命令 + 链上逐跳规格解析。
+pub mod jump;
 pub mod session;
 // spike 命令面生产闸门（Task 0 Step 4，终审C-2/BL-002）：Phase 0 测量/取数命令
 // 不进 release 产物——`spike_report_file` 是 webview 可达的任意路径写原语（路径

@@ -20,7 +20,7 @@ use ottr_vault::{Hosts, KnownHostState, KnownHosts, Settings};
 
 use super::encoding::{encoding_from_str, EncodingHintPayload};
 use super::state::{
-    batch_limit, batch_window, flush_min_interval, snapshot, AppState, HostKeyAsks,
+    batch_limit, batch_window, flush_min_interval, snapshot, AppState, HostKeyAsks, RegisterArgs,
     SessionCounters, SessionEntry, SessionMap, SessionStats, TextTail, HOST_KEY_ASK_TIMEOUT,
     KEEPALIVE_INTERVAL, LANG_PROBE_CMD, LANG_PROBE_TIMEOUT, SESSION_SEQ,
 };
@@ -119,6 +119,11 @@ pub(crate) async fn attach_session(
 /// address/port/username/credential_id 全部 Rust 侧解析，凭据明文经
 /// `Credentials::reveal` 只在 Rust 侧解密——**前端永不接触明文凭据**；
 /// host key 走 TOFU 确认策略（[`tofu_host_key_policy`]）；传输层 keepalive 60s。
+///
+/// 跳板链（Phase 2 Task 2）：host.jump_chain_id 非空时走 [`JumpSession`] 链式
+/// 路径——链上每跳按各自 host 行解析端点/凭据 + 逐跳 TOFU（同语义，确认框带
+/// 跳序号），PTY/SFTP/转发开在 target 会话上（SessionEntry.session 不变，
+/// 消费面零改动）；全链会话由 SessionEntry.chain 持有，收尾统一拆除。
 #[tauri::command]
 pub(crate) async fn attach_host_session(
     state: State<'_, AppState>,
@@ -142,21 +147,8 @@ pub(crate) async fn attach_host_session(
     let credential_id = host
         .credential_id
         .ok_or_else(|| format!("host id={host_id} has no credential bound"))?;
-    // 明文凭据只在此（Rust 侧）出现；key 凭据的临时 PEM 由 guard 持有至连接完成
-    let (auth, _temp_key_guard) = keys::resolve_credential_auth(&vault, credential_id).await?;
     let port = u16::try_from(host.port)
         .map_err(|_| format!("host id={host_id}: port {} out of range", host.port))?;
-    let policy = tofu_host_key_policy(
-        Arc::clone(&vault.0),
-        app.clone(),
-        host_id,
-        host.name.clone(),
-        // TOFU 信任锚 = 网络端点（0004 迁移）：known_hosts 按端点记账，删主机
-        // 重建 / 同端点多记录共享同一份信任（防 MITM 语义，见 host_endpoint_key）。
-        ottr_vault::host_endpoint_key(&host.address, host.port),
-        Arc::clone(&state.host_key_asks),
-    );
-    // connect 限时 = host key 问询窗口 60s + 网络预算 15s（问询期间握手合法挂起）
     // 初始编码 = host 表单 encoding_override（T5 字段，Task 9 生效点）；
     // 无法识别的值兜底 UTF-8（attach 不因坏配置失败）。会话级手动切换
     // （set_session_encoding）不写回 host，重连后回到本初值。
@@ -172,30 +164,8 @@ pub(crate) async fn attach_host_session(
             .unwrap_or(None)
             .as_ref(),
     );
-    open_and_register(
-        state.sessions.clone(),
-        Some(app),
-        &host.address,
-        port,
-        &username,
-        auth,
-        policy,
-        Some(KEEPALIVE_INTERVAL),
-        Duration::from_secs(75),
-        format!("{}@{}:{}", username, host.address, port),
-        cols,
-        rows,
-        on_data,
-        initial_encoding,
-        true,
-        shell_integration,
-    )
-    .await
-    // 端口转发自动启动（Phase 2 Task 1，B7）：会话建立成功 → 该主机 enabled
-    // 的转发逐条启动（auto_reconnect=false 且被断线摘除的行跳过，见
-    // commands/forward.rs）。失败不打断连接路径（面板错误灯可见）。spawn 脱离
-    // 本命令的借用（State<'_> 非 'static）：sessions/forwards/vault 各持 Arc。
-    .inspect(|session_id| {
+    // 端口转发自动启动挂钩（见下方 inspect）：session_id → 该主机 enabled 转发。
+    let forward_up = |session_id: &String| {
         let sessions = Arc::clone(&state.sessions);
         let forwards = Arc::clone(&state.forwards);
         let vault = Arc::clone(&vault.0);
@@ -203,7 +173,122 @@ pub(crate) async fn attach_host_session(
         tauri::async_runtime::spawn(async move {
             super::forward::on_session_up(&sessions, &forwards, &vault, &session_id, host_id).await;
         });
+    };
+
+    // --- 直连路径（现状语义不变）------------------------------------------
+    let Some(chain_id) = host.jump_chain_id else {
+        // 明文凭据只在此（Rust 侧）出现；key 凭据的临时 PEM 由 guard 持有至连接完成
+        let (auth, _temp_key_guard) = keys::resolve_credential_auth(&vault, credential_id).await?;
+        let policy = tofu_host_key_policy(
+            Arc::clone(&vault.0),
+            app.clone(),
+            host_id,
+            host.name.clone(),
+            // TOFU 信任锚 = 网络端点（0004 迁移）：known_hosts 按端点记账，删主机
+            // 重建 / 同端点多记录共享同一份信任（防 MITM 语义，见 host_endpoint_key）。
+            ottr_vault::host_endpoint_key(&host.address, host.port),
+            Arc::clone(&state.host_key_asks),
+            None,
+            None,
+        );
+        return open_and_register(
+            state.sessions.clone(),
+            Some(app),
+            &host.address,
+            port,
+            &username,
+            auth,
+            policy,
+            Some(KEEPALIVE_INTERVAL),
+            Duration::from_secs(75),
+            format!("{}@{}:{}", username, host.address, port),
+            cols,
+            rows,
+            on_data,
+            initial_encoding,
+            true,
+            shell_integration,
+        )
+        .await
+        // 端口转发自动启动（Phase 2 Task 1，B7）：失败不打断连接路径（面板
+        // 错误灯可见）。spawn 脱离本命令的借用（State<'_> 非 'static）。
+        .inspect(forward_up);
+    };
+
+    // --- 链式路径（Phase 2 Task 2）：JumpSession 持有全跳 -------------------
+    let chain_row = ottr_vault::JumpChains::get(&vault.0, chain_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("jump chain id={chain_id} not found (host id={host_id})"))?;
+    // 链上逐跳解析端点/凭据/TOFU（跳自己的 host 行 + 跳自己的信任锚；guard
+    // 活到 connect 完成为止——key 凭据的临时 PEM 在认证期间必须存在）。
+    let hop_specs =
+        super::jump::build_hop_specs(&vault, &app, &state.host_key_asks, &chain_row.hops, host_id)
+            .await?;
+    let (target_auth, _target_key_guard) =
+        keys::resolve_credential_auth(&vault, credential_id).await?;
+    let target_policy = tofu_host_key_policy(
+        Arc::clone(&vault.0),
+        app.clone(),
+        host_id,
+        host.name.clone(),
+        ottr_vault::host_endpoint_key(&host.address, host.port),
+        Arc::clone(&state.host_key_asks),
+        None,
+        Some(host_id),
+    );
+    // connect 限时 = 每跳问询窗口 60s + 网络预算 15s（问询期间握手合法挂起）。
+    let budget = Duration::from_secs(75 * (hop_specs.hops.len() as u64 + 1));
+    // remote(-R) 转发的入站路由挂进 target 连接（链式主机与直连主机同语义）。
+    let forward_router = ottr_ssh::RemoteForwardRouter::new();
+    let target_spec = ottr_ssh::HopSpec {
+        host: host.address.clone(),
+        port,
+        username: username.clone(),
+        auth: target_auth,
+        host_key: target_policy,
+    };
+    let jump_session = tokio::time::timeout(
+        budget,
+        ottr_ssh::JumpSession::connect_with_keepalive(
+            hop_specs.hops,
+            target_spec,
+            Some(KEEPALIVE_INTERVAL),
+            Some(forward_router.clone()),
+        ),
+    )
+    .await
+    .map_err(|_| {
+        format!(
+            "connect timed out after {}s (chain '{}')",
+            budget.as_secs(),
+            chain_row.name
+        )
+    })?
+    .map_err(|e| format!("connect failed (chain '{}'): {e}", chain_row.name))?;
+    eprintln!(
+        "[attach] chained connected {}@{}:{} via '{}' ({} hops)",
+        username,
+        host.address,
+        port,
+        chain_row.name,
+        jump_session.hop_count()
+    );
+    register_opened(super::state::RegisterArgs {
+        sessions: state.sessions.clone(),
+        close_event: Some(app),
+        session: jump_session.target(),
+        chain: Some(Arc::new(jump_session)),
+        forward_router,
+        endpoint: format!("{}:{} (chain '{}')", host.address, port, chain_row.name),
+        cols,
+        rows,
+        on_data,
+        initial_encoding,
+        ui_face: true,
+        shell_integration,
     })
+    .await
+    .inspect(forward_up)
 }
 
 /// attach_host_session 的 host key 策略：known_hosts 记账 + 前端确认交互（TOFU）。
@@ -223,13 +308,20 @@ pub(crate) async fn attach_host_session(
 /// 阻塞语义：回调在 russh `connect_stream` spawn 的连接专属任务内执行，
 /// `recv_timeout(60s)` 只挂起该连接自己的握手（connect 命令挂起等前端 confirm），
 /// 不占公共 worker；超时按拒绝处理（安全侧默认）。
-fn tofu_host_key_policy(
+///
+/// 链式问询（Phase 2 Task 2）：`hop`/`origin_host_id` 直通进事件载荷——
+/// 全链**每一跳都走同一 TOFU 状态机**（同语义裁定：信任锚 = 跳自己的网络端点，
+/// 与直连共用 known_hosts 记账；UI 确认框带跳序号）。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn tofu_host_key_policy(
     vault: Arc<ottr_vault::Vault>,
     app: AppHandle,
     host_id: i64,
     host_name: String,
     host_key: String,
     asks: HostKeyAsks,
+    hop: Option<usize>,
+    origin_host_id: Option<i64>,
 ) -> HostKeyPolicy {
     Arc::new(move |fingerprint: &str| {
         let known = match KnownHosts::get(&vault, &host_key) {
@@ -254,6 +346,8 @@ fn tofu_host_key_policy(
                     host_name: host_name.clone(),
                     fingerprint: fingerprint.to_string(),
                     kind,
+                    hop,
+                    origin_host_id,
                 },
             ) {
                 eprintln!("[host-key] emit ask failed: {e}");
@@ -311,7 +405,11 @@ fn host_key_ask_kind(
     }
 }
 
-/// `ottr://host-key-ask` 事件载荷（serde snake_case）。
+/// `ottr://host-key-ask` 事件载荷（serde snake_case）。链式连接（Phase 2
+/// Task 2）逐跳问询时：`host_id` = 该跳自己的主机 id（host_key_decision 按
+/// 它落端点信任锚），`hop` = 跳序号（UI 带「第 N 跳」标识），
+/// `origin_host_id` = 发起连接的主机（前端把问询归属到在途 connect 的标签）。
+/// 两字段 None = 普通直连问询（skip 序列化，前端旧载荷形状不变）。
 #[derive(Clone, serde::Serialize)]
 struct HostKeyAskPayload {
     host_id: i64,
@@ -319,6 +417,12 @@ struct HostKeyAskPayload {
     fingerprint: String,
     /// "first"（首见 TOFU）/ "pending"（历史问询未决重问）/ "changed"（强提醒，默认拒绝）
     kind: &'static str,
+    /// 链上跳序号（0 起；None = target / 直连）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hop: Option<usize>,
+    /// 发起连接的主机 id（链式 attach 时 = 被连主机；None = 直连）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin_host_id: Option<i64>,
 }
 
 /// 前端确认框裁定回传：`accept=true` 先落账 `KnownHosts::verify`（state→ok、
@@ -409,7 +513,6 @@ async fn open_and_register(
     ui_face: bool,
     shell_integration: bool,
 ) -> Result<String, String> {
-    // spike 观测：attach 偶发整体停滞（1/5 频率），故每步限时并打点定位。
     // remote(-R) 转发的入站路由（Phase 2 Task 1）在 connect 前创建：随 Handler
     // 挂进连接 + 成功后存会话表项（pf_start/on_session_up 起转发时取用）；
     // 无人登记时入站默认拒绝，spike 面行为不变。
@@ -436,13 +539,71 @@ async fn open_and_register(
     .map_err(|e| format!("connect failed ({err_ctx}): {e}"))?;
     eprintln!("[attach] connected {username}@{address}:{port}");
 
+    register_opened(super::state::RegisterArgs {
+        sessions,
+        close_event,
+        session: Arc::new(session),
+        chain: None,
+        forward_router,
+        endpoint: format!("{address}:{port}"),
+        cols,
+        rows,
+        on_data,
+        initial_encoding,
+        ui_face,
+        shell_integration,
+    })
+    .await
+}
+
+/// 会话收尾断开（统一面）：链式走 [`ottr_ssh::JumpSession::disconnect`]（target
+/// 最先、跳板逆序全链拆除——只断 target 会留下悬挂跳板连接），直连断本会话。
+async fn teardown_attached(
+    chain: Option<&Arc<ottr_ssh::JumpSession>>,
+    session: &SshSession,
+) -> ottr_ssh::Result<()> {
+    match chain {
+        Some(js) => js.disconnect().await,
+        None => session.disconnect().await,
+    }
+}
+
+/// 注册生命周期（[`open_and_register`] 的连接后段与链式 attach 共用，
+/// Phase 2 Task 2 拆分；行为与拆分前逐句等价，chain 字段除外）：
+/// open_pty（10s）→ request_shell（10s）→ 注册会话表 → 起合批转发循环。
+/// 循环退出（对端关闭 / drop_session 取消 / IPC 失败）统一收尾：
+/// 清会话表项 + （可选）`ottr://session-closed` 事件 + 显式断开（全链或单会话）。
+/// **注册前**（open_pty/request_shell）任一早退——限时超时或协议错——同样
+/// 统一收尾：先 best-effort 断开（链式=全链）再返回错误（终审 A1，
+/// 见 [`close_after_failed_attach`]）。
+async fn register_opened(args: RegisterArgs) -> Result<String, String> {
+    let RegisterArgs {
+        sessions,
+        close_event,
+        session,
+        chain,
+        forward_router,
+        endpoint,
+        cols,
+        rows,
+        on_data,
+        initial_encoding,
+        ui_face,
+        shell_integration,
+    } = args;
+
     // 终审 A1：注册前阶段（open_pty/request_shell，各限 10s）任一早退——限时
-    // 超时或协议错——必须先 best-effort 显式 disconnect 再返回错误：russh
+    // 超时或协议错——必须先 best-effort 显式断开再返回错误：russh
     // `Handle::drop` 不关连接，裸 drop 会让客户端 keepalive 任务继续跑、sshd
-    // 上的僵尸 SSH 连接无限存活。错误文案原样保留（bench/台账对齐口径）。
+    // 上的僵尸 SSH 连接无限存活（链式时 Zombie×跳数）。错误文案原样保留
+    // （bench/台账对齐口径）。
     let mut channel = match open_shell_channel(&session, cols, rows).await {
         Ok(channel) => channel,
-        Err(e) => return Err(close_after_failed_attach(e, session.disconnect()).await),
+        Err(e) => {
+            return Err(
+                close_after_failed_attach(e, teardown_attached(chain.as_ref(), &session)).await,
+            )
+        }
     };
 
     let id = format!("pty-{}", SESSION_SEQ.fetch_add(1, Ordering::Relaxed));
@@ -453,14 +614,15 @@ async fn open_and_register(
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
     // session 进 Arc（Task 10）：会话表项持一份（SFTP/传输按 rustId 复用同一
-    // 连接），转发循环任务持另一份（退出统一 disconnect）。任一侧先行消亡，
+    // 连接），转发循环任务持另一份（退出统一断开）。任一行先消亡，
     // 连接关闭会连带终止另一侧的操作（传输失败报协议错，journal 可续传）。
-    let session = Arc::new(session);
+    // 链式（Phase 2 Task 2）：JumpSession（全跳 owner）由下方转发循环任务
+    // 独占持有——生命周期与循环严格同界，收尾点与直连路径同句。
     sessions.lock().unwrap().insert(
         id.clone(),
         SessionEntry {
             session: Arc::clone(&session),
-            endpoint: format!("{address}:{port}"),
+            endpoint,
             writer: Arc::clone(&writer),
             counters: Arc::clone(&counters),
             decoder: Arc::clone(&decoder),
@@ -471,11 +633,10 @@ async fn open_and_register(
         },
     );
 
-    // 读循环持有 channel 与 session；循环退出后统一收尾：清表（此后 session_stats
-    // 报 no such session；drop_session 对已消失的 id 幂等报错，前端容忍）→
-    // session-closed 事件（前端重连状态机的触发点）→ disconnect。
-    // session 进 Arc：LANG 探测任务（独立 exec 通道）与收尾 disconnect 共享
-    // （Arc 化已上移到会话表插入处，Task 10：SFTP 复用同一 Arc）。
+    // 读循环持有 channel 与 session（及 chain）；循环退出后统一收尾：清表
+    // （此后 session_stats 报 no such session；drop_session 对已消失的 id 幂等
+    // 报错，前端容忍）→ session-closed 事件（前端重连状态机的触发点）→
+    // 断开（链式=全链拆除）。
     let session_id = id.clone();
     let probe_app = close_event.clone(); // 探测任务与收尾事件各持一份
     let probe_session = ui_face.then(|| Arc::clone(&session));
@@ -512,7 +673,7 @@ async fn open_and_register(
                 },
             );
         }
-        if let Err(e) = session.disconnect().await {
+        if let Err(e) = teardown_attached(chain.as_ref(), &session).await {
             eprintln!("[batcher:{session_id}] disconnect on exit failed: {e}");
         }
     });

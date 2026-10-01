@@ -1,5 +1,6 @@
 // HostForm（Task 5 Step 2）：新建/编辑主机。
-// 字段：name/address/port/username/凭据选择/编码覆盖/标签/分组/备注；
+// 字段：name/address/port/username/凭据选择/编码覆盖/跳板链（Phase 2
+// Task 2：链式连接的绑定，none=直连）/标签/分组/备注；
 // 校验（简报）：地址非空、端口 1-65535 整数；错误提示走 i18n。
 // 名称留空时以地址兜底（vault 层拒绝空名，这里先收敛）。
 // 凭据创建/编辑属 Task 6 域，此处只从现有凭据中选择绑定。
@@ -24,6 +25,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   const { t } = useTranslation();
   const hostGroups = useVaultStore((s) => s.hostGroups);
   const credentials = useVaultStore((s) => s.credentials);
+  const jumpChains = useVaultStore((s) => s.jumpChains);
   const createHost = useVaultStore((s) => s.createHost);
   const updateHost = useVaultStore((s) => s.updateHost);
 
@@ -34,6 +36,9 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   const [groupId, setGroupId] = useState<string>(String(host?.group_id ?? defaultGroupId ?? ""));
   const [credentialId, setCredentialId] = useState<string>(
     host?.credential_id != null ? String(host.credential_id) : "",
+  );
+  const [jumpChainId, setJumpChainId] = useState<string>(
+    host?.jump_chain_id != null ? String(host.jump_chain_id) : "",
   );
   const [encoding, setEncoding] = useState(host?.encoding_override ?? "");
   const [tagsText, setTagsText] = useState((host?.tags ?? []).join(", "));
@@ -75,7 +80,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
       port: Number(port.trim()),
       username: username.trim() === "" ? null : username.trim(),
       credential_id: credentialId === "" ? null : Number(credentialId),
-      jump_chain_id: host?.jump_chain_id ?? null,
+      jump_chain_id: jumpChainId === "" ? null : Number(jumpChainId),
       encoding_override: encoding === "" ? null : encoding,
       theme_override: host?.theme_override ?? null,
       monitor_enabled: host?.monitor_enabled ?? false,
@@ -189,6 +194,23 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
               {ENCODINGS.map((enc) => (
                 <option key={enc} value={enc}>
                   {enc.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* 跳板链（Phase 2 Task 2，B7 下半）：绑定后连接经链上逐跳直达本机
+              （编辑器入口在顶栏「跳板链」）。 */}
+          <label>
+            <span>{t("hostForm.chain")}</span>
+            <select
+              data-testid="form-jump-chain"
+              value={jumpChainId}
+              onChange={(e) => setJumpChainId(e.currentTarget.value)}
+            >
+              <option value="">{t("hostForm.chainNone")}</option>
+              {jumpChains.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
                 </option>
               ))}
             </select>

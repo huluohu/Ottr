@@ -29,6 +29,9 @@
 //       pf_list pf_create pf_update pf_delete pf_set_enabled pf_start pf_stop
 //       （Phase 2 Task 1 端口转发中心，B7 上半；配置面过锁定门卫，运行面
 //       ForwardManager 在 src-tauri commands/forward.rs）
+//       jc_list jc_create jc_update jc_delete jc_test
+//       （Phase 2 Task 2 跳板链，B7 下半；配置面过锁定门卫，测试连接面
+//       jc_test 在 src-tauri commands/jump.rs）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -291,6 +294,33 @@ export interface PortForwardInput {
   auto_reconnect: boolean;
 }
 
+// --- 跳板链（Phase 2 Task 2，B7 下半；Rust commands/jump.rs）----------------
+
+/** Rust `entities::JumpChain` 同构：hops = host_id 有序数组（顺序即连接序，
+ * 末位之后接 target = 引用本链的 hosts 行）。 */
+export interface JumpChain {
+  id: number;
+  name: string;
+  hops: number[];
+  created_at: number;
+  updated_at: number;
+}
+
+/** Rust `entities::JumpChainInput` 同构（create/update 全量替换式提交）。 */
+export interface JumpChainInput {
+  name: string;
+  hops: number[];
+}
+
+/** Rust `jump::JumpTestResult` 同构（jc_test 载荷）。hop = 失败跳序号
+ * （0 起，末位索引 = target；null = 非跳点失败如超时）。 */
+export interface JumpTestResult {
+  ok: boolean;
+  hop: number | null;
+  error: string | null;
+  elapsed_ms: number;
+}
+
 export const vaultApi = {
   hosts: {
     list: () => invoke<Host[]>("hosts_list"),
@@ -434,6 +464,18 @@ export const vaultApi = {
     start: (id: number, sessionId: string) =>
       invoke<ForwardRuntime>("pf_start", { id, sessionId }),
     stop: (id: number) => invoke<boolean>("pf_stop", { id }),
+  },
+  /** 跳板链（Phase 2 Task 2，B7 下半；Rust commands/jump.rs）。
+   * list/create/update/remove = vault 配置面（锁定即拒，同 hosts）；
+   * test = 连接面（jc_test：按传入 hop 序列建真实链，末位当 target，
+   * 逐跳 TOFU 会弹确认框；成功即拆不留连接）。 */
+  jumpChains: {
+    list: () => invoke<JumpChain[]>("jc_list"),
+    create: (input: JumpChainInput) => invoke<JumpChain>("jc_create", { input }),
+    update: (id: number, input: JumpChainInput) =>
+      invoke<JumpChain>("jc_update", { id, input }),
+    remove: (id: number) => invoke<void>("jc_delete", { id }),
+    test: (hops: number[]) => invoke<JumpTestResult>("jc_test", { hops }),
   },
   /** 会话输出尾部（Task 13，AI 诊断取数面）：最后 bytes 字节的剥 ANSI 纯文本。
    * 未知会话（已关/重连中）显式报错——调用方 catch 降级（空输出照发诊断）。 */

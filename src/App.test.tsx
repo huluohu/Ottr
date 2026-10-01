@@ -17,6 +17,13 @@ vi.mock("./notify/core", async (importOriginal) => {
   const mod = await importOriginal<typeof import("./notify/core")>();
   return { ...mod, initNotifyEvents: vi.fn(async () => {}) };
 });
+// Phase 3 Task 3（B5）：告警引擎接线（listen ottr://monitor + 进程轮询）与
+// 渠道挂载（vault 读 + reveal）在 App 挂载链触发——jsdom 无 runtime，stub 掉。
+vi.mock("./notify/rules", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("./notify/rules")>();
+  return { ...mod, initAlertEngine: vi.fn(async () => {}) };
+});
+vi.mock("./notify/channelRegistry", () => ({ remountChannels: vi.fn(async () => {}) }));
 
 import "./i18n";
 import App from "./App";

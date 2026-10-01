@@ -34,6 +34,9 @@ import { setSessionEndHook } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
+import { initAlertEngine } from "./notify/rules";
+import { remountChannels } from "./notify/channelRegistry";
+import { AlertSettings } from "./notify/AlertSettings";
 import { initMonitorEvents } from "./monitor/events";
 import { MonitorSidebar } from "./monitor/MonitorSidebar";
 import { OverviewPage } from "./monitor/OverviewPage";
@@ -137,6 +140,9 @@ function HomeLayout() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  // Phase 3 Task 3（B5）：告警设置（渠道矩阵 + 规则；顶栏入口对话框——
+  // AISettings 同款「全局配置面 → 顶栏」布局语言）。
+  const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
   // Phase 2 Task 1（B7）：端口转发中心（顶栏入口——转发是全局配置面：
   // 面板列全部主机的转发、运行态跨标签可见；绑定主机经表单下拉选择）。
   const [forwardsOpen, setForwardsOpen] = useState(false);
@@ -199,6 +205,11 @@ function HomeLayout() {
       await initNotifyEvents();
       // Phase 3 Task 1（B4 上半）：监控采样事件接线（ottr://monitor → store）。
       await initMonitorEvents();
+      // Phase 3 Task 3（B5）：告警规则引擎接线（订阅 ottr://monitor 评估 +
+      // 进程快照轮询）+ 外部渠道挂载（notify_channels → core.channels）。
+      // 都在事件源之后挂（晚挂只漏启动窗口期采样）；挂载失败各自静默降级。
+      await initAlertEngine();
+      void remountChannels();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
     })();
   }, [initPhase]);
@@ -385,6 +396,14 @@ function HomeLayout() {
         </button>
         <button
           className="topbar-debug"
+          data-testid="open-alert-settings"
+          aria-label={t("alert.settingsTitle")}
+          onClick={() => setAlertSettingsOpen(true)}
+        >
+          {t("alert.sectionTitle")}
+        </button>
+        <button
+          className="topbar-debug"
           data-testid="open-forwards"
           aria-label={t("forward.title")}
           onClick={() => setForwardsOpen(true)}
@@ -536,6 +555,8 @@ function HomeLayout() {
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
       <SecuritySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
+      {/* Phase 3 Task 3（B5）：告警设置（渠道全矩阵 + 规则 CRUD + 测试发送）。 */}
+      <AlertSettings open={alertSettingsOpen} onClose={() => setAlertSettingsOpen(false)} />
       {/* Phase 2 Task 1（B7 上半）：端口转发中心（顶栏入口对话框）。 */}
       <ForwardPanel open={forwardsOpen} onClose={() => setForwardsOpen(false)} />
       {/* Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口对话框）。 */}

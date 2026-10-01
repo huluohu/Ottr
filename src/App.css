@@ -2676,3 +2676,22 @@ button[data-active="true"] {
   background: var(--color-danger);
   border-color: var(--color-danger);
 }
+
+/* 告警设置对话框（Phase 3 Task 3，B5）：复用 ai-settings-dialog 形态与
+   ai-provider-list 行样式；仅补规则表单的渠道多选 fieldset（令牌色随主题）。 */
+.alert-rule-channels,
+.wizard-step fieldset {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.alert-rule-form legend,
+.alert-rule-form fieldset legend {
+  font-size: 12px;
+  opacity: 0.75;
+  padding: 0 4px;
+}

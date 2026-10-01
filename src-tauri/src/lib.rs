@@ -667,6 +667,10 @@ fn host_key_decision(
 /// 循环退出（对端关闭 / drop_session 取消 / IPC 失败）统一收尾：
 /// 清会话表项 + （可选）`ottr://session-closed` 事件 + 显式 disconnect
 /// （russh `Handle::drop` 不关连接，必须显式断，见 SshSession::disconnect 文档）。
+/// **注册前**（open_pty/request_shell）任一早退——限时超时或协议错——同样
+/// 统一收尾：先 best-effort 显式 disconnect 再返回错误（终审 A1，
+/// 见 [`close_after_failed_attach`]）。connect 阶段早退无会话可收
+/// （[`ottr_ssh::SshSession`] 尚未产出）。
 /// `keepalive`：交互式长连传 Some；spike 命令面传 None 保持 Phase 0 语义不变。
 /// `initial_encoding`：会话解码初值（host encoding_override 兜底 UTF-8）；
 /// `ui_face`：正式 UI 面开关（LANG 探测 + shell 集成自动注入两个后台任务，
@@ -701,16 +705,14 @@ async fn open_and_register(
     .map_err(|e| format!("connect failed ({err_ctx}): {e}"))?;
     eprintln!("[attach] connected {username}@{address}:{port}");
 
-    let mut channel = tokio::time::timeout(Duration::from_secs(10), session.open_pty(cols, rows))
-        .await
-        .map_err(|_| "open_pty timed out after 10s".to_string())?
-        .map_err(|e| format!("open_pty failed: {e}"))?;
-    eprintln!("[attach] pty open ({cols}x{rows})");
-    tokio::time::timeout(Duration::from_secs(10), channel.request_shell(true))
-        .await
-        .map_err(|_| "request_shell timed out after 10s".to_string())?
-        .map_err(|e| format!("request_shell failed: {e}"))?;
-    eprintln!("[attach] shell running");
+    // 终审 A1：注册前阶段（open_pty/request_shell，各限 10s）任一早退——限时
+    // 超时或协议错——必须先 best-effort 显式 disconnect 再返回错误：russh
+    // `Handle::drop` 不关连接，裸 drop 会让客户端 keepalive 任务继续跑、sshd
+    // 上的僵尸 SSH 连接无限存活。错误文案原样保留（bench/台账对齐口径）。
+    let mut channel = match open_shell_channel(&session, cols, rows).await {
+        Ok(channel) => channel,
+        Err(e) => return Err(close_after_failed_attach(e, session.disconnect()).await),
+    };
 
     let id = format!("pty-{}", SESSION_SEQ.fetch_add(1, Ordering::Relaxed));
     let counters = Arc::new(SessionCounters::default());
@@ -828,6 +830,44 @@ async fn open_and_register(
         });
     }
     Ok(id)
+}
+
+/// 注册前阶段：open_pty → request_shell（各限 10s，spike 台账限时打点）。
+/// 只负责建通道与报错，**不做连接收尾**——调用方对 Err 必须经
+/// [`close_after_failed_attach`] 先显式 disconnect（终审 A1）。错误文案是
+/// bench/台账对齐口径（"open_pty timed out after 10s" 等），勿改。
+async fn open_shell_channel(
+    session: &SshSession,
+    cols: u32,
+    rows: u32,
+) -> Result<russh::Channel<russh::client::Msg>, String> {
+    let channel = tokio::time::timeout(Duration::from_secs(10), session.open_pty(cols, rows))
+        .await
+        .map_err(|_| "open_pty timed out after 10s".to_string())?
+        .map_err(|e| format!("open_pty failed: {e}"))?;
+    eprintln!("[attach] pty open ({cols}x{rows})");
+    tokio::time::timeout(Duration::from_secs(10), channel.request_shell(true))
+        .await
+        .map_err(|_| "request_shell timed out after 10s".to_string())?
+        .map_err(|e| format!("request_shell failed: {e}"))?;
+    eprintln!("[attach] shell running");
+    Ok(channel)
+}
+
+/// attach 注册前失败的统一收尾（终审 A1）：先 best-effort 显式 `disconnect`
+/// 再原样带回错误。russh `Handle::drop` 只打 debug 日志**不关连接**（见
+/// [`SshSession::disconnect`] 文档）——裸 drop 会让客户端 keepalive 任务继续
+/// 跑、服务端僵尸 SSH 连接无限存活。disconnect 自身失败（连接已死/会话任务
+/// 已退）只打日志，不吞原始错误。`disconnect` 拆成独立参数是回归测试 seam
+/// （可观测断言断连被调用）；生产面调用恒传 `session.disconnect()`。
+async fn close_after_failed_attach(
+    err: String,
+    disconnect: impl std::future::Future<Output = ottr_ssh::Result<()>>,
+) -> String {
+    if let Err(e) = disconnect.await {
+        eprintln!("[attach] best-effort disconnect after failed attach: {e}");
+    }
+    err
 }
 
 /// 关闭会话（Task 7 Step 4 可中断性；Task 5+ 的「关标签」接线点）。
@@ -2485,5 +2525,217 @@ mod tests {
         // 空环 / limit=0
         assert_eq!(TextTail::new().tail(100), "");
         assert_eq!(text_tail.tail(0), "");
+    }
+
+    // --- 终审 A1 回归：注册前早退路径必须显式 disconnect --------------------
+    //
+    // 进程内 mock sshd（russh::server::run_stream + 自持 accept 循环）：
+    // 握手 + 密码认证放行；channel open 行为按用例配置——
+    // * hang=true：handler pending 不回 → 客户端 open_pty 走 10s 超时路径（A1 字面路径）；
+    // * hang=false：handler 直接返回、reply handle 落 drop = 自动拒绝（russh 默认
+    //   语义）→ 客户端 open_pty 走快速协议错路径。
+    // 断连观测点：每连接 `RunningSession` 完成 = 服务端观测到会话结束，落账
+    // `closed`（显式 disconnect / 裸 drop 后 russh runner 自行收尾都会触发）。
+
+    struct MockSshd {
+        /// 认证成功次数（证明早退发生在建连之后）。
+        connected: AtomicU64,
+        /// 连接结束次数（服务端会话返回 = 连接被显式关闭的证据）。
+        closed: AtomicU64,
+    }
+
+    struct MockSshHandler {
+        hang_channel_open: bool,
+        state: Arc<MockSshd>,
+    }
+
+    impl russh::server::Handler for MockSshHandler {
+        // russh 要求 Error: From<russh::Error>；测试面直接复用 russh::Error
+        type Error = russh::Error;
+
+        async fn auth_password(
+            &mut self,
+            _user: &str,
+            _password: &str,
+        ) -> Result<russh::server::Auth, Self::Error> {
+            Ok(russh::server::Auth::Accept)
+        }
+
+        async fn auth_succeeded(
+            &mut self,
+            _session: &mut russh::server::Session,
+        ) -> Result<(), Self::Error> {
+            self.state.connected.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn channel_open_session(
+            &mut self,
+            _channel: russh::Channel<russh::server::Msg>,
+            _reply: russh::server::ChannelOpenHandle,
+            _session: &mut russh::server::Session,
+        ) -> Result<(), Self::Error> {
+            if self.hang_channel_open {
+                std::future::pending().await
+            }
+            // 不碰 reply（落 drop）= 自动拒绝：客户端 open_pty 快速协议错
+            Ok(())
+        }
+    }
+
+    /// 起一个 mock sshd（127.0.0.1 随机端口），返回 (地址, 观测账本)。
+    async fn spawn_mock_sshd(hang_channel_open: bool) -> (std::net::SocketAddr, Arc<MockSshd>) {
+        let state = Arc::new(MockSshd {
+            connected: AtomicU64::new(0),
+            closed: AtomicU64::new(0),
+        });
+        let key = russh::keys::PrivateKey::random(
+            &mut rand::rng(),
+            russh::keys::Algorithm::Ed25519,
+        )
+        .expect("mock sshd Ed25519 host key");
+        let config = Arc::new(russh::server::Config {
+            keys: vec![key],
+            ..Default::default()
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let ledger = Arc::clone(&state);
+        tauri::async_runtime::spawn(async move {
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    return;
+                };
+                let cfg = Arc::clone(&config);
+                let st = Arc::clone(&ledger);
+                tauri::async_runtime::spawn(async move {
+                    let handler = MockSshHandler {
+                        hang_channel_open,
+                        state: Arc::clone(&st),
+                    };
+                    if let Ok(session) = russh::server::run_stream(cfg, stream, handler).await {
+                        let _ = session.await;
+                    }
+                    st.closed.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+        });
+        (addr, state)
+    }
+
+    /// 对 mock sshd 走完整 attach（attach_host_session 的 open_and_register 骨架，
+    /// 关闭 ui_face/shell 集成旁路，指纹全放行）。
+    async fn attach_against_mock(
+        addr: std::net::SocketAddr,
+    ) -> (
+        Result<String, String>,
+        SessionMap,
+    ) {
+        let sessions: SessionMap = Arc::new(Mutex::new(HashMap::new()));
+        let result = open_and_register(
+            Arc::clone(&sessions),
+            None,
+            "127.0.0.1",
+            addr.port(),
+            "tester",
+            AuthMethod::Password("pw".into()),
+            Arc::new(|_| true), // 测试面：指纹全放行
+            None,
+            Duration::from_secs(5),
+            "a1-test".into(),
+            80,
+            24,
+            Channel::new(|_: InvokeResponseBody| Ok(())),
+            Encoding::Utf8,
+            false,
+            false,
+        )
+        .await;
+        (result, sessions)
+    }
+
+    /// A1 回归（wire 级，快速路径）：open_pty 协议错早退后不留任何活性残留——
+    /// 服务端必须观测到会话结束（显式 disconnect 毫秒级可达）。注：russh 0.63.3
+    /// 在最后一个 Handle 落 drop 后 runner 也会经 receiver-None 自行收尾，故本
+    /// 断言不区分显式/隐式关闭；「先显式 disconnect 再返回错误」的契约由
+    /// [`close_after_failed_attach_awaits_disconnect_then_returns_error`]（seam
+    /// mock 断言）+ 单一 match 收尾臂承担，本例守住端到端下界：真实建连 →
+    /// 早退报错（协议错文案）→ 会话表无残留 → 服务端会话 5s 内终结。
+    #[test]
+    fn attach_pre_register_failure_disconnects_connection() {
+        tauri::async_runtime::block_on(async {
+            let (addr, state) = spawn_mock_sshd(false).await;
+            let (result, sessions) = attach_against_mock(addr).await;
+
+            assert!(
+                state.connected.load(Ordering::SeqCst) >= 1,
+                "mock sshd 未收到成功认证的连接，早退路径未生效"
+            );
+            let err = result.expect_err("open_pty 被拒必须失败");
+            assert!(err.starts_with("open_pty failed: "), "actual: {err}");
+            assert!(sessions.lock().unwrap().is_empty(), "会话表不得残留");
+
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while state.closed.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            assert!(
+                state.closed.load(Ordering::SeqCst) >= 1,
+                "注册前早退后服务端会话未终结：存在活性残留（A1 回归）"
+            );
+        });
+    }
+
+    /// A1 收尾核 seam 契约（mock 可观测 disconnect 调用）：任一注册前早退的
+    /// 错误都必须先 await disconnect（断连恰好一次）再原样带回；disconnect
+    /// 自身失败只吞错（生产面打日志），绝不顶替原始错误。
+    #[test]
+    fn close_after_failed_attach_awaits_disconnect_then_returns_error() {
+        let calls = Arc::new(AtomicU64::new(0));
+        // disconnect 成功面：断连被调用、错误文案零改动
+        let c = Arc::clone(&calls);
+        let err = tauri::async_runtime::block_on(close_after_failed_attach(
+            "open_pty timed out after 10s".into(),
+            async move {
+                c.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        ));
+        assert_eq!(err, "open_pty timed out after 10s");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        // disconnect 失败面：吞错（打日志），原始错误原样穿透
+        let c = Arc::clone(&calls);
+        let err = tauri::async_runtime::block_on(close_after_failed_attach(
+            "request_shell failed: boom".into(),
+            async move {
+                c.fetch_add(1, Ordering::SeqCst);
+                Err(ottr_ssh::Error::AuthRejected)
+            },
+        ));
+        assert_eq!(err, "request_shell failed: boom");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    /// A1 回归（字面路径）：open_pty 限时超时早退——错误文案精确对齐台账
+    /// （ottr-bench 断言 "open_pty timed out after 10s"）+ 会话表无残留。
+    /// 挂起的 handler 卡死服务端会话循环（无法观测断连），wire 级断连证据由
+    /// [`attach_pre_register_failure_disconnects_connection`] 承担（同一 match
+    /// 收尾臂，[`close_after_failed_attach`] 生产面恒传真 `session.disconnect()`）。
+    #[test]
+    fn attach_openpty_timeout_returns_error_without_residue() {
+        tauri::async_runtime::block_on(async {
+            let (addr, state) = spawn_mock_sshd(true).await;
+            let (result, sessions) = attach_against_mock(addr).await;
+
+            assert!(
+                state.connected.load(Ordering::SeqCst) >= 1,
+                "超时必须发生在建连成功之后（A1 指控的路径）"
+            );
+            assert_eq!(
+                result.expect_err("open_pty 挂起必须超时"),
+                "open_pty timed out after 10s"
+            );
+            assert!(sessions.lock().unwrap().is_empty(), "会话表不得残留");
+        });
     }
 }

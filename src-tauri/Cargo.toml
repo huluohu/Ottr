@@ -61,3 +61,6 @@ keyring = { version = "3", features = ["sync-secret-service"] }
 [dev-dependencies]
 # vault 相关单测（tempfile 临时目录 + InMemoryStorage，测试纪律见 ottr-vault）
 tempfile = "3"
+# 终审 A1 回归：进程内 mock sshd 生成 Ed25519 主机密钥（PrivateKey::random
+# 的 rand 版本须与 russh 同源对齐，同款约束见 crates/ottr-ssh Cargo.toml）
+rand = "0.10"

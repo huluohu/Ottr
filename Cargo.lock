@@ -3222,6 +3222,7 @@ dependencies = [
  "ottr-term",
  "ottr-transfer",
  "ottr-vault",
+ "rand 0.10.3",
  "russh",
  "serde",
  "serde_json",

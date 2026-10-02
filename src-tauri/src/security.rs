@@ -66,6 +66,10 @@ pub const HOSTKEY_AUDIT_INTERVAL_MAX_SECS: u64 = 7 * 24 * 3600;
 /// 前端另有 password（主密码）模式限定，keyring 模式即使键为 true 也不生效）。
 pub const SETTING_SUDO_AUTOFILL: &str = "security.sudo_autofill";
 
+/// MCP server 总开关（Phase 4 Task 3，C1）：settings `mcp.enabled`，默认关
+/// （安全侧——开了才有 UDS listener，工具面另有主机粒度授权矩阵默认全拒）。
+pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
+
 /// 监控采样间隔配置 → Duration。未配置 = 默认 5s；越界收敛
 /// （下限 1s / 上限 1h——配置错误不断采样，同 *_from 收敛口径）。
 pub fn monitor_interval_from(raw: Option<u64>) -> std::time::Duration {
@@ -176,6 +180,14 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
                 Ok(())
             } else {
                 Err("security.sudo_autofill expects a boolean".to_string())
+            }
+        }
+        // C1（Phase 4 Task 3）：MCP server 总开关（布尔；默认关）
+        SETTING_MCP_ENABLED => {
+            if value.is_boolean() {
+                Ok(())
+            } else {
+                Err("mcp.enabled expects a boolean".to_string())
             }
         }
         "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
@@ -538,5 +550,9 @@ mod tests {
             Ok(())
         );
         assert!(validate_setting(SETTING_SUDO_AUTOFILL, &json!(1)).is_err());
+        // C1：mcp.enabled 布尔校验（默认关是存储缺省，写入侧只挡类型错）。
+        assert_eq!(validate_setting(SETTING_MCP_ENABLED, &json!(true)), Ok(()));
+        assert!(validate_setting(SETTING_MCP_ENABLED, &json!("on")).is_err());
+        assert!(validate_setting(SETTING_MCP_ENABLED, &json!(1)).is_err());
     }
 }

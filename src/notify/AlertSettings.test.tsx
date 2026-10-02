@@ -223,6 +223,57 @@ describe("AlertSettings 规则区", () => {
     await waitFor(() => expect(engine.reload).toHaveBeenCalled());
     expect(mockedInvoke).toHaveBeenCalledWith("ar_delete", { id: 9 });
   });
+
+  it("log 规则（Phase 4 T2 解禁）：类型可选 + 路径/关键字/间隔表单 → ar_create 载荷", async () => {
+    render(<AlertSettings open={true} onClose={() => {}} />);
+    fireEvent.click(await screen.findByTestId("alert-add-rule"));
+    fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
+    const kindSelect = screen.getByTestId("alert-rule-kind") as HTMLSelectElement;
+    const logOption = Array.from(kindSelect.options).find((o) => o.value === "log");
+    expect(logOption?.disabled).toBe(false); // 解禁：log 不再置灰
+    fireEvent.change(kindSelect, { target: { value: "log" } });
+    fireEvent.change(screen.getByTestId("alert-rule-log-path"), { target: { value: "/var/log/app.log" } });
+    fireEvent.change(screen.getByTestId("alert-rule-log-pattern"), { target: { value: "FATAL|OOM" } });
+    fireEvent.change(screen.getByTestId("alert-rule-log-interval"), { target: { value: "15" } });
+    fireEvent.click(screen.getByTestId("alert-rule-channel-3"));
+    fireEvent.click(screen.getByTestId("alert-rule-save"));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("ar_create", {
+      input: expect.objectContaining({
+        host_id: 1,
+        kind: "log",
+        params: { path: "/var/log/app.log", pattern: "FATAL|OOM", interval_secs: 15 },
+        channels: [3],
+      }),
+    }));
+  });
+
+  it("log 规则校验：非法正则/越白名单路径报错不落库；间隔下限收敛 5", async () => {
+    render(<AlertSettings open={true} onClose={() => {}} />);
+    fireEvent.click(await screen.findByTestId("alert-add-rule"));
+    fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
+    fireEvent.change(screen.getByTestId("alert-rule-kind"), { target: { value: "log" } });
+    fireEvent.change(screen.getByTestId("alert-rule-log-path"), { target: { value: "/var/log/a b.log" } });
+    fireEvent.change(screen.getByTestId("alert-rule-log-pattern"), { target: { value: "FATAL" } });
+    fireEvent.click(screen.getByTestId("alert-rule-save"));
+    expect(await screen.findByTestId("alert-form-error")).toBeDefined();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("ar_create", expect.anything());
+
+    fireEvent.change(screen.getByTestId("alert-rule-log-path"), { target: { value: "/var/log/app.log" } });
+    fireEvent.change(screen.getByTestId("alert-rule-log-pattern"), { target: { value: "(bad" } });
+    fireEvent.click(screen.getByTestId("alert-rule-save"));
+    expect(await screen.findByTestId("alert-form-error")).toBeDefined();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("ar_create", expect.anything());
+
+    fireEvent.change(screen.getByTestId("alert-rule-log-pattern"), { target: { value: "FATAL" } });
+    fireEvent.change(screen.getByTestId("alert-rule-log-interval"), { target: { value: "2" } });
+    fireEvent.click(screen.getByTestId("alert-rule-save"));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("ar_create", {
+      input: expect.objectContaining({
+        kind: "log",
+        params: { path: "/var/log/app.log", pattern: "FATAL", interval_secs: 5 },
+      }),
+    }));
+  });
 });
 
 describe("AlertSettings 收尾", () => {

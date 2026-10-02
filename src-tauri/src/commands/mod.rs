@@ -16,10 +16,18 @@ pub mod jump;
 // tokio timeout + 双检查取消）+ batch_exec/batch_cancel + ottr://batch-result
 // 逐主机结果事件。执行模型与测试面论证见模块文档。
 pub mod batch;
+// cron 定时任务命令域（Phase 4 Task 1，缺口① + 终审风险#2 清偿）：调度器
+// spawn 点（vault 就绪后，hostkey_audit 同款挂点）+ cj_* 命令 +
+// ottr://cron-run 事件。宿主裁定论证见模块文档与 ottr-monitor::cron。
+pub mod cron;
 // 监控采集命令域（Phase 3 Task 1，B4 上半）：MonitorManager（per-session
 // 采样任务 owner，ForwardManager 同款模式）+ monitor_start/stop +
 // ottr://monitor 事件推前端。
 pub mod monitor;
+// MCP 命令域（Phase 4 Task 3，C1）：MCP stdio server 引擎（UDS listener +
+// 授权矩阵执行 + 逐次审批门）+ mcp_* 命令面。协议核在 crate::mcp，
+// relay 子进程在 bin/ottr-mcp.rs；形态裁定论证见模块文档。
+pub mod mcp;
 // 会话录制命令域（Phase 3 Task 5，B3）：RecordingHandle（tee 写盘线程 owner）
 // + recording_start/stop/read/list/search/delete/export + 会话退出自动收尾。
 pub mod recording;

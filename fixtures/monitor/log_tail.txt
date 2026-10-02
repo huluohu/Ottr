@@ -1,0 +1,5 @@
+===OTTR:LSTAT===
+5416673 29
+===OTTR:LDATA===
+INFO boot ok
+FATAL disk full

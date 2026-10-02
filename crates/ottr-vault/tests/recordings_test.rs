@@ -173,16 +173,18 @@ fn host_cascade_removes_rows_and_fts() {
         .is_empty());
 }
 
-/// 空 path 显式拒绝（InvalidInput）；schema 版本推进到 15。
+/// 空 path 显式拒绝（InvalidInput）；schema 版本不低于 15（0016 起后续
+/// 迁移继续推进——断言改对 ottr_vault::LATEST_SCHEMA_VERSION，避免每加一个
+/// 迁移改一次测试；0015 本体的「推进到 15」钉子由迁移器顺序测试承担）。
 #[test]
-fn empty_path_is_invalid_and_schema_is_15() {
+fn empty_path_is_invalid_and_schema_at_least_15() {
     let v = vault();
     let h = host(&v, "web-01");
     assert!(matches!(
         Recordings::insert(&v, &input(h, "   ", 0.0, None)),
         Err(ottr_vault::VaultError::InvalidInput(_))
     ));
-    assert_eq!(v.schema_version().unwrap(), 15);
+    assert!(v.schema_version().unwrap() >= 15);
 }
 
 /// 大小写不敏感命中 + snippet 上下文（fix round 1/5 I-2 核心回归）：内容大写

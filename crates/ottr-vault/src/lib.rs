@@ -5,12 +5,14 @@
 //! 落盘（FTS5 检索，见 migrations/）。
 
 pub mod alert_rules;
+pub mod cron_jobs;
 pub mod crypto;
 pub mod entities;
 pub mod forwards;
 pub mod history;
 pub mod jump_chains;
 pub mod master_key;
+pub mod mcp_grants;
 pub mod notifications;
 pub mod notify_channels;
 pub mod recordings;
@@ -38,6 +40,15 @@ pub use notify_channels::{
 };
 // 告警规则（Phase 3 Task 3，B5；评估引擎在 TS 侧，本 crate 只供表）
 pub use alert_rules::{AlertRule, AlertRuleInput, AlertRules, RULE_KINDS};
+// cron 定时任务（Phase 4 Task 1，缺口①；调度引擎在 ottr-monitor——宿主裁定
+// 落地，本 crate 只供表 + 运行历史）
+pub use cron_jobs::{
+    CronJob, CronJobInput, CronJobs, CronRun, CronRunInput, CronRuns, CRON_RUNS_KEEP,
+    CRON_RUN_STATUSES, CRON_SCHEDULE_MAX_BYTES, CRON_SCRIPT_MAX_BYTES,
+};
+// MCP 授权矩阵（Phase 4 Task 3，C1；协议引擎在 src-tauri commands/mcp.rs，
+// 本 crate 只供表——cron_jobs 同款分工）
+pub use mcp_grants::{McpGrant, McpGrantInput, McpGrants, MCP_READ_PATHS_MAX};
 pub use secrets::Secrets;
 pub use settings::Settings;
 pub use store::{KeyMode, Vault};

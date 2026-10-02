@@ -542,13 +542,18 @@
       "aiDone": "Diagnosis ready",
       "aiExplain": "Explanation ready",
       "summaryReady": "Session summary ready",
-      "hostKeyChanged": "Host key changed alert"
+      "hostKeyChanged": "Host key changed alert",
+      "cronOk": "Scheduled task finished",
+      "cronFailed": "Scheduled task failed",
+      "cronTimeout": "Scheduled task timed out",
+      "cronMissed": "Scheduled task missed"
     },
     "kindAi": "AI",
     "kindAlert": "Alerts",
-    "kindSecurity": "Security"
+    "kindSecurity": "Security",
+    "kindCron": "Scheduled tasks"
   },
-"knownHosts": {
+  "knownHosts": {
     "title": "Known host keys",
     "hint": "TOFU trust anchors are kept per network endpoint. A fingerprint change found by the audit or a connect marks the row changed and raises a security alert; delete = forget the endpoint, the next connect re-runs first-use confirmation.",
     "loading": "Loading…",
@@ -579,7 +584,7 @@
     "deleteTitle": "Forget this endpoint?",
     "deleteHint": "The trust record for {{endpoint}} will be removed; the next connect re-runs first-use (TOFU) confirmation."
   },
-    "hostKey": {
+  "hostKey": {
     "firstTitle": "First connection",
     "firstIntro": "First time connecting to \"{{host}}\". Verify the server host key fingerprint:",
     "pendingIntro": "The host key of \"{{host}}\" is not verified yet. Verify the fingerprint:",
@@ -728,14 +733,16 @@
     "body": {
       "disk": "{{host}} disk {{mount}} at {{value}} (threshold {{threshold}}%)",
       "cpu": "{{host}} CPU above {{threshold}}% ({{value}})",
-      "process": "process {{comm}} missing on {{host}}"
+      "process": "process {{comm}} missing on {{host}}",
+      "log": "log {{path}} on {{host}} matched /{{pattern}}/: {{value}}"
     },
     "label": {
       "disk": "Disk {{mount}}",
       "cpu": "CPU>{{threshold}}% x {{consecutive}}",
-      "process": "Process {{comm}}"
+      "process": "Process {{comm}}",
+      "log": "Log {{path}}"
     },
-    "kindLog": "Log keyword (later)",
+    "kindLog": "Log keyword",
     "channelSection": "Channels",
     "channelHint": "Channels deliver alerts outward: subscribe a rule to a channel and it pushes when fired. Tokens/secrets are stored encrypted.",
     "noChannels": "No channels yet. Add one to reach DingTalk/Feishu/Telegram and more.",
@@ -746,6 +753,8 @@
     "errKindRequired": "Pick a channel kind",
     "errFieldRequired": "Some required fields are empty",
     "errFieldNumber": "Port must be a number",
+    "errRegexInvalid": "Keyword is not a valid regex",
+    "errLogPathInvalid": "Path must be absolute without special characters",
     "errHeadersInvalid": "Headers is not a valid JSON object",
     "errTemplateInvalid": "Rendered template is not valid JSON",
     "test": "Send test",
@@ -791,7 +800,7 @@
       "webhookBodyTemplate": "JSON template (optional; vars host/rule/value/severity/count)"
     },
     "ruleSection": "Rules",
-    "ruleHint": "Rules evaluate per host: disk usage, sustained CPU, process missing. Log keyword rules come later.",
+    "ruleHint": "Rules evaluate per host: disk usage, sustained CPU, process missing, log keywords (periodic tail sampling).",
     "noRules": "No rules yet. Add one for a monitored host.",
     "addRule": "Add rule",
     "ruleFormTitle": "Rule",
@@ -804,6 +813,9 @@
     "paramCpuThreshold": "CPU threshold (%)",
     "paramCpuConsecutive": "Consecutive samples",
     "paramProcessComm": "Process name (comm)",
+    "paramLogPath": "Log file path",
+    "paramLogPattern": "Keyword (regex)",
+    "paramLogInterval": "Sample interval (seconds)",
     "errNoHost": "Pick a host",
     "errNoChannelHint": "No channels yet — add one above so the rule has somewhere to push.",
     "lastFired": "Last fired",
@@ -866,5 +878,86 @@
     "searchPlaceholder": "Search recording content…",
     "searchAria": "Search recording content",
     "exportCancelled": "Export cancelled (nothing written)"
+  },
+  "cron": {
+    "title": "Scheduled Tasks",
+    "empty": "No tasks yet. Add a cron job to run a script on a schedule while the host session is online.",
+    "add": "Add task",
+    "addTitle": "Add scheduled task",
+    "editTitle": "Edit scheduled task",
+    "host": "Host",
+    "schedule": "Schedule (min hour dom mon dow)",
+    "script": "Script (run via exec channel)",
+    "scriptPlaceholder": "e.g. df -h / && systemctl status nginx --no-pager",
+    "channels": "Subscribed channels (push on completion)",
+    "enabled": "Enabled",
+    "enabledHint": "Disabled jobs keep their config; the scheduler skips them",
+    "runNow": "Run now",
+    "running": "Running…",
+    "history": "History",
+    "noRuns": "No runs recorded",
+    "nextFire": "Next run: ",
+    "nextFireAt": "Next run: {{time}}",
+    "badSchedule": "Cannot parse schedule (5 fields: min hour dom mon dow)",
+    "status": {
+      "ok": "OK",
+      "failed": "Failed",
+      "timeout": "Timeout",
+      "missed": "Missed (session offline)"
+    },
+    "errHostRequired": "Pick a host",
+    "errScheduleRequired": "Enter a schedule expression",
+    "errScriptRequired": "Enter a script",
+    "actionFailed": "Action failed: {{message}}",
+    "loadFailed": "Load failed: {{message}}",
+    "saveFailed": "Save failed: {{message}}"
+  },
+  "mcp": {
+    "title": "MCP (AI)",
+    "serverSection": "MCP Server",
+    "enabled": "Enable MCP server",
+    "enabledHint": "Exposes granted hosts as tools to local AI clients (e.g. Claude Desktop) via a stdio relay. Master switch off by default; nothing is exposed until you enable it here AND grant hosts below.",
+    "listening": "Status",
+    "listeningOn": "Listening",
+    "listeningOff": "Stopped",
+    "socketPath": "Socket",
+    "snippetToggle": "Claude Desktop setup",
+    "snippetHint": "Add this to claude_desktop_config.json (replace the command path with the actual ottr-mcp binary path):",
+    "snippetUnavailable": "Enable the server first to see the socket path.",
+    "snippetDocs": "The Ottr app must be running while the MCP client is connected. Full guide: docs/mcp.md.",
+    "grantsSection": "Host grants (default: deny all)",
+    "grantsHint": "Each host stays invisible to MCP clients until granted. List = host metadata (name/address/tags, never credentials); Exec = run commands; Approval = confirm every execution in Ottr.",
+    "noGrants": "No hosts granted yet — MCP clients see nothing.",
+    "add": "Grant a host",
+    "addPick": "Pick a host…",
+    "canList": "List",
+    "canExec": "Exec",
+    "approval": "Approve each run",
+    "readPathsPlaceholder": "read_file whitelist dirs, comma-separated (empty = deny)",
+    "execNote": "Exec/read only reach hosts with a live session (a connected tab). Locking the vault suspends MCP exec and read.",
+    "approvalTitle": "MCP execution request",
+    "approvalIntro": "An AI client wants to run a command on \"{{host}}\" via Ottr MCP:",
+    "approvalCommand": "Command",
+    "approvalHint": "Approving runs this command on the remote host now. The request is denied automatically after 60 seconds.",
+    "approvalDeny": "Deny",
+    "approvalAllow": "Run it"
+  },
+  "plugins": {
+    "title": "Plugins",
+    "open": "Open plugin sidebar",
+    "close": "Collapse plugin sidebar",
+    "net": {
+      "title": "Network",
+      "waiting": "Waiting for samples…"
+    },
+    "quick": {
+      "title": "Quick Commands",
+      "copy": "Copy",
+      "copied": "Copied",
+      "df": "Disk",
+      "free": "Memory",
+      "uptime": "Uptime",
+      "dockerPs": "Containers"
+    }
   }
 }

@@ -541,13 +541,18 @@
       "aiDone": "诊断完成",
       "aiExplain": "解释完成",
       "summaryReady": "会话纪要已生成",
-      "hostKeyChanged": "主机密钥变更告警"
+      "hostKeyChanged": "主机密钥变更告警",
+      "cronOk": "定时任务完成",
+      "cronFailed": "定时任务失败",
+      "cronTimeout": "定时任务超时",
+      "cronMissed": "定时任务未执行"
     },
     "kindAi": "AI",
     "kindAlert": "告警",
-    "kindSecurity": "安全"
+    "kindSecurity": "安全",
+    "kindCron": "定时任务"
   },
-"knownHosts": {
+  "knownHosts": {
     "title": "已知主机密钥",
     "hint": "TOFU 信任锚按网络端点记账。巡检或连接期检测到指纹变化会置为 changed 并发出安全告警；删除 = 忘记该端点，下次连接重新走首见确认。",
     "loading": "加载中…",
@@ -578,7 +583,7 @@
     "deleteTitle": "忘记该端点？",
     "deleteHint": "将删除 {{endpoint}} 的信任记录，下次连接会重新走首见（TOFU）确认。"
   },
-    "hostKey": {
+  "hostKey": {
     "firstTitle": "首次连接确认",
     "firstIntro": "首次连接「{{host}}」，请核对服务器主机密钥指纹：",
     "pendingIntro": "「{{host}}」的主机密钥尚未核验，请核对指纹：",
@@ -727,14 +732,16 @@
     "body": {
       "disk": "{{host}} 磁盘 {{mount}} 已用 {{value}}（阈值 {{threshold}}%）",
       "cpu": "{{host}} CPU 超过 {{threshold}}%（{{value}}）",
-      "process": "{{host}} 进程 {{comm}} 消失"
+      "process": "{{host}} 进程 {{comm}} 消失",
+      "log": "{{host}} 日志 {{path}} 命中 /{{pattern}}/：{{value}}"
     },
     "label": {
       "disk": "磁盘{{mount}}",
       "cpu": "CPU>{{threshold}}% × {{consecutive}}",
-      "process": "进程 {{comm}}"
+      "process": "进程 {{comm}}",
+      "log": "日志 {{path}}"
     },
-    "kindLog": "日志关键字（延后）",
+    "kindLog": "日志关键字",
     "channelSection": "通知渠道",
     "channelHint": "渠道是告警的外发面：规则订阅渠道后，触发即推送。token/secret 加密存储。",
     "noChannels": "还没有渠道。点「添加渠道」接入钉钉/飞书/Telegram 等。",
@@ -745,6 +752,8 @@
     "errKindRequired": "请选择渠道类型",
     "errFieldRequired": "存在未填的必填项",
     "errFieldNumber": "端口必须是数字",
+    "errRegexInvalid": "关键字不是合法正则",
+    "errLogPathInvalid": "路径须为绝对路径且不含特殊字符",
     "errHeadersInvalid": "请求头不是合法 JSON 对象",
     "errTemplateInvalid": "模板渲染后不是合法 JSON",
     "test": "发送测试",
@@ -790,7 +799,7 @@
       "webhookBodyTemplate": "JSON 模板（可选；变量 host/rule/value/severity/count）"
     },
     "ruleSection": "告警规则",
-    "ruleHint": "规则按主机评估：磁盘使用率、CPU 持续超阈、进程消失。日志关键字规则将在后续版本提供。",
+    "ruleHint": "规则按主机评估：磁盘使用率、CPU 持续超阈、进程消失、日志关键字（定期 tail 采样）。",
     "noRules": "还没有规则。点「添加规则」为监控主机建一条。",
     "addRule": "添加规则",
     "ruleFormTitle": "规则配置",
@@ -803,6 +812,9 @@
     "paramCpuThreshold": "CPU 阈值（%）",
     "paramCpuConsecutive": "连续采样数",
     "paramProcessComm": "进程名（comm）",
+    "paramLogPath": "日志文件路径",
+    "paramLogPattern": "关键字（正则）",
+    "paramLogInterval": "采样间隔（秒）",
     "errNoHost": "请选择主机",
     "errNoChannelHint": "还没有可用渠道——先在上方添加渠道，规则才有推送去处。",
     "lastFired": "上次触发",
@@ -865,5 +877,86 @@
     "searchPlaceholder": "搜索录制内容…",
     "searchAria": "搜索录制内容",
     "exportCancelled": "已取消导出（未写出文件）"
+  },
+  "cron": {
+    "title": "定时任务",
+    "empty": "暂无任务。添加一条 cron 任务，在主机会话在线时按计划执行脚本。",
+    "add": "添加任务",
+    "addTitle": "添加定时任务",
+    "editTitle": "编辑定时任务",
+    "host": "主机",
+    "schedule": "计划（分 时 日 月 周）",
+    "script": "脚本（exec 通道执行）",
+    "scriptPlaceholder": "例如：df -h / && systemctl status nginx --no-pager",
+    "channels": "订阅渠道（任务完成后推送）",
+    "enabled": "启用",
+    "enabledHint": "禁用后任务保留配置，调度器跳过",
+    "runNow": "立即运行",
+    "running": "运行中…",
+    "history": "历史",
+    "noRuns": "暂无运行记录",
+    "nextFire": "下次运行：",
+    "nextFireAt": "下次运行：{{time}}",
+    "badSchedule": "无法解析的计划表达式（五段式：分 时 日 月 周）",
+    "status": {
+      "ok": "成功",
+      "failed": "失败",
+      "timeout": "超时",
+      "missed": "未执行（会话不在线）"
+    },
+    "errHostRequired": "请选择主机",
+    "errScheduleRequired": "请填写计划表达式",
+    "errScriptRequired": "请填写脚本",
+    "actionFailed": "操作失败：{{message}}",
+    "loadFailed": "加载失败：{{message}}",
+    "saveFailed": "保存失败：{{message}}"
+  },
+  "mcp": {
+    "title": "MCP（AI）",
+    "serverSection": "MCP Server",
+    "enabled": "启用 MCP server",
+    "enabledHint": "经 stdio relay 把已授权主机以工具面暴露给本地 AI 客户端（如 Claude Desktop）。总开关默认关；先在此启用、再在下方面授权主机，主机才可见。",
+    "listening": "状态",
+    "listeningOn": "监听中",
+    "listeningOff": "已停止",
+    "socketPath": "Socket",
+    "snippetToggle": "Claude Desktop 接入",
+    "snippetHint": "把下面的配置加入 claude_desktop_config.json（command 替换为 ottr-mcp 可执行文件的实际路径）：",
+    "snippetUnavailable": "先启用 server 才能看到 socket 路径。",
+    "snippetDocs": "MCP 客户端连接期间 Ottr 必须在运行。完整说明见 docs/mcp.md。",
+    "grantsSection": "主机授权（默认全部拒收）",
+    "grantsHint": "未授权的主机对 MCP 客户端完全不可见。List = 主机元数据（名称/地址/标签，永不含凭据）；Exec = 执行命令；Approval = 每次执行前在 Ottr 里确认。",
+    "noGrants": "还没有授权任何主机——MCP 客户端什么都看不到。",
+    "add": "授权主机",
+    "addPick": "选择主机…",
+    "canList": "列表",
+    "canExec": "执行",
+    "approval": "逐次审批",
+    "readPathsPlaceholder": "read_file 目录白名单，逗号分隔（留空 = 拒绝）",
+    "execNote": "Exec/read 只触达有在册会话（已连接标签）的主机。锁定 vault 会一并暂停 MCP 的 exec 与 read。",
+    "approvalTitle": "MCP 执行请求",
+    "approvalIntro": "一个 AI 客户端请求经 Ottr MCP 在「{{host}}」上执行命令：",
+    "approvalCommand": "命令",
+    "approvalHint": "允许 = 立即在远端主机执行该命令。60 秒内未裁定将自动拒绝。",
+    "approvalDeny": "拒绝",
+    "approvalAllow": "执行"
+  },
+  "plugins": {
+    "title": "插件",
+    "open": "打开插件侧栏",
+    "close": "收起插件侧栏",
+    "net": {
+      "title": "网络摘要",
+      "waiting": "等待采样…"
+    },
+    "quick": {
+      "title": "快捷命令",
+      "copy": "复制",
+      "copied": "已复制",
+      "df": "磁盘",
+      "free": "内存",
+      "uptime": "运行时长",
+      "dockerPs": "容器列表"
+    }
   }
 }

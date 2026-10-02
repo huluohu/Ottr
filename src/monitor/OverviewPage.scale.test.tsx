@@ -15,6 +15,7 @@ import type { Host } from "../vault/api";
 function host(id: number, over: Partial<Host> = {}): Host {
   return {
     id,
+    name: `host-${id}`,
     group_id: null,
     tags: [],
     address: "10.0.0.1",

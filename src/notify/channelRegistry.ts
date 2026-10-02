@@ -4,7 +4,7 @@
 // * 订阅语义（spec §7「③外部渠道按 alert_rules.channels / cron_jobs.channels
 //   订阅」）：适配器的 subscribed = 事件是 alert 且 rule.channels 引用本渠道
 //   id——transfer/session/ai 事件不进外部渠道（应用内中心 + 系统通知已覆盖，
-//   外发是告警场景的显式订阅面）；cron_jobs 订阅 Phase 3 无（B 未立项）。
+//   外发是告警/cron 的显式订阅面）；cron 按 cron_jobs.channels（Phase 4 T1）。
 // * 重挂载：设置页渠道增删改后 remountChannels() 全量重建（渠道量级 = 个位数，
 //   全量重建比增量记账简单且无悬挂引用面）；挂载失败的渠道（vault 不可达/
 //   config 缺字段）只记 console 不阻塞其余渠道。
@@ -15,10 +15,13 @@ import { channels, type NotificationEvent, type NotificationChannel } from "./co
 import { createChannel } from "./channels/factory";
 import type { ChannelDeps } from "./channels/types";
 
-/** alert 事件的规则订阅面（payload.channel_ids ∈ AlertPayload）。 */
+/** alert/cron 事件的订阅路由面（payload.channel_ids ∈ AlertPayload /
+ * CronRunEvent）：alert 按 alert_rules.channels、cron 按 cron_jobs.channels
+ * （spec §7③「按 alert_rules.channels / cron_jobs.channels 订阅」——Phase 4
+ * Task 1 起 cron 到点）。transfer/session/ai/security 不进外部渠道。 */
 function subscribedChannel(id: number): (event: NotificationEvent) => boolean {
   return (event) => {
-    if (event.kind !== "alert") return false;
+    if (event.kind !== "alert" && event.kind !== "cron") return false;
     const ids = event.payload?.["channel_ids"];
     return Array.isArray(ids) && (ids as number[]).includes(id);
   };

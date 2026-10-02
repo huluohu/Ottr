@@ -17,6 +17,9 @@ pub mod hostkey_audit;
 pub mod importers;
 pub mod keys;
 pub mod menu;
+// MCP 协议核（Phase 4 Task 3，C1）：纯 JSON-RPC/MCP 消息层（无 tauri/IO 依赖），
+// 引擎装配与命令面在 commands/mcp.rs，stdio relay 子进程在 bin/ottr-mcp.rs。
+pub mod mcp;
 pub mod security;
 pub mod ssh_config;
 pub mod vault;
@@ -60,6 +63,9 @@ pub use commands::remote_edit::{
     edit_open, edit_poll, edit_save, local_stamp, poll_decision, sweep_stale_edits, temp_path_for,
     temp_root, EditEntry, EditMap, EditPollStatus, LocalDecision, LocalStamp,
 };
+// Phase 4 Task 3（C1）：MCP 引擎核公开给夹具集成测试（tests/mcp_fixture.rs：
+// relay 子进程 + UDS + 授权矩阵 + 真 exec/SFTP 全链）。
+pub use commands::mcp::{spawn_listener, ApprovalGate, HostSessionResolver, McpEngine};
 
 // ---------------------------------------------------------------------------
 // 入口
@@ -79,6 +85,9 @@ pub fn run() {
         // Phase 2 Task 4 Fix round 1（I-1）：trzsz 本地文件桥的会话级授权白名单
         // （授权只来自对话框/拖拽登记 trzsz_grant；七命令入口校验；scope=前端会话 id）。
         .manage(commands::trzsz_fs::TrzszGrants::default())
+        // MCP server 生命周期 owner（Phase 4 Task 3，C1）：UDS listener 句柄 +
+        // 审批登记表（Builder 即 manage——mcp_status 在 vault 初始化窗口可查）。
+        .manage(commands::mcp::McpManager::default())
         // Task 16.5：vault 后台初始化状态（Builder 链上即 manage——无钥匙链
         // 访问零开销，`vault_init_status` 命令在初始化窗口期即可安全调用）。
         .manage(vault::VaultInit::default())
@@ -164,6 +173,16 @@ pub fn run() {
                                 // 后起 60s 心跳（开关默认关；内部自检
                                 // try_state/锁定/间隔，见 hostkey_audit.rs）。
                                 hostkey_audit::spawn_audit_scheduler(handle.clone());
+                                // cron 定时任务调度器（Phase 4 Task 1，缺口①）：
+                                // vault 就绪后起 20s 心跳对账循环——**引擎宿主裁定
+                                // 落地点**：跑在 Rust 运行时、与 webview 生命周期
+                                // 解耦（关窗到托盘照跑；真退出即停，语义见
+                                // commands/cron.rs 模块文档）。
+                                commands::cron::spawn_cron_scheduler(handle.clone());
+                                // MCP stdio server（Phase 4 Task 3，C1）：开关开着
+                                // 则起 UDS listener（引擎形态与授权模型见
+                                // commands/mcp.rs 模块文档；默认关）。
+                                commands::mcp::on_vault_ready(&handle);
                                 // 初始菜单/托盘在 vault 就绪前以 En 兜底构建；
                                 // 就绪后按 settings ui.language 真值重建纠偏。
                                 menu::on_vault_ready(&handle);
@@ -214,6 +233,8 @@ pub fn run() {
             // 进程浏览器（Phase 3 Task 2，B4 下半）：ps 只读采集 + kill（防注入）
             commands::monitor::monitor_ps,
             commands::monitor::monitor_kill,
+            // 日志关键字采样（Phase 4 Task 2，缺口②）：stat+tail 只读复合命令
+            commands::monitor::monitor_log_tail,
             // 批量执行（Phase 3 Task 4，B6；commands/batch.rs）：并发池 +
             // 单主机超时 + ottr://batch-result 逐主机结果事件
             commands::batch::batch_exec,
@@ -231,6 +252,24 @@ pub fn run() {
             vault::nc_reveal_config,
             // SMTP 渠道发送（Phase 3 Task 3，B5；commands/notify.rs，lettre）
             commands::notify::smtp_send,
+            // cron 定时任务（Phase 4 Task 1，缺口①；commands/cron.rs）：
+            // 配置面 CRUD 过锁定门卫，历史/输出读面明文豁免（notify 同款）
+            commands::cron::cj_list,
+            commands::cron::cj_create,
+            commands::cron::cj_update,
+            commands::cron::cj_delete,
+            commands::cron::cj_runs,
+            commands::cron::cj_trigger,
+            commands::cron::cj_next_fire,
+            commands::cron::cj_run_output,
+            // MCP server（Phase 4 Task 3，C1；commands/mcp.rs）：状态/开关 +
+            // 授权矩阵 CRUD（过锁定门卫）+ 逐次审批裁定回传
+            commands::mcp::mcp_status,
+            commands::mcp::mcp_set_enabled,
+            commands::mcp::mcp_grants_list,
+            commands::mcp::mcp_grants_upsert,
+            commands::mcp::mcp_grants_delete,
+            commands::mcp::mcp_approval_decision,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

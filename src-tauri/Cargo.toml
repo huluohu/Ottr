@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "Ottr - cross-platform SSH client"
 authors = ["Ottr contributors"]
 edition = "2021"
+# Tauri CLI 的 dev 流程走 `cargo run`（tauri.conf beforeDevCommand 链）——bin/ottr-mcp
+# （Phase 4 T3）入库后 bin 数 >1，缺省歧义即 `cargo run could not determine which
+# binary to run`（T7 验收 GUI 走查发现并修复）：钉死默认二进制 = 应用本体。
+default-run = "ottr"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

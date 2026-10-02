@@ -148,9 +148,8 @@ fn main() {
     // 外层硬顶：hold + 120s（含收尾）——收尾挂死不许无限占用（硬超时纪律）。
     // 【注】timeout 的 Sleep 构造点即取 runtime 句柄——必须在 block_on 内构造，
     // 不能作为 block_on 的实参在外部求值。
-    let r = runtime.block_on(async {
-        tokio::time::timeout(Duration::from_secs(hold + 120), run(hold)).await
-    });
+    let r = runtime
+        .block_on(async { tokio::time::timeout(Duration::from_secs(hold + 120), run(hold)).await });
     let (result, ok) = match r {
         Ok(pair) => pair,
         Err(_) => (
@@ -202,7 +201,10 @@ async fn run(hold: u64) -> (String, bool) {
             return Err(format!("no live session for host {}", job.host_id));
         };
         let fut: BoxedCronExec = Box::pin(async move {
-            let out = session.exec("echo p4-cron-ok").await.map_err(|e| e.to_string())?;
+            let out = session
+                .exec("echo p4-cron-ok")
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(CronExecOutput {
                 exit_code: out.exit_status.map(i64::from),
                 stdout: out.stdout,
@@ -214,22 +216,27 @@ async fn run(hold: u64) -> (String, bool) {
     let sink_ok = Arc::clone(&cron_ok);
     let sink_missed = Arc::clone(&cron_missed);
     let sink_other = Arc::clone(&cron_other);
-    let on_run: ottr_monitor::cron::CronRunSink = Arc::new(move |record: CronRunRecord| {
-        match record.status {
+    let on_run: ottr_monitor::cron::CronRunSink =
+        Arc::new(move |record: CronRunRecord| match record.status {
             CronRunStatus::Ok => {
                 let n = sink_ok.fetch_add(1, Ordering::Relaxed) + 1;
-                eprintln!("[soak] cron ok #{n} (cron_id={} ts={})", record.cron_id, record.ts);
+                eprintln!(
+                    "[soak] cron ok #{n} (cron_id={} ts={})",
+                    record.cron_id, record.ts
+                );
             }
             CronRunStatus::Missed => {
                 let n = sink_missed.fetch_add(1, Ordering::Relaxed) + 1;
-                eprintln!("[soak] cron missed #{n} (cron_id={} ts={})", record.cron_id, record.ts);
+                eprintln!(
+                    "[soak] cron missed #{n} (cron_id={} ts={})",
+                    record.cron_id, record.ts
+                );
             }
             other => {
                 sink_other.fetch_add(1, Ordering::Relaxed);
                 eprintln!("[soak] error: cron job {} ended {other:?}", record.cron_id);
             }
-        }
-    });
+        });
     let cron_cancel = CancellationToken::new();
     let cron_task = tokio::spawn(run_cron_scheduler(
         cron_cancel.clone(),
@@ -242,8 +249,18 @@ async fn run(hold: u64) -> (String, bool) {
         }),
         Arc::new(move || {
             vec![
-                CronJobView { id: 1, host_id: 1, schedule: "* * * * *".into(), enabled: true },
-                CronJobView { id: 2, host_id: 99, schedule: "* * * * *".into(), enabled: true },
+                CronJobView {
+                    id: 1,
+                    host_id: 1,
+                    schedule: "* * * * *".into(),
+                    enabled: true,
+                },
+                CronJobView {
+                    id: 2,
+                    host_id: 99,
+                    schedule: "* * * * *".into(),
+                    enabled: true,
+                },
             ]
         }),
         exec,

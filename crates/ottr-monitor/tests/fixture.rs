@@ -13,7 +13,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ottr_monitor::{LogTailSample, Metrics, MonitorError, collect, collect_log_tail, collect_ps, kill_process};
+use ottr_monitor::{
+    LogTailSample, Metrics, MonitorError, collect, collect_log_tail, collect_ps, kill_process,
+};
 use ottr_ssh::{AuthMethod, SshSession, connect};
 
 const HOST: &str = "127.0.0.1";
@@ -234,15 +236,20 @@ async fn log_tail_cursor_append_truncate_rotate() {
         .await
         .expect("prepare dir");
     session
-        .exec(&format!("printf 'INFO boot ok\\nFATAL history\\n' > {path}"))
+        .exec(&format!(
+            "printf 'INFO boot ok\\nFATAL history\\n' > {path}"
+        ))
         .await
         .expect("seed log");
 
     // 武装轮：历史 FATAL 不入 data（不回放），水位 = 文件尾
-    let arm = tokio::time::timeout(Duration::from_secs(10), collect_log_tail(&session, path, None))
-        .await
-        .expect("arm timed out")
-        .expect("arm failed");
+    let arm = tokio::time::timeout(
+        Duration::from_secs(10),
+        collect_log_tail(&session, path, None),
+    )
+    .await
+    .expect("arm timed out")
+    .expect("arm failed");
     let inode0 = arm.inode.expect("fixture is Linux (GNU stat)");
     assert_eq!(arm.data, "", "武装轮不回放历史内容");
     assert_eq!(arm.size, "INFO boot ok\nFATAL history\n".len() as u64);
@@ -302,7 +309,9 @@ async fn log_tail_cursor_append_truncate_rotate() {
 
     // rename 轮转（logrotate 默认）：monitored path 换 inode
     session
-        .exec(&format!("mv {path} {path}.1 && printf 'FATAL after rotate\\n' > {path}"))
+        .exec(&format!(
+            "mv {path} {path}.1 && printf 'FATAL after rotate\\n' > {path}"
+        ))
         .await
         .expect("rotate");
     let s4 = tokio::time::timeout(
@@ -345,10 +354,7 @@ async fn log_tail_rejects_unsafe_path() {
     .await
     .expect("unsafe path call timed out")
     .expect_err("不安全路径必须被拒");
-    assert!(
-        err.to_string().contains("unsafe log path"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("unsafe log path"), "{err}");
 }
 
 /// LogTailSample serde 形态（前端 src/monitor/api.ts 同构面：snake_case +
@@ -372,5 +378,8 @@ fn log_tail_sample_serde_shape() {
         data: String::new(),
         data_bytes: 0,
     };
-    assert_eq!(serde_json::to_value(&none).unwrap()["inode"], serde_json::Value::Null);
+    assert_eq!(
+        serde_json::to_value(&none).unwrap()["inode"],
+        serde_json::Value::Null
+    );
 }

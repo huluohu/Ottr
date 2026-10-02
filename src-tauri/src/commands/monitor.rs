@@ -32,7 +32,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use ottr_monitor::{
-    collect, collect_log_tail, collect_ps, kill_process, run_sampling, LoopConfig, LogTailSample,
+    collect, collect_log_tail, collect_ps, kill_process, run_sampling, LogTailSample, LoopConfig,
     Metrics, MonitorGuard, ProcEntry, SamplingEnd,
 };
 use ottr_ssh::SshSession;

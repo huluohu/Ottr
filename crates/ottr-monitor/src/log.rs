@@ -75,15 +75,13 @@ pub fn log_tail_cmd(path: &str, offset: u64) -> String {
 /// （marker 不存在 → None）。
 fn section_after<'a>(raw: &'a [u8], mark: &str) -> Option<&'a [u8]> {
     let mark = mark.as_bytes();
-    raw.windows(mark.len())
-        .position(|w| w == mark)
-        .map(|pos| {
-            let after = &raw[pos + mark.len()..];
-            match after.iter().position(|&b| b == b'\n') {
-                Some(i) => &after[i + 1..],
-                None => &[],
-            }
-        })
+    raw.windows(mark.len()).position(|w| w == mark).map(|pos| {
+        let after = &raw[pos + mark.len()..];
+        match after.iter().position(|&b| b == b'\n') {
+            Some(i) => &after[i + 1..],
+            None => &[],
+        }
+    })
 }
 
 /// stat 段解析：`inode size`（GNU stat 输出）。空/坏 = (None, 0)
@@ -160,22 +158,22 @@ mod tests {
     #[test]
     fn path_whitelist_rejects_metacharacters_and_relative() {
         for p in [
-            "app.log",                   // 相对路径
-            "",                          // 空
-            "/var/log/a b.log",          // 空格
-            "/var/log/a;rm -rf /b",      // 分号
-            "/var/log/$(whoami)",        // 替换
-            "/var/log/`id`",             // 反引号
-            "/var/log/a|b",              // 管道
-            "/var/log/a&b",              // 后台
-            "/var/log/a>b",              // 重定向
-            "/var/log/a<b",              // 重定向
-            "/var/log/a'b",              // 单引号
-            "/var/log/a\"b",             // 双引号
-            "/var/log/a\\b",             // 反斜杠
-            "/var/log/a\nb",             // 换行
-            "/var/log/a*b",              // glob
-            "/var/log/日本.log",         // 非 ASCII
+            "app.log",              // 相对路径
+            "",                     // 空
+            "/var/log/a b.log",     // 空格
+            "/var/log/a;rm -rf /b", // 分号
+            "/var/log/$(whoami)",   // 替换
+            "/var/log/`id`",        // 反引号
+            "/var/log/a|b",         // 管道
+            "/var/log/a&b",         // 后台
+            "/var/log/a>b",         // 重定向
+            "/var/log/a<b",         // 重定向
+            "/var/log/a'b",         // 单引号
+            "/var/log/a\"b",        // 双引号
+            "/var/log/a\\b",        // 反斜杠
+            "/var/log/a\nb",        // 换行
+            "/var/log/a*b",         // glob
+            "/var/log/日本.log",    // 非 ASCII
         ] {
             assert!(!log_path_is_safe(p), "{p:?} 必须被拒");
         }
@@ -203,7 +201,10 @@ mod tests {
             .strip_prefix("'; ")
             .expect("LDATA echo 收尾");
         for banned in ["$", "`", ">", "|", "&", "'", "\"", "\n", ";"] {
-            assert!(!tail_seg.contains(banned), "tail 段出现 {banned:?}: {tail_seg:?}");
+            assert!(
+                !tail_seg.contains(banned),
+                "tail 段出现 {banned:?}: {tail_seg:?}"
+            );
         }
     }
 

@@ -619,7 +619,7 @@
     "auditIntervalDays": "{{count}} 天",
     "sudoAutofill": "sudo 密码自动填充",
     "sudoAutofillHint": "检测到 sudo 密码提示时自动填入该主机绑定的密码凭据（仅主密码模式可用）。",
-    "sudoAutofillWarn": "开启后，终端检测到 sudo 密码提示时会自动把绑定凭据的明文密码写入远程终端。提示可能被恶意程序伪造以骗取密码；请仅在信任的主机上开启。确定开启？",
+    "sudoAutofillWarn": "开启后，终端检测到 sudo 密码提示时会自动把绑定凭据的明文密码写入远程终端。提示可能被恶意程序伪造以骗取密码；请仅在信任的主机上开启。绑定凭据与主机实际 sudo 密码不符时会连续填充失败（sudo 反复提示直至中止）。确定开启？",
     "sudoAutofillAccept": "确认开启",
     "lockScreen": {
       "title": "Ottr 已锁定",

@@ -620,7 +620,7 @@
     "auditIntervalDays": "{{count}} d",
     "sudoAutofill": "sudo password autofill",
     "sudoAutofillHint": "When a sudo password prompt is detected, the password credential bound to this host is typed automatically (master-password mode only).",
-    "sudoAutofillWarn": "When enabled, Ottr writes the bound credential's plaintext password into the remote terminal whenever a sudo prompt is detected. Prompts can be faked by malicious programs to steal passwords; enable only for hosts you trust. Enable?",
+    "sudoAutofillWarn": "When enabled, Ottr writes the bound credential's plaintext password into the remote terminal whenever a sudo prompt is detected. Prompts can be faked by malicious programs to steal passwords; enable only for hosts you trust. If the bound credential does not match the host's actual sudo password, autofill will fail repeatedly (sudo keeps re-prompting until it aborts). Enable?",
     "sudoAutofillAccept": "Enable",
     "lockScreen": {
       "title": "Ottr is locked",

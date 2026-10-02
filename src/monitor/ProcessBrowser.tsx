@@ -139,63 +139,74 @@ export function ProcessBrowser({ rustId }: { rustId: string | null }) {
         <p className="proc-state" data-testid="proc-disconnected">
           {t("process.disconnected")}
         </p>
-      ) : error != null ? (
-        <p className="form-error" data-testid="proc-error">
-          {error}
-        </p>
-      ) : !loaded ? (
-        <p className="proc-state" data-testid="proc-loading">
-          {t("common.loading")}
-        </p>
-      ) : sorted.length === 0 ? (
-        <p className="proc-state" data-testid="proc-empty">
-          {t("process.empty")}
-        </p>
       ) : (
-        <div className="proc-table-holder">
-          <table className="proc-table" data-testid="proc-table">
-            <thead>
-              <tr>
-                {COLS.map(({ key, labelKey }) => (
-                  <th
-                    key={key}
-                    aria-sort={
-                      sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : undefined
-                    }
-                  >
-                    <button data-testid={`proc-sort-${key}`} onClick={() => toggleSort(key)}>
-                      {t(labelKey)}
-                      {sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
-                    </button>
-                  </th>
-                ))}
-                <th aria-label={t("process.killTitle")} />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((row) => (
-                <tr key={row.pid} data-testid={`proc-row-${row.pid}`}>
-                  <td>{row.pid}</td>
-                  <td>{row.ppid}</td>
-                  <td>{row.user}</td>
-                  <td>{row.cpu_percent.toFixed(1)}</td>
-                  <td>{row.mem_percent.toFixed(1)}</td>
-                  <td>{row.etime}</td>
-                  <td className="proc-comm">{row.comm}</td>
-                  <td>
-                    <button
-                      className="proc-kill-btn"
-                      data-testid={`proc-kill-${row.pid}`}
-                      onClick={() => openKillConfirm(row)}
-                    >
-                      {t("process.killButton")}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Phase 4 走查批：错误条与表格共存——kill 失败/采集失败上屏为横幅，
+              不再顶掉进程表（用户可直接重试或继续操作其他行）；轮询成功即清。 */}
+          {error != null && (
+            <p className="form-error" data-testid="proc-error" role="alert">
+              {error}
+            </p>
+          )}
+          {!loaded ? (
+            <p className="proc-state" data-testid="proc-loading">
+              {t("common.loading")}
+            </p>
+          ) : sorted.length === 0 ? (
+            <p className="proc-state" data-testid="proc-empty">
+              {t("process.empty")}
+            </p>
+          ) : (
+            <div className="proc-table-holder">
+              <table className="proc-table" data-testid="proc-table">
+                <thead>
+                  <tr>
+                    {COLS.map(({ key, labelKey }) => (
+                      <th
+                        key={key}
+                        aria-sort={
+                          sortKey === key
+                            ? sortDir === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : undefined
+                        }
+                      >
+                        <button data-testid={`proc-sort-${key}`} onClick={() => toggleSort(key)}>
+                          {t(labelKey)}
+                          {sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
+                        </button>
+                      </th>
+                    ))}
+                    <th aria-label={t("process.killTitle")} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((row) => (
+                    <tr key={row.pid} data-testid={`proc-row-${row.pid}`}>
+                      <td>{row.pid}</td>
+                      <td>{row.ppid}</td>
+                      <td>{row.user}</td>
+                      <td>{row.cpu_percent.toFixed(1)}</td>
+                      <td>{row.mem_percent.toFixed(1)}</td>
+                      <td>{row.etime}</td>
+                      <td className="proc-comm">{row.comm}</td>
+                      <td>
+                        <button
+                          className="proc-kill-btn"
+                          data-testid={`proc-kill-${row.pid}`}
+                          onClick={() => openKillConfirm(row)}
+                        >
+                          {t("process.killButton")}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
 
       {killTarget && (

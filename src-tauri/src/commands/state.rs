@@ -110,6 +110,9 @@ pub(crate) struct SessionEntry {
     /// （生命周期与循环严格同界：注册即持有、循环退出即全链显式拆除——与
     /// 直连路径「循环退出即 disconnect」同一收尾点，不需要第二份引用）。
     pub(crate) session: Arc<SshSession>,
+    /// 归属主机 id（None = spike 驱动面直传连接，无 vault 主机行）。
+    /// cron 调度器据此把任务 host_id 解析到在册会话（commands/cron.rs）。
+    pub(crate) host_id: Option<i64>,
     /// host 端点（`address:port`，Fix round 1 C-1）：下载 journal 的 scope 身份——
     /// 同路径同大小的远端文件在不同主机各用各的 journal，绝不跨主机续传。
     pub(crate) endpoint: String,
@@ -242,6 +245,9 @@ pub(crate) struct RegisterArgs {
     pub(crate) close_event: Option<tauri::AppHandle>,
     /// PTY 所在会话（链式连接时 = target 会话，消费面与直连同一形状）。
     pub(crate) session: Arc<SshSession>,
+    /// 归属主机 id（None = spike 驱动面直传连接）。随 register_opened 落入
+    /// SessionEntry.host_id（cron 调度器的 host_id → 会话解析面）。
+    pub(crate) host_id: Option<i64>,
     /// 跳板链 owner（None = 直连）。收尾断开必须经它拆全链（只断 session
     /// 会留下悬挂跳板连接——russh Handle::drop 不关连接）。
     pub(crate) chain: Option<Arc<ottr_ssh::JumpSession>>,

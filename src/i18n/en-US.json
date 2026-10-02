@@ -542,13 +542,18 @@
       "aiDone": "Diagnosis ready",
       "aiExplain": "Explanation ready",
       "summaryReady": "Session summary ready",
-      "hostKeyChanged": "Host key changed alert"
+      "hostKeyChanged": "Host key changed alert",
+      "cronOk": "Scheduled task finished",
+      "cronFailed": "Scheduled task failed",
+      "cronTimeout": "Scheduled task timed out",
+      "cronMissed": "Scheduled task missed"
     },
     "kindAi": "AI",
     "kindAlert": "Alerts",
-    "kindSecurity": "Security"
+    "kindSecurity": "Security",
+    "kindCron": "Scheduled tasks"
   },
-"knownHosts": {
+  "knownHosts": {
     "title": "Known host keys",
     "hint": "TOFU trust anchors are kept per network endpoint. A fingerprint change found by the audit or a connect marks the row changed and raises a security alert; delete = forget the endpoint, the next connect re-runs first-use confirmation.",
     "loading": "Loading…",
@@ -579,7 +584,7 @@
     "deleteTitle": "Forget this endpoint?",
     "deleteHint": "The trust record for {{endpoint}} will be removed; the next connect re-runs first-use (TOFU) confirmation."
   },
-    "hostKey": {
+  "hostKey": {
     "firstTitle": "First connection",
     "firstIntro": "First time connecting to \"{{host}}\". Verify the server host key fingerprint:",
     "pendingIntro": "The host key of \"{{host}}\" is not verified yet. Verify the fingerprint:",
@@ -866,5 +871,38 @@
     "searchPlaceholder": "Search recording content…",
     "searchAria": "Search recording content",
     "exportCancelled": "Export cancelled (nothing written)"
+  },
+  "cron": {
+    "title": "Scheduled Tasks",
+    "empty": "No tasks yet. Add a cron job to run a script on a schedule while the host session is online.",
+    "add": "Add task",
+    "addTitle": "Add scheduled task",
+    "editTitle": "Edit scheduled task",
+    "host": "Host",
+    "schedule": "Schedule (min hour dom mon dow)",
+    "script": "Script (run via exec channel)",
+    "scriptPlaceholder": "e.g. df -h / && systemctl status nginx --no-pager",
+    "channels": "Subscribed channels (push on completion)",
+    "enabled": "Enabled",
+    "enabledHint": "Disabled jobs keep their config; the scheduler skips them",
+    "runNow": "Run now",
+    "running": "Running…",
+    "history": "History",
+    "noRuns": "No runs recorded",
+    "nextFire": "Next run: ",
+    "nextFireAt": "Next run: {{time}}",
+    "badSchedule": "Cannot parse schedule (5 fields: min hour dom mon dow)",
+    "status": {
+      "ok": "OK",
+      "failed": "Failed",
+      "timeout": "Timeout",
+      "missed": "Missed (session offline)"
+    },
+    "errHostRequired": "Pick a host",
+    "errScheduleRequired": "Enter a schedule expression",
+    "errScriptRequired": "Enter a script",
+    "actionFailed": "Action failed: {{message}}",
+    "loadFailed": "Load failed: {{message}}",
+    "saveFailed": "Save failed: {{message}}"
   }
 }

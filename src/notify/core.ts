@@ -32,8 +32,10 @@ import type { HostKeyChangedPayload } from "../vault/api";
 /** 事件类别（T13 起 AI 诊断完成入管线——迁移 0005 kind 列无约束）。
  * 静音键按 kind：ai 诊断完成通知可独立静音（NotificationCenter 类型区）。
  * Phase 3 Task 3（B5）：告警规则引擎的事件走 "alert"（同样可独立静音）。
- * Phase 3 Task 6（B9）：主机指纹巡检的 changed 告警走 "security"（独立静音位）。 */
-export type NotifyKind = "transfer" | "session" | "ai" | "alert" | "security";
+ * Phase 3 Task 6（B9）：主机指纹巡检的 changed 告警走 "security"（独立静音位）。
+ * Phase 4 Task 1（缺口①）：cron 定时任务完成/失败走 "cron"（独立静音位，
+ * 默认不静音——语义裁定见 src/cron/events.ts 文件头）。 */
+export type NotifyKind = "transfer" | "session" | "ai" | "alert" | "security" | "cron";
 /** severity 合法集（Rust notifications::SEVERITIES / DB CHECK 同集）。 */
 export type NotifySeverity = "info" | "success" | "warning" | "error";
 
@@ -133,11 +135,17 @@ const suppressedCount = new Map<string, number>();
  * 【I-1（fix round 1）】alert 类细化含 rule_id（`alert:host:rule`）——「同
  * rule 60s 窗口合并」的直译语义：同主机不同规则各自独立开窗，规则 2 的告警
  * 不再被规则 1 的窗口吞掉（否则 suppressed 计数并入他规则事件、按错误
- * channel_ids 路由）；其余 kind 维持 Phase 1 口径不变。 */
+ * channel_ids 路由）；【Phase 4 Task 1】cron 类细化含 cron_id
+ * （`cron:host:job`）——每分钟任务 2 轮内聚合成 1 条（端到端口径），不同
+ * 任务互不吞；其余 kind 维持 Phase 1 口径不变。 */
 export function rateKeyOf(event: NotificationEvent): string {
   if (event.kind === "alert") {
     const ruleId = event.payload?.["rule_id"] ?? "-";
     return `alert:${event.host_id ?? "-"}:${ruleId}`;
+  }
+  if (event.kind === "cron") {
+    const cronId = event.payload?.["cron_id"] ?? "-";
+    return `cron:${event.host_id ?? "-"}:${cronId}`;
   }
   return `${event.kind}:${event.host_id ?? "-"}`;
 }

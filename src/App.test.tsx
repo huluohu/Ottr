@@ -14,6 +14,9 @@ vi.mock("./files/events", () => ({ initTransferEvents: vi.fn(async () => {}) }))
 vi.mock("./monitor/events", () => ({ initMonitorEvents: vi.fn(async () => {}) }));
 // Phase 3 Task 4（B6）：批量结果事件接线同上（jsdom 无 Tauri runtime）
 vi.mock("./batch/events", () => ({ initBatchEvents: vi.fn(async () => {}) }));
+// Phase 4 Task 1（缺口①）：cron 事件接线同上（真 listen 在 jsdom 无 Tauri
+// 运行时会 unhandled reject）。
+vi.mock("./cron/events", () => ({ initCronEvents: vi.fn(async () => {}) }));
 // Task 12 通知管线同上：只 stub initNotifyEvents，其余保留真实现。
 vi.mock("./notify/core", async (importOriginal) => {
   const mod = await importOriginal<typeof import("./notify/core")>();

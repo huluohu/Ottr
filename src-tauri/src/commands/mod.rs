@@ -16,6 +16,10 @@ pub mod jump;
 // tokio timeout + 双检查取消）+ batch_exec/batch_cancel + ottr://batch-result
 // 逐主机结果事件。执行模型与测试面论证见模块文档。
 pub mod batch;
+// cron 定时任务命令域（Phase 4 Task 1，缺口① + 终审风险#2 清偿）：调度器
+// spawn 点（vault 就绪后，hostkey_audit 同款挂点）+ cj_* 命令 +
+// ottr://cron-run 事件。宿主裁定论证见模块文档与 ottr-monitor::cron。
+pub mod cron;
 // 监控采集命令域（Phase 3 Task 1，B4 上半）：MonitorManager（per-session
 // 采样任务 owner，ForwardManager 同款模式）+ monitor_start/stop +
 // ottr://monitor 事件推前端。

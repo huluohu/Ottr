@@ -164,6 +164,12 @@ pub fn run() {
                                 // 后起 60s 心跳（开关默认关；内部自检
                                 // try_state/锁定/间隔，见 hostkey_audit.rs）。
                                 hostkey_audit::spawn_audit_scheduler(handle.clone());
+                                // cron 定时任务调度器（Phase 4 Task 1，缺口①）：
+                                // vault 就绪后起 20s 心跳对账循环——**引擎宿主裁定
+                                // 落地点**：跑在 Rust 运行时、与 webview 生命周期
+                                // 解耦（关窗到托盘照跑；真退出即停，语义见
+                                // commands/cron.rs 模块文档）。
+                                commands::cron::spawn_cron_scheduler(handle.clone());
                                 // 初始菜单/托盘在 vault 就绪前以 En 兜底构建；
                                 // 就绪后按 settings ui.language 真值重建纠偏。
                                 menu::on_vault_ready(&handle);
@@ -231,6 +237,16 @@ pub fn run() {
             vault::nc_reveal_config,
             // SMTP 渠道发送（Phase 3 Task 3，B5；commands/notify.rs，lettre）
             commands::notify::smtp_send,
+            // cron 定时任务（Phase 4 Task 1，缺口①；commands/cron.rs）：
+            // 配置面 CRUD 过锁定门卫，历史/输出读面明文豁免（notify 同款）
+            commands::cron::cj_list,
+            commands::cron::cj_create,
+            commands::cron::cj_update,
+            commands::cron::cj_delete,
+            commands::cron::cj_runs,
+            commands::cron::cj_trigger,
+            commands::cron::cj_next_fire,
+            commands::cron::cj_run_output,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

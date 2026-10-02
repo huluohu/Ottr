@@ -541,13 +541,18 @@
       "aiDone": "诊断完成",
       "aiExplain": "解释完成",
       "summaryReady": "会话纪要已生成",
-      "hostKeyChanged": "主机密钥变更告警"
+      "hostKeyChanged": "主机密钥变更告警",
+      "cronOk": "定时任务完成",
+      "cronFailed": "定时任务失败",
+      "cronTimeout": "定时任务超时",
+      "cronMissed": "定时任务未执行"
     },
     "kindAi": "AI",
     "kindAlert": "告警",
-    "kindSecurity": "安全"
+    "kindSecurity": "安全",
+    "kindCron": "定时任务"
   },
-"knownHosts": {
+  "knownHosts": {
     "title": "已知主机密钥",
     "hint": "TOFU 信任锚按网络端点记账。巡检或连接期检测到指纹变化会置为 changed 并发出安全告警；删除 = 忘记该端点，下次连接重新走首见确认。",
     "loading": "加载中…",
@@ -578,7 +583,7 @@
     "deleteTitle": "忘记该端点？",
     "deleteHint": "将删除 {{endpoint}} 的信任记录，下次连接会重新走首见（TOFU）确认。"
   },
-    "hostKey": {
+  "hostKey": {
     "firstTitle": "首次连接确认",
     "firstIntro": "首次连接「{{host}}」，请核对服务器主机密钥指纹：",
     "pendingIntro": "「{{host}}」的主机密钥尚未核验，请核对指纹：",
@@ -865,5 +870,38 @@
     "searchPlaceholder": "搜索录制内容…",
     "searchAria": "搜索录制内容",
     "exportCancelled": "已取消导出（未写出文件）"
+  },
+  "cron": {
+    "title": "定时任务",
+    "empty": "暂无任务。添加一条 cron 任务，在主机会话在线时按计划执行脚本。",
+    "add": "添加任务",
+    "addTitle": "添加定时任务",
+    "editTitle": "编辑定时任务",
+    "host": "主机",
+    "schedule": "计划（分 时 日 月 周）",
+    "script": "脚本（exec 通道执行）",
+    "scriptPlaceholder": "例如：df -h / && systemctl status nginx --no-pager",
+    "channels": "订阅渠道（任务完成后推送）",
+    "enabled": "启用",
+    "enabledHint": "禁用后任务保留配置，调度器跳过",
+    "runNow": "立即运行",
+    "running": "运行中…",
+    "history": "历史",
+    "noRuns": "暂无运行记录",
+    "nextFire": "下次运行：",
+    "nextFireAt": "下次运行：{{time}}",
+    "badSchedule": "无法解析的计划表达式（五段式：分 时 日 月 周）",
+    "status": {
+      "ok": "成功",
+      "failed": "失败",
+      "timeout": "超时",
+      "missed": "未执行（会话不在线）"
+    },
+    "errHostRequired": "请选择主机",
+    "errScheduleRequired": "请填写计划表达式",
+    "errScriptRequired": "请填写脚本",
+    "actionFailed": "操作失败：{{message}}",
+    "loadFailed": "加载失败：{{message}}",
+    "saveFailed": "保存失败：{{message}}"
   }
 }

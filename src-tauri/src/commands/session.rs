@@ -97,6 +97,7 @@ pub(crate) async fn attach_session(
     open_and_register(
         state.sessions.clone(),
         None,
+        None, // spike 驱动面直传连接：无 vault 主机行
         &host,
         port,
         &username,
@@ -194,6 +195,7 @@ pub(crate) async fn attach_host_session(
         return open_and_register(
             state.sessions.clone(),
             Some(app),
+            Some(host_id),
             &host.address,
             port,
             &username,
@@ -276,6 +278,7 @@ pub(crate) async fn attach_host_session(
     register_opened(super::state::RegisterArgs {
         sessions: state.sessions.clone(),
         close_event: Some(app),
+        host_id: Some(host_id),
         session: jump_session.target(),
         chain: Some(Arc::new(jump_session)),
         forward_router,
@@ -498,6 +501,7 @@ pub(crate) fn host_key_decision(
 async fn open_and_register(
     sessions: SessionMap,
     close_event: Option<AppHandle>,
+    host_id: Option<i64>,
     address: &str,
     port: u16,
     username: &str,
@@ -542,6 +546,7 @@ async fn open_and_register(
     register_opened(super::state::RegisterArgs {
         sessions,
         close_event,
+        host_id,
         session: Arc::new(session),
         chain: None,
         forward_router,
@@ -581,6 +586,7 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
         sessions,
         close_event,
         session,
+        host_id,
         chain,
         forward_router,
         endpoint,
@@ -625,6 +631,7 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
         id.clone(),
         SessionEntry {
             session: Arc::clone(&session),
+            host_id,
             endpoint,
             writer: Arc::clone(&writer),
             counters: Arc::clone(&counters),
@@ -1729,6 +1736,7 @@ mod tests {
         let sessions: SessionMap = Arc::new(Mutex::new(HashMap::new()));
         let result = open_and_register(
             Arc::clone(&sessions),
+            None,
             None,
             "127.0.0.1",
             addr.port(),

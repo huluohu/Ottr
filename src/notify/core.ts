@@ -102,14 +102,23 @@ export function setNotifyPorts(next: NotifyPorts | null): void {
  * 与既有测试语义不变）。transfer/session/ai 事件无 channel_ids，alert 渠道
  * 的 subscribed 恒 false——外部渠道只吃显式订阅的告警。 */
 export interface NotificationChannel {
-  /** 渠道名（日志/诊断面）。 */
+  /** 渠道名（日志/诊断面；挂载实例带行 id 尾段 `kind#id`——重发按名回查）。 */
   name: string;
-  /** 分发一条已放行的事件（限频/静音已在前）。 */
-  send: (event: NotificationEvent) => Promise<void>;
+  /** 分发一条已放行的事件（限频/静音已在前）。【Phase 5 T1（BL-517）】新增
+   * 可选第二参 `ctx`（发送上文）：①落库回执的 notificationId——重试装饰器
+   * 终败时把「投递失败」标记挂回该中心条目。适配器只收 (event)（少参函数
+   * 结构兼容，12 个本体零改动）；缺省 ctx = 无中心条目可挂（只记 console）。 */
+  send: (event: NotificationEvent, ctx?: SendContext) => Promise<void>;
   /** 渠道连通性自检（设置页「发送测试」用）。 */
   test: () => Promise<void>;
   /** 订阅过滤（可选；缺省 = 收一切已放行事件）。 */
   subscribed?: (event: NotificationEvent) => boolean;
+}
+
+/** 渠道发送上文（可选；notify() 在 ①落库成功后随 send 下发）。 */
+export interface SendContext {
+  /** ①落库回执的行 id（投递失败标记的挂靠面）。 */
+  notificationId?: number;
 }
 
 /** 渠道挂载点（Phase 1 恒空——循环零次，接口形状由 NotificationChannel 定）。 */
@@ -195,7 +204,8 @@ export async function notify(
     event = { ...event, payload: { ...event.payload, suppressed } };
   }
 
-  // ① 应用内通知中心
+  // ① 应用内通知中心（row 回执随 send 下发——投递失败标记的挂靠面）
+  let row: Notification | undefined;
   try {
     const input: NotificationInput = {
       kind: event.kind,
@@ -205,7 +215,7 @@ export async function notify(
       body: event.body,
       payload: event.payload ?? null,
     };
-    const row = await vaultApi.notifications.insert(input);
+    row = await vaultApi.notifications.insert(input);
     useNotifyStore.getState().onInserted(row);
   } catch (e) {
     // 非 Tauri 环境（纯浏览器 dev）/ 后端不可达：①降级，②③照走
@@ -221,13 +231,15 @@ export async function notify(
     }
   }
 
-  // ③ 外部渠道（Phase 3 挂载；subscribed 缺省 = 收一切——Phase 1 形态兼容）
+  // ③ 外部渠道（Phase 3 挂载；subscribed 缺省 = 收一切——Phase 1 形态兼容）。
+  // 【Phase 5 T1（BL-517）】ctx.notificationId 随行：渠道重试终败时装饰器把
+  // 「投递失败」标记挂回本条中心条目（见下「投递失败面」段）。
   for (const channel of channels) {
     if (channel.subscribed && !channel.subscribed(event)) {
       continue; // 渠道未订阅该事件（alert 规则按 channels 数组路由）
     }
     try {
-      await channel.send(event);
+      await channel.send(event, { notificationId: row?.id });
     } catch (e) {
       console.warn(`[notify] channel ${channel.name} failed:`, e);
     }
@@ -239,6 +251,95 @@ export async function notify(
 export function resetRateLimiter(): void {
   lastSeen.clear();
   suppressedCount.clear();
+}
+
+// ---------------------------------------------------------------------------
+// ④ 投递失败面（Phase 5 T1，BL-517 清偿）：渠道 send 三次退避后仍失败 →
+//   中心条目 payload 带「投递失败」标记 + 手动重发（channelRegistry.
+//   resendNotification 重跑该渠道 send；重发/后台重试翻正即清账）。
+// ---------------------------------------------------------------------------
+
+/** 一次渠道投递的终局失败记录（payload.delivery_failed 数组项，按渠道去重）。 */
+export interface DeliveryFailure {
+  /** 渠道挂载名（`kind#id`；重发按名回查 core.channels 实例）。 */
+  channel: string;
+  /** 渠道行 id（从挂载名提取；测试假件无 id = null）。 */
+  channel_id: number | null;
+  /** 终局错误文本（最近一次）。 */
+  error: string;
+  /** 秒级 Unix 时刻（最近一次失败）。 */
+  ts: number;
+}
+
+/** 条目 payload 内的失败标记键（事件 payload 带失败标记——BL-517 定稿口径）。 */
+export const DELIVERY_FAILED_KEY = "delivery_failed";
+
+/** 读条目 payload 的失败集（payload 形态不受信——非数组/坏形状一律回空）。 */
+export function readDeliveryFailures(payload: unknown): DeliveryFailure[] {
+  if (!payload || typeof payload !== "object") return [];
+  const raw = (payload as Record<string, unknown>)[DELIVERY_FAILED_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (f): f is DeliveryFailure =>
+      !!f && typeof f === "object" && typeof (f as DeliveryFailure).channel === "string",
+  );
+}
+
+/** notificationId → 失败集（会话内瞬态账本：DB payload 不回写——notify 无
+ * update 命令面；refresh 拉回 DB 行后按本账本重贴标记，clear 清空即销账）。
+ * 应用重启丢失（失败发生在投递期，重启后重发入口随标记消失——挂账有限）。 */
+const deliveryLedger = new Map<number, DeliveryFailure[]>();
+
+/** 测试隔离：清空投递失败账本。 */
+export function resetDeliveryLedger(): void {
+  deliveryLedger.clear();
+}
+
+/** 账本 → 行列表：有账的条目把失败集并入 payload，无账的剥掉残留标记
+ * （销账面——refresh 重贴与 clearDeliveryFailure 摘除共用同一重算）。 */
+function applyDeliveryLedger(items: Notification[]): Notification[] {
+  return items.map((n) => {
+    const fails = deliveryLedger.get(n.id);
+    const base =
+      n.payload && typeof n.payload === "object"
+        ? (n.payload as Record<string, unknown>)
+        : {};
+    if (fails && fails.length > 0) {
+      return { ...n, payload: { ...base, [DELIVERY_FAILED_KEY]: fails } };
+    }
+    if (DELIVERY_FAILED_KEY in base) {
+      const rest = { ...base };
+      delete rest[DELIVERY_FAILED_KEY];
+      return { ...n, payload: rest };
+    }
+    return n;
+  });
+}
+
+/** 终局失败入账（retry.ts onGiveUp 缺省回执；按渠道去重——同渠道重发再败只
+ * 更新错误与时刻）。notificationId 空 = ①落库已失败、无条目可挂：只记
+ * console（尽力而为面，不抛）。 */
+export function recordDeliveryFailure(notificationId: number | null, failure: DeliveryFailure): void {
+  if (notificationId == null) {
+    console.warn(`[notify] delivery failed (no center row): ${failure.channel}`, failure.error);
+    return;
+  }
+  const list = (deliveryLedger.get(notificationId) ?? []).filter(
+    (f) => f.channel !== failure.channel,
+  );
+  list.push(failure);
+  deliveryLedger.set(notificationId, list);
+  useNotifyStore.setState((st) => ({ items: applyDeliveryLedger(st.items) }));
+}
+
+/** 销账（重发成功/后台重试翻正；渠道集空则整键摘除）。 */
+export function clearDeliveryFailure(notificationId: number, channel: string): void {
+  const list = deliveryLedger.get(notificationId);
+  if (!list) return;
+  const next = list.filter((f) => f.channel !== channel);
+  if (next.length === 0) deliveryLedger.delete(notificationId);
+  else deliveryLedger.set(notificationId, next);
+  useNotifyStore.setState((st) => ({ items: applyDeliveryLedger(st.items) }));
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +499,8 @@ export const useNotifyStore = create<NotifyStore>((set, get) => ({
         vaultApi.notifications.list(200),
         vaultApi.notifications.unreadCount(),
       ]);
-      set({ items, unread });
+      // DB payload 不带投递失败标记（账本只在前端）——拉回后按账重贴
+      set({ items: applyDeliveryLedger(items), unread });
     } catch {
       // 后端不可达：保留现状（红点由下次 bootstrap 校正）
     }
@@ -433,6 +535,7 @@ export const useNotifyStore = create<NotifyStore>((set, get) => ({
 
   clear: async () => {
     set({ items: [], unread: 0 });
+    deliveryLedger.clear(); // 条目已清，失败账随之销账
     try {
       await vaultApi.notifications.clear();
     } catch {

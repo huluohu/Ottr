@@ -79,6 +79,31 @@ export interface ChannelDeps {
   fetchImpl?: typeof fetch;
   /** 毫秒时钟（钉钉/飞书加签时间戳）。 */
   now?: () => number;
+  /** 退避时钟（retry.ts 重试装饰；缺省 setTimeout——单测注入门控/即时假件，
+   * 零真实等待）。 */
+  delay?: (ms: number) => Promise<void>;
+  /** 重试耗尽终败回执（retry.ts；缺省 = 通知中心条目打「投递失败」标记）。 */
+  onGiveUp?: (report: DeliveryGiveUp) => void;
+  /** 重试后成功回执（retry.ts；缺省 = 清掉该渠道失败标记）。 */
+  onDelivered?: (report: DeliveryOk) => void;
+}
+
+/** 渠道投递终局失败回执（重试耗尽仍败，或首发即遇不可重试错）。 */
+export interface DeliveryGiveUp {
+  /** 渠道挂载名（`kind#id`）。 */
+  channel: string;
+  /** 未送达的事件（重试期间由队列持有，引用原样回执）。 */
+  event: NotificationEvent;
+  /** 终局错误文本。 */
+  error: string;
+  /** ①落库回执行 id（投递失败标记挂靠面；①失败时缺省）。 */
+  notificationId?: number;
+}
+
+/** 渠道投递终局成功回执（首发成功或某次重试翻正——清失败账面）。 */
+export interface DeliveryOk {
+  channel: string;
+  notificationId?: number;
 }
 
 /** 默认端口（生产路径）。 */

@@ -10,6 +10,9 @@
 //! * [`proc`]：进程浏览器数据面（Phase 3 Task 2）——`ps -eo` 采集解析
 //!   （只读白名单的 ps 追加点 [`PS_CMD`]）+ `kill` 命令构造（`u32` 入参
 //!   结构性防注入）与执行；
+//! * [`log`]：日志关键字采样面（Phase 4 Task 2）——定期 `tail -c +K` 轮询
+//!   （stat + tail 一条复合只读命令；字节级游标归 TS 引擎持有）+ path
+//!   字符白名单结构性防注入；
 //! * [`metrics`]：两次采样差分 → [`Metrics`]（CPU% 差分/内存水位/
 //!   网络速率；首采样无基线跳过首轮）；
 //! * [`sched`]：采样调度——默认 5s（settings `monitor.interval_secs`
@@ -35,6 +38,7 @@
 
 pub mod collect;
 pub mod cron;
+pub mod log;
 pub mod metrics;
 pub mod parse;
 pub mod proc;
@@ -47,6 +51,7 @@ pub use cron::{
     CronJobsProvider, CronLoopConfig, CronLoopEnd, CronRunRecord, CronRunSink, CronRunStatus,
     run_cron_scheduler,
 };
+pub use log::{LogTailSample, collect_log_tail, log_path_is_safe, log_stat_cmd, log_tail_cmd};
 pub use metrics::{Metrics, RawSample};
 pub use parse::{DiskEntry, LoadAvg, MemInfo, NetCounters, StatCounters};
 pub use proc::{PS_CMD, ProcEntry, collect_ps, kill_cmd, kill_process, parse_ps_eo};

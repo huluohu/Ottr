@@ -20,6 +20,30 @@ export function fetchProcesses(rustId: string): Promise<ProcEntry[]> {
   return invoke<ProcEntry[]>("monitor_ps", { id: rustId });
 }
 
+/** Rust `ottr_monitor::LogTailSample` 同构（日志关键字采样单轮，Phase 4 T2）。
+ * data 只含完整行（Rust 侧按最后 `\n` 截断），data_bytes 是其精确字节长度
+ * （游标推进面——字节账只在 Rust 算，TS 不自己数）。 */
+export interface LogTailSample {
+  /** 文件 inode（stat 失败/非 GNU stat = null：该轮静默跳过）。 */
+  inode: number | null;
+  /** stat 时刻文件大小（字节；截断判据）。 */
+  size: number;
+  /** 完整行前缀（lossy UTF-8；无完整行 = ""）。 */
+  data: string;
+  /** data 字节长度（残缺尾行不入账）。 */
+  data_bytes: number;
+}
+
+/** 日志尾部采样（`monitor_log_tail`）：offset=null = 武装轮（只 stat 记
+ * 水位，不回放历史）；数字 = 从该字节偏移续读。路径白名单校验在 Rust 入口。 */
+export function fetchLogTail(
+  rustId: string,
+  path: string,
+  offset: number | null,
+): Promise<LogTailSample> {
+  return invoke<LogTailSample>("monitor_log_tail", { id: rustId, path, offset });
+}
+
 /** 终止进程（force = SIGKILL，前端二次确认后才置位）；失败携带远端 stderr（EPERM 可见）。 */
 export function killProcess(rustId: string, pid: number, force: boolean): Promise<void> {
   return invoke<void>("monitor_kill", { id: rustId, pid, force });

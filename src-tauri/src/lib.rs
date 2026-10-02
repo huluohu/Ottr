@@ -220,6 +220,8 @@ pub fn run() {
             // 进程浏览器（Phase 3 Task 2，B4 下半）：ps 只读采集 + kill（防注入）
             commands::monitor::monitor_ps,
             commands::monitor::monitor_kill,
+            // 日志关键字采样（Phase 4 Task 2，缺口②）：stat+tail 只读复合命令
+            commands::monitor::monitor_log_tail,
             // 批量执行（Phase 3 Task 4，B6；commands/batch.rs）：并发池 +
             // 单主机超时 + ottr://batch-result 逐主机结果事件
             commands::batch::batch_exec,

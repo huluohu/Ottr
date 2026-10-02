@@ -32,8 +32,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use ottr_monitor::{
-    collect, collect_ps, kill_process, run_sampling, LoopConfig, Metrics, MonitorGuard, ProcEntry,
-    SamplingEnd,
+    collect, collect_log_tail, collect_ps, kill_process, run_sampling, LoopConfig, LogTailSample,
+    Metrics, MonitorGuard, ProcEntry, SamplingEnd,
 };
 use ottr_ssh::SshSession;
 use ottr_vault::Settings;
@@ -228,6 +228,24 @@ pub(crate) async fn monitor_ps(
 ) -> Result<Vec<ProcEntry>, String> {
     let session = session_arc(&state, &id)?;
     collect_ps(&session).await.map_err(|e| e.to_string())
+}
+
+/// 日志关键字采样（Phase 4 Task 2，缺口②）：会话内 exec 只读
+/// stat+tail 复合命令（ottr_monitor::log，path 字符白名单防注入在
+/// [`collect_log_tail`] 入口——不安全路径在此层即 Err，前端可见）。
+/// `offset` = None 武装轮（只 stat 记水位），Some(k) 续读轮（字节游标
+/// 由前端引擎持有，Rust 无状态）。
+#[tauri::command]
+pub(crate) async fn monitor_log_tail(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+    offset: Option<u64>,
+) -> Result<LogTailSample, String> {
+    let session = session_arc(&state, &id)?;
+    collect_log_tail(&session, &path, offset)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// pid 命令域校验（防注入第二道防线；第一道在 kill_cmd 的 u32 入参）：

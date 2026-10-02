@@ -11,6 +11,17 @@ import { vaultApi, type McpApprovalAsk } from "../vault/api";
 
 export const MCP_APPROVAL_EVENT = "ottr://mcp-approval";
 
+/** 命令原文控制字符显形（fix 1/5 I-2）：SSH exec 内嵌换行 = 远端执行多条
+ * 命令（"df -h\nrm -rf /"），HTML 默认折叠会把多行呈现成一行——「人批原文」
+ * 的补偿控制因此失明。⏎/␍/⇥ 标记 + pre-wrap 双保险：标记让换行「可数」，
+ * pre-wrap 让原文按真实行折显。单遍 replace（combined regex）——分步替换会
+ * 把先前引入的 ⏎ 后随换行再吃一遍，产出 ␍⏎⏎ 双标记。 */
+export function visualizeCommand(raw: string): string {
+  return raw.replace(/\r\n|\r|\n|\t/g, (m) =>
+    m === "\r\n" ? "␍⏎\n" : m === "\r" ? "␍\n" : m === "\n" ? "⏎\n" : "⇥",
+  );
+}
+
 export function McpApprovalDialog() {
   const { t } = useTranslation();
   const [queue, setQueue] = useState<McpApprovalAsk[]>([]);
@@ -55,7 +66,12 @@ export function McpApprovalDialog() {
         </p>
         <p className="host-key-fp">
           <span className="host-key-fp-label">{t("mcp.approvalCommand")}</span>
-          <code data-testid="mcp-approval-command">{ask.command}</code>
+          <code
+            data-testid="mcp-approval-command"
+            style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+          >
+            {visualizeCommand(ask.command)}
+          </code>
         </p>
         <p className="settings-hint">{t("mcp.approvalHint")}</p>
         <div className="form-actions">

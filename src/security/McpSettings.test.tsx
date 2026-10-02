@@ -31,7 +31,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import "../i18n";
 import { type Host, type McpGrant, type McpGrantInput, type McpStatus } from "../vault/api";
-import { McpApprovalDialog } from "./McpApprovalDialog";
+import { McpApprovalDialog, visualizeCommand } from "./McpApprovalDialog";
 import { McpSettings } from "./McpSettings";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -240,5 +240,34 @@ describe("McpApprovalDialog", () => {
     );
     // 第二条审批接着呈现（队列逐条）。
     expect(screen.getByTestId("mcp-approval-command").textContent).toBe("id");
+  });
+
+  it("renders multi-line commands with visible breaks (fix 1/5 I-2)", async () => {
+    seedInvoke();
+    render(<McpApprovalDialog />);
+    await waitFor(() => expect(approvalHandler).toBeTruthy());
+    // SSH exec 内嵌换行 = 远端执行多条命令；HTML 默认折叠会把
+    // "df -h\nrm -rf /" 呈现成一行——审批补偿控制失明。
+    fireApproval({
+      request_id: 3,
+      host_id: 1,
+      host_name: "web-1",
+      command: "df -h\nrm -rf /",
+    });
+    const code = (await screen.findByTestId("mcp-approval-command")) as HTMLElement;
+    // ① 控制字符显形：换行可数（⏎ 标记在原文里，不依赖 CSS 生效）。
+    expect(code.textContent).toContain("⏎");
+    expect(code.textContent).toContain("rm -rf /");
+    expect(code.textContent).not.toBe("df -h\nrm -rf /");
+    // ② pre-wrap 双保险：按真实行折显（内联样式 jsdom computedStyle 可读）。
+    expect(getComputedStyle(code).whiteSpace).toBe("pre-wrap");
+  });
+
+  it("visualizeCommand marks breaks/tabs once and leaves plain text intact", () => {
+    expect(visualizeCommand("a\nb")).toBe("a⏎\nb");
+    expect(visualizeCommand("a\r\nb")).toBe("a␍⏎\nb");
+    expect(visualizeCommand("a\rb")).toBe("a␍\nb");
+    expect(visualizeCommand("a\tb")).toBe("a⇥b");
+    expect(visualizeCommand("plain cmd")).toBe("plain cmd");
   });
 });

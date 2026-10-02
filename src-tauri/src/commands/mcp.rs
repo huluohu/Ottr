@@ -550,6 +550,14 @@ pub fn spawn_listener(
     use std::os::unix::net::UnixListener;
     let _ = std::fs::remove_file(&socket_path); // 上次异常退出的残留 bind 点
     let listener = UnixListener::bind(&socket_path)?;
+    // socket 文件权限显式收紧 0600（fix 1/5 I-1）：bind 落盘权限继承进程
+    // umask——launchd 可配 umask 000/002，那样 socket 变 group/world 可写，
+    // 本机其他用户可连引擎。收紧失败 = fail closed（listener 不启动，错误
+    // 经 mcp_set_enabled 浮出 UI），绝不带越权 socket 继续跑。
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
+    }
     let cancel = CancellationToken::new();
     let handle = ListenerHandle {
         socket_path: socket_path.clone(),
@@ -981,7 +989,11 @@ mod tests {
         let ungranted = host(&vault, "a", "10.0.0.1");
         let list_only = host(&vault, "b", "10.0.0.2");
         grant(&vault, list_only, true, false);
-        let e = engine_with(Arc::clone(&vault), ScriptGate::allow());
+        let gate = ScriptGate::allow();
+        let e = engine_with(
+            Arc::clone(&vault),
+            Arc::clone(&gate) as Arc<dyn ApprovalGate>,
+        );
         for (host_id, why) in [
             (ungranted, "无授权行"),
             (list_only, "只授 list"),
@@ -999,13 +1011,13 @@ mod tests {
                 "{why} 的拒绝措辞应可读: {err:?}"
             );
         }
-        // 审批门全程未被触达（拒绝发生在门之前）。
-        assert!(gate_requests_empty(&e));
-    }
-
-    fn gate_requests_empty(_e: &McpEngine) -> bool {
-        // ScriptGate 的 requests 由各测试持柄检查；此处占位以统一断言形态。
-        true
+        // 审批门全程未被触达（拒绝发生在门之前）——真实记账断言（fix 1/5 M-4：
+        // 恒真占位断言删除）。
+        assert!(
+            gate.requests.lock().unwrap().is_empty(),
+            "授权/存在性拒绝不得消耗审批门: {:?}",
+            gate.requests.lock().unwrap()
+        );
     }
 
     #[test]
@@ -1288,6 +1300,31 @@ mod tests {
         let rows: serde_json::Value = serde_json::from_str(rows).unwrap();
         assert_eq!(rows[0]["id"], host_id);
 
+        handle.cancel.cancel();
+    }
+
+    /// fix 1/5 I-1：socket 文件权限必须显式 0600——bind 落盘权限继承进程
+    /// umask（022 下 0755；launchd 配 umask 000/002 时更宽），本测试在默认
+    /// umask 下 0755 ≠ 0600 即已证明「chmod 是显式动作不是继承巧合」。
+    #[cfg(unix)]
+    #[test]
+    fn listener_socket_file_is_owner_only_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Arc::new(open_vault(dir.path()));
+        let engine = Arc::new(engine_with(vault, ScriptGate::allow()));
+        let sock = dir.path().join("perm.sock");
+        let handle = spawn_listener(sock.clone(), engine).expect("bind");
+        let mode = std::fs::metadata(&sock)
+            .expect("socket file exists")
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "socket 必须属主独占: {:o}",
+            mode & 0o777
+        );
         handle.cancel.cancel();
     }
 }

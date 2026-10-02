@@ -162,6 +162,9 @@
     "maximize": "Maximize / Restore",
     "close": "Close"
   },
+  "topbar": {
+    "tools": "Tools"
+  },
   "credentials": {
     "openButton": "Credentials",
     "dialogTitle": "Credentials & Keys",

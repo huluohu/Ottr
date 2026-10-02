@@ -162,6 +162,9 @@
     "maximize": "最大化 / 还原",
     "close": "关闭"
   },
+  "topbar": {
+    "tools": "工具"
+  },
   "credentials": {
     "openButton": "凭据",
     "dialogTitle": "凭据与密钥",

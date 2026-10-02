@@ -93,6 +93,7 @@ button[data-active="true"] {
   flex: none;
   display: flex;
   align-items: center;
+  flex-wrap: wrap; /* 窄窗兜底：按钮整只换行（绝无字内竖排折行） */
   gap: 12px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-subtle);
@@ -100,6 +101,14 @@ button[data-active="true"] {
 .topbar-title {
   font-weight: 700;
   color: var(--color-accent-text);
+}
+/* Phase 5 T1 顶栏收纳：栏面条目整只不缩（防「命令面板」挤成竖排字的现场），
+   溢出压力交给 spacer / 整行换行兜底。 */
+.topbar-title,
+.topbar button,
+.topbar-menu {
+  flex: none;
+  white-space: nowrap;
 }
 .topbar-palette kbd {
   font: inherit;
@@ -111,12 +120,62 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 .topbar-spacer {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .topbar-debug {
   font-size: 0.8em;
   color: var(--fg-muted);
   box-shadow: none;
+}
+
+/* --- 顶栏下拉（Phase 5 T1）：「工具」菜单 + 主题单按钮下拉共用壳 ---
+   层次对齐 notify-panel（z 60）；绝对定位弹出，不挤压栏面布局。 */
+.topbar-menu {
+  position: relative;
+}
+.topbar-menu > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8em;
+  box-shadow: none;
+  color: var(--fg-muted);
+}
+.topbar-caret {
+  font-size: 0.75em;
+  line-height: 1;
+}
+.topbar-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--scrim);
+  padding: 4px;
+  z-index: 60;
+}
+.topbar-menu-list button {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: inherit;
+}
+.topbar-menu-list button:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+}
+.topbar-menu-list button[data-active="true"] {
+  color: var(--color-accent-text);
 }
 
 .app-body {
@@ -888,20 +947,8 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 
-/* --- A10 主题切换器（Task 8 设置页前的临时控件，驻顶栏） --- */
-.theme-switch {
-  display: flex;
-  gap: 6px;
-}
-.theme-switch button {
-  font-size: 0.8em;
-  padding: 0.25em 0.55em;
-  box-shadow: none;
-}
-.theme-switch button[data-active="true"] {
-  border-color: var(--color-accent);
-  color: var(--color-accent-text);
-}
+/* --- A10 主题切换（Phase 5 T1 收纳后）：单按钮下拉复用 .topbar-menu 壳，
+   原 .theme-switch 三联按钮样式随组件消亡 --- */
 
 /* --- 标签化终端主区（Task 7，A6）--- */
 .main-area.terminal-mode {

@@ -5,7 +5,8 @@
 //   **secret 字段留空 = 保存时回填原值**（不重输不覆盖）；保存/删除后
 //   remountChannels() 重挂载（core.channels 挂载点）。「发送测试」真发一条
 //   测试消息（testChannel；SMTP 经 Rust lettre，其余 TS fetch）。
-// * 规则：主机下拉（vaultStore hosts）+ 类型（disk/cpu/process；log 延后置灰）
+// * 规则：主机下拉（vaultStore hosts）+ 类型（disk/cpu/process/log——log 为
+//   Phase 4 T2 解禁：路径/关键字正则/采样间隔，路径白名单与 Rust 入口同规）
 //   + 类型参数 + 订阅渠道多选 + rate_limit + mute_window。保存后 engine.reload()。
 // * 表单校验在保存前（必填/数字/JSON 头与模板），错误行内显式报不落库。
 // * 主题/i18n 纪律：样式走 App.css 令牌段；文案全走词典键。
@@ -58,7 +59,7 @@ function emptyChannelDraft(): ChannelDraft {
 function emptyRuleDraft(): RuleDraft {
   return {
     id: null, host_id: "", kind: "disk",
-    params: { mount: "/", threshold: "90", consecutive: "3", comm: "" },
+    params: { mount: "/", threshold: "90", consecutive: "3", comm: "", path: "", pattern: "", interval: "10" },
     channels: [], rate_limit: "0", mute_window: "",
   };
 }
@@ -268,6 +269,19 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
       return t("alert.errFieldRequired");
     }
     if (d.kind === "process" && paramOf(d.params, "comm").trim() === "") return t("alert.errFieldRequired");
+    if (d.kind === "log") {
+      // 路径白名单与 Rust 入口同规（ottr_monitor::log_path_is_safe）——保存前
+      // 挡第一道，错误行内可见；正则必须可编译（引擎侧非法正则静默跳过）。
+      const path = paramOf(d.params, "path").trim();
+      const pattern = paramOf(d.params, "pattern").trim();
+      if (path === "" || pattern === "") return t("alert.errFieldRequired");
+      if (!/^\/[A-Za-z0-9/._-]*$/.test(path)) return t("alert.errLogPathInvalid");
+      try {
+        new RegExp(pattern);
+      } catch {
+        return t("alert.errRegexInvalid");
+      }
+    }
     if (d.mute_window.trim() !== "" && !/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(d.mute_window.trim())) {
       return t("alert.errFieldRequired");
     }
@@ -283,12 +297,19 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
       return;
     }
     setFormError(null);
+    const interval = paramOf(ruleDraft.params, "interval").trim();
     const params: Record<string, unknown> =
       ruleDraft.kind === "disk"
         ? { mount: paramOf(ruleDraft.params, "mount").trim() || "/", threshold: Number(paramOf(ruleDraft.params, "threshold")) }
         : ruleDraft.kind === "cpu"
           ? { threshold: Number(paramOf(ruleDraft.params, "threshold")), consecutive: Math.max(1, Math.floor(Number(paramOf(ruleDraft.params, "consecutive")) || 1)) }
-          : { comm: paramOf(ruleDraft.params, "comm").trim() };
+          : ruleDraft.kind === "process"
+            ? { comm: paramOf(ruleDraft.params, "comm").trim() }
+            : {
+                path: paramOf(ruleDraft.params, "path").trim(),
+                pattern: paramOf(ruleDraft.params, "pattern").trim(),
+                interval_secs: Math.max(5, Math.floor(Number(interval) || 10)),
+              };
     const input = {
       host_id: Number(ruleDraft.host_id),
       kind: ruleDraft.kind,
@@ -321,6 +342,9 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
         threshold: String(p["threshold"] ?? ""),
         consecutive: String(p["consecutive"] ?? "3"),
         comm: String(p["comm"] ?? ""),
+        path: String(p["path"] ?? ""),
+        pattern: String(p["pattern"] ?? ""),
+        interval: String(p["interval_secs"] ?? "10"),
       },
       channels: [...row.channels],
       rate_limit: String(row.rate_limit),
@@ -538,9 +562,7 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
                   <option value="disk">{t("alert.title.disk")}</option>
                   <option value="cpu">{t("alert.title.cpu")}</option>
                   <option value="process">{t("alert.title.process")}</option>
-                  <option value="log" disabled>
-                    {t("alert.kindLog")}
-                  </option>
+                  <option value="log">{t("alert.kindLog")}</option>
                 </select>
               </label>
               {ruleDraft.kind === "disk" && (
@@ -572,6 +594,22 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
                   <span>{t("alert.paramProcessComm")}</span>
                   <input data-testid="alert-rule-comm" value={paramOf(ruleDraft.params, "comm")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, comm: e.currentTarget.value } })} />
                 </label>
+              )}
+              {ruleDraft.kind === "log" && (
+                <>
+                  <label>
+                    <span>{t("alert.paramLogPath")}</span>
+                    <input data-testid="alert-rule-log-path" placeholder="/var/log/app.log" value={paramOf(ruleDraft.params, "path")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, path: e.currentTarget.value } })} />
+                  </label>
+                  <label>
+                    <span>{t("alert.paramLogPattern")}</span>
+                    <input data-testid="alert-rule-log-pattern" placeholder="FATAL|ERROR" value={paramOf(ruleDraft.params, "pattern")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, pattern: e.currentTarget.value } })} />
+                  </label>
+                  <label>
+                    <span>{t("alert.paramLogInterval")}</span>
+                    <input type="number" min={5} data-testid="alert-rule-log-interval" value={paramOf(ruleDraft.params, "interval")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, interval: e.currentTarget.value } })} />
+                  </label>
+                </>
               )}
               <fieldset>
                 <legend>{t("alert.fieldChannels")}</legend>

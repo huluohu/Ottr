@@ -34,7 +34,9 @@ fn main() {
     // password-only open：open 即锁定（内存无密钥）；首次 unlock_with_password
     // 一次性写 salt+verifier（store.rs open_password_only 文档）。
     let vault = Vault::open_password_only(&dir).expect("open_password_only");
-    vault.unlock_with_password(&password).expect("set master password");
+    vault
+        .unlock_with_password(&password)
+        .expect("set master password");
 
     let cred = Credentials::create(
         &vault,

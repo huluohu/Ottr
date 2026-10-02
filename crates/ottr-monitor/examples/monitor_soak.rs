@@ -29,8 +29,8 @@
 //!      `target/release/examples/monitor_soak [hold_secs=1800] [out_dir=/tmp/ottr-t7]`
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use ottr_monitor::{LoopConfig, SamplingEnd, collect, run_sampling};
@@ -243,8 +243,8 @@ async fn run(hold: u64, out_dir: PathBuf) -> (String, bool) {
         let mut stripped = ByteCount::default();
         let mut stripper = Stripper::new();
         while let Some(msg) = channel.wait().await {
-            if let russh::ChannelMsg::ExtendedData { data, .. }
-            | russh::ChannelMsg::Data { data } = msg
+            if let russh::ChannelMsg::ExtendedData { data, .. } | russh::ChannelMsg::Data { data } =
+                msg
             {
                 let t = rec_started.elapsed().as_secs_f64();
                 raw_bytes += data.len() as u64;

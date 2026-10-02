@@ -337,6 +337,10 @@ pub fn run() {
             vault::vault_upgrade_to_master_password,
             vault::settings_get,
             vault::settings_set,
+            // Phase 5 Task 3（同步编排）：分类快照导出/导入（过锁定门卫，
+            // ottr-vault sync_snapshot 模块；编排引擎在 src/sync/SyncStore.ts）
+            vault::sync_export_categories,
+            vault::sync_import_categories,
             // Task 16.5（0×0 主窗 frame 修复）：vault 后台初始化就绪门取数面
             vault::vault_init_status,
             // Task 12（spec §7）：通知管线①应用内通知中心（明文面，锁定可读写）

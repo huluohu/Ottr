@@ -655,3 +655,124 @@ fn credential_patch_semantics_unaffected_after_import() {
         Some("SECRET-PASSWORD-42".to_string())
     );
 }
+
+// --- settings 导入防线（fix round 1 I-1）----------------------------------------
+
+/// 敌意/损坏快照的 settings 导入三防线：`sync.*` 簿记键不覆写本机三态基线；
+/// 已知键越界值不落库（与 settings_set 同一注册表——validate_known_setting）；
+/// 合法键照常导入。全部计 skipped，不拖垮其余键。
+#[test]
+fn import_settings_filters_sync_keys_and_validates_known_keys() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    // 本机现状：三态基线 + 合法安全配置
+    Settings::set(
+        &vault,
+        "sync.state",
+        &json!({ "remote_fp": "MINE", "local_fp": "MINE" }),
+    )
+    .unwrap();
+    Settings::set(&vault, "security.autolock_minutes", &json!(10)).unwrap();
+    Settings::set(&vault, "ui.theme", &json!("dark")).unwrap();
+
+    // 手工构造快照（绕过导出剥离面——正是敌意来源的形态）：
+    // sync.state 覆写企图 + 越界 autolock + 非法 theme + 两个合法键
+    let snap = json!({
+        "version": SYNC_DATA_VERSION,
+        "categories": { "settings": [
+            { "key": "sync.state", "value": { "remote_fp": "FORGED", "local_fp": "FORGED" } },
+            { "key": "security.autolock_minutes", "value": 99_999 },
+            { "key": "ui.theme", "value": "purple" },
+            { "key": "ui.language", "value": "en-US" },
+            { "key": "security.clipboard_clear_secs", "value": 30 },
+        ]}
+    });
+    let report = sync_snapshot::import_categories(
+        &vault,
+        &["settings".to_string()],
+        &snap,
+        SyncImportMode::Replace,
+    )
+    .unwrap();
+    assert_eq!(report.applied.get("settings"), Some(&2));
+    assert_eq!(report.skipped.get("settings"), Some(&3));
+
+    // 本机基线不被覆写（伪造已同步会掩盖真实分歧）
+    assert_eq!(
+        Settings::get(&vault, "sync.state").unwrap(),
+        Some(json!({ "remote_fp": "MINE", "local_fp": "MINE" }))
+    );
+    // 越界/类型错不落库，现值保持
+    assert_eq!(
+        Settings::get(&vault, "security.autolock_minutes").unwrap(),
+        Some(json!(10))
+    );
+    assert_eq!(
+        Settings::get(&vault, "ui.theme").unwrap(),
+        Some(json!("dark"))
+    );
+    // 合法键照常导入
+    assert_eq!(
+        Settings::get(&vault, "ui.language").unwrap(),
+        Some(json!("en-US"))
+    );
+    assert_eq!(
+        Settings::get(&vault, "security.clipboard_clear_secs").unwrap(),
+        Some(json!(30))
+    );
+}
+
+// --- host_groups 父子环防线（fix round 1 Minor）----------------------------------
+
+/// 损坏快照的 parent_id 环（互环/自环）导入后被断开：树可安全遍历（任一结点
+/// 上行步数 ≤ 组数），正常子树不受牵连。
+#[test]
+fn import_severs_parent_cycles_in_corrupt_snapshot() {
+    let snap = json!({
+        "version": SYNC_DATA_VERSION,
+        "categories": { "host_groups": [
+            { "id": 1, "name": "a", "parent_id": 2, "color": null, "created_at": 1, "updated_at": 1 },
+            { "id": 2, "name": "b", "parent_id": 1, "color": null, "created_at": 1, "updated_at": 1 },
+            { "id": 3, "name": "self", "parent_id": 3, "color": null, "created_at": 1, "updated_at": 1 },
+            { "id": 4, "name": "child-of-cycle", "parent_id": 1, "color": null, "created_at": 1, "updated_at": 1 },
+        ]}
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let report = sync_snapshot::import_categories(
+        &vault,
+        &["host_groups".to_string()],
+        &snap,
+        SyncImportMode::Replace,
+    )
+    .unwrap();
+    assert_eq!(report.applied.get("host_groups"), Some(&4));
+
+    // 断言无环：从任一结点沿 parent 上行 ≤ 组数步必达根（有环则超界 panic）
+    let groups = HostGroups::list(&vault).unwrap();
+    assert_eq!(groups.len(), 4);
+    for g in &groups {
+        let mut cur = Some(g.id);
+        let mut steps = 0usize;
+        while let Some(id) = cur {
+            steps += 1;
+            assert!(steps <= groups.len(), "环未断开：从 {} 上行超界", g.name);
+            let row = groups.iter().find(|x| x.id == id).unwrap();
+            cur = row.parent_id;
+        }
+    }
+    // 环上结点已被提根/断边：互环两结点至少一个 parent 为 None；自环结点 parent 为 None
+    let by_name = |n: &str| groups.iter().find(|x| x.name == n).unwrap();
+    assert!(
+        by_name("a").parent_id.is_none() || by_name("b").parent_id.is_none(),
+        "互环 a↔b 至少断一边"
+    );
+    assert!(by_name("self").parent_id.is_none(), "自环已提根");
+    // 正常子树不受牵连：child-of-cycle 挂在 a 或 b 之下（引用仍可解析）
+    let child = by_name("child-of-cycle");
+    let parent = groups
+        .iter()
+        .find(|x| Some(x.id) == child.parent_id)
+        .expect("child-of-cycle 的 parent 引用保留");
+    assert!(parent.name == "a" || parent.name == "b");
+}

@@ -434,6 +434,24 @@ pub fn import_categories(
     } else {
         Vec::new()
     };
+    // I-1 防线（fix round 1）：settings 先分类再动库——
+    //   * `sync.*` 簿记键不随数据走（快照可来自手工构造/敌意来源，含 sync.state
+    //     即会覆写本机三态基线，伪造「已同步」掩盖真实分歧）；
+    //   * 已知键复用写入侧同款范围/类型校验（settings_set 与本导入共享 ottr-vault
+    //     settings 注册表，单一事实源），越界值不落库；
+    //   * 被拒键**同时豁免于替换删除**——否则「删全量→跳过落库」会把本机现存的
+    //     合法值抹成默认（拒绝输入不该摧毁现有合法数据）。
+    let (settings_valid, settings_dropped): (Vec<&SyncSetting>, Vec<&SyncSetting>) =
+        settings_rows.iter().partition(|s| {
+            !s.key.starts_with(SYNC_SETTINGS_PREFIX)
+                && crate::settings::validate_known_setting(&s.key, &s.value).is_ok()
+        });
+    for s in &settings_dropped {
+        eprintln!(
+            "[sync-import] settings key \"{}\" dropped (sync bookkeeping or invalid value)",
+            s.key
+        );
+    }
 
     // 密封器先取（锁定即拒，事务开始前失败零副作用）。
     let cipher = vault.cipher()?;
@@ -477,10 +495,16 @@ pub fn import_categories(
         tx.execute("DELETE FROM notify_channels", [])?;
     }
     if is_selected(&selected, "settings") {
-        // 真全量替换：非簿记键清空后落快照键；sync.* 键是本机三态基线，免疫。
+        // 真全量替换：非簿记键清空后落快照键；sync.* 键是本机三态基线，免疫；
+        // 被拒键（sync.* / 越界已知键）豁免删除——本机现值保留（见上方防线注释）。
+        let mut excluded = format!("key NOT LIKE '{SYNC_SETTINGS_PREFIX}%'");
+        let excluded_keys: Vec<String> = settings_dropped.iter().map(|s| s.key.clone()).collect();
+        for (i, _key) in excluded_keys.iter().enumerate() {
+            excluded.push_str(&format!(" AND key != ?{}", i + 1));
+        }
         tx.execute(
-            &format!("DELETE FROM settings WHERE key NOT LIKE '{SYNC_SETTINGS_PREFIX}%'"),
-            [],
+            &format!("DELETE FROM settings WHERE {excluded}"),
+            rusqlite::params_from_iter(excluded_keys.iter()),
         )?;
     }
 
@@ -510,6 +534,7 @@ pub fn import_categories(
                 // parent 不在快照内（截断快照）→ 提根（引用切断语义）。
             }
         }
+        sanitize_group_cycles(&tx, &group_map)?;
         applied.insert("host_groups".into(), group_map.len());
     }
 
@@ -684,7 +709,7 @@ pub fn import_categories(
 
     if is_selected(&selected, "settings") {
         let mut count = 0usize;
-        for s in &settings_rows {
+        for s in &settings_valid {
             tx.execute(
                 "INSERT INTO settings(key, value) VALUES (?1, ?2)
                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -693,6 +718,7 @@ pub fn import_categories(
             count += 1;
         }
         applied.insert("settings".into(), count);
+        skipped.insert("settings".into(), settings_dropped.len());
     }
 
     tx.commit()?;
@@ -706,4 +732,85 @@ fn remap_channel_ids(channels: &[i64], map: &HashMap<i64, i64>) -> Vec<i64> {
         .iter()
         .filter_map(|id| map.get(id).copied())
         .collect()
+}
+
+/// 父子环防线（fix round 1 Minor）：损坏/手工构造快照可能携带 parent_id 环
+/// （A↔B、自环）——落库后 UI 树遍历会死循环。三步：
+///   ① 一次性读出全部 parent 指针；
+///   ② 到根不动点标记（无 parent = 根；parent 已标记则本结点标记）——未标记
+///      集合 = 环成员 + 挂在环上的子树；
+///   ③ 未标记结点中，「沿 parent 行走会回到自身」的才是**环上成员**（挂靠子树
+///      不回到自身，不误伤）；每个环只断第一条边（行走途中遇已断结点即跳过
+///      ——同环不重复断）。断边 = 环上该结点提根。
+fn sanitize_group_cycles(tx: &rusqlite::Transaction, group_map: &HashMap<i64, i64>) -> Result<()> {
+    let ids: Vec<i64> = group_map.values().copied().collect();
+    let mut parent_of: HashMap<i64, Option<i64>> = HashMap::new();
+    for id in &ids {
+        let p: Option<i64> = tx.query_row(
+            "SELECT parent_id FROM host_groups WHERE id = ?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        parent_of.insert(*id, p);
+    }
+
+    // ② 到根不动点标记
+    let mut reaches_root: HashSet<i64> = ids
+        .iter()
+        .copied()
+        .filter(|id| parent_of[id].is_none())
+        .collect();
+    loop {
+        let mut changed = false;
+        for id in &ids {
+            if !reaches_root.contains(id) {
+                if let Some(p) = parent_of[id] {
+                    if reaches_root.contains(&p) {
+                        reaches_root.insert(*id);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    // ③ 环上成员检测 + 每环断一条边
+    let unmarked: Vec<i64> = ids
+        .iter()
+        .copied()
+        .filter(|id| !reaches_root.contains(id))
+        .collect();
+    let mut severed: HashSet<i64> = HashSet::new();
+    for id in &unmarked {
+        let mut on_cycle = false;
+        let mut hits_severed = false;
+        let mut cur = parent_of[id];
+        let mut steps = 0usize;
+        while let Some(c) = cur {
+            steps += 1;
+            if c == *id {
+                on_cycle = true;
+                break;
+            }
+            if severed.contains(&c) {
+                hits_severed = true; // 本环已被断过（行走遇到断边结点）
+                break;
+            }
+            if steps > unmarked.len() {
+                break; // 防御上界（理论上未标记集内必命中环或断边）
+            }
+            cur = parent_of[&c];
+        }
+        if on_cycle && !hits_severed {
+            tx.execute(
+                "UPDATE host_groups SET parent_id = NULL WHERE id = ?1",
+                [id],
+            )?;
+            severed.insert(*id);
+        }
+    }
+    Ok(())
 }

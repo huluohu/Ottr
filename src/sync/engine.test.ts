@@ -10,7 +10,9 @@ import {
   SYNC_CATEGORIES,
   asSyncData,
   buildConflictList,
+  canonicalEntries,
   canonicalJson,
+  categoryFingerprint,
   filterSnapshot,
   fingerprint,
   isEmptySnapshot,
@@ -119,8 +121,8 @@ describe("双改冲突列表（逐分类生成）", () => {
     const hosts = conflicts.find((c) => c.category === "hosts")!;
     expect(hosts.local_count).toBe(1);
     expect(hosts.remote_count).toBe(1);
-    expect(hosts.local_fp).toBe(await fingerprint(local.categories.hosts));
-    expect(hosts.remote_fp).toBe(await fingerprint(remote.categories.hosts));
+    expect(hosts.local_fp).toBe(await categoryFingerprint(local, "hosts"));
+    expect(hosts.remote_fp).toBe(await categoryFingerprint(remote, "hosts"));
     expect(hosts.local_fp).not.toBe(hosts.remote_fp);
   });
 
@@ -135,5 +137,70 @@ describe("双改冲突列表（逐分类生成）", () => {
     remote2.categories.settings = [{ key: "k", value: 2 }];
     const conflicts = await buildConflictList(local2, remote2, ["settings"]);
     expect(conflicts.map((c) => c.category)).toEqual(["settings"]);
+  });
+
+  it("行序差异不误报（canonical 投影排序）", async () => {
+    const local = dataWith("hosts", [{ id: 1, name: "a" }, { id: 2, name: "b" }]);
+    const remote = dataWith("hosts", [{ id: 9, name: "b" }, { id: 8, name: "a" }]);
+    expect(await buildConflictList(local, remote)).toEqual([]);
+  });
+
+  // 【I-2 回归（fix round 1）】真实跨机形态：两侧同源、id 各机本地、引用字段
+  // 已按各自本地图重写——未改动分类不得因 id 不同而误报。
+  it("id 重映射 + 引用重写不误报；改一处只列该分类", async () => {
+    const sideA = (): Partial<Record<SyncCategory, unknown[]>> => ({
+      host_groups: [{ id: 1, name: "prod", parent_id: null, color: "#fff", created_at: 1, updated_at: 1 }],
+      credentials: [{ id: 2, kind: "password", secret: "pw", key_pub: null, passphrase: null, totp_secret: null, created_at: 1, updated_at: 1 }],
+      hosts: [{
+        id: 3, name: "alpha", address: "10.0.0.1", port: 22, username: "deploy",
+        group_id: 1, credential_id: 2, tags: ["web"], protocol: "ssh",
+        encoding_override: null, theme_override: null, monitor_enabled: false,
+        is_production: true, notes: null, created_at: 1, updated_at: 1,
+      }],
+      settings: [{ key: "ui.theme", value: "dark" }],
+    });
+    // B 机：pull 后 id 全部重映射、引用按 B 本地图重写（跨机真实形态）
+    const sideB = (): Partial<Record<SyncCategory, unknown[]>> => ({
+      host_groups: [{ id: 101, name: "prod", parent_id: null, color: "#fff", created_at: 1, updated_at: 1 }],
+      credentials: [{ id: 202, kind: "password", secret: "pw", key_pub: null, passphrase: null, totp_secret: null, created_at: 1, updated_at: 1 }],
+      hosts: [{
+        id: 303, name: "alpha", address: "10.0.0.1", port: 22, username: "deploy",
+        group_id: 101, credential_id: 202, tags: ["web"], protocol: "ssh",
+        encoding_override: null, theme_override: null, monitor_enabled: false,
+        is_production: true, notes: null, created_at: 1, updated_at: 1,
+      }],
+      settings: [{ key: "ui.theme", value: "dark" }],
+    });
+    const a = emptyData();
+    a.categories = { ...a.categories, ...sideA() } as SyncData["categories"];
+    const b = emptyData();
+    b.categories = { ...b.categories, ...sideB() } as SyncData["categories"];
+
+    // 同源异 id：全部分类零误报（修复前 = 全部有数据的分类都进冲突列表）
+    expect(await buildConflictList(a, b)).toEqual([]);
+
+    // 引用变化也按自然键传导（group 换名 → hosts 投影随之变化）
+    const c = emptyData();
+    c.categories = { ...c.categories, ...sideB() } as SyncData["categories"];
+    (c.categories.host_groups[0] as Record<string, unknown>).name = "renamed";
+    expect((await buildConflictList(a, c)).map((x) => x.category).sort()).toEqual([
+      "host_groups",
+      "hosts",
+    ]);
+
+    // 单边真改动：只列被改分类
+    (b.categories.hosts[0] as Record<string, unknown>).notes = "edited on B";
+    expect((await buildConflictList(a, b)).map((x) => x.category)).toEqual(["hosts"]);
+  });
+
+  it("canonicalEntries：剥除 id 与本地引用 id（投影内只留自然键/内容）", () => {
+    const data = dataWith("hosts", [{ id: 7, name: "a", address: "x", port: 1 }]);
+    data.categories.host_groups = [{ id: 8, name: "g", parent_id: null, color: null }];
+    const projected = canonicalEntries("hosts", data)[0]!;
+    expect(projected).not.toContain('"id"');
+    // group 引用解析为分组名（id 无关）
+    const host = data.categories.hosts[0] as Record<string, unknown>;
+    host.group_id = 8;
+    expect(canonicalEntries("hosts", data)[0]!).toContain('"group":"g"');
   });
 });

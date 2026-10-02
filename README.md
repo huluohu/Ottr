@@ -51,6 +51,19 @@ AI 能力（核心卖点，隐私优先）：
 > 完整路线图见 [`docs/features-and-roadmap.md`](docs/features-and-roadmap.md)
 > （自有云 E2E 加密同步、会话录制回放、免 Agent 监控、告警与通知矩阵、批量执行等在后续阶段）。
 
+## 录制分享指引（会话回放与导出）
+
+终端会话可录制为 [asciinema v2](https://docs.asciinema.org/manual/asciinema-v2/) 格式
+（连接后点「录制」页签；录制内容仅落本机，文件 0600）。分享/存档路径：
+
+- **回放**：录制页内置时间轴回放（拖动 seek、倍速），无需任何外部工具；
+- **导出**：导出为脱敏文本（敏感串自动替换为占位符，可二次确认后导出原文）；
+- **转 GIF/嵌入网页**（Ottr 内不内置，用官方工具链处理导出的 `.cast` 文件）：
+  - `asciinema upload Recording.cast` → 获得可在 Markdown/网页直接嵌入的播放页链接；
+  - 或 `agg Recording.cast Recording.gif`（[asciinema/agg](https://github.com/asciinema/agg)，
+    单二进制，可将录制转 GIF/SVG）；
+- 敏感场景建议只分发脱敏导出文本；`.cast` 原文与终端原文等同，分享前自行确认内容。
+
 ## 构建与开发
 
 ### 前置要求

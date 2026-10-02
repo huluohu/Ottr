@@ -941,5 +941,23 @@
     "approvalHint": "Approving runs this command on the remote host now. The request is denied automatically after 60 seconds.",
     "approvalDeny": "Deny",
     "approvalAllow": "Run it"
+  },
+  "plugins": {
+    "title": "Plugins",
+    "open": "Open plugin sidebar",
+    "close": "Collapse plugin sidebar",
+    "net": {
+      "title": "Network",
+      "waiting": "Waiting for samples…"
+    },
+    "quick": {
+      "title": "Quick Commands",
+      "copy": "Copy",
+      "copied": "Copied",
+      "df": "Disk",
+      "free": "Memory",
+      "uptime": "Uptime",
+      "dockerPs": "Containers"
+    }
   }
 }

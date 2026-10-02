@@ -42,6 +42,7 @@ import { remountChannels } from "./notify/channelRegistry";
 import { AlertSettings } from "./notify/AlertSettings";
 import { initMonitorEvents } from "./monitor/events";
 import { MonitorSidebar } from "./monitor/MonitorSidebar";
+import { PluginSidebar } from "./plugins/PluginSidebar";
 import { OverviewPage } from "./monitor/OverviewPage";
 import { ProcessBrowser } from "./monitor/ProcessBrowser";
 import { initBatchEvents } from "./batch/events";
@@ -567,6 +568,11 @@ function HomeLayout() {
                   rustId={rootSession?.rustId ?? null}
                   enabled={hosts.find((h) => h.id === rootSession?.hostId)?.monitor_enabled ?? false}
                 />
+              )}
+              {/* Phase 4 Task 6（C3 foundation）：插件卡片侧栏（内置注册表，
+                  声明式权限门控；外部插件执行面 scope-out，ADR 0002）。 */}
+              {!filesVisible && !procsVisible && (
+                <PluginSidebar rustId={rootSession?.rustId ?? null} />
               )}
             </div>
             {filesVisible && rootSession && <FilePanel session={rootSession} />}

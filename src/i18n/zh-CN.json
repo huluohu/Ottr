@@ -940,5 +940,23 @@
     "approvalHint": "允许 = 立即在远端主机执行该命令。60 秒内未裁定将自动拒绝。",
     "approvalDeny": "拒绝",
     "approvalAllow": "执行"
+  },
+  "plugins": {
+    "title": "插件",
+    "open": "打开插件侧栏",
+    "close": "收起插件侧栏",
+    "net": {
+      "title": "网络摘要",
+      "waiting": "等待采样…"
+    },
+    "quick": {
+      "title": "快捷命令",
+      "copy": "复制",
+      "copied": "已复制",
+      "df": "磁盘",
+      "free": "内存",
+      "uptime": "运行时长",
+      "dockerPs": "容器列表"
+    }
   }
 }

@@ -14,8 +14,9 @@ const mockedInvoke = invoke as unknown as Mock;
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-import { createGitTransport, tauriGitDeps, type SyncEnvelope } from "./git";
+import { createGitTransport, tauriGitDeps } from "./git";
 import type { GitExecResult } from "./git";
+import type { SyncEnvelope } from "./envelope";
 
 const ENVELOPE: SyncEnvelope = {
   "ottr-sync": 1,

@@ -24,6 +24,10 @@ pub mod cron;
 // 采样任务 owner，ForwardManager 同款模式）+ monitor_start/stop +
 // ottr://monitor 事件推前端。
 pub mod monitor;
+// MCP 命令域（Phase 4 Task 3，C1）：MCP stdio server 引擎（UDS listener +
+// 授权矩阵执行 + 逐次审批门）+ mcp_* 命令面。协议核在 crate::mcp，
+// relay 子进程在 bin/ottr-mcp.rs；形态裁定论证见模块文档。
+pub mod mcp;
 // 会话录制命令域（Phase 3 Task 5，B3）：RecordingHandle（tee 写盘线程 owner）
 // + recording_start/stop/read/list/search/delete/export + 会话退出自动收尾。
 pub mod recording;

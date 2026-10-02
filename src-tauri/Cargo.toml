@@ -14,6 +14,13 @@ edition = "2021"
 name = "ottr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# MCP stdio relay（Phase 4 Task 3，C1）：Claude Desktop 等 MCP 客户端 spawn 的
+# 子进程——纯 std 字节管道（stdin ↔ UDS ↔ stdout），不链接 ottr_lib/tauri。
+# 形态裁定与配置方法见 commands/mcp.rs 模块文档与 docs/mcp.md。
+[[bin]]
+name = "ottr-mcp"
+path = "src/bin/ottr-mcp.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -47,8 +54,9 @@ lettre = { version = "0.11", default-features = false, features = [
     "tokio1-native-tls",
 ] }
 # forward 命令域（Phase 2 Task 1）经 ottr-ssh 间接消费 net 面；本 crate 自身
-# commands/* 不直接摸 TCP，net 留给 ottr-ssh。
-tokio = { version = "1", features = ["io-util", "sync", "time"] }
+# commands/* 不直接摸 TCP，net 留给 ottr-ssh。rt = MCP 引擎（Phase 4 Task 3，
+# C1）在 UDS 连接专属 std 线程上经 Handle::block_on 桥接 SSH/SFTP 异步面。
+tokio = { version = "1", features = ["io-util", "rt", "sync", "time"] }
 base64 = "0.22"
 sha2 = "0.10"
 # spike-pragmatic：PTY 读循环匹配 russh::ChannelMsg / Channel 类型。

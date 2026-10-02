@@ -15,6 +15,22 @@
 //     时 git 拒绝并报错，编排层重试即 last-writer-wins（契约文件头声明）；
 //   * test：git ls-remote <url>（不 clone，空仓库同样 code 0）。
 //
+// repoUrl 攻击面防线（评审 Fix round 1 I-1，三重叠加）：
+//   ① clone / ls-remote 的 repoUrl 前恒插 `--` 分隔符（git 把 `--` 后的首个
+//      位置参数当 URL 文本，`--upload-pack=…` 形态不再是选项——PoC 实证
+//      `git clone --quiet "--upload-pack=touch /tmp/x"` 是本机命令执行）；
+//   ② 构造时拒绝 `-` 开头的 repoUrl（明确错误，纵深）；
+//   ③ scheme/形态白名单：https/http/ssh/file://、本地绝对路径（POSIX/盘符/
+//      UNC）、scp-like（git@host:path，ssh 家族）；其余拒绝——特别是 git 的
+//      命令传输面 `ext::`（arbitrary command）。http: 与 https: 同传输族
+//      （LAN 自建 Gitea 现实形态）、scp-like 是 GitHub 事实标准形态，二者
+//      均无 exec 面（凭据走用户自己的 helper/ssh 配置），白名单收录已在
+//      task-2-report Fix round 1 披露。
+//
+// filePath 攻击面防线（评审 Fix round 1 I-2）：拒绝绝对路径/`\`/`.`/`..`
+// 组件——`../../../x` 不能逃出临时 clone 写任意文件（与 localdir 通道同信任
+// 边界同防线）；子目录能力保留（`snapshots/ottr-sync.json` 合法）。
+//
 // 凭据取舍（报告披露）：repoUrl 由用户配置——
 //   * 推荐路径：系统 credential helper（osxkeychain/store/manager-core），
 //     Ottr 不经手 token；本实现恒设 GIT_TERMINAL_PROMPT=0（交互式终端凭据
@@ -26,9 +42,9 @@ import { parseEnvelopeJson, type SyncTransport } from "./transport";
 import type { SyncEnvelope } from "./envelope";
 
 export interface GitConfig {
-  /** 远端（本地 bare 仓库路径或任何 git URL；可含凭据——取舍见文件头）。 */
+  /** 远端（见文件头白名单；本地 bare 仓库用绝对路径）。 */
   repoUrl: string;
-  /** 仓库内信封文件路径（缺省 ottr-sync.json）。 */
+  /** 仓库内信封文件路径（相对，子目录允许；缺省 ottr-sync.json）。 */
   filePath?: string;
   /** 目标分支（缺省 main；push 用显式 refspec HEAD:refs/heads/<branch>）。 */
   branch?: string;
@@ -57,6 +73,49 @@ export interface GitDeps {
 
 const DEFAULT_BRANCH = "main";
 const DEFAULT_FILE_PATH = "ottr-sync.json";
+
+/**
+ * repoUrl 校验（I-1 防线②③；防线① `--` 分隔符在命令构造处）。任何一条
+ * 触发都是构造期明确错误——不把可疑 URL 送进 git。
+ */
+export function validateRepoUrl(raw: string): string {
+  const url = raw.trim();
+  if (url === "") throw new Error("git: repoUrl must not be empty");
+  if (url.startsWith("-")) {
+    throw new Error(`git: repoUrl must not start with "-" (git option injection): ${url.slice(0, 80)}`);
+  }
+  const allowed =
+    /^https?:\/\//i.test(url) || // https/http 远端（无 exec 面）
+    /^ssh:\/\//i.test(url) ||
+    /^file:\/\//i.test(url) ||
+    url.startsWith("/") || // POSIX 绝对路径（本地 bare 仓库）
+    /^[A-Za-z]:[\\/]/.test(url) || // Windows 盘符路径
+    url.startsWith("\\\\") || // UNC
+    /^[^:/@]+@[^:/]+:\S/.test(url); // scp-like（git@host:path，ssh 家族）
+  if (!allowed) {
+    throw new Error(
+      `git: unsupported repoUrl scheme/transport (allowed: https, http, ssh, file, local absolute path; command transports like ext:: are rejected): ${url.slice(0, 80)}`,
+    );
+  }
+  return url;
+}
+
+/**
+ * filePath 校验（I-2）：相对路径 + `/` 分隔 + 组件级 `..`/`.`/空拒绝——
+ * 信封文件逃不出临时 clone（与 localdir 通道裸文件名防线同信任边界收紧，
+ * 但保留子目录能力）。
+ */
+export function validateFilePath(raw: string): string {
+  if (raw === "") throw new Error("git: filePath must not be empty");
+  if (raw.startsWith("/")) throw new Error(`git: filePath must be relative (got absolute): ${raw}`);
+  if (raw.includes("\\")) throw new Error(`git: filePath must use "/" separators: ${raw}`);
+  for (const comp of raw.split("/")) {
+    if (comp === "" || comp === "." || comp === "..") {
+      throw new Error(`git: filePath must not contain empty, "." or ".." components: ${raw}`);
+    }
+  }
+  return raw;
+}
 
 /** node 后端（vitest/端到端；webview 生产需宿主 exec 桥，见文件头）。 */
 export function nodeGitExec(): GitExec {
@@ -96,11 +155,12 @@ function fail(op: string, res: GitExecResult): Error {
 }
 
 export function createGitTransport(config: GitConfig, deps: GitDeps = {}): SyncTransport {
+  const repoUrl = validateRepoUrl(config.repoUrl);
+  const filePath = validateFilePath(config.filePath ?? DEFAULT_FILE_PATH);
   const exec = deps.exec ?? nodeGitExec();
   const tempDir = deps.tempDir ?? nodeTempDir;
   const cleanup = deps.cleanup ?? nodeCleanup;
   const branch = config.branch ?? DEFAULT_BRANCH;
-  const filePath = config.filePath ?? DEFAULT_FILE_PATH;
 
   /** 统一出口：恒设 GIT_TERMINAL_PROMPT=0（交互式凭据提示在无 TTY 只会挂起）。 */
   async function run(args: string[], opts: { cwd?: string; env?: Record<string, string> } = {}): Promise<GitExecResult> {
@@ -124,11 +184,17 @@ export function createGitTransport(config: GitConfig, deps: GitDeps = {}): SyncT
         }
       : {};
 
-  /** clone 到一次性工作目录；调用方负责 finally 清扫。 */
+  /** clone 到一次性工作目录（clone 失败也清扫临时目录——M-1）；调用方负责
+   * 后续 finally 清扫。`--` 恒在 repoUrl 前（I-1 防线①）。 */
   async function freshClone(): Promise<string> {
     const work = await tempDir();
-    await run(["clone", "--quiet", config.repoUrl, work]);
-    return work;
+    try {
+      await run(["clone", "--quiet", "--", repoUrl, work]);
+      return work;
+    } catch (e) {
+      await cleanup(work);
+      throw e;
+    }
   }
 
   return {
@@ -166,7 +232,8 @@ export function createGitTransport(config: GitConfig, deps: GitDeps = {}): SyncT
 
     async test(): Promise<boolean> {
       try {
-        const res = await exec(["ls-remote", "--quiet", config.repoUrl, "HEAD"], { env: { GIT_TERMINAL_PROMPT: "0" } });
+        // `--` 恒在 repoUrl 前（I-1 防线①）；HEAD 是 pattern 位置参数，随之殿后
+        const res = await exec(["ls-remote", "--quiet", "--", repoUrl, "HEAD"], { env: { GIT_TERMINAL_PROMPT: "0" } });
         return res.code === 0;
       } catch {
         return false;

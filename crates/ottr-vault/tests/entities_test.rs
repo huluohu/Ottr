@@ -517,6 +517,111 @@ fn host_groups_crud_and_delete_semantics() {
     assert_eq!(HostGroups::get(&vault, child.id).unwrap(), None);
 }
 
+// BL-109 ②（Phase 5 Task 0）：同级分组同名零防重——应用层显式拒绝（消息可
+// 直接展示），跨父级允许同名（部分唯一索引口径的应用层镜像）。
+#[test]
+fn host_group_same_sibling_name_rejected_cross_parent_allowed() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+
+    let root = HostGroups::create(&vault, "prod", None, None).unwrap();
+    // 同根级同名 → InvalidInput（明确错误，非 SQLite 裸错）
+    let dup = HostGroups::create(&vault, "prod", None, None).unwrap_err();
+    assert!(
+        matches!(&dup, VaultError::InvalidInput(msg) if msg.contains("prod")),
+        "got: {dup:?}"
+    );
+
+    // 跨父级允许同名（唯一性只在同 parent 内）
+    let child = HostGroups::create(&vault, "prod", Some(root.id), None).unwrap();
+    let grandchild = HostGroups::create(&vault, "prod", Some(child.id), None).unwrap();
+    assert_ne!(child.id, grandchild.id);
+
+    // update 改名撞同级已有名 → 同样拒绝；改回自身原名（非改名提交）放行
+    let other = HostGroups::create(&vault, "staging", None, None).unwrap();
+    let err = HostGroups::update(&vault, other.id, "prod", None, None).unwrap_err();
+    assert!(matches!(err, VaultError::InvalidInput(_)), "got: {err:?}");
+    HostGroups::update(&vault, other.id, "staging", None, None).unwrap();
+}
+
+// BL-109 ②（Phase 5 Task 0）：0018 迁移——历史缺陷窗口的存量同名先去重
+// （保行改名，绝不删行——删组会解绑主机），再建两条部分唯一索引（根级/
+// 非根级分治：SQLite 唯一索引视 NULL 互异，单条 (parent_id, name) 防不住
+// 根级同名）。索引在 DB 层兜底：绕过应用层直插同名必须被拒。
+#[test]
+fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let vault = open_vault(dir.path());
+        HostGroups::create(&vault, "legacy", None, None).unwrap();
+    }
+    // 模拟旧库：版本拨回 17 + 摘索引 + 直插一行同根级同名（历史缺陷产物）
+    let db = dir.path().join("vault.db");
+    {
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "UPDATE meta SET value='17' WHERE key='schema_version';
+             DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
+             DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;
+             INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
+               SELECT name, parent_id, color, created_at, updated_at
+               FROM host_groups WHERE name = 'legacy';",
+        )
+        .unwrap();
+    }
+
+    let vault = open_vault(dir.path());
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION
+    );
+
+    // 去重不删行：两行都在，原名保留、重复行改名（改名保组内主机绑定）
+    let groups = HostGroups::list(&vault).unwrap();
+    assert_eq!(groups.len(), 2, "去重是改名不是删除");
+    let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+    assert!(names.contains(&"legacy"), "最小 id 行保原名: {names:?}");
+    assert!(
+        names.iter().any(|n| n.starts_with("legacy (")),
+        "重复行带改名后缀: {names:?}"
+    );
+
+    // DB 层兜底：绕过应用层直插同根级同名 → 索引拒绝
+    let conn = vault.connection();
+    let idx: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='index'
+             AND name IN ('idx_host_groups_sibling_name_root', 'idx_host_groups_sibling_name_child')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(idx, 2, "根级/非根级两条部分唯一索引都在位");
+    let raw = conn.execute(
+        "INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
+         VALUES ('legacy', NULL, NULL, 0, 0)",
+        [],
+    );
+    assert!(raw.is_err(), "唯一索引必须拒绝同根级同名直插");
+    // 非根级索引同样在位：同父级下第一个子组可插，同名第二个被拒
+    let parent: i64 = conn
+        .query_row(
+            "SELECT id FROM host_groups WHERE name = 'legacy' LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let child_ins = |conn: &rusqlite::Connection| {
+        conn.execute(
+            "INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
+             VALUES ('kid', ?1, NULL, 0, 0)",
+            [parent],
+        )
+    };
+    child_ins(&conn).expect("同父级首个子组放行");
+    assert!(child_ins(&conn).is_err(), "唯一索引必须拒绝同父级同名直插");
+}
+
 #[test]
 fn snippets_crud_search_and_host_scope_unset_on_host_delete() {
     let dir = tempfile::tempdir().unwrap();
@@ -814,9 +919,10 @@ fn known_hosts_delete_forgets_endpoint() {
 fn migration_0004_preserves_legacy_rows() {
     let dir = tempfile::tempdir().unwrap();
     let db = dir.path().join("vault.db");
-    // 手工搭一个 v3 库（meta + 0002 已落地的 hosts/credentials 形状 + 旧
-    // known_hosts 形状；0004 只触碰 known_hosts。0010 起后续迁移会 ALTER
-    // hosts / 重建 credentials——真实 v3 库必然带有 0002 的实体表，夹具同形）。
+    // 手工搭一个 v3 库（meta + 0002 已落地的 hosts/credentials/host_groups
+    // 形状 + 旧 known_hosts 形状；0004 只触碰 known_hosts。0010 起后续迁移会
+    // ALTER hosts / 重建 credentials——真实 v3 库必然带有 0002 的实体表，夹具
+    // 同形；host_groups 必须在——0018 起迁移会扫它，缺表=夹具失真）。
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
@@ -831,6 +937,14 @@ fn migration_0004_preserves_legacy_rows() {
                  totp_secret_enc BLOB,
                  created_at      INTEGER NOT NULL,
                  updated_at      INTEGER NOT NULL
+             );
+             CREATE TABLE host_groups (
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name       TEXT NOT NULL,
+                 parent_id  INTEGER REFERENCES host_groups (id) ON DELETE SET NULL,
+                 color      TEXT,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
              );
              CREATE TABLE hosts (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1055,10 +1169,19 @@ fn migration_0010_preserves_sequence_watermark_from_v9_db_with_delete_history() 
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
         conn.execute_batch(
-            // v9 形状（0001 meta + 0002 hosts/credentials + 0003 username 已就位，
-            // schema_version=9 → open 时只跑 0010）
+            // v9 形状（0001 meta + 0002 hosts/credentials/host_groups + 0003
+            // username 已就位，schema_version=9 → open 时只跑 0010 起的迁移链；
+            // host_groups 必须在——0018 起迁移会扫它，缺表=夹具失真）
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
              INSERT INTO meta VALUES ('schema_version', '9');
+             CREATE TABLE host_groups (
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name       TEXT NOT NULL,
+                 parent_id  INTEGER REFERENCES host_groups (id) ON DELETE SET NULL,
+                 color      TEXT,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );
              CREATE TABLE credentials (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                  kind TEXT NOT NULL CHECK (kind IN ('password', 'key', 'totp')),
@@ -1177,12 +1300,16 @@ fn migration_0012_legacy_v11_rows_default_to_zero() {
         let vault = open_vault(dir.path());
         Hosts::create(&vault, host_input("legacy-row", "")).unwrap();
     }
-    // 手工把 schema_version 拨回 11 + 摘掉 is_production 列 → 模拟旧库重开
+    // 手工把 schema_version 拨回 11 + 摘掉 is_production 列 + 摘掉 0018 索引
+    // → 模拟旧库重开（版本与 DDL 同事务提交，真实旧库不会有 0018 索引；
+    // 拨回夹具须同口径，否则重跑 0018 撞「index already exists」）。
     let db = dir.path().join("vault.db");
     let conn = rusqlite::Connection::open(&db).unwrap();
     conn.execute_batch(
         "UPDATE meta SET value='11' WHERE key='schema_version';
-         ALTER TABLE hosts DROP COLUMN is_production;",
+         ALTER TABLE hosts DROP COLUMN is_production;
+         DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
+         DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;",
     )
     .unwrap();
     drop(conn);

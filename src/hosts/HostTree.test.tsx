@@ -176,4 +176,85 @@ describe("HostTree", () => {
       }),
     );
   });
+
+  // BL-109 ①（Phase 5 Task 0）：空分组在默认浏览态必须渲染——「先建组再
+  // 填内容」是正常用户路径，组容器不可被无主机过滤整体吞掉。
+  it("空分组默认浏览态渲染（先建组后填内容路径）；有组时不出空树提示", () => {
+    useVaultStore.setState({ hosts: [], hostGroups: [group] });
+    renderTree();
+    expect(screen.getByTestId("group-prod-group")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "prod-group" })).toBeTruthy();
+    expect(screen.queryByTestId("tree-empty")).toBeNull();
+  });
+
+  // 过滤态（搜索/标签）时空分组无意义：只显示有命中的分组（裁定口径）。
+  it("标签过滤态隐藏无命中分组，清除过滤后恢复", () => {
+    useVaultStore.setState({ hosts: [solo], hostGroups: [group] });
+    renderTree();
+    expect(screen.getByTestId("group-prod-group")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "dev" }));
+    expect(screen.queryByTestId("group-prod-group")).toBeNull();
+    expect(screen.getByTestId("group-ungrouped")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByTestId("group-prod-group")).toBeTruthy();
+  });
+
+  it("搜索态同样隐藏空分组（搜索命中替换整树）", async () => {
+    vi.useFakeTimers();
+    try {
+      useVaultStore.setState({ hosts: [solo], hostGroups: [group] });
+      mockedInvoke.mockResolvedValue([solo]);
+      renderTree();
+      expect(screen.getByTestId("group-prod-group")).toBeTruthy();
+      fireEvent.change(screen.getByRole("searchbox"), { target: { value: "solo" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      await act(async () => {});
+      expect(screen.queryByTestId("group-prod-group")).toBeNull();
+      expect(screen.getByText("solo")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // BL-109 ②（Phase 5 Task 0）：同名分组前端预校验——不发 create、行内
+  // 错误可见、输入区保持打开供改名重试。
+  it("同名分组创建被拒：行内错误可见且不发 host_groups_create", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    renderTree();
+    fireEvent.click(screen.getByTestId("add-group"));
+    fireEvent.change(screen.getByLabelText("New Group"), { target: { value: "prod-group" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    await act(async () => {});
+    expect(mockedInvoke).not.toHaveBeenCalledWith("host_groups_create", expect.anything());
+    expect(screen.getByTestId("group-name-error").textContent).toContain("already exists");
+    // 输入区保持打开，用户可直接改名重试
+    expect(screen.getByLabelText("New Group")).toBeTruthy();
+  });
+
+  // 后端同名拒绝（竞态兜底）也要可见，不再静默吞掉。
+  it("后端拒绝同名时行内展示失败消息", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "host_groups_create") {
+        return Promise.reject(new Error('a group named "x" already exists'));
+      }
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    renderTree();
+    fireEvent.click(screen.getByTestId("add-group"));
+    fireEvent.change(screen.getByLabelText("New Group"), { target: { value: "fresh-name" } });
+    fireEvent.click(screen.getByRole("button", { name: "OK" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("group-name-error").textContent).toContain("already exists"),
+    );
+  });
 });

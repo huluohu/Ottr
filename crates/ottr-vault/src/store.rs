@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 17;
+pub const LATEST_SCHEMA_VERSION: u32 = 18;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -118,7 +118,9 @@ impl KeyMode {
 /// 列，不动 scan_registry；调度引擎在 ottr-monitor，见迁移文件头）；
 /// 0017 mcp_grants（Phase 4 Task 3，C1 MCP Server 接入——主机粒度授权矩阵，
 /// 默认全拒；明文面，无 *_enc 列，不动 scan_registry；协议引擎在
-/// src-tauri commands/mcp.rs，见迁移文件头）。
+/// src-tauri commands/mcp.rs，见迁移文件头）；0018 host_groups 同级同名
+/// 唯一（Phase 5 Task 0，BL-109 ②——两条部分唯一索引 + 存量同名保行改名
+/// 去重，明文面，无 *_enc 列，不动 scan_registry，见迁移文件头）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
@@ -143,6 +145,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (15, include_str!("../migrations/0015_recordings.sql")),
     (16, include_str!("../migrations/0016_cron.sql")),
     (17, include_str!("../migrations/0017_mcp_grants.sql")),
+    (
+        18,
+        include_str!("../migrations/0018_host_groups_unique_name.sql"),
+    ),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。

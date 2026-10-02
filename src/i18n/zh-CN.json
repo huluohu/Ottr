@@ -95,6 +95,8 @@
     "addHost": "新建主机",
     "addGroup": "新建分组",
     "groupNamePlaceholder": "分组名称",
+    "groupDuplicate": "同名分组已存在",
+    "groupCreateFailed": "创建失败：{{message}}",
     "ungrouped": "未分组",
     "tagsFilter": "标签",
     "allTags": "全部",

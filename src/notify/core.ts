@@ -23,14 +23,17 @@ import type { TransferEndPayload } from "../files/TransferStore";
 import { useTransferStore } from "../files/TransferStore";
 import type { SessionClosedPayload } from "../session/SessionStore";
 import { useSessionStore } from "../session/SessionStore";
+import type { HostKeyChangedPayload } from "../vault/api";
 
 // ---------------------------------------------------------------------------
 // 类型（事件源 → 管线入参；kind 是静音键）
 // ---------------------------------------------------------------------------
 
 /** 事件类别（T13 起 AI 诊断完成入管线——迁移 0005 kind 列无约束）。
- * 静音键按 kind：ai 诊断完成通知可独立静音（NotificationCenter 类型区）。 */
-export type NotifyKind = "transfer" | "session" | "ai";
+ * 静音键按 kind：ai 诊断完成通知可独立静音（NotificationCenter 类型区）。
+ * Phase 3 Task 3（B5）：告警规则引擎的事件走 "alert"（同样可独立静音）。
+ * Phase 3 Task 6（B9）：主机指纹巡检的 changed 告警走 "security"（独立静音位）。 */
+export type NotifyKind = "transfer" | "session" | "ai" | "alert" | "security";
 /** severity 合法集（Rust notifications::SEVERITIES / DB CHECK 同集）。 */
 export type NotifySeverity = "info" | "success" | "warning" | "error";
 
@@ -88,8 +91,14 @@ export function setNotifyPorts(next: NotifyPorts | null): void {
 // ③ 外部渠道分发点（Phase 3 挂载；空数组 = 接口先留）
 // ---------------------------------------------------------------------------
 
-/** 外部通知渠道接口（spec §7③）。Phase 3 实现体（webhook/邮件等）push 进
- * channels 即挂载——管线对渠道数与失败彼此无感（单渠道失败只记 console）。 */
+/** 外部通知渠道接口（spec §7③）。Phase 3 实现体经 channelRegistry 挂载——
+ * 管线对渠道数与失败彼此无感（单渠道失败只记 console）。
+ *
+ * 【签名演进（Phase 3 Task 3，裁定可演进）】新增可选 `subscribed` 订阅过滤：
+ * 渠道声明自己收哪些事件（alert 规则按 channels 数组路由——spec §7「按
+ * alert_rules.channels 订阅」）；缺省（undefined）= 收一切事件（Phase 1 形态
+ * 与既有测试语义不变）。transfer/session/ai 事件无 channel_ids，alert 渠道
+ * 的 subscribed 恒 false——外部渠道只吃显式订阅的告警。 */
 export interface NotificationChannel {
   /** 渠道名（日志/诊断面）。 */
   name: string;
@@ -97,6 +106,8 @@ export interface NotificationChannel {
   send: (event: NotificationEvent) => Promise<void>;
   /** 渠道连通性自检（设置页「发送测试」用）。 */
   test: () => Promise<void>;
+  /** 订阅过滤（可选；缺省 = 收一切已放行事件）。 */
+  subscribed?: (event: NotificationEvent) => boolean;
 }
 
 /** 渠道挂载点（Phase 1 恒空——循环零次，接口形状由 NotificationChannel 定）。 */
@@ -112,8 +123,22 @@ export const RATE_WINDOW_MS = 60_000;
 /** 同 key 限频表：key → 上次放行时刻（只在放行时刷新——窗口从首条起算）。 */
 const lastSeen = new Map<string, number>();
 
-/** 限频 key：kind + host_id（同主机同类事件聚合；无主机按 kind 聚合）。 */
+/** 【M-1 清偿（Phase 3 Task 3，B5）】聚合计数表：key → 窗口内被放行式丢弃
+ * 的条数。Phase 1 的丢弃是静默的（「合并成一条」丢掉了"还有 N 条"的事实
+ * ——传输风暴/告警风暴的量级不可见）；现升级为计数聚合：窗口内每丢一条
+ * +1，下一条放行时把计数注入 payload.suppressed 后清零。 */
+const suppressedCount = new Map<string, number>();
+
+/** 限频 key：kind + host_id（同主机同类事件聚合；无主机按 kind 聚合）。
+ * 【I-1（fix round 1）】alert 类细化含 rule_id（`alert:host:rule`）——「同
+ * rule 60s 窗口合并」的直译语义：同主机不同规则各自独立开窗，规则 2 的告警
+ * 不再被规则 1 的窗口吞掉（否则 suppressed 计数并入他规则事件、按错误
+ * channel_ids 路由）；其余 kind 维持 Phase 1 口径不变。 */
 export function rateKeyOf(event: NotificationEvent): string {
+  if (event.kind === "alert") {
+    const ruleId = event.payload?.["rule_id"] ?? "-";
+    return `alert:${event.host_id ?? "-"}:${ruleId}`;
+  }
   return `${event.kind}:${event.host_id ?? "-"}`;
 }
 
@@ -138,9 +163,18 @@ export async function notify(event: NotificationEvent): Promise<boolean> {
   const now = ports.now();
   const last = lastSeen.get(key);
   if (last !== undefined && now - last < RATE_WINDOW_MS) {
-    return false; // 限频：窗口内聚合（不刷新窗口）
+    // 限频：窗口内聚合——不再静默丢弃，计数挂账（M-1），下条放行时随行
+    suppressedCount.set(key, (suppressedCount.get(key) ?? 0) + 1);
+    return false;
   }
   lastSeen.set(key, now);
+  // 放行即结算窗口账目：窗口内被聚合的条数注入 payload.suppressed（0 不注
+  // ——payload 形状对无聚合场景保持原样），随后清零开新账。
+  const suppressed = suppressedCount.get(key) ?? 0;
+  suppressedCount.delete(key);
+  if (suppressed > 0) {
+    event = { ...event, payload: { ...event.payload, suppressed } };
+  }
 
   // ① 应用内通知中心
   try {
@@ -168,8 +202,11 @@ export async function notify(event: NotificationEvent): Promise<boolean> {
     }
   }
 
-  // ③ 外部渠道（Phase 3 挂载）
+  // ③ 外部渠道（Phase 3 挂载；subscribed 缺省 = 收一切——Phase 1 形态兼容）
   for (const channel of channels) {
+    if (channel.subscribed && !channel.subscribed(event)) {
+      continue; // 渠道未订阅该事件（alert 规则按 channels 数组路由）
+    }
     try {
       await channel.send(event);
     } catch (e) {
@@ -179,9 +216,10 @@ export async function notify(event: NotificationEvent): Promise<boolean> {
   return true;
 }
 
-/** 测试隔离：清空限频表（窗口状态不进 store——进程内瞬态）。 */
+/** 测试隔离：清空限频表与聚合计数（窗口状态不进 store——进程内瞬态）。 */
 export function resetRateLimiter(): void {
   lastSeen.clear();
+  suppressedCount.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +279,21 @@ export function onSessionClosed(payload: SessionClosedPayload): Promise<boolean>
   });
 }
 
+/** `ottr://host-key-changed` → security 告警（B9 指纹巡检）：巡检核在 Rust 侧
+ * 已完成 mark_changed 落账，这里只进通知管线（①中心 + ②系统 + ③渠道）。
+ * host_id 恒 null——端点键（address:port）与 hosts 行是弱关联（删主机重建
+ * 不换端点），限频按 kind 聚合即可（同轮多端点漂移合并成一条恰是想要的）。 */
+export function onHostKeyChanged(payload: HostKeyChangedPayload): Promise<boolean> {
+  return notify({
+    kind: "security",
+    severity: "error",
+    host_id: null,
+    title_key: "notify.title.hostKeyChanged",
+    body: payload.host_key,
+    payload: { host_key: payload.host_key, anchor: payload.anchor, seen: payload.seen },
+  });
+}
+
 let wired = false;
 const unlisteners: UnlistenFn[] = [];
 
@@ -257,6 +310,11 @@ export async function initNotifyEvents(): Promise<void> {
   unlisteners.push(
     await listen<SessionClosedPayload>("ottr://session-closed", (e) => {
       void onSessionClosed(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen<HostKeyChangedPayload>("ottr://host-key-changed", (e) => {
+      void onHostKeyChanged(e.payload);
     }),
   );
   await useNotifyStore.getState().bootstrap();

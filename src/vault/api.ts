@@ -13,6 +13,7 @@
 //       snippets_list snippets_get snippets_search snippets_create snippets_update
 //       snippets_delete
 //       known_hosts_list known_hosts_upsert known_hosts_verify known_hosts_mark_changed
+//       known_hosts_delete known_hosts_probe known_hosts_audit_run（B9 生命周期收口）
 //       import_ssh_config export_hosts_csv（Task 5 导入/导出）
 //       key_generate key_inspect key_export key_deploy（Task 6 密钥管理，src-tauri keys.rs）
 //       vault_security_status vault_unlock vault_lock vault_upgrade_to_master_password
@@ -27,6 +28,9 @@
 //       （Task 15 统一历史搜索 ⌘R：明文面，锁定可读写——写入源是前端
 //       CommandWatch 的命令完成事件，见 src/history/record.ts）
 //       history_list_session summary_insert summary_list
+//       recording_start recording_stop recording_list recording_search
+//       recording_read recording_delete recording_export
+//       （Phase 3 Task 5 会话录制 B3：tee 在 Rust flush_batch，明文面同 history）
 //       （Phase 2 Task 7 会话纪要：数据源命令序列（明文面）+ 摘要密文面
 //       （summary_enc 已登记 scan_registry，summary_insert/list 过锁定门卫））
 //       pf_list pf_create pf_update pf_delete pf_set_enabled pf_start pf_stop
@@ -173,6 +177,26 @@ export interface KnownHost {
   state: KnownHostState;
 }
 
+/** `ottr://host-key-changed` 事件载荷（Rust HostKeyChangedPayload 同构，B9
+ * 指纹巡检；seen = 本次观测集，锚消失时在场钥匙 = 新锚候选面）。 */
+export interface HostKeyChangedPayload {
+  host_key: string;
+  anchor: string;
+  seen: string[];
+}
+
+/** `known_hosts_audit_run` 单条 changed 回执（Rust ChangedEntry 同构）。 */
+export interface KnownHostChangedEntry {
+  row: KnownHost;
+  seen: string[];
+}
+
+/** `known_hosts_audit_run` 一轮巡检回执（Rust AuditOutcome 同构）。 */
+export interface HostKeyAuditOutcome {
+  checked: number;
+  changed: KnownHostChangedEntry[];
+}
+
 /** Rust `keygen::KeyAlgorithm` 同构（serde lowercase）。 */
 export type KeyAlgorithm = "ed25519" | "ecdsa-p256" | "rsa";
 
@@ -272,6 +296,124 @@ export interface SummaryInput {
   session_id: string;
   summary: string;
   command_count: number;
+}
+
+// --- 会话录制（Phase 3 Task 5，B3；Rust recordings.rs + commands/recording.rs）---
+
+/** Rust `recordings::RecordingEntry` 同构（录制元数据行；asciinema 原始流在
+ * path 指向的 .cast 文件，不入库；明文面）。 */
+export interface RecordingEntry {
+  id: number;
+  host_id: number;
+  path: string;
+  /** 秒（浮点；空录制 = 0）。 */
+  duration: number;
+  /** FTS 索引指针 `recordings_fts:{id}`。 */
+  text_index_path: string;
+  created_at: number;
+}
+
+/** Rust `recordings::RecordingHit` 同构（entry 展平 + 命中上下文窗口）。 */
+export interface RecordingHit extends RecordingEntry {
+  snippet: string;
+}
+
+/** Rust `recording_read` 载荷（`commands::recording::RecordingData` 同构）：
+ * v2 解析后的 header + 事件流（回放器取数面；事件已过合法性校验）。 */
+export interface RecordingData {
+  entry: RecordingEntry;
+  header: { version: number; width: number; height: number; timestamp: number };
+  events: { time: number; data: string }[];
+  duration: number;
+}
+
+// --- 告警规则（Phase 3 Task 3，B5；Rust alert_rules.rs + commands ar_*）-------
+
+/** 规则类别（Rust RULE_KINDS / DB CHECK 同集）。log = 日志关键字——Phase 3
+ * MVP 裁定延后（评估引擎不实现，CRUD 存储面放行），见 task-3 报告。 */
+export type AlertRuleKind = "disk" | "cpu" | "process" | "log";
+
+/** 类别参数（JSON 对象，Rust 层只保证是对象；字段面按 kind 归引擎消费）：
+ * disk { mount?, threshold }、cpu { threshold, consecutive }、
+ * process { comm }。 */
+export type AlertRuleParams = Record<string, unknown>;
+
+/** Rust `alert_rules::AlertRule` 同构（serde 面无密钥字段；params/channels
+ * 出库即解析后形态）。 */
+export interface AlertRule {
+  id: number;
+  host_id: number;
+  kind: AlertRuleKind;
+  params: AlertRuleParams;
+  /** 订阅渠道 id 数组（notify_channels.id；③外部渠道按此路由）。 */
+  channels: number[];
+  /** 同规则再次告警最小间隔（秒；0 = 只用管线全局 60s 聚合）。 */
+  rate_limit: number;
+  /** "HH:MM-HH:MM" 静音窗（本地时区可跨午夜；null = 不静音）。 */
+  mute_window: string | null;
+  /** 最近触发时刻（秒级 Unix；null = 从未触发）。 */
+  last_fired: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Rust `alert_rules::AlertRuleInput` 同构（create/update 全量替换式提交）。 */
+export interface AlertRuleInput {
+  host_id: number;
+  kind: AlertRuleKind;
+  params: AlertRuleParams;
+  channels: number[];
+  rate_limit: number;
+  mute_window: string | null;
+}
+
+// --- 通知渠道（Phase 3 Task 3，B5；Rust notify_channels.rs + commands nc_*）---
+
+/** 渠道类别（Rust CHANNEL_KINDS / DB CHECK 同集 12 种，spec §3 全矩阵）。 */
+export type ChannelKind =
+  | "dingtalk"
+  | "feishu"
+  | "wecom"
+  | "bark"
+  | "serverchan"
+  | "telegram"
+  | "discord"
+  | "slack"
+  | "smtp"
+  | "pushover"
+  | "ntfy"
+  | "webhook";
+
+/** Rust `notify_channels::NotifyChannel` 同构——不含任何密钥材料
+ * （config_enc 不进结构体；明文 config 只经 nc_reveal_config 单点出库）。 */
+export interface NotifyChannel {
+  id: number;
+  kind: ChannelKind;
+  /** 渠道级文案覆写（可空 JSON 对象；webhook body 模板等）。 */
+  template_overrides: Record<string, unknown> | null;
+  /** 启用位（禁用 = 挂载层跳过挂载）。 */
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+/** Rust `notify_channels::NotifyChannelInput` 同构（config 为明文 JSON 对象，
+ * 存储层整体密封）。 */
+export interface NotifyChannelInput {
+  kind: ChannelKind;
+  config: Record<string, unknown>;
+  template_overrides: Record<string, unknown> | null;
+  enabled: boolean;
+}
+
+/** Rust `notify_channels::NotifyChannelPatch` 同构：config null = 保留现值
+ * （未重输的 token 不重密封）；template_overrides 用嵌套 null 区分
+ * 「不改」（undefined 不传）/「清空」（null）。 */
+export interface NotifyChannelPatch {
+  kind: ChannelKind | null;
+  config: Record<string, unknown> | null;
+  template_overrides: Record<string, unknown> | null;
+  enabled: boolean | null;
 }
 
 /** Rust `vault_upgrade_to_master_password` 进度事件载荷（ottr://reencrypt-progress）。 */
@@ -414,6 +556,12 @@ export const vaultApi = {
       invoke<KnownHost>("known_hosts_verify", { hostKey, fingerprint }),
     markChanged: (hostKey: string, fingerprint: string) =>
       invoke<KnownHost>("known_hosts_mark_changed", { hostKey, fingerprint }),
+    /** 删除 = 忘记该端点（B9 管理页）：下次连接重走 TOFU。返回是否有行被删。 */
+    remove: (hostKey: string) => invoke<boolean>("known_hosts_delete", { hostKey }),
+    /** 单端点探测（管理页「检查」取证面）：观测到的指纹集；空集 = 不可达。 */
+    probe: (hostKey: string) => invoke<string[]>("known_hosts_probe", { hostKey }),
+    /** 手动全量巡检一轮（探测 + changed 落账 + 通知事件），返回巡检回执。 */
+    auditRun: () => invoke<HostKeyAuditOutcome>("known_hosts_audit_run"),
   },
   /** 密钥管理（Task 6，A4；Rust 侧 src-tauri/src/keys.rs）。
    * 导出调用契约（裁定 #2）：加密私钥必须先经 keyInspect 验证 passphrase
@@ -505,6 +653,48 @@ export const vaultApi = {
     /** 存在性（不派生明文——设置页「已保存」标记）。 */
     contains: (key: string) => invoke<boolean>("secret_contains", { key }),
   },
+  /** 告警规则（Phase 3 Task 3，B5）：vault 配置面（锁定即拒，同 hosts）。
+   * 评估引擎在 src/notify/rules.ts（数据源 ottr://monitor + monitor_ps）。 */
+  alertRules: {
+    list: () => invoke<AlertRule[]>("ar_list"),
+    create: (input: AlertRuleInput) => invoke<AlertRule>("ar_create", { input }),
+    update: (id: number, input: AlertRuleInput) => invoke<AlertRule>("ar_update", { id, input }),
+    remove: (id: number) => invoke<void>("ar_delete", { id }),
+    /** 触发水位回写（引擎放行一条告警时调用）。 */
+    touchFired: (id: number, ts: number) => invoke<void>("ar_touch_fired", { id, ts }),
+  },
+  /** 通知渠道（Phase 3 Task 3，B5）：vault 密文面（config_enc 已登记
+   * scan_registry，锁定即拒）。reveal 后的明文 config 只在内存短暂存在
+   * （适配器组装请求），永不落日志/明文存储。 */
+  notifyChannels: {
+    list: () => invoke<NotifyChannel[]>("nc_list"),
+    create: (input: NotifyChannelInput) => invoke<NotifyChannel>("nc_create", { input }),
+    update: (id: number, patch: NotifyChannelPatch) =>
+      invoke<NotifyChannel>("nc_update", { id, patch }),
+    remove: (id: number) => invoke<void>("nc_delete", { id }),
+    /** 明文 config 单点出库（测试发送/管线挂载取一次）。 */
+    revealConfig: (id: number) => invoke<Record<string, unknown>>("nc_reveal_config", { id }),
+  },
+  /** 会话录制（Phase 3 Task 5，B3）：start/stop = 运行面（会话表槽位 tee），
+   * list/search/read/delete/export = vault 明文面 + .cast 文件面（同 history
+   * 锁定语义）。导出经前端 redact（T13），原文导出需二次确认。 */
+  recordings: {
+    start: (rustId: string, hostId: number) => invoke<string>("recording_start", { rustId, hostId }),
+    stop: (rustId: string) => invoke<RecordingEntry>("recording_stop", { rustId }),
+    list: (hostId: number | null, limit?: number) =>
+      invoke<RecordingEntry[]>("recording_list", { hostId, limit: limit ?? null }),
+    search: (query: string, hostId: number | null, limit?: number) =>
+      invoke<RecordingHit[]>("recording_search", { query, hostId, limit: limit ?? null }),
+    read: (id: number) => invoke<RecordingData>("recording_read", { id }),
+    remove: (id: number) => invoke<void>("recording_delete", { id }),
+    /** 导出（events 已按需脱敏；path=null = 下载目录默认名）。返回落盘路径。 */
+    export: (id: number, events: { time: number; data: string }[], path: string | null) =>
+      invoke<string>("recording_export", { id, events, path }),
+  },
+  /** SMTP 渠道发送（Phase 3 Task 3，B5；Rust lettre，commands/notify.rs）：
+   * 分发与「发送测试」共用（测试 = 固定测试主题正文真发）。 */
+  smtpSend: (config: unknown, to: string, subject: string, body: string) =>
+    invoke<void>("smtp_send", { config, to, subject, body }),
   /** 端口转发（Phase 2 Task 1，B7 上半；Rust commands/forward.rs）。
    * list/create/update/delete/setEnabled = vault 配置面（锁定即拒，同 hosts）；
    * start/stop = 运行面（ForwardManager；start 需 rustId 会话在线）。 */

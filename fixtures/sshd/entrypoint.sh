@@ -25,5 +25,10 @@ fi
 # 允许实验性端口转发与多会话（幂等：重复追加会撑爆 config，先判重）
 sed -i 's/#AllowTcpForwarding.*/AllowTcpForwarding yes/' /etc/ssh/sshd_config
 grep -q '^PermitUserEnvironment yes' /etc/ssh/sshd_config || echo "PermitUserEnvironment yes" >> /etc/ssh/sshd_config
+# B9（Phase 3 Task 6）：spike 带**密码** sudo（非 NOPASSWD——自动填充场景要的
+# 就是「提示出现 → 填 spike-pass」的完整链路；NOPASSWD 不出提示、测不了检测）。
+# 幂等：sudoers.d 独立文件 + 固定内容，重跑覆盖自身。
+printf 'spike ALL=(ALL:ALL) ALL\n' > /etc/sudoers.d/spike
+chmod 440 /etc/sudoers.d/spike
 # 固定主机密钥（挂载自 hostkeys/，保证 known_hosts 稳定）
 /usr/sbin/sshd -D -e -p 2222 -h /etc/ssh/hostkeys/ssh_host_ed25519_key

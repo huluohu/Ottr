@@ -194,12 +194,15 @@ async fn run() -> Result<String, String> {
     );
     let forward = tauri::async_runtime::spawn(async move {
         let text_tail = TextTail::new();
+        // 录制槽位（Task 5）：夹具驱动不录制，传空槽位（同一代码路径契约）。
+        let recorder_slot: ottr_lib::RecorderSlot = Arc::new(std::sync::Mutex::new(None));
         forward_pty_loop(
             &mut channel,
             &on_data,
             &counters,
             &decoder,
             &text_tail,
+            &recorder_slot,
             "fixture",
             &cancel_handle,
         )

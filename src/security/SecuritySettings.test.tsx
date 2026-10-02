@@ -273,4 +273,103 @@ describe("SecuritySettings", () => {
     await waitFor(() => expect(useVaultLockStore.getState().phase).toBe("locked"));
     expect(mockedInvoke).toHaveBeenCalledWith("vault_lock");
   });
+
+  // --- B9（Task 6）：主机指纹巡检 + sudo 自动填充 ---
+
+  it("指纹巡检（B9）：缺省关；开启写布尔；出现间隔下拉并写间隔键", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "settings_set") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    // 缺省 = 关（主动出网行为默认不开启）
+    expect(screen.queryByTestId("hostkey-audit-interval-row")).toBeNull();
+    const toggle = (await waitFor(() =>
+      screen.getByTestId("hostkey-audit-toggle"),
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("settings_set", {
+        key: "security.hostkey_audit_enabled",
+        value: true,
+      }),
+    );
+    // 开启后间隔下拉出现；改间隔写 settings（默认 24h=86400）
+    const interval = (await waitFor(() =>
+      screen.getByTestId("hostkey-audit-interval"),
+    )) as HTMLSelectElement;
+    expect(interval.value).toBe("86400");
+    fireEvent.change(interval, { target: { value: "3600" } });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("settings_set", {
+        key: "security.hostkey_audit_interval_secs",
+        value: 3600,
+      }),
+    );
+  });
+
+  it("sudo 自动填充（B9）：keyring 模式隐藏（主密码模式限定）", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    await waitFor(() => expect(screen.getByTestId("clipboard-select")).toBeTruthy());
+    expect(screen.queryByTestId("sudo-autofill-row")).toBeNull();
+  });
+
+  it("sudo 自动填充（B9）：默认关；开启走确认框——取消保持关，确认才写 true", async () => {
+    seedMode("password");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "settings_set") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    const toggle = (await waitFor(() =>
+      screen.getByTestId("sudo-autofill-toggle"),
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    // 勾选 → 先弹确认框（风险说明），未确认不写 settings
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByTestId("sudo-autofill-dialog")).toBeTruthy());
+    expect(
+      mockedInvoke.mock.calls.filter(
+        ([cmd, args]) => cmd === "settings_set" && (args as { key: string }).key === "security.sudo_autofill",
+      ),
+    ).toHaveLength(0);
+    // 取消 → 开关保持关（写 false 是幂等的关闭语义）
+    fireEvent.click(screen.getByTestId("sudo-autofill-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("sudo-autofill-dialog")).toBeNull());
+    expect(toggle.checked).toBe(false);
+    // 再勾选 → 确认 → 写 true、开关亮起
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByTestId("sudo-autofill-dialog")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("sudo-autofill-accept"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("settings_set", {
+        key: "security.sudo_autofill",
+        value: true,
+      }),
+    );
+    expect((screen.getByTestId("sudo-autofill-toggle") as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("sudo 自动填充（B9）：已开启（settings true）回显开", async () => {
+    seedMode("password");
+    mockedInvoke.mockImplementation((cmd: string, args?: { key: string }) => {
+      if (cmd === "settings_get") {
+        return Promise.resolve(args?.key === "security.sudo_autofill" ? true : null);
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    await waitFor(() =>
+      expect((screen.getByTestId("sudo-autofill-toggle") as HTMLInputElement).checked).toBe(true),
+    );
+  });
 });

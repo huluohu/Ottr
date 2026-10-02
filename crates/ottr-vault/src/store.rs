@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 12;
+pub const LATEST_SCHEMA_VERSION: u32 = 15;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -107,7 +107,13 @@ impl KeyMode {
 /// 水位搬移防 id 复用，见迁移文件头）；0011 session_summaries（Phase 2
 /// Task 7，B1 会话纪要——summary_enc 密文列**已登记 scan_registry**，见下）；
 /// 0012 hosts.is_production（Phase 2 Task 11，B11 防呆完善——明文布尔补列，
-/// 无 *_enc 列，不动 scan_registry 与表结构其余部分）。
+/// 无 *_enc 列，不动 scan_registry 与表结构其余部分）；0013 alert_rules
+/// （Phase 3 Task 3，B5 告警规则引擎——规则配置明文面，无 *_enc 列，不动
+/// scan_registry；评估引擎在 TS 侧）；0014 notify_channels（Phase 3 Task 3，
+/// B5 渠道全矩阵——config_enc 密文列**已登记 scan_registry**，见下）；
+/// 0015 recordings（Phase 3 Task 5，B3 录制审计回放——录制元数据明文面，
+/// 无 *_enc 列，不动 scan_registry；asciinema 原始流在 .cast 文件不入库，
+/// FTS 选型=共享单表 recordings_fts，见迁移文件头）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
@@ -127,6 +133,9 @@ const MIGRATIONS: &[(u32, &str)] = &[
         12,
         include_str!("../migrations/0012_hosts_is_production.sql"),
     ),
+    (13, include_str!("../migrations/0013_alert_rules.sql")),
+    (14, include_str!("../migrations/0014_notify_channels.sql")),
+    (15, include_str!("../migrations/0015_recordings.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -584,7 +593,7 @@ impl SecretColumn {
 /// 【I-2 单一注册表】全库所有承载 `*_enc` 密文列的清单——`set_master_password`
 /// 重密封扫描的**唯一事实源**（COUNT/SELECT/UPDATE 的 SQL 全部从它生成）。
 ///
-/// **新增 `*_enc` 列（含未来 notify_channels.config_enc 等新表）必须登记于此**：
+/// **新增 `*_enc` 列必须登记于此**：
 /// 漏登 = 升级后旧钥删除、该列密文永久 GCM 认证失败（静默数据损毁）。
 /// 守卫测试 `reencrypt_scan_covers_all_enc_columns`（tests/password_mode_test.rs）
 /// 从 sqlite_master/PRAGMA 动态收集全库 `*_enc` 列与本表比对——新增列而漏改
@@ -617,6 +626,13 @@ pub fn scan_registry() -> &'static [SecretColumn] {
             table: "session_summaries",
             column: "summary_enc",
             field: "summary",
+        },
+        // Phase 3 Task 3（0014）：通知渠道配置（webhook URL/token/secret/SMTP
+        // 密码整体 JSON 密封——spec §3「渠道 config 一律走 *_enc」）
+        SecretColumn {
+            table: "notify_channels",
+            column: "config_enc",
+            field: "config",
         },
     ]
 }

@@ -12,6 +12,21 @@ pub mod encoding;
 pub mod forward;
 // 跳板链命令域（Phase 2 Task 2，B7 下半）：jc_* 命令 + 链上逐跳规格解析。
 pub mod jump;
+// 批量执行命令域（Phase 3 Task 4，B6）：并发池（Semaphore 上限 + 单主机
+// tokio timeout + 双检查取消）+ batch_exec/batch_cancel + ottr://batch-result
+// 逐主机结果事件。执行模型与测试面论证见模块文档。
+pub mod batch;
+// 监控采集命令域（Phase 3 Task 1，B4 上半）：MonitorManager（per-session
+// 采样任务 owner，ForwardManager 同款模式）+ monitor_start/stop +
+// ottr://monitor 事件推前端。
+pub mod monitor;
+// 会话录制命令域（Phase 3 Task 5，B3）：RecordingHandle（tee 写盘线程 owner）
+// + recording_start/stop/read/list/search/delete/export + 会话退出自动收尾。
+pub mod recording;
+// SMTP 通知命令域（Phase 3 Task 3，B5 渠道全矩阵）：smtp_send 单命令
+// （lettre tokio1 + native-tls；选型与安全面论证见模块文档）。其余 11 渠道
+// 适配器在前端 fetch（src/notify/channels/*），不经 Rust。
+pub mod notify;
 // 远端文件本地编辑域（Phase 2 Task 3，B10 上半）：编辑会话表 + 轮询防抖 +
 // 冲突检测回传 + 清理（显式关闭/会话消失/App 退出/24h 惰性清扫）。
 pub mod remote_edit;

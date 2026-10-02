@@ -61,10 +61,32 @@ beforeEach(() => {
   seq = 0;
   mockedInvoke.mockReset();
   mockedInvoke.mockResolvedValue([]);
+  // 「录制」页签点击命中会挂 RecordingPlayer（真 xterm）——jsdom 需要的 stub
+  // （Terminal.test 同款口径 + addListener 补齐）。
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+    })),
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 });
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("HistorySearch", () => {
@@ -237,5 +259,128 @@ describe("exitBadgeClass（退出码徽标语义类）", () => {
     expect(exitBadgeClass(0)).toContain("exit-ok");
     expect(exitBadgeClass(127)).toContain("exit-fail");
     expect(exitBadgeClass(null)).toContain("exit-none");
+  });
+});
+
+describe("HistorySearch 录制页签（Phase 3 Task 5，B3）", () => {
+  const hit = {
+    id: 11,
+    host_id: 1,
+    path: "/data/recordings/rec-1.cast",
+    duration: 12,
+    text_index_path: "recordings_fts:11",
+    created_at: 1_760_000_000,
+    snippet: "root@web:~$ docker logs ottr-api",
+  };
+
+  it("切「录制」页签 → recording_search 空查询取最近；命中行渲染（snippet/主机/时长）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "recording_search" ? Promise.resolve([hit]) : Promise.resolve([]),
+    );
+    renderPanel();
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("recording-tab"));
+    await act(async () => {});
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_search", {
+      query: "",
+      hostId: null,
+      limit: 50,
+    });
+    const items = screen.getAllByTestId("recording-item");
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toContain("docker logs ottr-api");
+    expect(items[0].querySelector(".history-host")?.textContent).toBe("web-01");
+    expect(screen.getByTestId("recording-duration").textContent).toBe("12s");
+  });
+
+  it("点击命中行 → recording_read 取回放数据并挂回放器；Esc 先关回放（面板保留）", async () => {
+    const data = {
+      entry: hit,
+      header: { version: 2, width: 80, height: 24, timestamp: 1_760_000_000 },
+      events: [{ time: 0, data: "root@web:~$ " }],
+      duration: 12,
+    };
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "recording_search"
+        ? Promise.resolve([hit])
+        : cmd === "recording_read"
+          ? Promise.resolve(data)
+          : Promise.resolve([]),
+    );
+    const { onClose } = renderPanel();
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("recording-tab"));
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("recording-item"));
+    await act(async () => {});
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_read", { id: 11 });
+    expect(screen.getByTestId("recording-player")).toBeTruthy();
+    // Esc = 先关回放，面板仍在（再 Esc 才关面板）
+    fireEvent.keyDown(screen.getByTestId("recording-player"), { key: "Escape" });
+    await act(async () => {});
+    expect(screen.queryByTestId("recording-player")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("录制为空显示空态", async () => {
+    mockedInvoke.mockResolvedValue([]);
+    renderPanel();
+    fireEvent.click(screen.getByTestId("recording-tab"));
+    await act(async () => {});
+    expect(screen.getByTestId("recording-list").textContent).toContain("还没有录制");
+  });
+
+  it("录制页签查询框（fix round 1/5 I-1）：键入防抖后带 query 走 recording_search 过滤", async () => {
+    vi.useFakeTimers();
+    const hit12 = {
+      id: 12,
+      host_id: 1,
+      path: "/data/recordings/rec-12.cast",
+      duration: 8,
+      text_index_path: "recordings_fts:12",
+      created_at: 1_760_000_100,
+      snippet: "root@web:~$ [部署完成]",
+    };
+    let searchQuery = "";
+    mockedInvoke.mockImplementation((cmd: string, args: { query: string }) => {
+      if (cmd === "recording_search") {
+        searchQuery = args.query;
+        return Promise.resolve(args.query === "部署" ? [hit12] : []);
+      }
+      return Promise.resolve([]);
+    });
+    renderPanel();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    fireEvent.click(screen.getByTestId("recording-tab"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_search", {
+      query: "",
+      hostId: null,
+      limit: 50,
+    });
+    // 录制页签有输入框且键入驱动检索（防抖 200ms）
+    const input = screen.getByTestId("history-input");
+    expect(input).toBeTruthy();
+    fireEvent.change(input, { target: { value: "部署" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(searchQuery).toBe("");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_search", {
+      query: "部署",
+      hostId: null,
+      limit: 50,
+    });
+    expect(searchQuery).toBe("部署");
+    const items = screen.getAllByTestId("recording-item");
+    expect(items).toHaveLength(1);
+    vi.useRealTimers();
   });
 });

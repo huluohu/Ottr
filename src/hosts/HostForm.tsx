@@ -49,6 +49,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   );
   const [encoding, setEncoding] = useState(host?.encoding_override ?? "");
   const [production, setProduction] = useState(host?.is_production ?? false);
+  const [monitor, setMonitor] = useState(host?.monitor_enabled ?? false);
   const [tagsText, setTagsText] = useState((host?.tags ?? []).join(", "));
   const [notes, setNotes] = useState(host?.notes ?? "");
   const [errors, setErrors] = useState<{ address?: string; port?: string }>({});
@@ -92,7 +93,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
       jump_chain_id: jumpChainId === "" ? null : Number(jumpChainId),
       encoding_override: encoding === "" ? null : encoding,
       theme_override: host?.theme_override ?? null,
-      monitor_enabled: host?.monitor_enabled ?? false,
+      monitor_enabled: monitor,
       is_production: production,
       notes: notes.trim() === "" ? null : notes.trim(),
     };
@@ -263,6 +264,19 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
           />
           <span>{t("hostForm.production")}</span>
           <span className="form-check-hint">{t("hostForm.productionHint")}</span>
+        </label>
+
+        {/* 监控开关（Phase 3 Task 1，B4 上半）：终端右栏监控侧栏 + 总览页
+            （Task 2）的数据源依据。采样任务随连接启停（只读命令白名单）。 */}
+        <label className="form-check" data-testid="form-monitor-row">
+          <input
+            type="checkbox"
+            data-testid="form-monitor"
+            checked={monitor}
+            onChange={(e) => setMonitor(e.currentTarget.checked)}
+          />
+          <span>{t("hostForm.monitor")}</span>
+          <span className="form-check-hint">{t("hostForm.monitorHint")}</span>
         </label>
 
         <label>

@@ -10,6 +10,10 @@
 // AI 自动生成的纪要，密文存储、list 单点出库）：列表（主机 / 时间 / 命令数
 // 徽标 / 摘要全文）——只读复盘面，无插入语义（Enter 不动作）。
 //
+// 「录制」页签（Phase 3 Task 5，B3）：消费 recordings 表 + recordings_fts
+// （录制内容全文可搜；命中行点击 → RecordingPlayer 回放）。取数面在
+// RecordingPanel（本文件只做页签容器）。
+//
 // 骨架复用 CommandPalette 的 overlay/交互范式：↑↓ 循环导航、Enter 执行（仅
 // 历史页签）、Esc 关闭、点击遮罩关闭；搜索走 vaultApi.history.search（防抖
 // 200ms，同 HostTree 搜索惯例）；无虚拟滚动刻意为之（T5 台账：条目量级不需要）。
@@ -21,6 +25,7 @@ import { useDebouncedValue } from "../hosts/useDebouncedValue";
 import { historyPreview, historyTime } from "./format";
 import { shortcutLabel } from "../shortcuts/registry";
 import type { Platform } from "../shortcuts/registry";
+import { RecordingPanel } from "./RecordingPanel";
 
 export interface HistorySearchProps {
   open: boolean;
@@ -33,8 +38,8 @@ export interface HistorySearchProps {
   plat?: Platform;
 }
 
-/** 面板页签（历史命令 / 会话纪要）。 */
-export type HistoryPanelTab = "history" | "summaries";
+/** 面板页签（历史命令 / 会话纪要 / 会话录制）。 */
+export type HistoryPanelTab = "history" | "summaries" | "recordings";
 
 /** 退出码徽标的语义类（0 = 成功 / 非 0 = 失败 / null = 未上报）。 */
 export function exitBadgeClass(exitCode: number | null): string {
@@ -86,7 +91,7 @@ export function HistorySearch({
           // 检索失败（后端不可达等）：空结果，不阻塞面板
           if (alive) setResults([]);
         });
-    } else {
+    } else if (tab === "summaries") {
       void vaultApi.summaries
         .list(hostId, 50)
         .then((rows) => {
@@ -96,6 +101,7 @@ export function HistorySearch({
           if (alive) setSummaries([]);
         });
     }
+    // 「录制」页签取数在 RecordingPanel 自持（打开期随 query/hostId 自查）。
     return () => {
       alive = false;
     };
@@ -175,14 +181,39 @@ export function HistorySearch({
             >
               {t("history.tabSummaries")}
             </button>
+            <button
+              type="button"
+              role="tab"
+              className="history-tab"
+              data-active={tab === "recordings"}
+              aria-selected={tab === "recordings"}
+              data-testid="recording-tab"
+              onClick={() => {
+                setTab("recordings");
+                setActiveIndex(0);
+              }}
+            >
+              {t("history.tabRecordings")}
+            </button>
           </div>
-          {tab === "history" && (
+          {/* 查询框三页签共用（fix round 1/5 I-1）：历史/录制都走 FTS 检索
+              （Rust 层分派，RecordingPanel 消费同一 debouncedQuery）；纪要页签
+              是列表面无检索语义，保持隐藏（既有测试口径）。 */}
+          {tab !== "summaries" && (
             <input
               ref={inputRef}
               className="palette-input"
               value={query}
-              placeholder={t("history.placeholder")}
-              aria-label={t("history.title")}
+              placeholder={
+                tab === "recordings"
+                  ? t("recording.searchPlaceholder")
+                  : t("history.placeholder")
+              }
+              aria-label={
+                tab === "recordings"
+                  ? t("recording.searchPlaceholder")
+                  : t("history.title")
+              }
               data-testid="history-input"
               onChange={(e) => {
                 setQuery(e.currentTarget.value);
@@ -208,6 +239,7 @@ export function HistorySearch({
             ))}
           </select>
         </div>
+        {tab === "recordings" && <RecordingPanel hostId={hostId} hosts={hosts} query={debouncedQuery} />}
         {tab === "history" ? (
           <ul className="palette-list" data-testid="history-list">
             {results.length === 0 && <li className="palette-empty">{t("history.empty")}</li>}
@@ -237,7 +269,7 @@ export function HistorySearch({
               </li>
             ))}
           </ul>
-        ) : (
+        ) : tab === "summaries" ? (
           <ul className="palette-list" data-testid="summary-list">
             {summaries.length === 0 && (
               <li className="palette-empty">{t("history.emptySummaries")}</li>
@@ -257,7 +289,7 @@ export function HistorySearch({
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
         {tab === "history" && <div className="history-hint">{t("history.insertHint")}</div>}
       </div>
     </div>

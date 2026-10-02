@@ -138,4 +138,78 @@ describe("i18n", () => {
       "fallbackProbe.missing",
     );
   });
+
+  // --- 语言包完整性快照（fix round 1/5 I-1 回归防：键存在 ≠ 值语言正确）---
+
+  /** 判断字符串是否含 CJK 表意文字（U+4E00–U+9FFF；含中文即算）。 */
+  function hasCJK(s: string): boolean {
+    return /[\u4e00-\u9fff]/.test(s);
+  }
+
+  function flatten(obj: Record<string, unknown>, prefix = ""): [string, string][] {
+    const out: [string, string][] = [];
+    for (const [k, v] of Object.entries(obj)) {
+      const key = prefix ? `${prefix}.${k}` : k;
+      if (v !== null && typeof v === "object") {
+        out.push(...flatten(v as Record<string, unknown>, key));
+      } else {
+        out.push([key, String(v)]);
+      }
+    }
+    return out;
+  }
+
+  /** en-US 的 i18next 复数后缀键（_one/_other）→ 裸键（zh-CN 无复数形态）。 */
+  function stripPluralSuffix(key: string): string {
+    return key.replace(/_(one|other)$/, "");
+  }
+
+  it("快照：en-US 全部叶子值非中文（键集与 zh-CN 对齐、en 值是真译文）", async () => {
+    // 直接读语言包源文件（不能用 import：i18n 实例的 addResourceBundle 与
+    // resources 共享对象引用，同文件先行的 fallback 测试会污染模块对象）
+    const { readFileSync } = await import("node:fs");
+    const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+    const zh = JSON.parse(read("zh-CN.json"));
+    const en = JSON.parse(read("en-US.json"));
+    const zhKeys = new Set(flatten(zh).map(([k]) => k));
+    const enLeaves = flatten(en);
+    const enKeys = new Set(enLeaves.map(([k]) => stripPluralSuffix(k)));
+
+    const missing = [...zhKeys].filter((k) => !enKeys.has(k));
+    expect(missing, "en-US 缺键（英文 UI 会渲染原始键名）").toEqual([]);
+
+    // 抽查 I-1 现场关键键的英文语义（CJK 断言兜底值语言，这里钉死内容，
+    // 防「换成中文近义词」式回归静默通过）
+    const enFlat = new Map(enLeaves.map(([k, v]) => [k, v]));
+    expect(en.credentials.tabKnownHosts).toBe("Known Hosts");
+    expect(en.notify.kindSecurity).toBe("Security");
+    expect(en.notify.title.hostKeyChanged).toBe("Host key changed alert");
+    expect(en.knownHosts.verify).toBe("Trust");
+    expect(en.knownHosts.deleteTitle).toBe("Forget this endpoint?");
+    expect(en.security.sudoAutofillAccept).toBe("Enable");
+
+    // 语言选择器的「语言自主名称」惯例（en 包里也用原文显示「中文」）——豁免；
+    // 其余任何 CJK 都是语言包损坏（I-1 现场）。
+    const SELF_NAMED_LANG_KEYS = new Set(["settings.langZh", "palette.langToggle"]);
+    const cjk = enLeaves.filter(([k, v]) => !SELF_NAMED_LANG_KEYS.has(k) && hasCJK(v));
+    expect(cjk, "en-US 值含中文（英文用户看到中文文案）").toEqual([]);
+
+    // 反向对齐：en 侧裸键（剥复数后缀后）也须在 zh 有归处（防 en 独有键漂移）
+    const orphans = [...enKeys].filter((k) => !zhKeys.has(k));
+    expect(orphans, "en-US 独有键（zh-CN 无对应）").toEqual([]);
+    expect(enFlat.get("credentials.deleteWillUnbind_one")).toContain("{{count}}");
+  });
+
+  it("快照：zh-CN 与 en-US 插值占位符一致（{{x}} 面对齐，防缺参渲染）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+    const zh = JSON.parse(read("zh-CN.json"));
+    const en = JSON.parse(read("en-US.json"));
+    const vars = (s: string) => [...s.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
+    const enFlat = new Map(flatten(en).map(([k, v]) => [stripPluralSuffix(k), v]));
+    for (const [k, zv] of flatten(zh)) {
+      const ev = enFlat.get(k);
+      expect(vars(String(ev)), `占位符不一致: ${k}`).toEqual(vars(zv));
+    }
+  });
 });

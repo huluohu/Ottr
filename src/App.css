@@ -2343,3 +2343,789 @@ button[data-active="true"] {
   font-weight: 600;
   opacity: 0.85;
 }
+
+/* --- Phase 3 Task 1（B4 上半）：监控侧栏（终端右栏折叠面板） --------------- */
+
+/* 折叠态：窄竖条按钮（贴右缘，开合状态 localStorage 记忆） */
+.monitor-rail {
+  flex: none;
+  width: 14px;
+  border: none;
+  border-left: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  background: var(--color-surface);
+  cursor: pointer;
+  padding: 0;
+}
+.monitor-rail:hover {
+  background: var(--color-accent, var(--ottr-teal-500));
+  opacity: 0.55;
+}
+
+/* 展开态：右栏面板（AI 面板同构：固定宽、独立滚动、表面色） */
+.monitor-sidebar {
+  flex: none;
+  width: 224px;
+  border-left: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--color-surface);
+}
+.monitor-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.monitor-title {
+  font-weight: 600;
+  flex: 1;
+}
+.monitor-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  color: var(--color-fg);
+}
+.monitor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.monitor-metric-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.monitor-metric-label {
+  font-size: 0.82em;
+  color: var(--fg-muted);
+  flex: 1;
+}
+.monitor-metric-value {
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+}
+.monitor-state {
+  color: var(--fg-muted);
+  font-size: 0.84em;
+  margin: 4px 0;
+}
+
+/* sparkline（零依赖 SVG）：色板全走主题令牌（暗/亮主题自跟随） */
+.monitor-spark {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+.monitor-spark-line {
+  stroke: var(--color-accent, var(--ottr-teal-500));
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.monitor-spark-fill-strong {
+  stop-color: var(--color-accent, var(--ottr-teal-500));
+  stop-opacity: 0.28;
+}
+.monitor-spark-fill-faint {
+  stop-color: var(--color-accent, var(--ottr-teal-500));
+  stop-opacity: 0.02;
+}
+
+/* --- Phase 3 Task 2（B4 下半）：多主机总览 + 进程浏览器 --------------------- */
+
+/* 总览（顶栏入口对话框）：卡片网格——监控主机实时卡 / 未开启主机灰卡 */
+.overview-panel {
+  width: min(760px, 92vw);
+  max-height: 82vh;
+  overflow-y: auto;
+}
+.overview-empty {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  gap: 10px;
+}
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+}
+.overview-card:hover {
+  border-color: var(--color-accent, var(--ottr-teal-500));
+}
+.overview-card[data-off="true"] {
+  opacity: 0.55;
+}
+.overview-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.overview-light {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--color-surface);
+  border: 1px solid rgba(128, 128, 128, 0.4);
+}
+.overview-light[data-state="live"] {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+.overview-light[data-state="unsupported"] {
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.overview-light[data-state="stopped"] {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.overview-host {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-addr {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  opacity: 0.7;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.overview-metric {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.overview-metric-label {
+  flex: none;
+  width: 38px;
+  color: var(--fg-muted);
+}
+.overview-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(128, 128, 128, 0.18);
+  overflow: hidden;
+}
+.overview-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent, var(--ottr-teal-500));
+}
+.overview-bar-fill[data-warn="true"] {
+  background: var(--color-danger);
+}
+.overview-metric-value {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.overview-state {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+.overview-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.overview-card-actions button {
+  font-size: 11.5px;
+  padding: 3px 9px;
+}
+.overview-card-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 进程浏览器（主区第三视图）：宽表 + 逐行 kill + 确认条 */
+.proc-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.proc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.proc-title {
+  margin: 0;
+  font-size: 13px;
+}
+.proc-count {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.proc-toolbar-spacer {
+  flex: 1;
+}
+.proc-state {
+  margin: auto;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.proc-table-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.proc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.proc-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  white-space: nowrap;
+}
+.proc-table th button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.proc-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.proc-comm {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.proc-kill-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+.proc-kill-btn:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.proc-confirm {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+.proc-confirm p {
+  margin: 0;
+  font-size: 12.5px;
+}
+.proc-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.proc-confirm-actions button[data-armed="true"] {
+  color: #fff;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* 告警设置对话框（Phase 3 Task 3，B5）：复用 ai-settings-dialog 形态与
+   ai-provider-list 行样式；仅补规则表单的渠道多选 fieldset（令牌色随主题）。 */
+.alert-rule-channels,
+.wizard-step fieldset {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.alert-rule-form legend,
+.alert-rule-form fieldset legend {
+  font-size: 12px;
+  opacity: 0.75;
+  padding: 0 4px;
+}
+
+/* 批量执行面板（Phase 3 Task 4，B6）：顶栏入口对话框（OverviewPage 同款
+   overlay/dialog 语言），左列 = HostTree 多选主机、右列 = 命令/变量/参数；
+   结果表 = 状态档色 + 少数派行高亮（令牌色随主题）。 */
+.batch-panel {
+  width: min(1080px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+}
+.batch-cols {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.batch-col-hosts {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  border-radius: 8px;
+  padding: 8px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.batch-col-hosts h3,
+.batch-vars-wrap h3,
+.batch-results h3 {
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+.batch-hint {
+  font-size: 12px;
+  opacity: 0.75;
+  margin: 8px 0 0;
+}
+.batch-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.batch-form-row label {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.batch-form-row textarea,
+.batch-form-row select {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+/* 多选勾选面：checkbox 视觉（HostTree 行点击即切换） */
+.tree-host[data-checked] .host-row {
+  grid-column: 1 / -1;
+}
+.host-check {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1.5px solid var(--color-border, rgba(128, 128, 128, 0.5));
+  border-radius: 4px;
+  display: inline-block;
+}
+.tree-host[data-checked="true"] .host-check {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.batch-vars {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.batch-vars th,
+.batch-vars td {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  padding: 4px 6px;
+  text-align: left;
+}
+.batch-vars input {
+  width: 100%;
+  min-width: 90px;
+}
+.batch-nc {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--color-warning);
+}
+.batch-params {
+  display: flex;
+  gap: 16px;
+  margin: 8px 0;
+  font-size: 12.5px;
+}
+.batch-params label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.batch-params input {
+  width: 72px;
+}
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.batch-finding {
+  font-size: 11.5px;
+  color: var(--color-warning);
+}
+.batch-exec.armed {
+  color: var(--color-on-danger);
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.batch-progress,
+.batch-summary {
+  font-size: 12.5px;
+  margin: 8px 0 0;
+}
+.batch-results {
+  margin-top: 14px;
+}
+.batch-diff-head {
+  font-size: 12.5px;
+  margin: 4px 0;
+  color: var(--color-success);
+}
+.batch-group summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--color-success);
+}
+.batch-group-output {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  background: var(--color-surface);
+  border-radius: 6px;
+  padding: 8px;
+  overflow: auto;
+  max-height: 200px;
+  white-space: pre-wrap;
+}
+.batch-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.batch-results-table th,
+.batch-results-table td {
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+.batch-results-table tr[data-differs="true"] td {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+.batch-status {
+  font-weight: 600;
+}
+.batch-status-ok {
+  color: var(--color-success);
+}
+.batch-status-failed {
+  color: var(--color-danger);
+}
+.batch-status-timeout {
+  color: var(--color-warning);
+}
+.batch-status-canceled {
+  opacity: 0.6;
+}
+.batch-outlier {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--color-warning);
+}
+.batch-err {
+  display: block;
+  font-size: 11px;
+  color: var(--color-danger);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-output summary {
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+.batch-output pre {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  background: var(--color-surface);
+  border-radius: 6px;
+  padding: 8px;
+  overflow: auto;
+  max-height: 220px;
+  white-space: pre-wrap;
+  margin: 4px 0 0;
+}
+/* 差异行级标注（少数派输出中「多数派行集合没有」的行） */
+.batch-diff-line {
+  display: inline;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.batch-truncated {
+  opacity: 0.65;
+  font-size: 11px;
+}
+.batch-stderr {
+  color: var(--color-warning);
+}
+
+/* --- Phase 3 Task 5（B3）：会话录制开关 + 回放器 --------------------------- */
+
+/* 工具栏录制开关（view-switch 同款尺寸语言；录制中红点亮起） */
+.record-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75em;
+  padding: 0.15em 0.6em;
+  margin-right: 8px;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.record-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.record-toggle-dot {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+.record-toggle[data-active="true"] {
+  color: var(--color-danger, #d33);
+  border-color: var(--color-danger, #d33);
+}
+.record-toggle[data-active="true"] .record-toggle-dot {
+  background: var(--color-danger, #d33);
+}
+
+/* ⌘R「录制」页签命中行 */
+.recording-item .recording-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.recording-badge {
+  color: var(--color-accent-text);
+  font-size: 0.8em;
+}
+.recording-item .history-cmd {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 回放器对话框 */
+.player-overlay {
+  z-index: 60;
+}
+.recording-player {
+  width: min(860px, 92vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recording-player-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.recording-player-title {
+  font-weight: 600;
+}
+.recording-player-meta {
+  flex: 1;
+  color: var(--fg-muted);
+  font-size: 0.8em;
+}
+.recording-player-close {
+  box-shadow: none;
+  padding: 0.1em 0.5em;
+}
+.recording-player-term {
+  height: 55vh;
+  overflow: auto;
+  background: var(--bg-terminal, #101418);
+  border-radius: 6px;
+  padding: 4px;
+}
+.recording-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recording-player-play {
+  box-shadow: none;
+  padding: 0.1em 0.6em;
+}
+.recording-player-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+  font-size: 0.8em;
+  min-width: 44px;
+  text-align: center;
+}
+.recording-player-seek {
+  flex: 1;
+}
+.recording-player-speeds {
+  display: flex;
+  gap: 2px;
+}
+.recording-player-speeds button {
+  font-size: 0.75em;
+  padding: 0.1em 0.45em;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.recording-player-speeds button[data-active="true"] {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+}
+.recording-player-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recording-player-exportmsg {
+  color: var(--fg-muted);
+  font-size: 0.78em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recording-player-hint {
+  color: var(--fg-muted);
+  font-size: 0.78em;
+  margin: 0;
+}
+
+/* --- KnownHostsManager（Phase 3 Task 6，B9）：known_hosts 管理页 --- */
+.kh-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.kh-toolbar h3 {
+  margin: 0;
+  font-size: 0.95em;
+}
+.kh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8em;
+}
+.kh-table th,
+.kh-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: top;
+}
+.kh-table th {
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+.kh-fp {
+  word-break: break-all;
+  font-size: 0.92em;
+}
+.kh-ts {
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.kh-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.9em;
+  border: 1px solid var(--border-subtle);
+}
+.kh-badge-ok {
+  color: var(--color-success-text, #2e7d32);
+}
+.kh-badge-changed {
+  color: var(--color-danger-text, #c62828);
+  border-color: currentColor;
+}
+.kh-badge-pending {
+  color: var(--fg-muted);
+}
+.kh-actions {
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+.kh-actions .kh-danger {
+  color: var(--color-danger-text, #c62828);
+}
+.kh-seen {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow: auto;
+}
+.kh-seen li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kh-seen code {
+  word-break: break-all;
+  font-size: 0.85em;
+}
+.kh-probe-dialog,
+.kh-delete-dialog {
+  max-width: 560px;
+}

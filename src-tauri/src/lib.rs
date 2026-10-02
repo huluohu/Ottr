@@ -13,6 +13,7 @@
 // + send 失败显式计数（send_failed_bytes/send_failed_frames/failed —— M-2 失败策略，
 // flush_batch 文档）经 `session_stats` 可读；`OTTR_BATCH_DEBUG=1` 时逐批打 debug 日志。
 mod commands;
+pub mod hostkey_audit;
 pub mod importers;
 pub mod keys;
 pub mod menu;
@@ -35,9 +36,23 @@ pub use commands::session::{
     forward_pty_loop, inject_shell_integration, SessionCloseReason, ShellIntegrationOutcome,
 };
 pub(crate) use commands::state::AppState;
-pub use commands::state::{SessionCounters, TextTail};
+pub use commands::state::{snapshot, SessionCounters, SessionStats, TextTail};
+// Phase 3 Task 6（B9）：指纹巡检面公开给夹具集成测试（tests/hostkey_fixture.rs：
+// 真 ssh-keyscan 探测 → classify → mark_changed 全链）。
+pub use hostkey_audit::{audit_once, keyscan_line_fingerprint, probe_endpoint, AuditOutcome};
+// Phase 3 Task 5（B3）：录制面公开给夹具集成测试（tests/recording_fixture.rs
+// 真容器全链：tee → auto-finalize → parse/FTS/export）与 example 直驱。
+pub use commands::recording::{
+    auto_finalize_on_exit, export_recording, read_recording, ExportEvent, RecorderSlot,
+    RecordingHandle,
+};
 // Phase 2 Task 1（B7）：ForwardManager 公开给夹具集成测试（真容器断线恢复链）。
 pub use commands::forward::ForwardManager;
+// Phase 3 Task 4（B6）：批量执行池核公开给夹具集成测试（tests/batch_fixture.rs：
+// 同容器双连 = 两主机，真 exec 通道跑并发池/超时）。
+pub use commands::batch::{
+    run_batch, BatchResultEvent, BatchStatus, BatchTargetInput, ExecResolver,
+};
 // Phase 2 Task 3（B10 上半）：远端编辑生命周期核公开给夹具集成测试
 // （tests/remote_edit_fixture.rs：下载→编辑→回传→冲突→覆盖→清理全链）。
 pub use commands::remote_edit::{
@@ -145,6 +160,10 @@ pub fn run() {
                                     "[vault] background init ok in {}ms",
                                     t0.elapsed().as_millis()
                                 );
+                                // B9 指纹巡检调度器（Phase 3 Task 6）：vault 就绪
+                                // 后起 60s 心跳（开关默认关；内部自检
+                                // try_state/锁定/间隔，见 hostkey_audit.rs）。
+                                hostkey_audit::spawn_audit_scheduler(handle.clone());
                                 // 初始菜单/托盘在 vault 就绪前以 En 兜底构建；
                                 // 就绪后按 settings ui.language 真值重建纠偏。
                                 menu::on_vault_ready(&handle);
@@ -189,6 +208,29 @@ pub fn run() {
             commands::jump::jc_update,
             commands::jump::jc_delete,
             commands::jump::jc_test,
+            // 监控采集（Phase 3 Task 1，B4 上半；命令域 commands/monitor.rs）
+            commands::monitor::monitor_start,
+            commands::monitor::monitor_stop,
+            // 进程浏览器（Phase 3 Task 2，B4 下半）：ps 只读采集 + kill（防注入）
+            commands::monitor::monitor_ps,
+            commands::monitor::monitor_kill,
+            // 批量执行（Phase 3 Task 4，B6；commands/batch.rs）：并发池 +
+            // 单主机超时 + ottr://batch-result 逐主机结果事件
+            commands::batch::batch_exec,
+            commands::batch::batch_cancel,
+            // 告警规则 + 通知渠道（Phase 3 Task 3，B5；vault 配置面，锁定即拒）
+            vault::ar_list,
+            vault::ar_create,
+            vault::ar_update,
+            vault::ar_delete,
+            vault::ar_touch_fired,
+            vault::nc_list,
+            vault::nc_create,
+            vault::nc_update,
+            vault::nc_delete,
+            vault::nc_reveal_config,
+            // SMTP 渠道发送（Phase 3 Task 3，B5；commands/notify.rs，lettre）
+            commands::notify::smtp_send,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,
@@ -272,6 +314,15 @@ pub fn run() {
             vault::history_list_session,
             vault::summary_insert,
             vault::summary_list,
+            // Phase 3 Task 5（B3）：会话录制审计回放（明文面，同 history 锁定语义；
+            // tee 挂接在 flush_batch，导出经前端 redact，commands/recording.rs）
+            commands::recording::recording_start,
+            commands::recording::recording_stop,
+            commands::recording::recording_list,
+            commands::recording::recording_search,
+            commands::recording::recording_read,
+            commands::recording::recording_delete,
+            commands::recording::recording_export,
             security::vault_copy_credential_secret,
             // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
             vault::hosts_list,
@@ -301,6 +352,10 @@ pub fn run() {
             vault::known_hosts_upsert,
             vault::known_hosts_verify,
             vault::known_hosts_mark_changed,
+            vault::known_hosts_delete,
+            // 指纹巡检（Phase 3 Task 6，B9 收口；模块 hostkey_audit.rs）
+            hostkey_audit::known_hosts_probe,
+            hostkey_audit::known_hosts_audit_run,
             vault::import_ssh_config,
             vault::export_hosts_csv,
             // 迁移导入器（Phase 2 Task 10，B3；命令名契约见 src/vault/api.ts）

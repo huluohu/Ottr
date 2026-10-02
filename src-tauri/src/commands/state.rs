@@ -130,6 +130,13 @@ pub(crate) struct SessionEntry {
     /// 连接（connect_with_keepalive 的 forward_router 参数），转发命令域按会话
     /// 取用。克隆零成本（内部 Arc）。
     pub(crate) forward_router: ottr_ssh::RemoteForwardRouter,
+    /// 会话录制器槽位（Phase 3 Task 5，B3）：None = 未录制；recording_start
+    /// 放入 handle、转发循环 flush_batch tee 副本、stop/循环退出 finalize。
+    pub(crate) recorder: super::recording::RecorderSlot,
+    /// PTY 初始尺寸（录制 header 的 width/height 面；运行期 resize 不追踪——
+    /// asciinema "r" 事件挂账，见 task-5-report）。
+    pub(crate) cols: u16,
+    pub(crate) rows: u16,
 }
 
 /// 会话文本缓冲（Task 13 尾环 + fix 1/5 头部原始探针）：
@@ -280,6 +287,12 @@ pub(crate) struct AppState {
     /// 远端文件本地编辑会话表（Phase 2 Task 3，commands/remote_edit.rs）：
     /// session id → (远端路径 → 临时副本/远端快照/本地指纹)。
     pub(crate) edits: super::remote_edit::EditMap,
+    /// 监控采样任务生命周期 owner（Phase 3 Task 1，commands/monitor.rs）：
+    /// session id → 采样任务取消令牌（guard Drop 即停）。
+    pub(crate) monitors: super::monitor::MonitorManager,
+    /// 批量执行批次注册表（Phase 3 Task 4，commands/batch.rs）：
+    /// batch_id → 取消令牌（batch_cancel 入口；池收尾自摘）。
+    pub(crate) batches: super::batch::BatchManager,
 }
 
 pub(crate) static SESSION_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -307,18 +320,20 @@ pub(crate) const LANG_PROBE_CMD: &str = "echo $LANG";
 pub(crate) const LANG_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(serde::Serialize)]
-pub(crate) struct SessionStats {
-    pty_read_bytes: u64,
-    forwarded_bytes: u64,
-    frames: u64,
-    input_bytes: u64,
-    writes: u64,
-    send_failed_frames: u64,
-    send_failed_bytes: u64,
-    failed: bool,
+pub struct SessionStats {
+    pub pty_read_bytes: u64,
+    pub forwarded_bytes: u64,
+    pub frames: u64,
+    pub input_bytes: u64,
+    pub writes: u64,
+    pub send_failed_frames: u64,
+    pub send_failed_bytes: u64,
+    pub failed: bool,
 }
 
-pub(crate) fn snapshot(counters: &SessionCounters) -> SessionStats {
+/// 计数器读数（`session_stats` 命令消费）。pub = 夹具集成测试直驱面
+/// （tests/recording_fixture.rs 的 tee 字节账比对；run_batch 同惯例）。
+pub fn snapshot(counters: &SessionCounters) -> SessionStats {
     SessionStats {
         pty_read_bytes: counters.pty_read_bytes.load(Ordering::Relaxed),
         forwarded_bytes: counters.forwarded_bytes.load(Ordering::Relaxed),

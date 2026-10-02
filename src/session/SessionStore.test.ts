@@ -4,10 +4,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
+const { channelInstances } = vi.hoisted(() => ({
+  channelInstances: [] as Array<{ onmessage: ((m: unknown) => void) | null }>,
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
   Channel: class {
     onmessage: ((m: unknown) => void) | null = null;
+    constructor() {
+      channelInstances.push(this);
+    }
   },
 }));
 
@@ -48,6 +55,13 @@ const hostA: Host = {
 };
 const hostB: Host = { ...hostA, id: 2, name: "db-01", address: "10.0.0.2", credential_id: 8 };
 const hostC: Host = { ...hostA, id: 3, name: "cache-01", address: "10.0.0.3", credential_id: 9 };
+const hostChain: Host = {
+  ...hostA,
+  id: 4,
+  name: "via-chain",
+  jump_chain_id: 7,
+  credential_id: 10,
+};
 
 function resetStore() {
   useSessionStore.setState({
@@ -587,6 +601,166 @@ describe("⌘R 历史插入（Task 15，insertToFocusedPane）", () => {
 function act<T>(fn: () => T): T {
   return fn();
 }
+
+// ---------------------------------------------------------------------------
+// BL-501 防线（Phase 3 T0）：同步 connect 上下文丢 invoke 响应的实证修复面——
+// deferConnect 宏任务投递 / onData sink 现查 / attach 看门狗 / 孤儿分支语义。
+// ---------------------------------------------------------------------------
+describe("BL-501 防线（T0）", () => {
+  it("openTab 的新会话 connect 投递宏任务：同步期不发 attach，timer 刷新后发出并照常落 connected", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "set_session_encoding"
+        ? Promise.resolve("")
+        : cmd === "attach_host_session"
+          ? Promise.resolve("pty-d1")
+          : Promise.resolve(undefined),
+    );
+    const id = useSessionStore.getState().openTab(hostA);
+    expect(attachCalls()).toHaveLength(0); // 同步上下文不再发 invoke（BL-501 触发面移除）
+    await vi.advanceTimersByTimeAsync(0);
+    expect(attachCalls()).toHaveLength(1);
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("connected");
+    expect(s.rustId).toBe("pty-d1");
+    void id;
+  });
+
+  it("sink 后注册也收得到终端帧（onData 每次 onmessage 现查，不闭包捕获 undefined）", async () => {
+    let resolveAttach: (v: string) => void = () => {};
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session")
+        return new Promise<string>((res) => (resolveAttach = res));
+      if (cmd === "set_session_encoding") return Promise.resolve("");
+      return Promise.resolve(undefined);
+    });
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    // attach 在途时 Terminal 才挂载（真实时序：sink 晚于 connect 注册）
+    const writes: Uint8Array[] = [];
+    registerSink(id, { write: (b) => writes.push(b), getSize: () => ({ cols: 80, rows: 24 }) });
+    resolveAttach("pty-sink");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connected");
+    const chan = channelInstances[channelInstances.length - 1];
+    chan.onmessage?.(new Uint8Array([104, 105])); // "hi"
+    expect(writes).toHaveLength(1);
+    expect(new TextDecoder().decode(writes[0])).toBe("hi");
+    unregisterSink(id);
+  });
+
+  it("attach 看门狗：invoke 永不 settle → 100s 复位 disconnected（可重试）；迟到响应 gen 未变时照常恢复", async () => {
+    let resolveAttach: (v: string) => void = () => {};
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session")
+        return new Promise<string>((res) => (resolveAttach = res));
+      if (cmd === "set_session_encoding") return Promise.resolve("");
+      if (cmd === "drop_session") return Promise.resolve(undefined);
+      return Promise.reject(new Error(`unexpected: ${cmd}`));
+    });
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+
+    // 100s 内（如 TOFU 问询窗口）不复位
+    await vi.advanceTimersByTimeAsync(99_999);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+
+    // 100s 上限到：复位 disconnected + lastError（用户可重试，不再永久「正在连接」）
+    await vi.advanceTimersByTimeAsync(1);
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("disconnected");
+    expect(s.lastError).toContain("watchdog");
+
+    // 丢失的响应只是迟到（gen 未变）：照常落 connected（迟到自愈）
+    resolveAttach("pty-late");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connected");
+    expect(useSessionStore.getState().sessions[0].rustId).toBe("pty-late");
+    void id;
+  });
+
+  it("孤儿分支不覆盖更新 generation 的在途状态（connect#2 在途时 connect#1 迟到成功只 drop）", async () => {
+    const resolvers: Array<(v: string) => void> = [];
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session")
+        return new Promise<string>((res) => resolvers.push(res));
+      if (cmd === "drop_session") return Promise.resolve(undefined);
+      if (cmd === "set_session_encoding") return Promise.resolve("");
+      return Promise.reject(new Error(`unexpected: ${cmd}`));
+    });
+    // connect#1 在途（gen=G1）
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    // 用户重连（connect#2，gen=G2——状态从此归 connect#2 所有）
+    void useSessionStore.getState().connect(id);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+
+    // connect#1 迟到成功：必须 drop（会话清理），且**不得动状态**——
+    // 仍 connecting（connect#2 在途），复位成 disconnected/connected 都是覆盖
+    resolvers[0]("pty-stale");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-stale" });
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+    expect(useSessionStore.getState().sessions[0].rustId).toBeNull();
+
+    // connect#2 正常成功收口
+    resolvers[1]("pty-live");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connected");
+    expect(useSessionStore.getState().sessions[0].rustId).toBe("pty-live");
+  });
+
+  it("defer 回归（评审 I-1）：openTab 已存在分支（重连已断线标签）的 connect 同款投递宏任务", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "set_session_encoding"
+        ? Promise.resolve("")
+        : cmd === "attach_host_session"
+          ? Promise.resolve("pty-exist")
+          : Promise.resolve(undefined),
+    );
+    // 先开一个不自动连的标签（⌘K 再点已断线标签的真实前置态）
+    const id = useSessionStore.getState().openTab(hostA, { autoConnect: false });
+    expect(attachCalls()).toHaveLength(0);
+
+    // 第二次 openTab 命中已存在分支：同步期不得发 invoke（与新建分支同款 defer）
+    const id2 = useSessionStore.getState().openTab(hostA);
+    expect(id2).toBe(id);
+    expect(attachCalls()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(attachCalls()).toHaveLength(1);
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("connected");
+    expect(s.rustId).toBe("pty-exist");
+  });
+
+  it("看门狗链式豁免（评审 I-2）：jump_chain 会话 100s 不误复位（Rust 侧 75s×(跳数+1) 预算兜底），迟到成功照常落 connected", async () => {
+    let resolveAttach: (v: string) => void = () => {};
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session")
+        return new Promise<string>((res) => (resolveAttach = res));
+      if (cmd === "set_session_encoding") return Promise.resolve("");
+      if (cmd === "drop_session") return Promise.resolve(undefined);
+      return Promise.reject(new Error(`unexpected: ${cmd}`));
+    });
+    useSessionStore.getState().openTab(hostChain);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+    expect(useSessionStore.getState().sessions[0].jumpChainId).toBe(7);
+
+    // 2 跳链合法最坏 ≈170s > 100s：看门狗不得在此复位（逐跳问询稍慢是合法挂起）
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
+    expect(useSessionStore.getState().sessions[0].lastError).toBeNull();
+
+    // Rust 预算内完成 → 照常 connected（无孤儿 drop 误杀）
+    resolveAttach("pty-chain");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connected");
+    expect(useSessionStore.getState().sessions[0].rustId).toBe("pty-chain");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("drop_session", { id: "pty-chain" });
+  });
+});
 
 // ---------------------------------------------------------------------------
 // 会话结束钩子（Phase 2 Task 7 会话纪要）：closeTab / disconnect / 自动重连耗尽

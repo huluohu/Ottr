@@ -25,6 +25,7 @@ function makeSession(over: Partial<Session> & Pick<Session, "id" | "hostId" | "h
     port: 22,
     username: "deploy",
     protocol: "ssh",
+    jumpChainId: null,
     status: "disconnected",
     rustId: null,
     attempt: 0,

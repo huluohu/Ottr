@@ -1,13 +1,17 @@
-// CredentialsDialog（Task 6，A3/A4）：凭据与密钥的挂载点——overlay 对话框双 tab
-// （凭据列表 / 密钥管理），入口在顶栏。布局语言沿用 ImportDialog（.overlay > .dialog）。
+// CredentialsDialog（Task 6，A3/A4）：凭据与密钥的挂载点——overlay 对话框三 tab
+// （凭据列表 / 密钥管理 / 已知主机 B9），入口在顶栏。布局语言沿用 ImportDialog
+// （.overlay > .dialog）。
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CredentialList } from "./CredentialList";
 import { KeyManager } from "./KeyManager";
+import { KnownHostsManager } from "../security/KnownHostsManager";
+
+type DialogTab = "credentials" | "keys" | "knownHosts";
 
 export function CredentialsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"credentials" | "keys">("credentials");
+  const [tab, setTab] = useState<DialogTab>("credentials");
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={t("credentials.dialogTitle")}>
@@ -37,8 +41,23 @@ export function CredentialsDialog({ onClose }: { onClose: () => void }) {
           >
             {t("credentials.tabKeys")}
           </button>
+          <button
+            role="tab"
+            aria-selected={tab === "knownHosts"}
+            data-active={tab === "knownHosts"}
+            data-testid="known-hosts-tab"
+            onClick={() => setTab("knownHosts")}
+          >
+            {t("credentials.tabKnownHosts")}
+          </button>
         </div>
-        {tab === "credentials" ? <CredentialList /> : <KeyManager />}
+        {tab === "credentials" ? (
+          <CredentialList />
+        ) : tab === "keys" ? (
+          <KeyManager />
+        ) : (
+          <KnownHostsManager />
+        )}
       </div>
     </div>
   );

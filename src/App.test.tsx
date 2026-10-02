@@ -196,6 +196,12 @@ describe("App 顶栏收纳（Phase 5 T1）", () => {
   it("工具下拉：点外/Escape 收起", async () => {
     listMock();
     render(<App />);
+    // 点外（mousedown 落在菜单壳之外，对齐 NotificationCenter 契约）收起
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    expect(screen.getByTestId("topbar-tools-menu")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId("topbar-tools-menu")).toBeNull();
+    // Escape 收起
     fireEvent.click(screen.getByTestId("topbar-tools"));
     expect(screen.getByTestId("topbar-tools-menu")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });

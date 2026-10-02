@@ -1009,8 +1009,23 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 
-/* --- A10 主题切换（Phase 5 T1 收纳后）：单按钮下拉复用 .topbar-menu 壳，
-   原 .theme-switch 三联按钮样式随组件消亡 --- */
+/* --- A10 主题切换器（f388463 回归修复）：顶栏三联按钮虽已改单按钮下拉
+   （.topbar-menu 壳），但设置页 SecuritySettings 的外观分区仍渲染
+   .theme-switch 三联按钮——样式原样保留（自 f388463^ 找回），否则回落
+   全局按钮样式（视觉回归）。 --- */
+.theme-switch {
+  display: flex;
+  gap: 6px;
+}
+.theme-switch button {
+  font-size: 0.8em;
+  padding: 0.25em 0.55em;
+  box-shadow: none;
+}
+.theme-switch button[data-active="true"] {
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
 
 /* --- 标签化终端主区（Task 7，A6）--- */
 .main-area.terminal-mode {
@@ -1229,10 +1244,15 @@ button[data-active="true"] {
    居中悬浮（用户实测现场）；提示文字作第二行弱化。 */
 .form-check {
   display: flex;
-  flex-direction: row;
   align-items: flex-start;
   gap: 6px;
   margin: 4px 0;
+}
+/* row 方向必须带 .host-form 前缀：(0,1,0) 的裸 .form-check 输给
+   (0,1,1) 的 .host-form label（column），裸写是死规则（headless Chromium
+   渲染实证）；加前缀到 (0,2,0) 才真正赢回左对齐内联。 */
+.host-form .form-check {
+  flex-direction: row;
 }
 .form-check input {
   width: auto;

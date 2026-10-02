@@ -12,6 +12,7 @@ pub mod forwards;
 pub mod history;
 pub mod jump_chains;
 pub mod master_key;
+pub mod mcp_grants;
 pub mod notifications;
 pub mod notify_channels;
 pub mod recordings;
@@ -45,6 +46,9 @@ pub use cron_jobs::{
     CronJob, CronJobInput, CronJobs, CronRun, CronRunInput, CronRuns, CRON_RUNS_KEEP,
     CRON_RUN_STATUSES, CRON_SCHEDULE_MAX_BYTES, CRON_SCRIPT_MAX_BYTES,
 };
+// MCP 授权矩阵（Phase 4 Task 3，C1；协议引擎在 src-tauri commands/mcp.rs，
+// 本 crate 只供表——cron_jobs 同款分工）
+pub use mcp_grants::{McpGrant, McpGrantInput, McpGrants, MCP_READ_PATHS_MAX};
 pub use secrets::Secrets;
 pub use settings::Settings;
 pub use store::{KeyMode, Vault};

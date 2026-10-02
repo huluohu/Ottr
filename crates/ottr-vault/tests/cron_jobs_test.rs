@@ -64,7 +64,8 @@ fn run_input(cron_id: i64, ts: i64) -> CronRunInput {
 fn migration_0016_bumps_schema_version() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
-    assert_eq!(vault.schema_version().unwrap(), 16);
+    // ≥16（0016 已应用）；恰等 latest 会随后续迁移（0017 mcp_grants…）漂移。
+    assert!(vault.schema_version().unwrap() >= 16);
 }
 
 #[test]

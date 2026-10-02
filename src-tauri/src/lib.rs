@@ -17,6 +17,9 @@ pub mod hostkey_audit;
 pub mod importers;
 pub mod keys;
 pub mod menu;
+// MCP 协议核（Phase 4 Task 3，C1）：纯 JSON-RPC/MCP 消息层（无 tauri/IO 依赖），
+// 引擎装配与命令面在 commands/mcp.rs，stdio relay 子进程在 bin/ottr-mcp.rs。
+pub mod mcp;
 pub mod security;
 pub mod ssh_config;
 pub mod vault;

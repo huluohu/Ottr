@@ -15,6 +15,10 @@ tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
 ottr-ssh = { path = "../ottr-ssh" }
 
 [dev-dependencies]
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
 # 真夹具集成测试：known_hosts 指纹解析（与 russh 同版约束，见 ottr-ssh Cargo.toml）
 russh = "0.63.3"
+# monitor_soak example（Phase 3 T7 验收）：录制负载取 asciinema v2 编码 +
+# Stripper 剥离的真代码路径（格式层+剥离层；app 层 RecordingHandle 的
+# 通道/写盘线程/入库由 src-tauri recording_fixture 覆盖，soak 不复刻）
+ottr-term = { path = "../ottr-term" }

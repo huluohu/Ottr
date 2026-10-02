@@ -3423,6 +3423,7 @@ name = "ottr-monitor"
 version = "0.1.0"
 dependencies = [
  "ottr-ssh",
+ "ottr-term",
  "russh",
  "serde",
  "tokio",

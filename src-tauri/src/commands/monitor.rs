@@ -123,6 +123,8 @@ impl MonitorManager {
 /// 启动会话的监控采样（attach 成功后由前端按 host.monitor_enabled 调用；
 /// 仅标签根会话——分屏 pane 与根同主机，多份采样是纯浪费）。
 /// 已在跑幂等成功；会话不存在显式报错。
+/// 【门卫豁免】运行面命令：绑定既有会话 + 只读 settings（明文面，T11 同
+/// 口径），不触碰 vault 密文/实体——不过 ensure_unlocked（T7 验收门卫表补注）。
 #[tauri::command]
 pub(crate) async fn monitor_start(
     state: State<'_, AppState>,

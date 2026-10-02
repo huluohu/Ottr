@@ -192,7 +192,7 @@ impl ToolHandler for McpEngine {
             TOOL_LIST_HOSTS => self.tool_list_hosts(),
             TOOL_EXEC_COMMAND => {
                 let (host_id, command) = parse_exec_args(arguments)?;
-                let plan = self.prepare_exec(host_id, &command)?;
+                let plan = self.prepare_exec(host_id)?;
                 let fut = self.exec_via_session(plan, host_id, command);
                 self.rt.block_on(fut)
             }
@@ -268,7 +268,7 @@ impl McpEngine {
     /// exec 的同步前置检查（形状 → 授权 → 主机存在 → 锁定 → 会话）——拒绝
     /// 路径全不触达异步桥（单测无需 runtime），且形状/授权先于连接面检查
     /// （参数错不消耗授权读）。
-    fn prepare_exec(&self, host_id: i64, command: &str) -> Result<ExecPlan, ToolError> {
+    fn prepare_exec(&self, host_id: i64) -> Result<ExecPlan, ToolError> {
         let grant = self.grant_for(host_id).map_err(ToolError::Execution)?;
         if !grant.can_exec {
             return Err(ToolError::Execution(format!(
@@ -1277,10 +1277,7 @@ mod tests {
         stream.write_all(b"\n").unwrap();
         stream
             .write_all(
-                format!(
-                    r#"{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"list_hosts","arguments":{{}}}}}}"#
-                )
-                .as_bytes(),
+                br#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_hosts","arguments":{}}}"#,
             )
             .unwrap();
         stream.write_all(b"\n").unwrap();

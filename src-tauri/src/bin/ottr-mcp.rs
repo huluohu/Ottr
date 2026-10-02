@@ -138,14 +138,18 @@ fn parse_args() -> PathBuf {
 /// 带重试的连接（App 正在启动时 listener 可能还没 bind；总窗 10s）。
 fn connect_with_retry(socket: &PathBuf) -> Result<UnixStream, String> {
     let deadline = std::time::Instant::now() + CONNECT_TIMEOUT;
-    let mut last = None;
     loop {
         match UnixStream::connect(socket) {
             Ok(s) => return Ok(s),
-            Err(e) => last = Some(e.to_string()),
-        }
-        if std::time::Instant::now() >= deadline {
-            return Err(last.unwrap_or_else(|| "socket not found".into()));
+            Err(e) => {
+                // 只报最后一条错误（重试窗耗尽时刻的现场最有诊断价值）。
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!(
+                        "{e} (retry window {}s exhausted)",
+                        CONNECT_TIMEOUT.as_secs()
+                    ));
+                }
+            }
         }
         std::thread::sleep(RETRY_INTERVAL);
     }

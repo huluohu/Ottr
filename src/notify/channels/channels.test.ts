@@ -336,41 +336,10 @@ describe("工厂分派 + 注册表挂载/路由", () => {
     }
   });
 
-  it("createChannel 的 send 经重试装饰（5xx 重试；业务码不重试；test 不装饰）", async () => {
-    const { createChannel } = await import("./factory");
-
-    // 5xx：第二次重试成功——send 挂后台队列，flush 后请求共 2 次
-    const retried = mockFetch((_req, nth) => (nth === 0 ? new Response("down", { status: 502 }) : ok204()));
-    const ch = createChannel(
-      "webhook",
-      { url: "https://e.com" },
-      { fetchImpl: retried.impl, delay: async () => {} },
-    );
-    await ch.send(alertEvent);
-    await (ch as import("./retry").RetryChannel).flush();
-    expect(retried.calls).toHaveLength(2);
-
-    // 业务码（钉钉 errcode≠0）：不重试，恰 1 次请求
-    const biz = mockFetch(() => okJson({ errcode: 310000 }));
-    const ch2 = createChannel(
-      "dingtalk",
-      { webhook: "https://d" },
-      { fetchImpl: biz.impl, delay: async () => {} },
-    );
-    await ch2.send(alertEvent);
-    await (ch2 as import("./retry").RetryChannel).flush();
-    expect(biz.calls).toHaveLength(1);
-
-    // test() 原样抛（错误立即上屏），不走退避
-    const down = mockFetch(() => new Response("x", { status: 500 }));
-    const ch3 = createChannel(
-      "webhook",
-      { url: "https://e.com" },
-      { fetchImpl: down.impl, delay: async () => {} },
-    );
-    await expect(ch3.test()).rejects.toThrow("HTTP 500");
-    expect(down.calls).toHaveLength(1);
-  });
+  // 【fix round 1（C-1）】重试装饰不在工厂层——工厂只出裸适配器（name=裸 kind），
+  // 装饰在 channelRegistry.mountOne 以挂载名（kind#id）收口；真实挂载链的
+  // 集成回归在 src/notify/channelRegistry.test.ts（单测绕过 mountOne 测不到
+  // 改名/装饰顺序缺陷）。
 
   it("remountChannels：读启用渠道→reveal→挂载；subscribed 按规则 channels 路由", async () => {
     vi.doMock("../../vault/api", () => ({

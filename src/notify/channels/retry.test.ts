@@ -301,4 +301,34 @@ describe("per-channel 队列化（重试不阻塞管线其余渠道、事件不�
     expect(onGiveUp.mock.calls[1][0].event).toBe(e2);
     expect(attempts).toHaveLength(8); // 2 事件 × 4 次尝试（串行）
   });
+
+  it("队列上限（M-1）：挂起重试循环达 3 后，超限事件立即终败（不排队不退避）；已排队事件照常走完", async () => {
+    const { attempts, channel } = fakeChannel(() => {
+      throw new TypeError("fetch failed");
+    });
+    const { delay, gates, drain } = gateDelays();
+    const onGiveUp = vi.fn();
+    const ch = withRetry({ ...channel, name: "cap#1" }, { delay, onGiveUp });
+    const e1 = event();
+    const e2 = event();
+    const e3 = event();
+    const e4 = event();
+    await ch.send(e1); // 挂起循环 1
+    await ch.send(e2); // 2
+    await ch.send(e3); // 3 = MAX_PENDING_LOOPS（串行队列：仅队头在等退避）
+    expect(gates).toHaveLength(1);
+    expect(attempts).toHaveLength(3); // 三个事件的内联首发
+    expect(onGiveUp).not.toHaveBeenCalled();
+
+    await ch.send(e4); // 超限：首发已败 → 直接终局回执
+    expect(attempts).toHaveLength(4); // e4 的首发（无重试）
+    expect(onGiveUp).toHaveBeenCalledTimes(1);
+    expect(onGiveUp.mock.calls[0][0].event).toBe(e4);
+    expect(onGiveUp.mock.calls[0][0].error).toContain("queue overflow");
+
+    await drain(ch); // 已排队的三个照常三次退避后终败（顺序不乱）
+    expect(onGiveUp).toHaveBeenCalledTimes(4);
+    expect(onGiveUp.mock.calls.slice(1).map((c) => c[0].event)).toEqual([e1, e2, e3]);
+    expect(attempts).toHaveLength(13); // 3×4 + 超限事件的 1 次首发
+  });
 });

@@ -8,6 +8,10 @@
 // * 重挂载：设置页渠道增删改后 remountChannels() 全量重建（渠道量级 = 个位数，
 //   全量重建比增量记账简单且无悬挂引用面）；挂载失败的渠道（vault 不可达/
 //   config 缺字段）只记 console 不阻塞其余渠道。
+// * 重试装饰（Phase 5 T1，BL-517；fix round 1 C-1 收口）：mountOne **先按
+//   挂载名改名、再 withRetry 装饰**——装饰器的终败/翻正回执与手动重发都按
+//   挂载名（kind#id）回查，行 id 只在本层可得；装饰若早于改名，回执 channel
+//   恒为裸 kind（重发扑空、channel_id 恒 null、同 kind 多实例账本串账）。
 // * 明文 config 生命周期：nc_reveal_config 单点出库 → 适配器闭包持有（发信
 //   时组装请求），永不落日志/持久化面。
 import { vaultApi, type ChannelKind, type Notification, type NotifyChannel } from "../vault/api";
@@ -22,6 +26,7 @@ import {
   type NotifyKind,
 } from "./core";
 import { createChannel } from "./channels/factory";
+import { withRetry } from "./channels/retry";
 import type { ChannelDeps } from "./channels/types";
 
 /** alert/cron 事件的订阅路由面（payload.channel_ids ∈ AlertPayload /
@@ -36,7 +41,9 @@ function subscribedChannel(id: number): (event: NotificationEvent) => boolean {
   };
 }
 
-/** 行 + 明文 config → 已订阅的渠道实例（config 缺失/坏 → null 跳过）。 */
+/** 行 + 明文 config → 已订阅的渠道实例（config 缺失/坏 → null 跳过）。
+ * 【C-1（fix round 1）】装饰顺序硬契约：先以内层名挂载名化（`kind#id`），
+ * 再 withRetry 装饰——回执（投递失败账本）与重发按此名回查。 */
 function mountOne(
   row: NotifyChannel,
   config: Record<string, unknown>,
@@ -44,10 +51,11 @@ function mountOne(
 ): NotificationChannel | null {
   try {
     const channel = createChannel(row.kind as ChannelKind, config, deps);
+    const decorated = withRetry({ ...channel, name: `${channel.name}#${row.id}` }, deps);
     return {
-      name: `${channel.name}#${row.id}`,
-      send: channel.send,
-      test: channel.test,
+      name: decorated.name,
+      send: decorated.send,
+      test: decorated.test,
       subscribed: subscribedChannel(row.id),
     };
   } catch (e) {

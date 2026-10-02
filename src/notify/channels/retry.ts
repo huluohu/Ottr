@@ -11,7 +11,14 @@
 // * per-channel 队列化（BL-517「重试期间不阻塞管线其余渠道」）：首发内联
 //   await（管线时序与装饰前一致），首发失败且可重试时把「剩余重试循环」
 //   挂进本渠道的串行队列立即返回——同渠道多事件的重试串行排队（不打爆对端），
-//   他渠道与管线完全不受牵连；重试期间事件被队列持有，绝不丢失。
+//   他渠道与管线完全不受牵连；重试期间事件被队列持有，绝不丢失。队列有上限
+//   （MAX_PENDING_LOOPS，M-1）：持续宕机时挂起循环无界增长防线，超限事件首发
+//   已败即直接终局回执（不排队不退避）。
+// * 限定（披露，fix round 1 I-1）：SMTP 渠道走 Rust lettre 命令
+//   （vaultApi.smtpSend），失败以普通 Error 浮出、无传输/HTTP 分类面 →
+//   isRetryableDeliveryError 恒 false，暂态故障不重试（「网络错重试」对
+//   1/12 渠道收窄）；终败仍走 onGiveUp 打「投递失败」标记 + 手动重发兜底。
+//   已记 docs/phase2-backlog.md BL-517 结单。
 // * 终局回执：重试耗尽仍败或遇不可重试错 → deps.onGiveUp（缺省 = 通知中心
 //   条目打「投递失败」标记）；重试翻正 → deps.onDelivered（缺省 = 清账）。
 //   test() 不装饰——「发送测试」的错误面要立即上屏，不走退避。
@@ -24,8 +31,14 @@ import { clearDeliveryFailure, recordDeliveryFailure } from "../core";
 /** 退避序列（ms）：三次重试，4 倍步进（BL-517 定稿 1s/4s/16s）。 */
 export const RETRY_DELAYS_MS = [1_000, 4_000, 16_000] as const;
 
+/** 单渠道挂起重试循环上限（M-1，fix round 1）：持续宕机时排队事件的无界
+ * 增长防线；超限事件首发已失败，直接终局回执（不排队不退避）。 */
+export const MAX_PENDING_LOOPS = 3;
+
 /** 重试判定：网络错（fetch reject/TypeError）与 HTTP 5xx；其余（4xx、业务
- * 码错、配置错）不重试——重试改变不了结果的错误不该烧退避窗口。 */
+ * 码错、配置错）不重试——重试改变不了结果的错误不该烧退避窗口。
+ * 【限定（I-1 披露）】SMTP 走 Rust lettre 命令、错误无分类面 → 恒 false
+ * （不重试，失败面兜底），见文件头。 */
 export function isRetryableDeliveryError(e: unknown): boolean {
   if (e instanceof HttpError) return e.status >= 500;
   return e instanceof TypeError || (e instanceof Error && e.name === "TypeError");
@@ -59,9 +72,10 @@ function defaultDelivered(report: DeliveryOk): void {
 export type RetryChannel = NotificationChannel & { flush: () => Promise<void> };
 
 /**
- * 渠道 send 重试装饰（factory 挂载面统一收口；deps 只消费 delay/onGiveUp/
- * onDelivered 三个注入位）。装饰后的 send 永不 reject——终局失败经 onGiveUp
- * 回执，管线 try/catch 保留给未装饰渠道。
+ * 渠道 send 重试装饰（channelRegistry.mountOne 挂载面统一收口——先按挂载名
+ * `kind#id` 改内层名再装饰，C-1；deps 只消费 delay/onGiveUp/onDelivered 三个
+ * 注入位）。装饰后的 send 永不 reject——终局失败经 onGiveUp 回执，管线
+ * try/catch 保留给未装饰渠道。
  */
 export function withRetry(channel: NotificationChannel, deps: ChannelDeps = {}): RetryChannel {
   const delay = deps.delay ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -70,28 +84,45 @@ export function withRetry(channel: NotificationChannel, deps: ChannelDeps = {}):
 
   // per-channel 串行重试队列：tail 永不 reject（job 内部已全捕获）。
   let tail: Promise<void> = Promise.resolve();
+  let pendingLoops = 0;
 
   function enqueue(event: NotificationEvent, ctx?: SendContext, firstError?: unknown): void {
-    // 整个重试循环挂在 tail 之后——同渠道多事件严格串行（循环不交错）。
-    const job = tail.then(async () => {
-      let last: unknown = firstError;
-      for (let i = 0; i < RETRY_DELAYS_MS.length; i++) {
-        await delay(RETRY_DELAYS_MS[i]);
-        try {
-          await channel.send(event);
-          onDelivered({ channel: channel.name, notificationId: ctx?.notificationId });
-          return;
-        } catch (e) {
-          last = e;
-          if (!isRetryableDeliveryError(e)) break; // 中途转不可重试：立即终局
-        }
-      }
+    if (pendingLoops >= MAX_PENDING_LOOPS) {
+      // M-1：队列满——首发已败，直接终局（不排队不退避），防持续宕机时
+      // 挂起循环无界增长。
       onGiveUp({
         channel: channel.name,
         event,
-        error: last instanceof Error ? last.message : String(last),
+        error: `retry queue overflow (> ${MAX_PENDING_LOOPS} pending per channel)`,
         notificationId: ctx?.notificationId,
       });
+      return;
+    }
+    pendingLoops += 1;
+    // 整个重试循环挂在 tail 之后——同渠道多事件严格串行（循环不交错）。
+    const job = tail.then(async () => {
+      try {
+        let last: unknown = firstError;
+        for (let i = 0; i < RETRY_DELAYS_MS.length; i++) {
+          await delay(RETRY_DELAYS_MS[i]);
+          try {
+            await channel.send(event);
+            onDelivered({ channel: channel.name, notificationId: ctx?.notificationId });
+            return;
+          } catch (e) {
+            last = e;
+            if (!isRetryableDeliveryError(e)) break; // 中途转不可重试：立即终局
+          }
+        }
+        onGiveUp({
+          channel: channel.name,
+          event,
+          error: last instanceof Error ? last.message : String(last),
+          notificationId: ctx?.notificationId,
+        });
+      } finally {
+        pendingLoops -= 1;
+      }
     });
     tail = job.catch(() => {}); // 链条永不断（循环理论不抛，兜底防御）
   }

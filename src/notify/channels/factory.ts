@@ -16,14 +16,15 @@ import { createSmtpChannel } from "./smtp";
 import { createTelegramChannel } from "./telegram";
 import { createWebhookChannel } from "./webhook";
 import { createWecomChannel } from "./wecom";
-import { withRetry } from "./retry";
 import type { ChannelDeps } from "./types";
 
-/** kind + 明文 config → 渠道实例。config 字段面校验在设置页保存前（必填表），
- * 这里只做窄化（运行期配置损坏 → 适配器内自然报错，不二次校验）。
- * 【Phase 5 T1（BL-517）】send 统一经 withRetry 重试装饰（网络/5xx 三次退避
- * 1s/4s/16s、per-channel 队列化、终败回执「投递失败」标记）——装饰在工厂
- * 单点收口，「发送测试」走的 test() 不装饰（错误立即上屏）。 */
+/** kind + 明文 config → 裸适配器实例（send/test 未装饰）。config 字段面校验在
+ * 设置页保存前（必填表），这里只做窄化（运行期配置损坏 → 适配器内自然报错，
+ * 不二次校验）。
+ * 【Phase 5 T1（BL-517）；fix round 1（C-1）】重试装饰不在本层——装饰器的
+ * 回执 channel 名必须挂载名（`kind#id`）：回执账本与手动重发都按名回查，
+ * 而行 id 只在 channelRegistry.mountOne 可得（先改内层名再装饰）。此前装饰
+ * 在工厂收口时闭包读到裸 kind，回执/重发/多实例账目全部错位（评审探针实证）。 */
 export function createChannel(
   kind: ChannelKind,
   config: Record<string, unknown>,
@@ -31,28 +32,28 @@ export function createChannel(
 ): NotificationChannel {
   switch (kind) {
     case "dingtalk":
-      return withRetry(createDingtalkChannel(config as never, deps), deps);
+      return createDingtalkChannel(config as never, deps);
     case "feishu":
-      return withRetry(createFeishuChannel(config as never, deps), deps);
+      return createFeishuChannel(config as never, deps);
     case "wecom":
-      return withRetry(createWecomChannel(config as never, deps), deps);
+      return createWecomChannel(config as never, deps);
     case "bark":
-      return withRetry(createBarkChannel(config as never, deps), deps);
+      return createBarkChannel(config as never, deps);
     case "serverchan":
-      return withRetry(createServerchanChannel(config as never, deps), deps);
+      return createServerchanChannel(config as never, deps);
     case "telegram":
-      return withRetry(createTelegramChannel(config as never, deps), deps);
+      return createTelegramChannel(config as never, deps);
     case "discord":
-      return withRetry(createDiscordChannel(String(config["webhook"] ?? ""), deps), deps);
+      return createDiscordChannel(String(config["webhook"] ?? ""), deps);
     case "slack":
-      return withRetry(createSlackChannel(String(config["webhook"] ?? ""), deps), deps);
+      return createSlackChannel(String(config["webhook"] ?? ""), deps);
     case "smtp":
-      return withRetry(createSmtpChannel(config as never, deps), deps);
+      return createSmtpChannel(config as never, deps);
     case "pushover":
-      return withRetry(createPushoverChannel(config as never, deps), deps);
+      return createPushoverChannel(config as never, deps);
     case "ntfy":
-      return withRetry(createNtfyChannel(config as never, deps), deps);
+      return createNtfyChannel(config as never, deps);
     case "webhook":
-      return withRetry(createWebhookChannel(config as never, deps), deps);
+      return createWebhookChannel(config as never, deps);
   }
 }

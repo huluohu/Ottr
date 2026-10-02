@@ -1027,6 +1027,7 @@
     "errSave": "保存失败：{{message}}",
     "now": "立即同步",
     "needChannel": "请先保存同步通道配置",
+    "dirtyHint": "有未保存的更改——「立即同步」使用最近一次保存的配置，更改保存后生效。",
     "dialog": {
       "title": "同步",
       "checking": "正在检查同步状态…",

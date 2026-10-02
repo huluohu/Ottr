@@ -1028,6 +1028,7 @@
     "errSave": "Save failed: {{message}}",
     "now": "Sync now",
     "needChannel": "Save a sync channel configuration first",
+    "dirtyHint": "You have unsaved changes — “Sync now” uses the last saved configuration; save to apply them.",
     "dialog": {
       "title": "Sync",
       "checking": "Checking sync status…",

@@ -36,6 +36,8 @@
 //! 幂等写 = 先删后存（KeyringStorage::save 同款，平台 set-on-existing 行为
 //! 不一）；无条目 = `None`（keyring v3 NoEntry）。CI 不测真钥匙链
 //! （InMemoryStorage 先例：CI 无桌面环境），命令体薄包装不过自动化。
+//! 边界声明（fix round 1 Minor-3）：口令明文过 invoke 参数（webview→Rust
+//! IPC 进程内传递，落盘面只在钥匙链）——沿 T11 vault unlock 已知边界。
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -408,9 +410,27 @@ fn plan_exec(
     Ok(p)
 }
 
-/// 执行 GitPlan：spawn + 轮询 try_wait 超时 kill。`--quiet` 全覆盖 + 信封
-/// 体积小（stdout 只在 show 时承载数据，克隆进度在 stderr 且已被静音），
-/// 管道缓冲充满的死锁面在此前提下可忽略（披露）。
+/// 管道抽干线程（stdout/stderr 共用形态；进程退出 → EOF → 线程自然收尾）。
+fn drain_pipe<R: std::io::Read + Send + 'static>(
+    pipe: Option<R>,
+) -> Option<std::thread::JoinHandle<String>> {
+    pipe.map(|mut pipe| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = pipe.read_to_string(&mut buf);
+            buf
+        })
+    })
+}
+
+/// 执行 GitPlan：spawn → **双读线程立即开抽**（fix round 1 I-1：轮询
+/// try_wait 期间若不读管道，`git show` 的 stdout（整份信封）超管道缓冲
+/// （macOS/Linux 64KB，数百条凭据即可达）时 git 阻塞在 write 永不退出 →
+/// 120s kill → git 通道功能性失效。stdout/stderr 各一线程 read_to_string
+/// 到 EOF；轮询只管进程态，进程退出后 join 取回全量）→ 超时 kill（kill 后
+/// 管道 EOF、线程自然收尾，join 仍回收已产出部分）。选型说明：线程读 +
+/// try_wait 轮询保留 120s 超时语义（纯阻塞 `wait()` 无超时面；poll 循环内
+/// 非阻塞读要自管 EAGAIN 状态机，复杂度不成比例）。
 fn run_plan(plan: GitPlan) -> Result<SyncGitExecResult, String> {
     let mut cmd = Command::new("git");
     cmd.args(&plan.args)
@@ -422,32 +442,38 @@ fn run_plan(plan: GitPlan) -> Result<SyncGitExecResult, String> {
         cmd.current_dir(cwd);
     }
     let mut child = cmd.spawn().map_err(|e| format!("sync-git spawn: {e}"))?;
+    let stdout_task = drain_pipe(child.stdout.take());
+    let stderr_task = drain_pipe(child.stderr.take());
     let start = Instant::now();
+    let mut timed_out = false;
     let status = loop {
-        if let Some(status) = child
+        match child
             .try_wait()
             .map_err(|e| format!("sync-git wait: {e}"))?
         {
-            break status;
+            Some(status) => break status,
+            None => {
+                if start.elapsed() > EXEC_TIMEOUT {
+                    timed_out = true;
+                    let _ = child.kill();
+                    break child.wait().map_err(|e| format!("sync-git reap: {e}"))?;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
-        if start.elapsed() > EXEC_TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Ok(SyncGitExecResult {
-                code: 124,
-                stdout: String::new(),
-                stderr: format!("sync-git: timed out after {}s", EXEC_TIMEOUT.as_secs()),
-            });
-        }
-        std::thread::sleep(Duration::from_millis(50));
     };
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-    if let Some(mut pipe) = child.stdout.take() {
-        let _ = pipe.read_to_string(&mut stdout);
-    }
-    if let Some(mut pipe) = child.stderr.take() {
-        let _ = pipe.read_to_string(&mut stderr);
+    let stdout = stdout_task.and_then(|h| h.join().ok()).unwrap_or_default();
+    let stderr = stderr_task.and_then(|h| h.join().ok()).unwrap_or_default();
+    if timed_out {
+        return Ok(SyncGitExecResult {
+            code: 124,
+            stdout,
+            stderr: format!(
+                "sync-git: timed out after {}s\n{}",
+                EXEC_TIMEOUT.as_secs(),
+                stderr.trim()
+            ),
+        });
     }
     Ok(SyncGitExecResult {
         code: status.code().unwrap_or(-1),
@@ -749,6 +775,76 @@ mod tests {
         assert!(!Path::new(&scratch).exists());
         // 幂等：再清一次仍 Ok
         assert!(sync_git_scratch_cleanup(scratch.clone()).is_ok());
+        let _ = std::fs::remove_dir_all(&bare);
+    }
+
+    /// fix round 1 I-1 回归钉死：`git show` 输出超管道缓冲（macOS/Linux
+    /// 64KB）不死于 write 阻塞——首版轮询期间不读管道，信封 >64KB（数百条
+    /// 凭据的现实体量）会被 120s kill，git 通道功能性失效。构造：bare 仓库
+    /// 塞一个 256KB blob，`show HEAD:<大文件>` 必须全量取回（头尾标记 + 精确
+    /// 长度）。修复前本测试命中 120s 超时（fail），修复后即刻通过。
+    #[test]
+    fn show_large_envelope_drains_full_stdout() {
+        require_git();
+        let scratch = sync_git_scratch().expect("scratch create");
+        let bare = scratch_root().join(format!(
+            "{SCRATCH_PREFIX}test-bare-big-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&bare);
+        std::fs::create_dir_all(&bare).unwrap();
+        let bare_str = bare.to_string_lossy().into_owned();
+        let init = Command::new("git")
+            .args(["init", "--bare", "--initial-branch=main", &bare_str])
+            .status()
+            .unwrap();
+        assert!(init.success());
+
+        let exec = |args: &[&str], cwd: Option<String>| {
+            let r = tauri::async_runtime::block_on(sync_git_exec(
+                s(args),
+                cwd,
+                Some("Ottr Test".into()),
+                Some("ottr@test.local".into()),
+            ))
+            .expect("exec ok");
+            assert_eq!(r.code, 0, "git failed: {args:?} → {r:?}");
+            r
+        };
+        exec(&["clone", "--quiet", "--", &bare_str, &scratch], None);
+        // 256KB 信封（head/tail 标记 + 每行带序号，防 git 内容压缩巧合）
+        const BIG: usize = 256 * 1024;
+        let mut payload = String::with_capacity(BIG + 64);
+        payload.push_str("\"HEAD-MARK:");
+        let mut line = 0usize;
+        while payload.len() < BIG {
+            payload.push_str(&format!("\"row-{line:06}\":{},", line));
+            line += 1;
+        }
+        payload.push_str("\"TAIL-MARK\"}");
+        sync_git_scratch_write(format!("{scratch}/ottr-sync.json"), payload.clone()).unwrap();
+        exec(&["add", "--", "ottr-sync.json"], Some(scratch.clone()));
+        exec(
+            &["commit", "--quiet", "-m", "big envelope"],
+            Some(scratch.clone()),
+        );
+        exec(
+            &["push", "--quiet", "origin", "HEAD:refs/heads/main"],
+            Some(scratch.clone()),
+        );
+
+        let before = std::time::Instant::now();
+        let shown = exec(&["show", "HEAD:ottr-sync.json"], Some(scratch.clone()));
+        // 全量取回（不是缓冲截断），且远快于 120s 超时（秒级内 = 未阻塞）
+        assert_eq!(shown.stdout.len(), payload.len(), "stdout must be complete");
+        assert!(shown.stdout.starts_with("\"HEAD-MARK:"));
+        assert!(shown.stdout.ends_with("\"TAIL-MARK\"}"));
+        assert!(
+            before.elapsed() < std::time::Duration::from_secs(30),
+            "show must not block on pipe buffer (elapsed {:?})",
+            before.elapsed()
+        );
+        sync_git_scratch_cleanup(scratch).unwrap();
         let _ = std::fs::remove_dir_all(&bare);
     }
 }

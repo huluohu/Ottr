@@ -141,4 +141,35 @@ describe("ConflictDialog", () => {
     expect(entrySummaries("hosts", LOCAL).length).toBe(2);
     void canonicalEntries;
   });
+
+  it("credentials 摘要（fix round 1 Minor-1）：kind + key_pub 前缀指纹（无 key_pub → updated_at 日期）；secret 永不入摘要", () => {
+    const creds = dataWith("credentials", [
+      {
+        id: 3,
+        kind: "key",
+        key_pub: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI… me@host",
+        secret: "TOPSECRET-VALUE",
+        passphrase: null,
+        totp_secret: null,
+        created_at: 1_700_000_000,
+        updated_at: 1_700_000_001,
+      },
+      {
+        id: 4,
+        kind: "password",
+        key_pub: null,
+        secret: "hunter2",
+        passphrase: null,
+        totp_secret: null,
+        created_at: 1_700_000_000,
+        updated_at: 1_700_864_100,
+      },
+    ]);
+    const summaries = entrySummaries("credentials", creds);
+    expect(summaries[0]).toBe("key · ssh-ed25519 ");
+    expect(summaries[1]).toBe("password · 2023-11-24");
+    const printed = summaries.join("\n");
+    expect(printed).not.toContain("TOPSECRET");
+    expect(printed).not.toContain("hunter2");
+  });
 });

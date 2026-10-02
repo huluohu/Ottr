@@ -273,6 +273,12 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
   };
 
   const canSyncNow = saved !== null;
+  // Minor-2（fix round 1）：立即同步跑的是**已保存**配置——草稿有未保存改动
+  // 时亮 hint 明示「更改保存后生效」（按钮保持可用：已存配置仍是合法同步面）。
+  const draftDirty =
+    saved !== null &&
+    JSON.stringify({ kind: saved.kind, webdav: saved.webdav, git: saved.git, localdir: saved.localdir }) !==
+      JSON.stringify({ kind: cfg.kind, webdav: cfg.webdav, git: cfg.git, localdir: cfg.localdir });
 
   return (
     <section aria-label={t("sync.sectionTitle")} data-testid="sync-section">
@@ -485,6 +491,11 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
       {!canSyncNow && (
         <p className="settings-hint" data-testid="sync-need-channel">
           {t("sync.needChannel")}
+        </p>
+      )}
+      {draftDirty && (
+        <p className="settings-hint" data-testid="sync-dirty-hint">
+          {t("sync.dirtyHint")}
         </p>
       )}
     </section>

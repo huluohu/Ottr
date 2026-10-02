@@ -35,8 +35,16 @@ export function entrySummaries(cat: SyncCategory, data: SyncData): string[] {
           return String(o.name ?? canonical);
         case "hosts":
           return `${String(o.name)} (${String(o.address)}:${String(o.port)})`;
-        case "credentials":
-          return String(o.kind ?? canonical);
+        case "credentials": {
+          // 覆盖预告可辨识度（fix round 1 Minor-1）：kind + key_pub 前缀指纹
+          // （公钥材料可印）或 updated_at 兜底——secret/passphrase/totp_secret
+          // 永不出现在摘要面（红线不变）。
+          const kind = String(o.kind ?? "?");
+          const pubKey = typeof o.key_pub === "string" && o.key_pub !== "" ? o.key_pub.slice(0, 12) : null;
+          const when = typeof o.updated_at === "number" ? new Date(o.updated_at * 1000).toISOString().slice(0, 10) : null;
+          const tag = pubKey ?? when;
+          return tag === null ? kind : `${kind} · ${tag}`;
+        }
         case "snippets":
           return String(o.name ?? canonical);
         case "notify_channels":

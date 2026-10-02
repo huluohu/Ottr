@@ -143,6 +143,20 @@ describe("SyncSettings", () => {
     );
   });
 
+  it("Minor-2：草稿未保存 → 立即同步旁 hint「更改保存后生效」，保存后消失", async () => {
+    seedSettings({
+      [SYNC_CHANNEL_KEY]: "webdav",
+      [syncConfigKey("webdav")]: { server: "https://dav.x", remotePath: "", username: "", password: "" },
+    });
+    renderSection();
+    await waitFor(() => expect((screen.getByTestId("sync-webdav-server") as HTMLInputElement).value).toBe("https://dav.x"));
+    expect(screen.queryByTestId("sync-dirty-hint")).toBeNull();
+    fireEvent.change(screen.getByTestId("sync-webdav-server"), { target: { value: "https://dav.y" } });
+    expect(screen.getByTestId("sync-dirty-hint")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("sync-save"));
+    await waitFor(() => expect(screen.queryByTestId("sync-dirty-hint")).toBeNull());
+  });
+
   it("信封口令：未设置 → 设置表单（不一致报错/成功写钥匙链）；已设置 → 更换+清除", async () => {
     seedSettings({});
     renderSection();

@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 15;
+pub const LATEST_SCHEMA_VERSION: u32 = 16;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -113,7 +113,9 @@ impl KeyMode {
 /// B5 渠道全矩阵——config_enc 密文列**已登记 scan_registry**，见下）；
 /// 0015 recordings（Phase 3 Task 5，B3 录制审计回放——录制元数据明文面，
 /// 无 *_enc 列，不动 scan_registry；asciinema 原始流在 .cast 文件不入库，
-/// FTS 选型=共享单表 recordings_fts，见迁移文件头）。
+/// FTS 选型=共享单表 recordings_fts，见迁移文件头）；0016 cron（Phase 4
+/// Task 1，缺口①——cron_jobs 配置 + cron_runs 运行历史，明文面，无 *_enc
+/// 列，不动 scan_registry；调度引擎在 ottr-monitor，见迁移文件头）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
@@ -136,6 +138,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (13, include_str!("../migrations/0013_alert_rules.sql")),
     (14, include_str!("../migrations/0014_notify_channels.sql")),
     (15, include_str!("../migrations/0015_recordings.sql")),
+    (16, include_str!("../migrations/0016_cron.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。

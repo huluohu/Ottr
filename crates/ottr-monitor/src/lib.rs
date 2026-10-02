@@ -17,7 +17,10 @@
 //!   全局相位错开（多实例防惊群，确定性零共享状态）；
 //! * [`task`]：通用采样循环 [`run_sampling`] + 生命周期 owner
 //!   [`MonitorGuard`]（Drop 即停）——per-session 采样任务挂会话生命周期
-//!   （会话断开/关闭 → 会话表摘除 → guard Drop → 循环就地退出）。
+//!   （会话断开/关闭 → 会话表摘除 → guard Drop → 循环就地退出）；
+//! * [`cron`]：定时任务核心（Phase 4 Task 1）——五段式解析 + next-fire +
+//!   调度循环（**引擎宿主裁定落地**：调度在 Rust 运行时，与 webview 生命
+//!   周期解耦；消费面在 src-tauri `commands/cron.rs`）。
 //!
 //! 消费面：src-tauri `commands/monitor.rs`（MonitorManager + `ottr://monitor`
 //! 事件推前端）。本 crate 不含 Tauri/前端类型，循环以闭包注入可离线测试。
@@ -31,6 +34,7 @@
 //! ```
 
 pub mod collect;
+pub mod cron;
 pub mod metrics;
 pub mod parse;
 pub mod proc;
@@ -38,6 +42,11 @@ pub mod sched;
 pub mod task;
 
 pub use collect::{COMPOSITE_CMD, MonitorError, collect};
+pub use cron::{
+    BoxedCronExec, CronClock, CronError, CronExecOutput, CronExecResolver, CronExpr, CronJobView,
+    CronJobsProvider, CronLoopConfig, CronLoopEnd, CronRunRecord, CronRunSink, CronRunStatus,
+    run_cron_scheduler,
+};
 pub use metrics::{Metrics, RawSample};
 pub use parse::{DiskEntry, LoadAvg, MemInfo, NetCounters, StatCounters};
 pub use proc::{PS_CMD, ProcEntry, collect_ps, kill_cmd, kill_process, parse_ps_eo};

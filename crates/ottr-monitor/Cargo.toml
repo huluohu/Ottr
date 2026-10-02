@@ -6,6 +6,9 @@ edition = "2024"
 [dependencies]
 # Metrics 事件载荷序列化面（src-tauri tauri::Emitter 直发 JSON）。
 serde = { version = "1", features = ["derive"] }
+# cron next-fire 的本地时区换算（Local）。依赖树内已有（Cargo.lock 无新增包）——
+# 手写解析器的选型裁定见 src/cron.rs 模块文档。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 采样循环：sleep/timeout（time）+ CancellationToken（sync）+ spawn 测试（rt）。
 tokio = { version = "1.53.1", features = ["time", "sync", "rt"] }
 # 取消令牌（ForwardManager 同款 owner 语义：Drop/显式 cancel 即停）。

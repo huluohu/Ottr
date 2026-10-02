@@ -66,6 +66,10 @@ export interface GitDeps {
   exec?: GitExec;
   /** 临时目录（缺省 node:fs mkdtemp；测试可注入收纳点）。 */
   tempDir?: () => Promise<string>;
+  /** push 阶段信封落盘（workDir + 相对 filePath + 信封 JSON 文本）。缺省
+   * node:fs 直写；webview 生产 = {@link tauriGitDeps} 注入 Rust scratch
+   * 写面（commands/sync_git.rs，路径钉死在 ottr-sync-git-* 命名空间）。 */
+  writeFile?: (workDir: string, relPath: string, data: string) => Promise<void>;
   now?: () => number;
   /** 工作目录清扫（缺省 node:fs rm -rf；测试注入 no-op 断言内容）。 */
   cleanup?: (dir: string) => Promise<void>;
@@ -150,6 +154,43 @@ async function nodeCleanup(dir: string): Promise<void> {
   await fsp.rm(dir, { recursive: true, force: true });
 }
 
+/** push 信封落盘的 node 缺省实现（workDir/relPath 由宿主各自 join）。 */
+async function nodeWriteFile(workDir: string, relPath: string, data: string): Promise<void> {
+  const fsp = (await import("node:fs/promises")) as typeof import("node:fs/promises");
+  const path = (await import("node:path")) as typeof import("node:path");
+  await fsp.writeFile(path.join(workDir, relPath), data, "utf8");
+}
+
+/**
+ * 生产接线（webview）：git exec / scratch 生命周期走 Rust 白名单桥
+ * （src-tauri commands/sync_git.rs——argv 形态钉死 + repoUrl scheme 复验 +
+ * cwd 钉死 ottr-sync-git-* 命名空间；安全面论证见该模块文档）。env 面只透传
+ * commit 作者两项（Rust 侧显式参数，不接受任意 env 表）；GIT_TERMINAL_PROMPT=0
+ * 由 Rust 恒设。
+ */
+export function tauriGitDeps(): GitDeps {
+  const invokeCmd = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<T>(cmd, args);
+  };
+  return {
+    exec: (args, opts) =>
+      invokeCmd<GitExecResult>("sync_git_exec", {
+        args,
+        cwd: opts.cwd ?? null,
+        authorName: opts.env?.GIT_AUTHOR_NAME ?? null,
+        authorEmail: opts.env?.GIT_AUTHOR_EMAIL ?? null,
+      }),
+    tempDir: () => invokeCmd<string>("sync_git_scratch"),
+    writeFile: (workDir, relPath, data) =>
+      invokeCmd<void>("sync_git_scratch_write", {
+        path: `${workDir.replace(/\/+$/, "")}/${relPath}`,
+        data,
+      }),
+    cleanup: (dir) => invokeCmd<void>("sync_git_scratch_cleanup", { dir }),
+  };
+}
+
 function fail(op: string, res: GitExecResult): Error {
   return new Error(`git ${op} failed (code ${res.code}): ${res.stderr.trim().slice(0, 300)}`);
 }
@@ -214,9 +255,8 @@ export function createGitTransport(config: GitConfig, deps: GitDeps = {}): SyncT
     async push(envelope: SyncEnvelope): Promise<void> {
       const work = await freshClone();
       try {
-        const fsp = (await import("node:fs/promises")) as typeof import("node:fs/promises");
-        const path = (await import("node:path")) as typeof import("node:path");
-        await fsp.writeFile(path.join(work, filePath), JSON.stringify(envelope), "utf8");
+        const write = deps.writeFile ?? nodeWriteFile;
+        await write(work, filePath, JSON.stringify(envelope));
         await run(["add", "--", filePath], { cwd: work });
         const status = await probe(["status", "--porcelain"], work);
         if (status.stdout.trim() !== "") {

@@ -496,6 +496,50 @@ export interface JumpTestResult {
   elapsed_ms: number;
 }
 
+// --- MCP server（Phase 4 Task 3，C1；Rust commands/mcp.rs）-------------------
+
+/** Rust `commands::mcp::McpGrant` 同构：主机粒度授权矩阵（无授权行 = 默认拒）。 */
+export interface McpGrant {
+  id: number;
+  host_id: number;
+  /** list_hosts 可见位（0 = 该主机对 MCP 客户端完全不可见）。 */
+  can_list: boolean;
+  /** exec_command 放行位。 */
+  can_exec: boolean;
+  /** 逐次执行审批门（1 = 每次 exec 先弹 UI 审批框，超时/拒绝 = 不执行）。 */
+  exec_approval: boolean;
+  /** read_file 目录白名单（绝对路径数组；空 = read_file 一律拒绝）。 */
+  read_paths: string[];
+  created_at: number;
+  updated_at: number;
+}
+
+/** Rust `mcp_grants::McpGrantInput` 同构（upsert 全量替换式提交）。 */
+export interface McpGrantInput {
+  host_id: number;
+  can_list: boolean;
+  can_exec: boolean;
+  exec_approval: boolean;
+  read_paths: string[];
+}
+
+/** Rust `commands::mcp::McpStatus` 同构（设置页首屏快照）。 */
+export interface McpStatus {
+  enabled: boolean;
+  listening: boolean;
+  socket_path: string | null;
+  approvals_pending: number;
+  grants_count: number;
+}
+
+/** ottr://mcp-approval 事件载荷（Rust McpApprovalAsk 同构）。 */
+export interface McpApprovalAsk {
+  request_id: number;
+  host_id: number;
+  host_name: string;
+  command: string;
+}
+
 export const vaultApi = {
   hosts: {
     list: () => invoke<Host[]>("hosts_list"),
@@ -726,6 +770,18 @@ export const vaultApi = {
   /** 会话输出尾部（Task 13，AI 诊断取数面）：最后 bytes 字节的剥 ANSI 纯文本。
    * 未知会话（已关/重连中）显式报错——调用方 catch 降级（空输出照发诊断）。 */
   sessionTail: (id: string, bytes: number) => invoke<string>("session_tail", { id, bytes }),
+  /** MCP server（Phase 4 Task 3，C1；commands/mcp.rs）。status/setEnabled =
+   * 运行面（锁定可读——listener 生命周期独立于锁定）；grants = 配置面
+   * （过锁定门卫，同 hosts）；approvalDecision = 审批框裁定回传。 */
+  mcp: {
+    status: () => invoke<McpStatus>("mcp_status"),
+    setEnabled: (enabled: boolean) => invoke<McpStatus>("mcp_set_enabled", { enabled }),
+    grantsList: () => invoke<McpGrant[]>("mcp_grants_list"),
+    grantsUpsert: (input: McpGrantInput) => invoke<McpGrant>("mcp_grants_upsert", { input }),
+    grantsDelete: (id: number) => invoke<void>("mcp_grants_delete", { id }),
+    approvalDecision: (requestId: number, allow: boolean) =>
+      invoke<boolean>("mcp_approval_decision", { requestId, allow }),
+  },
   /** 凭据密文复制（Rust 侧解密写剪贴板 + 定时清空；明文不回前端）。 */
   copyCredentialSecret: (id: number, field: SecretField) =>
     invoke<void>("vault_copy_credential_secret", { id, field }),

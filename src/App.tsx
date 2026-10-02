@@ -13,6 +13,9 @@ import { listen } from "@tauri-apps/api/event";
 import { HostTree } from "./hosts/HostTree";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
+// Phase 4 Task 3（C1）：MCP server 设置 + exec 逐次审批确认框（全局挂载）。
+import { McpSettings } from "./security/McpSettings";
+import { McpApprovalDialog } from "./security/McpApprovalDialog";
 import { useVaultLockStore } from "./security/VaultLockStore";
 import { useVaultInitGate } from "./security/VaultInitGate";
 import { syncLangFromVault, setLang, useLanguage } from "./i18n";
@@ -166,6 +169,8 @@ function HomeLayout() {
   // Phase 4 Task 1（缺口①）：cron 定时任务中心（顶栏入口对话框——ForwardPanel
   // 同款「全局面 → 顶栏」布局语言）。
   const [cronOpen, setCronOpen] = useState(false);
+  // Phase 4 Task 3（C1）：MCP server 设置入口。
+  const [mcpOpen, setMcpOpen] = useState(false);
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -419,6 +424,15 @@ function HomeLayout() {
         >
           {t("alert.sectionTitle")}
         </button>
+        {/* Phase 4 Task 3（C1）：MCP server 设置（开关/授权矩阵/接入说明）。 */}
+        <button
+          className="topbar-debug"
+          data-testid="open-mcp-settings"
+          aria-label={t("mcp.title")}
+          onClick={() => setMcpOpen(true)}
+        >
+          {t("mcp.title")}
+        </button>
         <button
           className="topbar-debug"
           data-testid="open-forwards"
@@ -622,6 +636,10 @@ function HomeLayout() {
       {/* Phase 4 Task 1（缺口①）：cron 定时任务中心（任务列表/手动触发/运行
           历史/下次触发；顶栏入口）。 */}
       <CronPanel open={cronOpen} onClose={() => setCronOpen(false)} />
+      {/* Phase 4 Task 3（C1）：MCP server 设置 + exec 逐次审批确认框
+          （后者事件驱动、无事件即不渲染）。 */}
+      <McpSettings open={mcpOpen} onClose={() => setMcpOpen(false)} />
+      <McpApprovalDialog />
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}

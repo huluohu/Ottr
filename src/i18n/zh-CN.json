@@ -48,6 +48,9 @@
   "hostForm": {
     "newTitle": "新建主机",
     "editTitle": "编辑主机",
+    "sectionConnection": "连接信息",
+    "sectionOptions": "分类与选项",
+    "sectionMeta": "标签与备注",
     "name": "名称",
     "namePlaceholder": "例如：生产网关",
     "host": "主机地址",
@@ -66,6 +69,7 @@
     "deleteConfirm": "确定删除主机「{{name}}」吗？",
     "credential": "凭据",
     "credentialNone": "不绑定凭据",
+    "credentialNew": "＋ 新建凭据…",
     "credentialLabel": "凭据 #{{id}} · {{kind}}",
     "encoding": "编码",
     "encodingDefault": "默认（UTF-8）",

@@ -428,10 +428,72 @@ button[data-active="true"] {
 .form-row .port {
   flex: 0 0 100px;
 }
+/* 协议同行（Phase 5 T1 三段式）：定宽不缩，名称吃剩余空间 */
+.form-row .protocol {
+  flex: 0 0 150px;
+}
 .form-row input,
 .form-row select {
   width: 100%;
   box-sizing: border-box;
+}
+
+/* --- 表单三段式（Phase 5 T1）：连接信息 / 分类与选项 / 标签与备注 ---
+   段间细分隔线 + 弱化段标题；总高度较逐行全宽布局明显收紧。 */
+.form-section + .form-section {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.form-section-title {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin-bottom: 8px;
+}
+/* 分类与选项的两列并排（分组/凭据 + 编码/跳板链；内联凭据的公钥/口令同行） */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
+/* 复选框并列行：左对齐内联标签（修复居中悬浮孤复选框——旧布局下
+   .host-form label 的 column 方向漏进 .form-check，勾选框被顶成居中悬浮） */
+.form-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.form-check-row .form-check {
+  flex: 1;
+  min-width: 220px;
+  margin-bottom: 0;
+}
+
+/* 内联凭据子表单（Phase 5 T1）：主机表单内就地展开的「新建凭据」卡 */
+.cred-inline {
+  border: 1px dashed color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: 8px;
+  padding: 10px 12px 2px;
+  margin: 2px 0 12px;
+}
+.cred-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.cred-inline-head span {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--color-accent-text);
+}
+.cred-inline-head button {
+  font-size: 0.78em;
+  box-shadow: none;
 }
 .form-error {
   margin: 0 0 12px;
@@ -1162,15 +1224,24 @@ button[data-active="true"] {
   line-height: 1;
   padding: 0 2px;
 }
-/* 表单勾选行（B11 生产标记）：横向布局 + 提示文字弱化 */
+/* 表单勾选行（B11 生产标记；Phase 5 T1 改并列左对齐）：显式 row 方向——
+   .host-form label 的 column 方向特异性更高，不显式覆盖会把勾选框顶成
+   居中悬浮（用户实测现场）；提示文字作第二行弱化。 */
 .form-check {
   display: flex;
-  align-items: center;
+  flex-direction: row;
+  align-items: flex-start;
   gap: 6px;
   margin: 4px 0;
 }
 .form-check input {
   width: auto;
+  margin-top: 2px;
+}
+.form-check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .form-check-hint {
   color: var(--fg-muted);

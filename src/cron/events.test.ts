@@ -56,14 +56,22 @@ afterEach(() => {
 });
 
 describe("cron 通知语义", () => {
-  it("默认放行：ok → success，落库 + 系统通知", async () => {
+  it("投递分级：ok → ①中心放行但 ②系统通知静默（例行成功不弹）", async () => {
     const allowed = await notifyCronRun(event({ status: "ok" }));
+    expect(allowed).toBe(true); // ok 轮放行（①落库 + ③渠道照走）
+    expect(sysCalls).toHaveLength(0);
+  });
+
+  it("异常轮照常弹系统通知（missed → warning）", async () => {
+    const allowed = await notifyCronRun(
+      event({ status: "missed", exit_code: null, error: "no live session" }),
+    );
     expect(allowed).toBe(true);
     expect(sysCalls).toHaveLength(1);
     const [title] = sysCalls[0].split("|");
     // 标题必须经 i18n 解析为文案（词典键原文 = 未解析）
     expect(title).not.toContain("notify.title.");
-    expect(titleKeyOf("ok")).toBe("notify.title.cronOk");
+    expect(titleKeyOf("missed")).toBe("notify.title.cronMissed");
   });
 
   it("severity 与标题键分档", () => {
@@ -77,17 +85,18 @@ describe("cron 通知语义", () => {
   });
 
   it("同任务 2 轮（60s 窗口内）→ 聚合 1 条（限频 key cron:{host}:{job}）", async () => {
-    expect(await notifyCronRun(event({}))).toBe(true);
-    now += 5_000; // 5s 后第二轮（每分钟任务的真实节奏）
-    expect(await notifyCronRun(event({ run_id: 2 }))).toBe(false);
+    // 用 missed 轮测聚合（异常轮才弹②——断言面）；ok 轮聚合语义相同（②本静默）
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null }))).toBe(true);
+    now += 5_000; // 5s 后第二轮（真实节奏）
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 2 }))).toBe(false);
     expect(sysCalls).toHaveLength(1); // 第二轮被聚合，只放行首条
     // 另一任务不受同窗口吞并（不同 cron_id 各自开窗）
     now += 5_000;
-    expect(await notifyCronRun(event({ cron_id: 8 }))).toBe(true);
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, cron_id: 8 }))).toBe(true);
     expect(sysCalls).toHaveLength(2);
     // 窗口（60s）过后同任务再放行
     now += 60_000;
-    expect(await notifyCronRun(event({ run_id: 3 }))).toBe(true);
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 3 }))).toBe(true);
     expect(sysCalls).toHaveLength(3);
   });
 
@@ -120,7 +129,9 @@ describe("cron 通知语义", () => {
   });
 
   it("missed 事件 host_id=0 归一为无主机（限频按 job 聚合不悬空）", async () => {
-    const allowed = await notifyCronRun(event({ status: "missed", exit_code: null, host_id: 0, error: "no live session for host 3 (not connected)" }));
+    const allowed = await notifyCronRun(
+      event({ status: "missed", exit_code: null, host_id: 0, error: "no live session for host 3 (not connected)" }),
+    );
     expect(allowed).toBe(true);
     expect(sysCalls[0]).toContain("no live session");
   });

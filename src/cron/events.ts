@@ -2,14 +2,16 @@
 // + 统一通知管线 notify(kind=cron)。
 //
 // 【通知语义裁定（简报「muted-by-default 或 kind=cron 可静音」二选一）】
-// 选 **kind=cron 独立静音位、默认不静音**（NotificationCenter 类型区多一档）：
-// * cron 完成通知走完整管线（①中心 + ②系统 + ③按 cron_jobs.channels 订阅的
-//   外部渠道），默认可见——「任务跑完/跑挂了」是运维要害面，默认静音会把
-//   失败吞进历史表；
+// 选 **kind=cron 独立静音位、默认不静音**（NotificationCenter 类型区多一档），
+// 叠加**投递分级**（真窗实验 2026-10-02 的噪音实证驱动，见 task-1-report §6）：
+// * ①中心：每轮都进（运行历史流；CronPanel 另有专史）；
+// * ②系统通知：仅 failed/timeout/missed（例行走完的成功是噪音——transfer
+//   「成功不通知」同款先例；真窗实测每分钟 ok 轮逐分钟弹系统通知不可接受）；
+// * ③外部渠道：按 cron_jobs.channels 显式订阅路由（订阅含 ok 轮——「任务
+//   完成推送」是订阅的本意，spec §7③）。
 // * 风暴面由管线既有两道闸兜住：限频 key 细化到 `cron:{host}:{job}`
-//   （core.rateKeyOf 扩展，alert:host:rule 同款）——同任务 60s 窗口聚合一条；
-//   系统通知前台静默。每分钟任务 ≤1 条/分（聚合语义，真夹具端到端的
-//   「2 轮 → 通知 1 条」即此口径）；嫌吵的用户按 kind 静音一行开关。
+//   （core.rateKeyOf 扩展，alert:host:rule 同款）——同任务 60s 窗口聚合一条
+//   （每分钟任务 2 轮落同一窗口时 → 1 条，端到端口径）；嫌吵按 kind 静音。
 // * severity：ok=success / missed=warning / failed|timeout=error。
 //
 // 【宿主裁定】事件源在 Rust 调度器（关窗到托盘照发）；本监听在 webview——
@@ -57,21 +59,25 @@ export function notifyCronRun(event: CronRunEvent): Promise<boolean> {
   const detail =
     event.error ??
     (event.exit_code != null ? `exit ${event.exit_code}` : `${event.duration_ms}ms`);
-  return notify({
-    kind: "cron",
-    severity: severityOf(event.status),
-    host_id: event.host_id === 0 ? null : event.host_id,
-    title_key: titleKeyOf(event.status),
-    body: `${hostName} · ${detail}`,
-    payload: {
-      cron_id: event.cron_id,
-      channel_ids: event.channel_ids,
-      status: event.status,
-      exit_code: event.exit_code,
-      duration_ms: event.duration_ms,
-      output_digest: event.output_digest,
+  return notify(
+    {
+      kind: "cron",
+      severity: severityOf(event.status),
+      host_id: event.host_id === 0 ? null : event.host_id,
+      title_key: titleKeyOf(event.status),
+      body: `${hostName} · ${detail}`,
+      payload: {
+        cron_id: event.cron_id,
+        channel_ids: event.channel_ids,
+        status: event.status,
+        exit_code: event.exit_code,
+        duration_ms: event.duration_ms,
+        output_digest: event.output_digest,
+      },
     },
-  });
+    // ②系统通知仅异常轮（ok 例行成功静默；③渠道不受影响——订阅面照推）
+    { system: event.status !== "ok" },
+  );
 }
 
 /** 注册 cron 运行事件监听（幂等；App 挂载链调用一次）。 */

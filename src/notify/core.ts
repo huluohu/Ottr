@@ -155,6 +155,14 @@ function eventTitle(event: NotificationEvent): string {
   return i18n.t(event.title_key);
 }
 
+/** 投递面开关（可选；缺省 = 全开）。`system` = ②系统通知；cron 完成的
+ * ok 轮静默②（Phase 4 Task 1 裁定：例行走完的例行成功是噪音——transfer
+ * 「成功不通知」同款先例；失败/missed 照常弹）。③外部渠道不受此开关影响
+ * （显式订阅 = 用户要这条流，cron_jobs.channels 订阅 ok 轮照推）。 */
+export interface NotifyDelivery {
+  system?: boolean;
+}
+
 /**
  * 管线入口：静音 → 限频 → ①落库（红点/列表）→ ②系统通知（前台静默）→
  * ③渠道分发。返回是否放行（测试断言面）。
@@ -162,7 +170,10 @@ function eventTitle(event: NotificationEvent): string {
  * 任何一步失败都不抛（通知是尽力而为面）：落库失败跳过①继续②③；②③失败
  * 只记 console——通知链路故障不得反噬事件源（传输/会话状态机）。
  */
-export async function notify(event: NotificationEvent): Promise<boolean> {
+export async function notify(
+  event: NotificationEvent,
+  deliver: NotifyDelivery = {},
+): Promise<boolean> {
   const { muted } = useNotifyStore.getState();
   if (muted.includes(event.kind)) {
     return false; // 静音：管线入口丢弃（不落表不弹不分发）
@@ -201,8 +212,8 @@ export async function notify(event: NotificationEvent): Promise<boolean> {
     console.warn("[notify] insert failed:", e);
   }
 
-  // ② 系统通知（前台静默）
-  if (!ports.focused()) {
+  // ② 系统通知（前台静默；deliver.system=false = 事件级静默——cron ok 轮）
+  if (deliver.system !== false && !ports.focused()) {
     try {
       await ports.system(eventTitle(event), event.body);
     } catch (e) {

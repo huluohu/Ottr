@@ -1,6 +1,6 @@
 #!/bin/bash
 # WebDAV 夹具启动（Phase 5 Task 2，spike-sshd.sh 同纪律）：dufs 容器
-# （fixtures/dufs/Dockerfile，v0.46.0 摘要钉版）供 src/sync/webdav.dufs.test.ts
+# （fixtures/dufs/Dockerfile，v0.46.0 摘要钉版）(--enable-cors：webview 生产面 fetch 需 Access-Control-Allow-Origin，T5 走查实测补) 供 src/sync/webdav.dufs.test.ts
 # 端到端 roundtrip。凭据钉死 user:pass（测试常量对齐）。
 set -euo pipefail
 cd "$(dirname "$0")/../fixtures"
@@ -11,7 +11,7 @@ docker rm -f ottr-dufs 2>/dev/null || true
 DUFS_DATA="$(mktemp -d /tmp/ottr-dufs-data-XXXX)"
 docker run -d --name ottr-dufs -p 15773:5000 \
   -v "$DUFS_DATA:/data" ottr-dufs \
-  /data -b 0.0.0.0 -a "user:pass@/:rw" --allow-upload --allow-delete
+  /data -b 0.0.0.0 -a "user:pass@/:rw" --allow-upload --allow-delete --enable-cors
 
 # 等就绪（未授权探针 401 = 服务活了；最多 30s）
 for i in $(seq 1 30); do

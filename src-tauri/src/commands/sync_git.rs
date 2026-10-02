@@ -38,7 +38,6 @@
 //! （InMemoryStorage 先例：CI 无桌面环境），命令体薄包装不过自动化。
 //! 边界声明（fix round 1 Minor-3）：口令明文过 invoke 参数（webview→Rust
 //! IPC 进程内传递，落盘面只在钥匙链）——沿 T11 vault unlock 已知边界。
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};

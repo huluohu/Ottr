@@ -1946,6 +1946,45 @@ button[data-active="true"] {
   text-align: center;
   margin: 12px 0;
 }
+/* 投递失败面（Phase 5 T1，BL-517）：条目下方失败行——状态标签 + 渠道名 +
+   错误摘要（截断，title 悬停全文）+ 手动重发；danger 语义色与 badge 同源。 */
+.notify-dlv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px 6px;
+  margin-top: -2px;
+}
+.notify-dlv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.78em;
+}
+.notify-dlv-status {
+  flex: none;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.notify-dlv-channel {
+  flex: none;
+  color: var(--fg-muted);
+}
+.notify-dlv-error {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notify-dlv-resend {
+  flex: none;
+  font-size: 0.9em;
+  box-shadow: none;
+  padding: 2px 8px;
+}
 .notify-mute {
   border-top: 1px solid var(--border-subtle);
   margin-top: 8px;

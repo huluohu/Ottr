@@ -3,18 +3,30 @@
 // 在 core.test.ts）；invoke 全量 mock（真后端已接线，命令断言走 invoke 面）。
 // 注意：打开面板即 refresh 对齐真源（core.ts 语义）——seed 数据必须同步进
 // mock 后端（seedBackend），否则刷新会用 mock 空值覆盖本地态。
+// Phase 5 T1（BL-517）：投递失败块（状态+渠道+错误）+ 手动重发按钮——失败
+// 标记经 recordDeliveryFailure 入账（账本才是 refresh 重贴的真源，直塞 payload
+// 会被 refresh 剥掉）；重发走 mock 的 channelRegistry.resendNotification。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./channelRegistry", () => ({ resendNotification: vi.fn() }));
 
 import "../i18n";
 import { NotificationCenter } from "./NotificationCenter";
-import { useNotifyStore, type NotifyKind } from "./core";
+import {
+  clearDeliveryFailure,
+  recordDeliveryFailure,
+  resetDeliveryLedger,
+  useNotifyStore,
+  type NotifyKind,
+} from "./core";
+import { resendNotification } from "./channelRegistry";
 import type { Notification } from "../vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
+const mockedResend = resendNotification as unknown as Mock;
 
 function row(over: Partial<Notification> = {}): Notification {
   return {
@@ -70,6 +82,8 @@ function seedBackend(items: Notification[], unread: number, muted: NotifyKind[] 
 
 beforeEach(() => {
   mockedInvoke.mockReset();
+  resetDeliveryLedger();
+  mockedResend.mockReset();
   seedBackend([], 0);
 });
 
@@ -219,5 +233,64 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
     await openPanel();
     await waitFor(() => expect(screen.getByTestId("notify-item-9")).toBeTruthy());
     expect(screen.getByTestId("notify-badge").textContent).toBe("1");
+  });
+});
+
+describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", () => {
+  const failure = { channel: "slack#3", channel_id: 3, error: "HTTP 502: bad gateway", ts: 1759084800 };
+
+  /** seed 一条带投递失败账的条目（账本入账——refresh 重贴的真源）。 */
+  function seedFailed(id: number) {
+    seedBackend([row({ id, payload: { transfer_id: "xfer-1" } })], 1);
+    recordDeliveryFailure(id, failure);
+  }
+
+  it("失败块渲染：状态标签 + 渠道名 + 错误摘要；refresh 重贴后仍在", async () => {
+    seedFailed(21);
+    render(<NotificationCenter />);
+    await openPanel();
+    const block = screen.getByTestId("notify-dlv-21");
+    expect(block.textContent).toContain("Delivery failed");
+    expect(block.textContent).toContain("Slack"); // 渠道名走 alert.kind 词典
+    expect(block.textContent).toContain("HTTP 502: bad gateway");
+    const btn = screen.getByTestId("notify-resend-21") as HTMLButtonElement;
+    expect(btn.getAttribute("data-channel")).toBe("slack#3");
+    expect(btn.textContent).toBe("Resend");
+  });
+
+  it("点击重发 → 调 resendNotification(item, failure)；翻正清账后失败块消失", async () => {
+    seedFailed(21);
+    mockedResend.mockImplementation(async (r, f) => {
+      // 模拟生产翻正链路：装饰器 onDelivered 缺省回执清账
+      clearDeliveryFailure((r as Notification).id, (f as { channel: string }).channel);
+      return true;
+    });
+    render(<NotificationCenter />);
+    await openPanel();
+    fireEvent.click(screen.getByTestId("notify-resend-21"));
+    await waitFor(() => expect(resendNotification).toHaveBeenCalledTimes(1));
+    expect(mockedResend.mock.calls[0][0].id).toBe(21);
+    expect(mockedResend.mock.calls[0][1]).toEqual(failure);
+    await waitFor(() => expect(screen.queryByTestId("notify-dlv-21")).toBeNull());
+  });
+
+  it("重发在途：按钮禁用并显示 Resending…；完成后恢复可用", async () => {
+    seedFailed(22);
+    let resolve!: (v: boolean) => void;
+    mockedResend.mockImplementation(
+      () =>
+        new Promise<boolean>((r) => {
+          resolve = r;
+        }),
+    );
+    render(<NotificationCenter />);
+    await openPanel();
+    fireEvent.click(screen.getByTestId("notify-resend-22"));
+    const btn = screen.getByTestId("notify-resend-22") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toBe("Resending…");
+    resolve(true);
+    await waitFor(() => expect(btn.disabled).toBe(false));
+    expect(btn.textContent).toBe("Resend");
   });
 });

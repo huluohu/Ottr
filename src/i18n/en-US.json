@@ -560,7 +560,10 @@
     "kindAi": "AI",
     "kindAlert": "Alerts",
     "kindSecurity": "Security",
-    "kindCron": "Scheduled tasks"
+    "kindCron": "Scheduled tasks",
+    "deliveryFailed": "Delivery failed",
+    "resend": "Resend",
+    "resending": "Resending…"
   },
   "knownHosts": {
     "title": "Known host keys",

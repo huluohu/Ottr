@@ -2,6 +2,7 @@
 // 冻结（spec §7 渠道矩阵）+ 业务码校验 + 错误浮出。HTTP 全走注入的 fetchImpl
 // （Mock 记录请求；零真发）。文案键经真实 i18n（en-US fallback 断言）。
 import { describe, expect, it, vi } from "vitest";
+import type { NotificationEvent } from "../core";
 
 type Req = { url: string; init: RequestInit };
 
@@ -335,6 +336,42 @@ describe("工厂分派 + 注册表挂载/路由", () => {
     }
   });
 
+  it("createChannel 的 send 经重试装饰（5xx 重试；业务码不重试；test 不装饰）", async () => {
+    const { createChannel } = await import("./factory");
+
+    // 5xx：第二次重试成功——send 挂后台队列，flush 后请求共 2 次
+    const retried = mockFetch((_req, nth) => (nth === 0 ? new Response("down", { status: 502 }) : ok204()));
+    const ch = createChannel(
+      "webhook",
+      { url: "https://e.com" },
+      { fetchImpl: retried.impl, delay: async () => {} },
+    );
+    await ch.send(alertEvent);
+    await (ch as import("./retry").RetryChannel).flush();
+    expect(retried.calls).toHaveLength(2);
+
+    // 业务码（钉钉 errcode≠0）：不重试，恰 1 次请求
+    const biz = mockFetch(() => okJson({ errcode: 310000 }));
+    const ch2 = createChannel(
+      "dingtalk",
+      { webhook: "https://d" },
+      { fetchImpl: biz.impl, delay: async () => {} },
+    );
+    await ch2.send(alertEvent);
+    await (ch2 as import("./retry").RetryChannel).flush();
+    expect(biz.calls).toHaveLength(1);
+
+    // test() 原样抛（错误立即上屏），不走退避
+    const down = mockFetch(() => new Response("x", { status: 500 }));
+    const ch3 = createChannel(
+      "webhook",
+      { url: "https://e.com" },
+      { fetchImpl: down.impl, delay: async () => {} },
+    );
+    await expect(ch3.test()).rejects.toThrow("HTTP 500");
+    expect(down.calls).toHaveLength(1);
+  });
+
   it("remountChannels：读启用渠道→reveal→挂载；subscribed 按规则 channels 路由", async () => {
     vi.doMock("../../vault/api", () => ({
       vaultApi: {
@@ -364,5 +401,76 @@ describe("工厂分派 + 注册表挂载/路由", () => {
     expect(mounted.subscribed!({ ...alertEvent, kind: "transfer", payload: {} })).toBe(false);
     channels.length = 0;
     vi.doUnmock("../../vault/api");
+  });
+
+  it("resendNotification：按挂载名回查渠道、行重建事件（剥失败标记）重跑 send；未挂载/抛错 = false", async () => {
+    const { resendNotification } = await import("../channelRegistry");
+    const { channels, recordDeliveryFailure, readDeliveryFailures, useNotifyStore } =
+      await import("../core");
+    const { withRetry } = await import("./retry");
+    const seen: { event: NotificationEvent; ctx: unknown }[] = [];
+    // 装饰后的渠道（生产挂载形态）：首发成功 → onDelivered 清账
+    channels.push(
+      withRetry(
+        {
+          name: "slack#3",
+          send: async (e, ctx) => void seen.push({ event: e, ctx }),
+          test: async () => {},
+        },
+        {},
+      ),
+    );
+
+    const row = {
+      id: 11,
+      kind: "alert",
+      severity: "warning",
+      host_id: 7,
+      title_key: "alert.title.disk",
+      body: "web-01 disk /",
+      payload: { rule_id: 1 },
+      read: false,
+      ts: 1000,
+    } as import("../../vault/api").Notification;
+    useNotifyStore.setState({ items: [row], unread: 0 });
+    // 此前终败的账面（recordDeliveryFailure → payload 带失败标记）
+    recordDeliveryFailure(11, { channel: "slack#3", channel_id: 3, error: "HTTP 502", ts: 1 });
+    expect(readDeliveryFailures(useNotifyStore.getState().items[0].payload)).toHaveLength(1);
+
+    const ok = await resendNotification(row, { channel: "slack#3", channel_id: 3, error: "HTTP 502", ts: 1 });
+    expect(ok).toBe(true); // 重发翻正 → 标记清空
+    expect(readDeliveryFailures(useNotifyStore.getState().items[0].payload)).toEqual([]);
+    expect(seen).toHaveLength(1);
+    // ctx（notificationId）是装饰器与管线的内部面：适配器只收事件本体；
+    // notificationId 的流转已由「翻正 → 标记清空」（onDelivered 需它定位条目）证实
+    expect(seen[0].ctx).toBeUndefined();
+    expect(seen[0].event).toMatchObject({
+      kind: "alert",
+      severity: "warning",
+      host_id: 7,
+      title_key: "alert.title.disk",
+      body: "web-01 disk /",
+    });
+    // 重建的事件剥掉失败标记（重发不自带旧账）
+    expect((seen[0].event.payload as Record<string, unknown>)["delivery_failed"]).toBeUndefined();
+    expect((seen[0].event.payload as Record<string, unknown>)["rule_id"]).toBe(1);
+
+    // 未挂载渠道（名字对不上）→ false 不抛
+    expect(
+      await resendNotification(row, { channel: "gone#9", channel_id: 9, error: "e", ts: 1 }),
+    ).toBe(false);
+
+    // send 抛（不可重试面由装饰器兜，这里是未装饰渠道的防御）→ false 不抛
+    channels[0] = {
+      name: "slack#3",
+      send: async () => {
+        throw new Error("boom");
+      },
+      test: async () => {},
+    };
+    expect(
+      await resendNotification(row, { channel: "slack#3", channel_id: 3, error: "e", ts: 1 }),
+    ).toBe(false);
+    channels.length = 0;
   });
 });

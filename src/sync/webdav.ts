@@ -30,6 +30,10 @@ export interface WebdavDeps {
 
 const DEFAULT_REMOTE_PATH = "ottr-sync.json";
 
+// 注记：push 是裸 PUT——WebDAV 服务器对「父目录不存在」普遍返回 404/409
+// （dufs 实测 404），本通道不自动 MKCOL（最小面）；remotePath 请落在服务器
+// 侧已存在的目录下（自建服务器/网盘默认根目录即可）。
+
 /** Basic 认证头值（UTF-8 安全：btoa 只吃 latin1，先过 UTF-8 字节化）。 */
 export function basicAuthHeader(username: string, password: string): string {
   const bytes = new TextEncoder().encode(`${username}:${password}`);

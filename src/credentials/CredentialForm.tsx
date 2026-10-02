@@ -4,36 +4,31 @@
 //   totp → totp_secret（base32 粗检）。
 // 明文纪律：编辑模式不回填现有密钥（明文只经 credentials.reveal 单点出库），
 // 留空 = CredentialPatch null = 保留现值（Rust 侧「未重输的密钥不重密封」）。
-// 校验（裁定 #6）：password/key 主体非空 + 私钥 PEM 粗检 + TOTP base32 字符集粗检。
+// 校验（裁定 #6）：password/key 主体非空 + 私钥 PEM 粗检 + TOTP base32 字符集粗检
+// ——规则本体已抽至 credentialDraft.ts（Phase 5 T1：HostForm「＋ 新建凭据…」
+// 内联子表单共用同一套），本组件只做挂载与提交。
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { Credential, CredentialInput, CredentialKind, CredentialPatch } from "../vault/api";
+import type { Credential, CredentialKind, CredentialPatch } from "../vault/api";
 import { useVaultStore } from "../vault/store";
+import {
+  CREDENTIAL_KINDS,
+  PASSWORD_LIKE_KINDS,
+  credentialInputFrom,
+  validateCredentialDraft,
+} from "./credentialDraft";
+
+/** 「必填」类错误键（编辑模式留空豁免面，见 validate）。 */
+const REQUIRED_KEYS = [
+  "credentialForm.errSecretRequired",
+  "credentialForm.errPrivateKeyRequired",
+  "credentialForm.errTotpRequired",
+];
 
 export interface CredentialFormProps {
   /** 非空 = 编辑模式；null = 新建。 */
   credential: Credential | null;
   onClose: () => void;
-}
-
-/** 凭据类型候选（Phase 2 Task 5：+ ftp/ftps——密码型，见 kind_ftp/kind_ftps）。 */
-const KINDS: CredentialKind[] = ["password", "key", "totp", "ftp", "ftps"];
-
-/** 密码型凭据（secret 字段面与 password 完全一致）。 */
-const PASSWORD_LIKE: CredentialKind[] = ["password", "ftp", "ftps"];
-
-/** TOTP secret base32 粗检（裁定 #6）：RFC 4648 字符集（A-Z、2-7）+ `=` 填充，
- * 忽略空格；只查字符集与最短长度（8），不校验 padding 对齐——粗检把 obviously
- * 错误的输入挡在 UI，base32 严格解码属 TOTP 生成器（后续任务）。 */
-export function isRoughBase32(value: string): boolean {
-  const s = value.replace(/\s+/g, "");
-  return s.length >= 8 && /^[A-Za-z2-7]+={0,6}$/.test(s);
-}
-
-/** 私钥 PEM 粗检：openssh / PKCS#8 / PKCS#1 / PuTTY PPK 一律放行（russh 支持面，
- * 见 ottr-ssh keygen 模块 doc），只挡明显不是私钥的输入。 */
-export function looksLikePrivateKey(pem: string): boolean {
-  return pem.includes("-----BEGIN") && pem.includes("PRIVATE KEY-----");
 }
 
 export function CredentialForm({ credential, onClose }: CredentialFormProps) {
@@ -51,36 +46,20 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   const [submitting, setSubmitting] = useState(false);
 
   function validate(): boolean {
-    // 编辑模式密钥留空 = 保留现值（patch null），只拦「新建必填」与「重输格式错」
-    if (PASSWORD_LIKE.includes(kind)) {
-      if (secret.trim() === "") {
-        if (credential == null) {
-          setError(t("credentialForm.errSecretRequired"));
-          return false;
-        }
-      }
-    } else if (kind === "key" && secret.trim() !== "" && !looksLikePrivateKey(secret)) {
-      setError(t("credentialForm.errPrivateKeyMalformed"));
-      return false;
-    } else if (kind === "key" && secret.trim() === "") {
-      if (credential == null) {
-        setError(t("credentialForm.errPrivateKeyRequired"));
-        return false;
-      }
+    const errKey = validateCredentialDraft({ kind, secret, keyPub, passphrase, totpSecret });
+    if (errKey == null) {
+      setError(null);
+      return true;
     }
-    if (kind === "totp") {
-      if (totpSecret.trim() === "") {
-        if (credential == null) {
-          setError(t("credentialForm.errTotpRequired"));
-          return false;
-        }
-      } else if (!isRoughBase32(totpSecret)) {
-        setError(t("credentialForm.errTotpBase32"));
-        return false;
-      }
+    // 编辑模式豁免：「必填」类错误 = 字段留空 = 保留现值（patch null 承接，
+    // Rust 侧「未重输的密钥不重密封」）；「格式错」类（重输了但格式不对）仍拦。
+    // 三个 err*Required 键只在对应字段为空时产生，豁免无需再查字段值。
+    if (credential != null && REQUIRED_KEYS.includes(errKey)) {
+      setError(null);
+      return true;
     }
-    setError(null);
-    return true;
+    setError(t(errKey));
+    return false;
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -99,14 +78,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
         };
         await updateCredential(credential.id, patch);
       } else {
-        const input: CredentialInput = {
-          kind,
-          secret: secret === "" ? null : secret,
-          key_pub: keyPub.trim() === "" ? null : keyPub.trim(),
-          passphrase: passphrase === "" ? null : passphrase,
-          totp_secret: totpSecret === "" ? null : totpSecret,
-        };
-        await createCredential(input);
+        await createCredential(credentialInputFrom({ kind, secret, keyPub, passphrase, totpSecret }));
       }
       onClose();
     } catch (err) {
@@ -138,7 +110,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
               setError(null);
             }}
           >
-            {KINDS.map((k) => (
+            {CREDENTIAL_KINDS.map((k) => (
               <option key={k} value={k}>
                 {t(`credentials.kind_${k}`)}
               </option>
@@ -146,7 +118,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
           </select>
         </label>
 
-        {PASSWORD_LIKE.includes(kind) && (
+        {PASSWORD_LIKE_KINDS.includes(kind) && (
           <label>
             <span>{t("credentialForm.secret")}</span>
             <span className="secret-field">

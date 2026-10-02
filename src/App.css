@@ -93,6 +93,7 @@ button[data-active="true"] {
   flex: none;
   display: flex;
   align-items: center;
+  flex-wrap: wrap; /* 窄窗兜底：按钮整只换行（绝无字内竖排折行） */
   gap: 12px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-subtle);
@@ -100,6 +101,14 @@ button[data-active="true"] {
 .topbar-title {
   font-weight: 700;
   color: var(--color-accent-text);
+}
+/* Phase 5 T1 顶栏收纳：栏面条目整只不缩（防「命令面板」挤成竖排字的现场），
+   溢出压力交给 spacer / 整行换行兜底。 */
+.topbar-title,
+.topbar button,
+.topbar-menu {
+  flex: none;
+  white-space: nowrap;
 }
 .topbar-palette kbd {
   font: inherit;
@@ -111,12 +120,62 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 .topbar-spacer {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .topbar-debug {
   font-size: 0.8em;
   color: var(--fg-muted);
   box-shadow: none;
+}
+
+/* --- 顶栏下拉（Phase 5 T1）：「工具」菜单 + 主题单按钮下拉共用壳 ---
+   层次对齐 notify-panel（z 60）；绝对定位弹出，不挤压栏面布局。 */
+.topbar-menu {
+  position: relative;
+}
+.topbar-menu > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8em;
+  box-shadow: none;
+  color: var(--fg-muted);
+}
+.topbar-caret {
+  font-size: 0.75em;
+  line-height: 1;
+}
+.topbar-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--scrim);
+  padding: 4px;
+  z-index: 60;
+}
+.topbar-menu-list button {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: inherit;
+}
+.topbar-menu-list button:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+}
+.topbar-menu-list button[data-active="true"] {
+  color: var(--color-accent-text);
 }
 
 .app-body {
@@ -369,10 +428,72 @@ button[data-active="true"] {
 .form-row .port {
   flex: 0 0 100px;
 }
+/* 协议同行（Phase 5 T1 三段式）：定宽不缩，名称吃剩余空间 */
+.form-row .protocol {
+  flex: 0 0 150px;
+}
 .form-row input,
 .form-row select {
   width: 100%;
   box-sizing: border-box;
+}
+
+/* --- 表单三段式（Phase 5 T1）：连接信息 / 分类与选项 / 标签与备注 ---
+   段间细分隔线 + 弱化段标题；总高度较逐行全宽布局明显收紧。 */
+.form-section + .form-section {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.form-section-title {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  margin-bottom: 8px;
+}
+/* 分类与选项的两列并排（分组/凭据 + 编码/跳板链；内联凭据的公钥/口令同行） */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
+/* 复选框并列行：左对齐内联标签（修复居中悬浮孤复选框——旧布局下
+   .host-form label 的 column 方向漏进 .form-check，勾选框被顶成居中悬浮） */
+.form-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.form-check-row .form-check {
+  flex: 1;
+  min-width: 220px;
+  margin-bottom: 0;
+}
+
+/* 内联凭据子表单（Phase 5 T1）：主机表单内就地展开的「新建凭据」卡 */
+.cred-inline {
+  border: 1px dashed color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border-radius: 8px;
+  padding: 10px 12px 2px;
+  margin: 2px 0 12px;
+}
+.cred-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.cred-inline-head span {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--color-accent-text);
+}
+.cred-inline-head button {
+  font-size: 0.78em;
+  box-shadow: none;
 }
 .form-error {
   margin: 0 0 12px;
@@ -888,7 +1009,10 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 
-/* --- A10 主题切换器（Task 8 设置页前的临时控件，驻顶栏） --- */
+/* --- A10 主题切换器（f388463 回归修复）：顶栏三联按钮虽已改单按钮下拉
+   （.topbar-menu 壳），但设置页 SecuritySettings 的外观分区仍渲染
+   .theme-switch 三联按钮——样式原样保留（自 f388463^ 找回），否则回落
+   全局按钮样式（视觉回归）。 --- */
 .theme-switch {
   display: flex;
   gap: 6px;
@@ -1115,15 +1239,29 @@ button[data-active="true"] {
   line-height: 1;
   padding: 0 2px;
 }
-/* 表单勾选行（B11 生产标记）：横向布局 + 提示文字弱化 */
+/* 表单勾选行（B11 生产标记；Phase 5 T1 改并列左对齐）：显式 row 方向——
+   .host-form label 的 column 方向特异性更高，不显式覆盖会把勾选框顶成
+   居中悬浮（用户实测现场）；提示文字作第二行弱化。 */
 .form-check {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   margin: 4px 0;
 }
+/* row 方向必须带 .host-form 前缀：(0,1,0) 的裸 .form-check 输给
+   (0,1,1) 的 .host-form label（column），裸写是死规则（headless Chromium
+   渲染实证）；加前缀到 (0,2,0) 才真正赢回左对齐内联。 */
+.host-form .form-check {
+  flex-direction: row;
+}
 .form-check input {
   width: auto;
+  margin-top: 2px;
+}
+.form-check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .form-check-hint {
   color: var(--fg-muted);
@@ -1808,6 +1946,45 @@ button[data-active="true"] {
   text-align: center;
   margin: 12px 0;
 }
+/* 投递失败面（Phase 5 T1，BL-517）：条目下方失败行——状态标签 + 渠道名 +
+   错误摘要（截断，title 悬停全文）+ 手动重发；danger 语义色与 badge 同源。 */
+.notify-dlv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px 6px;
+  margin-top: -2px;
+}
+.notify-dlv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.78em;
+}
+.notify-dlv-status {
+  flex: none;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.notify-dlv-channel {
+  flex: none;
+  color: var(--fg-muted);
+}
+.notify-dlv-error {
+  flex: 1;
+  min-width: 0;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notify-dlv-resend {
+  flex: none;
+  font-size: 0.9em;
+  box-shadow: none;
+  padding: 2px 8px;
+}
 .notify-mute {
   border-top: 1px solid var(--border-subtle);
   margin-top: 8px;
@@ -2174,6 +2351,22 @@ button[data-active="true"] {
 .forward-actions button {
   font-size: 11.5px;
   padding: 3px 9px;
+}
+/* CronPanel 展开历史（Phase 4 走查 OBS-1 修复）：.forward-row 是横排 flex，
+   展开区 <ul.cron-runs> 作为其 flex 子项会被挤压成视觉不可见——「点历史
+   无响应」的真窗形态。cron-row 允许换行，cron-runs 独占一行完整铺开。 */
+.forward-row.cron-row {
+  flex-wrap: wrap;
+}
+.cron-runs {
+  flex-basis: 100%;
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 2px 0;
+  border-top: 1px dashed var(--color-border, rgba(128, 128, 128, 0.25));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .forward-flag {
   display: inline-flex;
@@ -3231,4 +3424,56 @@ button[data-active="true"] {
 .kh-probe-dialog,
 .kh-delete-dialog {
   max-width: 560px;
+}
+
+/* --- 同步（Phase 5 Task 4）：冲突裁定行 / 双侧对照 / 覆盖预告 / 范围勾选 --- */
+.sync-conflict-row {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sync-conflict-row legend {
+  font-size: 0.9em;
+  font-weight: 600;
+  padding: 0 4px;
+}
+.sync-conflict-sides {
+  display: flex;
+  gap: 16px;
+}
+.sync-conflict-sides > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.sync-conflict-sides h4 {
+  margin: 0 0 4px;
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+.sync-entries {
+  margin: 2px 0 6px;
+  padding-left: 18px;
+  font-size: 0.86em;
+  max-height: 132px;
+  overflow: auto;
+  word-break: break-all;
+}
+.sync-overwrite-disclosure {
+  border: 1px solid color-mix(in srgb, var(--color-danger, #c0392b) 45%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--color-danger, #c0392b) 8%, transparent);
+}
+.sync-overwrite-disclosure .form-error {
+  margin: 0 0 4px;
+}
+.sync-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0;
 }

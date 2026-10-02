@@ -43,11 +43,15 @@
     "terminalThemeHint": "Terminal colors are independent of the interface light/dark mode. Import iTerm2 (.itermcolors) or Windows Terminal scheme (.json) files.",
     "terminalThemeImport": "Import color scheme…",
     "terminalThemeImported": "Imported {{count}} scheme(s); the first is selected.",
-    "terminalThemeImportFailed": "Import failed: {{message}}"
+    "terminalThemeImportFailed": "Import failed: {{message}}",
+    "sectionSync": "Sync"
   },
   "hostForm": {
     "newTitle": "New Host",
     "editTitle": "Edit Host",
+    "sectionConnection": "Connection",
+    "sectionOptions": "Classification & Options",
+    "sectionMeta": "Tags & Notes",
     "name": "Name",
     "namePlaceholder": "e.g. production gateway",
     "host": "Host",
@@ -66,6 +70,7 @@
     "deleteConfirm": "Delete host \"{{name}}\"?",
     "credential": "Credential",
     "credentialNone": "No credential",
+    "credentialNew": "＋ New credential…",
     "credentialLabel": "Credential #{{id}} · {{kind}}",
     "encoding": "Encoding",
     "encodingDefault": "Default (UTF-8)",
@@ -95,6 +100,8 @@
     "addHost": "New Host",
     "addGroup": "New Group",
     "groupNamePlaceholder": "Group name",
+    "groupDuplicate": "A group with this name already exists",
+    "groupCreateFailed": "Create failed: {{message}}",
     "ungrouped": "Ungrouped",
     "tagsFilter": "Tags",
     "allTags": "All",
@@ -159,6 +166,9 @@
     "minimize": "Minimize",
     "maximize": "Maximize / Restore",
     "close": "Close"
+  },
+  "topbar": {
+    "tools": "Tools"
   },
   "credentials": {
     "openButton": "Credentials",
@@ -551,7 +561,10 @@
     "kindAi": "AI",
     "kindAlert": "Alerts",
     "kindSecurity": "Security",
-    "kindCron": "Scheduled tasks"
+    "kindCron": "Scheduled tasks",
+    "deliveryFailed": "Delivery failed",
+    "resend": "Resend",
+    "resending": "Resending…"
   },
   "knownHosts": {
     "title": "Known host keys",
@@ -618,7 +631,7 @@
     "auditIntervalDays": "{{count}} d",
     "sudoAutofill": "sudo password autofill",
     "sudoAutofillHint": "When a sudo password prompt is detected, the password credential bound to this host is typed automatically (master-password mode only).",
-    "sudoAutofillWarn": "When enabled, Ottr writes the bound credential's plaintext password into the remote terminal whenever a sudo prompt is detected. Prompts can be faked by malicious programs to steal passwords; enable only for hosts you trust. Enable?",
+    "sudoAutofillWarn": "When enabled, Ottr writes the bound credential's plaintext password into the remote terminal whenever a sudo prompt is detected. Prompts can be faked by malicious programs to steal passwords; enable only for hosts you trust. If the bound credential does not match the host's actual sudo password, autofill will fail repeatedly (sudo keeps re-prompting until it aborts). Enable?",
     "sudoAutofillAccept": "Enable",
     "lockScreen": {
       "title": "Ottr is locked",
@@ -958,6 +971,113 @@
       "free": "Memory",
       "uptime": "Uptime",
       "dockerPs": "Containers"
+    }
+  },
+  "sync": {
+    "sectionTitle": "Sync",
+    "channel": "Sync channel",
+    "channelWebdav": "WebDAV",
+    "channelGit": "Git repository",
+    "channelLocaldir": "Local directory",
+    "channelHint": "The envelope (AES-256-GCM) travels over the chosen channel; channel config stays on this machine (encrypted with the vault) and never syncs.",
+    "webdav": {
+      "server": "Server URL",
+      "serverPlaceholder": "https://dav.example.com",
+      "remotePath": "Remote path",
+      "remotePathPlaceholder": "ottr-sync.json",
+      "username": "Username",
+      "password": "Password",
+      "hint": "Overwrite write (PUT); the remote path must live inside a directory that already exists on the server."
+    },
+    "git": {
+      "repoUrl": "Repository URL",
+      "branch": "Branch",
+      "token": "Access token (optional)",
+      "tokenHint": "Tokens are only embedded into https URLs: they appear briefly in the temp clone and process arguments (visible locally). Prefer a system credential helper.",
+      "hint": "Uses the system git; credentials come from your credential helper / ssh config."
+    },
+    "localdir": {
+      "dir": "Sync directory",
+      "choose": "Choose directory…",
+      "hint": "The envelope is written into the chosen directory (ottr-sync.json); directory access reuses the file-transfer grant mechanism."
+    },
+    "passphrase": {
+      "title": "Envelope passphrase",
+      "statusSet": "Saved in keychain",
+      "statusUnset": "Not set",
+      "set": "Set passphrase",
+      "change": "Change passphrase",
+      "new": "New passphrase",
+      "confirm": "Confirm passphrase",
+      "hint": "The passphrase lives in the system keychain (same store as the master password, separate entry) and is applied automatically; only this passphrase can open the cloud data.",
+      "changeHint": "A change takes effect on the next push; until overwritten, the old envelope stays openable on other devices.",
+      "forget": "Forget saved passphrase",
+      "errEmpty": "Passphrase must not be empty",
+      "errMismatch": "Passphrases do not match"
+    },
+    "test": "Test connection",
+    "testing": "Testing…",
+    "testOk": "Connection OK",
+    "testFail": "Connection failed",
+    "save": "Save",
+    "saved": "Saved",
+    "errServerHttp": "Server URL must start with http(s)://",
+    "errRepoUrl": "{{message}}",
+    "errBranchEmpty": "Branch must not be empty",
+    "errDirEmpty": "Choose a sync directory first",
+    "errSave": "Save failed: {{message}}",
+    "now": "Sync now",
+    "needChannel": "Save a sync channel configuration first",
+    "dirtyHint": "You have unsaved changes — “Sync now” uses the last saved configuration; save to apply them.",
+    "dialog": {
+      "title": "Sync",
+      "checking": "Checking sync status…",
+      "noChannel": "No sync channel configured yet. Set one up in Settings → Sync.",
+      "askpass": "Enter the sync envelope passphrase",
+      "askpassSave": "Remember passphrase (system keychain)",
+      "continue": "Continue",
+      "wrongPass": "Wrong passphrase, or the envelope is corrupted",
+      "synced": "Local and cloud are in sync.",
+      "lastSync": "Last sync: {{time}}",
+      "never": "Never synced",
+      "pushTitle": "Local changes",
+      "pushDesc": "Pushing overwrites the cloud with local data (including deleting entries the cloud has extra).",
+      "pushScope": "Push scope",
+      "pushStart": "Push to cloud",
+      "pullTitle": "Cloud has new data",
+      "pullDesc": "Applying fully replaces the selected local categories — ticking a category confirms overwriting its local data.",
+      "restoreScope": "Restore scope",
+      "pullStart": "Apply from cloud",
+      "willOverwrite": "Will overwrite {{count}} local entries:",
+      "conflictTitle": "Both sides changed",
+      "conflictDesc": "Choose which side to keep per category; the merged result is pushed back to the cloud.",
+      "keepLocal": "Keep local",
+      "keepCloud": "Keep cloud",
+      "selectAllLocal": "All local",
+      "selectAllCloud": "All cloud",
+      "apply": "Apply resolution",
+      "localSide": "Local",
+      "cloudSide": "Cloud",
+      "entriesEmpty": "(empty)",
+      "entriesMore": "…and {{count}} more",
+      "running": "Syncing…",
+      "donePush": "Pushed to cloud; baseline updated.",
+      "donePull": "Applied from cloud; baseline updated.",
+      "doneConflict": "Merged by your resolution and pushed back.",
+      "applied": "{{applied}} categories applied · {{skipped}} rows skipped",
+      "failed": "Sync failed",
+      "retry": "Retry",
+      "close": "Close"
+    },
+    "category": {
+      "host_groups": "Groups",
+      "credentials": "Credentials",
+      "hosts": "Hosts",
+      "snippets": "Snippets",
+      "notify_channels": "Notify channels",
+      "alert_rules": "Alert rules",
+      "cron_jobs": "Cron jobs",
+      "settings": "Settings"
     }
   }
 }

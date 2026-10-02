@@ -43,11 +43,15 @@
     "terminalThemeHint": "终端配色独立于界面明暗。支持导入 iTerm2（.itermcolors）与 Windows Terminal scheme（.json）文件。",
     "terminalThemeImport": "导入配色文件…",
     "terminalThemeImported": "已导入 {{count}} 个配色，已选中第一个。",
-    "terminalThemeImportFailed": "导入失败：{{message}}"
+    "terminalThemeImportFailed": "导入失败：{{message}}",
+    "sectionSync": "同步"
   },
   "hostForm": {
     "newTitle": "新建主机",
     "editTitle": "编辑主机",
+    "sectionConnection": "连接信息",
+    "sectionOptions": "分类与选项",
+    "sectionMeta": "标签与备注",
     "name": "名称",
     "namePlaceholder": "例如：生产网关",
     "host": "主机地址",
@@ -66,6 +70,7 @@
     "deleteConfirm": "确定删除主机「{{name}}」吗？",
     "credential": "凭据",
     "credentialNone": "不绑定凭据",
+    "credentialNew": "＋ 新建凭据…",
     "credentialLabel": "凭据 #{{id}} · {{kind}}",
     "encoding": "编码",
     "encodingDefault": "默认（UTF-8）",
@@ -95,6 +100,8 @@
     "addHost": "新建主机",
     "addGroup": "新建分组",
     "groupNamePlaceholder": "分组名称",
+    "groupDuplicate": "同名分组已存在",
+    "groupCreateFailed": "创建失败：{{message}}",
     "ungrouped": "未分组",
     "tagsFilter": "标签",
     "allTags": "全部",
@@ -159,6 +166,9 @@
     "minimize": "最小化",
     "maximize": "最大化 / 还原",
     "close": "关闭"
+  },
+  "topbar": {
+    "tools": "工具"
   },
   "credentials": {
     "openButton": "凭据",
@@ -550,7 +560,10 @@
     "kindAi": "AI",
     "kindAlert": "告警",
     "kindSecurity": "安全",
-    "kindCron": "定时任务"
+    "kindCron": "定时任务",
+    "deliveryFailed": "投递失败",
+    "resend": "重发",
+    "resending": "重发中…"
   },
   "knownHosts": {
     "title": "已知主机密钥",
@@ -617,7 +630,7 @@
     "auditIntervalDays": "{{count}} 天",
     "sudoAutofill": "sudo 密码自动填充",
     "sudoAutofillHint": "检测到 sudo 密码提示时自动填入该主机绑定的密码凭据（仅主密码模式可用）。",
-    "sudoAutofillWarn": "开启后，终端检测到 sudo 密码提示时会自动把绑定凭据的明文密码写入远程终端。提示可能被恶意程序伪造以骗取密码；请仅在信任的主机上开启。确定开启？",
+    "sudoAutofillWarn": "开启后，终端检测到 sudo 密码提示时会自动把绑定凭据的明文密码写入远程终端。提示可能被恶意程序伪造以骗取密码；请仅在信任的主机上开启。绑定凭据与主机实际 sudo 密码不符时会连续填充失败（sudo 反复提示直至中止）。确定开启？",
     "sudoAutofillAccept": "确认开启",
     "lockScreen": {
       "title": "Ottr 已锁定",
@@ -957,6 +970,113 @@
       "free": "内存",
       "uptime": "运行时长",
       "dockerPs": "容器列表"
+    }
+  },
+  "sync": {
+    "sectionTitle": "同步",
+    "channel": "同步通道",
+    "channelWebdav": "WebDAV",
+    "channelGit": "Git 仓库",
+    "channelLocaldir": "本地目录",
+    "channelHint": "信封（AES-256-GCM）经所选通道搬运；通道配置只存本机（随库加密），不会同步到云端。",
+    "webdav": {
+      "server": "服务器地址",
+      "serverPlaceholder": "https://dav.example.com",
+      "remotePath": "远端路径",
+      "remotePathPlaceholder": "ottr-sync.json",
+      "username": "账号",
+      "password": "密码",
+      "hint": "覆盖写（PUT）；远端路径需位于服务器上已存在的目录。"
+    },
+    "git": {
+      "repoUrl": "仓库地址",
+      "branch": "分支",
+      "token": "访问令牌（可选）",
+      "tokenHint": "令牌仅内嵌进 https 远端 URL：会短暂出现在临时克隆与进程参数（本机可见）。优先推荐配置系统 credential helper。",
+      "hint": "使用系统 git；凭据交给系统 credential helper / ssh 配置。"
+    },
+    "localdir": {
+      "dir": "同步目录",
+      "choose": "选择目录…",
+      "hint": "信封写入所选目录（ottr-sync.json）；目录授权沿文件传输白名单机制。"
+    },
+    "passphrase": {
+      "title": "信封口令",
+      "statusSet": "已存钥匙链",
+      "statusUnset": "未设置",
+      "set": "设置口令",
+      "change": "更换口令",
+      "new": "新口令",
+      "confirm": "确认口令",
+      "hint": "口令存系统钥匙链（与主密码同库、不同条目），同步时自动取用；云端数据只有该口令能解开。",
+      "changeHint": "更换在下次推送时生效；覆盖前旧口令信封仍可被其他设备开封。",
+      "forget": "清除记住的口令",
+      "errEmpty": "口令不能为空",
+      "errMismatch": "两次输入不一致"
+    },
+    "test": "测试连接",
+    "testing": "测试中…",
+    "testOk": "连接正常",
+    "testFail": "连接失败",
+    "save": "保存配置",
+    "saved": "已保存",
+    "errServerHttp": "服务器地址需以 http(s):// 开头",
+    "errRepoUrl": "{{message}}",
+    "errBranchEmpty": "分支不能为空",
+    "errDirEmpty": "请选择同步目录",
+    "errSave": "保存失败：{{message}}",
+    "now": "立即同步",
+    "needChannel": "请先保存同步通道配置",
+    "dirtyHint": "有未保存的更改——「立即同步」使用最近一次保存的配置，更改保存后生效。",
+    "dialog": {
+      "title": "同步",
+      "checking": "正在检查同步状态…",
+      "noChannel": "尚未配置同步通道，请在设置 → 同步中配置。",
+      "askpass": "输入同步信封口令",
+      "askpassSave": "记住口令（存系统钥匙链）",
+      "continue": "继续",
+      "wrongPass": "口令不对，或信封已损坏",
+      "synced": "本机与云端一致。",
+      "lastSync": "上次同步：{{time}}",
+      "never": "尚未同步过",
+      "pushTitle": "本机有改动",
+      "pushDesc": "推送将用本机数据覆盖云端（含删除云端多余的条目）。",
+      "pushScope": "推送范围",
+      "pushStart": "推送到云端",
+      "pullTitle": "云端有新数据",
+      "pullDesc": "应用将全量替换本机所选分类——勾选分类即视为确认覆盖其本机数据。",
+      "restoreScope": "应用范围",
+      "pullStart": "从云端应用",
+      "willOverwrite": "将覆盖本机 {{count}} 条：",
+      "conflictTitle": "本机与云端都有改动",
+      "conflictDesc": "逐分类选择保留哪边；应用后合并结果会推送回云端。",
+      "keepLocal": "保留本机",
+      "keepCloud": "保留云端",
+      "selectAllLocal": "全选本机",
+      "selectAllCloud": "全选云端",
+      "apply": "应用裁定",
+      "localSide": "本机",
+      "cloudSide": "云端",
+      "entriesEmpty": "（空）",
+      "entriesMore": "…等 {{count}} 条",
+      "running": "同步中…",
+      "donePush": "已推送到云端，基线已更新。",
+      "donePull": "已从云端应用，基线已更新。",
+      "doneConflict": "已按裁定合并并推送回云端。",
+      "applied": "落库 {{applied}} 类 · 跳过 {{skipped}} 行",
+      "failed": "同步失败",
+      "retry": "重试",
+      "close": "关闭"
+    },
+    "category": {
+      "host_groups": "分组",
+      "credentials": "凭据",
+      "hosts": "主机",
+      "snippets": "代码片段",
+      "notify_channels": "通知渠道",
+      "alert_rules": "告警规则",
+      "cron_jobs": "定时任务",
+      "settings": "设置"
     }
   }
 }

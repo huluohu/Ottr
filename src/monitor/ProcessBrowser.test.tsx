@@ -168,4 +168,16 @@ describe("ProcessBrowser kill 流", () => {
     );
     expect(screen.queryByTestId("proc-kill-dialog")).toBeNull();
   });
+
+  it("kill 失败错误条与进程表共存（Phase 4 走查批：错误不顶掉表格）", async () => {
+    await setup();
+    mockedKill.mockRejectedValue(new Error("kill: (300) - Operation not permitted"));
+    fireEvent.click(screen.getByTestId("proc-kill-300"));
+    fireEvent.click(screen.getByTestId("proc-kill-confirm"));
+    await waitFor(() => expect(screen.getByTestId("proc-error")).toBeTruthy());
+    // 错误上屏的同时进程表必须仍在（用户可直接重试/继续操作其他行）
+    expect(screen.getByTestId("proc-table")).toBeTruthy();
+    expect(screen.getByTestId("proc-row-300")).toBeTruthy();
+    expect(screen.getByTestId("proc-row-42")).toBeTruthy();
+  });
 });

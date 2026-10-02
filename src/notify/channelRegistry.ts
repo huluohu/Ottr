@@ -8,11 +8,25 @@
 // * 重挂载：设置页渠道增删改后 remountChannels() 全量重建（渠道量级 = 个位数，
 //   全量重建比增量记账简单且无悬挂引用面）；挂载失败的渠道（vault 不可达/
 //   config 缺字段）只记 console 不阻塞其余渠道。
+// * 重试装饰（Phase 5 T1，BL-517；fix round 1 C-1 收口）：mountOne **先按
+//   挂载名改名、再 withRetry 装饰**——装饰器的终败/翻正回执与手动重发都按
+//   挂载名（kind#id）回查，行 id 只在本层可得；装饰若早于改名，回执 channel
+//   恒为裸 kind（重发扑空、channel_id 恒 null、同 kind 多实例账本串账）。
 // * 明文 config 生命周期：nc_reveal_config 单点出库 → 适配器闭包持有（发信
 //   时组装请求），永不落日志/持久化面。
-import { vaultApi, type ChannelKind, type NotifyChannel } from "../vault/api";
-import { channels, type NotificationEvent, type NotificationChannel } from "./core";
+import { vaultApi, type ChannelKind, type Notification, type NotifyChannel } from "../vault/api";
+import {
+  channels,
+  DELIVERY_FAILED_KEY,
+  readDeliveryFailures,
+  useNotifyStore,
+  type DeliveryFailure,
+  type NotificationEvent,
+  type NotificationChannel,
+  type NotifyKind,
+} from "./core";
 import { createChannel } from "./channels/factory";
+import { withRetry } from "./channels/retry";
 import type { ChannelDeps } from "./channels/types";
 
 /** alert/cron 事件的订阅路由面（payload.channel_ids ∈ AlertPayload /
@@ -27,7 +41,9 @@ function subscribedChannel(id: number): (event: NotificationEvent) => boolean {
   };
 }
 
-/** 行 + 明文 config → 已订阅的渠道实例（config 缺失/坏 → null 跳过）。 */
+/** 行 + 明文 config → 已订阅的渠道实例（config 缺失/坏 → null 跳过）。
+ * 【C-1（fix round 1）】装饰顺序硬契约：先以内层名挂载名化（`kind#id`），
+ * 再 withRetry 装饰——回执（投递失败账本）与重发按此名回查。 */
 function mountOne(
   row: NotifyChannel,
   config: Record<string, unknown>,
@@ -35,10 +51,11 @@ function mountOne(
 ): NotificationChannel | null {
   try {
     const channel = createChannel(row.kind as ChannelKind, config, deps);
+    const decorated = withRetry({ ...channel, name: `${channel.name}#${row.id}` }, deps);
     return {
-      name: `${channel.name}#${row.id}`,
-      send: channel.send,
-      test: channel.test,
+      name: decorated.name,
+      send: decorated.send,
+      test: decorated.test,
       subscribed: subscribedChannel(row.id),
     };
   } catch (e) {
@@ -87,4 +104,52 @@ export async function testChannel(
 ): Promise<void> {
   const channel = createChannel(kind, config, deps);
   await channel.test();
+}
+
+// ---------------------------------------------------------------------------
+// 手动重发（Phase 5 T1，BL-517 最终失败面：中心条目「投递失败」标记 +
+// 重发按钮——对该事件重跑该渠道 send）
+// ---------------------------------------------------------------------------
+
+/** 中心条目 → 事件重建（payload 剥失败标记——重发的事件不自带旧账）。 */
+function eventOfRow(row: Notification): NotificationEvent {
+  const base =
+    row.payload && typeof row.payload === "object"
+      ? { ...(row.payload as Record<string, unknown>) }
+      : {};
+  delete base[DELIVERY_FAILED_KEY];
+  return {
+    kind: row.kind as NotifyKind,
+    severity: row.severity,
+    host_id: row.host_id,
+    title_key: row.title_key,
+    body: row.body,
+    payload: base,
+  };
+}
+
+/** 重发一条「投递失败」的通知（通知中心按钮面）：按挂载名（`kind#id`）回查
+ * core.channels 实例（设置页重挂载后实例可换、名字不变），对该事件重跑该渠
+ * 道 send——走重试装饰器（传输面故障照常入后台退避队列）。返回 true = send
+ * 返回后该渠道无失败标记（翻正/本就无账）；false = 未挂载、首发即再败或重
+ * 试在途。失败块的隐现由 store 标记驱动（翻正时 onDelivered 清账自动消失）。 */
+export async function resendNotification(
+  row: Notification,
+  failure: DeliveryFailure,
+): Promise<boolean> {
+  const target = channels.find((c) => c.name === failure.channel);
+  if (!target) {
+    console.warn(`[notify] resend: channel ${failure.channel} not mounted`);
+    return false;
+  }
+  try {
+    await target.send(eventOfRow(row), { notificationId: row.id });
+  } catch (e) {
+    // 装饰后的 send 不抛（终局走 onGiveUp 入账）；此处是未装饰渠道的防御
+    console.warn(`[notify] resend ${failure.channel} failed:`, e);
+    return false;
+  }
+  const rowNow = useNotifyStore.getState().items.find((n) => n.id === row.id);
+  const still = readDeliveryFailures(rowNow?.payload).some((f) => f.channel === failure.channel);
+  return !still;
 }

@@ -337,6 +337,19 @@ pub fn run() {
             vault::vault_upgrade_to_master_password,
             vault::settings_get,
             vault::settings_set,
+            // Phase 5 Task 3（同步编排）：分类快照导出/导入（过锁定门卫，
+            // ottr-vault sync_snapshot 模块；编排引擎在 src/sync/SyncStore.ts）
+            vault::sync_export_categories,
+            vault::sync_import_categories,
+            // Phase 5 Task 4（同步 UI 宿主桥，commands/sync_git.rs）：git 通道
+            // 白名单 exec 桥（argv 形态钉死 + scratch 命名空间）+ 信封口令钥匙链
+            commands::sync_git::sync_git_exec,
+            commands::sync_git::sync_git_scratch,
+            commands::sync_git::sync_git_scratch_write,
+            commands::sync_git::sync_git_scratch_cleanup,
+            commands::sync_git::sync_passphrase_set,
+            commands::sync_git::sync_passphrase_get,
+            commands::sync_git::sync_passphrase_del,
             // Task 16.5（0×0 主窗 frame 修复）：vault 后台初始化就绪门取数面
             vault::vault_init_status,
             // Task 12（spec §7）：通知管线①应用内通知中心（明文面，锁定可读写）

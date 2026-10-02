@@ -129,6 +129,30 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
       .catch(() => setChannels([]));
   }, [open, formOpen]);
 
+  // OBS-1（Phase 4 走查批）：面板开着时，展开行的历史随 live 事件自动
+  // refetch——新轮次落库不重开面板即可见。lastRunEvent 身份随每条事件变化
+  // 即触发重拉；autoRunKeyRef 与 toggleHistory 的手动首拉去重（避免双拉）。
+  const lastRunEvent = expanded != null ? live[expanded] : undefined;
+  const autoRunKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open || expanded == null || lastRunEvent == null) return;
+    const key = `${expanded}:${lastRunEvent.run_id}`;
+    if (autoRunKeyRef.current === key) return;
+    autoRunKeyRef.current = key;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await cronApi.runs(expanded, 20);
+        if (!cancelled) setRuns(rows);
+      } catch {
+        // 静默：事件驱动的自动刷新失败不打扰（手动展开路径的错误走 actionError）
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, expanded, lastRunEvent]);
+
   if (!open) return null;
 
   /** schedule 预览（输入防抖 300ms → cj_next_fire；非法 = 错误文案）。 */
@@ -201,6 +225,10 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
     }
     setExpanded(row.id);
     setRuns([]);
+    // 记下手动的首拉水位：live 里已有该行事件时，事件驱动的自动 refetch
+    // 不再重复拉（见上方 effect 的 autoRunKeyRef）。
+    const lastEvent = live[row.id];
+    autoRunKeyRef.current = lastEvent != null ? `${row.id}:${lastEvent.run_id}` : null;
     await loadRuns(row.id);
   }
 
@@ -298,7 +326,7 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
             const last = live[row.id];
             const hostName = hostById.get(row.host_id)?.name ?? `#${row.host_id}`;
             return (
-              <li key={row.id} className="forward-row" data-testid={`cron-row-${row.id}`}>
+              <li key={row.id} className="forward-row cron-row" data-testid={`cron-row-${row.id}`}>
                 <span
                   className="forward-light"
                   data-state={last ? (last.status === "ok" ? "active" : "error") : "off"}
@@ -320,9 +348,12 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
                     {last != null && (
                       <>
                         {" · "}
+                        {/* OBS-1：徽标带最新轮时刻——ok 轮逐轮刷新可观察，
+                            不再是恒等不动的「成功 (0)」。 */}
                         <span data-testid={`cron-last-${row.id}`} data-tone={toneOf(last.status)}>
                           {t(`cron.status.${last.status}`)}
                           {last.exit_code != null ? ` (${last.exit_code})` : ""}
+                          {` · ${formatTime(last.ts)}`}
                         </span>
                       </>
                     )}

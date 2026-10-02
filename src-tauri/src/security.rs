@@ -24,51 +24,26 @@ use ottr_vault::{Credentials, KeyMode, SecretField, Settings};
 
 use crate::vault::VaultState;
 
-/// 自动锁定默认分钟数（简报定值 10）。
-pub const AUTOLOCK_DEFAULT_MINUTES: u64 = 10;
-/// 自动锁定上限（1 天；防误输入把锁拖成装饰）。
-pub const AUTOLOCK_MAX_MINUTES: u64 = 24 * 60;
-/// 剪贴板清空默认秒数（简报定值 30）。
-pub const CLIPBOARD_DEFAULT_SECS: u64 = 30;
-/// 剪贴板清空上限（1 小时）。
-pub const CLIPBOARD_MAX_SECS: u64 = 3600;
+// --- settings 已知键注册表（T3 fix round 1 I-1 迁移）---------------------------
+// 常量与已知键校验逻辑已**迁入 ottr-vault settings.rs**（单一事实源）：settings
+// 有两个写入口——settings_set 命令与本批新增的 sync 分类导入（快照跨机来源，
+// 已知键越界值不得经导入绕过范围检查）——注册表必须共享。此处 re-export 保持
+// 既有引用路径（security::SETTING_* 等）全部不变。
 
-/// shell 集成自动注入开关（Task 15 fix 1/5，⌘R 历史入库的数据源）。
-/// 缺省开（None = 注入）；false = 关（attach 不探测不注入）。
-pub const SETTING_SHELL_INTEGRATION: &str = "shell.integration";
+pub use ottr_vault::settings::{
+    validate_known_setting, AI_MAX_TOKENS_LIMIT, AUTOLOCK_DEFAULT_MINUTES, AUTOLOCK_MAX_MINUTES,
+    CLIPBOARD_DEFAULT_SECS, CLIPBOARD_MAX_SECS, HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS,
+    HOSTKEY_AUDIT_INTERVAL_MAX_SECS, HOSTKEY_AUDIT_INTERVAL_MIN_SECS,
+    MONITOR_INTERVAL_DEFAULT_SECS, MONITOR_INTERVAL_MAX_SECS, SETTING_AUTOLOCK, SETTING_CLIPBOARD,
+    SETTING_HOSTKEY_AUDIT, SETTING_HOSTKEY_AUDIT_INTERVAL, SETTING_MCP_ENABLED,
+    SETTING_MONITOR_INTERVAL, SETTING_SHELL_INTEGRATION, SETTING_SUDO_AUTOFILL,
+};
 
 /// shell.integration 配置 → 是否注入。`None`/非布尔 = 缺省开（validate_setting
 /// 挡住非布尔写入，读取侧收敛兜底——配置坏不断功能）。
 pub fn shell_integration_enabled(raw: Option<&serde_json::Value>) -> bool {
     raw.and_then(|v| v.as_bool()).unwrap_or(true)
 }
-
-pub const SETTING_AUTOLOCK: &str = "security.autolock_minutes";
-pub const SETTING_CLIPBOARD: &str = "security.clipboard_clear_secs";
-
-/// 监控采样间隔（Phase 3 Task 1，B4）：settings `monitor.interval_secs`，
-/// 默认 5s（简报定值），上限 1h；下限 1s（防手滑把轮转打满 CPU）。
-pub const SETTING_MONITOR_INTERVAL: &str = "monitor.interval_secs";
-pub const MONITOR_INTERVAL_DEFAULT_SECS: u64 = 5;
-pub const MONITOR_INTERVAL_MAX_SECS: u64 = 3600;
-
-/// 主机指纹巡检开关（Phase 3 Task 6，B9 收口）：settings
-/// `security.hostkey_audit_enabled`，默认关（显式开启——巡检是主动出网行为）。
-pub const SETTING_HOSTKEY_AUDIT: &str = "security.hostkey_audit_enabled";
-/// 巡检间隔（秒）：默认 24h（裁定 #2），下限 60s、上限 7 天。
-pub const SETTING_HOSTKEY_AUDIT_INTERVAL: &str = "security.hostkey_audit_interval_secs";
-pub const HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS: u64 = 24 * 3600;
-pub const HOSTKEY_AUDIT_INTERVAL_MIN_SECS: u64 = 60;
-pub const HOSTKEY_AUDIT_INTERVAL_MAX_SECS: u64 = 7 * 24 * 3600;
-
-/// sudo 密码自动填充开关（Phase 3 Task 6，B9）：settings
-/// `security.sudo_autofill`，默认关（安全敏感——开启须前端确认框说明风险；
-/// 前端另有 password（主密码）模式限定，keyring 模式即使键为 true 也不生效）。
-pub const SETTING_SUDO_AUTOFILL: &str = "security.sudo_autofill";
-
-/// MCP server 总开关（Phase 4 Task 3，C1）：settings `mcp.enabled`，默认关
-/// （安全侧——开了才有 UDS listener，工具面另有主机粒度授权矩阵默认全拒）。
-pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
 
 /// 监控采样间隔配置 → Duration。未配置 = 默认 5s；越界收敛
 /// （下限 1s / 上限 1h——配置错误不断采样，同 *_from 收敛口径）。
@@ -113,113 +88,12 @@ pub fn sudo_autofill_enabled(raw: Option<&serde_json::Value>) -> bool {
     raw.and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
-/// AI 单请求 token 上限（Task 13 成本护栏）：写入侧上限 8192（缺省 1024，
-/// 前端读侧兜底）。
-pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
-
-/// settings_set 的已知安全键校验（越界/类型错显式拒绝，不静默收敛——写入侧
-/// 拒绝比读取侧收敛更能暴露前端 bug；读取侧仍收敛兜底，见 *_from）。
+/// settings_set 的已知安全键校验（薄委托）：逻辑在 ottr-vault
+/// `settings::validate_known_setting`（单一事实源——settings_set 与 sync 分类
+/// 导入两个写入口共享同一份注册表，T3 fix round 1 I-1）；本壳保持原签名与
+/// 调用点不变。
 pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), String> {
-    fn u64_in_range(value: &serde_json::Value, max: u64) -> Result<(), String> {
-        let n = value
-            .as_u64()
-            .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
-        if n > max {
-            return Err(format!("value {n} exceeds limit {max}"));
-        }
-        Ok(())
-    }
-    match key {
-        SETTING_AUTOLOCK => u64_in_range(value, AUTOLOCK_MAX_MINUTES),
-        SETTING_CLIPBOARD => u64_in_range(value, CLIPBOARD_MAX_SECS),
-        // Phase 3 Task 1：监控采样间隔（1-3600s，见 monitor_interval_from）
-        SETTING_MONITOR_INTERVAL => {
-            fn mon_range(value: &serde_json::Value) -> Result<(), String> {
-                let n = value
-                    .as_u64()
-                    .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
-                if n == 0 || n > MONITOR_INTERVAL_MAX_SECS {
-                    return Err(format!(
-                        "monitor.interval_secs must be 1-{MONITOR_INTERVAL_MAX_SECS}, got {n}"
-                    ));
-                }
-                Ok(())
-            }
-            mon_range(value)
-        }
-        // Task 13：AI 成本护栏（单请求 max_tokens 上限）与诊断自动触发开关
-        SETTING_SHELL_INTEGRATION => {
-            if value.is_boolean() {
-                Ok(())
-            } else {
-                Err("shell.integration expects a boolean".to_string())
-            }
-        }
-        // B9（Phase 3 Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关
-        SETTING_HOSTKEY_AUDIT => {
-            if value.is_boolean() {
-                Ok(())
-            } else {
-                Err("security.hostkey_audit_enabled expects a boolean".to_string())
-            }
-        }
-        SETTING_HOSTKEY_AUDIT_INTERVAL => {
-            let n = value
-                .as_u64()
-                .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
-            if !(HOSTKEY_AUDIT_INTERVAL_MIN_SECS..=HOSTKEY_AUDIT_INTERVAL_MAX_SECS).contains(&n) {
-                return Err(format!(
-                    "security.hostkey_audit_interval_secs must be {}-{}, got {n}",
-                    HOSTKEY_AUDIT_INTERVAL_MIN_SECS, HOSTKEY_AUDIT_INTERVAL_MAX_SECS
-                ));
-            }
-            Ok(())
-        }
-        SETTING_SUDO_AUTOFILL => {
-            if value.is_boolean() {
-                Ok(())
-            } else {
-                Err("security.sudo_autofill expects a boolean".to_string())
-            }
-        }
-        // C1（Phase 4 Task 3）：MCP server 总开关（布尔；默认关）
-        SETTING_MCP_ENABLED => {
-            if value.is_boolean() {
-                Ok(())
-            } else {
-                Err("mcp.enabled expects a boolean".to_string())
-            }
-        }
-        "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
-        "ai.enabled" => {
-            if value.is_boolean() {
-                Ok(())
-            } else {
-                Err("ai.enabled expects a boolean".to_string())
-            }
-        }
-        "ui.theme" => {
-            let s = value
-                .as_str()
-                .ok_or_else(|| "ui.theme expects a string".to_string())?;
-            if matches!(s, "light" | "dark" | "system") {
-                Ok(())
-            } else {
-                Err(format!("ui.theme must be light|dark|system, got {s:?}"))
-            }
-        }
-        "ui.language" => {
-            let s = value
-                .as_str()
-                .ok_or_else(|| "ui.language expects a string".to_string())?;
-            if matches!(s, "zh-CN" | "en-US") {
-                Ok(())
-            } else {
-                Err(format!("ui.language must be zh-CN|en-US, got {s:?}"))
-            }
-        }
-        _ => Ok(()), // 未注册键放行（settings 表是通用配置面）
-    }
+    validate_known_setting(key, value)
 }
 
 /// 失焦时刻现读自动锁定配置。`None` = 不计时（关闭 / keyring 模式无锁概念 /

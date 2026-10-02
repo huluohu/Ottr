@@ -41,7 +41,11 @@ pub mod remote_edit;
 // FTP/FTPS 会话域（Phase 2 Task 5，B10 下半第二后端）：ftp_attach_host_session
 // + 会话表分派支撑（面板命令面在 transfer.rs 按 id 路由，命令名不变）。
 pub mod ftp;
+// 同步通道宿主桥（Phase 5 Task 4）：git 通道白名单 exec 桥（argv 形态钉死，
+// 清偿 task-2-report 披露的「webview 生产 exec 桥未落」）+ 信封口令钥匙链
+// （task-2 裁定「存钥匙链归 Task 4」）。模块文档见本文件。
 pub mod session;
+pub mod sync_git;
 // spike 命令面生产闸门（Task 0 Step 4，终审C-2/BL-002）：Phase 0 测量/取数命令
 // 不进 release 产物——`spike_report_file` 是 webview 可达的任意路径写原语（路径
 // 白名单只是纵深防御）。debug 构建保留供 scripts/验收驱动面；release 构建整个

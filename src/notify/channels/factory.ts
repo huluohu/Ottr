@@ -18,8 +18,13 @@ import { createWebhookChannel } from "./webhook";
 import { createWecomChannel } from "./wecom";
 import type { ChannelDeps } from "./types";
 
-/** kind + 明文 config → 渠道实例。config 字段面校验在设置页保存前（必填表），
- * 这里只做窄化（运行期配置损坏 → 适配器内自然报错，不二次校验）。 */
+/** kind + 明文 config → 裸适配器实例（send/test 未装饰）。config 字段面校验在
+ * 设置页保存前（必填表），这里只做窄化（运行期配置损坏 → 适配器内自然报错，
+ * 不二次校验）。
+ * 【Phase 5 T1（BL-517）；fix round 1（C-1）】重试装饰不在本层——装饰器的
+ * 回执 channel 名必须挂载名（`kind#id`）：回执账本与手动重发都按名回查，
+ * 而行 id 只在 channelRegistry.mountOne 可得（先改内层名再装饰）。此前装饰
+ * 在工厂收口时闭包读到裸 kind，回执/重发/多实例账目全部错位（评审探针实证）。 */
 export function createChannel(
   kind: ChannelKind,
   config: Record<string, unknown>,

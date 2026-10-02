@@ -62,3 +62,127 @@ impl Settings {
         Self::set(vault, key, &serde_json::Value::from(value))
     }
 }
+
+// --- 已知 settings 键注册表 + 写入校验（单一事实源）-----------------------------
+//
+// Phase 5 T3 fix round 1（I-1）：校验逻辑自 src-tauri security.rs **迁入本 crate**
+// ——settings 写入（settings_set）与**同步分类导入**（sync_snapshot，快照是
+// 跨机/跨版本来源，已知键越界值不得经导入绕过范围检查）两个写入口必须共享
+// 同一份注册表；src-tauri security.rs 的 validate_setting 现为薄委托（re-export
+// 常量保持既有引用路径不变）。
+//
+// 注册纪律：新增已知键必须在本 match 登记——漏登 = 该键经 sync 导入绕过范围
+// 校验（settings_set 有校验而导入无，防线单侧）。
+
+/// 自动锁定默认分钟数（简报定值 10）。
+pub const AUTOLOCK_DEFAULT_MINUTES: u64 = 10;
+/// 自动锁定上限（1 天；防误输入把锁拖成装饰）。
+pub const AUTOLOCK_MAX_MINUTES: u64 = 24 * 60;
+/// 剪贴板清空默认秒数（简报定值 30）。
+pub const CLIPBOARD_DEFAULT_SECS: u64 = 30;
+/// 剪贴板清空上限（1 小时）。
+pub const CLIPBOARD_MAX_SECS: u64 = 3600;
+
+/// shell 集成自动注入开关（Task 15 fix 1/5，⌘R 历史入库的数据源）。
+pub const SETTING_SHELL_INTEGRATION: &str = "shell.integration";
+pub const SETTING_AUTOLOCK: &str = "security.autolock_minutes";
+pub const SETTING_CLIPBOARD: &str = "security.clipboard_clear_secs";
+/// 监控采样间隔（Phase 3 Task 1，B4）：默认 5s（简报定值），上限 1h；下限 1s。
+pub const SETTING_MONITOR_INTERVAL: &str = "monitor.interval_secs";
+pub const MONITOR_INTERVAL_DEFAULT_SECS: u64 = 5;
+pub const MONITOR_INTERVAL_MAX_SECS: u64 = 3600;
+/// 主机指纹巡检开关/间隔（Phase 3 Task 6，B9 收口）：默认关、间隔默认 24h。
+pub const SETTING_HOSTKEY_AUDIT: &str = "security.hostkey_audit_enabled";
+pub const SETTING_HOSTKEY_AUDIT_INTERVAL: &str = "security.hostkey_audit_interval_secs";
+pub const HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS: u64 = 24 * 3600;
+pub const HOSTKEY_AUDIT_INTERVAL_MIN_SECS: u64 = 60;
+pub const HOSTKEY_AUDIT_INTERVAL_MAX_SECS: u64 = 7 * 24 * 3600;
+/// sudo 密码自动填充开关（Phase 3 Task 6，B9）：默认关（安全敏感）。
+pub const SETTING_SUDO_AUTOFILL: &str = "security.sudo_autofill";
+/// MCP server 总开关（Phase 4 Task 3，C1）：默认关。
+pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
+/// AI 单请求 token 上限（Task 13 成本护栏）：写入侧上限 8192（缺省 1024）。
+pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
+
+/// 已知 settings 键的写入校验（越界/类型错显式拒绝，不静默收敛——写入侧拒绝
+/// 比读取侧收敛更能暴露 bug；读取侧仍收敛兜底，见 src-tauri security.rs *_from）。
+/// 未注册键放行（settings 表是通用配置面，未知键无法校验也不挡）。
+pub fn validate_known_setting(
+    key: &str,
+    value: &serde_json::Value,
+) -> std::result::Result<(), String> {
+    fn u64_in_range(value: &serde_json::Value, max: u64) -> std::result::Result<(), String> {
+        let n = value
+            .as_u64()
+            .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+        if n > max {
+            return Err(format!("value {n} exceeds limit {max}"));
+        }
+        Ok(())
+    }
+    fn bool_value(key: &str, value: &serde_json::Value) -> std::result::Result<(), String> {
+        if value.is_boolean() {
+            Ok(())
+        } else {
+            Err(format!("{key} expects a boolean"))
+        }
+    }
+    match key {
+        SETTING_AUTOLOCK => u64_in_range(value, AUTOLOCK_MAX_MINUTES),
+        SETTING_CLIPBOARD => u64_in_range(value, CLIPBOARD_MAX_SECS),
+        // Phase 3 Task 1：监控采样间隔（1-3600s）
+        SETTING_MONITOR_INTERVAL => {
+            let n = value
+                .as_u64()
+                .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+            if n == 0 || n > MONITOR_INTERVAL_MAX_SECS {
+                return Err(format!(
+                    "monitor.interval_secs must be 1-{MONITOR_INTERVAL_MAX_SECS}, got {n}"
+                ));
+            }
+            Ok(())
+        }
+        SETTING_SHELL_INTEGRATION => bool_value(key, value),
+        // B9（Phase 3 Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关
+        SETTING_HOSTKEY_AUDIT => bool_value(key, value),
+        SETTING_HOSTKEY_AUDIT_INTERVAL => {
+            let n = value
+                .as_u64()
+                .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+            if !(HOSTKEY_AUDIT_INTERVAL_MIN_SECS..=HOSTKEY_AUDIT_INTERVAL_MAX_SECS).contains(&n) {
+                return Err(format!(
+                    "security.hostkey_audit_interval_secs must be {}-{}, got {n}",
+                    HOSTKEY_AUDIT_INTERVAL_MIN_SECS, HOSTKEY_AUDIT_INTERVAL_MAX_SECS
+                ));
+            }
+            Ok(())
+        }
+        SETTING_SUDO_AUTOFILL => bool_value(key, value),
+        // C1（Phase 4 Task 3）：MCP server 总开关（布尔；默认关）
+        SETTING_MCP_ENABLED => bool_value(key, value),
+        // Task 13：AI 成本护栏（单请求 max_tokens 上限）与诊断自动触发开关
+        "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
+        "ai.enabled" => bool_value(key, value),
+        "ui.theme" => {
+            let s = value
+                .as_str()
+                .ok_or_else(|| "ui.theme expects a string".to_string())?;
+            if matches!(s, "light" | "dark" | "system") {
+                Ok(())
+            } else {
+                Err(format!("ui.theme must be light|dark|system, got {s:?}"))
+            }
+        }
+        "ui.language" => {
+            let s = value
+                .as_str()
+                .ok_or_else(|| "ui.language expects a string".to_string())?;
+            if matches!(s, "zh-CN" | "en-US") {
+                Ok(())
+            } else {
+                Err(format!("ui.language must be zh-CN|en-US, got {s:?}"))
+            }
+        }
+        _ => Ok(()), // 未注册键放行（settings 表是通用配置面）
+    }
+}

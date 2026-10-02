@@ -13,6 +13,7 @@ import { listen } from "@tauri-apps/api/event";
 import { HostTree } from "./hosts/HostTree";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
+import { SyncDialog } from "./sync/SyncDialog";
 // Phase 4 Task 3（C1）：MCP server 设置 + exec 逐次审批确认框（全局挂载）。
 import { McpSettings } from "./security/McpSettings";
 import { McpApprovalDialog } from "./security/McpApprovalDialog";
@@ -85,29 +86,120 @@ const IS_TAURI = "__TAURI_INTERNALS__" in window;
 // A12：macOS 原生菜单动作回传事件（Rust menu.rs 把 ActionId 字符串转发过来）。
 const MENU_ACTION_EVENT = "ottr://menu-action";
 
-// 主题切换器（A10）：手动验证入口 + Task 8 设置页前的临时控件。
+// 主题三态（A10 沿用）：Phase 5 T1 顶栏收纳后由三联按钮改为单按钮下拉——
+// 按钮面显示当前模式，菜单内三选一（亮 / 暗 / 跟随系统）。
 const THEME_MODES: { value: ThemeMode; labelKey: string }[] = [
   { value: "light", labelKey: "settings.themeLight" },
   { value: "dark", labelKey: "settings.themeDark" },
   { value: "system", labelKey: "settings.themeSystem" },
 ];
 
-function ThemeSwitch() {
+// --- 顶栏下拉菜单（Phase 5 T1 顶栏收纳） --------------------------------------
+//
+// 通用壳：按钮 + 弹出菜单。交互契约对齐 NotificationCenter（mousedown 在外
+// 收起）+ Esc 收起；选中条目即收起并执行 onSelect。纯呈现——条目与动作全部
+// 由调用方注入；动作收口仍在 HomeLayout 的各 setState（工具菜单里的面板
+// 打开器本就不是 registry ActionId，注册表面零变化——T14 守卫测试不动）。
+
+interface TopbarMenuItem {
+  key: string;
+  label: string;
+  testid?: string;
+  /** 主题菜单用：当前模式高亮（data-active，勾选语义）。 */
+  active?: boolean;
+  onSelect: () => void;
+}
+
+function TopbarMenu({
+  label,
+  ariaLabel,
+  items,
+  buttonTestid,
+  menuTestid,
+}: {
+  label: string;
+  ariaLabel: string;
+  items: TopbarMenuItem[];
+  buttonTestid: string;
+  menuTestid: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="topbar-menu" ref={rootRef}>
+      <button
+        data-testid={buttonTestid}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {label}
+        <span className="topbar-caret" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div className="topbar-menu-list" data-testid={menuTestid} role="menu" aria-label={ariaLabel}>
+          {items.map((item) => (
+            <button
+              key={item.key}
+              role="menuitem"
+              data-testid={item.testid}
+              data-active={item.active === true}
+              aria-checked={item.active === true}
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 三模式三选一。 */
+function ThemeMenu() {
   const { mode, setMode } = useTheme();
   const { t } = useTranslation();
+  const current = THEME_MODES.find((m) => m.value === mode) ?? THEME_MODES[2];
   return (
-    <div className="theme-switch" role="group" aria-label={t("settings.theme")}>
-      {THEME_MODES.map(({ value, labelKey }) => (
-        <button
-          key={value}
-          data-active={mode === value}
-          aria-pressed={mode === value}
-          onClick={() => setMode(value)}
-        >
-          {t(labelKey)}
-        </button>
-      ))}
-    </div>
+    <TopbarMenu
+      label={t(current.labelKey)}
+      ariaLabel={t("settings.theme")}
+      buttonTestid="topbar-theme"
+      menuTestid="topbar-theme-menu"
+      items={THEME_MODES.map(({ value, labelKey }) => ({
+        key: value,
+        label: t(labelKey),
+        testid: `topbar-theme-${value}`,
+        active: mode === value,
+        onSelect: () => setMode(value),
+      }))}
+    />
   );
 }
 
@@ -149,6 +241,8 @@ function HomeLayout() {
   // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
   const [nlOpen, setNlOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Phase 5 Task 4：同步对话框（设置页「立即同步」+ 顶栏工具菜单两个入口）。
+  const [syncOpen, setSyncOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   // Phase 3 Task 3（B5）：告警设置（渠道矩阵 + 规则；顶栏入口对话框——
@@ -398,9 +492,81 @@ function HomeLayout() {
         <button className="topbar-palette" data-testid="open-palette" onClick={() => setPaletteOpen(true)}>
           {t("palette.title")} <kbd>{shortcutLabel("palette.toggle", PLATFORM)}</kbd>
         </button>
-        <button className="topbar-debug" data-testid="open-credentials" onClick={() => setCredentialsOpen(true)}>
-          {t("credentials.openButton")}
-        </button>
+        <div className="topbar-spacer" />
+        {/* Phase 5 T1 顶栏收纳：低频面板入口收进「工具」下拉（registry 动作
+            零变化——这些打开器本就是就地 setState，不经 ActionId）；高频入口
+            （⌘K 面板 / 通知铃 / 设置 / 主题）保留在栏面。顺序 = 用户口径：
+            凭据/告警/MCP/AI/端口转发/跳板链/总览/批量执行/定时任务（AI 助手
+            原为栏面按钮，为「每个原入口都可达」一并收纳于此）。 */}
+        <TopbarMenu
+          label={t("topbar.tools")}
+          ariaLabel={t("topbar.tools")}
+          buttonTestid="topbar-tools"
+          menuTestid="topbar-tools-menu"
+          items={[
+            {
+              key: "credentials",
+              label: t("credentials.openButton"),
+              testid: "menu-open-credentials",
+              onSelect: () => setCredentialsOpen(true),
+            },
+            {
+              key: "alerts",
+              label: t("alert.sectionTitle"),
+              testid: "menu-open-alert-settings",
+              onSelect: () => setAlertSettingsOpen(true),
+            },
+            {
+              key: "mcp",
+              label: t("mcp.title"),
+              testid: "menu-open-mcp-settings",
+              onSelect: () => setMcpOpen(true),
+            },
+            {
+              key: "ai",
+              label: t("ai.title"),
+              testid: "menu-open-ai-settings",
+              onSelect: () => setAiSettingsOpen(true),
+            },
+            {
+              key: "forwards",
+              label: t("forward.title"),
+              testid: "menu-open-forwards",
+              onSelect: () => setForwardsOpen(true),
+            },
+            {
+              key: "jump-chains",
+              label: t("jump.title"),
+              testid: "menu-open-jump-chains",
+              onSelect: () => setJumpChainsOpen(true),
+            },
+            {
+              key: "overview",
+              label: t("overview.title"),
+              testid: "menu-open-overview",
+              onSelect: () => setOverviewOpen(true),
+            },
+            {
+              key: "batch",
+              label: t("batch.title"),
+              testid: "menu-open-batch",
+              onSelect: () => setBatchOpen(true),
+            },
+            {
+              key: "cron",
+              label: t("cron.title"),
+              testid: "menu-open-cron",
+              onSelect: () => setCronOpen(true),
+            },
+            {
+              key: "sync",
+              label: t("sync.sectionTitle"),
+              testid: "menu-open-sync",
+              onSelect: () => setSyncOpen(true),
+            },
+          ]}
+        />
+        <NotificationCenter />
         <button
           className="topbar-debug"
           data-testid="open-settings"
@@ -409,74 +575,7 @@ function HomeLayout() {
         >
           {t("settings.title")}
         </button>
-        <button
-          className="topbar-debug"
-          data-testid="open-ai-settings"
-          aria-label={t("ai.settings.title")}
-          onClick={() => setAiSettingsOpen(true)}
-        >
-          {t("ai.title")}
-        </button>
-        <button
-          className="topbar-debug"
-          data-testid="open-alert-settings"
-          aria-label={t("alert.settingsTitle")}
-          onClick={() => setAlertSettingsOpen(true)}
-        >
-          {t("alert.sectionTitle")}
-        </button>
-        {/* Phase 4 Task 3（C1）：MCP server 设置（开关/授权矩阵/接入说明）。 */}
-        <button
-          className="topbar-debug"
-          data-testid="open-mcp-settings"
-          aria-label={t("mcp.title")}
-          onClick={() => setMcpOpen(true)}
-        >
-          {t("mcp.title")}
-        </button>
-        <button
-          className="topbar-debug"
-          data-testid="open-forwards"
-          aria-label={t("forward.title")}
-          onClick={() => setForwardsOpen(true)}
-        >
-          {t("forward.title")}
-        </button>
-        <button
-          className="topbar-debug"
-          data-testid="open-jump-chains"
-          aria-label={t("jump.title")}
-          onClick={() => setJumpChainsOpen(true)}
-        >
-          {t("jump.title")}
-        </button>
-        <button
-          className="topbar-debug"
-          data-testid="open-overview"
-          aria-label={t("overview.title")}
-          onClick={() => setOverviewOpen(true)}
-        >
-          {t("overview.title")}
-        </button>
-        <button
-          className="topbar-debug"
-          data-testid="open-batch"
-          aria-label={t("batch.title")}
-          onClick={() => setBatchOpen(true)}
-        >
-          {t("batch.title")}
-        </button>
-        <button
-          className="topbar-debug"
-          data-testid="open-cron"
-          aria-label={t("cron.title")}
-          onClick={() => setCronOpen(true)}
-        >
-          {t("cron.title")}
-        </button>
-        <div className="topbar-spacer" />
-        <NotificationCenter />
-        <ThemeSwitch />
+        <ThemeMenu />
       </header>
       <div className="app-body">
         <aside className="sidebar" style={{ width: sidebarWidth }}>
@@ -613,7 +712,13 @@ function HomeLayout() {
       )}
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
-      <SecuritySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SecuritySettings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onOpenSyncDialog={() => setSyncOpen(true)}
+      />
+      {/* Phase 5 Task 4：同步流程对话框（在设置对话框之后渲染 = 叠于其上）。 */}
+      <SyncDialog open={syncOpen} onClose={() => setSyncOpen(false)} />
       <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
       {/* Phase 3 Task 3（B5）：告警设置（渠道全矩阵 + 规则 CRUD + 测试发送）。 */}
       <AlertSettings open={alertSettingsOpen} onClose={() => setAlertSettingsOpen(false)} />

@@ -50,6 +50,7 @@ export function HostTree({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [grouping, setGrouping] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [groupError, setGroupError] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   // 过期响应守卫：连输两词时只采纳最后一次发出的请求
   const searchSeq = useRef(0);
@@ -76,6 +77,9 @@ export function HostTree({
   }, [debouncedQuery]);
 
   const searching = searchResults !== null;
+  // 用户主动过滤态（搜索/标签）：空分组无意义，允许隐藏；默认浏览态必须
+  // 渲染空分组——「先建组再填内容」是正常路径（BL-109 ①）。
+  const filtering = searching || activeTags.size > 0;
 
   const visibleByGroup = useMemo(() => {
     const source = searching ? searchResults ?? [] : hosts;
@@ -115,12 +119,19 @@ export function HostTree({
   async function submitNewGroup() {
     const name = newGroupName.trim();
     if (!name) return;
+    // BL-109 ②：同名分组前端预校验（MVP 分组均为根级，与既有根级名比对）；
+    // 后端拒绝（竞态兜底）同样行内可见——不再静默吞掉。
+    if (hostGroups.some((g) => g.name === name)) {
+      setGroupError(t("hostTree.groupDuplicate"));
+      return;
+    }
     try {
       await createGroup(name);
       setGrouping(false);
       setNewGroupName("");
-    } catch {
-      // store.refresh 已把 error 收口，这里不重复展示
+      setGroupError(null);
+    } catch (err) {
+      setGroupError(t("hostTree.groupCreateFailed", { message: String(err) }));
     }
   }
 
@@ -133,7 +144,11 @@ export function HostTree({
     }
   }
 
-  const hasVisible = [...visibleByGroup.values()].some((list) => list.length > 0);
+  // 空态提示口径：过滤态看「有没有命中」；浏览态看「有没有内容可渲染」
+  // （主机或分组任一存在即非空树——只有分组没主机也不是空库，BL-109 ①）。
+  const hasVisible = filtering
+    ? [...visibleByGroup.values()].some((list) => list.length > 0)
+    : hosts.length > 0 || hostGroups.length > 0;
 
   return (
     <div className="host-tree">
@@ -152,7 +167,10 @@ export function HostTree({
           <button className="btn-accent" data-testid="add-host" onClick={() => onAdd(null)}>
             {t("hostTree.addHost")}
           </button>
-          <button data-testid="add-group" onClick={() => setGrouping((v) => !v)}>
+          <button data-testid="add-group" onClick={() => {
+            setGroupError(null);
+            setGrouping((v) => !v);
+          }}>
             {t("hostTree.addGroup")}
           </button>
           <button data-testid="import-ssh-config" onClick={onImport}>
@@ -170,13 +188,21 @@ export function HostTree({
             value={newGroupName}
             placeholder={t("hostTree.groupNamePlaceholder")}
             aria-label={t("hostTree.addGroup")}
-            onChange={(e) => setNewGroupName(e.currentTarget.value)}
+            onChange={(e) => {
+              setNewGroupName(e.currentTarget.value);
+              setGroupError(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") void submitNewGroup();
             }}
             autoFocus
           />
           <button onClick={() => void submitNewGroup()}>{t("common.ok")}</button>
+          {groupError && (
+            <p className="tree-error" data-testid="group-name-error" role="alert">
+              {groupError}
+            </p>
+          )}
         </div>
       )}
 
@@ -202,8 +228,10 @@ export function HostTree({
       )}
 
       {hostGroups.map((group) => {
-        const groupHosts = visibleByGroup.get(group.id);
-        if (!groupHosts || groupHosts.length === 0) return null;
+        const groupHosts = visibleByGroup.get(group.id) ?? [];
+        // 空分组：默认浏览态必须渲染（先建组后填内容路径，BL-109 ①）；
+        // 仅用户主动过滤（搜索/标签）时空分组无命中才隐藏。
+        if (filtering && groupHosts.length === 0) return null;
         return (
           <section key={group.id} className="tree-group" data-testid={`group-${group.name}`}>
             <h3>{group.name}</h3>

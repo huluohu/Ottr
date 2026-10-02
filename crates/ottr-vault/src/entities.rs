@@ -99,6 +99,9 @@ impl HostGroups {
         let ts = now_ts();
         let conn = vault.connection();
         let tx = conn.unchecked_transaction()?;
+        // BL-109 ②：同组内同名显式拒绝（0018 部分唯一索引的 DB 层兜底之外，
+        // 应用层先给可展示的错误——索引冲突的 SQLite 裸错对用户无意义）。
+        Self::assert_sibling_name_unique(&tx, name, parent_id, None)?;
         tx.execute(
             "INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?4)",
@@ -136,6 +139,9 @@ impl HostGroups {
             )
             .optional()?
             .ok_or_else(|| VaultError::NotFound(format!("host_group id={id}")))?;
+        // 同组内同名拒绝（改名/挪组撞名同一防线；exclude 本行自身——非改名
+        // 提交必须放行）。
+        Self::assert_sibling_name_unique(&tx, name, parent_id, Some(id))?;
         tx.execute(
             "UPDATE host_groups SET name = ?1, parent_id = ?2, color = ?3, updated_at = ?4
              WHERE id = ?5",
@@ -179,6 +185,37 @@ impl HostGroups {
             .execute("DELETE FROM host_groups WHERE id = ?1", [id])?;
         if n == 0 {
             return Err(VaultError::NotFound(format!("host_group id={id}")));
+        }
+        Ok(())
+    }
+
+    /// 同组内同名拒绝（BL-109 ②应用层防线；与 0018 两条部分唯一索引同口径：
+    /// 唯一性只在同一 parent_id 内生效，跨组允许同名）。`exclude` = 更新路径
+    /// 的本行 id（非改名提交放行）；创建路径传 None。
+    fn assert_sibling_name_unique(
+        conn: &Connection,
+        name: &str,
+        parent_id: Option<i64>,
+        exclude: Option<i64>,
+    ) -> Result<()> {
+        let dup: i64 = match parent_id {
+            Some(pid) => conn.query_row(
+                "SELECT count(*) FROM host_groups
+                 WHERE name = ?1 AND parent_id = ?2 AND id != ?3",
+                params![name, pid, exclude.unwrap_or(0)],
+                |r| r.get(0),
+            )?,
+            None => conn.query_row(
+                "SELECT count(*) FROM host_groups
+                 WHERE name = ?1 AND parent_id IS NULL AND id != ?2",
+                params![name, exclude.unwrap_or(0)],
+                |r| r.get(0),
+            )?,
+        };
+        if dup > 0 {
+            return Err(VaultError::InvalidInput(format!(
+                "a group named \"{name}\" already exists in the same location"
+            )));
         }
         Ok(())
     }

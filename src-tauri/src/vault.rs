@@ -821,6 +821,40 @@ pub fn nc_reveal_config(state: State<'_, VaultState>, id: i64) -> CmdResult<serd
     cmd(NotifyChannels::reveal_config(&state.0, id))
 }
 
+// --- 同步分类快照（Phase 5 Task 3；ottr-vault sync_snapshot 模块）-------------
+// 分类快照导出/导入 = 同步编排（src/sync/SyncStore.ts）的数据面。两者都开封/
+// 重密封凭据与渠道密文（双层加密语义：信封口令保护传输面、本机主密码保护落盘
+// 面，见 task-3-report）——过 ensure_unlocked 门卫，与凭据 CRUD 同一锁定语义。
+// 命令名即简报裁定面：sync_export_categories(cats) / sync_import_categories(cats,
+// data, mode)；顶层参数 camelCase（cats/data/mode 无歧义不转）。
+
+/// 导出所选分类为快照 JSON（确定性输出；含解密后的凭据/渠道明文——返回值只进
+/// 信封加密，前端不得落盘/落日志）。
+#[tauri::command]
+pub fn sync_export_categories(
+    state: State<'_, VaultState>,
+    cats: Vec<String>,
+) -> CmdResult<serde_json::Value> {
+    ensure_unlocked(&state.0)?;
+    cmd(ottr_vault::sync_snapshot::export_categories(
+        &state.0, &cats,
+    ))
+}
+
+/// 全量替换式导入所选分类（单事务原子；返回逐分类落库/跳过计数）。
+#[tauri::command]
+pub fn sync_import_categories(
+    state: State<'_, VaultState>,
+    cats: Vec<String>,
+    data: serde_json::Value,
+    mode: ottr_vault::SyncImportMode,
+) -> CmdResult<ottr_vault::SyncImportReport> {
+    ensure_unlocked(&state.0)?;
+    cmd(ottr_vault::sync_snapshot::import_categories(
+        &state.0, &cats, &data, mode,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -82,7 +82,7 @@ npm install          # 前端依赖（含 @tauri-apps/cli）
 npm run tauri dev    # 起 vite + Tauri 开发窗
 ```
 
-本地 SSH 联调可起测试夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222）。
+本地 SSH 联调可起测试夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222）。同步通道 WebDAV 端到端需 dufs 夹具：`scripts/spike-dufs.sh`（127.0.0.1:15773，需 Docker）。
 
 ### 测试
 

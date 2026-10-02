@@ -152,3 +152,81 @@ describe("App 主页布局（集成）", () => {
     term.remove();
   });
 });
+
+// Phase 5 T1（顶栏收纳）：低频面板入口收进「工具」下拉、主题改单按钮下拉——
+// 呈现重排但功能零丢失：每个原入口仍可达（此处抽「凭据」全链 + 主题切换全链
+// 验证；其余条目与凭据同一 TopbarMenu 壳、同一 onSelect 收口）。
+describe("App 顶栏收纳（Phase 5 T1）", () => {
+  function listMock() {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+  }
+
+  it("工具下拉：九个面板入口齐全；点「凭据」打开凭据对话框", async () => {
+    listMock();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("open-palette")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    const menu = screen.getByTestId("topbar-tools-menu");
+    // 九入口（用户口径八项 + AI 助手收纳）：凭据/告警/MCP/AI/端口转发/跳板链/总览/批量执行/定时任务
+    for (const testid of [
+      "menu-open-credentials",
+      "menu-open-alert-settings",
+      "menu-open-mcp-settings",
+      "menu-open-ai-settings",
+      "menu-open-forwards",
+      "menu-open-jump-chains",
+      "menu-open-overview",
+      "menu-open-batch",
+      "menu-open-cron",
+    ]) {
+      expect(menu.querySelector(`[data-testid="${testid}"]`)).toBeTruthy();
+    }
+
+    // 入口可达性全链：点「凭据」→ 凭据对话框挂载
+    fireEvent.click(screen.getByTestId("menu-open-credentials"));
+    await waitFor(() => expect(screen.getByTestId("credentials-dialog")).toBeTruthy());
+  });
+
+  it("工具下拉：点外/Escape 收起", async () => {
+    listMock();
+    render(<App />);
+    // 点外（mousedown 落在菜单壳之外，对齐 NotificationCenter 契约）收起
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    expect(screen.getByTestId("topbar-tools-menu")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId("topbar-tools-menu")).toBeNull();
+    // Escape 收起
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    expect(screen.getByTestId("topbar-tools-menu")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("topbar-tools-menu")).toBeNull();
+  });
+
+  it("主题单按钮下拉：按钮面显示当前模式，菜单三选一即时生效", async () => {
+    listMock();
+    render(<App />);
+    // 默认 mode=system → 按钮面显示「System」（按钮面 = 当前模式名）
+    const themeButton = screen.getByTestId("topbar-theme");
+    expect(themeButton.textContent).toContain("System");
+
+    fireEvent.click(themeButton);
+    const menu = screen.getByTestId("topbar-theme-menu");
+    expect(menu.querySelector('[data-testid="topbar-theme-light"]')).toBeTruthy();
+    expect(menu.querySelector('[data-testid="topbar-theme-dark"]')).toBeTruthy();
+    expect(menu.querySelector('[data-testid="topbar-theme-system"]')).toBeTruthy();
+
+    // 选暗色 → data-theme 立即切换 + 按钮面更新（persistMode 走 localStorage 镜像）
+    fireEvent.click(menu.querySelector('[data-testid="topbar-theme-dark"]')!);
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(screen.getByTestId("topbar-theme").textContent).toContain("Dark");
+    // 菜单已收起
+    expect(screen.queryByTestId("topbar-theme-menu")).toBeNull();
+    localStorage.removeItem("ottr.settings.theme");
+  });
+});

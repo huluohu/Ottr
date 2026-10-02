@@ -20,6 +20,7 @@ pub mod secrets;
 pub mod settings;
 pub mod store;
 pub mod summaries;
+pub mod sync_snapshot;
 
 pub use crypto::{aad, Cipher};
 pub use entities::{
@@ -51,8 +52,11 @@ pub use cron_jobs::{
 pub use mcp_grants::{McpGrant, McpGrantInput, McpGrants, MCP_READ_PATHS_MAX};
 pub use secrets::Secrets;
 pub use settings::Settings;
+// 同步分类快照导出/导入（Phase 5 Task 3；编排引擎在 src/sync/SyncStore.ts，
+// 本 crate 只供 vault ↔ 快照 JSON 的双向翻译——cron_jobs 同款分工）
 pub use store::{KeyMode, Vault};
 pub use summaries::{SessionSummaries, SummaryEntry, SummaryInput, SUMMARIES_LIST_LIMIT};
+pub use sync_snapshot::{SyncImportMode, SyncImportReport, SYNC_CATEGORIES, SYNC_DATA_VERSION};
 // 录制审计回放（Phase 3 Task 5，B3；asciinema 原始流在 .cast 文件，本 crate 只供表+FTS）
 pub use recordings::{
     RecordingEntry, RecordingHit, RecordingInput, Recordings, RECORDINGS_SEARCH_LIMIT,

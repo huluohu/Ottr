@@ -153,6 +153,65 @@ describe("CronPanel", () => {
     });
   });
 
+  // Phase 4 走查批（OBS-1）：展开的运行历史挂在行容器内的专类上
+  // （.cron-row → flex-wrap，使展开区独占一行——真窗 flex 挤压不可见缺陷面）。
+  it("历史展开区在行容器内（cron-row 专类供展开布局挂钩）", async () => {
+    seedJobs([job({})]);
+    render(<CronPanel open onClose={() => {}} />);
+    await screen.findByTestId("cron-row-1");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("cron-history-1"));
+    });
+    const runs = await screen.findByTestId("cron-runs-1");
+    const row = runs.closest("li");
+    expect(row?.className).toContain("cron-row");
+  });
+
+  // Phase 4 走查批（OBS-1）：面板开着时 live 事件驱动两处刷新——
+  // ①行内徽标带最新轮时刻（可观察新鲜度，不再是无变化的「成功 (0)」）；
+  // ②展开中的历史自动 refetch（cj_runs 重拉），不重开面板也能看到新落库轮次。
+  it("live 事件：徽标带最新轮时刻；展开中的历史自动 refetch", async () => {
+    seedJobs([job({})]);
+    render(<CronPanel open onClose={() => {}} />);
+    await screen.findByTestId("cron-row-1");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("cron-history-1"));
+    });
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("cj_runs", { cronId: 1, limit: 20 });
+    });
+    const callsAfterExpand = mockedInvoke.mock.calls.filter(
+      ([cmd]) => cmd === "cj_runs",
+    ).length;
+
+    const event: CronRunEvent = {
+      run_id: 12,
+      cron_id: 1,
+      host_id: 3,
+      status: "ok",
+      exit_code: 0,
+      duration_ms: 55,
+      ts: 1_800_000_100,
+      output_digest: null,
+      truncated: false,
+      error: null,
+      channel_ids: [],
+    };
+    await act(async () => {
+      useCronStore.getState().onRunEvent(event);
+    });
+
+    // ① 徽标出现且带最新轮时刻（formatTime(1_800_000_100)）
+    const badge = screen.getByTestId("cron-last-1");
+    expect(badge.textContent).toContain("OK");
+    expect(badge.textContent).toContain(new Date(1_800_000_100 * 1000).toLocaleString());
+    // ② 展开中的历史自动 refetch（cj_runs 比展开时多拉一次）
+    await waitFor(() => {
+      const calls = mockedInvoke.mock.calls.filter(([cmd]) => cmd === "cj_runs").length;
+      expect(calls).toBeGreaterThan(callsAfterExpand);
+    });
+  });
+
   it("删除调 cj_delete", async () => {
     seedJobs([job({})]);
     render(<CronPanel open onClose={() => {}} />);

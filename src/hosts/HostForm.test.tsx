@@ -267,3 +267,120 @@ describe("HostForm 生产标记（Phase 2 Task 11，B11）", () => {
     );
   });
 });
+
+// Phase 5 T1（内联凭据）：凭据下拉「＋ 新建凭据…」→ 内联子表单就地填写，
+// 保存主机时先建凭据（credentials_create，vault seal 路径与凭据对话框同源）
+// 再建主机并绑定新凭据 id——用户全程不离开主机表单即可存密码。
+describe("HostForm 内联凭据创建（Phase 5 T1）", () => {
+  function credFlowResponses(cred: Record<string, unknown> | null) {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "credentials_create") {
+        return cred
+          ? Promise.resolve({ id: 7, kind: "password" })
+          : Promise.reject(new Error("seal unavailable"));
+      }
+      if (cmd === "hosts_create") return Promise.resolve({ ...existing, id: 30 });
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+  }
+
+  it("选「＋ 新建凭据…」展开内联子表单；保存主机 → 先建凭据再建主机并绑定", async () => {
+    credFlowResponses({ id: 7 });
+    const onClose = vi.fn();
+    render(<HostForm host={null} defaultGroupId={null} onClose={onClose} />);
+
+    // 下拉选「＋ 新建凭据…」→ 内联子表单就地展开（不离开主机表单）
+    fireEvent.change(screen.getByTestId("form-credential"), { target: { value: "__new__" } });
+    expect(screen.getByTestId("form-cred-inline")).toBeTruthy();
+    // 默认密码型；密码就地填写
+    expect((screen.getByTestId("cred-kind") as HTMLSelectElement).value).toBe("password");
+    fireEvent.change(screen.getByTestId("cred-secret"), { target: { value: "s3cret" } });
+
+    fill("10.0.0.9", "22");
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("credentials_create", {
+        input: { kind: "password", secret: "s3cret", key_pub: null, passphrase: null, totp_secret: null },
+      }),
+    );
+    // 主机载荷绑定新建凭据 id
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("hosts_create", {
+        input: expect.objectContaining({ address: "10.0.0.9", credential_id: 7 }),
+      }),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it("内联凭据密码留空：校验错误、不发 credentials_create / hosts_create", async () => {
+    credFlowResponses({ id: 7 });
+    const onClose = vi.fn();
+    render(<HostForm host={null} defaultGroupId={null} onClose={onClose} />);
+    fireEvent.change(screen.getByTestId("form-credential"), { target: { value: "__new__" } });
+    fill("10.0.0.9", "22");
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("cred-error").textContent).toBe("Password is required"),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("credentials_create", expect.anything());
+    expect(mockedInvoke).not.toHaveBeenCalledWith("hosts_create", expect.anything());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("凭据创建失败：错误落在内联子表单、主机不创建", async () => {
+    credFlowResponses(null);
+    const onClose = vi.fn();
+    render(<HostForm host={null} defaultGroupId={null} onClose={onClose} />);
+    fireEvent.change(screen.getByTestId("form-credential"), { target: { value: "__new__" } });
+    fireEvent.change(screen.getByTestId("cred-secret"), { target: { value: "s3cret" } });
+    fill("10.0.0.9", "22");
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("cred-error").textContent).toContain("seal unavailable"),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("hosts_create", expect.anything());
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("取消内联子表单：回到不绑定态，主机正常创建（credential_id null）", async () => {
+    credFlowResponses({ id: 7 });
+    render(<HostForm host={null} defaultGroupId={null} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("form-credential"), { target: { value: "__new__" } });
+    expect(screen.getByTestId("form-cred-inline")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("form-cred-cancel"));
+    expect(screen.queryByTestId("form-cred-inline")).toBeNull();
+    fill("10.0.0.9", "22");
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("hosts_create", {
+        input: expect.objectContaining({ credential_id: null }),
+      }),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("credentials_create", expect.anything());
+  });
+
+  it("编辑模式同样可内联新建凭据并换绑（hosts_update 带 credential_id=新 id）", async () => {
+    credFlowResponses({ id: 7 });
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "credentials_create") return Promise.resolve({ id: 9, kind: "password" });
+      if (cmd === "hosts_update") return Promise.resolve(existing);
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<HostForm host={existing} defaultGroupId={null} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("form-credential"), { target: { value: "__new__" } });
+    fireEvent.change(screen.getByTestId("cred-secret"), { target: { value: "np" } });
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("hosts_update", {
+        id: 11,
+        input: expect.objectContaining({ credential_id: 9 }),
+      }),
+    );
+  });
+});

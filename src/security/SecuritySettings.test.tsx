@@ -337,6 +337,10 @@ describe("SecuritySettings", () => {
     // 勾选 → 先弹确认框（风险说明），未确认不写 settings
     fireEvent.click(toggle);
     await waitFor(() => expect(screen.getByTestId("sudo-autofill-dialog")).toBeTruthy());
+    // Phase 4 走查批：确认框必须预告「凭据不符会连续失败」——绑定的密码凭据
+    // 与主机实际 sudo 密码不一致时，每轮 sudo 都会填错并被反复提示直至中止。
+    // （本文件钉 zh-CN 词典，断言用中文。）
+    expect(screen.getByTestId("sudo-autofill-dialog").textContent).toContain("连续填充失败");
     expect(
       mockedInvoke.mock.calls.filter(
         ([cmd, args]) => cmd === "settings_set" && (args as { key: string }).key === "security.sudo_autofill",

@@ -20,6 +20,7 @@ import {
   MUTED_SETTING_KEY,
   RATE_WINDOW_MS,
   channels,
+  clearDeliveryFailure,
   disposeNotifyEvents,
   initNotifyEvents,
   notify,
@@ -27,6 +28,9 @@ import {
   onSessionClosed,
   onTransferEnd,
   rateKeyOf,
+  readDeliveryFailures,
+  recordDeliveryFailure,
+  resetDeliveryLedger,
   resetRateLimiter,
   setNotifyPorts,
   useNotifyStore,
@@ -34,6 +38,7 @@ import {
   type NotifyKind,
   type NotifyPorts,
 } from "./core";
+import { withRetry } from "./channels/retry";
 import type { Notification } from "../vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -107,6 +112,7 @@ function resetStore(muted: NotifyKind[] = []) {
   useNotifyStore.setState({ items: [], unread: 0, muted });
   mockedInvoke.mockReset();
   resetRateLimiter();
+  resetDeliveryLedger();
   nextId = 1;
 }
 
@@ -202,6 +208,156 @@ describe("notify 管线", () => {
     expect(ports.sent).toHaveLength(1);
     expect(seen).toHaveLength(1);
     expect(useNotifyStore.getState().items).toHaveLength(0);
+  });
+});
+
+describe("投递失败面（Phase 5 T1，BL-517 清偿）", () => {
+  /** seed 一条中心条目（id=1，payload 带 transfer_id）。 */
+  function seedRow(): Notification {
+    const row: Notification = {
+      id: 1,
+      kind: "transfer",
+      severity: "error",
+      host_id: 7,
+      title_key: "notify.title.transferFailed",
+      body: "/srv/a.tar — boom",
+      payload: { transfer_id: "xfer-1" },
+      read: false,
+      ts: 1000,
+    };
+    useNotifyStore.setState({ items: [row], unread: 1 });
+    return row;
+  }
+
+  it("recordDeliveryFailure：失败标记并入条目 payload（按渠道去重、最近失败覆盖）", () => {
+    seedRow();
+    recordDeliveryFailure(1, {
+      channel: "slack#3",
+      channel_id: 3,
+      error: "HTTP 502: bad gateway",
+      ts: 100,
+    });
+    let fails = readDeliveryFailures(useNotifyStore.getState().items[0].payload);
+    expect(fails).toHaveLength(1);
+    expect(fails[0]).toMatchObject({ channel: "slack#3", channel_id: 3, ts: 100 });
+
+    // 同渠道再败：去重覆盖（不堆叠），他渠道追加
+    recordDeliveryFailure(1, { channel: "slack#3", channel_id: 3, error: "HTTP 504", ts: 200 });
+    recordDeliveryFailure(1, {
+      channel: "dingtalk#4",
+      channel_id: 4,
+      error: "errcode=310000",
+      ts: 300,
+    });
+    fails = readDeliveryFailures(useNotifyStore.getState().items[0].payload);
+    expect(fails).toHaveLength(2);
+    expect(fails[0]).toMatchObject({ channel: "slack#3", error: "HTTP 504", ts: 200 });
+
+    // notificationId null（①落库已失败、无条目可挂）：不炸不记账
+    expect(() =>
+      recordDeliveryFailure(null, { channel: "x#1", channel_id: 1, error: "e", ts: 1 }),
+    ).not.toThrow();
+
+    // payload 形态不受信：非对象/坏形状回空
+    expect(readDeliveryFailures(null)).toEqual([]);
+    expect(readDeliveryFailures({ delivery_failed: "junk" })).toEqual([]);
+  });
+
+  it("clearDeliveryFailure：翻正销账；渠道集空整键摘除", () => {
+    seedRow();
+    recordDeliveryFailure(1, { channel: "slack#3", channel_id: 3, error: "e1", ts: 100 });
+    recordDeliveryFailure(1, { channel: "dingtalk#4", channel_id: 4, error: "e2", ts: 200 });
+
+    clearDeliveryFailure(1, "slack#3");
+    let fails = readDeliveryFailures(useNotifyStore.getState().items[0].payload);
+    expect(fails.map((f) => f.channel)).toEqual(["dingtalk#4"]);
+
+    clearDeliveryFailure(1, "dingtalk#4");
+    expect(readDeliveryFailures(useNotifyStore.getState().items[0].payload)).toEqual([]);
+    clearDeliveryFailure(1, "dingtalk#4"); // 重复清：幂等不炸
+  });
+
+  it("refresh 重贴标记（DB 行无标记 → 账本回填）；clear（清空）连账本一起销", async () => {
+    seedRow();
+    recordDeliveryFailure(1, { channel: "slack#3", channel_id: 3, error: "e", ts: 100 });
+    // refresh 拉回 DB 行（payload 无标记）→ 账本重贴
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "notify_list") return [seedRow()];
+      if (cmd === "notify_unread_count") return 1;
+      throw new Error(`unexpected: ${cmd}`);
+    });
+    await useNotifyStore.getState().refresh();
+    expect(readDeliveryFailures(useNotifyStore.getState().items[0].payload)).toHaveLength(1);
+
+    // 清空面板 → 条目与账本同销：refresh 拉回同名 id 也不再贴标记
+    mockedInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "notify_list") return [seedRow()];
+      if (cmd === "notify_unread_count") return 1;
+      throw new Error(`unexpected: ${cmd}`);
+    });
+    useNotifyStore.getState().clear();
+    await useNotifyStore.getState().refresh();
+    expect(readDeliveryFailures(useNotifyStore.getState().items[0].payload)).toEqual([]);
+  });
+
+  it("端到端：withRetry 渠道三次退避终败 → 中心条目带投递失败标记（缺省回执）；先败后翻正自动清账", async () => {
+    echoInsert();
+    // 门控退避时钟：首个 delay 挂起待放行，其后即时（首发后重试一口气走完）
+    let release: () => void = () => {};
+    const firstGate = new Promise<void>((r) => {
+      release = r;
+    });
+    let delayCount = 0;
+    const delay = () => (delayCount++ === 0 ? firstGate : Promise.resolve());
+    let attempt = 0;
+    const ch = withRetry(
+      {
+        name: "slack#3",
+        send: async () => {
+          attempt += 1;
+          throw new TypeError("fetch failed");
+        },
+        test: async () => {},
+      },
+      { delay },
+    );
+    channels.push(ch);
+    usePorts({ t: 1_000_000 }, true);
+    expect(await notify(baseEvent())).toBe(true); // 首试内联失败即返回，行已落（id=1）
+    channels.length = 0;
+    expect(useNotifyStore.getState().items[0].payload).toEqual({ transfer_id: "xfer-1" });
+
+    // 放行退避（终败回执缺省 = 中心条目打标记）
+    release();
+    await vi.waitFor(() => {
+      const fails = readDeliveryFailures(useNotifyStore.getState().items[0].payload);
+      expect(fails).toHaveLength(1);
+      expect(fails[0]).toMatchObject({
+        channel: "slack#3",
+        channel_id: 3,
+        error: "fetch failed",
+      });
+    });
+    expect(attempt).toBe(4); // 首发 + 三次重试
+
+    // 先败后翻正：重试成功路径 → onDelivered 缺省清账（标记消失）
+    recordDeliveryFailure(1, { channel: "telegram#5", channel_id: 5, error: "HTTP 503", ts: 1 });
+    let n = 0;
+    const ch2 = withRetry(
+      {
+        name: "telegram#5",
+        send: async () => {
+          n += 1;
+          if (n === 1) throw new TypeError("fetch failed");
+        },
+        test: async () => {},
+      },
+      { delay: async () => {} },
+    );
+    await ch2.send(baseEvent(), { notificationId: 1 });
+    await ch2.flush();
+    const fails = readDeliveryFailures(useNotifyStore.getState().items[0].payload);
+    expect(fails.map((f) => f.channel)).toEqual(["slack#3"]); // 只剩未翻正的
   });
 });
 

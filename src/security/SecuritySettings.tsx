@@ -21,10 +21,13 @@ import { parseWintermSchemes } from "../theme/importers/winterm";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { useVaultLockStore } from "./VaultLockStore";
+import { SyncSettings } from "../sync/SyncSettings";
 
 export interface SecuritySettingsProps {
   open: boolean;
   onClose: () => void;
+  /** 同步区「立即同步」入口（App 根部挂 SyncDialog，Task 4）。 */
+  onOpenSyncDialog?: () => void;
 }
 
 const REENCRYPT_EVENT = "ottr://reencrypt-progress";
@@ -44,7 +47,7 @@ const SETTING_HOSTKEY_AUDIT_INTERVAL = "security.hostkey_audit_interval_secs";
 
 type WizardStep = "password" | "progress" | "done";
 
-export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
+export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySettingsProps) {
   const { t } = useTranslation();
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
@@ -470,6 +473,9 @@ export function SecuritySettings({ open, onClose }: SecuritySettingsProps) {
             </>
           )}
         </section>
+
+        {/* --- 同步（Phase 5 Task 4）：通道三选一/信封口令/测试连接/立即同步 --- */}
+        <SyncSettings onOpenSync={() => onOpenSyncDialog?.()} />
 
         {/* --- 外观 / 语言（T2 键面沿用；persist 已迁 vault settings）--- */}
         <section aria-label={t("settings.sectionAppearance")}>

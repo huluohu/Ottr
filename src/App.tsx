@@ -13,6 +13,7 @@ import { listen } from "@tauri-apps/api/event";
 import { HostTree } from "./hosts/HostTree";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
+import { SyncDialog } from "./sync/SyncDialog";
 // Phase 4 Task 3（C1）：MCP server 设置 + exec 逐次审批确认框（全局挂载）。
 import { McpSettings } from "./security/McpSettings";
 import { McpApprovalDialog } from "./security/McpApprovalDialog";
@@ -240,6 +241,8 @@ function HomeLayout() {
   // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
   const [nlOpen, setNlOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Phase 5 Task 4：同步对话框（设置页「立即同步」+ 顶栏工具菜单两个入口）。
+  const [syncOpen, setSyncOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   // Phase 3 Task 3（B5）：告警设置（渠道矩阵 + 规则；顶栏入口对话框——
@@ -555,6 +558,12 @@ function HomeLayout() {
               testid: "menu-open-cron",
               onSelect: () => setCronOpen(true),
             },
+            {
+              key: "sync",
+              label: t("sync.sectionTitle"),
+              testid: "menu-open-sync",
+              onSelect: () => setSyncOpen(true),
+            },
           ]}
         />
         <NotificationCenter />
@@ -703,7 +712,13 @@ function HomeLayout() {
       )}
       {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
-      <SecuritySettings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SecuritySettings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onOpenSyncDialog={() => setSyncOpen(true)}
+      />
+      {/* Phase 5 Task 4：同步流程对话框（在设置对话框之后渲染 = 叠于其上）。 */}
+      <SyncDialog open={syncOpen} onClose={() => setSyncOpen(false)} />
       <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
       {/* Phase 3 Task 3（B5）：告警设置（渠道全矩阵 + 规则 CRUD + 测试发送）。 */}
       <AlertSettings open={alertSettingsOpen} onClose={() => setAlertSettingsOpen(false)} />

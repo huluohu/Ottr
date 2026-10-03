@@ -2801,19 +2801,16 @@ button[data-active="true"] {
 
 /* --- Phase 3 Task 2（B4 下半）：多主机总览 + 进程浏览器 --------------------- */
 
-/* 总览（顶栏入口对话框）：卡片网格——监控主机实时卡 / 未开启主机灰卡 */
-.overview-panel {
-  width: min(760px, 92vw);
-  max-height: 82vh;
-  overflow-y: auto;
-}
+/* 总览（主区 overview 视图，T3 自对话框迁入）：卡片网格——监控主机实时卡 /
+   未开启主机灰卡。列数随主区宽度自适应（Task 3 裁定：auto-fill
+   minmax(280px,1fr)，宽屏充盈多列）。 */
 .overview-empty {
   color: var(--fg-muted);
   font-size: 13px;
 }
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 10px;
 }
 .overview-card {
@@ -3058,26 +3055,35 @@ button[data-active="true"] {
   padding: 0 4px;
 }
 
-/* 批量执行面板（Phase 3 Task 4，B6）：顶栏入口对话框（OverviewPage 同款
-   overlay/dialog 语言），左列 = HostTree 多选主机、右列 = 命令/变量/参数；
-   结果表 = 状态档色 + 少数派行高亮（令牌色随主题）。 */
-.batch-panel {
-  width: min(1080px, 92vw);
-  max-height: 88vh;
-  overflow: auto;
-}
+/* 批量执行（主区 batch 视图，T3 自对话框迁入）：宽屏三栏 grid（Task 3 裁定）
+   = 多选树 240px | 命令区 1fr | 结果表 1fr（结果表在场时 data-has-results 切
+   三栏，否则两栏）；窄屏媒体查询退化单列。结果表 = 状态档色 + 少数派行高亮
+   （令牌色随主题）。 */
 .batch-cols {
   display: grid;
-  grid-template-columns: minmax(220px, 300px) 1fr;
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+.batch-cols[data-has-results="true"] {
+  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 1000px) {
+  .batch-cols,
+  .batch-cols[data-has-results="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .batch-col-hosts {
   border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
   border-radius: 8px;
   padding: 8px;
-  max-height: 46vh;
+  /* 主区视图内：树列自限高自滚（视口去头部落到双栏区，原 46vh 是对话框口径） */
+  max-height: calc(100vh - 260px);
   overflow: auto;
+}
+.batch-col-results {
+  min-width: 0;
 }
 .batch-col-hosts h3,
 .batch-vars-wrap h3,
@@ -3176,7 +3182,7 @@ button[data-active="true"] {
   margin: 8px 0 0;
 }
 .batch-results {
-  margin-top: 14px;
+  margin-top: 0;
 }
 .batch-diff-head {
   font-size: 12.5px;
@@ -3711,44 +3717,40 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 
-/* overview/batch 主区槽位占位（T3 迁实体后本段随 MainViewSlot 消亡）：
- * 布局语言同 main-placeholder（居中窄栏），头部带返回终端按钮。 */
-.main-view-slot {
-  margin: auto;
-  max-width: 640px;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.main-view-slot-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-.main-view-slot-head h2 {
-  margin: 0;
-  flex: 1;
-}
-.main-view-slot-head button {
-  font-size: 0.8em;
-  color: var(--fg-muted);
-  box-shadow: none;
-}
-.main-view-slot-head button:hover {
-  color: var(--color-accent-text);
-  border-color: var(--color-accent);
-}
-.main-view-slot-hint {
-  color: var(--fg-muted);
-  font-size: 0.85em;
-}
-
-/* 槽位在 term-main-row 内（有会话时 overview/batch 视图）：flex 撑满，
- * 终端 holder 同时 absolute+hidden 常驻（不变量：任何视图切换不卸载终端）。 */
-.term-main-row > .main-view-slot {
+/* overview/batch 主区实体视图容器（T3：OverviewPage/BatchPanel 迁入，占位壳
+ * MainViewSlot 消亡）：挂载即打开（MainArea 路由互斥），容器充盈主区；
+ * 头部 = 标题 + 「← 终端」返回按钮（承接原 slot-back-terminal 语义）。 */
+.main-view {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.main-view-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.main-view-head h2 {
+  margin: 0;
+  flex: 1;
+}
+.main-view-head button {
+  font-size: 0.8em;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.main-view-head button:hover {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+}
+
+/* 实体视图在 term-main-row 内（有会话时 overview/batch 视图）：自带内边距
+ * （零会话时主区 .main-area 已有 padding），终端 holder 同时 absolute+hidden
+ * 常驻（不变量：任何视图切换不卸载终端）。 */
+.term-main-row > .main-view {
+  padding: 10px 14px 14px;
 }

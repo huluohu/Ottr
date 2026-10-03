@@ -1,9 +1,12 @@
-// MainArea 路由组件测试（UI 批次一 Task 2）：mainView 五视图切换互斥 /
-// 终端隐藏常驻不变量（切走不卸载、切回恢复）/ filesOnly 覆盖 / 零会话占位面。
-// 重_children（xterm/文件/进程/侧栏）mock 成标记节点——本套件只验路由与挂载面。
+// MainArea 路由组件测试（UI 批次一 Task 2；T3 实体迁入）：mainView 五视图切换
+// 互斥 / 终端隐藏常驻不变量（切走不卸载、切回恢复）/ filesOnly 覆盖 / 零会话占
+// 位面。重_children（xterm/文件/进程/侧栏）mock 成标记节点——本套件只验路由与
+// 挂载面；overview/batch 挂真实体（轻组件，T3 迁入的挂载域本体）。
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// T3：batch 视图挂载即拉 snippets_list——jsdom 无 Tauri runtime，stub 掉
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 vi.mock("../terminal/Terminal", () => ({
   TerminalArea: () => <div data-testid="terminal-area" />,
 }));
@@ -126,13 +129,14 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("true");
   });
 
-  it("切 overview/batch 槽位：终端仍保留；返回按钮恢复终端视图", () => {
+  it("切 overview/batch 实体视图（T3 迁入）：终端仍保留；返回按钮恢复终端视图", () => {
     seedSessions([fakeSession()]);
     render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
     act(() => {
       useWorkspaceStore.getState().openMainView("overview");
     });
-    expect(screen.getByTestId("main-view-slot").getAttribute("data-view")).toBe("overview");
+    // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel（原 main-view-slot 消亡）
+    expect(screen.getByTestId("overview-panel").getAttribute("data-view")).toBe("overview");
     expect(screen.getByTestId("terminal-area")).toBeTruthy(); // 未卸载
     fireEvent.click(screen.getByTestId("slot-back-terminal"));
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("false");
@@ -140,7 +144,7 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
     act(() => {
       useWorkspaceStore.getState().openMainView("batch");
     });
-    expect(screen.getByTestId("main-view-slot").getAttribute("data-view")).toBe("batch");
+    expect(screen.getByTestId("batch-panel").getAttribute("data-view")).toBe("batch");
     expect(screen.getByTestId("terminal-area")).toBeTruthy();
   });
 

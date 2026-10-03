@@ -118,7 +118,7 @@ beforeEach(() => {
 
 describe("BatchPanel", () => {
   it("主机多选切换 + 已选计数 + 未连接徽标", () => {
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     expect(screen.getByTestId("batch-selected-count").textContent).toContain("0");
     selectHost(1);
     selectHost(3);
@@ -135,7 +135,7 @@ describe("BatchPanel", () => {
   });
 
   it("无主机/无命令时执行禁用", () => {
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     expect((screen.getByTestId("batch-execute") as HTMLButtonElement).disabled).toBe(true);
     selectHost(1);
     expect((screen.getByTestId("batch-execute") as HTMLButtonElement).disabled).toBe(true);
@@ -144,7 +144,7 @@ describe("BatchPanel", () => {
   });
 
   it("green 命令一键执行：batch_exec 载荷 = per-host 渲染命令 + 未连接空 session_id", async () => {
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     selectHost(1);
     selectHost(3);
     fireEvent.change(screen.getByTestId("batch-body"), {
@@ -167,7 +167,7 @@ describe("BatchPanel", () => {
   });
 
   it("yellow 二击确认：首击不发起，二击执行", () => {
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     selectHost(1);
     fireEvent.change(screen.getByTestId("batch-body"), {
       target: { value: "sudo systemctl restart nginx" },
@@ -180,7 +180,7 @@ describe("BatchPanel", () => {
   });
 
   it("red armed：两击红字确认后执行", () => {
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     selectHost(1);
     fireEvent.change(screen.getByTestId("batch-body"), { target: { value: "rm -rf /tmp/x" } });
     expect(screen.getByTestId("batch-level").className).toContain("ai-level-red");
@@ -193,7 +193,7 @@ describe("BatchPanel", () => {
   });
 
   it("修改命令/选择后确认状态机复位", () => {
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     selectHost(1);
     fireEvent.change(screen.getByTestId("batch-body"), { target: { value: "sudo reboot" } });
     fireEvent.click(screen.getByTestId("batch-execute"));
@@ -203,7 +203,7 @@ describe("BatchPanel", () => {
   });
 
   it("Fix round 1 I-1：armed 态改变量 → 确认复位，需重新二击", () => {
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     selectHost(1);
     fireEvent.change(screen.getByTestId("batch-body"), { target: { value: "rm -rf {{p}}" } });
     fireEvent.change(screen.getByTestId("batch-var-1-p"), { target: { value: "/tmp/x" } });
@@ -237,7 +237,7 @@ describe("BatchPanel", () => {
         ],
       });
     });
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     // 少数派高亮：fx-d 输出 43 与多数派 42 不同
     const outlierRow = screen.getByTestId("batch-row-4");
     expect(outlierRow.dataset.differs).toBe("true");
@@ -262,7 +262,7 @@ describe("BatchPanel", () => {
         ],
       });
     });
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     const row = screen.getByTestId("batch-row-2");
     expect(row.dataset.differs).toBe("true");
     // jsdom 不支持 details 交互，但 children 恒在 DOM——直接断言行级标注
@@ -286,7 +286,7 @@ describe("BatchPanel", () => {
         ],
       });
     });
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     expect(screen.getByTestId("batch-group").textContent).toContain("2");
     expect(screen.queryByTestId("batch-diff-head")).toBeNull();
   });
@@ -296,7 +296,7 @@ describe("BatchPanel", () => {
       useBatchStore.getState().begin("batch-1", 2);
       useBatchStore.getState().onBatchResult(result({ host_id: 1 }));
     });
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     expect(screen.getByTestId("batch-progress")).toBeTruthy();
     fireEvent.click(screen.getByTestId("batch-cancel"));
     await waitFor(() =>
@@ -313,7 +313,7 @@ describe("BatchPanel", () => {
       if (cmd === "batch_cancel") return true;
       throw new Error(`unexpected command: ${cmd}`);
     });
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     await waitFor(() =>
       expect((screen.getByTestId("batch-snippet") as HTMLSelectElement).options.length).toBe(2),
     );
@@ -326,7 +326,7 @@ describe("BatchPanel", () => {
       if (cmd === "snippets_list") return [];
       throw new Error("batch: no targets");
     });
-    render(<BatchPanel open onClose={() => {}} />);
+    render(<BatchPanel onClose={() => {}} />);
     selectHost(1);
     fireEvent.change(screen.getByTestId("batch-body"), { target: { value: "whoami" } });
     fireEvent.click(screen.getByTestId("batch-execute"));

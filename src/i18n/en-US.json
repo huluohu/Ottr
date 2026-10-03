@@ -611,7 +611,6 @@
     "hopLabel": "Hop {{hop}}"
   },
   "workspace": {
-    "slotHint": "The panel for this view lands in a follow-up task.",
     "dockHint": "The panel lands in this dock in a follow-up task."
   },
   "security": {

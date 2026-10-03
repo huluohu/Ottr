@@ -241,6 +241,8 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
       if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
         return Promise.resolve([]);
       }
+      // T3：batch 实体视图挂载即拉 snippets（迁主区后的新触发面）
+      if (cmd === "snippets_list") return Promise.resolve([]);
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
   }
@@ -267,7 +269,7 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     expect(screen.queryByTestId("dock-container")).toBeNull();
   });
 
-  it("告警/MCP/跳板链 → openDock 对应面板；总览/批量 → openMainView 主区槽位", async () => {
+  it("告警/MCP/跳板链 → openDock 对应面板；总览/批量 → openMainView 主区实体视图", async () => {
     listMock();
     render(<App />);
     await waitFor(() => expect(screen.getByTestId("open-palette")).toBeTruthy());
@@ -282,15 +284,17 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     fireEvent.click(screen.getByTestId("menu-open-jump-chains"));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("jumpchains");
 
-    // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义）；返回按钮回占位面
+    // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义；T3 起挂实体）。
+    // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel。
     fireEvent.click(screen.getByTestId("topbar-tools"));
     fireEvent.click(screen.getByTestId("menu-open-overview"));
-    expect(screen.getByTestId("main-view-slot").getAttribute("data-view")).toBe("overview");
+    expect(screen.getByTestId("overview-panel").getAttribute("data-view")).toBe("overview");
     fireEvent.click(screen.getByTestId("topbar-tools"));
     fireEvent.click(screen.getByTestId("menu-open-batch"));
-    expect(screen.getByTestId("main-view-slot").getAttribute("data-view")).toBe("batch");
+    expect(screen.getByTestId("batch-panel").getAttribute("data-view")).toBe("batch");
     fireEvent.click(screen.getByTestId("slot-back-terminal"));
-    expect(screen.queryByTestId("main-view-slot")).toBeNull();
+    expect(screen.queryByTestId("batch-panel")).toBeNull();
+    expect(screen.queryByTestId("overview-panel")).toBeNull();
     expect(screen.getByTestId("main-area").textContent).toContain("Pick a host");
   });
 });

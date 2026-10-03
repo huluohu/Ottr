@@ -115,7 +115,7 @@ describe("OverviewPage 20 主机规模（T7 性能维构造测试）", () => {
     useMonitorStore.setState({ windows });
 
     const t0 = performance.now();
-    render(<OverviewPage open onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
+    render(<OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
     const renderMs = performance.now() - t0;
 
     const grid = screen.getByTestId("overview-grid");

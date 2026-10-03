@@ -1,10 +1,15 @@
-// MainArea（UI 批次一 Task 2）：主区视图路由——workspaceStore.mainView 状态机
-// 驱动的五视图切换（terminal/files/processes/overview/batch）。
+// MainArea（UI 批次一 Task 2；Task 3 实体迁入）：主区视图路由——
+// workspaceStore.mainView 状态机驱动的五视图切换（terminal/files/processes/
+// overview/batch）。
 //
 // 【终端常驻不变量】非 terminal 视图时终端 DOM **保留但隐藏**（visibility 制式，
 // 沿 Task 10 文件视图先例：absolute+inset 保持原尺寸，回视图无需 refit）——
-// xterm 缓冲/滚动回看不丢，运行中会话不卸载。overview/batch 视图同制式（原为
-// 顶栏对话框叠加，现迁入主区互斥体系；实体 T3 迁入）。
+// xterm 缓冲/滚动回看不丢，运行中会话不卸载。overview/batch 视图同制式
+// （Task 3 起 OverviewPage/BatchPanel 实体挂在这里，占位壳 MainViewSlot 消亡）。
+//
+// 【实体导航接线（Task 3）】总览卡片点击 = openTab + openMainView("terminal")
+// （原对话框 onClose 语义等价迁移）；「进程」= openTab + openMainView("processes")；
+// 两实体头部「← 终端」= openMainView("terminal")（原 slot-back-terminal 语义）。
 //
 // 【filesOnly 覆盖】FTP/FTPS 会话无 PTY 终端：mainView 无论何值（视图族内）恒
 // 文件视图、终端/进程按钮隐藏——原 HomeLayout 行为等价迁移（原 filesOpen 布尔
@@ -21,10 +26,11 @@ import { DiagnosePanel } from "../ai/DiagnosePanel";
 import { MonitorSidebar } from "../monitor/MonitorSidebar";
 import { PluginSidebar } from "../plugins/PluginSidebar";
 import { RecordToggle } from "../history/RecordToggle";
+import { OverviewPage } from "../monitor/OverviewPage";
+import { BatchPanel } from "../batch/BatchPanel";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
 import type { Host } from "../vault/api";
-import { MainViewSlot } from "./MainViewSlot";
 import { useWorkspaceStore } from "./workspaceStore";
 
 interface MainAreaProps {
@@ -40,6 +46,7 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
+  const openTab = useSessionStore((s) => s.openTab);
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
   const hosts = useVaultStore((s) => s.hosts);
@@ -58,16 +65,35 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
   const filesVisible = mainView === "files" || (terminalMode && filesOnly);
   const procsVisible = mainView === "processes" && !filesVisible;
   const termViewActive = mainView === "terminal" && !filesOnly;
-  // overview/batch 槽位视图（占位组件，T3 迁实体）
+  // overview/batch 实体视图（UI 批次一 Task 3 迁入；占位壳 MainViewSlot 消亡）。
+  // 导航接线：卡片 = 跳标签 + 回终端；「进程」= 跳标签 + 切进程视图；
+  // 头部返回按钮 = 回终端（会话与终端缓冲从未卸载）。
   const slotView = mainView === "overview" || mainView === "batch" ? mainView : null;
+  const backToTerminal = () => openMainView("terminal");
+  const slotPane =
+    slotView === null ? null : slotView === "overview" ? (
+      <OverviewPage
+        onClose={backToTerminal}
+        onOpen={(host) => {
+          openTab(host);
+          openMainView("terminal");
+        }}
+        onOpenProcesses={(host) => {
+          openTab(host);
+          openMainView("processes");
+        }}
+      />
+    ) : (
+      <BatchPanel onClose={backToTerminal} />
+    );
 
   // 零会话：占位面（原分支原样——视图族按钮只在有会话时存在）。overview/batch
-  // 零会话也可开（原对话框语义），此时无终端可保留，槽位独占主区。
+  // 零会话也可开（原对话框语义），此时无终端可保留，实体视图独占主区。
   if (!terminalMode) {
     return (
       <main className="main-area" data-testid="main-area">
         {slotView !== null ? (
-          <MainViewSlot view={slotView} />
+          slotPane
         ) : (
           <>
             {storeError && (
@@ -97,9 +123,9 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
   }
 
   // 有会话：标签条 + 视图切换 + 终端常驻区（五视图路由核心）。
-  // 【终端常驻不变量】五视图共用同一 term-main-row：overview/batch 槽位渲染在
-  // 让位的侧栏位置，终端 holder 恒在 DOM（data-hidden 切 visibility）——任何
-  // 视图切换都不卸载终端（xterm 缓冲/滚动回看不丢，运行中会话保留）。
+  // 【终端常驻不变量】五视图共用同一 term-main-row：overview/batch 实体视图
+  // 渲染在让位的侧栏位置，终端 holder 恒在 DOM（data-hidden 切 visibility）——
+  // 任何视图切换都不卸载终端（xterm 缓冲/滚动回看不丢，运行中会话保留）。
   return (
     <main className="main-area terminal-mode" data-testid="main-area">
       <div className="tabbar-row">
@@ -153,7 +179,7 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
           <TerminalArea />
         </div>
         {slotView !== null ? (
-          <MainViewSlot view={slotView} />
+          slotPane
         ) : (
           termViewActive && (
             <>

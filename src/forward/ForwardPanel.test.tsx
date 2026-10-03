@@ -1,4 +1,5 @@
-// ForwardPanel 组件测试（Phase 2 Task 1 Step 4）：列表渲染（端点/主机/字节
+// ForwardPanel 组件测试（Phase 2 Task 1 Step 4；T4 迁 dock 后原样随迁——
+// 面板级关闭钮归 dock 壳，其行为在 dock/DockPanel.test 锁定）：列表渲染（端点/主机/字节
 // 人话格式）、状态灯档位映射、启停按钮（pf_start 带 rustId / 未连接禁用）、
 // enabled 开关落库、删除、添加表单校验（local 缺 target 拒绝 / dynamic 免
 // target）与成功提交（pf_create + 刷新）。invoke 全量 mock（有状态后端：
@@ -235,7 +236,7 @@ describe("列表与运行面", () => {
         },
       }),
     ]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-row-11")).toBeTruthy());
     expect(screen.getByTestId("forward-list").textContent).toContain("127.0.0.1:8080");
     expect(screen.getByTestId("forward-list").textContent).toContain("db.internal:5432");
@@ -247,13 +248,13 @@ describe("列表与运行面", () => {
 
   it("空态文案", async () => {
     seedBackend([]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-empty")).toBeTruthy());
   });
 
   it("启动：pf_start 带 rustId，成功后面板回显 runtime", async () => {
     seedBackend([row()]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-start-11")).toBeTruthy());
     fireEvent.click(screen.getByTestId("forward-start-11"));
     await waitFor(() =>
@@ -269,7 +270,7 @@ describe("列表与运行面", () => {
   it("未连接（rustId null）→ start 禁用并带提示", async () => {
     seedSession({ rustId: null, status: "disconnected" });
     seedBackend([row()]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-start-11")).toBeTruthy());
     const btn = screen.getByTestId("forward-start-11") as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
@@ -291,7 +292,7 @@ describe("列表与运行面", () => {
         },
       }),
     ]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-stop-11")).toBeTruthy());
     fireEvent.click(screen.getByTestId("forward-stop-11"));
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("pf_stop", { id: 11 }));
@@ -305,7 +306,7 @@ describe("列表与运行面", () => {
 
   it("enabled 开关落库（pf_set_enabled 翻转值）", async () => {
     seedBackend([row({ enabled: true })]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-enabled-11")).toBeTruthy());
     const box = screen.getByTestId("forward-enabled-11") as HTMLInputElement;
     expect(box.checked).toBe(true);
@@ -319,7 +320,7 @@ describe("列表与运行面", () => {
 describe("添加表单", () => {
   it("local 缺 target → 校验拒绝不发命令；补齐后 pf_create + 刷新", async () => {
     seedBackend([row()]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-add")).toBeTruthy());
     fireEvent.click(screen.getByTestId("forward-add"));
     fireEvent.change(screen.getByTestId("forward-form-bind-port"), {
@@ -358,7 +359,7 @@ describe("添加表单", () => {
 
   it("dynamic 隐藏 target 字段且载荷 target 为 null", async () => {
     seedBackend([row()]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-add")).toBeTruthy());
     fireEvent.click(screen.getByTestId("forward-add"));
     fireEvent.change(screen.getByTestId("forward-form-kind"), { target: { value: "dynamic" } });
@@ -382,7 +383,7 @@ describe("添加表单", () => {
 
   it("非法监听端口 → 校验错误不发命令", async () => {
     seedBackend([row()]);
-    render(<ForwardPanel open onClose={() => {}} />);
+    render(<ForwardPanel open />);
     await waitFor(() => expect(screen.getByTestId("forward-add")).toBeTruthy());
     fireEvent.click(screen.getByTestId("forward-add"));
     fireEvent.change(screen.getByTestId("forward-form-bind-port"), {
@@ -400,13 +401,3 @@ describe("添加表单", () => {
   });
 });
 
-describe("关闭", () => {
-  it("close 按钮回调 onClose", async () => {
-    seedBackend([]);
-    const onClose = vi.fn();
-    render(<ForwardPanel open onClose={onClose} />);
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
-    fireEvent.click(screen.getByLabelText("关闭"));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-});

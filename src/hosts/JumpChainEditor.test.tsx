@@ -122,7 +122,7 @@ afterEach(async () => {
 describe("JumpChainEditor", () => {
   it("列表渲染：链名 + 按跳序的主机名链摘要", async () => {
     seedBackend([chain({ hops: [1, 2] }), chain({ id: 12, name: "reverse", hops: [2, 1] })]);
-    render(<JumpChainEditor open onClose={() => {}} />);
+    render(<JumpChainEditor open />);
     await waitFor(() => expect(screen.getByTestId("jump-row-11")).toBeTruthy());
     expect(screen.getByText("office-bastions")).toBeTruthy();
     // 顺序显著：正向与反向链的摘要是不同文本
@@ -132,14 +132,14 @@ describe("JumpChainEditor", () => {
 
   it("空态文案 + 添加按钮", async () => {
     seedBackend([]);
-    render(<JumpChainEditor open onClose={() => {}} />);
+    render(<JumpChainEditor open />);
     expect(await screen.findByTestId("jump-empty")).toBeTruthy();
     expect(screen.getByTestId("jump-add")).toBeTruthy();
   });
 
   it("创建：默认带一跳，改选主机与链名后保存（jc_create 载荷正确）", async () => {
     seedBackend([]);
-    render(<JumpChainEditor open onClose={() => {}} />);
+    render(<JumpChainEditor open />);
     fireEvent.click(await screen.findByTestId("jump-add"));
     fireEvent.change(screen.getByTestId("jump-form-name"), {
       target: { value: "new-chain" },
@@ -156,7 +156,7 @@ describe("JumpChainEditor", () => {
 
   it("校验：空名拒绝提交（不发 jc_create）；删光 hop 拒绝提交", async () => {
     seedBackend([]);
-    render(<JumpChainEditor open onClose={() => {}} />);
+    render(<JumpChainEditor open />);
     fireEvent.click(await screen.findByTestId("jump-add"));
     fireEvent.click(screen.getByTestId("jump-form-save"));
     expect(await screen.findByTestId("jump-form-error").catch(() => null) ?? screen.getByTestId("jump-form-error")).toBeTruthy();
@@ -173,7 +173,7 @@ describe("JumpChainEditor", () => {
 
   it("hop 排序：↓ 交换两跳，保存经 jc_update 落新顺序（与拖拽同一 moveHop 路径）", async () => {
     seedBackend([chain()]);
-    render(<JumpChainEditor open onClose={() => {}} />);
+    render(<JumpChainEditor open />);
     fireEvent.click(await screen.findByTestId("jump-edit-11"));
     const downs = screen.getAllByTestId("jump-hop-down");
     fireEvent.click(downs[0]); // 第 1 跳下移 → [2, 1]
@@ -190,7 +190,7 @@ describe("JumpChainEditor", () => {
 
   it("删除：jc_delete + 列表刷新", async () => {
     seedBackend([chain()]);
-    render(<JumpChainEditor open onClose={() => {}} />);
+    render(<JumpChainEditor open />);
     fireEvent.click(await screen.findByTestId("jump-delete-11"));
     await waitFor(() => expect(screen.getByTestId("jump-empty")).toBeTruthy());
     expect(mockedInvoke.mock.calls.some(([c]) => c === "jc_delete" && (c && true))).toBe(true);
@@ -203,7 +203,7 @@ describe("JumpChainEditor", () => {
       }
       return { ok: true, hop: null, error: null, elapsed_ms: 800 };
     });
-    render(<JumpChainEditor open onClose={() => {}} />);
+    render(<JumpChainEditor open />);
     fireEvent.click(await screen.findByTestId("jump-edit-11"));
     fireEvent.click(screen.getByTestId("jump-test"));
     const result = await screen.findByTestId("jump-test-result");

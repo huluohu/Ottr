@@ -1,5 +1,6 @@
-// CronPanel（Phase 4 Task 1，缺口①）：cron 定时任务中心（顶栏入口对话框，
-// ForwardPanel 同款布局语言）。
+// CronPanel（Phase 4 Task 1，缺口①；UI 批次一 Task 4 迁右侧 dock）：cron 定时
+// 任务中心（工具菜单 → dock/DockPanel 承载，open 由 dock 单槽驱动——组件逻辑
+// 零改动，仅外壳从 overlay 对话框换为 dock 内容形态；ForwardPanel 布局语言）。
 // * 任务列表：主机 · schedule · 下次触发（cj_next_fire，打开时解析）·
 //   最近运行徽标（cronStore.live 活性）· enabled 开关 / 立即运行 / 编辑 / 删除。
 // * 运行历史：行展开（cj_runs 最近 20 条；状态档 + 退出码 + 时长 + 时刻），
@@ -15,10 +16,10 @@ import { vaultApi, type Host, type NotifyChannel } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { cronApi, type CronJob, type CronJobInput, type CronRun, type CronRunStatus } from "./api";
 import { useCronStore } from "./cronStore";
+import { Checkbox } from "../ui/Checkbox";
 
 export interface CronPanelProps {
   open: boolean;
-  onClose: () => void;
 }
 
 interface FormState {
@@ -60,7 +61,7 @@ export function formatTime(ts: number | null): string {
   return new Date(ts * 1000).toLocaleString();
 }
 
-export function CronPanel({ open, onClose }: CronPanelProps) {
+export function CronPanel({ open }: CronPanelProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const jobs = useCronStore((s) => s.jobs);
@@ -295,16 +296,9 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
   const hostById = new Map<number, Host>(hosts.map((h) => [h.id, h]));
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("cron.title")}>
-      <div className="dialog forward-panel" data-testid="cron-panel">
-        <div className="dialog-head">
-          <h2>{t("cron.title")}</h2>
-          <button className="dialog-close" aria-label={t("common.close")} onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        {(loadError ?? storeError) && (
+    // dock 内容形态（T4）：标题/关闭由 dock 壳（dock/DockPanel）供给。
+    <div className="dock-entity" role="region" aria-label={t("cron.title")} data-testid="cron-panel">
+      {(loadError ?? storeError) && (
           <p className="form-error" data-testid="cron-load-error">
             {t("cron.loadFailed", { message: loadError ?? storeError ?? "" })}
           </p>
@@ -361,9 +355,8 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
                 </span>
                 <span className="forward-actions">
                   <label className="forward-flag" title={t("cron.enabledHint")}>
-                    <input
-                      type="checkbox"
-                      data-testid={`cron-enabled-${row.id}`}
+                    <Checkbox
+                      testid={`cron-enabled-${row.id}`}
                       checked={row.enabled}
                       onChange={() => void handleToggle(row)}
                     />
@@ -464,9 +457,8 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
                 <legend>{t("cron.channels")}</legend>
                 {channels.map((c) => (
                   <label key={c.id} className="forward-flag">
-                    <input
-                      type="checkbox"
-                      data-testid={`cron-form-channel-${c.id}`}
+                    <Checkbox
+                      testid={`cron-form-channel-${c.id}`}
                       checked={form.channels.includes(c.id)}
                       onChange={(e) => {
                         const checked = e.currentTarget.checked;
@@ -485,9 +477,8 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
             )}
             <div className="forward-form-flags">
               <label className="forward-flag">
-                <input
-                  type="checkbox"
-                  data-testid="cron-form-enabled"
+                <Checkbox
+                  testid="cron-form-enabled"
                   checked={form.enabled}
                   onChange={(e) => {
                     const c = e.currentTarget.checked;
@@ -523,7 +514,6 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 }

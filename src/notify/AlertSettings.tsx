@@ -1,5 +1,8 @@
-// AlertSettings（Phase 3 Task 3，B5）：告警设置对话框——渠道配置区 + 告警
-// 规则配置区（AISettings 同款 overlay/settings-dialog 形态与交互语言）。
+// AlertSettings（Phase 3 Task 3，B5；UI 批次一 Task 4 迁右侧 dock）：告警设置
+// 面板——渠道配置区 + 告警规则配置区（工具菜单 → dock/DockPanel 承载）。
+// * 【T4 分区化】渠道/规则两分区以 SegmentedControl 独占切换（一次只挂载一
+//   分区）：原对话框两节纵排 + 内嵌向导表单要滚过两屏（Phase 3 走查 13/14 号
+//   截图问题），dock 内编辑表单改在所在分区内展开——双屏滚动消除。
 // * 渠道：12 类（kind select → CHANNEL_FIELD_SPECS 渲染字段面；secret 字段
 //   password 输入）。敏感纪律：编辑既有渠道时 reveal 预填真实值（单点出库），
 //   **secret 字段留空 = 保存时回填原值**（不重输不覆盖）；保存/删除后
@@ -16,6 +19,9 @@ import { vaultApi, type AlertRule, type AlertRuleKind, type ChannelKind, type Ho
 import { useVaultStore } from "../vault/store";
 import { engine } from "./rules";
 import { remountChannels, testChannel } from "./channelRegistry";
+import { Switch } from "../ui/Switch";
+import { Checkbox } from "../ui/Checkbox";
+import { SegmentedControl } from "../ui/SegmentedControl";
 import {
   CHANNEL_FIELD_SPECS,
   CHANNEL_REQUIRED,
@@ -91,6 +97,8 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
 
   const [channels, setChannels] = useState<NotifyChannel[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
+  // T4 分区化：渠道/规则独占切换（默认渠道；规则编辑在规则分区内展开）。
+  const [section, setSection] = useState<"channels" | "rules">("channels");
   const [channelDraft, setChannelDraft] = useState<ChannelDraft | null>(null);
   const [ruleDraft, setRuleDraft] = useState<RuleDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -384,11 +392,21 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
     ));
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("alert.settingsTitle")} data-testid="alert-settings">
-      <div className="dialog settings-dialog ai-settings-dialog">
-        <h2>{t("alert.settingsTitle")}</h2>
+    // dock 内容形态（T4）：标题/关闭由 dock 壳供给（底部关闭钮保留）；
+    // 渠道/规则分区独占切换（见头注分区化）。
+    <div className="dock-entity settings-dialog" role="region" aria-label={t("alert.settingsTitle")} data-testid="alert-settings">
+      <SegmentedControl
+        testid="alert-section-switch"
+        ariaLabel={t("alert.settingsTitle")}
+        value={section}
+        options={[
+          { value: "channels", label: t("alert.channelSection") },
+          { value: "rules", label: t("alert.ruleSection") },
+        ]}
+        onChange={setSection}
+      />
 
-        {/* --- 渠道 --- */}
+      {section === "channels" && (
         <section aria-label={t("alert.channelSection")} data-testid="alert-channels-section">
           <h3>{t("alert.channelSection")}</h3>
           <p className="settings-hint">{t("alert.channelHint")}</p>
@@ -474,9 +492,8 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
               ))}
               <label className="settings-row">
                 <span className="settings-label">{t("alert.fieldEnabled")}</span>
-                <input
-                  type="checkbox"
-                  data-testid="alert-channel-enabled"
+                <Switch
+                  testid="alert-channel-enabled"
                   checked={channelDraft.enabled}
                   onChange={(e) => setChannelDraft({ ...channelDraft, enabled: e.currentTarget.checked })}
                 />
@@ -506,8 +523,10 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
             </form>
           )}
         </section>
+      )}
 
-        {/* --- 规则 --- */}
+      {/* --- 规则 --- */}
+      {section === "rules" && (
         <section aria-label={t("alert.ruleSection")} data-testid="alert-rules-section">
           <h3>{t("alert.ruleSection")}</h3>
           <p className="settings-hint">{t("alert.ruleHint")}</p>
@@ -616,9 +635,8 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
                 {channels.length === 0 && <p className="settings-hint">{t("alert.errNoChannelHint")}</p>}
                 {channels.map((c) => (
                   <label key={c.id} className="notify-mute-row">
-                    <input
-                      type="checkbox"
-                      data-testid={`alert-rule-channel-${c.id}`}
+                    <Checkbox
+                      testid={`alert-rule-channel-${c.id}`}
                       checked={ruleDraft.channels.includes(c.id)}
                       onChange={() => toggleDraftChannel(c.id)}
                     />
@@ -650,17 +668,17 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
             </form>
           )}
         </section>
+      )}
 
-        {formError && !channelDraft && !ruleDraft && (
-          <p className="form-error" data-testid="alert-settings-error">
-            {formError}
-          </p>
-        )}
-        <div className="form-actions">
-          <button type="button" className="btn-accent" data-testid="alert-settings-close" onClick={onClose}>
-            {t("common.close")}
-          </button>
-        </div>
+      {formError && !channelDraft && !ruleDraft && (
+        <p className="form-error" data-testid="alert-settings-error">
+          {formError}
+        </p>
+      )}
+      <div className="form-actions">
+        <button type="button" className="btn-accent" data-testid="alert-settings-close" onClick={onClose}>
+          {t("common.close")}
+        </button>
       </div>
     </div>
   );

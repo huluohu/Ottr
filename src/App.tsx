@@ -14,8 +14,8 @@ import { HostTree } from "./hosts/HostTree";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
 import { SyncDialog } from "./sync/SyncDialog";
-// Phase 4 Task 3（C1）：MCP server 设置 + exec 逐次审批确认框（全局挂载）。
-import { McpSettings } from "./security/McpSettings";
+// Phase 4 Task 3（C1）：exec 逐次审批确认框（事件驱动、全局挂载；McpSettings
+// 对话框本体 T4 迁入右侧 dock——本任务自 App 停挂）。
 import { McpApprovalDialog } from "./security/McpApprovalDialog";
 import { useVaultLockStore } from "./security/VaultLockStore";
 import { useVaultInitGate } from "./security/VaultInitGate";
@@ -23,42 +23,33 @@ import { syncLangFromVault, setLang, useLanguage } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
-import { TabBar } from "./session/TabBar";
 import { HostKeyDialog } from "./session/HostKeyDialog";
-import { TerminalArea } from "./terminal/Terminal";
-import { FilePanel } from "./files/FilePanel";
-import { ForwardPanel } from "./forward/ForwardPanel";
-import { JumpChainEditor } from "./hosts/JumpChainEditor";
-import { DiagnosePanel } from "./ai/DiagnosePanel";
 import { AISettings } from "./ai/AISettings";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
 import { setAiSettingsOpener } from "./ai/aiStore";
 import { onSessionEnded } from "./ai/summary";
-import { setSessionEndHook } from "./session/SessionStore";
+import { setSessionEndHook, useSessionStore } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
 import { initAlertEngine } from "./notify/rules";
 import { remountChannels } from "./notify/channelRegistry";
-import { AlertSettings } from "./notify/AlertSettings";
 import { initMonitorEvents } from "./monitor/events";
-import { MonitorSidebar } from "./monitor/MonitorSidebar";
-import { PluginSidebar } from "./plugins/PluginSidebar";
-import { OverviewPage } from "./monitor/OverviewPage";
-import { ProcessBrowser } from "./monitor/ProcessBrowser";
 import { initBatchEvents } from "./batch/events";
-import { BatchPanel } from "./batch/BatchPanel";
 // cron 定时任务（Phase 4 Task 1，缺口①）：任务中心面板 + ottr://cron-run 接线
 // （事件源在 Rust 调度器——宿主裁定见 commands/cron.rs；TS 侧管通知分发）。
 import { initCronEvents } from "./cron/events";
-import { CronPanel } from "./cron/CronPanel";
 import { NotificationCenter } from "./notify/NotificationCenter";
-import { useSessionStore } from "./session/SessionStore";
 import { CommandPalette } from "./palette/CommandPalette";
 import { HistorySearch } from "./history/HistorySearch";
-import { RecordToggle } from "./history/RecordToggle";
 import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
+// UI 批次一 Task 2/4：主区视图路由 + 右侧 dock 实体壳（workspaceStore 状态机）。
+// 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
+// cron/alerts/mcp 实体 T4 迁入 dock（实体渲染在 dock/DockPanel 内）。
+import { MainArea } from "./workspace/MainArea";
+import { DockPanel } from "./dock/DockPanel";
+import { useWorkspaceStore } from "./workspace/workspaceStore";
 import {
   isTerminalTarget,
   matchActionEvent,
@@ -98,8 +89,9 @@ const THEME_MODES: { value: ThemeMode; labelKey: string }[] = [
 //
 // 通用壳：按钮 + 弹出菜单。交互契约对齐 NotificationCenter（mousedown 在外
 // 收起）+ Esc 收起；选中条目即收起并执行 onSelect。纯呈现——条目与动作全部
-// 由调用方注入；动作收口仍在 HomeLayout 的各 setState（工具菜单里的面板
-// 打开器本就不是 registry ActionId，注册表面零变化——T14 守卫测试不动）。
+// 由调用方注入。条目去向两族：对话框族仍走 HomeLayout 就地 setState（凭据/
+// AI/同步）；工作区族（总览/批量→主区视图，转发/跳板链/定时任务/告警/MCP→
+// 右侧 dock）走 workspaceStore——registry ActionId 面零变化（T14 守卫不动）。
 
 interface TopbarMenuItem {
   key: string;
@@ -222,10 +214,13 @@ function HomeLayout() {
   const lockPhase = useVaultLockStore((s) => s.phase);
   const hosts = useVaultStore((s) => s.hosts);
   const storeError = useVaultStore((s) => s.error);
-  // 会话面（Task 7）：标签条 + 分屏终端主区（Task 8） + host key 确认框
-  const sessions = useSessionStore((s) => s.sessions);
-  const activeId = useSessionStore((s) => s.activeId);
+  // 会话面（Task 7）：HostTree 双击/面板连接开标签。标签条 + 终端主区的
+  // 渲染面已随 UI 批次一 Task 2 迁入 workspace/MainArea（读 session store）。
   const openTab = useSessionStore((s) => s.openTab);
+  // UI 批次一 Task 2：工作区视图/dock 动作（主区路由在 workspace/MainArea，
+  // dock 壳在 dock/DockPanel；互斥语义见 workspace/types.ts）。
+  const openMainView = useWorkspaceStore((s) => s.openMainView);
+  const openDock = useWorkspaceStore((s) => s.openDock);
   // A12：面板动作需要当前主题/语言（toggle 循环用）
   const { mode: themeMode, setMode } = useTheme();
   const { lang } = useLanguage();
@@ -245,27 +240,9 @@ function HomeLayout() {
   const [syncOpen, setSyncOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
-  // Phase 3 Task 3（B5）：告警设置（渠道矩阵 + 规则；顶栏入口对话框——
-  // AISettings 同款「全局配置面 → 顶栏」布局语言）。
-  const [alertSettingsOpen, setAlertSettingsOpen] = useState(false);
-  // Phase 2 Task 1（B7）：端口转发中心（顶栏入口——转发是全局配置面：
-  // 面板列全部主机的转发、运行态跨标签可见；绑定主机经表单下拉选择）。
-  const [forwardsOpen, setForwardsOpen] = useState(false);
-  // Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口——链是全局配置面，
-  // 主机经 HostForm 的链下拉绑定）。
-  const [jumpChainsOpen, setJumpChainsOpen] = useState(false);
-  // Phase 3 Task 2（B4 下半）：多主机总览（顶栏入口对话框——ForwardPanel/
-  // JumpChainEditor 同款「全局面 → 顶栏」布局语言）+ 进程视图开关
-  // （主区视图切换第三视图：终端 | 文件 | 进程，FilePanel 同款挂点）。
-  const [overviewOpen, setOverviewOpen] = useState(false);
-  const [procsOpen, setProcsOpen] = useState(false);
-  // Phase 3 Task 4（B6）：批量执行（顶栏入口对话框——OverviewPage 同款布局语言）。
-  const [batchOpen, setBatchOpen] = useState(false);
-  // Phase 4 Task 1（缺口①）：cron 定时任务中心（顶栏入口对话框——ForwardPanel
-  // 同款「全局面 → 顶栏」布局语言）。
-  const [cronOpen, setCronOpen] = useState(false);
-  // Phase 4 Task 3（C1）：MCP server 设置入口。
-  const [mcpOpen, setMcpOpen] = useState(false);
+  // 【UI 批次一 Task 2】原面板开关 setState（alertSettings/forwards/jumpChains/
+  // overview/procs/batch/cron/mcp/filesOpen）已收口进 workspaceStore——主区视图
+  // 走 MainArea 路由，工具面板走 dock/DockPanel；T3/T4 迁实体。
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -456,29 +433,6 @@ function HomeLayout() {
   }
 
   const selected = hosts.find((h) => h.id === selectedId) ?? null;
-  const terminalMode = sessions.length > 0;
-  // 文件面板（Task 10，A5）：主区视图切换（终端 | 文件）。全局开关——面板跟随
-  // 活动标签；终端以 visibility 隐藏常驻（xterm 缓冲不丢，同 pane 惯例）。
-  const [filesOpen, setFilesOpen] = useState(false);
-  const activeSession =
-    sessions.find((s) => s.id === activeId) ??
-    sessions.find((s) => s.paneOf === activeId) ??
-    null;
-  const rootSession = activeSession
-    ? (sessions.find((s) => s.id === (activeSession.paneOf ?? activeSession.id)) ?? null)
-    : null;
-  // FTP/FTPS 会话（Phase 2 Task 5）：无 PTY 终端——主区强制文件视图
-  // （filesOnly），「终端」切换按钮隐藏；SSH 会话维持双视图切换。
-  const filesOnly =
-    rootSession?.protocol === "ftp" || rootSession?.protocol === "ftps";
-  const filesVisible = filesOpen || filesOnly;
-  // 进程视图（Phase 3 Task 2）：与文件视图互斥（同一次只看一个）；FTP 会话
-  // 无远端 shell 不入口（filesOnly 已含）。进程表跟随活动标签根会话。
-  const procsVisible = procsOpen && !filesVisible;
-  const openProcessesView = useCallback(() => {
-    setFilesOpen(false);
-    setProcsOpen(true);
-  }, []);
 
   return (
     <div className="app-shell">
@@ -493,11 +447,14 @@ function HomeLayout() {
           {t("palette.title")} <kbd>{shortcutLabel("palette.toggle", PLATFORM)}</kbd>
         </button>
         <div className="topbar-spacer" />
-        {/* Phase 5 T1 顶栏收纳：低频面板入口收进「工具」下拉（registry 动作
-            零变化——这些打开器本就是就地 setState，不经 ActionId）；高频入口
+        {/* Phase 5 T1 顶栏收纳：低频面板入口收进「工具」下拉；高频入口
             （⌘K 面板 / 通知铃 / 设置 / 主题）保留在栏面。顺序 = 用户口径：
             凭据/告警/MCP/AI/端口转发/跳板链/总览/批量执行/定时任务（AI 助手
-            原为栏面按钮，为「每个原入口都可达」一并收纳于此）。 */}
+            原为栏面按钮，为「每个原入口都可达」一并收纳于此）。
+            【UI 批次一 Task 2】工作区族条目改调 workspaceStore：总览/批量 →
+            openMainView（主区互斥视图，T3 迁实体）；端口转发/跳板链/定时任务/
+            告警/MCP → openDock（右侧 dock 单槽，T4 迁实体）。registry 动作 ID
+            零新增零删除。 */}
         <TopbarMenu
           label={t("topbar.tools")}
           ariaLabel={t("topbar.tools")}
@@ -514,13 +471,13 @@ function HomeLayout() {
               key: "alerts",
               label: t("alert.sectionTitle"),
               testid: "menu-open-alert-settings",
-              onSelect: () => setAlertSettingsOpen(true),
+              onSelect: () => openDock("alerts"),
             },
             {
               key: "mcp",
               label: t("mcp.title"),
               testid: "menu-open-mcp-settings",
-              onSelect: () => setMcpOpen(true),
+              onSelect: () => openDock("mcp"),
             },
             {
               key: "ai",
@@ -532,31 +489,31 @@ function HomeLayout() {
               key: "forwards",
               label: t("forward.title"),
               testid: "menu-open-forwards",
-              onSelect: () => setForwardsOpen(true),
+              onSelect: () => openDock("forwards"),
             },
             {
               key: "jump-chains",
               label: t("jump.title"),
               testid: "menu-open-jump-chains",
-              onSelect: () => setJumpChainsOpen(true),
+              onSelect: () => openDock("jumpchains"),
             },
             {
               key: "overview",
               label: t("overview.title"),
               testid: "menu-open-overview",
-              onSelect: () => setOverviewOpen(true),
+              onSelect: () => openMainView("overview"),
             },
             {
               key: "batch",
               label: t("batch.title"),
               testid: "menu-open-batch",
-              onSelect: () => setBatchOpen(true),
+              onSelect: () => openMainView("batch"),
             },
             {
               key: "cron",
               label: t("cron.title"),
               testid: "menu-open-cron",
-              onSelect: () => setCronOpen(true),
+              onSelect: () => openDock("cron"),
             },
             {
               key: "sync",
@@ -595,112 +552,17 @@ function HomeLayout() {
           onPointerDown={startResize}
           data-testid="sidebar-resizer"
         />
-        {terminalMode ? (
-          <main className="main-area terminal-mode" data-testid="main-area">
-            <div className="tabbar-row">
-              <TabBar />
-              <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>                {!filesOnly && (
-                  <button
-                    data-testid="view-terminal"
-                    data-active={!filesVisible && !procsVisible}
-                    aria-pressed={!filesVisible && !procsVisible}
-                    onClick={() => {
-                      setFilesOpen(false);
-                      setProcsOpen(false);
-                    }}
-                  >
-                    {t("files.viewTerminal")}
-                  </button>
-                )}
-                <button
-                  data-testid="view-files"
-                  data-active={filesVisible}
-                  aria-pressed={filesVisible}
-                  onClick={() => {
-                    setFilesOpen(true);
-                    setProcsOpen(false);
-                  }}
-                >
-                  {t("files.viewFiles")}
-                </button>
-                {/* Phase 3 Task 2（B4 下半）：进程浏览器视图（SSH 会话专属——
-                    FTP 无远端 shell，filesOnly 时按钮隐藏）。 */}
-                {!filesOnly && (
-                  <button
-                    data-testid="view-processes"
-                    data-active={procsVisible}
-                    aria-pressed={procsVisible}
-                    onClick={openProcessesView}
-                  >
-                    {t("process.title")}
-                  </button>
-                )}
-              </div>
-              {/* Phase 3 Task 5（B3）：会话录制开关（默认关——敏感面显式动作才录；
-                  断线时 Rust 循环收尾自动入库）。 */}
-              {!filesOnly && (
-                <RecordToggle
-                  rustId={rootSession?.rustId ?? null}
-                  hostId={rootSession?.hostId ?? null}
-                />
-              )}
-            </div>
-            {/* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲/滚动回看不丢。
-                T13：AI 诊断面板 = 终端视图的右侧栏（文件视图让位——面板依赖终端选区）。
-                Phase 3 Task 1（B4 上半）：监控侧栏同排（折叠竖条常驻，展开盖右侧）。
-                Phase 3 Task 2：进程视图时终端与两侧栏一并让位（全宽表格）。 */}
-            <div className="term-main-row">
-              {/* data-terminal = 终端聚焦守卫的判定容器（评审 M-4）：覆盖全部
-                  pane（含 xterm 隐藏 textarea），文件视图/AI 面板在其外不受守卫。 */}
-              <div
-                className="term-area-holder"
-                data-hidden={filesVisible || procsVisible}
-                data-terminal=""
-              >
-                <TerminalArea />
-              </div>
-              {!filesVisible && !procsVisible && (
-                <DiagnosePanel onOpenSettings={() => setAiSettingsOpen(true)} />
-              )}
-              {!filesVisible && !procsVisible && (
-                <MonitorSidebar
-                  rustId={rootSession?.rustId ?? null}
-                  enabled={hosts.find((h) => h.id === rootSession?.hostId)?.monitor_enabled ?? false}
-                />
-              )}
-              {/* Phase 4 Task 6（C3 foundation）：插件卡片侧栏（内置注册表，
-                  声明式权限门控；外部插件执行面 scope-out，ADR 0002）。 */}
-              {!filesVisible && !procsVisible && (
-                <PluginSidebar rustId={rootSession?.rustId ?? null} />
-              )}
-            </div>
-            {filesVisible && rootSession && <FilePanel session={rootSession} />}
-            {procsVisible && rootSession && <ProcessBrowser rustId={rootSession.rustId} />}
-          </main>
-        ) : (
-          <main className="main-area" data-testid="main-area">
-            {storeError && (
-              <p className="main-error" data-testid="store-error">
-                {t("mainArea.loadFailed", { message: storeError })}
-              </p>
-            )}
-            {selected ? (
-              <section className="main-placeholder">
-                <p className="placeholder-caption">{t("mainArea.selected")}</p>
-                <h2>{selected.name}</h2>
-                <p className="placeholder-mono">
-                  {selected.username ? `${selected.username}@` : ""}
-                  {selected.address}:{selected.port}
-                </p>
-                <p>{t("mainArea.openHint")}</p>
-              </section>
-            ) : (
-              <section className="main-placeholder">
-                <p>{t("mainArea.placeholder")}</p>
-              </section>
-            )}
-          </main>
-        )}
+        {/* 主区视图路由（UI 批次一 Task 2）：mainView 状态机五视图切换；终端
+            隐藏常驻不变量在 MainArea 内执行（非 terminal 视图 visibility 隐藏，
+            运行中会话不卸载）。 */}
+        <MainArea
+          storeError={storeError}
+          selected={selected}
+          onOpenAiSettings={() => setAiSettingsOpen(true)}
+        />
+        {/* 右侧 dock 槽位（UI 批次一 Task 2 骨架 / Task 4 实体）：工具面板统一
+            停靠壳（单槽互斥，openDock 换值即替换）；五工具面板实体渲染其中。 */}
+        <DockPanel />
       </div>
 
       {form && (
@@ -720,37 +582,15 @@ function HomeLayout() {
       {/* Phase 5 Task 4：同步流程对话框（在设置对话框之后渲染 = 叠于其上）。 */}
       <SyncDialog open={syncOpen} onClose={() => setSyncOpen(false)} />
       <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
-      {/* Phase 3 Task 3（B5）：告警设置（渠道全矩阵 + 规则 CRUD + 测试发送）。 */}
-      <AlertSettings open={alertSettingsOpen} onClose={() => setAlertSettingsOpen(false)} />
-      {/* Phase 2 Task 1（B7 上半）：端口转发中心（顶栏入口对话框）。 */}
-      <ForwardPanel open={forwardsOpen} onClose={() => setForwardsOpen(false)} />
-      {/* Phase 2 Task 2（B7 下半）：跳板链编辑器（顶栏入口对话框）。 */}
-      <JumpChainEditor open={jumpChainsOpen} onClose={() => setJumpChainsOpen(false)} />
-      {/* Phase 3 Task 2（B4 下半）：多主机总览（顶栏入口）。卡片点击 = 跳该
-          主机终端标签；「进程」= 跳标签 + 切进程视图（FTP 主机不入口）。 */}
-      <OverviewPage
-        open={overviewOpen}
-        onClose={() => setOverviewOpen(false)}
-        onOpen={(host) => {
-          openTab(host);
-          setOverviewOpen(false);
-        }}
-        onOpenProcesses={(host) => {
-          openTab(host);
-          setOverviewOpen(false);
-          openProcessesView();
-        }}
-      />
-      {/* Phase 3 Task 4（B6）：批量执行（多选主机 + snippet 变量 + 并发池 +
-          差异高亮结果表；顶栏入口）。 */}
-      <BatchPanel open={batchOpen} onClose={() => setBatchOpen(false)} />
-      {/* Phase 4 Task 1（缺口①）：cron 定时任务中心（任务列表/手动触发/运行
-          历史/下次触发；顶栏入口）。 */}
-      <CronPanel open={cronOpen} onClose={() => setCronOpen(false)} />
-      {/* Phase 4 Task 3（C1）：MCP server 设置 + exec 逐次审批确认框
-          （后者事件驱动、无事件即不渲染）。 */}
-      <McpSettings open={mcpOpen} onClose={() => setMcpOpen(false)} />
+      {/* 【UI 批次一 Task 2】原对话框面板（AlertSettings/ForwardPanel/
+          JumpChainEditor/OverviewPage/BatchPanel/CronPanel/McpSettings）已停挂——
+          实体 T4 迁入右侧 dock（alerts/forwards/jumpchains/cron/mcp）、T3 迁入
+          主区视图（overview/batch）；工具菜单条目现在打开对应 workspace 槽位。 */}
+      {/* Phase 4 Task 3（C1）：exec 逐次审批确认框（事件驱动，无事件即不渲染）——
+          与 McpSettings 对话框本体分离，MCP 实体迁 dock（T4）后照常全局挂载。 */}
       <McpApprovalDialog />
+      {/* A12 命令面板（T5 QuickConnect 并入收口）：主机 + 命令统一搜索。
+          动作经 handleAction 分派；连主机即开标签。 */}
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}

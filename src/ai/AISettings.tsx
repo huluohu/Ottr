@@ -8,6 +8,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
+import { Switch } from "../ui/Switch";
 import { createProvider, type ProviderMeta } from "./provider";
 import type { RedactRule } from "./redact";
 import {
@@ -229,9 +230,8 @@ export function AISettings({ open, onClose }: AISettingsProps) {
           <h3>{t("ai.settings.general")}</h3>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.autoDiagnose")}</span>
-            <input
-              type="checkbox"
-              data-testid="ai-enabled"
+            <Switch
+              testid="ai-enabled"
               checked={enabled}
               onChange={(e) => {
                 const v = e.currentTarget.checked;
@@ -422,9 +422,8 @@ export function AISettings({ open, onClose }: AISettingsProps) {
           <h3>{t("ai.settings.redaction")}</h3>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.redactHostname")}</span>
-            <input
-              type="checkbox"
-              data-testid="ai-redact-hostname"
+            <Switch
+              testid="ai-redact-hostname"
               checked={redaction.hostname}
               onChange={(e) => void toggleHostname(e.currentTarget.checked)}
             />

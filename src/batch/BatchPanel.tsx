@@ -1,10 +1,14 @@
-// BatchPanel（Phase 3 Task 4，B6）：批量执行面板（顶栏入口对话框——
-// OverviewPage/ForwardPanel 同款「全局面 → 顶栏」布局语言）。
+// BatchPanel（Phase 3 Task 4，B6；UI 批次一 Task 3 迁主区视图）：批量执行。
+// 原「顶栏入口对话框」实体迁入 workspace/MainArea 的 batch 互斥视图
+// （MainViewSlot 占位壳消亡）：挂载即打开、卸载即关闭，容器自 overlay/dialog
+// 换成主区充盈 section。宽屏布局（Task 3 裁定）：grid 三栏 = 多选树 240px |
+// 命令区 1fr | 结果表 1fr（结果表在场时），窄屏退化单列；逻辑面零改动。
 //
 // * 主机选择 = HostTree 多选模式（行点击切换勾选；管理工具栏让位）；
 // * 命令 = 手输或选 snippet（snippets 是低频读取，vaultApi 直取不进全局
-//   store——vault/store 同款纪律）；`{{var}}` 变量经 ./template 抽取，
-//   变量表单 = 已选主机 × 变量（同一模板按每台变量渲染出各自命令串）；
+//   store——vault/store 同款纪律；迁主区后挂载即拉取，语义同原「打开时」）；
+//   `{{var}}` 变量经 ./template 抽取，变量表单 = 已选主机 × 变量（同一模板
+//   按每台变量渲染出各自命令串）；
 // * 执行 = batch_exec（Rust 并发池，并发/超时面板可调，缺省 5 / 30s），
 //   结果经 ottr://batch-result 事件 → ./batchStore 逐主机到达；
 // * 安全面 = ai/danger 的 classify 全量过一遍 per-host 渲染命令（取最高档）：
@@ -28,7 +32,7 @@ import { diffOutputs, type DiffLine } from "./diff";
 import { extractVars, renderSnippet } from "./template";
 
 export interface BatchPanelProps {
-  open: boolean;
+  /** 返回终端（MainArea 注入 = openMainView("terminal")）。 */
   onClose: () => void;
 }
 
@@ -69,7 +73,7 @@ function DiffOutput({ lines }: { lines: DiffLine[] }) {
   );
 }
 
-export function BatchPanel({ open, onClose }: BatchPanelProps) {
+export function BatchPanel({ onClose }: BatchPanelProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const sessions = useSessionStore((s) => s.sessions);
@@ -90,14 +94,15 @@ export function BatchPanel({ open, onClose }: BatchPanelProps) {
   const begin = useBatchStore((s) => s.begin);
   const reset = useBatchStore((s) => s.reset);
 
-  // 打开时拉 snippet 清单（低频直取；失败静默——选择器显示空）
+  // 挂载即拉 snippet 清单（低频直取；失败静默——选择器显示空）。迁主区后
+  // 「挂载」即「打开」（MainArea 路由互斥），语义与原 `open` 门等价。
   useEffect(() => {
-    if (!open || snippets !== null) return;
+    if (snippets !== null) return;
     void vaultApi.snippets
       .list()
       .then(setSnippets)
       .catch(() => setSnippets([]));
-  }, [open, snippets]);
+  }, [snippets]);
 
   const rustByHost = useMemo(() => rootRustIdByHost(sessions), [sessions]);
   const vars = useMemo(() => extractVars(body), [body]);
@@ -195,7 +200,7 @@ export function BatchPanel({ open, onClose }: BatchPanelProps) {
     if (batchId !== null) void batchApi.cancel(batchId).catch(() => {});
   }
 
-  // 差异面（hooks 纪律：必须在 open 早退之前）：只对 ok 结果做输出分组
+  // 差异面（hooks 纪律）：只对 ok 结果做输出分组
   // （failed/timeout/canceled 无输出可比，不进 diff、单行走表格状态面）。
   const diff = useMemo(
     () =>
@@ -206,8 +211,6 @@ export function BatchPanel({ open, onClose }: BatchPanelProps) {
       ),
     [results],
   );
-
-  if (!open) return null;
 
   const counts = {
     ok: results.filter((r) => r.status === "ok").length,
@@ -225,17 +228,25 @@ export function BatchPanel({ open, onClose }: BatchPanelProps) {
         ? t("batch.executeConfirm")
         : t("batch.execute");
 
+  // 主区视图容器（UI 批次一 Task 3）：挂载即打开（MainArea 路由互斥），
+  // data-view 沿 MainViewSlot 槽位口径；返回按钮 testid 沿 slot-back-terminal。
+  // 三栏 grid（.batch-cols）：多选树 | 命令区 | 结果表（有结果时第三栏在场，
+  // data-has-results 供 CSS 切列数；窄屏媒体查询退化单列）。
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("batch.title")} data-testid="batch-panel">
-      <div className="dialog batch-panel">
-        <div className="dialog-head">
-          <h2>{t("batch.title")}</h2>
-          <button className="dialog-close" aria-label={t("common.close")} onClick={onClose}>
-            ×
-          </button>
-        </div>
+    <section
+      className="main-view batch-view"
+      data-testid="batch-panel"
+      data-view="batch"
+      aria-label={t("batch.title")}
+    >
+      <div className="main-view-head">
+        <h2>{t("batch.title")}</h2>
+        <button data-testid="slot-back-terminal" onClick={onClose}>
+          ← {t("files.viewTerminal")}
+        </button>
+      </div>
 
-        <div className="batch-cols">
+      <div className="batch-cols" data-has-results={results.length > 0}>
           <div className="batch-col-hosts">
             <h3>{t("batch.hostSection")}</h3>
             <HostTree
@@ -393,55 +404,56 @@ export function BatchPanel({ open, onClose }: BatchPanelProps) {
               </p>
             )}
           </div>
-        </div>
 
-        {results.length > 0 && (
-          <div className="batch-results" data-testid="batch-results">
-            <h3>{t("batch.resultTitle")}</h3>
-            {finished && (
-              <p className="batch-summary" data-testid="batch-summary">
-                {t("batch.done", counts)}
-              </p>
+          <div className="batch-col-results">
+            {results.length > 0 && (
+              <div className="batch-results" data-testid="batch-results">
+                <h3>{t("batch.resultTitle")}</h3>
+                {finished && (
+                  <p className="batch-summary" data-testid="batch-summary">
+                    {t("batch.done", counts)}
+                  </p>
+                )}
+                {/* 差异高亮（行集合等值分组）：全同单组折叠为一行组摘要； */}
+                {/* 多组时多数派 chip + 少数派行 data-differs 高亮 + 行级标注。 */}
+                {!diff.singleGroup && (
+                  <p className="batch-diff-head" data-testid="batch-diff-head">
+                    {t("batch.majorityGroup", { count: diff.majorityHosts.length })}：
+                    {diff.majorityHosts.join(", ")}
+                  </p>
+                )}
+                {diff.singleGroup && diff.groups.length === 1 && (
+                  <details className="batch-group" data-testid="batch-group">
+                    <summary>
+                      ✓ {t("batch.majorityGroup", { count: diff.majorityHosts.length })}：
+                      {diff.majorityHosts.join(", ")}
+                    </summary>
+                    <pre className="batch-group-output">
+                      {results.find((r) => r.status === "ok")?.stdout}
+                    </pre>
+                  </details>
+                )}
+                <table className="batch-results-table">
+                  <thead>
+                    <tr>
+                      <th>{t("batch.varColumnHost")}</th>
+                      <th>{t("batch.statusColumn")}</th>
+                      <th>{t("batch.exitCode")}</th>
+                      <th>{t("batch.duration")}</th>
+                      <th>{t("batch.outputSummary")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map((r, i) => (
+                      <ResultRow key={`${r.host_id}-${i}`} result={r} outlier={diff.outlierIds.has(r.host_id)} diff={diff} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-            {/* 差异高亮（行集合等值分组）：全同单组折叠为一行组摘要； */}
-            {/* 多组时多数派 chip + 少数派行 data-differs 高亮 + 行级标注。 */}
-            {!diff.singleGroup && (
-              <p className="batch-diff-head" data-testid="batch-diff-head">
-                {t("batch.majorityGroup", { count: diff.majorityHosts.length })}：
-                {diff.majorityHosts.join(", ")}
-              </p>
-            )}
-            {diff.singleGroup && diff.groups.length === 1 && (
-              <details className="batch-group" data-testid="batch-group">
-                <summary>
-                  ✓ {t("batch.majorityGroup", { count: diff.majorityHosts.length })}：
-                  {diff.majorityHosts.join(", ")}
-                </summary>
-                <pre className="batch-group-output">
-                  {results.find((r) => r.status === "ok")?.stdout}
-                </pre>
-              </details>
-            )}
-            <table className="batch-results-table">
-              <thead>
-                <tr>
-                  <th>{t("batch.varColumnHost")}</th>
-                  <th>{t("batch.statusColumn")}</th>
-                  <th>{t("batch.exitCode")}</th>
-                  <th>{t("batch.duration")}</th>
-                  <th>{t("batch.outputSummary")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r, i) => (
-                  <ResultRow key={`${r.host_id}-${i}`} result={r} outlier={diff.outlierIds.has(r.host_id)} diff={diff} />
-                ))}
-              </tbody>
-            </table>
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+    </section>
   );
 }
 

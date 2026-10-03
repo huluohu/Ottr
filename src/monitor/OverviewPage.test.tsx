@@ -131,7 +131,7 @@ describe("OverviewPage 卡片网格", () => {
     const onOpen = vi.fn();
     const onOpenProcesses = vi.fn();
     render(
-      <OverviewPage open onClose={() => {}} onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
+      <OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
     );
 
     const card = screen.getByTestId("overview-card-7");
@@ -158,7 +158,7 @@ describe("OverviewPage 卡片网格", () => {
     const onOpen = vi.fn();
     const onOpenProcesses = vi.fn();
     render(
-      <OverviewPage open onClose={() => {}} onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
+      <OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
     );
 
     const btn = screen.getByTestId("overview-proc-7");
@@ -173,7 +173,7 @@ describe("OverviewPage 卡片网格", () => {
       hosts: [host({ id: 1, name: "off-host", monitor_enabled: false }), host({ id: 2, name: "idle-host", monitor_enabled: true })],
     });
     render(
-      <OverviewPage open onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />,
+      <OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />,
     );
 
     const offCard = screen.getByTestId("overview-card-1");
@@ -187,7 +187,7 @@ describe("OverviewPage 卡片网格", () => {
     expect(idleCard.querySelector(".overview-light")?.getAttribute("data-state")).toBe("idle");
   });
 
-  it("unsupported / stopped 窗口状态上灯位与文案；关闭（open=false）不渲染", () => {
+  it("unsupported / stopped 窗口状态上灯位与文案；卸载后不渲染（挂载域 = MainArea 路由互斥，UI 批次一 T3 迁主区视图）", () => {
     useVaultStore.setState({
       hosts: [host({ id: 1, name: "a", monitor_enabled: true }), host({ id: 2, name: "b", monitor_enabled: true })],
     });
@@ -203,15 +203,14 @@ describe("OverviewPage 卡片网格", () => {
         "pty-2": win({ status: "stopped", latest: null }),
       },
     });
-    const { rerender } = render(
-      <OverviewPage open onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />,
+    const { unmount } = render(
+      <OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />,
     );
     expect(screen.getByTestId("overview-card-1").querySelector(".overview-light")?.getAttribute("data-state")).toBe("unsupported");
     expect(screen.getByTestId("overview-card-2").querySelector(".overview-light")?.getAttribute("data-state")).toBe("stopped");
 
-    rerender(
-      <OverviewPage open={false} onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />,
-    );
+    // 迁主区后无 open 门：卸载 = 关闭（原 open=false 断言等价迁移——不在 DOM）
+    unmount();
     expect(screen.queryByTestId("overview-panel")).toBeNull();
   });
 });

@@ -1,4 +1,6 @@
-// McpSettings（Phase 4 Task 3，C1）：MCP server 设置对话框。
+// McpSettings（Phase 4 Task 3，C1；UI 批次一 Task 4 迁右侧 dock）：MCP server
+// 设置面板（工具菜单 → dock/DockPanel 承载，open/onClose 由 dock 单槽驱动；
+// 组件逻辑零改动，仅外壳从 overlay 对话框换为 dock 内容形态）。
 // * 总开关（settings mcp.enabled；Rust 侧同步起/停 UDS listener，改设即生效）；
 // * 运行状态行：监听中/已停止 + socket 绝对路径（Claude Desktop 接入说明用）；
 // * 接入片段：`ottr-mcp` relay 子进程的 claude_desktop_config.json 形态
@@ -15,6 +17,8 @@ import {
   type McpGrantInput,
   type McpStatus,
 } from "../vault/api";
+import { Switch } from "../ui/Switch";
+import { Checkbox } from "../ui/Checkbox";
 
 export interface McpSettingsProps {
   open: boolean;
@@ -128,17 +132,15 @@ export function McpSettings({ open, onClose }: McpSettingsProps) {
     : null;
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("mcp.title")} data-testid="mcp-settings">
-      <div className="dialog settings-dialog">
-        <h2>{t("mcp.title")}</h2>
-
+    // dock 内容形态（T4）：标题由 dock 壳供给；底部关闭按钮保留（长内容
+    // 滚动后无需回到 dock 头部即可关闭）。
+    <div className="dock-entity settings-dialog" role="region" aria-label={t("mcp.title")} data-testid="mcp-settings">
         <section aria-label={t("mcp.serverSection")} data-testid="mcp-server-section">
           <h3>{t("mcp.serverSection")}</h3>
           <label className="settings-row" data-testid="mcp-enabled-row">
             <span className="settings-label">{t("mcp.enabled")}</span>
-            <input
-              type="checkbox"
-              data-testid="mcp-enabled-toggle"
+            <Switch
+              testid="mcp-enabled-toggle"
               checked={status?.enabled ?? false}
               onChange={(e) => toggleEnabled(e.currentTarget.checked)}
             />
@@ -183,27 +185,24 @@ export function McpSettings({ open, onClose }: McpSettingsProps) {
             <div key={g.id} className="settings-row mcp-grant-row" data-testid={`mcp-grant-${g.host_id}`}>
               <span className="settings-label">{hostName(g.host_id)}</span>
               <label>
-                <input
-                  type="checkbox"
-                  data-testid={`mcp-can-list-${g.host_id}`}
+                <Checkbox
+                  testid={`mcp-can-list-${g.host_id}`}
                   checked={g.can_list}
                   onChange={(e) => flipGrant(g, { can_list: e.currentTarget.checked })}
                 />{" "}
                 {t("mcp.canList")}
               </label>
               <label>
-                <input
-                  type="checkbox"
-                  data-testid={`mcp-can-exec-${g.host_id}`}
+                <Checkbox
+                  testid={`mcp-can-exec-${g.host_id}`}
                   checked={g.can_exec}
                   onChange={(e) => flipGrant(g, { can_exec: e.currentTarget.checked })}
                 />{" "}
                 {t("mcp.canExec")}
               </label>
               <label>
-                <input
-                  type="checkbox"
-                  data-testid={`mcp-approval-${g.host_id}`}
+                <Checkbox
+                  testid={`mcp-approval-${g.host_id}`}
                   checked={g.exec_approval}
                   onChange={(e) => flipGrant(g, { exec_approval: e.currentTarget.checked })}
                 />{" "}
@@ -264,7 +263,6 @@ export function McpSettings({ open, onClose }: McpSettingsProps) {
             {t("common.close")}
           </button>
         </div>
-      </div>
     </div>
   );
 }

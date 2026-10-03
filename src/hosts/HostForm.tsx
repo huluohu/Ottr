@@ -21,6 +21,7 @@ import {
   type CredentialDraft,
 } from "../credentials/credentialDraft";
 import { CredentialInlineForm } from "../credentials/CredentialInlineForm";
+import { Checkbox } from "../ui/Checkbox";
 
 export interface HostFormProps {
   /** 非空 = 编辑模式；null = 新建。 */
@@ -339,9 +340,8 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
               监控 = 终端右栏监控侧栏 + 总览页的数据源依据（采样随连接启停）。 */}
           <div className="form-check-row">
             <label className="form-check" data-testid="form-production-row">
-              <input
-                type="checkbox"
-                data-testid="form-production"
+              <Checkbox
+                testid="form-production"
                 checked={production}
                 onChange={(e) => setProduction(e.currentTarget.checked)}
               />
@@ -351,9 +351,8 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
               </span>
             </label>
             <label className="form-check" data-testid="form-monitor-row">
-              <input
-                type="checkbox"
-                data-testid="form-monitor"
+              <Checkbox
+                testid="form-monitor"
                 checked={monitor}
                 onChange={(e) => setMonitor(e.currentTarget.checked)}
               />

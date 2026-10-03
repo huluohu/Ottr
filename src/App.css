@@ -598,7 +598,7 @@ button[data-active="true"] {
   flex-wrap: wrap;
 }
 .import-sources button {
-  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.4));
+  border: 1px solid var(--border-subtle);
   background: transparent;
   color: inherit;
   border-radius: 6px;
@@ -1090,23 +1090,8 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 
-/* --- A10 主题切换器（f388463 回归修复）：顶栏三联按钮虽已改单按钮下拉
-   （.topbar-menu 壳），但设置页 SecuritySettings 的外观分区仍渲染
-   .theme-switch 三联按钮——样式原样保留（自 f388463^ 找回），否则回落
-   全局按钮样式（视觉回归）。 --- */
-.theme-switch {
-  display: flex;
-  gap: 6px;
-}
-.theme-switch button {
-  font-size: 0.8em;
-  padding: 0.25em 0.55em;
-  box-shadow: none;
-}
-.theme-switch button[data-active="true"] {
-  border-color: var(--color-accent);
-  color: var(--color-accent-text);
-}
+/* --- A10 主题切换器：设置页三联按钮已迁 SegmentedControl（.ui-segmented，
+ * Task 1 / UI 审计 A2 清偿，样式见文件尾「基础控件」段）。 --- */
 
 /* --- 标签化终端主区（Task 7，A6）--- */
 .main-area.terminal-mode {
@@ -2346,14 +2331,10 @@ button[data-active="true"] {
   min-width: 0;
 }
 
-/* 端口转发中心（Phase 2 Task 1，B7 上半）：顶栏对话框面板。
+/* 端口转发中心（Phase 2 Task 1，B7 上半；T4 迁 dock）：容器样式
+   （width/max-height/overflow）随对话框形态消亡——滚动与宽度由 dock 壳接管。
    状态灯沿 NotificationCenter 的语义令牌口径（active=success/starting=warning/
    error=danger/off=surface 灰）。 */
-.forward-panel {
-  width: min(640px, 92vw);
-  max-height: 82vh;
-  overflow-y: auto;
-}
 .forward-empty {
   opacity: 0.7;
   font-size: 13px;
@@ -2473,14 +2454,9 @@ button[data-active="true"] {
   gap: 16px;
 }
 
-/* 跳板链编辑器（Phase 2 Task 2，B7 下半）：顶栏对话框面板。
-   结构沿 ForwardPanel；hop 行可拖拽排序（data-over 高亮悬停目标，
-   语义令牌：ok=success / fail=danger）。 */
-.jump-editor {
-  width: min(640px, 92vw);
-  max-height: 82vh;
-  overflow-y: auto;
-}
+/* 跳板链编辑器（Phase 2 Task 2，B7 下半；T4 迁 dock）：hop 行可拖拽排序
+   （data-over 高亮悬停目标，语义令牌：ok=success / fail=danger）。
+   容器样式随对话框形态消亡——滚动与宽度由 dock 壳接管。 */
 .jump-empty {
   opacity: 0.7;
   font-size: 13px;
@@ -2816,19 +2792,16 @@ button[data-active="true"] {
 
 /* --- Phase 3 Task 2（B4 下半）：多主机总览 + 进程浏览器 --------------------- */
 
-/* 总览（顶栏入口对话框）：卡片网格——监控主机实时卡 / 未开启主机灰卡 */
-.overview-panel {
-  width: min(760px, 92vw);
-  max-height: 82vh;
-  overflow-y: auto;
-}
+/* 总览（主区 overview 视图，T3 自对话框迁入）：卡片网格——监控主机实时卡 /
+   未开启主机灰卡。列数随主区宽度自适应（Task 3 裁定：auto-fill
+   minmax(280px,1fr)，宽屏充盈多列）。 */
 .overview-empty {
   color: var(--fg-muted);
   font-size: 13px;
 }
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 10px;
 }
 .overview-card {
@@ -3073,26 +3046,35 @@ button[data-active="true"] {
   padding: 0 4px;
 }
 
-/* 批量执行面板（Phase 3 Task 4，B6）：顶栏入口对话框（OverviewPage 同款
-   overlay/dialog 语言），左列 = HostTree 多选主机、右列 = 命令/变量/参数；
-   结果表 = 状态档色 + 少数派行高亮（令牌色随主题）。 */
-.batch-panel {
-  width: min(1080px, 92vw);
-  max-height: 88vh;
-  overflow: auto;
-}
+/* 批量执行（主区 batch 视图，T3 自对话框迁入）：宽屏三栏 grid（Task 3 裁定）
+   = 多选树 240px | 命令区 1fr | 结果表 1fr（结果表在场时 data-has-results 切
+   三栏，否则两栏）；窄屏媒体查询退化单列。结果表 = 状态档色 + 少数派行高亮
+   （令牌色随主题）。 */
 .batch-cols {
   display: grid;
-  grid-template-columns: minmax(220px, 300px) 1fr;
+  grid-template-columns: 240px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+.batch-cols[data-has-results="true"] {
+  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 1000px) {
+  .batch-cols,
+  .batch-cols[data-has-results="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .batch-col-hosts {
   border: 1px solid var(--color-border, rgba(128, 128, 128, 0.3));
   border-radius: 8px;
   padding: 8px;
-  max-height: 46vh;
+  /* 主区视图内：树列自限高自滚（视口去头部落到双栏区，原 46vh 是对话框口径） */
+  max-height: calc(100vh - 260px);
   overflow: auto;
+}
+.batch-col-results {
+  min-width: 0;
 }
 .batch-col-hosts h3,
 .batch-vars-wrap h3,
@@ -3125,7 +3107,7 @@ button[data-active="true"] {
   width: 14px;
   height: 14px;
   flex: none;
-  border: 1.5px solid var(--color-border, rgba(128, 128, 128, 0.5));
+  border: 1.5px solid var(--border-subtle);
   border-radius: 4px;
   display: inline-block;
 }
@@ -3191,7 +3173,7 @@ button[data-active="true"] {
   margin: 8px 0 0;
 }
 .batch-results {
-  margin-top: 14px;
+  margin-top: 0;
 }
 .batch-diff-head {
   font-size: 12.5px;
@@ -3558,4 +3540,220 @@ button[data-active="true"] {
   align-items: center;
   gap: 6px;
   margin: 3px 0;
+}
+
+/* --- 基础控件（Task 1，UI 审计 A2）：Switch/Checkbox/SegmentedControl 自绘 ---
+ * 视觉家族基准 = 批量勾选的 accent（mint）实底选中态（.host-check）。
+ * 全部走主题令牌，无颜色字面值（fallback 仅兜底）。原生 input
+ * appearance:none 自绘——键盘/表单/读屏语义零损失；组件层唯一挂载点
+ * （全仓守卫 src/ui/ui-no-native-controls.test.ts 防裸写复发）。 */
+
+.ui-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 999px;
+  background-color: var(--color-surface, transparent);
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+  vertical-align: middle;
+}
+.ui-switch::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  transform: translateY(-50%);
+  transition: left 140ms ease, background-color 140ms ease;
+}
+.ui-switch:checked {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.ui-switch:checked::before {
+  left: calc(100% - 14px);
+  background: var(--color-on-accent);
+}
+.ui-switch:focus-visible,
+.ui-checkbox:focus-visible {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 2px;
+}
+.ui-switch:disabled,
+.ui-checkbox:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 勾选框：14px 方框 + mint 实底勾选态（.host-check 同款制式） */
+.ui-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-grid;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 4px;
+  background-color: var(--color-surface, transparent);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+  vertical-align: middle;
+}
+.ui-checkbox::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid var(--color-on-accent);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-1px);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.ui-checkbox:checked {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.ui-checkbox:checked::after {
+  opacity: 1;
+}
+/* HostForm 场景前缀修正（fix round 1，I-1）：`.form-check input` 的
+   width:auto/margin-top:2px 是 (0,1,1)，裸 `.ui-checkbox`（0,1,0）的
+   width:14px 被击败（真渲染实证 7×14 非正方框——同 1317 行 .host-form
+   .form-check 的既有陷阱）。前缀到 (0,2,0) 才真正赢回；margin-top 不在此
+   重申——.form-check input 的 2px 顶距本就赢过 .ui-checkbox 的 margin:0。 */
+.form-check .ui-checkbox {
+  width: 14px;
+}
+
+/* 三选段控（互斥单选）：选中段 accent 实底 + on-accent 前景，同一 mint 家族 */
+.ui-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background-color: var(--color-surface, transparent);
+}
+.ui-segmented button {
+  font-size: 0.8em;
+  padding: 0.25em 0.7em;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+.ui-segmented button[data-active="true"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+/* --- 右侧 dock 槽位 + 主区视图槽位（UI 批次一 Task 2；T4 承接实体）-------- *
+ * dock：app-body 右缘停靠壳（sidebar | resizer | main-area | dock 四列 flex）。
+ * 视觉语言对齐 monitor-sidebar（border-left + surface 底 + 基线头行）；宽度由
+ * dock/DockPanel 逐面板内联设定（380/420，CSS 默认宽仅兜底）。dock-body 不再
+ * 自带留白/灰字——实体面板（.dock-entity）自带内边距与配色。 */
+.dock-panel {
+  flex: none;
+  width: 380px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.dock-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dock-title {
+  font-weight: 600;
+  flex: 1;
+}
+.dock-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  color: var(--color-fg);
+}
+.dock-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* dock 内实体面板容器（T4）：原对话框体（.dialog）迁移后的内容形态——
+   自带留白与纵向流；宽度/滚动交给 dock 壳（不再有对话框的圆角/阴影/
+   max-height）。settings-dialog 系的定宽在 dock 内解除。 */
+.dock-entity {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 12px 14px;
+}
+.dock-entity.settings-dialog,
+.dock-entity.ai-settings-dialog {
+  width: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+/* overview/batch 主区实体视图容器（T3：OverviewPage/BatchPanel 迁入，占位壳
+ * MainViewSlot 消亡）：挂载即打开（MainArea 路由互斥），容器充盈主区；
+ * 头部 = 标题 + 「← 终端」返回按钮（承接原 slot-back-terminal 语义）。 */
+.main-view {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.main-view-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.main-view-head h2 {
+  margin: 0;
+  flex: 1;
+}
+.main-view-head button {
+  font-size: 0.8em;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.main-view-head button:hover {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+}
+
+/* 实体视图在 term-main-row 内（有会话时 overview/batch 视图）：自带内边距
+ * （零会话时主区 .main-area 已有 padding），终端 holder 同时 absolute+hidden
+ * 常驻（不变量：任何视图切换不卸载终端）。 */
+.term-main-row > .main-view {
+  padding: 10px 14px 14px;
 }

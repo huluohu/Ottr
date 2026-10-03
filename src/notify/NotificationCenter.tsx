@@ -13,6 +13,7 @@ import type { Notification } from "../vault/api";
 import i18n from "../i18n";
 import { readDeliveryFailures, useNotifyStore, type DeliveryFailure, type NotifyKind } from "./core";
 import { resendNotification } from "./channelRegistry";
+import { Checkbox } from "../ui/Checkbox";
 
 /** 未读数徽标文案封顶（99+ 防 badge 撑爆铃铛）。 */
 const BADGE_CAP = 99;
@@ -200,9 +201,8 @@ export function NotificationCenter() {
             <span className="notify-mute-label">{t("notify.muteSection")}</span>
             {MUTABLE_KINDS.map((kind) => (
               <label key={kind} className="notify-mute-row">
-                <input
-                  type="checkbox"
-                  data-testid={`notify-mute-${kind}`}
+                <Checkbox
+                  testid={`notify-mute-${kind}`}
                   checked={muted.includes(kind)}
                   onChange={() => toggleMuted(kind)}
                 />

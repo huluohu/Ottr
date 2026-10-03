@@ -1,4 +1,6 @@
-// ForwardPanel（Phase 2 Task 1，B7 上半）：端口转发中心面板（顶栏入口的对话框）。
+// ForwardPanel（Phase 2 Task 1，B7 上半；UI 批次一 Task 4 迁右侧 dock）：
+// 端口转发中心面板（工具菜单 → dock/DockPanel 承载，open 由 dock 单槽驱动——
+// 组件逻辑零改动，仅外壳从 overlay 对话框换为 dock 内容形态）。
 // * 列表：全部 port_forwards（配置 + 运行态拼接，pf_list）——状态灯
 //   （active/starting/error/off 四色，data-state 驱动）、端点摘要（bind → target，
 //   dynamic 显示 SOCKS5）、字节计数人话格式（formatBytes）、启停按钮。
@@ -20,10 +22,10 @@ import {
 } from "../vault/api";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
+import { Checkbox } from "../ui/Checkbox";
 
 export interface ForwardPanelProps {
   open: boolean;
-  onClose: () => void;
 }
 
 /** 字节计数人话格式（B/KB/MB/GB/TB，1 位小数；0 特判「0 B」）。 */
@@ -84,7 +86,7 @@ function formFromRow(row: PortForwardView): FormState {
   };
 }
 
-export function ForwardPanel({ open, onClose }: ForwardPanelProps) {
+export function ForwardPanel({ open }: ForwardPanelProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const sessions = useSessionStore((s) => s.sessions);
@@ -257,16 +259,10 @@ export function ForwardPanel({ open, onClose }: ForwardPanelProps) {
   const hostById = new Map<number, Host>(hosts.map((h) => [h.id, h]));
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("forward.title")}>
-      <div className="dialog forward-panel" data-testid="forward-panel">
-        <div className="dialog-head">
-          <h2>{t("forward.title")}</h2>
-          <button className="dialog-close" aria-label={t("common.close")} onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        {loadError && (
+    // dock 内容形态（T4）：标题/关闭由 dock 壳（dock/DockPanel）供给，
+    // 本体只剩滚动内容；testid 沿原对话框（测试面零迁移）。
+    <div className="dock-entity" role="region" aria-label={t("forward.title")} data-testid="forward-panel">
+      {loadError && (
           <p className="form-error" data-testid="forward-load-error">
             {t("forward.loadFailed", { message: loadError })}
           </p>
@@ -319,9 +315,8 @@ export function ForwardPanel({ open, onClose }: ForwardPanelProps) {
                 </span>
                 <span className="forward-actions">
                   <label className="forward-flag" title={t("forward.enabledHint")}>
-                    <input
-                      type="checkbox"
-                      data-testid={`forward-enabled-${row.id}`}
+                    <Checkbox
+                      testid={`forward-enabled-${row.id}`}
                       checked={row.enabled}
                       onChange={() => void handleToggleEnabled(row)}
                     />
@@ -440,18 +435,16 @@ export function ForwardPanel({ open, onClose }: ForwardPanelProps) {
             )}
             <div className="forward-form-flags">
               <label className="forward-flag">
-                <input
-                  type="checkbox"
-                  data-testid="forward-form-enabled"
+                <Checkbox
+                  testid="forward-form-enabled"
                   checked={form.enabled}
                   onChange={(e) => { const c = e.currentTarget.checked; setForm((f) => ({ ...f, enabled: c })); }}
                 />
                 {t("forward.enabled")}
               </label>
               <label className="forward-flag">
-                <input
-                  type="checkbox"
-                  data-testid="forward-form-auto-reconnect"
+                <Checkbox
+                  testid="forward-form-auto-reconnect"
                   checked={form.autoReconnect}
                   onChange={(e) => { const c = e.currentTarget.checked; setForm((f) => ({ ...f, autoReconnect: c })); }}
                 />
@@ -484,7 +477,6 @@ export function ForwardPanel({ open, onClose }: ForwardPanelProps) {
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 }

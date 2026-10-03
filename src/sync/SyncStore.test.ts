@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   SCOPE_PUSH_KEY,
   SYNC_STATE_KEY,
+  SyncAbandonedError,
   createSyncStore,
   normalizeScope,
   type SyncImportReport,
@@ -398,5 +399,71 @@ describe("范围勾选校验", () => {
     expect(normalizeScope(["settings", "hosts", "hosts"])).toEqual(["hosts", "settings"]);
     expect(() => normalizeScope([])).toThrow(/must not be empty/);
     expect(() => normalizeScope(["nonsense" as SyncCategory])).toThrow(/unknown sync category/);
+  });
+});
+
+// fix round 1（ui-batch2 T4 I-1）：放弃守卫——对话框「关闭 = 放弃运行」后，
+// 迟到的 pull 不得落库本机、不得写干净基线（三态不得谎报 synced）；
+// push 放弃后不再写远端（push 侧本就良性，守卫属顺带收紧）。
+describe("放弃守卫（SyncRunGuard）", () => {
+  it("isAbandoned 恒真：pull 不落库本机、不写基线；push 不推远端", async () => {
+    vault = new FakeVault({ hosts: [{ id: 1 }] });
+    transport = new FakeTransport();
+    await makeStore().push(PASSPHRASE, ALL); // 建立远端信封
+    vault.settings.delete(SYNC_STATE_KEY); // 清基线：断言守卫路径不写
+    vault.data.categories.hosts.push({ id: 77, name: "post-abandon-edit" }); // 放弃后的本机编辑
+    const store = makeStore();
+
+    const pullOutcome: unknown = await store
+      .pull(PASSPHRASE, ALL, { isAbandoned: () => true })
+      .then(
+        () => "resolved",
+        (e) => e,
+      );
+    expect(pullOutcome).toBeInstanceOf(SyncAbandonedError);
+    expect(vault.imports).toHaveLength(0); // 迟到 pull 未覆盖本机
+    expect(
+      vault.data.categories.hosts.some((h) => (h as { name: string }).name === "post-abandon-edit"),
+    ).toBe(true); // 放弃后的编辑仍在
+    expect(vault.settings.has(SYNC_STATE_KEY)).toBe(false); // 不写基线
+
+    const pushedCount = transport.pushed.length;
+    const pushOutcome: unknown = await store
+      .push(PASSPHRASE, ALL, { isAbandoned: () => true })
+      .then(
+        () => "resolved",
+        (e) => e,
+      );
+    expect(pushOutcome).toBeInstanceOf(SyncAbandonedError);
+    expect(transport.pushed).toHaveLength(pushedCount); // 放弃后不写远端
+    expect(vault.settings.has(SYNC_STATE_KEY)).toBe(false);
+  });
+
+  it("放弃落在落库 invoke 窗口内：本机已写但基线被拦（下次三态判 push/conflict，可见非谎报 synced）", async () => {
+    vault = new FakeVault({ hosts: [{ id: 1 }] });
+    transport = new FakeTransport();
+    await makeStore().push(PASSPHRASE, ALL);
+    vault.settings.delete(SYNC_STATE_KEY);
+
+    // 落库瞬间用户放弃（isAbandoned 在 importCategories 进行中翻真）
+    let importStarted = false;
+    const guardedVault: SyncVaultBridge = {
+      exportCategories: (cats) => vault.exportCategories(cats),
+      importCategories: async (cats, raw, mode) => {
+        importStarted = true;
+        return vault.importCategories(cats, raw, mode);
+      },
+      settingsGet: <T>(key: string) => vault.settingsGet<T>(key),
+      settingsSet: (key, value) => vault.settingsSet(key, value),
+    };
+    const outcome: unknown = await createSyncStore({ bridge: guardedVault, transport })
+      .pull(PASSPHRASE, ALL, { isAbandoned: () => importStarted })
+      .then(
+        () => "resolved",
+        (e) => e,
+      );
+    expect(outcome).toBeInstanceOf(SyncAbandonedError);
+    expect(vault.imports).toHaveLength(1); // 残余窗口：落库已发生（毫秒级 invoke，不可拦）
+    expect(vault.settings.has(SYNC_STATE_KEY)).toBe(false); // 但基线被拦：三态不谎报 synced
   });
 });

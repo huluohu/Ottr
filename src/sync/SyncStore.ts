@@ -16,8 +16,22 @@
 //   pull  = fetch → 开封 → 范围内分类全量替换导入 → 重导出 → 基线；
 //   status= 双指纹 + 基线 → 三态判定；conflict 时（可选口令）开封列逐分类明细。
 //
+// 放弃守卫（ui-batch2 T4 fix round 1 I-1）：对话框「关闭 = 放弃运行」后，
+// 在途的 push/pull 仍会继续跑完——pull 的 importCategories 是**本机写**
+// （replace 语义），迟到落库会覆盖放弃后的本机编辑。故 push/pull 接受可选
+// guard.isAbandoned 谓词，在**每个写边界**前检查：
+//   * pull：importCategories 前（关键闸——拦住「迟到 pull 覆盖本机」）+
+//     saveBaseline 前（落库已发生也不得写干净基线——否则三态谎报 synced，
+//     编辑静默丢失无迹；跳过基线则下次判定 push/conflict，可见非无声）；
+//   * push：transport.push 前（放弃后不再写远端；push 侧本就良性——导出在
+//     放弃前完成，迟到完成只影响远端）。
+// 残余窗口：放弃瞬间 importCategories invoke 已在写（本机 IPC，毫秒级）——
+// 该窗口的落库不可拦截，但因基线被拦，结局是可见的 push/conflict 而非
+// 「synced 谎言」。
+//
 // 错误通道：传输故障/口令错原样上抛（fetch null 语义 = 远端无信封，见
-// transport.ts 文件头）；pull 在远端无信封时显式报错（pull 无从谈起）。
+// transport.ts 文件头）；pull 在远端无信封时显式报错（pull 无从谈起）；
+// 放弃守卫触发 = SyncAbandonedError（对话框侧按代序丢弃，不进错误面）。
 
 import type { SyncTransport } from "./transport";
 import {
@@ -120,12 +134,36 @@ export interface SyncStore {
   getScope(kind: "push" | "restore"): Promise<SyncCategory[]>;
   /** 保存范围勾选（非空 + 全法集校验；去重）。 */
   setScope(kind: "push" | "restore", cats: readonly SyncCategory[]): Promise<void>;
-  /** 推送：范围 cats 省缺 = push 范围偏好。 */
-  push(passphrase: string, cats?: readonly SyncCategory[]): Promise<PushResult>;
-  /** 拉取应用：范围 cats 省缺 = restore 范围偏好。远端无信封 → 抛错。 */
-  pull(passphrase: string, cats?: readonly SyncCategory[]): Promise<PullResult>;
+  /** 推送：范围 cats 省缺 = push 范围偏好；guard 见文件头「放弃守卫」。 */
+  push(
+    passphrase: string,
+    cats?: readonly SyncCategory[],
+    guard?: SyncRunGuard,
+  ): Promise<PushResult>;
+  /** 拉取应用：范围 cats 省缺 = restore 范围偏好；远端无信封 → 抛错；guard 同上。 */
+  pull(
+    passphrase: string,
+    cats?: readonly SyncCategory[],
+    guard?: SyncRunGuard,
+  ): Promise<PullResult>;
   /** 三态判定（conflict 明细需要口令开封远端；passphrase 省缺 = 不开封）。 */
   status(passphrase?: string): Promise<SyncStatus>;
+}
+
+/** 运行放弃守卫（对话框关闭/重开即放弃）：写边界前的查岗谓词。 */
+export interface SyncRunGuard {
+  isAbandoned?(): boolean;
+}
+
+/** 守卫触发（对话框侧按运行代序丢弃，不进错误面）。 */
+export class SyncAbandonedError extends Error {
+  constructor() {
+    super("sync run abandoned");
+  }
+}
+
+function abandoned(guard?: SyncRunGuard): boolean {
+  return guard?.isAbandoned?.() ?? false;
 }
 
 const ALL: SyncCategory[] = [...SYNC_CATEGORIES];
@@ -180,19 +218,21 @@ export function createSyncStore(deps: SyncStoreDeps): SyncStore {
       await bridge.settingsSet(scopeKey(kind), normalizeScope(cats));
     },
 
-    async push(passphrase, cats): Promise<PushResult> {
+    async push(passphrase, cats, guard): Promise<PushResult> {
       if (passphrase === "") throw new Error("sync passphrase must not be empty");
       const scope = await resolveScope("push", cats);
       const { data, localFp } = await exportAllWithFingerprint();
       const payload = JSON.stringify(filterSnapshot(data, scope));
       const envelope = await sealEnvelope(payload, passphrase);
+      if (abandoned(guard)) throw new SyncAbandonedError(); // 放弃后不写远端
       await transport.push(envelope);
       const remoteFp = await fingerprint(envelope);
+      if (abandoned(guard)) throw new SyncAbandonedError();
       await saveBaseline(localFp, remoteFp);
       return { action: "push", localFp, remoteFp };
     },
 
-    async pull(passphrase, cats): Promise<PullResult> {
+    async pull(passphrase, cats, guard): Promise<PullResult> {
       if (passphrase === "") throw new Error("sync passphrase must not be empty");
       const { envelope, remoteFp } = await remoteFingerprint();
       if (envelope === null || remoteFp === null) {
@@ -200,8 +240,13 @@ export function createSyncStore(deps: SyncStoreDeps): SyncStore {
       }
       const data = await openRemoteData(envelope, passphrase);
       const scope = await resolveScope("restore", cats);
+      // 关键闸：迟到的 pull 不得落库本机（replace 语义会覆盖放弃后的编辑）。
+      if (abandoned(guard)) throw new SyncAbandonedError();
       const report = await bridge.importCategories(scope, data, "replace");
       const { localFp } = await exportAllWithFingerprint();
+      // 落库已发生（放弃落在 invoke 窗口内）也不得写干净基线——否则三态谎报
+      // synced，被覆盖的编辑静默无迹；跳过基线 → 下次判定 push/conflict（可见）。
+      if (abandoned(guard)) throw new SyncAbandonedError();
       await saveBaseline(localFp, remoteFp);
       return { action: "pull", localFp, remoteFp, report };
     },

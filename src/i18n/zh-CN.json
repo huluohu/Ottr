@@ -1071,6 +1071,7 @@
       "entriesEmpty": "（空）",
       "entriesMore": "…等 {{count}} 条",
       "running": "同步中…",
+      "abandonHint": "关闭即放弃：放弃后本次同步不会再写入本机数据。",
       "donePush": "已推送到云端，基线已更新。",
       "donePull": "已从云端应用，基线已更新。",
       "doneConflict": "已按裁定合并并推送回云端。",

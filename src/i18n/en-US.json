@@ -1072,6 +1072,7 @@
       "entriesEmpty": "(empty)",
       "entriesMore": "…and {{count}} more",
       "running": "Syncing…",
+      "abandonHint": "Closing abandons this run: nothing further will be written to your local data.",
       "donePush": "Pushed to cloud; baseline updated.",
       "donePull": "Applied from cloud; baseline updated.",
       "doneConflict": "Merged by your resolution and pushed back.",

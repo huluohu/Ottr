@@ -25,8 +25,11 @@
 // 授权框阻塞 invoke（前端不可中断），checking 态关闭钮 disabled + 无 Esc
 // 路径 → 对话框结构性困死。修复两路并施：
 //   1) 取消路径（结构性）：关闭钮/Esc 在 busy 态**恒可达**——关 = 放弃本次
-//      同步运行（run seq 自增，在途/迟到的 settle 一律丢弃不回填；后台任务
-//      若最终完成只影响远端/基线真源，下次打开重走 status 即见，无半程态）；
+//      同步运行（run seq 自增，在途/迟到的 settle 一律丢弃不回填）。放弃后
+//      的写入安全由 SyncStore「放弃守卫」兜住（见 SyncStore.ts 文件头）：
+//      pull 的落库是**本机写**（replace 语义），守卫在 importCategories /
+//      saveBaseline 写边界前查岗——迟到 pull 不覆盖本机编辑、不写干净基线
+//      （防三态谎报 synced）；push 放弃后不再写远端。
 //   2) 检查超时（体验收敛）：channelReady/passphrase/status 统一 10s 上限，
 //      超时转 error 面（重试 + 关闭恢复可用），对话框不再永久转圈。
 import { useEffect, useRef, useState } from "react";
@@ -237,7 +240,9 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
   }
 
   /** 关闭（busy 中亦可达，A5 解困）：放弃本次同步运行——代序自增使在途/
-   * 迟到的 settle 全部丢弃；后台任务若最终完成只影响真源，不回填本面。 */
+   * 迟到的 settle 全部丢弃不回填本面；写入安全由 store 放弃守卫兜住（迟到
+   * pull 不落库本机/基线，push 不再写远端）。running 态关闭钮带披露文案
+   * （I-1(b)），旁注见 running 面。 */
   function abandonAndClose() {
     runSeqRef.current += 1;
     onClose();
@@ -268,24 +273,36 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
         case "synced":
           setPhase("synced");
           return;
-        case "push":
-          setPushScope(await m.store.getScope("push"));
+        case "push": {
+          const pushPref = await m.store.getScope("push");
+          // 各分支 await 后同样查岗（fix round 1 I-2）：放弃后快速重开时，
+          // 旧延续的迟到 settle 不得污染新运行的相位。
+          if (seq !== runSeqRef.current) return;
+          setPushScope(pushPref);
           setPhase("push");
           return;
-        case "pull":
-          setRestoreScope(await m.store.getScope("restore"));
-          setLocalData(await m.localSnapshot());
+        }
+        case "pull": {
+          const restorePref = await m.store.getScope("restore");
+          if (seq !== runSeqRef.current) return;
+          const local = await m.localSnapshot();
+          if (seq !== runSeqRef.current) return;
+          setRestoreScope(restorePref);
+          setLocalData(local);
           setPhase("pull");
           return;
-        case "conflict":
+        }
+        case "conflict": {
           const [local, remote] = await Promise.all([
             m.localSnapshot(),
             m.remoteSnapshot(passphrase),
           ]);
+          if (seq !== runSeqRef.current) return;
           setLocalData(local);
           setRemoteData(remote);
           setPhase("conflict");
           return;
+        }
       }
     } catch (e) {
       if (seq !== runSeqRef.current) return;
@@ -321,18 +338,20 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
   }
 
   /** 统一执行壳：running → done；auth 错回 askpass，其余错误入 error 面。
-   * 迟到 settle 由代序守卫丢弃（放弃后完成的 push/pull 不回填已弃的面）。 */
-  async function perform(action: () => Promise<DoneInfo>) {
+   * 迟到 settle 由代序守卫丢弃（放弃后完成的 push/pull 不回填已弃的面）。
+   * action 收到本次运行代序——传给 store 的放弃守卫（写边界查岗，见
+   * SyncStore.ts 文件头：迟到 pull 不落库本机、不写干净基线）。 */
+  async function perform(action: (seq: number) => Promise<DoneInfo>) {
     const seq = runSeqRef.current;
     setErrorMsg(null);
     setPhase("running");
     try {
-      const info = await action();
+      const info = await action(seq);
       if (seq !== runSeqRef.current) return;
       setDone(info);
       setPhase("done");
     } catch (e) {
-      if (seq !== runSeqRef.current) return;
+      if (seq !== runSeqRef.current) return; // 含 SyncAbandonedError：放弃即静默
       if (e instanceof EnvelopeError && e.reason === "auth") {
         setPass(null);
         setErrorMsg(t("sync.dialog.wrongPass"));
@@ -347,9 +366,9 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
   async function startPush() {
     if (m === null) return;
     const scope = pushScope;
-    await perform(async () => {
+    await perform(async (seq) => {
       await m.store.setScope("push", scope);
-      await m.store.push(pass ?? "", scope);
+      await m.store.push(pass ?? "", scope, { isAbandoned: () => runSeqRef.current !== seq });
       return { kind: "push" };
     });
   }
@@ -357,9 +376,11 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
   async function startPull() {
     if (m === null) return;
     const scope = restoreScope;
-    await perform(async () => {
+    await perform(async (seq) => {
       await m.store.setScope("restore", scope);
-      const result = await m.store.pull(pass ?? "", scope);
+      const result = await m.store.pull(pass ?? "", scope, {
+        isAbandoned: () => runSeqRef.current !== seq,
+      });
       return { kind: "pull", report: result.report };
     });
   }
@@ -367,9 +388,10 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
   async function applyConflict(resolution: Partial<Record<SyncCategory, "local" | "cloud">>) {
     if (m === null) return;
     const cloudCats = SYNC_CATEGORIES.filter((c) => resolution[c] === "cloud");
-    await perform(async () => {
+    await perform(async (seq) => {
+      const guard = { isAbandoned: () => runSeqRef.current !== seq };
       if (cloudCats.length > 0) {
-        await m.store.pull(pass ?? "", cloudCats);
+        await m.store.pull(pass ?? "", cloudCats, guard);
       }
       // 发布面 = 双侧任一有数据的分类 ∪ 裁定分类（信封全量语义，见文件头）。
       const pushCats = SYNC_CATEGORIES.filter(
@@ -378,7 +400,7 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
           (localData?.categories[c]?.length ?? 0) > 0 ||
           (remoteData?.categories[c]?.length ?? 0) > 0,
       );
-      await m.store.push(pass ?? "", pushCats);
+      await m.store.push(pass ?? "", pushCats, guard);
       return { kind: "conflict" };
     });
   }
@@ -553,9 +575,15 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
         )}
 
         {phase === "running" && (
-          <p className="dialog-intro" data-testid="sync-running">
-            {t("sync.dialog.running")}
-          </p>
+          <div data-testid="sync-running-block">
+            <p className="dialog-intro" data-testid="sync-running">
+              {t("sync.dialog.running")}
+            </p>
+            {/* I-1(b) 披露：关闭 = 放弃的语义与守卫边界，用户在点关闭前可见。 */}
+            <p className="settings-hint" data-testid="sync-running-abandon-hint">
+              {t("sync.dialog.abandonHint")}
+            </p>
+          </div>
         )}
 
         {phase === "done" && done !== null && (
@@ -593,8 +621,14 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
         )}
 
         <div className="form-actions">
-          {/* busy 中亦可达（A5 解困）：点击 = 放弃本次同步（见 abandonAndClose）。 */}
-          <button type="button" data-testid="sync-dialog-close" onClick={abandonAndClose}>
+          {/* busy 中亦可达（A5 解困）：点击 = 放弃本次同步（见 abandonAndClose）；
+              running 态带 title 披露（I-1(b)）。 */}
+          <button
+            type="button"
+            data-testid="sync-dialog-close"
+            onClick={abandonAndClose}
+            title={phase === "running" ? t("sync.dialog.abandonHint") : undefined}
+          >
             {t("sync.dialog.close")}
           </button>
         </div>

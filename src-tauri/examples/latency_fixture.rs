@@ -116,6 +116,7 @@ async fn run() -> Result<String, String> {
             &recorder_slot,
             "latency-fixture",
             &cancel_handle,
+            &ottr_lib::SessionResizeSlot::default(),
         )
         .await
     });

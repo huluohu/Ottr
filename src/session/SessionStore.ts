@@ -255,12 +255,40 @@ export interface TerminalSink {
 
 const sinks = new Map<string, TerminalSink>();
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** 每会话最近一次下发的 PTY 尺寸（缺陷 34：同尺寸不去重会多打无谓重绘）。
+ * 键 = 前端会话 id，值绑定 rustId——重连换新 PTY（新进程按 attach 尺寸重建，
+ * 可能又是 2×1/80×24）时必须重发，绝不能按「会话 id + 尺寸」跨连接去重。 */
+const lastResize = new Map<string, { rustId: string; size: string }>();
 
 export function registerSink(sessionId: string, sink: TerminalSink): void {
   sinks.set(sessionId, sink);
 }
 export function unregisterSink(sessionId: string): void {
   sinks.delete(sessionId);
+  lastResize.delete(sessionId);
+}
+
+/** PTY 尺寸变更（缺陷 34）：fit 后把真实 cols/rows 投给 Rust
+ * `resize_session`（挂起槽 → 转发循环 window_change）。守卫：会话在册且
+ * rustId 已落地（connecting 期调用落空——fit 是视觉层语义，不打扰）；
+ * 同一 rustId 上同尺寸去重（每次布局触发的 fit 不重复下发），rustId 变化
+ * （重连 = 新 PTY 进程）必然重发。fire-and-forget：失败静默（会话可能刚断开）。 */
+export function resizeSession(
+  sessionId: string,
+  cols: number,
+  rows: number,
+): void {
+  const session = useSessionStore
+    .getState()
+    .sessions.find((x) => x.id === sessionId);
+  if (!session?.rustId || cols <= 0 || rows <= 0) return;
+  const size = `${cols}x${rows}`;
+  const last = lastResize.get(sessionId);
+  if (last && last.rustId === session.rustId && last.size === size) return;
+  lastResize.set(sessionId, { rustId: session.rustId, size });
+  void invoke("resize_session", { id: session.rustId, cols, rows }).catch(
+    () => {},
+  );
 }
 
 /** host key 拒绝的可识别错误串（Rust Error::HostKeyRejected Display 前缀）。 */

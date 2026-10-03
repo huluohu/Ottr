@@ -136,10 +136,58 @@ pub(crate) struct SessionEntry {
     /// 会话录制器槽位（Phase 3 Task 5，B3）：None = 未录制；recording_start
     /// 放入 handle、转发循环 flush_batch tee 副本、stop/循环退出 finalize。
     pub(crate) recorder: super::recording::RecorderSlot,
-    /// PTY 初始尺寸（录制 header 的 width/height 面；运行期 resize 不追踪——
-    /// asciinema "r" 事件挂账，见 task-5-report）。
+    /// PTY 初始尺寸（录制 header 的 width/height 面；运行期 resize 经
+    /// [`SessionResizeSlot`] 追踪并下发 window_change，缺陷 34）。
     pub(crate) cols: u16,
     pub(crate) rows: u16,
+    /// PTY 尺寸变更挂起槽（缺陷 34，2026-10-04）：`resize_session` 命令写入、
+    /// 转发循环 select 唤醒后取走并下发 `window_change`。**为什么经槽中转**：
+    /// russh `Channel::window_change` 需要 `&mut Channel`，而 channel 由转发
+    /// 循环任务独占持有——命令面只能投槽 + Notify 唤醒，循环就地取用。
+    pub(crate) resize: Arc<SessionResizeSlot>,
+}
+
+/// PTY 尺寸变更挂起槽（缺陷 34）：**锁存最新值**（连续 resize 只保留末值——
+/// 中间值从未被 readline 观察到，逐个下发只会多打无谓的重绘）；`take` 即清。
+/// 内嵌 `Notify`（命令面 set 后唤醒转发循环）——循环 select 在 notified() 上。
+/// 值语义 `(cols, rows)`，全部 > 0 才收（0 尺寸是隐藏窗格的 fit 噪声，不下发）。
+pub struct SessionResizeSlot {
+    pending: Mutex<Option<(u32, u32)>>,
+    notify: Notify,
+}
+
+impl Default for SessionResizeSlot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SessionResizeSlot {
+    pub fn new() -> Self {
+        Self {
+            pending: Mutex::new(None),
+            notify: Notify::new(),
+        }
+    }
+
+    /// 投递一次尺寸变更（覆盖未消费的旧值；非正值忽略）并唤醒转发循环。
+    pub(crate) fn set(&self, cols: u32, rows: u32) {
+        if cols == 0 || rows == 0 {
+            return;
+        }
+        *self.pending.lock().unwrap() = Some((cols, rows));
+        self.notify.notify_one();
+    }
+
+    /// 转发循环取走挂起值（有则返回并清槽）。
+    pub(crate) fn take(&self) -> Option<(u32, u32)> {
+        self.pending.lock().unwrap().take()
+    }
+
+    /// 循环 select 面（set → notified() 唤醒）。
+    pub(crate) async fn notified(&self) {
+        self.notify.notified().await;
+    }
 }
 
 /// 会话文本缓冲（Task 13 尾环 + fix 1/5 头部原始探针）：
@@ -349,5 +397,42 @@ pub fn snapshot(counters: &SessionCounters) -> SessionStats {
         send_failed_frames: counters.send_failed_frames.load(Ordering::Relaxed),
         send_failed_bytes: counters.send_failed_bytes.load(Ordering::Relaxed),
         failed: counters.failed.load(Ordering::Relaxed),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // 缺陷 34（审计截图「命令回显不完整/提示符行缺失」）契约：PTY 尺寸变更
+    // 挂起槽的锁存语义。行为复现（真机 + headless 双证据，2026-10-04）：attach
+    // 时前端 sink 未布局 → getSize() 返回 2×1 → PTY 以 2×1 创建 → readline 在
+    // 2 列终端只发空重绘（\e[?2004h\e[K\r）不发提示符、回显退化为逐字符重绘
+    // ——且全应用无 resize 接线，PTY 终身 2×1。修复 = 挂起槽 + 转发循环
+    // window_change 下发（真窗复验：resize 后提示符/回显完整）。
+    use super::SessionResizeSlot;
+
+    #[test]
+    fn resize_slot_latches_latest_and_take_clears() {
+        let slot = SessionResizeSlot::new();
+        assert_eq!(slot.take(), None, "空槽 take = None");
+
+        slot.set(80, 24);
+        assert_eq!(slot.take(), Some((80, 24)));
+        assert_eq!(slot.take(), None, "take 即清（不重复下发）");
+
+        // 连续 resize 只锁存末值（中间值从未被 readline 观察到）
+        slot.set(80, 24);
+        slot.set(100, 30);
+        slot.set(117, 46);
+        assert_eq!(slot.take(), Some((117, 46)));
+    }
+
+    #[test]
+    fn resize_slot_rejects_degenerate_dimensions() {
+        let slot = SessionResizeSlot::new();
+        // 0 尺寸 = 隐藏窗格的 fit 噪声：不下发（下发 0 会话端报 protocol error）
+        slot.set(0, 24);
+        slot.set(80, 0);
+        slot.set(0, 0);
+        assert_eq!(slot.take(), None);
     }
 }

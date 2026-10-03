@@ -185,6 +185,7 @@ async fn recording_full_chain_fixture() {
             &loop_recorder,
             "rec-fixture",
             &cancel_loop,
+            &ottr_lib::SessionResizeSlot::default(),
         )
         .await
     });

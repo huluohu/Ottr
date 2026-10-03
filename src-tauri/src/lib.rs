@@ -39,7 +39,7 @@ pub use commands::session::{
     forward_pty_loop, inject_shell_integration, SessionCloseReason, ShellIntegrationOutcome,
 };
 pub(crate) use commands::state::AppState;
-pub use commands::state::{snapshot, SessionCounters, SessionStats, TextTail};
+pub use commands::state::{snapshot, SessionCounters, SessionResizeSlot, SessionStats, TextTail};
 // Phase 3 Task 6（B9）：指纹巡检面公开给夹具集成测试（tests/hostkey_fixture.rs：
 // 真 ssh-keyscan 探测 → classify → mark_changed 全链）。
 pub use hostkey_audit::{audit_once, keyscan_line_fingerprint, probe_endpoint, AuditOutcome};
@@ -417,7 +417,8 @@ pub fn run() {
             keys::key_generate,
             keys::key_inspect,
             keys::key_export,
-            keys::key_deploy
+            keys::key_deploy,
+            commands::session::resize_session
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

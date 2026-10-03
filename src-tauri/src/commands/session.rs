@@ -622,6 +622,8 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
     let recorder: super::recording::RecorderSlot = Arc::new(Mutex::new(None));
     let writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>> =
         Arc::new(tokio::sync::Mutex::new(Box::new(channel.make_writer())));
+    // PTY 尺寸变更挂起槽（缺陷 34）：命令面 resize_session 投槽，转发循环取用。
+    let resize = Arc::new(crate::commands::state::SessionResizeSlot::new());
     // session 进 Arc（Task 10）：会话表项持一份（SFTP/传输按 rustId 复用同一
     // 连接），转发循环任务持另一份（退出统一断开）。任一行先消亡，
     // 连接关闭会连带终止另一侧的操作（传输失败报协议错，journal 可续传）。
@@ -643,6 +645,7 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
             recorder: Arc::clone(&recorder),
             cols: cols.min(u16::MAX as u32) as u16,
             rows: rows.min(u16::MAX as u32) as u16,
+            resize: Arc::clone(&resize),
         },
     );
 
@@ -676,6 +679,7 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
             &recorder,
             &session_id,
             &cancel,
+            &resize,
         )
         .await;
         sessions.lock().unwrap().remove(&session_id);
@@ -964,6 +968,7 @@ pub async fn forward_pty_loop(
     recorder: &super::recording::RecorderSlot,
     session_id: &str,
     cancel: &Notify,
+    resize: &crate::commands::state::SessionResizeSlot,
 ) -> SessionCloseReason {
     // russh 类型在此泄漏为 spike-pragmatic（见 ottr-ssh SshTransport 文档：
     // Channel 是 trait 边界上唯一泄漏点，正式版由包装类型消除）。
@@ -1024,6 +1029,17 @@ pub async fn forward_pty_loop(
             }
             None => tokio::select! {
                 m = channel.wait() => m,
+                // PTY 尺寸变更（缺陷 34）：命令面投槽 + 唤醒，这里就地取用下发
+                // window_change——readline 收 SIGWINCH 重绘提示符/回显区（2×1
+                // 退化 PTY 只发空重绘、提示符缺失的根因修复点）。
+                _ = resize.notified() => {
+                    if let Some((cols, rows)) = resize.take() {
+                        if let Err(e) = channel.window_change(cols, rows, 0, 0).await {
+                            eprintln!("[batcher:{session_id}] window_change({cols}x{rows}) failed: {e}");
+                        }
+                    }
+                    continue;
+                }
                 _ = cancel.notified() => {
                     eprintln!("[batcher:{session_id}] session dropped");
                     return SessionCloseReason::Cancelled;
@@ -1140,6 +1156,31 @@ async fn flush_batch(
             );
             false
         }
+    }
+}
+
+/// PTY 尺寸变更（缺陷 34）：前端 fit 后把真实 cols/rows 投进会话的挂起槽，
+/// 转发循环 select 唤醒后下发 `window_change`——readline 收 SIGWINCH 重绘
+/// 提示符/回显区。attach 期（终端窗格未布局）尺寸可能退化为 2×1，没有这条
+/// 接线 PTY 终身保持退化尺寸（提示符行缺失的根因，见 state.rs 契约测试）。
+/// 会话不存在（刚断开）/ 无端点：静默忽略（fit 是视觉层语义，失败不打扰）。
+#[tauri::command]
+pub(crate) fn resize_session(
+    state: State<'_, AppState>,
+    id: String,
+    cols: u32,
+    rows: u32,
+) -> Result<(), String> {
+    let entry = state.sessions.lock().unwrap().get(&id).map(|e| {
+        let resize = Arc::clone(&e.resize);
+        resize
+    });
+    match entry {
+        Some(resize) => {
+            resize.set(cols, rows);
+            Ok(())
+        }
+        None => Err(format!("no such session: {id}")),
     }
 }
 

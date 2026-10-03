@@ -23,6 +23,7 @@ import {
   OPEN_TABS_KEY,
   reconnectDelayMs,
   registerSink,
+  resizeSession,
   setSessionEndHook,
   toBytes,
   unregisterSink,
@@ -766,6 +767,61 @@ describe("BL-501 防线（T0）", () => {
 // 会话结束钩子（Phase 2 Task 7 会话纪要）：closeTab / disconnect / 自动重连耗尽
 // 三时机派发；异常断开在重连进行中不派发；钩子异常不反噬状态机。
 // ---------------------------------------------------------------------------
+// 缺陷 34（审计截图「命令回显不完整/提示符行缺失」）：PTY 尺寸变更接线——
+// fit 后 resizeSession 把真实尺寸投给 resize_session（挂起槽 → window_change）。
+describe("resizeSession（缺陷 34：PTY 尺寸下发）", () => {
+  beforeEach(() => {
+    mockedInvoke.mockResolvedValue(undefined);
+  });
+
+  it("connected 会话 → invoke resize_session(rustId, cols, rows)", () => {
+    const id = useSessionStore.getState().openTab(hostA);
+    markConnected(id, "pty-9");
+    resizeSession(id, 117, 46);
+    expect(mockedInvoke).toHaveBeenCalledWith("resize_session", {
+      id: "pty-9",
+      cols: 117,
+      rows: 46,
+    });
+  });
+
+  it("同尺寸去重（fit 每次布局都触发，不重复下发）；尺寸变化再下发", () => {
+    const id = useSessionStore.getState().openTab(hostA);
+    markConnected(id, "pty-9");
+    resizeSession(id, 117, 46);
+    resizeSession(id, 117, 46);
+    expect(mockedInvoke).toHaveBeenCalledTimes(1);
+    resizeSession(id, 80, 24);
+    expect(mockedInvoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("connecting（无 rustId）落空；重连换 rustId（新 PTY 进程）必然重发", () => {
+    const id = useSessionStore.getState().openTab(hostA);
+    resizeSession(id, 117, 46); // connecting：无 rustId → 不 invoke
+    expect(mockedInvoke).not.toHaveBeenCalled();
+    markConnected(id, "pty-9");
+    resizeSession(id, 117, 46);
+    expect(mockedInvoke).toHaveBeenCalledTimes(1);
+    // 重连：rustId 换新（新 PTY 进程按 attach 尺寸重建，可能又是退化尺寸）
+    markConnected(id, "pty-10");
+    resizeSession(id, 117, 46);
+    expect(mockedInvoke).toHaveBeenCalledTimes(2);
+    expect(mockedInvoke).toHaveBeenLastCalledWith("resize_session", {
+      id: "pty-10",
+      cols: 117,
+      rows: 46,
+    });
+  });
+
+  it("非正尺寸不下发（隐藏窗格的 fit 噪声）", () => {
+    const id = useSessionStore.getState().openTab(hostA);
+    markConnected(id, "pty-9");
+    resizeSession(id, 0, 24);
+    resizeSession(id, 80, 0);
+    expect(mockedInvoke).not.toHaveBeenCalled();
+  });
+});
+
 describe("会话结束钩子（Task 7 会话纪要）", () => {
   afterEach(() => {
     setSessionEndHook(null);

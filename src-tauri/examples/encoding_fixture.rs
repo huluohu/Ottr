@@ -205,6 +205,7 @@ async fn run() -> Result<String, String> {
             &recorder_slot,
             "fixture",
             &cancel_handle,
+            &ottr_lib::SessionResizeSlot::default(),
         )
         .await
     });

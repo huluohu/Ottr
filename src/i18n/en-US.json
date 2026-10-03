@@ -610,9 +610,6 @@
     "acceptAnyway": "Connect anyway",
     "hopLabel": "Hop {{hop}}"
   },
-  "workspace": {
-    "dockHint": "The panel lands in this dock in a follow-up task."
-  },
   "security": {
     "mode": "Key mode",
     "modeKeyring": "System keychain",

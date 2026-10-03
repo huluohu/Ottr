@@ -1,5 +1,7 @@
 // DockPanel（UI 批次一 Task 4）：右侧 dock 实体壳——T2 骨架 DockContainer 的
-// 承接者（标题 + 关闭 + 滚动内容 + 逐面板宽度）。
+// 承接者（标题 + 关闭 + 滚动内容 + 逐面板宽度）。五个工具面板实体挂载于
+// dock-body（组件本体原样迁移，仅外壳换 dock 内容形态；open/onClose 由本壳
+// 以 dock 单槽驱动）。
 //
 // 【互斥语义】dock 单槽由 workspaceStore 保证（openDock 换值即替换）——本组件
 // 只读 dockPanel 渲染，不持本地开关状态。monitor/plugins 是终端右栏自管折叠
@@ -16,6 +18,11 @@ import {
   type ToolDockPanel,
 } from "../workspace/types";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
+import { ForwardPanel } from "../forward/ForwardPanel";
+import { JumpChainEditor } from "../hosts/JumpChainEditor";
+import { CronPanel } from "../cron/CronPanel";
+import { AlertSettings } from "../notify/AlertSettings";
+import { McpSettings } from "../security/McpSettings";
 
 /** 逐面板停靠宽度（px）。380 = 列表型下限；420 = 表单/矩阵型不折行。 */
 export const DOCK_PANEL_WIDTH_PX: Record<ToolDockPanel, number> = {
@@ -57,7 +64,15 @@ export function DockPanel() {
           ×
         </button>
       </div>
-      <div className="dock-body">{t("workspace.dockHint")}</div>
+      {/* 实体挂载（T4）：单槽内仅当前面板成真；组件卸载即停各自轮询/取数
+          （ForwardPanel 2s 轮询、CronPanel 打开期取数等均随 open/unmount 收口）。 */}
+      <div className="dock-body">
+        {panelId === "forwards" && <ForwardPanel open />}
+        {panelId === "jumpchains" && <JumpChainEditor open />}
+        {panelId === "cron" && <CronPanel open />}
+        {panelId === "alerts" && <AlertSettings open onClose={closeDock} />}
+        {panelId === "mcp" && <McpSettings open onClose={closeDock} />}
+      </div>
     </aside>
   );
 }

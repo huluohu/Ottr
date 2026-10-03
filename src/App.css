@@ -2331,14 +2331,10 @@ button[data-active="true"] {
   min-width: 0;
 }
 
-/* 端口转发中心（Phase 2 Task 1，B7 上半）：顶栏对话框面板。
+/* 端口转发中心（Phase 2 Task 1，B7 上半；T4 迁 dock）：容器样式
+   （width/max-height/overflow）随对话框形态消亡——滚动与宽度由 dock 壳接管。
    状态灯沿 NotificationCenter 的语义令牌口径（active=success/starting=warning/
    error=danger/off=surface 灰）。 */
-.forward-panel {
-  width: min(640px, 92vw);
-  max-height: 82vh;
-  overflow-y: auto;
-}
 .forward-empty {
   opacity: 0.7;
   font-size: 13px;
@@ -2458,14 +2454,9 @@ button[data-active="true"] {
   gap: 16px;
 }
 
-/* 跳板链编辑器（Phase 2 Task 2，B7 下半）：顶栏对话框面板。
-   结构沿 ForwardPanel；hop 行可拖拽排序（data-over 高亮悬停目标，
-   语义令牌：ok=success / fail=danger）。 */
-.jump-editor {
-  width: min(640px, 92vw);
-  max-height: 82vh;
-  overflow-y: auto;
-}
+/* 跳板链编辑器（Phase 2 Task 2，B7 下半；T4 迁 dock）：hop 行可拖拽排序
+   （data-over 高亮悬停目标，语义令牌：ok=success / fail=danger）。
+   容器样式随对话框形态消亡——滚动与宽度由 dock 壳接管。 */
 .jump-empty {
   opacity: 0.7;
   font-size: 13px;

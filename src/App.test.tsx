@@ -243,6 +243,22 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
       }
       // T3：batch 实体视图挂载即拉 snippets（迁主区后的新触发面）
       if (cmd === "snippets_list") return Promise.resolve([]);
+      // T4：dock 五实体面板挂载即取数——回空清单（面板空态可渲染）
+      if (cmd === "mcp_status") {
+        return Promise.resolve({
+          enabled: false,
+          listening: false,
+          socket_path: null,
+          approvals_pending: 0,
+          grants_count: 0,
+        });
+      }
+      if (
+        cmd === "pf_list" || cmd === "cj_list" || cmd === "nc_list" ||
+        cmd === "ar_list" || cmd === "mcp_grants_list"
+      ) {
+        return Promise.resolve([]);
+      }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
   }
@@ -259,11 +275,14 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     fireEvent.click(screen.getByTestId("topbar-tools"));
     fireEvent.click(screen.getByTestId("menu-open-forwards"));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("forwards");
+    expect(screen.getByTestId("forward-panel")).toBeTruthy(); // T4：实体在 dock 内
 
     // 单槽互斥走真菜单路径：开 cron 替换 forwards
     fireEvent.click(screen.getByTestId("topbar-tools"));
     fireEvent.click(screen.getByTestId("menu-open-cron"));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("cron");
+    expect(screen.getByTestId("cron-panel")).toBeTruthy();
+    expect(screen.queryByTestId("forward-panel")).toBeNull();
 
     fireEvent.click(screen.getByTestId("dock-close"));
     expect(screen.queryByTestId("dock-container")).toBeNull();
@@ -277,12 +296,15 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     fireEvent.click(screen.getByTestId("topbar-tools"));
     fireEvent.click(screen.getByTestId("menu-open-alert-settings"));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("alerts");
+    expect(screen.getByTestId("alert-settings")).toBeTruthy(); // T4：实体在 dock 内
     fireEvent.click(screen.getByTestId("topbar-tools"));
     fireEvent.click(screen.getByTestId("menu-open-mcp-settings"));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("mcp");
+    expect(screen.getByTestId("mcp-settings")).toBeTruthy();
     fireEvent.click(screen.getByTestId("topbar-tools"));
     fireEvent.click(screen.getByTestId("menu-open-jump-chains"));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("jumpchains");
+    expect(screen.getByTestId("jump-editor")).toBeTruthy();
 
     // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义；T3 起挂实体）。
     // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel。

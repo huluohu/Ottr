@@ -101,13 +101,13 @@ beforeEach(() => {
 describe("CronPanel", () => {
   it("空态（无任务）", async () => {
     seedJobs([]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     expect(screen.getByTestId("cron-empty")).toBeTruthy();
   });
 
   it("任务行渲染（主机名 + schedule + 下次触发；先播种再挂载避免在途刷新回写）", async () => {
     seedJobs([job({})]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     await waitFor(() => {
       expect(screen.getByTestId("cron-row-1")).toBeTruthy();
     });
@@ -120,7 +120,7 @@ describe("CronPanel", () => {
 
   it("enabled 开关走 cj_update 全量替换", async () => {
     seedJobs([job({ enabled: true })]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     const toggle = await screen.findByTestId("cron-enabled-1");
     await act(async () => {
       fireEvent.click(toggle);
@@ -138,7 +138,7 @@ describe("CronPanel", () => {
 
   it("立即运行调 cj_trigger；历史展开调 cj_runs", async () => {
     seedJobs([job({})]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     await screen.findByTestId("cron-row-1");
     await act(async () => {
       fireEvent.click(screen.getByTestId("cron-run-1"));
@@ -157,7 +157,7 @@ describe("CronPanel", () => {
   // （.cron-row → flex-wrap，使展开区独占一行——真窗 flex 挤压不可见缺陷面）。
   it("历史展开区在行容器内（cron-row 专类供展开布局挂钩）", async () => {
     seedJobs([job({})]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     await screen.findByTestId("cron-row-1");
     await act(async () => {
       fireEvent.click(screen.getByTestId("cron-history-1"));
@@ -172,7 +172,7 @@ describe("CronPanel", () => {
   // ②展开中的历史自动 refetch（cj_runs 重拉），不重开面板也能看到新落库轮次。
   it("live 事件：徽标带最新轮时刻；展开中的历史自动 refetch", async () => {
     seedJobs([job({})]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     await screen.findByTestId("cron-row-1");
     await act(async () => {
       fireEvent.click(screen.getByTestId("cron-history-1"));
@@ -214,7 +214,7 @@ describe("CronPanel", () => {
 
   it("删除调 cj_delete", async () => {
     seedJobs([job({})]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     await screen.findByTestId("cron-row-1");
     await act(async () => {
       fireEvent.click(screen.getByTestId("cron-delete-1"));
@@ -224,7 +224,7 @@ describe("CronPanel", () => {
 
   it("表单：校验 + cj_create 载荷（主机/schedule/script/channels/enabled）", async () => {
     seedJobs([]);
-    render(<CronPanel open onClose={() => {}} />);
+    render(<CronPanel open />);
     await act(async () => {
       fireEvent.click(screen.getByTestId("cron-add"));
     });
@@ -261,7 +261,7 @@ describe("CronPanel", () => {
     vi.useFakeTimers();
     try {
       seedJobs([]);
-      render(<CronPanel open onClose={() => {}} />);
+      render(<CronPanel open />);
       await act(async () => {
         fireEvent.click(screen.getByTestId("cron-add"));
       });

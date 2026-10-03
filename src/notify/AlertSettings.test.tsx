@@ -26,6 +26,15 @@ import type { AlertRule, NotifyChannel } from "../vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
 
+// T4 分区化：渠道/规则独占切换（SegmentedControl）——规则区用例先切分区。
+function showRulesSection() {
+  const switcher = screen.getByTestId("alert-section-switch");
+  const rulesBtn = Array.from(switcher.querySelectorAll("button")).find(
+    (b) => b.textContent === "Rules",
+  );
+  fireEvent.click(rulesBtn!);
+}
+
 const channelRow: NotifyChannel = {
   id: 3,
   kind: "telegram",
@@ -102,9 +111,10 @@ describe("AlertSettings 渠道区", () => {
     expect(screen.queryByTestId("alert-settings")).toBeNull();
     rerender(<AlertSettings open={true} onClose={() => {}} />);
     await waitFor(() => expect(screen.getByTestId("alert-channel-3")).toBeDefined());
-    expect(screen.getByTestId("alert-rule-9")).toBeDefined();
     expect(mockedInvoke).toHaveBeenCalledWith("nc_list");
-    expect(mockedInvoke).toHaveBeenCalledWith("ar_list");
+    expect(mockedInvoke).toHaveBeenCalledWith("ar_list"); // 挂载即拉两区数据
+    showRulesSection(); // 规则分区独占挂载后可见
+    expect(screen.getByTestId("alert-rule-9")).toBeDefined();
   });
 
   it("添加渠道：选类型→填字段→保存（nc_create 载荷=字段面）+ 重挂载", async () => {
@@ -176,9 +186,11 @@ describe("AlertSettings 渠道区", () => {
   });
 });
 
+// T4 分区化：本组用例先切到规则分区（showRulesSection）再操作。
 describe("AlertSettings 规则区", () => {
   it("添加规则：主机/类型/参数/渠道多选→保存（ar_create）+ 引擎 reload", async () => {
     render(<AlertSettings open={true} onClose={() => {}} />);
+    showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
     fireEvent.change(screen.getByTestId("alert-rule-kind"), { target: { value: "cpu" } });
@@ -199,6 +211,7 @@ describe("AlertSettings 规则区", () => {
 
   it("主机必选：不选保存报错", async () => {
     render(<AlertSettings open={true} onClose={() => {}} />);
+    showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.click(screen.getByTestId("alert-rule-save"));
     expect(await screen.findByTestId("alert-form-error")).toBeDefined();
@@ -207,6 +220,7 @@ describe("AlertSettings 规则区", () => {
 
   it("静音窗与 rate_limit 透传（空静音窗 → null）", async () => {
     render(<AlertSettings open={true} onClose={() => {}} />);
+    showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
     fireEvent.change(screen.getByTestId("alert-rule-ratelimit"), { target: { value: "300" } });
@@ -219,6 +233,7 @@ describe("AlertSettings 规则区", () => {
 
   it("删除规则：ar_delete + 引擎 reload", async () => {
     render(<AlertSettings open={true} onClose={() => {}} />);
+    showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-rule-delete-9"));
     await waitFor(() => expect(engine.reload).toHaveBeenCalled());
     expect(mockedInvoke).toHaveBeenCalledWith("ar_delete", { id: 9 });
@@ -226,6 +241,7 @@ describe("AlertSettings 规则区", () => {
 
   it("log 规则（Phase 4 T2 解禁）：类型可选 + 路径/关键字/间隔表单 → ar_create 载荷", async () => {
     render(<AlertSettings open={true} onClose={() => {}} />);
+    showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
     const kindSelect = screen.getByTestId("alert-rule-kind") as HTMLSelectElement;
@@ -249,6 +265,7 @@ describe("AlertSettings 规则区", () => {
 
   it("log 规则校验：非法正则/越白名单路径报错不落库；间隔下限收敛 5", async () => {
     render(<AlertSettings open={true} onClose={() => {}} />);
+    showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
     fireEvent.change(screen.getByTestId("alert-rule-kind"), { target: { value: "log" } });

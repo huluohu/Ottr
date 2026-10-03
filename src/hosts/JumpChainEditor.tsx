@@ -1,4 +1,6 @@
-// JumpChainEditor（Phase 2 Task 2，B7 下半）：跳板链编辑器（顶栏入口对话框）。
+// JumpChainEditor（Phase 2 Task 2，B7 下半；UI 批次一 Task 4 迁右侧 dock）：
+// 跳板链编辑器（工具菜单 → dock/DockPanel 承载，open 由 dock 单槽驱动——
+// 组件逻辑零改动，仅外壳从 overlay 对话框换为 dock 内容形态）。
 // * 列表：全部 jump_chains（链名 + hop 主机名链 `A → B → …`；末位之后接
 //   target = 引用该链的主机）；编辑 / 删除（删链自动解绑引用主机）。
 // * 表单：链名 + hop 有序列表——每跳从 hosts 选一台主机；排序 = 拖拽
@@ -14,10 +16,9 @@ import { useVaultStore } from "../vault/store";
 
 export interface JumpChainEditorProps {
   open: boolean;
-  onClose: () => void;
 }
 
-export function JumpChainEditor({ open, onClose }: JumpChainEditorProps) {
+export function JumpChainEditor({ open }: JumpChainEditorProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const createJumpChain = useVaultStore((s) => s.createJumpChain);
@@ -159,16 +160,9 @@ export function JumpChainEditor({ open, onClose }: JumpChainEditorProps) {
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("jump.title")}>
-      <div className="dialog jump-editor" data-testid="jump-editor">
-        <div className="dialog-head">
-          <h2>{t("jump.title")}</h2>
-          <button className="dialog-close" aria-label={t("common.close")} onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        {loadError && (
+    // dock 内容形态（T4）：标题/关闭由 dock 壳（dock/DockPanel）供给。
+    <div className="dock-entity" role="region" aria-label={t("jump.title")} data-testid="jump-editor">
+      {loadError && (
           <p className="form-error" data-testid="jump-load-error">
             {t("jump.loadFailed", { message: loadError })}
           </p>
@@ -388,7 +382,6 @@ export function JumpChainEditor({ open, onClose }: JumpChainEditorProps) {
             </button>
           </div>
         )}
-      </div>
     </div>
   );
 }

@@ -238,6 +238,48 @@ button[data-active="true"] {
   color: var(--color-fg);
 }
 
+/* 空态快捷操作卡（ui-batch2 T3，审计 A4）：零会话占位面的三入口
+   （连接夹具 / 新建主机 / ⌘K 命令面板）——卡片式按钮，令牌全走语义面。 */
+.main-empty-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.main-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 176px;
+  padding: 14px 18px;
+  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  cursor: pointer;
+}
+.main-empty-card:hover {
+  border-color: var(--color-accent, var(--ottr-teal-500));
+}
+.main-empty-card-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.main-empty-card-desc {
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+.main-empty-kbd {
+  font: inherit;
+  font-size: 0.9em;
+  padding: 0 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--fg-muted);
+}
+
 /* --- 主机树 --- */
 .host-tree {
   display: flex;
@@ -2030,6 +2072,24 @@ button[data-active="true"] {
   text-align: center;
   margin: 12px 0;
 }
+/* 空态引导（ui-batch2 T3，审计 A4）：暂无通知 + 引导语 + 查看告警规则入口 */
+.notify-empty-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 10px;
+}
+.notify-empty-hint {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 0.82em;
+  text-align: center;
+}
+.notify-empty-guide button {
+  font-size: 12px;
+  padding: 4px 12px;
+}
 /* 投递失败面（Phase 5 T1，BL-517）：条目下方失败行——状态标签 + 渠道名 +
    错误摘要（截断，title 悬停全文）+ 手动重发；danger 语义色与 badge 同源。 */
 .notify-dlv {
@@ -2928,6 +2988,7 @@ button[data-active="true"] {
 .overview-card-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
 }
 .overview-card-actions button {
   font-size: 11.5px;

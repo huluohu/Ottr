@@ -270,6 +270,11 @@
   },
   "mainArea": {
     "placeholder": "Pick a host on the left, or press ⌘K to quick connect",
+    "quickFixture": "Connect fixture host {{name}}",
+    "quickAddHost": "New host",
+    "quickAddHostDesc": "Add your first host to get started",
+    "quickPalette": "Command palette",
+    "quickPaletteDesc": "Search hosts and commands anywhere",
     "selected": "Selected host",
     "openHint": "Double-click a host (or pick one in ⌘K) to open a terminal.",
     "loadFailed": "Failed to load data: {{message}}"
@@ -538,6 +543,8 @@
   "notify": {
     "bellAria": "Notification center",
     "empty": "No notifications",
+    "emptyHint": "Alerts about transfers, sessions and hosts will show up here.",
+    "emptyAlertsCta": "View alert rules",
     "markAllRead": "Mark all read",
     "clear": "Clear all",
     "muteSection": "Notification types",
@@ -704,7 +711,9 @@
   "overview": {
     "title": "Overview",
     "empty": "No hosts yet — create one with \"New host\" to see it here.",
-    "offHint": "Monitoring off (Host form → Monitor panel).",
+    "offHint": "Monitoring off — enable it to see live metrics here.",
+    "enableMonitor": "Enable monitoring",
+    "enabling": "Enabling…",
     "notConnected": "Not connected",
     "procButton": "Processes"
   },

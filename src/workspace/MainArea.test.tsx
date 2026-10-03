@@ -29,9 +29,32 @@ vi.mock("../history/RecordToggle", () => ({
 import "../i18n";
 import type { Session } from "../session/SessionStore";
 import { useSessionStore } from "../session/SessionStore";
+import type { Host } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { MainArea } from "./MainArea";
 import { useWorkspaceStore } from "./workspaceStore";
+
+/** Host 测试夹具（空态快捷卡用；只填渲染/断言消费的字段面）。 */
+function fakeHost(over: Partial<Host> & Pick<Host, "id" | "name">): Host {
+  return {
+    group_id: null,
+    tags: [],
+    address: "127.0.0.1",
+    port: 2222,
+    username: "spike",
+    protocol: "ssh",
+    credential_id: null,
+    jump_chain_id: null,
+    encoding_override: null,
+    theme_override: null,
+    monitor_enabled: false,
+    is_production: false,
+    notes: null,
+    created_at: 1,
+    updated_at: 1,
+    ...over,
+  };
+}
 
 function fakeSession(over: Partial<Session> = {}): Session {
   return {
@@ -210,5 +233,81 @@ describe("MainArea：面板视图行让位契约（ui2 T1，审计 48/49）", ()
     seedSessions([fakeSession({ protocol: "ftp" })]);
     const { container } = render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
     expect(container.querySelector<HTMLElement>(".term-main-row")!.getAttribute("data-yield")).toBe("true");
+  });
+});
+
+// ui-batch2 Task 3（审计 A4 清偿）：零会话空态从纯文字升级为快捷操作卡——
+// 三入口 = 连接夹具（库内有走查夹具端点 127.0.0.1:2222 的 ssh 主机才出现，
+// 动作 = 既有 openTab）/ 新建主机（onAddHost → App 的 setForm({mode:"new"})
+// 语义）/ ⌘K 命令面板卡（onOpenPalette → setPaletteOpen(true) 语义）。
+// 空态判定不变：仍只在 terminalMode=false 且未选中主机的占位面出现，原
+// 占位文案（mainArea.placeholder）保留为卡片引导语。
+describe("MainArea：空态快捷操作卡（ui2 T3，审计 A4）", () => {
+  it("三入口渲染且动作真实可达：夹具→openTab(夹具)、新建→onAddHost、⌘K→onOpenPalette", () => {
+    useVaultStore.setState({ hosts: [fakeHost({ id: 1, name: "t12-prod" })] });
+    const openTabSpy = vi.fn();
+    useSessionStore.setState({ openTab: openTabSpy });
+    const onAddHost = vi.fn();
+    const onOpenPalette = vi.fn();
+    render(
+      <MainArea
+        storeError={null}
+        selected={null}
+        onOpenAiSettings={() => {}}
+        onAddHost={onAddHost}
+        onOpenPalette={onOpenPalette}
+      />,
+    );
+    // 空态判定不变：占位文案仍在（原断言语义保留）
+    expect(screen.getByTestId("main-area").textContent).toContain("Pick a host");
+    expect(screen.getByTestId("main-empty-actions")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("empty-connect-fixture"));
+    expect(openTabSpy).toHaveBeenCalledTimes(1);
+    expect(openTabSpy.mock.calls[0][0].id).toBe(1);
+    expect(screen.getByTestId("empty-connect-fixture").textContent).toContain("t12-prod");
+
+    fireEvent.click(screen.getByTestId("empty-add-host"));
+    expect(onAddHost).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId("empty-palette-hint"));
+    expect(onOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it("库内无夹具端点主机：连接夹具入口不渲染（入口存在性随库况，端点口径 127.0.0.1:2222）", () => {
+    useVaultStore.setState({
+      hosts: [
+        fakeHost({ id: 2, name: "other", address: "10.0.0.9", port: 22 }),
+        fakeHost({ id: 3, name: "wrong-proto", protocol: "ftp" }),
+      ],
+    });
+    const openTabSpy = vi.fn();
+    useSessionStore.setState({ openTab: openTabSpy });
+    render(
+      <MainArea
+        storeError={null}
+        selected={null}
+        onOpenAiSettings={() => {}}
+        onAddHost={() => {}}
+        onOpenPalette={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("empty-connect-fixture")).toBeNull();
+    expect(screen.getByTestId("empty-add-host")).toBeTruthy();
+    expect(screen.getByTestId("empty-palette-hint")).toBeTruthy();
+  });
+
+  it("已选中主机分支不渲染快捷卡（空态判定不变：只在未选中占位面出现）", () => {
+    useVaultStore.setState({ hosts: [fakeHost({ id: 1, name: "t12-prod" })] });
+    render(
+      <MainArea
+        storeError={null}
+        selected={fakeHost({ id: 1, name: "t12-prod" })}
+        onOpenAiSettings={() => {}}
+        onAddHost={() => {}}
+        onOpenPalette={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("main-empty-actions")).toBeNull();
   });
 });

@@ -24,6 +24,13 @@
 // 面板 50/50 均分主区（面板压半高）。隐藏 holder 内 pane 由 App.css 压回
 // visibility:hidden（防 `.term-pane[data-active]` 翻回戳穿——终端缓冲曾透过
 // 面板显形、盖住面板绘制），CSS 契约由 term-veil-css.test.ts 守卫。
+//
+// 【空态快捷操作卡（ui-batch2 T3，审计 A4）】零会话且未选中主机的占位面从
+// 纯文字升级为三入口卡：连接夹具（库内有走查夹具端点主机的条件入口，动作 =
+// 既有 openTab）/ 新建主机（onAddHost → App 的 setForm({mode:"new"}) 既有
+// 语义）/ ⌘K 命令面板卡（onOpenPalette → setPaletteOpen(true) 既有语义）。
+// 空态判定不变（terminalMode=false + selected=null 分支），占位文案保留为
+// 卡片引导语；两 prop 缺省时对应入口不渲染（组件可独立挂载，行为可裁剪）。
 import { useTranslation } from "react-i18next";
 import { TabBar } from "../session/TabBar";
 import { TerminalArea } from "../terminal/Terminal";
@@ -38,6 +45,7 @@ import { BatchPanel } from "../batch/BatchPanel";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
 import type { Host } from "../vault/api";
+import { platform, shortcutLabel } from "../shortcuts/registry";
 import { useWorkspaceStore } from "./workspaceStore";
 
 interface MainAreaProps {
@@ -47,9 +55,30 @@ interface MainAreaProps {
   selected: Host | null;
   /** AI 诊断面板「去设置」→ AI 设置对话框（对话框入口仍在 HomeLayout）。 */
   onOpenAiSettings: () => void;
+  /** 空态快捷卡「新建主机」入口（App 注入 = setForm({ mode: "new", groupId: null })；
+   * 缺省 = 入口不渲染）。 */
+  onAddHost?: () => void;
+  /** 空态快捷卡「⌘K 命令面板」入口（App 注入 = setPaletteOpen(true)；缺省 =
+   * 入口不渲染）。 */
+  onOpenPalette?: () => void;
 }
 
-export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaProps) {
+/** 走查夹具端点（seed_vault 播种的 spike 主机；spike-sshd.sh 127.0.0.1:2222）。
+ * 键式与 Rust host_endpoint_key 同口径（"address:port"，仅 IPv6 加括号——
+ * 夹具为 IPv4 字面量）。 */
+export const FIXTURE_ENDPOINT = "127.0.0.1:2222";
+
+/** 空态快捷卡「连接夹具」的夹具识别口径（纯函数）：库内 ssh 主机端点命中
+ * FIXTURE_ENDPOINT 即认定。无数据面夹具标记可依，按端点识别 = 零新数据依赖
+ * （主机列表本就在 vault store）；命中即说明该端点可直连（走查环境已就绪）。 */
+export function findFixtureHost(hosts: Host[]): Host | null {
+  return (
+    hosts.find((h) => h.protocol === "ssh" && `${h.address}:${h.port}` === FIXTURE_ENDPOINT) ??
+    null
+  );
+}
+
+export function MainArea({ storeError, selected, onOpenAiSettings, onAddHost, onOpenPalette }: MainAreaProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
@@ -57,6 +86,9 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
   const hosts = useVaultStore((s) => s.hosts);
+  // 空态快捷卡（ui-batch2 T3）：夹具端点命中才出的条件入口 + 平台键位提示
+  const fixtureHost = findFixtureHost(hosts);
+  const paletteLabel = shortcutLabel("palette.toggle", platform()) ?? "⌘K";
 
   // 会话面派生（原 HomeLayout 逻辑原样迁入）：活动标签根会话 + filesOnly 覆盖
   const terminalMode = sessions.length > 0;
@@ -119,8 +151,53 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
                 <p>{t("mainArea.openHint")}</p>
               </section>
             ) : (
-              <section className="main-placeholder">
+              <section className="main-placeholder" data-testid="main-empty">
                 <p>{t("mainArea.placeholder")}</p>
+                {(fixtureHost || onAddHost || onOpenPalette) && (
+                  <div className="main-empty-actions" data-testid="main-empty-actions">
+                    {fixtureHost && (
+                      <button
+                        type="button"
+                        className="main-empty-card"
+                        data-testid="empty-connect-fixture"
+                        onClick={() => openTab(fixtureHost)}
+                      >
+                        <span className="main-empty-card-title">
+                          {t("mainArea.quickFixture", { name: fixtureHost.name })}
+                        </span>
+                        <span className="main-empty-card-desc">
+                          {fixtureHost.username ? `${fixtureHost.username}@` : ""}
+                          {fixtureHost.address}:{fixtureHost.port}
+                        </span>
+                      </button>
+                    )}
+                    {onAddHost && (
+                      <button
+                        type="button"
+                        className="main-empty-card"
+                        data-testid="empty-add-host"
+                        onClick={onAddHost}
+                      >
+                        <span className="main-empty-card-title">{t("mainArea.quickAddHost")}</span>
+                        <span className="main-empty-card-desc">{t("mainArea.quickAddHostDesc")}</span>
+                      </button>
+                    )}
+                    {onOpenPalette && (
+                      <button
+                        type="button"
+                        className="main-empty-card"
+                        data-testid="empty-palette-hint"
+                        onClick={onOpenPalette}
+                      >
+                        <span className="main-empty-card-title">{t("mainArea.quickPalette")}</span>
+                        <span className="main-empty-card-desc">
+                          <kbd className="main-empty-kbd">{paletteLabel}</kbd>{" "}
+                          {t("mainArea.quickPaletteDesc")}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </section>
             )}
           </>

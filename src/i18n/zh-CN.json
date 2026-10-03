@@ -269,6 +269,11 @@
   },
   "mainArea": {
     "placeholder": "从左侧选择一台主机，或按 ⌘K 快速连接",
+    "quickFixture": "连接夹具主机 {{name}}",
+    "quickAddHost": "新建主机",
+    "quickAddHostDesc": "添加第一台主机，开始使用",
+    "quickPalette": "命令面板",
+    "quickPaletteDesc": "随时搜索主机与命令",
     "selected": "已选择主机",
     "openHint": "双击主机或在 ⌘K 中选择即可打开终端。",
     "loadFailed": "数据加载失败：{{message}}"
@@ -537,6 +542,8 @@
   "notify": {
     "bellAria": "通知中心",
     "empty": "暂无通知",
+    "emptyHint": "传输、会话与主机的告警会显示在这里。",
+    "emptyAlertsCta": "查看告警规则",
     "markAllRead": "全部已读",
     "clear": "清空",
     "muteSection": "通知类型",
@@ -703,7 +710,9 @@
   "overview": {
     "title": "总览",
     "empty": "还没有主机。点击「新建主机」创建后即可总览。",
-    "offHint": "未开启监控（主机表单 → 监控面板）。",
+    "offHint": "未开启监控——开启后此处实时展示资源指标。",
+    "enableMonitor": "开启监控",
+    "enabling": "开启中…",
     "notConnected": "未连接",
     "procButton": "进程"
   },

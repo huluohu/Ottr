@@ -170,3 +170,45 @@ describe("MainArea：filesOnly 覆盖（FTP/FTPS 无 PTY 终端）", () => {
     expect(screen.getByTestId("view-files").getAttribute("data-active")).toBe("true");
   });
 });
+
+// ui-batch2 Task 1（审计 48/49：文件/进程视图「列表空+终端透出」）：
+// 根因有二——①隐藏 holder（absolute inset:0，positioned 带）内的活动 pane 被
+// `.term-pane[data-active]` 的 visibility:visible 戳穿，不透明 xterm 画布盖在
+// in-flow 面板之上（仅 opacity<1/sticky 等自建 stacking context 的元素透出）；
+// ②面板视图下 term-main-row 仍 flex:1，与面板 50/50 均分主区（面板压半高）。
+// 修复契约 = 行级 data-yield 标记（files/procs 视图折叠让位；overview/batch
+// 的实体视图渲染在行内，不折叠）。jsdom 无布局/绘制引擎，几何级断言不可达，
+// CSS 侧由 term-veil-css.test.ts 守卫 + 真窗截图取证（/tmp/ui2-t1/）。
+describe("MainArea：面板视图行让位契约（ui2 T1，审计 48/49）", () => {
+  it("files/procs 视图：term-main-row data-yield=true（折叠让面板满幅）", () => {
+    seedSessions([fakeSession()]);
+    const { container } = render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    const row = () => container.querySelector<HTMLElement>(".term-main-row")!;
+    expect(row()).toBeTruthy();
+    fireEvent.click(screen.getByTestId("view-files"));
+    expect(row().getAttribute("data-yield")).toBe("true");
+    fireEvent.click(screen.getByTestId("view-processes"));
+    expect(row().getAttribute("data-yield")).toBe("true");
+  });
+
+  it("terminal 视图与 overview/batch 实体视图：data-yield=false（行内有在流内容）", () => {
+    seedSessions([fakeSession()]);
+    const { container } = render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    const row = () => container.querySelector<HTMLElement>(".term-main-row")!;
+    expect(row().getAttribute("data-yield")).toBe("false");
+    act(() => {
+      useWorkspaceStore.getState().openMainView("overview");
+    });
+    expect(row().getAttribute("data-yield")).toBe("false");
+    act(() => {
+      useWorkspaceStore.getState().openMainView("batch");
+    });
+    expect(row().getAttribute("data-yield")).toBe("false");
+  });
+
+  it("filesOnly（FTP）：文件视图恒开，data-yield=true", () => {
+    seedSessions([fakeSession({ protocol: "ftp" })]);
+    const { container } = render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(container.querySelector<HTMLElement>(".term-main-row")!.getAttribute("data-yield")).toBe("true");
+  });
+});

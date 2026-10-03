@@ -1578,6 +1578,24 @@ button[data-active="true"] {
   visibility: hidden;
   pointer-events: none;
 }
+/* ui-batch2 T1（审计 48/49「文件/进程视图终端透出+列表被盖」）：visibility
+ * 可被后代逐元素翻回——活动 pane 的 `.term-pane[data-active="true"] { visibility:
+ * visible }` 会戳穿隐藏 holder，不透明 xterm 画布（positioned 带）整面盖在
+ * in-flow 面板之上，面板只剩 opacity<1/sticky 等自建 stacking context 的元素
+ * 可见。本规则（特异性 0,3,0 > 0,2,0）把隐藏 holder 内的全部 pane 压回隐藏：
+ * 终端缓冲不显形，面板满幅可见；holder 自身几何（absolute inset:0）不变，
+ * 回终端视图无需 refit。 */
+.term-area-holder[data-hidden="true"] .term-pane {
+  visibility: hidden;
+}
+/* ui-batch2 T1（审计 48/49）：files/procs 视图面板与 term-main-row 平级渲染，
+ * 行内终端已 absolute 让位（不在流）——行若仍 flex:1 会与面板 50/50 均分主区
+ * （面板压半高、上半死空白）。折叠行高让面板满幅；overview/batch 的实体视图
+ * 渲染在行内（MainArea data-yield 仅在 files/procs 视图置 true），不受影响。 */
+.term-main-row[data-yield="true"] {
+  flex: 0 0 0px;
+  min-height: 0;
+}
 
 .file-panel {
   flex: 1;

@@ -17,6 +17,13 @@
 //
 // 【视觉不变】term-main-row 的 AI 诊断/监控/插件三侧栏仍只在终端视图挂载
 // （原 `!filesVisible && !procsVisible` 域）；监控/插件竖条的自管折叠语义不动。
+//
+// 【行让位（ui-batch2 T1，审计 48/49）】files/procs 两视图的面板与
+// term-main-row 平级渲染，行内内容已全部 out-of-flow（holder absolute 让位、
+// 侧栏卸载）——行置 data-yield 折叠自身 flex，面板满幅；否则行仍 flex:1 与
+// 面板 50/50 均分主区（面板压半高）。隐藏 holder 内 pane 由 App.css 压回
+// visibility:hidden（防 `.term-pane[data-active]` 翻回戳穿——终端缓冲曾透过
+// 面板显形、盖住面板绘制），CSS 契约由 term-veil-css.test.ts 守卫。
 import { useTranslation } from "react-i18next";
 import { TabBar } from "../session/TabBar";
 import { TerminalArea } from "../terminal/Terminal";
@@ -168,8 +175,15 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
         )}
       </div>
       {/* 终端隐藏常驻：visibility 而非卸载（见头注不变量）。
-          data-terminal = 终端聚焦守卫判定容器（评审 M-4），恒在 DOM。 */}
-      <div className="term-main-row">
+          data-terminal = 终端聚焦守卫判定容器（评审 M-4），恒在 DOM。
+          data-yield = files/procs 视图时折叠本行（ui-batch2 T1，审计 48/49）：
+          此时行内内容全部 out-of-flow（holder absolute 让位、侧栏卸载），行若
+          仍 flex:1 会与平级渲染的 FilePanel/ProcessBrowser 50/50 均分主区——
+          面板被压半高。overview/batch 的实体视图渲染在行内，保持 flex:1。 */}
+      <div
+        className="term-main-row"
+        data-yield={filesVisible || procsVisible}
+      >
         <div
           className="term-area-holder"
           data-testid="term-holder"

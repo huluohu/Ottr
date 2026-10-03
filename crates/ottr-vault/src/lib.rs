@@ -16,6 +16,7 @@ pub mod mcp_grants;
 pub mod notifications;
 pub mod notify_channels;
 pub mod recordings;
+pub mod seed;
 pub mod secrets;
 pub mod settings;
 pub mod store;

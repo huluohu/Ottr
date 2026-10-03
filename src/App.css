@@ -3674,13 +3674,14 @@ button[data-active="true"] {
   color: var(--color-on-accent);
 }
 
-/* --- 右侧 dock 槽位 + 主区视图槽位（UI 批次一 Task 2）-------------------- *
+/* --- 右侧 dock 槽位 + 主区视图槽位（UI 批次一 Task 2；T4 承接实体）-------- *
  * dock：app-body 右缘停靠壳（sidebar | resizer | main-area | dock 四列 flex）。
- * 视觉语言对齐 monitor-sidebar（border-left + surface 底 + 基线头行）；本任务
- * 只立骨架（标题 + 关闭 + 空内容），T4 迁实体面板后由面板自带样式接管 body。 */
+ * 视觉语言对齐 monitor-sidebar（border-left + surface 底 + 基线头行）；宽度由
+ * dock/DockPanel 逐面板内联设定（380/420，CSS 默认宽仅兜底）。dock-body 不再
+ * 自带留白/灰字——实体面板（.dock-entity）自带内边距与配色。 */
 .dock-panel {
   flex: none;
-  width: 360px;
+  width: 380px;
   min-width: 280px;
   display: flex;
   flex-direction: column;
@@ -3712,9 +3713,20 @@ button[data-active="true"] {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 12px;
-  font-size: 0.85em;
-  color: var(--fg-muted);
+}
+/* dock 内实体面板容器（T4）：原对话框体（.dialog）迁移后的内容形态——
+   自带留白与纵向流；宽度/滚动交给 dock 壳（不再有对话框的圆角/阴影/
+   max-height）。settings-dialog 系的定宽在 dock 内解除。 */
+.dock-entity {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 12px 14px;
+}
+.dock-entity.settings-dialog,
+.dock-entity.ai-settings-dialog {
+  width: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 /* overview/batch 主区实体视图容器（T3：OverviewPage/BatchPanel 迁入，占位壳

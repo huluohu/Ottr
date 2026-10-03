@@ -44,11 +44,11 @@ import { CommandPalette } from "./palette/CommandPalette";
 import { HistorySearch } from "./history/HistorySearch";
 import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
-// UI 批次一 Task 2：主区视图路由 + 右侧 dock 槽位（workspaceStore 状态机）。
+// UI 批次一 Task 2/4：主区视图路由 + 右侧 dock 实体壳（workspaceStore 状态机）。
 // 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
-// cron/alerts/mcp 实体 T4 迁入 dock——本任务两处都只有占位骨架。
+// cron/alerts/mcp 实体 T4 迁入 dock（实体渲染在 dock/DockPanel 内）。
 import { MainArea } from "./workspace/MainArea";
-import { DockContainer } from "./workspace/DockContainer";
+import { DockPanel } from "./dock/DockPanel";
 import { useWorkspaceStore } from "./workspace/workspaceStore";
 import {
   isTerminalTarget,
@@ -218,7 +218,7 @@ function HomeLayout() {
   // 渲染面已随 UI 批次一 Task 2 迁入 workspace/MainArea（读 session store）。
   const openTab = useSessionStore((s) => s.openTab);
   // UI 批次一 Task 2：工作区视图/dock 动作（主区路由在 workspace/MainArea，
-  // dock 壳在 workspace/DockContainer；互斥语义见 workspace/types.ts）。
+  // dock 壳在 dock/DockPanel；互斥语义见 workspace/types.ts）。
   const openMainView = useWorkspaceStore((s) => s.openMainView);
   const openDock = useWorkspaceStore((s) => s.openDock);
   // A12：面板动作需要当前主题/语言（toggle 循环用）
@@ -242,7 +242,7 @@ function HomeLayout() {
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   // 【UI 批次一 Task 2】原面板开关 setState（alertSettings/forwards/jumpChains/
   // overview/procs/batch/cron/mcp/filesOpen）已收口进 workspaceStore——主区视图
-  // 走 MainArea 路由，工具面板走 DockContainer；T3/T4 迁实体。
+  // 走 MainArea 路由，工具面板走 dock/DockPanel；T3/T4 迁实体。
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -560,9 +560,9 @@ function HomeLayout() {
           selected={selected}
           onOpenAiSettings={() => setAiSettingsOpen(true)}
         />
-        {/* 右侧 dock 槽位（UI 批次一 Task 2）：工具面板统一停靠壳（单槽互斥，
-            openDock 换值即替换）；占位骨架，T4 迁实体面板。 */}
-        <DockContainer />
+        {/* 右侧 dock 槽位（UI 批次一 Task 2 骨架 / Task 4 实体）：工具面板统一
+            停靠壳（单槽互斥，openDock 换值即替换）；五工具面板实体渲染其中。 */}
+        <DockPanel />
       </div>
 
       {form && (

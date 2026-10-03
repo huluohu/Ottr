@@ -12,7 +12,7 @@
 //    现实现中两竖条常驻、两展开面可同开、且与 dock 工具面板不互斥——
 //    本任务保持该语义不动（视觉不变）。它们的值留在 DockPanel 联合里是
 //    为 T4 迁移预留同一单槽 API；在迁入前 store 接受这些值但无挂载面
-//    （DockContainer 对 monitor/plugins 渲染 null，见 DockContainer.tsx）。
+//    （DockPanel 对 monitor/plugins 渲染 null，见 dock/DockPanel.tsx）。
 //  * 挂载域互斥（沿现状）：monitor/plugins 侧栏只在 terminal 视图挂载
 //    （原 `!filesVisible && !procsVisible` 域）；overview/batch 视图下同让位。
 
@@ -20,7 +20,7 @@
 export type MainView = "terminal" | "files" | "processes" | "overview" | "batch";
 
 /** 右侧停靠面板。monitor/plugins = 终端右栏自管侧栏（见上，并存语义沿现状）；
- * 其余五值为 dock 工具面板（T4 迁入实体，本任务只有 DockContainer 骨架）。 */
+ * 其余五值为 dock 工具面板（T4 起实体渲染在 dock/DockPanel）。 */
 export type DockPanel =
   | "monitor"
   | "plugins"
@@ -30,7 +30,7 @@ export type DockPanel =
   | "alerts"
   | "mcp";
 
-/** dock 工具面板（DockContainer 实际承载的五值；monitor/plugins 不经此壳）。 */
+/** dock 工具面板（dock/DockPanel 实际承载的五值；monitor/plugins 不经此壳）。 */
 export type ToolDockPanel = Extract<
   DockPanel,
   "forwards" | "jumpchains" | "cron" | "alerts" | "mcp"

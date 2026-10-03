@@ -277,12 +277,22 @@ button[data-active="true"] {
   padding: 0.15em 0.5em;
   border-radius: 999px;
 }
-.tree-group h3 {
-  margin: 8px 0 4px;
-  font-size: 0.8em;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+/* 分组头 = 区块锚点：文件夹描边图标 + 分组名，弱化色、不变形大写；
+   margin 与 .host-tree 的 gap 叠加出组间明显留白（第一组同样隔开工具区）。 */
+.tree-group {
+  margin-top: 14px;
+}
+.tree-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 0.9em;
+  font-weight: 500;
   color: var(--fg-muted);
+}
+.tree-group-icon {
+  flex: none;
 }
 .tree-hosts {
   list-style: none;
@@ -290,35 +300,62 @@ button[data-active="true"] {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
+/* 行 = 单行三档明度：主机名亮（主体）· 右侧连接目标暗（元数据）·
+   组头暗（锚点）。hover 微亮，选中 = accent 实底填充。 */
 .tree-host {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-}
-.tree-host[data-selected="true"] {
-  border-color: var(--color-accent);
-  background: var(--surface-raised);
+  min-width: 0;
 }
 .tree-host .host-row {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  gap: 6px;
   text-align: left;
   border: none;
   background: none;
-  padding: 2px 4px;
+  padding: 7px 10px;
+  border-radius: 8px;
 }
-.host-name {
+.tree-host:hover .host-row,
+.tree-host:focus-within .host-row {
+  background: var(--surface-raised);
+}
+/* 行内三件套只作用于树行（.tree-host 前缀）——命令面板复用 .host-name/
+   .host-subtitle 类名，不前缀会把新行制式泄进面板。 */
+.tree-host .host-name {
+  flex: 0 0 auto; /* 名字不参战收缩：元数据先截断，名字保持完整（参考图主次） */
+  max-width: 55%; /* 病态长名兜底：超长名字自截，绝不挤爆行 */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--color-fg);
+}
+.tree-host .host-subtitle {
+  flex: 0 999 auto; /* 收缩几乎全由元数据承担：空间不足先截 user@host:port，
+                       名字保持完整（对齐参考图的主次关系） */
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg-muted);
+}
+/* 命令面板原貌锚定：旧全局 .host-name/.host-subtitle 规则收窄进树后，
+   面板行在此原样补回（weight 600 + 副标题 mono 弱化），呈现零变化。 */
+.palette-item .host-name {
   font-weight: 600;
 }
-.host-subtitle {
+.palette-item .host-subtitle {
   font-size: 0.8em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--fg-muted);
@@ -328,16 +365,50 @@ button[data-active="true"] {
   max-width: 100%;
 }
 .host-tags {
+  flex: none;
   display: flex;
   gap: 3px;
-  flex-wrap: wrap;
 }
 .host-tag {
-  font-size: 0.7em;
-  padding: 0 0.4em;
+  font-size: 0.68em;
+  line-height: 1.6;
+  padding: 0 0.45em;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
   color: var(--fg-muted);
+}
+/* 选中态：accent 实底填充（替换旧描边），选中行文字/标签换 on-accent 保持可读 */
+.tree-host[data-selected="true"] .host-row {
+  background: var(--color-accent);
+}
+.tree-host[data-selected="true"] .host-name,
+.tree-host[data-selected="true"] .host-subtitle,
+.tree-host[data-selected="true"] .host-tag {
+  color: var(--color-on-accent);
+}
+.tree-host[data-selected="true"] .host-subtitle {
+  opacity: 0.8;
+}
+.tree-host[data-selected="true"] .host-tag {
+  border-color: color-mix(in srgb, var(--color-on-accent) 40%, transparent);
+}
+/* 操作按钮：hover/选中/键盘聚焦才显现（opacity 过渡 + pointer-events 联动，
+   :focus-within 兜底保证纯键盘可达）；确认气泡悬浮在元数据之上。 */
+.host-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.tree-host:hover .host-actions,
+.tree-host:focus-within .host-actions,
+.tree-host[data-selected="true"] .host-actions,
+.tree-host[data-confirming] .host-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 .tree-host .icon-btn {
   flex: none;
@@ -347,9 +418,19 @@ button[data-active="true"] {
   border: none;
 }
 .host-confirm {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface-overlay);
+  box-shadow: 0 4px 16px var(--scrim);
+  white-space: nowrap;
+  z-index: 2;
 }
 .confirm-hint {
   font-size: 0.7em;
@@ -3038,10 +3119,8 @@ button[data-active="true"] {
 .batch-form-row select {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
-/* 多选勾选面：checkbox 视觉（HostTree 行点击即切换） */
-.tree-host[data-checked] .host-row {
-  grid-column: 1 / -1;
-}
+/* 多选勾选面（HostTree 行点击即切换）：行制式与单选一致（单行、同高），
+   勾选框语义不变——选中 = accent 实底方框 + 行微亮。 */
 .host-check {
   width: 14px;
   height: 14px;
@@ -3053,6 +3132,9 @@ button[data-active="true"] {
 .tree-host[data-checked="true"] .host-check {
   background: var(--color-accent);
   border-color: var(--color-accent);
+}
+.tree-host[data-checked="true"] .host-row {
+  background: var(--surface-raised);
 }
 .batch-vars {
   width: 100%;

@@ -88,6 +88,49 @@ describe("HostTree", () => {
     expect(subtitle).toBeTruthy();
   });
 
+  // UI 重构（task-7）：分组头 = 文件夹图标 + 组名；行 = 单行布局（主机名/
+  // 标签/连接目标同排，连接目标右对齐灰暗）；无标签行不渲染标签容器。
+  it("行制式重构：组头带描边图标，名/标签/元数据同在 .host-row 内，无标签不渲染标签容器", () => {
+    renderTree();
+    const groupHead = screen.getByRole("heading", { name: "prod-group" });
+    // 分组头：内联 SVG 文件夹图标 + 弱化组名（aria-hidden 不吃可达名）
+    expect(groupHead.querySelector("svg.tree-group-icon")).toBeTruthy();
+    const ungroupedHead = screen.getByRole("heading", { name: "Ungrouped" });
+    expect(ungroupedHead.querySelector("svg.tree-group-icon")).toBeTruthy();
+    // 单行：host-row 内依次含 name / tags / subtitle（旧结构 subtitle 与
+    // tags 是行的兄弟节点，此断言防回归两行式）
+    const nameEl = screen.getByText("web-01");
+    const row = nameEl.closest("button.host-row");
+    expect(row).toBeTruthy();
+    expect(row?.querySelector(".host-tag")).toBeTruthy();
+    const subtitleInRow = row?.querySelector(".host-subtitle");
+    expect(subtitleInRow?.textContent).toBe("deploy@10.0.0.1:22");
+    // 元数据右对齐语义：margin-left:auto 落在 subtitle 上（jsdom 无 CSS，
+    // 钉类名与同排结构；视觉面由真窗截图门把关）
+    expect(subtitleInRow).toBeTruthy();
+    // 无标签主机：标签容器整个不渲染（不留空壳占位）
+    const dbRow = screen.getByText("db-01").closest("button.host-row");
+    expect(dbRow?.querySelector(".host-tags")).toBeNull();
+    // 多选外的行不渲染勾选框
+    expect(row?.querySelector(".host-check")).toBeNull();
+  });
+
+  // 操作按钮收纳：编辑/删除收进 .host-actions（hover/选中/键盘聚焦显现），
+  // 确认态行挂 data-confirming（CSS 显影 + 键盘可达兜底的钩子）。
+  it("操作按钮收进 .host-actions 容器；确认态挂 data-confirming", () => {
+    renderTree();
+    const editBtn = screen.getByRole("button", { name: "Edit host web-01" });
+    const deleteBtn = screen.getByRole("button", { name: "Delete host web-01" });
+    const actions = editBtn.closest(".host-actions");
+    expect(actions).toBeTruthy();
+    expect(deleteBtn.closest(".host-actions")).toBe(actions);
+    const li = editBtn.closest("li.tree-host");
+    expect(li?.getAttribute("data-confirming")).toBeNull();
+    fireEvent.click(deleteBtn);
+    expect(screen.getByText("Click again to confirm")).toBeTruthy();
+    expect(li?.getAttribute("data-confirming")).toBe("true");
+  });
+
   it("空库渲染空态提示", () => {
     useVaultStore.setState({ hosts: [], hostGroups: [] });
     renderTree();

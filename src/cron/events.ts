@@ -19,10 +19,11 @@
 //
 // 【缺陷 17（审计截图「cronMissed 风暴」，2026-10-04 裁定）】持续 missed 只告警
 // 一次（状态锁存）：无会话的 */5 任务每轮 missed → 限频窗（60s）一过就再弹，
-// 未读风暴。锁存语义：missed_latched[host:job]=true 后续 missed 轮静默（中心
-// 历史照记、面板徽标照刷——「持续未执行」的呈现面是 CronPanel 徽标而非通知）；
-// 任意非 missed 轮（ok/failed/timeout = 恢复有会话执行过）重置锁存，下一轮
-// missed 重新首告。调度语义照旧：Rust 侧每轮如实落库+发事件，静默只在本管线。
+// 未读风暴。锁存语义：missed_latched[host:job]=true 后续 missed 轮在管线入口
+// 整体丢弃（不落通知中心、不弹系统通知——cron_runs 落库与 cron-run 事件照发，
+// 「持续未执行」的呈现面 = CronPanel 徽标 + 运行历史，而非通知）；任意非
+// missed 轮（ok/failed/timeout = 恢复有会话执行过）重置锁存，下一轮 missed
+// 重新首告。调度语义照旧：Rust 侧每轮如实落库+发事件，静默只在本管线。
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useVaultStore } from "../vault/store";
 import { notify } from "../notify/core";

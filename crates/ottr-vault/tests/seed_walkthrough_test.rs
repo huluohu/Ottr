@@ -44,7 +44,11 @@ fn seeded_verified_known_hosts_is_visible_to_connect_time_lookup() {
 
     // 播种后 known_hosts 恰好一行（键式漂移会留下查不到的死行）。
     let all = KnownHosts::list(&vault).expect("list known_hosts");
-    assert_eq!(all.len(), 1, "exactly one known_hosts row, no dead alias rows");
+    assert_eq!(
+        all.len(),
+        1,
+        "exactly one known_hosts row, no dead alias rows"
+    );
 
     std::fs::remove_dir_all(&dir).ok();
 }

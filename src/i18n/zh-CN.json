@@ -269,6 +269,11 @@
   },
   "mainArea": {
     "placeholder": "从左侧选择一台主机，或按 ⌘K 快速连接",
+    "quickFixture": "连接夹具主机 {{name}}",
+    "quickAddHost": "新建主机",
+    "quickAddHostDesc": "添加第一台主机，开始使用",
+    "quickPalette": "命令面板",
+    "quickPaletteDesc": "随时搜索主机与命令",
     "selected": "已选择主机",
     "openHint": "双击主机或在 ⌘K 中选择即可打开终端。",
     "loadFailed": "数据加载失败：{{message}}"
@@ -537,6 +542,8 @@
   "notify": {
     "bellAria": "通知中心",
     "empty": "暂无通知",
+    "emptyHint": "传输、会话与主机的告警会显示在这里。",
+    "emptyAlertsCta": "查看告警规则",
     "markAllRead": "全部已读",
     "clear": "清空",
     "muteSection": "通知类型",
@@ -703,7 +710,10 @@
   "overview": {
     "title": "总览",
     "empty": "还没有主机。点击「新建主机」创建后即可总览。",
-    "offHint": "未开启监控（主机表单 → 监控面板）。",
+    "offHint": "未开启监控——开启后此处实时展示资源指标。",
+    "enableMonitor": "开启监控",
+    "enabling": "开启中…",
+    "enableFailed": "{{host}} 开启监控失败：{{message}}",
     "notConnected": "未连接",
     "procButton": "进程"
   },
@@ -1025,6 +1035,7 @@
     "errBranchEmpty": "分支不能为空",
     "errDirEmpty": "请选择同步目录",
     "errSave": "保存失败：{{message}}",
+    "errForget": "清除记住的口令失败：{{message}}",
     "now": "立即同步",
     "needChannel": "请先保存同步通道配置",
     "dirtyHint": "有未保存的更改——「立即同步」使用最近一次保存的配置，更改保存后生效。",
@@ -1060,11 +1071,13 @@
       "entriesEmpty": "（空）",
       "entriesMore": "…等 {{count}} 条",
       "running": "同步中…",
+      "abandonHint": "关闭即放弃：放弃后本次同步不会再写入本机数据。",
       "donePush": "已推送到云端，基线已更新。",
       "donePull": "已从云端应用，基线已更新。",
       "doneConflict": "已按裁定合并并推送回云端。",
       "applied": "落库 {{applied}} 类 · 跳过 {{skipped}} 行",
       "failed": "同步失败",
+      "checkTimeout": "检查超时：钥匙链或同步通道长时间无响应。可重试，或关闭后稍后再试。",
       "retry": "重试",
       "close": "关闭"
     },

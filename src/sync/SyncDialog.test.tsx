@@ -5,8 +5,11 @@
 //     setScope+pull → 完成面带导入回执；
 //   * conflict 态：ConflictDialog 裁定 → 先 pull(云端侧) 再 push(双侧有数据
 //     并集) 全序断言（信封全量语义，见 SyncDialog 文件头）；
-//   * synced 态信息面；auth 错误回 askpass；执行失败入 error 面 + 重试。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+//   * synced 态信息面；auth 错误回 askpass；执行失败入 error 面 + 重试；
+//   * A5 解困（ui-batch2 T4）：检查挂起 → 10s 超时入错误面（关闭恢复可达，
+//     迟到 settle 不回填）；busy 中 Esc/关闭恒可达 = 放弃本次同步。
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
@@ -147,7 +150,7 @@ describe("SyncDialog", () => {
 
     fireEvent.click(screen.getByTestId("push-scope-settings")); // 取消 settings
     fireEvent.click(screen.getByTestId("sync-push-start"));
-    await waitFor(() => expect(store.push).toHaveBeenCalledWith("stored-pass", ["hosts"]));
+    await waitFor(() => expect(store.push).toHaveBeenCalledWith("stored-pass", ["hosts"], expect.anything()));
     expect(store.setScope).toHaveBeenCalledWith("push", ["hosts"]);
     expect(await screen.findByTestId("sync-done-text").then((el) => el.textContent)).toContain("推送");
   });
@@ -168,7 +171,7 @@ describe("SyncDialog", () => {
     expect(screen.getByTestId("pull-overwrite-settings").textContent).toContain("ui.language");
 
     fireEvent.click(screen.getByTestId("sync-pull-start"));
-    await waitFor(() => expect(store.pull).toHaveBeenCalledWith("stored-pass", ["hosts", "settings"]));
+    await waitFor(() => expect(store.pull).toHaveBeenCalledWith("stored-pass", ["hosts", "settings"], expect.anything()));
     expect(store.setScope).toHaveBeenCalledWith("restore", ["hosts", "settings"]);
     expect(await screen.findByTestId("sync-done-report").then((el) => el.textContent)).toContain("1");
   });
@@ -204,7 +207,7 @@ describe("SyncDialog", () => {
     expect(screen.getByTestId("overwrite-disclosure-hosts")).toBeTruthy();
     expect(screen.getByTestId("overwrite-disclosure-snippets")).toBeTruthy();
     fireEvent.click(screen.getByTestId("conflict-apply"));
-    await waitFor(() => expect(store.pull).toHaveBeenCalledWith("stored-pass", ["hosts", "snippets"]));
+    await waitFor(() => expect(store.pull).toHaveBeenCalledWith("stored-pass", ["hosts", "snippets"], expect.anything()));
   });
 
   it("auth 错误（status / push 中途）→ 回 askpass 并显示口令错；执行失败 → error 面 + 重试重走 status", async () => {
@@ -230,11 +233,125 @@ describe("SyncDialog", () => {
     expect(await screen.findByTestId("sync-push-panel")).toBeTruthy();
   });
 
-  it("running/检查中：关闭禁用；synced 态显示上次同步时间", async () => {
+  it("关闭钮 busy 中亦可达（A5 解困）；synced 态显示上次同步时间", async () => {
     const store = fakeStore(statusOf("synced"));
     const fm = fakeModel({ store });
     renderDialog(fm);
     expect(screen.getByTestId("sync-dialog-close")).toBeTruthy();
+    expect((screen.getByTestId("sync-dialog-close") as HTMLButtonElement).disabled).toBe(false);
     expect(await screen.findByTestId("sync-last-sync").then((el) => el.textContent)).not.toContain("尚未");
+  });
+
+  // --- A5 解困（ui-batch2 T4）：伪 home 无钥匙链时 sync_passphrase_get 会
+  // 被系统授权弹窗阻塞（invoke 永不 settle），checking 态困死（39 号缺陷）。
+
+  it("检查挂起 → 10s 超时入错误面（关闭钮恢复可用）；迟到 settle 不回填旧运行", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveStatus: (s: SyncStatus) => void = () => {};
+      const store = fakeStore(statusOf("synced"));
+      (store.status as ReturnType<typeof vi.fn>).mockImplementation(
+        () => new Promise<SyncStatus>((res) => { resolveStatus = res; }),
+      );
+      const onClose = vi.fn();
+      render(<SyncDialog open onClose={onClose} model={fakeModel({ store })} />);
+      expect(screen.getByTestId("sync-checking")).toBeTruthy();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(screen.getByTestId("sync-error-text").textContent).toContain("超时");
+      expect((screen.getByTestId("sync-dialog-close") as HTMLButtonElement).disabled).toBe(false);
+
+      // 迟到 settle（系统弹窗最终被确认）：代序守卫丢弃，error 面不被覆盖
+      resolveStatus(statusOf("synced"));
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.queryByTestId("sync-synced")).toBeNull();
+      expect(screen.getByTestId("sync-error-text")).toBeTruthy();
+
+      fireEvent.click(screen.getByTestId("sync-dialog-close"));
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("busy（检查挂起）中 Esc 强制关闭 = 放弃本次同步（A5：Esc 恢复可达）", () => {
+    const store = fakeStore(statusOf("synced"));
+    const fm = fakeModel({
+      store,
+      passphrase: vi.fn(() => new Promise<string | null>(() => {})), // 永挂（系统弹窗阻塞面）
+    });
+    const onClose = vi.fn();
+    render(<SyncDialog open onClose={onClose} model={fm} />);
+    expect(screen.getByTestId("sync-checking")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("running 中点关闭 = 放弃：关闭可达（带披露 title），迟到完成不回填 done 面", async () => {
+    let resolvePush: () => void = () => {};
+    const store = fakeStore(statusOf("push"));
+    (store.push as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<void>((res) => { resolvePush = res; }),
+    );
+    const onClose = vi.fn();
+    render(<SyncDialog open onClose={onClose} model={fakeModel({ store })} />);
+    await waitFor(() => expect(screen.getByTestId("sync-push-panel")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("sync-push-start"));
+    expect(screen.getByTestId("sync-running")).toBeTruthy();
+    // I-1(b) 披露：running 面旁注 + 关闭钮 title 双挂
+    expect(screen.getByTestId("sync-running-abandon-hint").textContent).toContain("放弃");
+    expect(screen.getByTestId("sync-dialog-close").getAttribute("title")).toContain("放弃");
+    expect((screen.getByTestId("sync-dialog-close") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId("sync-dialog-close"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // 后台 push 最终完成：不回填已弃的运行（无 done 面，running 面维持）
+    resolvePush();
+    await act(async () => {});
+    expect(screen.queryByTestId("sync-done")).toBeNull();
+    expect(screen.getByTestId("sync-running")).toBeTruthy();
+  });
+
+  // fix round 1 I-2：runStatus push/pull/conflict 分支的 await 后同样查岗——
+  // 放弃后快速重开，旧延续的迟到 settle 不得污染新运行相位。
+  it("放弃后快速重开：旧 runStatus 延续（getScope 在途）不污染新相位", async () => {
+    const scopeResolvers: Array<(v: SyncCategory[]) => void> = [];
+    const store = fakeStore(statusOf("pull"));
+    (store.getScope as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<SyncCategory[]>((res) => { scopeResolvers.push(res); }),
+    );
+    const fm = fakeModel({
+      store,
+      passphrase: vi.fn<() => Promise<string | null>>()
+        .mockResolvedValueOnce("stored-pass") // 第一次运行：status → pull 分支（getScope 在途）
+        .mockResolvedValueOnce(null), // 重开后的新运行：止步 askpass
+    });
+    function Host() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" data-testid="reopen-sync" onClick={() => setOpen(true)}>
+            reopen
+          </button>
+          <SyncDialog open={open} onClose={() => setOpen(false)} model={fm} />
+        </>
+      );
+    }
+    render(<Host />);
+    await waitFor(() => expect(store.getScope).toHaveBeenCalledTimes(1)); // pull 分支已进入
+
+    fireEvent.click(screen.getByTestId("sync-dialog-close")); // 放弃旧运行
+    expect(screen.queryByTestId("sync-dialog")).toBeNull();
+    fireEvent.click(screen.getByTestId("reopen-sync")); // 快速重开（新 seq）
+    expect(await screen.findByTestId("sync-askpass")).toBeTruthy(); // 新运行自置相位
+    expect(screen.queryByTestId("sync-pull-panel")).toBeNull();
+
+    // 旧延续此刻才 settle：守卫拦截——不 setState、不再走 localSnapshot
+    scopeResolvers[0]!(["hosts"] as SyncCategory[]);
+    await act(async () => {});
+    expect(screen.getByTestId("sync-askpass")).toBeTruthy(); // 新相位不被污染
+    expect(screen.queryByTestId("sync-pull-panel")).toBeNull();
+    expect(fm.localSnapshot).not.toHaveBeenCalled();
   });
 });

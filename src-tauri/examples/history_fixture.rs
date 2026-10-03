@@ -310,6 +310,7 @@ async fn run() -> Result<(), String> {
             &recorder_slot,
             "history-fixture",
             &cancel_handle,
+            &ottr_lib::SessionResizeSlot::default(),
         )
         .await;
     });

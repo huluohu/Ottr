@@ -8,6 +8,14 @@
 //
 // 脱敏不在历史层做（spec 定案：历史是本地数据）。入库上限（5 万条滚动清理）
 // 在 Rust 存储层（ottr-vault History::insert 顺手 prune），前端无策略。
+//
+// 缺陷 45（审计截图「无 shell 集成会话把输出行收进历史」，2026-10-04 裁定）：
+// **保守停用**非完整集成会话的历史入库（宁缺勿污，启发式门控不做）。判定源 =
+// CommandWatch 的 `integrated` 标志（命令文本来自真实 OSC133 C 边界）：
+// Ottr 注入的 bash/zsh 片段每条命令都发 C（DEBUG trap / preexec）→ true；
+// 只发 D 的部分集成形态（用户自带残缺集成 / 注入被跳过的会话）走 D-without-C
+// 回退，提取到的是**输出行/提示符行**——这些「伪命令」一律不入库。代价：用户
+// 自带完整集成（非 Ottr 注入）的会话也停写历史——可接受（宁缺勿污）。
 import { vaultApi, type HistoryInput } from "../vault/api";
 import type { CommandFinishedEvent } from "../terminal/CommandWatch";
 
@@ -65,11 +73,13 @@ export function resetDedupForTests(): void {
   recentInsertKeys.clear();
 }
 
-/** 组装入库载荷（纯函数，可测）：空白命令丢弃（提示符噪声/纯回车）。 */
+/** 组装入库载荷（纯函数，可测）：空白命令丢弃（提示符噪声/纯回声）；
+ * `integrated=false`（无完整 shell 集成的会话，缺陷 45）→ null 保守停用。 */
 export function historyPayload(
   ctx: RecordContext,
   ev: CommandFinishedEvent,
 ): HistoryInput | null {
+  if (!ev.integrated) return null;
   const command = ev.command.trim();
   if (!command || isIntegrationNoise(command)) return null;
   return {

@@ -7,7 +7,7 @@ import { OverviewPage, overviewLight, rootRustIdByHost, sortForOverview } from "
 import { useMonitorStore, type MonitorWindow } from "./monitorStore";
 import { useSessionStore, type Session } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
-import type { Host } from "../vault/api";
+import type { Host, HostInput } from "../vault/api";
 
 function host(over: Partial<Host> & Pick<Host, "id" | "name">): Host {
   return {
@@ -212,5 +212,66 @@ describe("OverviewPage 卡片网格", () => {
     // 迁主区后无 open 门：卸载 = 关闭（原 open=false 断言等价迁移——不在 DOM）
     unmount();
     expect(screen.queryByTestId("overview-panel")).toBeNull();
+  });
+});
+
+// ui-batch2 Task 3（审计 A4 清偿）：「未开启监控」灰卡从纯提示（主机表单 →
+// 监控面板深路径）升级为卡内一键「开启监控」——动作 = 既有 updateHost 全量
+// 语义（HostInput 由 host 记录推导、只翻 monitor_enabled，HostForm update
+// 语义的轻量复用，零新增数据依赖）。
+describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () => {
+  it("off 卡渲染「开启监控」；点击发 updateHost(id, input)——monitor_enabled=true 且其余字段保持", async () => {
+    const off = host({ id: 5, name: "off-host", notes: "keep-me", monitor_enabled: false });
+    const updateHost = vi.fn(async (_id: number, _input: HostInput) => ({
+      ...off,
+      monitor_enabled: true,
+    }));
+    useVaultStore.setState({ hosts: [off], updateHost });
+    render(<OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
+
+    const btn = screen.getByTestId("overview-monitor-on-5");
+    fireEvent.click(btn);
+    expect(updateHost).toHaveBeenCalledTimes(1);
+    const [id, input] = updateHost.mock.calls[0];
+    expect(id).toBe(5);
+    expect(input.monitor_enabled).toBe(true);
+    // 全量替换式提交的保真面：除开关外逐字段取自 host 记录
+    expect(input.name).toBe("off-host");
+    expect(input.address).toBe("10.0.0.1");
+    expect(input.notes).toBe("keep-me");
+  });
+
+  it("按钮点击不冒泡成卡片跳转；非 ssh 与已开启主机不渲染按钮", () => {
+    useVaultStore.setState({
+      hosts: [
+        host({ id: 5, name: "ssh-off", monitor_enabled: false }),
+        host({ id: 6, name: "ftp-off", protocol: "ftp", monitor_enabled: false }),
+        host({ id: 7, name: "ssh-on", monitor_enabled: true }),
+      ],
+    });
+    const onOpen = vi.fn();
+    render(<OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={() => {}} />);
+    expect(screen.getByTestId("overview-monitor-on-5")).toBeTruthy();
+    expect(screen.queryByTestId("overview-monitor-on-6"), "监控面是 ssh 专属，ftp 不出开启入口").toBeNull();
+    expect(screen.queryByTestId("overview-monitor-on-7"), "已开启主机非 off 态，不出开启入口").toBeNull();
+    fireEvent.click(screen.getByTestId("overview-monitor-on-5"));
+    expect(onOpen, "按钮点击不冒泡成卡片跳转").not.toHaveBeenCalled();
+  });
+
+  // ui2 T4（A5 清偿·三态扫描）：updateHost 会 rethrow——此前无 catch =
+  // unhandled rejection + 按钮静默回弹（用户点了没反应）。
+  it("开启失败 → 头部错误面（主机名+原因上屏）；按钮恢复可用可重试", async () => {
+    const off = host({ id: 5, name: "off-host", monitor_enabled: false });
+    const updateHost = vi.fn(async (_id: number, _input: HostInput) => {
+      throw new Error("vault is locked");
+    });
+    useVaultStore.setState({ hosts: [off], updateHost });
+    render(<OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("overview-monitor-on-5"));
+    const err = await screen.findByTestId("overview-enable-error");
+    expect(err.textContent).toContain("off-host");
+    expect(err.textContent).toContain("vault is locked");
+    expect((screen.getByTestId("overview-monitor-on-5") as HTMLButtonElement).disabled).toBe(false);
   });
 });

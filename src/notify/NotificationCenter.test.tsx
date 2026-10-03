@@ -15,6 +15,7 @@ vi.mock("./channelRegistry", () => ({ resendNotification: vi.fn() }));
 
 import "../i18n";
 import { NotificationCenter } from "./NotificationCenter";
+import { useWorkspaceStore } from "../workspace/workspaceStore";
 import {
   clearDeliveryFailure,
   recordDeliveryFailure,
@@ -84,6 +85,7 @@ beforeEach(() => {
   mockedInvoke.mockReset();
   resetDeliveryLedger();
   mockedResend.mockReset();
+  useWorkspaceStore.setState({ dockPanel: null });
   seedBackend([], 0);
 });
 
@@ -233,6 +235,32 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
     await openPanel();
     await waitFor(() => expect(screen.getByTestId("notify-item-9")).toBeTruthy());
     expect(screen.getByTestId("notify-badge").textContent).toBe("1");
+  });
+});
+
+// ui-batch2 Task 3（审计 A4 清偿）：空态从纯「暂无通知」升级为引导——
+// 「查看告警规则」按钮走既有 openDock("alerts") 动作（workspaceStore 单槽
+// dock），点击后通知面板收起（导航即收，防与右侧 dock 视觉叠压）。
+describe("通知空态引导（ui2 T3，审计 A4）", () => {
+  it("空态：引导块 + 查看告警规则按钮；点击 openDock('alerts') 且面板收起", async () => {
+    render(<NotificationCenter />);
+    await openPanel();
+    expect(useWorkspaceStore.getState().dockPanel).toBeNull();
+    expect(screen.getByTestId("notify-empty-guide")).toBeTruthy();
+    // 空态判定不变：notify-empty 文案原样保留在引导块内
+    expect(screen.getByTestId("notify-empty").textContent).toBe("No notifications");
+
+    fireEvent.click(screen.getByTestId("notify-empty-alerts"));
+    expect(useWorkspaceStore.getState().dockPanel).toBe("alerts");
+    expect(screen.queryByTestId("notify-panel"), "导航即收起").toBeNull();
+  });
+
+  it("非空列表不渲染引导块（空态判定不变）", async () => {
+    seedBackend([row({ id: 31 })], 1);
+    render(<NotificationCenter />);
+    await openPanel();
+    expect(screen.queryByTestId("notify-empty-guide")).toBeNull();
+    expect(screen.queryByTestId("notify-empty-alerts")).toBeNull();
   });
 });
 

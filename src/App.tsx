@@ -555,10 +555,15 @@ function HomeLayout() {
         {/* 主区视图路由（UI 批次一 Task 2）：mainView 状态机五视图切换；终端
             隐藏常驻不变量在 MainArea 内执行（非 terminal 视图 visibility 隐藏，
             运行中会话不卸载）。 */}
+        {/* 空态快捷卡（ui-batch2 T3，审计 A4）：三入口动作全为既有语义——
+            新建主机 = HostTree onAdd 同款 setForm({mode:"new"})；⌘K =
+            顶栏 palette 按钮同款 setPaletteOpen(true)。 */}
         <MainArea
           storeError={storeError}
           selected={selected}
           onOpenAiSettings={() => setAiSettingsOpen(true)}
+          onAddHost={() => setForm({ mode: "new", groupId: null })}
+          onOpenPalette={() => setPaletteOpen(true)}
         />
         {/* 右侧 dock 槽位（UI 批次一 Task 2 骨架 / Task 4 实体）：工具面板统一
             停靠壳（单槽互斥，openDock 换值即替换）；五工具面板实体渲染其中。 */}

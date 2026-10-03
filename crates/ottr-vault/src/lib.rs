@@ -17,6 +17,7 @@ pub mod notifications;
 pub mod notify_channels;
 pub mod recordings;
 pub mod secrets;
+pub mod seed;
 pub mod settings;
 pub mod store;
 pub mod summaries;

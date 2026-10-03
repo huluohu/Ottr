@@ -114,11 +114,57 @@ describe("createCommandWatch", () => {
     });
   });
 
-  it("缺 C 事件（只发 D 的集成形态）回退取光标上一行", () => {
+  it("缺 C 事件（只发 D 的集成形态）回退取光标上一行，且标记 integrated=false（缺陷 45）", () => {
     const { fire, active, onCommandDone } = setup(["prev", "$ bad-command", ""]);
     active.cursorY = 2; // D 时光标在输出后
     fire(133, "D;127");
     expect(onCommandDone).toHaveBeenCalledWith({ exitCode: 127, command: "$ bad-command" });
+  });
+
+  it("缺陷 45：D 无 C（部分集成/探测失败会话）→ finished 事件 integrated=false", () => {
+    // 无 Ottr 完整集成的会话（用户自带 D-only 集成/注入跳过）：D 时刻的
+    // 「光标上一行」是输出行而非命令行——事件必须携带 integrated=false，
+    // 供历史入库保守停用（宁缺勿污）。
+    const { fire, active, onCommandFinished } = setup(["$ tail -f app.log", "12:00 INFO tick", ""]);
+    active.cursorY = 2; // D 时上一行 = 输出行（污染源）
+    fire(133, "D;0");
+    expect(onCommandFinished).toHaveBeenCalledWith({
+      exitCode: 0,
+      command: "12:00 INFO tick",
+      cwd: null,
+      integrated: false,
+    });
+  });
+
+  it("缺陷 45：A/C/D 全边界（Ottr 注入的完整集成）→ finished 事件 integrated=true", () => {
+    const { fire, onCommandFinished } = setup(["$ git status", ""]);
+    fire(133, "A");
+    fire(133, "C");
+    fire(133, "D;0");
+    expect(onCommandFinished).toHaveBeenCalledWith({
+      exitCode: 0,
+      command: "$ git status",
+      cwd: null,
+      integrated: true,
+    });
+  });
+
+  it("缺陷 45：C 边界标记逐命令复位（上轮 true 不泄漏到下轮 D-only）", () => {
+    const { fire, active, onCommandFinished } = setup(["$ a", "", "$ b", "out", ""]);
+    active.cursorY = 0;
+    fire(133, "A");
+    active.cursorY = 1;
+    fire(133, "C");
+    fire(133, "D;0"); // 第 1 轮：完整边界
+    expect(onCommandFinished.mock.calls[0][0].integrated).toBe(true);
+    active.cursorY = 4; // 第 2 轮只来 D（集成被 rc 覆写残缺化）：光标上一行 = "out"
+    fire(133, "D;0");
+    expect(onCommandFinished.mock.calls[1][0]).toEqual({
+      exitCode: 0,
+      command: "out",
+      cwd: null,
+      integrated: false,
+    });
   });
 
   it("滚动后 baseY 参与绝对行号换算", () => {
@@ -160,6 +206,7 @@ describe("createCommandWatch", () => {
       exitCode: 0,
       command: "$ git status",
       cwd: null,
+      integrated: true,
     });
     expect(onCommandDone).not.toHaveBeenCalled();
   });
@@ -173,6 +220,7 @@ describe("createCommandWatch", () => {
       exitCode: null,
       command: "$ x",
       cwd: null,
+      integrated: true,
     });
     expect(onCommandDone).not.toHaveBeenCalled();
   });
@@ -189,6 +237,7 @@ describe("createCommandWatch", () => {
       exitCode: 0,
       command: "$ cd /srv && ls",
       cwd: "/srv/ottr",
+      integrated: true,
     });
   });
 

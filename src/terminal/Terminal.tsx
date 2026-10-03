@@ -36,7 +36,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
-import { registerSink, unregisterSink, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
+import { registerSink, unregisterSink, resizeSession, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
 import { vaultApi } from "../vault/api";
 import { useVaultLockStore } from "../security/VaultLockStore";
@@ -312,6 +312,17 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     (s) => s.sessions.find((x) => x.id === sessionId)?.lastError ?? null,
   );
 
+  // 缺陷 34：连接成立即把当前真实尺寸下发给 PTY——ResizeObserver 只在布局
+  // 变化时触发（首挂载早于 rustId 落地，attach 拿到的可能是未布局的退化尺寸
+  // 2×1），没有这条「connected 转换下发」，退化 PTY 会终身保持（提示符/回显
+  // 缺失的另一半根因）。重连（disconnected→connected）同样经此重发。
+  useEffect(() => {
+    if (status !== "connected") return;
+    const term = termRef.current;
+    if (!term) return;
+    resizeSession(sessionId, term.cols, term.rows);
+  }, [status, sessionId]);
+
   // --- 一次性装配：term 实例 + sink 注册 + 击键接线 + 尺寸观测 ---
   useEffect(() => {
     // B8：allowProposedApi 开启——ghost text 的 registerDecoration 是 xterm
@@ -497,6 +508,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             .sessions.find((x) => x.id === sessionId);
           if (!session) return;
           noteCwd(sessionId, ev.cwd); // B1 ⌘J：OSC7 cwd 活值记账（null 不覆盖）
+          // 缺陷 45：integrated=false（D-only 无完整集成）= 文本实为输出行——
+          // 历史入库（record.ts 内再判）与补全缓存同门停用（宁缺勿污）。
+          if (!ev.integrated) return;
           recordCommand({ hostId: session.hostId, sessionId }, ev);
           completionHistory.append(session.hostId, ev.command); // B8：MRU 喂缓存
         },
@@ -574,6 +588,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         // xterm 对退化尺寸抛错可忽略
       }
       trzsz.setTerminalColumns(term.cols); // 进度条按列宽重绘
+      // 缺陷 34：fit 后把真实尺寸下发给 PTY（2×1 退化 attach 尺寸的修复面；
+      // 同尺寸去重在 SessionStore.resizeSession 内）。
+      resizeSession(sessionId, term.cols, term.rows);
     });
     if (hostRef.current) ro.observe(hostRef.current);
 

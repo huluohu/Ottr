@@ -4,6 +4,8 @@
 //! 钥匙链 ACL 弹窗（phase1-acceptance R10 环境残留：重建的二进制 CDHash
 //! 变更触发 SecurityAgent 登录密码问询，自动化无法输入）——password 模式
 //! open 即锁定、走 LockScreen 输主密码解锁，**全程零钥匙链访问**。
+//! 逻辑核在 [`ottr_vault::seed`]（缺陷 35 修复点：known_hosts 预置键必须
+//! 与连接期 TOFU 查找键同构，见 seed.rs 模块文档）。
 //!
 //! 【走查后恢复】调用方自行备份/还原 app 数据目录（本工具只碰给定的
 //! vault 目录，不触碰钥匙链与其它文件）。
@@ -11,14 +13,6 @@
 //! Run: `cargo build --release -p ottr-vault --example seed_vault`
 //!      `target/release/examples/seed_vault <vault_dir> [password=ottr-t7]`
 use std::path::PathBuf;
-
-use ottr_vault::entities::{
-    CredentialInput, CredentialKind, Credentials, HostInput, HostProtocol, Hosts, KnownHosts,
-};
-use ottr_vault::Vault;
-
-const FIXTURE_FP: &str = "SHA256:nLaxv/1hXxccQNB7JauQUi63z0YmST4P3AvViyoNCIQ";
-const HOST_KEY: &str = "[127.0.0.1]:2222";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -31,54 +25,13 @@ fn main() {
     };
     let password = args.next().unwrap_or_else(|| "ottr-t7".into());
 
-    // password-only open：open 即锁定（内存无密钥）；首次 unlock_with_password
-    // 一次性写 salt+verifier（store.rs open_password_only 文档）。
-    let vault = Vault::open_password_only(&dir).expect("open_password_only");
-    vault
-        .unlock_with_password(&password)
-        .expect("set master password");
-
-    let cred = Credentials::create(
-        &vault,
-        &CredentialInput {
-            kind: CredentialKind::Password,
-            secret: Some("spike-pass".into()),
-            key_pub: None,
-            passphrase: None,
-            totp_secret: None,
-        },
-    )
-    .expect("create credential");
-
-    let host = Hosts::create(
-        &vault,
-        HostInput {
-            name: "t12-prod".into(),
-            group_id: None,
-            tags: vec![],
-            address: "127.0.0.1".into(),
-            port: 2222,
-            username: Some("spike".into()),
-            protocol: HostProtocol::Ssh,
-            credential_id: Some(cred.id),
-            jump_chain_id: None,
-            encoding_override: None,
-            theme_override: None,
-            monitor_enabled: true,
-            is_production: false,
-            notes: None,
-        },
-    )
-    .expect("create host");
-
-    // TOFU 预裁定（known_hosts verified=1）：真夹具指纹 pin，连接不走问询。
-    KnownHosts::upsert(&vault, HOST_KEY, FIXTURE_FP).expect("upsert known_hosts");
-    KnownHosts::verify(&vault, HOST_KEY, FIXTURE_FP).expect("verify known_hosts");
-
+    let outcome = ottr_vault::seed::seed_walkthrough_vault(&dir, &password).expect("seed vault");
     println!(
-        "seeded vault at {} (password mode) credential_id={} host_id={} ({HOST_KEY} verified)",
+        "seeded vault at {} (password mode) credential_id={} host_id={} ([{}]:2222 → {} verified)",
         dir.display(),
-        cred.id,
-        host.id
+        outcome.credential_id,
+        outcome.host_id,
+        "127.0.0.1",
+        ottr_vault::seed::FIXTURE_FINGERPRINT
     );
 }

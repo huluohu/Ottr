@@ -9,7 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => ({})) }));
 import "../i18n";
 import { resetRateLimiter, setNotifyPorts, useNotifyStore, type NotifyPorts } from "../notify/core";
 import { channels } from "../notify/core";
-import { notifyCronRun, severityOf, titleKeyOf } from "./events";
+import { notifyCronRun, resetMissedLatchForTests, severityOf, titleKeyOf } from "./events";
 import type { CronRunEvent } from "./api";
 
 function event(over: Partial<CronRunEvent>): CronRunEvent {
@@ -47,12 +47,14 @@ beforeEach(() => {
   sysCalls.length = 0;
   setNotifyPorts(fakePorts());
   resetRateLimiter();
+  resetMissedLatchForTests();
   useNotifyStore.setState({ muted: [], items: [], unread: 0 });
 });
 
 afterEach(() => {
   setNotifyPorts(null);
   resetRateLimiter();
+  resetMissedLatchForTests();
 });
 
 describe("cron 通知语义", () => {
@@ -85,19 +87,48 @@ describe("cron 通知语义", () => {
   });
 
   it("同任务 2 轮（60s 窗口内）→ 聚合 1 条（限频 key cron:{host}:{job}）", async () => {
-    // 用 missed 轮测聚合（异常轮才弹②——断言面）；ok 轮聚合语义相同（②本静默）
-    expect(await notifyCronRun(event({ status: "missed", exit_code: null }))).toBe(true);
+    // 用 timeout 轮测聚合（异常轮才弹②——断言面；锁存只作用于 missed，见缺陷 17 组）
+    expect(await notifyCronRun(event({ status: "timeout", exit_code: null, error: "slow" }))).toBe(true);
     now += 5_000; // 5s 后第二轮（真实节奏）
-    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 2 }))).toBe(false);
+    expect(await notifyCronRun(event({ status: "timeout", exit_code: null, run_id: 2 }))).toBe(false);
     expect(sysCalls).toHaveLength(1); // 第二轮被聚合，只放行首条
     // 另一任务不受同窗口吞并（不同 cron_id 各自开窗）
     now += 5_000;
-    expect(await notifyCronRun(event({ status: "missed", exit_code: null, cron_id: 8 }))).toBe(true);
+    expect(await notifyCronRun(event({ status: "timeout", exit_code: null, cron_id: 8 }))).toBe(true);
     expect(sysCalls).toHaveLength(2);
     // 窗口（60s）过后同任务再放行
     now += 60_000;
-    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 3 }))).toBe(true);
+    expect(await notifyCronRun(event({ status: "timeout", exit_code: null, run_id: 3 }))).toBe(true);
     expect(sysCalls).toHaveLength(3);
+  });
+
+  it("缺陷 17：持续 missed 状态锁存——同 host 同任务跨 60s 窗口只告警一次", async () => {
+    // 风暴面（审计截图 17：*/5 任务无会话每轮「定时任务未执行」未读）：
+    // missed 锁存后，后续 missed 轮（哪怕跨过限频窗口）一律静默。
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, error: "no live session" }))).toBe(true);
+    expect(sysCalls).toHaveLength(1);
+    now += 60_000; // 跨过限频窗口（旧语义此处会再放行 → 风暴）
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 2 }))).toBe(false);
+    now += 300_000; // */5 的下一轮，仍在持续 missed
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 3 }))).toBe(false);
+    expect(sysCalls).toHaveLength(1); // 始终只有首条
+    // 锁存按 host+job 独立：另一任务的 missed 照常首告
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, cron_id: 8 }))).toBe(true);
+    expect(sysCalls).toHaveLength(2);
+  });
+
+  it("缺陷 17：锁存由非 missed 轮重置（恢复有会话跑 ok 后，再 missed 可再告警）", async () => {
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, error: "no live session" }))).toBe(true);
+    now += 60_000;
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 2 }))).toBe(false);
+    // 恢复：会话上线，任务跑 ok（锁存重置）
+    expect(await notifyCronRun(event({ status: "ok", run_id: 3 }))).toBe(true);
+    // 再次失联 missed：重新首告（新的一次「持续未执行」开始）。
+    // （先跨过限频窗：ok 轮在管线内刷新 60s 窗，与锁存无关的既有聚合语义）
+    now += 61_000;
+    expect(await notifyCronRun(event({ status: "missed", exit_code: null, run_id: 4, error: "no live session" }))).toBe(true);
+    // 系统通知账本 = missed#1（首告）+ missed#4（重置后再告）；ok 轮只进中心不弹②
+    expect(sysCalls).toHaveLength(2);
   });
 
   it("kind=cron 可静音：静音后管线入口丢弃（不落表不弹不分发）", async () => {

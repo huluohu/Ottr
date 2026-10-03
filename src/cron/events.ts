@@ -16,6 +16,13 @@
 //
 // 【宿主裁定】事件源在 Rust 调度器（关窗到托盘照发）；本监听在 webview——
 // 隐藏仍存活，管线照走；App 真退出 = 两侧同停（文档语义，task-1-report §4）。
+//
+// 【缺陷 17（审计截图「cronMissed 风暴」，2026-10-04 裁定）】持续 missed 只告警
+// 一次（状态锁存）：无会话的 */5 任务每轮 missed → 限频窗（60s）一过就再弹，
+// 未读风暴。锁存语义：missed_latched[host:job]=true 后续 missed 轮静默（中心
+// 历史照记、面板徽标照刷——「持续未执行」的呈现面是 CronPanel 徽标而非通知）；
+// 任意非 missed 轮（ok/failed/timeout = 恢复有会话执行过）重置锁存，下一轮
+// missed 重新首告。调度语义照旧：Rust 侧每轮如实落库+发事件，静默只在本管线。
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useVaultStore } from "../vault/store";
 import { notify } from "../notify/core";
@@ -24,6 +31,21 @@ import { useCronStore } from "./cronStore";
 
 let wired = false;
 const unlisteners: UnlistenFn[] = [];
+
+/** missed 状态锁存表（缺陷 17）：键 `host_id:cron_id` → 该任务持续 missed 中。
+ * 非 missed 轮移除键（恢复重置）；模块级即可——webview 单实例，锁存活进程
+ * 生命周期，与限频表同款无持久化需求。 */
+const missedLatched = new Set<string>();
+
+/** 锁存键（纯函数，可测）。 */
+export function missedLatchKey(event: CronRunEvent): string {
+  return `${event.host_id}:${event.cron_id}`;
+}
+
+/** 测试隔离用：清空 missed 锁存表（生产不调用）。 */
+export function resetMissedLatchForTests(): void {
+  missedLatched.clear();
+}
 
 /** severity 判定单点（ok/missed/failed/timeout → 管线四档）。 */
 export function severityOf(status: CronRunStatus): "success" | "warning" | "error" {
@@ -51,8 +73,16 @@ export function titleKeyOf(status: CronRunStatus): string {
   }
 }
 
-/** 事件 → 通知管线（导出供单测直驱；限频/静音在管线内）。 */
+/** 事件 → 通知管线（导出供单测直驱；限频/静音在管线内）。
+ * 缺陷 17：missed 锁存——持续 missed 只首告一次，非 missed 轮重置（见模块文档）。 */
 export function notifyCronRun(event: CronRunEvent): Promise<boolean> {
+  const key = missedLatchKey(event);
+  if (event.status === "missed") {
+    if (missedLatched.has(key)) return Promise.resolve(false);
+    missedLatched.add(key);
+  } else {
+    missedLatched.delete(key); // ok/failed/timeout = 恢复面：锁存重置
+  }
   const hostName =
     useVaultStore.getState().hosts.find((h) => h.id === event.host_id)?.name ??
     `#${event.host_id}`;

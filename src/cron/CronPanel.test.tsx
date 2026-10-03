@@ -212,6 +212,33 @@ describe("CronPanel", () => {
     });
   });
 
+  // 缺陷 17（审计截图「cronMissed 风暴」裁定）：持续未执行的呈现面 = 面板徽标
+  // （missed → warn 档 + 状态文字 + 时刻），而非通知刷屏（通知侧锁存见 events.ts）。
+  it("missed 轮徽标：warn 档呈现「持续未执行」状态与时刻", async () => {
+    seedJobs([job({})]);
+    render(<CronPanel open />);
+    await screen.findByTestId("cron-row-1");
+    await act(async () => {
+      useCronStore.getState().onRunEvent({
+        run_id: 21,
+        cron_id: 1,
+        host_id: 3,
+        status: "missed",
+        exit_code: null,
+        duration_ms: 0,
+        ts: 1_800_000_200,
+        output_digest: null,
+        truncated: false,
+        error: "no live session for host 3 (not connected)",
+        channel_ids: [],
+      });
+    });
+    const badge = screen.getByTestId("cron-last-1");
+    expect(badge.getAttribute("data-tone")).toBe("warn");
+    // 状态文案经 i18n（测试默认 en 词典「Missed (session offline)」）+ 最新轮时刻
+    expect(badge.textContent).toContain(new Date(1_800_000_200 * 1000).toLocaleString());
+  });
+
   it("删除调 cj_delete", async () => {
     seedJobs([job({})]);
     render(<CronPanel open />);

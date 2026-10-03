@@ -1,6 +1,8 @@
 // MainViewSlot（UI 批次一 Task 2）：overview/batch 主区槽位占位组件。
-// 本任务只立骨架（标题 + 返回终端 + 占位提示）；T3 把 OverviewPage/BatchPanel
-// 实体迁入本槽（届时本组件消亡，导航语义由实体自带的 onOpen → 终端标签承接）。
+// 有会话时渲染在 term-main-row 内（终端 holder 同时隐藏常驻——不变量），零会话
+// 时独占主区。本任务只立骨架（标题 + 返回终端 + 占位提示）；T3 把 OverviewPage
+// /BatchPanel 实体迁入本槽（届时本组件消亡，导航语义由实体自带的
+// onOpen → 终端标签承接）。
 import { useTranslation } from "react-i18next";
 import { useWorkspaceStore } from "./workspaceStore";
 import type { MainView } from "./types";

@@ -58,46 +58,48 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
   const filesVisible = mainView === "files" || (terminalMode && filesOnly);
   const procsVisible = mainView === "processes" && !filesVisible;
   const termViewActive = mainView === "terminal" && !filesOnly;
+  // overview/batch 槽位视图（占位组件，T3 迁实体）
+  const slotView = mainView === "overview" || mainView === "batch" ? mainView : null;
 
-  // overview/batch：主区互斥视图（槽位占位，T3 迁入实体）。不占 terminalMode
-  // 门——零会话也可开（原对话框语义），返回终端走槽位头部按钮。
-  if (mainView === "overview" || mainView === "batch") {
-    return (
-      <main className="main-area" data-testid="main-area">
-        <MainViewSlot view={mainView} />
-      </main>
-    );
-  }
-
-  // 无会话：占位面（原分支原样——视图族按钮只在有会话时存在）
+  // 零会话：占位面（原分支原样——视图族按钮只在有会话时存在）。overview/batch
+  // 零会话也可开（原对话框语义），此时无终端可保留，槽位独占主区。
   if (!terminalMode) {
     return (
       <main className="main-area" data-testid="main-area">
-        {storeError && (
-          <p className="main-error" data-testid="store-error">
-            {t("mainArea.loadFailed", { message: storeError })}
-          </p>
-        )}
-        {selected ? (
-          <section className="main-placeholder">
-            <p className="placeholder-caption">{t("mainArea.selected")}</p>
-            <h2>{selected.name}</h2>
-            <p className="placeholder-mono">
-              {selected.username ? `${selected.username}@` : ""}
-              {selected.address}:{selected.port}
-            </p>
-            <p>{t("mainArea.openHint")}</p>
-          </section>
+        {slotView !== null ? (
+          <MainViewSlot view={slotView} />
         ) : (
-          <section className="main-placeholder">
-            <p>{t("mainArea.placeholder")}</p>
-          </section>
+          <>
+            {storeError && (
+              <p className="main-error" data-testid="store-error">
+                {t("mainArea.loadFailed", { message: storeError })}
+              </p>
+            )}
+            {selected ? (
+              <section className="main-placeholder">
+                <p className="placeholder-caption">{t("mainArea.selected")}</p>
+                <h2>{selected.name}</h2>
+                <p className="placeholder-mono">
+                  {selected.username ? `${selected.username}@` : ""}
+                  {selected.address}:{selected.port}
+                </p>
+                <p>{t("mainArea.openHint")}</p>
+              </section>
+            ) : (
+              <section className="main-placeholder">
+                <p>{t("mainArea.placeholder")}</p>
+              </section>
+            )}
+          </>
         )}
       </main>
     );
   }
 
-  // 有会话：标签条 + 视图切换 + 终端常驻区（五视图路由核心）
+  // 有会话：标签条 + 视图切换 + 终端常驻区（五视图路由核心）。
+  // 【终端常驻不变量】五视图共用同一 term-main-row：overview/batch 槽位渲染在
+  // 让位的侧栏位置，终端 holder 恒在 DOM（data-hidden 切 visibility）——任何
+  // 视图切换都不卸载终端（xterm 缓冲/滚动回看不丢，运行中会话保留）。
   return (
     <main className="main-area terminal-mode" data-testid="main-area">
       <div className="tabbar-row">
@@ -142,17 +144,30 @@ export function MainArea({ storeError, selected, onOpenAiSettings }: MainAreaPro
       {/* 终端隐藏常驻：visibility 而非卸载（见头注不变量）。
           data-terminal = 终端聚焦守卫判定容器（评审 M-4），恒在 DOM。 */}
       <div className="term-main-row">
-        <div className="term-area-holder" data-hidden={!termViewActive} data-terminal="">
+        <div
+          className="term-area-holder"
+          data-testid="term-holder"
+          data-hidden={slotView !== null || !termViewActive}
+          data-terminal=""
+        >
           <TerminalArea />
         </div>
-        {termViewActive && <DiagnosePanel onOpenSettings={onOpenAiSettings} />}
-        {termViewActive && (
-          <MonitorSidebar
-            rustId={rootSession?.rustId ?? null}
-            enabled={hosts.find((h) => h.id === rootSession?.hostId)?.monitor_enabled ?? false}
-          />
+        {slotView !== null ? (
+          <MainViewSlot view={slotView} />
+        ) : (
+          termViewActive && (
+            <>
+              <DiagnosePanel onOpenSettings={onOpenAiSettings} />
+              <MonitorSidebar
+                rustId={rootSession?.rustId ?? null}
+                enabled={
+                  hosts.find((h) => h.id === rootSession?.hostId)?.monitor_enabled ?? false
+                }
+              />
+              <PluginSidebar rustId={rootSession?.rustId ?? null} />
+            </>
+          )
         )}
-        {termViewActive && <PluginSidebar rustId={rootSession?.rustId ?? null} />}
       </div>
       {filesVisible && rootSession && <FilePanel session={rootSession} />}
       {procsVisible && rootSession && <ProcessBrowser rustId={rootSession.rustId} />}

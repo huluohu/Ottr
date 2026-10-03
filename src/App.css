@@ -3743,3 +3743,12 @@ button[data-active="true"] {
   color: var(--fg-muted);
   font-size: 0.85em;
 }
+
+/* 槽位在 term-main-row 内（有会话时 overview/batch 视图）：flex 撑满，
+ * 终端 holder 同时 absolute+hidden 常驻（不变量：任何视图切换不卸载终端）。 */
+.term-main-row > .main-view-slot {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}

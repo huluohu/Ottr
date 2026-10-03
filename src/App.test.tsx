@@ -33,6 +33,7 @@ vi.mock("./notify/channelRegistry", () => ({ remountChannels: vi.fn(async () => 
 import "./i18n";
 import App from "./App";
 import { useVaultStore } from "./vault/store";
+import { useWorkspaceStore } from "./workspace/workspaceStore";
 import type { Host } from "./vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -228,5 +229,68 @@ describe("App 顶栏收纳（Phase 5 T1）", () => {
     // 菜单已收起
     expect(screen.queryByTestId("topbar-theme-menu")).toBeNull();
     localStorage.removeItem("ottr.settings.theme");
+  });
+});
+
+// UI 批次一 Task 2：工具菜单工作区族条目 → workspaceStore 路由（T14 守卫的
+// 实现面——条目→openDock/openMainView 映射；registry 动作 ID 零新增零删除，
+// registry.test.ts 原样锁定）。对话框族（凭据/AI/同步）不在此列。
+describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () => {
+  function listMock() {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+  }
+
+  beforeEach(() => {
+    useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
+  });
+
+  it("转发/定时任务 → openDock 单槽（后者替换前者）；dock 关闭按钮可用", async () => {
+    listMock();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("open-palette")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-open-forwards"));
+    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("forwards");
+
+    // 单槽互斥走真菜单路径：开 cron 替换 forwards
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-open-cron"));
+    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("cron");
+
+    fireEvent.click(screen.getByTestId("dock-close"));
+    expect(screen.queryByTestId("dock-container")).toBeNull();
+  });
+
+  it("告警/MCP/跳板链 → openDock 对应面板；总览/批量 → openMainView 主区槽位", async () => {
+    listMock();
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("open-palette")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-open-alert-settings"));
+    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("alerts");
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-open-mcp-settings"));
+    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("mcp");
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-open-jump-chains"));
+    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("jumpchains");
+
+    // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义）；返回按钮回占位面
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-open-overview"));
+    expect(screen.getByTestId("main-view-slot").getAttribute("data-view")).toBe("overview");
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-open-batch"));
+    expect(screen.getByTestId("main-view-slot").getAttribute("data-view")).toBe("batch");
+    fireEvent.click(screen.getByTestId("slot-back-terminal"));
+    expect(screen.queryByTestId("main-view-slot")).toBeNull();
+    expect(screen.getByTestId("main-area").textContent).toContain("Pick a host");
   });
 });

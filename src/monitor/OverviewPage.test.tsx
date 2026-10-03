@@ -257,4 +257,21 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
     fireEvent.click(screen.getByTestId("overview-monitor-on-5"));
     expect(onOpen, "按钮点击不冒泡成卡片跳转").not.toHaveBeenCalled();
   });
+
+  // ui2 T4（A5 清偿·三态扫描）：updateHost 会 rethrow——此前无 catch =
+  // unhandled rejection + 按钮静默回弹（用户点了没反应）。
+  it("开启失败 → 头部错误面（主机名+原因上屏）；按钮恢复可用可重试", async () => {
+    const off = host({ id: 5, name: "off-host", monitor_enabled: false });
+    const updateHost = vi.fn(async (_id: number, _input: HostInput) => {
+      throw new Error("vault is locked");
+    });
+    useVaultStore.setState({ hosts: [off], updateHost });
+    render(<OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
+
+    fireEvent.click(screen.getByTestId("overview-monitor-on-5"));
+    const err = await screen.findByTestId("overview-enable-error");
+    expect(err.textContent).toContain("off-host");
+    expect(err.textContent).toContain("vault is locked");
+    expect((screen.getByTestId("overview-monitor-on-5") as HTMLButtonElement).disabled).toBe(false);
+  });
 });

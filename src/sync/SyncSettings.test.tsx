@@ -184,4 +184,22 @@ describe("SyncSettings", () => {
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("sync_passphrase_del"));
     await waitFor(() => expect(screen.getByTestId("sync-passphrase-status").textContent).toContain("未设置"));
   });
+
+  // ui2 T4（A5 清偿·三态扫描）：清除失败此前 finally 直翻「未设置」= 假成功
+  // + unhandled rejection；现在状态不翻转（诚实面）+ 错误上屏。
+  it("清除记住的口令失败（钥匙链拒绝）→ 错误面上屏、徽标保持已设置；表单关闭态错误亦可见", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "sync_passphrase_get") return Promise.resolve("stored");
+      if (cmd === "sync_passphrase_del") return Promise.reject(new Error("keychain denied"));
+      return Promise.resolve(null);
+    });
+    renderSection();
+    await waitFor(() => expect(screen.getByTestId("sync-passphrase-status").textContent).toContain("已存钥匙链"));
+
+    fireEvent.click(screen.getByTestId("sync-passphrase-forget"));
+    const err = await screen.findByTestId("sync-passphrase-error");
+    expect(err.textContent).toContain("清除记住的口令失败");
+    expect(err.textContent).toContain("keychain denied");
+    expect(screen.getByTestId("sync-passphrase-status").textContent).toContain("已存钥匙链");
+  });
 });

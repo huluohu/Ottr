@@ -118,11 +118,22 @@ export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageP
   // 一键开启监控在途标记（hostId；在途禁用防双击双发——updateHost 全量替换
   // 语义下重复提交幂等但白耗一次 refresh 四连拉）。
   const [enablingId, setEnablingId] = useState<number | null>(null);
+  // 开启失败面（ui2 T4 扫描清偿）：updateHost 会 rethrow，此前无 catch =
+  // unhandled rejection + 按钮静默回弹（用户点了没反应的三态缺口）。
+  const [enableError, setEnableError] = useState<string | null>(null);
 
   async function enableMonitor(host: Host) {
     setEnablingId(host.id);
+    setEnableError(null);
     try {
       await updateHost(host.id, hostInputFrom(host, { monitor_enabled: true }));
+    } catch (e) {
+      setEnableError(
+        t("overview.enableFailed", {
+          host: host.name,
+          message: e instanceof Error ? e.message : String(e),
+        }),
+      );
     } finally {
       setEnablingId(null);
     }
@@ -150,6 +161,13 @@ export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageP
       {sorted.length === 0 && (
         <p className="overview-empty" data-testid="overview-empty">
           {t("overview.empty")}
+        </p>
+      )}
+
+      {/* 开启监控失败面（ui2 T4 扫描清偿）：头部单条横幅，不逐卡散布。 */}
+      {enableError !== null && (
+        <p className="form-error" data-testid="overview-enable-error">
+          {enableError}
         </p>
       )}
 

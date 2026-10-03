@@ -44,11 +44,17 @@ export function QuickCommandsCard({ commands }: { commands: readonly PluginQuick
             data-testid={`plugin-cmd-copy-${cmd.id}`}
             aria-label={`${t("plugins.quick.copy")}: ${cmd.command}`}
             onClick={() => {
-              void copyText(cmd.command).then(() => {
-                setCopiedId(cmd.id);
-                if (timer.current !== null) window.clearTimeout(timer.current);
-                timer.current = window.setTimeout(() => setCopiedId(null), 1500);
-              });
+              void copyText(cmd.command)
+                .then(() => {
+                  setCopiedId(cmd.id);
+                  if (timer.current !== null) window.clearTimeout(timer.current);
+                  timer.current = window.setTimeout(() => setCopiedId(null), 1500);
+                })
+                .catch(() => {
+                  // 剪贴板失败（权限/非安全上下文）：不装「已复制」（诚实面），
+                  // 按钮维持原文案——与 Terminal 剪贴板路径同口径（仅防
+                  // unhandled rejection，无独立失败横幅；ui2 T4 扫描记录）。
+                });
             }}
           >
             {copiedId === cmd.id ? t("plugins.quick.copied") : t("plugins.quick.copy")}

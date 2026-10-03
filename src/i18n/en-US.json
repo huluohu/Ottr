@@ -714,6 +714,7 @@
     "offHint": "Monitoring off — enable it to see live metrics here.",
     "enableMonitor": "Enable monitoring",
     "enabling": "Enabling…",
+    "enableFailed": "Failed to enable monitoring for {{host}}: {{message}}",
     "notConnected": "Not connected",
     "procButton": "Processes"
   },
@@ -1035,6 +1036,7 @@
     "errBranchEmpty": "Branch must not be empty",
     "errDirEmpty": "Choose a sync directory first",
     "errSave": "Save failed: {{message}}",
+    "errForget": "Failed to forget the saved passphrase: {{message}}",
     "now": "Sync now",
     "needChannel": "Save a sync channel configuration first",
     "dirtyHint": "You have unsaved changes — “Sync now” uses the last saved configuration; save to apply them.",

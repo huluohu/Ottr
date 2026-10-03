@@ -260,8 +260,12 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("sync_passphrase_del");
-    } finally {
       setHasPassphrase(false);
+    } catch (err) {
+      // 清除失败（钥匙链写保护等）：状态不翻转（徽标仍「已设置」= 诚实面），
+      // 错误经 passError 面上屏——此前 finally 直翻 false 属假成功 + unhandled
+      // rejection（ui2 T4 扫描清偿）。
+      setPassError(`sync.errForget|${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -438,6 +442,13 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
         )}
       </div>
       <p className="settings-hint">{t("sync.passphrase.hint")}</p>
+      {/* 错误面挂行尾（不进 passOpen 门）：「清除记住的口令」在表单关闭态也
+          可能失败（钥匙链写保护），必须可见（ui2 T4 扫描清偿）。 */}
+      {passError !== null && (
+        <p className="form-error" data-testid="sync-passphrase-error">
+          {renderError(passError)}
+        </p>
+      )}
       {passOpen && (
         <form className="wizard-step" onSubmit={(e) => void submitPassphrase(e)} noValidate data-testid="sync-passphrase-form">
           <label>
@@ -461,11 +472,6 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
             />
           </label>
           <p className="settings-hint">{hasPassphrase ? t("sync.passphrase.changeHint") : t("sync.passphrase.hint")}</p>
-          {passError !== null && (
-            <p className="form-error" data-testid="sync-passphrase-error">
-              {renderError(passError)}
-            </p>
-          )}
           <div className="form-actions">
             <button type="button" data-testid="sync-passphrase-cancel" onClick={() => setPassOpen(false)}>
               {t("common.cancel")}

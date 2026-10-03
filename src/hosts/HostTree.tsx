@@ -328,6 +328,10 @@ function HostItems({
                 aria-checked={checked}
                 onClick={() => onToggle?.(host)}
               >
+                {/* 自绘勾选为有意保留（Task 1 fix round 1，I-2 裁定落地）：
+                    整行即勾选语义（行点击=切换），.host-check 仅是行内视觉
+                    指示，且是 ui/ 基础控件 mint 家族的视觉基准来源；
+                    ui/Checkbox 适用于表单内独立勾选，不适用此行级场景。 */}
                 <span className="host-check" aria-hidden="true" />
                 <span className="host-name">{host.name}</span>
                 {host.tags.length > 0 && (

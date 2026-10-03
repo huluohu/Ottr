@@ -3635,6 +3635,14 @@ button[data-active="true"] {
 .ui-checkbox:checked::after {
   opacity: 1;
 }
+/* HostForm 场景前缀修正（fix round 1，I-1）：`.form-check input` 的
+   width:auto/margin-top:2px 是 (0,1,1)，裸 `.ui-checkbox`（0,1,0）的
+   width:14px 被击败（真渲染实证 7×14 非正方框——同 1317 行 .host-form
+   .form-check 的既有陷阱）。前缀到 (0,2,0) 才真正赢回；margin-top 不在此
+   重申——.form-check input 的 2px 顶距本就赢过 .ui-checkbox 的 margin:0。 */
+.form-check .ui-checkbox {
+  width: 14px;
+}
 
 /* 三选段控（互斥单选）：选中段 accent 实底 + on-accent 前景，同一 mint 家族 */
 .ui-segmented {

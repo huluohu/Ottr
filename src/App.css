@@ -3667,3 +3667,79 @@ button[data-active="true"] {
   border-color: var(--color-accent);
   color: var(--color-on-accent);
 }
+
+/* --- 右侧 dock 槽位 + 主区视图槽位（UI 批次一 Task 2）-------------------- *
+ * dock：app-body 右缘停靠壳（sidebar | resizer | main-area | dock 四列 flex）。
+ * 视觉语言对齐 monitor-sidebar（border-left + surface 底 + 基线头行）；本任务
+ * 只立骨架（标题 + 关闭 + 空内容），T4 迁实体面板后由面板自带样式接管 body。 */
+.dock-panel {
+  flex: none;
+  width: 360px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.dock-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dock-title {
+  font-weight: 600;
+  flex: 1;
+}
+.dock-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  color: var(--color-fg);
+}
+.dock-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+}
+
+/* overview/batch 主区槽位占位（T3 迁实体后本段随 MainViewSlot 消亡）：
+ * 布局语言同 main-placeholder（居中窄栏），头部带返回终端按钮。 */
+.main-view-slot {
+  margin: auto;
+  max-width: 640px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.main-view-slot-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.main-view-slot-head h2 {
+  margin: 0;
+  flex: 1;
+}
+.main-view-slot-head button {
+  font-size: 0.8em;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.main-view-slot-head button:hover {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent);
+}
+.main-view-slot-hint {
+  color: var(--fg-muted);
+  font-size: 0.85em;
+}

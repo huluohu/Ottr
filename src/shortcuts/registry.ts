@@ -12,6 +12,13 @@
 // Rust 菜单/托盘的动作回传走 `ottr://menu-action` 事件（载荷 = ActionId 字符串），
 // 前端 dispatch 进同一个 handleAction——一处 action 多入口的收口在 App.tsx。
 //
+// 【UI 批次一 Task 2 划界】顶栏「工具」菜单的条目**不是** ActionId，也刻意不
+// 入本表：工作区族条目（总览/批量/端口转发/跳板链/定时任务/告警/MCP）是导航
+// 动作（mainView 切换 / dock 面板开合），收口在 workspaceStore 的
+// openMainView/openDock（见 workspace/workspaceStore.ts）；对话框族（凭据/AI/
+// 同步）仍走 HomeLayout 就地 setState。本表（ActionId + 键位）零新增零删除——
+// registry.test.ts（T14 守卫）原样锁定。
+//
 // 键位串法 = Tauri accelerator 子集：「CmdOrCtrl+Shift+D」；逗号等字面键直接
 // 拼接（「CmdOrCtrl+,」）。展示与匹配都由本模块换算，外部永远不手写 ⌘/Ctrl。
 

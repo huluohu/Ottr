@@ -609,6 +609,10 @@
     "acceptAnyway": "仍要连接",
     "hopLabel": "第 {{hop}} 跳"
   },
+  "workspace": {
+    "slotHint": "此视图的面板实体在后续任务迁入（T3）。",
+    "dockHint": "面板实体在后续任务迁入此停靠栏（T4）。"
+  },
   "security": {
     "mode": "密钥模式",
     "modeKeyring": "系统钥匙链",

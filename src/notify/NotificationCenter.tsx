@@ -5,6 +5,10 @@
 //   【Phase 5 T1（BL-517）】投递失败块：条目 payload.delivery_failed（由重试
 //   装饰器终败回执写入）→ 状态标签 + 渠道名 + 错误摘要 + 手动重发按钮
 //   （channelRegistry.resendNotification 重跑该渠道 send）。
+// * 空态引导（ui-batch2 T3，审计 A4）：「暂无通知」文案保留，补「查看告警
+//   规则」入口——既有 openDock("alerts") 动作（workspaceStore 单槽 dock），
+//   点击后通知面板收起（导航即收，防与右侧 dock 视觉叠压）。空态判定不变
+//   （items.length === 0 分支），非空列表不渲染引导块。
 // * 数据面全部在 useNotifyStore（core.ts）；本组件只渲染 + 调 action。
 // * 主题/i18n 纪律：severity 走语义令牌（--color-*），文案全走词典键。
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +17,7 @@ import type { Notification } from "../vault/api";
 import i18n from "../i18n";
 import { readDeliveryFailures, useNotifyStore, type DeliveryFailure, type NotifyKind } from "./core";
 import { resendNotification } from "./channelRegistry";
+import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { Checkbox } from "../ui/Checkbox";
 
 /** 未读数徽标文案封顶（99+ 防 badge 撑爆铃铛）。 */
@@ -123,6 +128,8 @@ export function NotificationCenter() {
   const markAllRead = useNotifyStore((s) => s.markAllRead);
   const clear = useNotifyStore((s) => s.clear);
   const toggleMuted = useNotifyStore((s) => s.toggleMuted);
+  // 空态引导入口（ui2 T3，A4）：告警规则面板走既有 dock 单槽动作。
+  const openDock = useWorkspaceStore((s) => s.openDock);
 
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -186,9 +193,22 @@ export function NotificationCenter() {
           </div>
 
           {items.length === 0 ? (
-            <p className="notify-empty" data-testid="notify-empty">
-              {t("notify.empty")}
-            </p>
+            <div className="notify-empty-guide" data-testid="notify-empty-guide">
+              <p className="notify-empty" data-testid="notify-empty">
+                {t("notify.empty")}
+              </p>
+              <p className="notify-empty-hint">{t("notify.emptyHint")}</p>
+              <button
+                type="button"
+                data-testid="notify-empty-alerts"
+                onClick={() => {
+                  openDock("alerts");
+                  setOpen(false); // 导航即收：防下拉面板与右侧 dock 视觉叠压
+                }}
+              >
+                {t("notify.emptyAlertsCta")}
+              </button>
+            </div>
           ) : (
             <ul className="notify-list">
               {items.map((item) => (

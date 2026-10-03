@@ -497,6 +497,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             .sessions.find((x) => x.id === sessionId);
           if (!session) return;
           noteCwd(sessionId, ev.cwd); // B1 ⌘J：OSC7 cwd 活值记账（null 不覆盖）
+          // 缺陷 45：integrated=false（D-only 无完整集成）= 文本实为输出行——
+          // 历史入库（record.ts 内再判）与补全缓存同门停用（宁缺勿污）。
+          if (!ev.integrated) return;
           recordCommand({ hostId: session.hostId, sessionId }, ev);
           completionHistory.append(session.hostId, ev.command); // B8：MRU 喂缓存
         },

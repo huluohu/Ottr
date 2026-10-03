@@ -50,9 +50,13 @@ export interface CommandDoneEvent {
 }
 
 /** 命令完成全量事件（Task 15 历史入库面）：cwd = 提示符时点 OSC 7 上报的
- * 运行目录；shell 未上报 = null。 */
+ * 运行目录；shell 未上报 = null。`integrated` = 命令文本是否来自真实的
+ * OSC133 C 边界（缺陷 45，2026-10-04）：D-without-C 的回退提取（只发 D 的
+ * 部分集成形态）拿到的是**输出行/提示符行**而非命令行——false 时历史入库
+ * 保守停用（宁缺勿污，src/history/record.ts 消费），诊断事件流不受影响。 */
 export interface CommandFinishedEvent extends CommandDoneEvent {
   cwd: string | null;
+  integrated: boolean;
 }
 
 const OSC_133 = 133;
@@ -110,6 +114,9 @@ export function createCommandWatch(
   let promptRow: number | null = null;
   let lastCommand = "";
   let lastCwd: string | null = null;
+  // 当前命令是否见过 C 边界（缺陷 45）：C 是命令文本可信的唯一来源标志；
+  // D 时刻据此打 integrated 标，随后复位（逐命令独立判定）。
+  let commandFromBoundary = false;
 
   const osc133 = term.parser.registerOscHandler(OSC_133, (data) => {
     const buf = term.buffer.active;
@@ -124,18 +131,25 @@ export function createCommandWatch(
       const commandEnd = buf.baseY + buf.cursorY;
       const from = promptRow ?? Math.max(0, commandEnd - 1);
       lastCommand = bufferRangeText(term.buffer, from, commandEnd);
+      commandFromBoundary = true;
       handlers.onCommandEnd?.(lastCommand);
       return false;
     }
     if (/^D(?:;|$)/.test(data)) {
       const exitCode = parseExitCode(data);
-      // C 缺失的 shell（只发 D 的集成形态）：回退取光标上一行（诊断/历史共用）
+      // C 缺失的 shell（只发 D 的集成形态）：回退取光标上一行（诊断/历史共用）。
+      // 该提取是输出行/提示符行而非命令行 → integrated=false（缺陷 45）。
       if (!lastCommand) {
         const done = buf.baseY + buf.cursorY;
         lastCommand = bufferRangeText(term.buffer, Math.max(0, done - 1), done);
       }
       // 全量完成事件先发（历史消费；成功/缺码也进），诊断门槛保持 T13 语义
-      handlers.onCommandFinished?.({ exitCode, command: lastCommand, cwd: lastCwd });
+      handlers.onCommandFinished?.({
+        exitCode,
+        command: lastCommand,
+        cwd: lastCwd,
+        integrated: commandFromBoundary,
+      });
       if (exitCode === null || exitCode === 0) {
         // 无退出码（shell 未上报）或成功（exit 0）：不触发诊断，安全侧不打扰
       } else {
@@ -143,6 +157,7 @@ export function createCommandWatch(
       }
       lastCommand = "";
       promptRow = null;
+      commandFromBoundary = false;
     }
     return false;
   });

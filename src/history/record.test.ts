@@ -26,6 +26,7 @@ describe("historyPayload", () => {
     exitCode: 0,
     command: "root@web01:~$ docker ps",
     cwd: "/srv/ottr",
+    integrated: true,
   };
 
   it("正常命令 → 完整载荷（host_id/command/cwd/exit_code/session_id）", () => {
@@ -55,11 +56,27 @@ describe("historyPayload", () => {
   it("exit_code null（shell 未上报）照常入库", () => {
     expect(historyPayload(ctx, { ...ev, exitCode: null })?.exit_code).toBeNull();
   });
+
+  it("缺陷 45：integrated=false（无完整 shell 集成的会话）→ null（保守停用历史入库）", () => {
+    // 宁缺勿污：D-without-C 会话的「命令」实为输出行/提示符行——不入库。
+    expect(historyPayload(ctx, { ...ev, integrated: false })).toBeNull();
+    // integrated=true 照常入库，且 integrated 字段不进 HistoryInput 载荷
+    expect(historyPayload(ctx, { ...ev, integrated: true, command: "docker ps" })).toMatchObject({
+      host_id: 3,
+      command: "docker ps",
+    });
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        historyPayload(ctx, { ...ev, integrated: true }),
+        "integrated",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("recordCommand（fire-and-forget）", () => {
   it("正常命令 → invoke history_insert 一次；失败静默不抛", async () => {
-    recordCommand(ctx, { exitCode: 1, command: "grep x /nope", cwd: null });
+    recordCommand(ctx, { exitCode: 1, command: "grep x /nope", cwd: null, integrated: true });
     expect(mockedInvoke).toHaveBeenCalledTimes(1);
     expect(mockedInvoke).toHaveBeenCalledWith("history_insert", {
       input: {
@@ -73,19 +90,24 @@ describe("recordCommand（fire-and-forget）", () => {
 
     mockedInvoke.mockRejectedValueOnce(new Error("vault closed"));
     expect(() =>
-      recordCommand(ctx, { exitCode: 0, command: "ls", cwd: null }),
+      recordCommand(ctx, { exitCode: 0, command: "ls", cwd: null, integrated: true }),
     ).not.toThrow();
     await vi.waitFor(() => expect(mockedInvoke).toHaveBeenCalledTimes(2));
   });
 
   it("噪声/空白命令不发 invoke", () => {
-    recordCommand(ctx, { exitCode: 0, command: "  ", cwd: null });
+    recordCommand(ctx, { exitCode: 0, command: "  ", cwd: null, integrated: true });
+    expect(mockedInvoke).not.toHaveBeenCalled();
+  });
+
+  it("缺陷 45：D-only 会话（integrated=false）不发 invoke（历史入库保守停用）", () => {
+    recordCommand(ctx, { exitCode: 0, command: "12:00 INFO tick", cwd: null, integrated: false });
     expect(mockedInvoke).not.toHaveBeenCalled();
   });
 });
 
 describe("双 D 去重（fix 1/5：注入幂等盲区的双集成重复完成事件）", () => {
-  const ev = { exitCode: 0, command: "docker ps", cwd: null };
+  const ev = { exitCode: 0, command: "docker ps", cwd: null, integrated: true };
 
   it("同 host+command 同秒重复完成事件只入一条（双 D 间隔毫秒级必同秒）", () => {
     vi.useFakeTimers();

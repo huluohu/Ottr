@@ -598,7 +598,7 @@ button[data-active="true"] {
   flex-wrap: wrap;
 }
 .import-sources button {
-  border: 1px solid var(--color-border, rgba(128, 128, 128, 0.4));
+  border: 1px solid var(--border-subtle);
   background: transparent;
   color: inherit;
   border-radius: 6px;
@@ -1090,23 +1090,8 @@ button[data-active="true"] {
   color: var(--fg-muted);
 }
 
-/* --- A10 主题切换器（f388463 回归修复）：顶栏三联按钮虽已改单按钮下拉
-   （.topbar-menu 壳），但设置页 SecuritySettings 的外观分区仍渲染
-   .theme-switch 三联按钮——样式原样保留（自 f388463^ 找回），否则回落
-   全局按钮样式（视觉回归）。 --- */
-.theme-switch {
-  display: flex;
-  gap: 6px;
-}
-.theme-switch button {
-  font-size: 0.8em;
-  padding: 0.25em 0.55em;
-  box-shadow: none;
-}
-.theme-switch button[data-active="true"] {
-  border-color: var(--color-accent);
-  color: var(--color-accent-text);
-}
+/* --- A10 主题切换器：设置页三联按钮已迁 SegmentedControl（.ui-segmented，
+ * Task 1 / UI 审计 A2 清偿，样式见文件尾「基础控件」段）。 --- */
 
 /* --- 标签化终端主区（Task 7，A6）--- */
 .main-area.terminal-mode {
@@ -3125,7 +3110,7 @@ button[data-active="true"] {
   width: 14px;
   height: 14px;
   flex: none;
-  border: 1.5px solid var(--color-border, rgba(128, 128, 128, 0.5));
+  border: 1.5px solid var(--border-subtle);
   border-radius: 4px;
   display: inline-block;
 }
@@ -3558,4 +3543,119 @@ button[data-active="true"] {
   align-items: center;
   gap: 6px;
   margin: 3px 0;
+}
+
+/* --- 基础控件（Task 1，UI 审计 A2）：Switch/Checkbox/SegmentedControl 自绘 ---
+ * 视觉家族基准 = 批量勾选的 accent（mint）实底选中态（.host-check）。
+ * 全部走主题令牌，无颜色字面值（fallback 仅兜底）。原生 input
+ * appearance:none 自绘——键盘/表单/读屏语义零损失；组件层唯一挂载点
+ * （全仓守卫 src/ui/ui-no-native-controls.test.ts 防裸写复发）。 */
+
+.ui-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 999px;
+  background-color: var(--color-surface, transparent);
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
+  vertical-align: middle;
+}
+.ui-switch::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  transform: translateY(-50%);
+  transition: left 140ms ease, background-color 140ms ease;
+}
+.ui-switch:checked {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.ui-switch:checked::before {
+  left: calc(100% - 14px);
+  background: var(--color-on-accent);
+}
+.ui-switch:focus-visible,
+.ui-checkbox:focus-visible {
+  outline: 2px solid var(--color-accent-text);
+  outline-offset: 2px;
+}
+.ui-switch:disabled,
+.ui-checkbox:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 勾选框：14px 方框 + mint 实底勾选态（.host-check 同款制式） */
+.ui-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-grid;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 4px;
+  background-color: var(--color-surface, transparent);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+  vertical-align: middle;
+}
+.ui-checkbox::after {
+  content: "";
+  width: 4px;
+  height: 8px;
+  border: solid var(--color-on-accent);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-1px);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.ui-checkbox:checked {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.ui-checkbox:checked::after {
+  opacity: 1;
+}
+
+/* 三选段控（互斥单选）：选中段 accent 实底 + on-accent 前景，同一 mint 家族 */
+.ui-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background-color: var(--color-surface, transparent);
+}
+.ui-segmented button {
+  font-size: 0.8em;
+  padding: 0.25em 0.7em;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+.ui-segmented button[data-active="true"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
 }

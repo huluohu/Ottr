@@ -35,6 +35,7 @@ import {
 } from "./SyncStore";
 import { buildTransport, loadChannelSettings } from "./SyncSettings";
 import { ConflictDialog, EntryList, entrySummaries } from "./ConflictDialog";
+import { Checkbox } from "../ui/Checkbox";
 import type { SyncTransport } from "./transport";
 import { openEnvelope, utf8 } from "./envelope";
 
@@ -324,9 +325,8 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
               />
             </label>
             <label className="settings-row">
-              <input
-                type="checkbox"
-                data-testid="sync-askpass-save"
+              <Checkbox
+                testid="sync-askpass-save"
                 checked={askpassSave}
                 onChange={(e) => setAskpassSave(e.currentTarget.checked)}
               />
@@ -367,9 +367,8 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
               <legend>{t("sync.dialog.pushScope")}</legend>
               {SYNC_CATEGORIES.map((cat) => (
                 <label key={cat} className="sync-scope-row">
-                  <input
-                    type="checkbox"
-                    data-testid={`push-scope-${cat}`}
+                  <Checkbox
+                    testid={`push-scope-${cat}`}
                     checked={pushScope.includes(cat)}
                     onChange={(e) => {
                       const on = e.currentTarget.checked;
@@ -399,9 +398,8 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
                 return (
                   <div key={cat}>
                     <label className="sync-scope-row">
-                      <input
-                        type="checkbox"
-                        data-testid={`restore-scope-${cat}`}
+                      <Checkbox
+                        testid={`restore-scope-${cat}`}
                         checked={checked}
                         onChange={(e) => {
                           const on = e.currentTarget.checked;

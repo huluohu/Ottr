@@ -20,6 +20,7 @@ import {
 } from "../vault/api";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
+import { Checkbox } from "../ui/Checkbox";
 
 export interface ForwardPanelProps {
   open: boolean;
@@ -319,9 +320,8 @@ export function ForwardPanel({ open, onClose }: ForwardPanelProps) {
                 </span>
                 <span className="forward-actions">
                   <label className="forward-flag" title={t("forward.enabledHint")}>
-                    <input
-                      type="checkbox"
-                      data-testid={`forward-enabled-${row.id}`}
+                    <Checkbox
+                      testid={`forward-enabled-${row.id}`}
                       checked={row.enabled}
                       onChange={() => void handleToggleEnabled(row)}
                     />
@@ -440,18 +440,16 @@ export function ForwardPanel({ open, onClose }: ForwardPanelProps) {
             )}
             <div className="forward-form-flags">
               <label className="forward-flag">
-                <input
-                  type="checkbox"
-                  data-testid="forward-form-enabled"
+                <Checkbox
+                  testid="forward-form-enabled"
                   checked={form.enabled}
                   onChange={(e) => { const c = e.currentTarget.checked; setForm((f) => ({ ...f, enabled: c })); }}
                 />
                 {t("forward.enabled")}
               </label>
               <label className="forward-flag">
-                <input
-                  type="checkbox"
-                  data-testid="forward-form-auto-reconnect"
+                <Checkbox
+                  testid="forward-form-auto-reconnect"
                   checked={form.autoReconnect}
                   onChange={(e) => { const c = e.currentTarget.checked; setForm((f) => ({ ...f, autoReconnect: c })); }}
                 />

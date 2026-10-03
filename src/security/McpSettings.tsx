@@ -15,6 +15,8 @@ import {
   type McpGrantInput,
   type McpStatus,
 } from "../vault/api";
+import { Switch } from "../ui/Switch";
+import { Checkbox } from "../ui/Checkbox";
 
 export interface McpSettingsProps {
   open: boolean;
@@ -136,9 +138,8 @@ export function McpSettings({ open, onClose }: McpSettingsProps) {
           <h3>{t("mcp.serverSection")}</h3>
           <label className="settings-row" data-testid="mcp-enabled-row">
             <span className="settings-label">{t("mcp.enabled")}</span>
-            <input
-              type="checkbox"
-              data-testid="mcp-enabled-toggle"
+            <Switch
+              testid="mcp-enabled-toggle"
               checked={status?.enabled ?? false}
               onChange={(e) => toggleEnabled(e.currentTarget.checked)}
             />
@@ -183,27 +184,24 @@ export function McpSettings({ open, onClose }: McpSettingsProps) {
             <div key={g.id} className="settings-row mcp-grant-row" data-testid={`mcp-grant-${g.host_id}`}>
               <span className="settings-label">{hostName(g.host_id)}</span>
               <label>
-                <input
-                  type="checkbox"
-                  data-testid={`mcp-can-list-${g.host_id}`}
+                <Checkbox
+                  testid={`mcp-can-list-${g.host_id}`}
                   checked={g.can_list}
                   onChange={(e) => flipGrant(g, { can_list: e.currentTarget.checked })}
                 />{" "}
                 {t("mcp.canList")}
               </label>
               <label>
-                <input
-                  type="checkbox"
-                  data-testid={`mcp-can-exec-${g.host_id}`}
+                <Checkbox
+                  testid={`mcp-can-exec-${g.host_id}`}
                   checked={g.can_exec}
                   onChange={(e) => flipGrant(g, { can_exec: e.currentTarget.checked })}
                 />{" "}
                 {t("mcp.canExec")}
               </label>
               <label>
-                <input
-                  type="checkbox"
-                  data-testid={`mcp-approval-${g.host_id}`}
+                <Checkbox
+                  testid={`mcp-approval-${g.host_id}`}
                   checked={g.exec_approval}
                   onChange={(e) => flipGrant(g, { exec_approval: e.currentTarget.checked })}
                 />{" "}

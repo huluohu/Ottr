@@ -16,6 +16,8 @@ import { vaultApi, type AlertRule, type AlertRuleKind, type ChannelKind, type Ho
 import { useVaultStore } from "../vault/store";
 import { engine } from "./rules";
 import { remountChannels, testChannel } from "./channelRegistry";
+import { Switch } from "../ui/Switch";
+import { Checkbox } from "../ui/Checkbox";
 import {
   CHANNEL_FIELD_SPECS,
   CHANNEL_REQUIRED,
@@ -474,9 +476,8 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
               ))}
               <label className="settings-row">
                 <span className="settings-label">{t("alert.fieldEnabled")}</span>
-                <input
-                  type="checkbox"
-                  data-testid="alert-channel-enabled"
+                <Switch
+                  testid="alert-channel-enabled"
                   checked={channelDraft.enabled}
                   onChange={(e) => setChannelDraft({ ...channelDraft, enabled: e.currentTarget.checked })}
                 />
@@ -616,9 +617,8 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
                 {channels.length === 0 && <p className="settings-hint">{t("alert.errNoChannelHint")}</p>}
                 {channels.map((c) => (
                   <label key={c.id} className="notify-mute-row">
-                    <input
-                      type="checkbox"
-                      data-testid={`alert-rule-channel-${c.id}`}
+                    <Checkbox
+                      testid={`alert-rule-channel-${c.id}`}
                       checked={ruleDraft.channels.includes(c.id)}
                       onChange={() => toggleDraftChannel(c.id)}
                     />

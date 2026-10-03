@@ -20,6 +20,8 @@ import { parseItermColors } from "../theme/importers/iterm";
 import { parseWintermSchemes } from "../theme/importers/winterm";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
+import { Switch } from "../ui/Switch";
+import { SegmentedControl } from "../ui/SegmentedControl";
 import { useVaultLockStore } from "./VaultLockStore";
 import { SyncSettings } from "../sync/SyncSettings";
 
@@ -382,9 +384,8 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
           {/* B9（Task 6）：主机指纹巡检——默认关（主动出网行为），间隔可配 */}
           <label className="settings-row" data-testid="hostkey-audit-row">
             <span className="settings-label">{t("security.hostkeyAudit")}</span>
-            <input
-              type="checkbox"
-              data-testid="hostkey-audit-toggle"
+            <Switch
+              testid="hostkey-audit-toggle"
               checked={hostkeyAudit ?? false}
               onChange={(e) => {
                 const on = e.currentTarget.checked;
@@ -423,9 +424,8 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
             <>
               <label className="settings-row" data-testid="sudo-autofill-row">
                 <span className="settings-label">{t("security.sudoAutofill")}</span>
-                <input
-                  type="checkbox"
-                  data-testid="sudo-autofill-toggle"
+                <Switch
+                  testid="sudo-autofill-toggle"
                   checked={sudoAutofill ?? false}
                   onChange={(e) => {
                     const on = e.currentTarget.checked;
@@ -482,25 +482,22 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
           <h3>{t("settings.sectionAppearance")}</h3>
           <div className="settings-row">
             <span className="settings-label">{t("settings.theme")}</span>
-            <div className="theme-switch" role="group" aria-label={t("settings.theme")}>
-              {THEME_CHOICES.map((m) => (
-                <button
-                  key={m}
-                  data-active={themeMode === m}
-                  aria-pressed={themeMode === m}
-                  onClick={() => setMode(m)}
-                >
-                  {t(`settings.theme${m[0].toUpperCase()}${m.slice(1)}`)}
-                </button>
-              ))}
-            </div>
+            {/* 三选段控（Task 1，A2）：互斥单选语义的正确载体（旧 .theme-switch 三联） */}
+            <SegmentedControl
+              ariaLabel={t("settings.theme")}
+              value={themeMode}
+              onChange={setMode}
+              options={THEME_CHOICES.map((m) => ({
+                value: m,
+                label: t(`settings.theme${m[0].toUpperCase()}${m.slice(1)}`),
+              }))}
+            />
           </div>
           {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。 */}
           <label className="settings-row" data-testid="close-to-tray-row">
             <span className="settings-label">{t("settings.closeToTray")}</span>
-            <input
-              type="checkbox"
-              data-testid="close-to-tray-toggle"
+            <Switch
+              testid="close-to-tray-toggle"
               checked={closeToTray ?? true}
               onChange={(e) => {
                 const on = e.currentTarget.checked;
@@ -514,9 +511,8 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               数据源）。关 = attach 不探测不注入；已自带集成的远端自动跳过。 */}
           <label className="settings-row" data-testid="shell-integration-row">
             <span className="settings-label">{t("settings.shellIntegration")}</span>
-            <input
-              type="checkbox"
-              data-testid="shell-integration-toggle"
+            <Switch
+              testid="shell-integration-toggle"
               checked={shellIntegration ?? true}
               onChange={(e) => {
                 const on = e.currentTarget.checked;

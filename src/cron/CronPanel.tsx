@@ -15,6 +15,7 @@ import { vaultApi, type Host, type NotifyChannel } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { cronApi, type CronJob, type CronJobInput, type CronRun, type CronRunStatus } from "./api";
 import { useCronStore } from "./cronStore";
+import { Checkbox } from "../ui/Checkbox";
 
 export interface CronPanelProps {
   open: boolean;
@@ -361,9 +362,8 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
                 </span>
                 <span className="forward-actions">
                   <label className="forward-flag" title={t("cron.enabledHint")}>
-                    <input
-                      type="checkbox"
-                      data-testid={`cron-enabled-${row.id}`}
+                    <Checkbox
+                      testid={`cron-enabled-${row.id}`}
                       checked={row.enabled}
                       onChange={() => void handleToggle(row)}
                     />
@@ -464,9 +464,8 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
                 <legend>{t("cron.channels")}</legend>
                 {channels.map((c) => (
                   <label key={c.id} className="forward-flag">
-                    <input
-                      type="checkbox"
-                      data-testid={`cron-form-channel-${c.id}`}
+                    <Checkbox
+                      testid={`cron-form-channel-${c.id}`}
                       checked={form.channels.includes(c.id)}
                       onChange={(e) => {
                         const checked = e.currentTarget.checked;
@@ -485,9 +484,8 @@ export function CronPanel({ open, onClose }: CronPanelProps) {
             )}
             <div className="forward-form-flags">
               <label className="forward-flag">
-                <input
-                  type="checkbox"
-                  data-testid="cron-form-enabled"
+                <Checkbox
+                  testid="cron-form-enabled"
                   checked={form.enabled}
                   onChange={(e) => {
                     const c = e.currentTarget.checked;

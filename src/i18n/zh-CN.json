@@ -1074,6 +1074,7 @@
       "doneConflict": "已按裁定合并并推送回云端。",
       "applied": "落库 {{applied}} 类 · 跳过 {{skipped}} 行",
       "failed": "同步失败",
+      "checkTimeout": "检查超时：钥匙链或同步通道长时间无响应。可重试，或关闭后稍后再试。",
       "retry": "重试",
       "close": "关闭"
     },

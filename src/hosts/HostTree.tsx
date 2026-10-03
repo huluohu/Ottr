@@ -234,7 +234,7 @@ export function HostTree({
         if (filtering && groupHosts.length === 0) return null;
         return (
           <section key={group.id} className="tree-group" data-testid={`group-${group.name}`}>
-            <h3>{group.name}</h3>
+            <GroupHead name={group.name} />
             <HostItems
               hosts={groupHosts}
               selectedId={selectedId}
@@ -257,7 +257,7 @@ export function HostTree({
         if (!ungrouped || ungrouped.length === 0) return null;
         return (
           <section className="tree-group" data-testid="group-ungrouped">
-            <h3>{t("hostTree.ungrouped")}</h3>
+            <GroupHead name={t("hostTree.ungrouped")} />
             <HostItems
               hosts={ungrouped}
               selectedId={selectedId}
@@ -330,64 +330,98 @@ function HostItems({
               >
                 <span className="host-check" aria-hidden="true" />
                 <span className="host-name">{host.name}</span>
+                {host.tags.length > 0 && (
+                  <span className="host-tags">
+                    {host.tags.map((tag) => (
+                      <span key={tag} className="host-tag">
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                )}
                 <span className="host-subtitle">{subtitle}</span>
               </button>
-              <span className="host-tags">
-                {host.tags.map((tag) => (
-                  <span key={tag} className="host-tag">
-                    {tag}
-                  </span>
-                ))}
-              </span>
             </li>
           );
         }
+        const confirming = deletingId === host.id;
         return (
-          <li key={host.id} className="tree-host" data-selected={selectedId === host.id}>
+          <li
+            key={host.id}
+            className="tree-host"
+            data-selected={selectedId === host.id}
+            data-confirming={confirming || undefined}
+          >
             <button
               className="host-row"
               onClick={() => onSelect(host)}
               onDoubleClick={() => onOpen(host)}
             >
               <span className="host-name">{host.name}</span>
+              {host.tags.length > 0 && (
+                <span className="host-tags">
+                  {host.tags.map((tag) => (
+                    <span key={tag} className="host-tag">
+                      {tag}
+                    </span>
+                  ))}
+                </span>
+              )}
               <span className="host-subtitle">{subtitle}</span>
             </button>
-            <span className="host-tags">
-              {host.tags.map((tag) => (
-                <span key={tag} className="host-tag">
-                  {tag}
-                </span>
-              ))}
-            </span>
-            <button
-              className="icon-btn"
-              aria-label={t("hostTree.editAria", { name: host.name })}
-              onClick={() => onEdit(host)}
-            >
-              ✎
-            </button>
-            {deletingId === host.id ? (
-              <span className="host-confirm">
-                <span className="confirm-hint">{t("hostTree.confirmDelete")}</span>
-                <button className="icon-btn danger" onClick={() => onDelete(host.id)}>
-                  {t("common.confirm")}
-                </button>
-                <button className="icon-btn" onClick={() => setDeletingId(null)}>
-                  {t("common.cancel")}
-                </button>
-              </span>
-            ) : (
+            <span className="host-actions">
               <button
-                className="icon-btn danger"
-                aria-label={t("hostTree.deleteAria", { name: host.name })}
-                onClick={() => setDeletingId(host.id)}
+                className="icon-btn"
+                aria-label={t("hostTree.editAria", { name: host.name })}
+                onClick={() => onEdit(host)}
               >
-                ✕
+                ✎
               </button>
-            )}
+              {confirming ? (
+                <span className="host-confirm">
+                  <span className="confirm-hint">{t("hostTree.confirmDelete")}</span>
+                  <button className="icon-btn danger" onClick={() => onDelete(host.id)}>
+                    {t("common.confirm")}
+                  </button>
+                  <button className="icon-btn" onClick={() => setDeletingId(null)}>
+                    {t("common.cancel")}
+                  </button>
+                </span>
+              ) : (
+                <button
+                  className="icon-btn danger"
+                  aria-label={t("hostTree.deleteAria", { name: host.name })}
+                  onClick={() => setDeletingId(host.id)}
+                >
+                  ✕
+                </button>
+              )}
+            </span>
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** 分组头（区块锚点）：文件夹描边图标 + 分组名，弱化色不抢行内容的戏。 */
+function GroupHead({ name }: { name: string }) {
+  return (
+    <h3 className="tree-group-head">
+      <svg
+        className="tree-group-icon"
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M1.75 4.4c0-.63.5-1.15 1.13-1.15h3.05c.32 0 .63.14.85.38l1 1.1h5.34c.63 0 1.13.51 1.13 1.14v5.73c0 .63-.5 1.15-1.13 1.15H2.88c-.63 0-1.13-.52-1.13-1.15V4.4Z" />
+      </svg>
+      <span>{name}</span>
+    </h3>
   );
 }

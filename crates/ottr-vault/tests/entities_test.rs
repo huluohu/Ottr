@@ -555,7 +555,8 @@ fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
         let vault = open_vault(dir.path());
         HostGroups::create(&vault, "legacy", None, None).unwrap();
     }
-    // 模拟旧库：版本拨回 17 + 摘索引 + 直插一行同根级同名（历史缺陷产物）
+    // 模拟旧库：版本拨回 17 + 摘索引 + 摘 0020 列（拨回夹具同口径，防重放
+    // 撞「duplicate column name」）+ 直插一行同根级同名（历史缺陷产物）
     let db = dir.path().join("vault.db");
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
@@ -563,6 +564,7 @@ fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
             "UPDATE meta SET value='17' WHERE key='schema_version';
              DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
              DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;
+             ALTER TABLE notifications DROP COLUMN delivery_failures;
              INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
                SELECT name, parent_id, color, created_at, updated_at
                FROM host_groups WHERE name = 'legacy';",
@@ -1353,13 +1355,16 @@ fn migration_0012_legacy_v11_rows_default_to_zero() {
         Hosts::create(&vault, host_input("legacy-row", "")).unwrap();
     }
     // 手工把 schema_version 拨回 11 + 摘掉 is_production 列 + 摘掉 0018 索引
+    // + 摘掉 0020 投递失败标记列
     // → 模拟旧库重开（版本与 DDL 同事务提交，真实旧库不会有 0018 索引；
-    // 拨回夹具须同口径，否则重跑 0018 撞「index already exists」）。
+    // 拨回夹具须同口径，否则重跑 0018 撞「index already exists」、重跑 0020
+    // 撞「duplicate column name」）。
     let db = dir.path().join("vault.db");
     let conn = rusqlite::Connection::open(&db).unwrap();
     conn.execute_batch(
         "UPDATE meta SET value='11' WHERE key='schema_version';
          ALTER TABLE hosts DROP COLUMN is_production;
+         ALTER TABLE notifications DROP COLUMN delivery_failures;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;",
     )

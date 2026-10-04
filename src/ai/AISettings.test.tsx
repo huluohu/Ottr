@@ -26,28 +26,30 @@ const EXISTING = [
   },
 ];
 
+function backendInvoke(cmd: string, args?: { key?: string }) {
+  switch (cmd) {
+    case "settings_get":
+      if (args?.key === "ai_providers") return Promise.resolve(EXISTING);
+      if (args?.key === "ai.enabled") return Promise.resolve(true);
+      if (args?.key === "redaction")
+        return Promise.resolve({ hostname: true, custom: [] });
+      if (args?.key === "ai.max_tokens") return Promise.resolve(1024);
+      return Promise.resolve(null);
+    case "secret_get":
+      return Promise.resolve("sk-saved");
+    case "secret_contains":
+      return Promise.resolve(true);
+    case "secret_set":
+    case "secret_delete":
+    case "settings_set":
+      return Promise.resolve(null);
+    default:
+      return Promise.resolve(null);
+  }
+}
+
 function mockBackend() {
-  mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
-    switch (cmd) {
-      case "settings_get":
-        if (args?.key === "ai_providers") return Promise.resolve(EXISTING);
-        if (args?.key === "ai.enabled") return Promise.resolve(true);
-        if (args?.key === "redaction")
-          return Promise.resolve({ hostname: true, custom: [] });
-        if (args?.key === "ai.max_tokens") return Promise.resolve(1024);
-        return Promise.resolve(null);
-      case "secret_get":
-        return Promise.resolve("sk-saved");
-      case "secret_contains":
-        return Promise.resolve(true);
-      case "secret_set":
-      case "secret_delete":
-      case "settings_set":
-        return Promise.resolve(null);
-      default:
-        return Promise.resolve(null);
-    }
-  });
+  mockedInvoke.mockImplementation(backendInvoke);
 }
 
 afterEach(() => cleanup());
@@ -65,6 +67,45 @@ describe("provider 列表与 CRUD", () => {
     });
     expect(screen.getByTestId("ai-provider-p1").textContent).toContain("默认");
     expect(screen.getByTestId("ai-provider-p1").textContent).toContain("deepseek-chat");
+  });
+
+  it("mock kind provider 卡带「测试用」徽标；真实 kind 无徽标（批次三 T3，审计 16）", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([
+          ...EXISTING,
+          {
+            id: "pm",
+            name: "本地 Mock",
+            kind: "mock",
+            baseURL: "http://127.0.0.1:8080/v1",
+            model: "mock-model",
+          },
+        ]);
+      }
+      return backendInvoke(cmd, args);
+    });
+    render(<AISettings open onClose={() => {}} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("ai-provider-pm")).toBeTruthy();
+    });
+    expect(screen.getByTestId("ai-mock-badge-pm").textContent).toBe("测试用");
+    // kind 摘要行显示 Mock（非「OpenAI 兼容」）
+    expect(screen.getByTestId("ai-provider-pm").textContent).toContain("Mock · mock-model");
+    // 真实 provider 无徽标
+    expect(screen.queryByTestId("ai-mock-badge-p1")).toBeNull();
+  });
+
+  it("表单 kind 选 Mock：不自动填 baseURL（测试端点地址显式给）", async () => {
+    render(<AISettings open onClose={() => {}} />);
+    fireEvent.click(await screen.findByTestId("ai-add-provider"));
+    fireEvent.change(screen.getByTestId("ai-field-kind"), { target: { value: "mock" } });
+    expect((screen.getByTestId("ai-field-baseurl") as HTMLInputElement).value).toBe("");
+    // 对照：切回 openai 兼容自动填官方端点（既有行为不回归）
+    fireEvent.change(screen.getByTestId("ai-field-kind"), {
+      target: { value: "openai-compatible" },
+    });
+    expect((screen.getByTestId("ai-field-baseurl") as HTMLInputElement).value).not.toBe("");
   });
 
   it("新增 provider（填 key）→ settings_set 全量 + secret_set 密封", async () => {

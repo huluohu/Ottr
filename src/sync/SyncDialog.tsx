@@ -579,7 +579,10 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
             <p className="dialog-intro" data-testid="sync-running">
               {t("sync.dialog.running")}
             </p>
-            {/* I-1(b) 披露：关闭 = 放弃的语义与守卫边界，用户在点关闭前可见。 */}
+            {/* I-1(b) 披露：关闭 = 放弃的语义与守卫边界，用户在点关闭前可见。
+                残余窗口补句（批次三 T3）：放弃瞬间已在写入的最后一步（本机 IPC，
+                毫秒级）不可拦截，但基线被拦——结局是下次打开同步时如实显示
+                push/conflict 差异，绝不会是「synced 谎报 + 编辑静默丢失」。 */}
             <p className="settings-hint" data-testid="sync-running-abandon-hint">
               {t("sync.dialog.abandonHint")}
             </p>

@@ -86,6 +86,41 @@ describe("渲染（空查询）", () => {
   });
 });
 
+describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", () => {
+  it("空查询渲染三组节标题，条目按组聚拢（连接 → 面板 → 系统）", () => {
+    renderPalette({ hosts: [] });
+    expect(screen.getByText("连接与会话")).toBeTruthy();
+    expect(screen.getByText("面板与 AI")).toBeTruthy();
+    expect(screen.getByText("系统")).toBeTruthy();
+    // 组内首条 = 连接组第一项（新建主机是连接类第一动作）
+    const items = () =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".palette-item"));
+    expect(items()[0].textContent).toContain("新建主机");
+    expect(items()[3].textContent).toContain("命令面板"); // 面板组第一项
+    expect(items()[6].textContent).toContain("设置"); // 系统组第一项
+  });
+
+  it("过滤态退扁平相关度排序：子组标题隐藏，命令/主机区头保持", () => {
+    renderPalette({ hosts: [] });
+    fireEvent.input(screen.getByTestId("palette-input"), { target: { value: "切" } });
+    expect(screen.queryByText("连接与会话")).toBeNull();
+    expect(screen.queryByText("面板与 AI")).toBeNull();
+    expect(screen.queryByText("系统")).toBeNull();
+    expect(screen.getByText("命令")).toBeTruthy();
+  });
+
+  it("每条目带类型图标（命令/主机两型 SVG，data-icon 区分）", () => {
+    renderPalette();
+    const icons = document.querySelectorAll<SVGElement>(".palette-icon");
+    // 11 命令 + 2 主机 = 13 个图标
+    expect(icons.length).toBe(ACTIONS.length + 2);
+    const cmdIcon = icons[0];
+    expect(cmdIcon.getAttribute("data-icon")).toBe("command");
+    const hostIcon = Array.from(icons).find((el) => el.getAttribute("data-icon") === "host");
+    expect(hostIcon).toBeTruthy();
+  });
+});
+
 describe("模糊过滤 + 高亮", () => {
   it("查询命中命令标签与主机名，未命中的区整体消失", () => {
     const { items } = renderPalette();
@@ -133,10 +168,10 @@ describe("键盘导航", () => {
     expect(activeIndex()).toBe(ACTIONS.length - 1); // 循环到末尾
   });
 
-  it("Enter 执行第 0 项命令（palette.toggle）", () => {
+  it("Enter 执行第 0 项命令（hosts.new——分组后连接组居首）", () => {
     const { props } = renderPalette({ hosts: [] });
     fireEvent.keyDown(screen.getByTestId("palette-input"), { key: "Enter" });
-    expect(props.onAction).toHaveBeenCalledWith("palette.toggle");
+    expect(props.onAction).toHaveBeenCalledWith("hosts.new");
   });
 
   it("过滤后 Enter 连接命中的主机", () => {

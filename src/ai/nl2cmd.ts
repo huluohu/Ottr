@@ -19,6 +19,8 @@
 //   （总开关只管 exit_code≠0 的自动触发）。
 // * 完成不落通知：面板是用户注视中的轻量输入条，通知是噪音（诊断面板落通知
 //   是因为它由后台失败事件触发）。
+// * 完成轮入 rounds 账（批次三 T2，审计 ⌘J「生成结果无历史」）：面板「最近
+//   生成」区回看往轮（含重开后），close/begin 不清、容量封顶（NL_ROUNDS_CAP）。
 import { create } from "zustand";
 import i18n from "../i18n";
 import { vaultApi } from "../vault/api";
@@ -84,6 +86,19 @@ export type NlStatus = "idle" | "running" | "done" | "aborted" | "error";
 /** 错误细分：未配 provider / 读 key 失败 / 端点错误 / 空结果（无可用命令）。 */
 export type NlErrorKind = "noProvider" | "noKey" | "request" | "empty";
 
+/** 一轮已完成的生成（批次三 T2，审计 ⌘J 21/22「生成结果无历史」）：输入原文
+ * + sanitize 产物 + danger 分档。面板生命周期 = webview 会话级：close/begin
+ * 均不清（「不随失焦/重开丢结果」的回看面），仅容量封顶防无界增长。 */
+export interface NlRound {
+  input: string;
+  command: string;
+  level: TrafficLight;
+  ts: number;
+}
+
+/** 保留最近 N 轮（模块级 store 无持久化需求，与限频/锁存表同款口径）。 */
+export const NL_ROUNDS_CAP = 10;
+
 interface NlStore {
   input: string;
   status: NlStatus;
@@ -99,6 +114,8 @@ interface NlStore {
   settingsUsed: AiSettings | null;
   /** 打开面板时锚定的当前目录（OSC7 活值；无则 null）。 */
   cwd: string | null;
+  /** 已完成轮次（最新在前；done 时追加。close/begin 不清——回看面）。 */
+  rounds: NlRound[];
 
   /** 打开时重置（App 持开关；cwd 由 CwdTracker 按聚焦 pane 查询注入）。 */
   begin: (cwd: string | null) => void;
@@ -107,7 +124,7 @@ interface NlStore {
   submit: () => Promise<void>;
   /** 取消在途请求。 */
   abort: () => void;
-  /** 关闭面板的清场（在途请求一并 abort）。 */
+  /** 关闭面板的清场（在途请求一并 abort；rounds 保留）。 */
   close: () => void;
 }
 
@@ -124,6 +141,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
   error: null,
   settingsUsed: null,
   cwd: null,
+  rounds: [],
 
   begin: (cwd) => {
     get().abort();
@@ -159,6 +177,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
       errorKind: null,
       error: null,
       settingsUsed: null,
+      // rounds 刻意保留（批次三 T2）：面板重开可回看往轮结果
     });
   },
 
@@ -226,7 +245,17 @@ export const useNlStore = create<NlStore>((set, get) => ({
             set({ status: "error", errorKind: "empty", error: null });
           } else {
             // 出口防线：生成的命令过 danger 分级（红黄绿决定确认档）
-            set({ status: "done", command, level: classify(command).level });
+            const level = classify(command).level;
+            // 完成轮入账（最新在前，容量封顶）——面板「最近生成」回看面
+            set((st) => ({
+              status: "done",
+              command,
+              level,
+              rounds: [{ input, command, level, ts: Date.now() }, ...st.rounds].slice(
+                0,
+                NL_ROUNDS_CAP,
+              ),
+            }));
           }
         } else {
           set({ status: "aborted" });

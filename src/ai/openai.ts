@@ -14,8 +14,10 @@ export interface ProviderMeta {
   id: string;
   /** 展示名。 */
   name: string;
-  /** 实现种类：openai 兼容端点（含 DeepSeek/Ollama）或 Anthropic。 */
-  kind: "openai-compatible" | "anthropic";
+  /** 实现种类：openai 兼容端点（含 DeepSeek/Ollama）、Anthropic，或 mock
+   * （测试端点——批次三 T3 审计 16：与真实 provider 同视觉权重易误用，设置页
+   * 加「测试用」徽标；协议面按 openai 兼容走，badge 仅展示语义）。 */
+  kind: "openai-compatible" | "anthropic" | "mock";
   /** 端点根（约定见 provider.ts 文件头）。 */
   baseURL: string;
   /** 模型名（gpt-4o-mini / deepseek-chat / qwen2.5:7b …）。 */

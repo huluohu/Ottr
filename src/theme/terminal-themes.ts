@@ -7,7 +7,13 @@
 // 生产环境主机红色边框（B11）复用 brightRed（brand.md 备注）。
 import type { ITheme } from "@xterm/xterm";
 
-/** 亮色 ANSI：亮底（暖纸白）上取深值保证可读；bright 取品牌本色。 */
+/** 亮色 ANSI：亮底（暖纸白）上取深值保证可读；bright 取品牌本色。
+ * ui-batch3 T1（审计 A3）校准：bright 六色原取暗色高饱和值直接换算，作
+ * 前景对 #faf7f1 仅 2.01–3.33（brightRed/brightGreen/brightYellow/brightBlue/
+ * brightMagenta/brightCyan）——沿本文件 brightWhite 既有先例（亮底主题
+ * bright 变体为可读性让位，One Light 惯例）全部改深档同色相，≥4.5：
+ * #c0392b 5.09 / #0c8073 4.51 / #a16207 4.60 / #2273a8 4.81 / #a8458f 5.02 /
+ * #0a6880 5.94（与各自 normal 槽仍可区分）。 */
 const LIGHT_ANSI = {
   black: "#0f172a", // ink-900
   red: "#b34a42",
@@ -18,12 +24,12 @@ const LIGHT_ANSI = {
   cyan: "#0e7490",
   white: "#5a6b70",
   brightBlack: "#46626b",
-  brightRed: "#d97066", // brand.md 点名的 red 系
-  brightGreen: "#14b8a6", // teal-500
-  brightYellow: "#f59e0b", // amber-500
-  brightBlue: "#2b8fcc",
-  brightMagenta: "#c586c0",
-  brightCyan: "#22b8cd",
+  brightRed: "#c0392b", // A3 校准（原 #d97066 3.04）
+  brightGreen: "#0c8073", // A3 校准（原 teal-500 2.33）
+  brightYellow: "#a16207", // A3 校准（原 amber-500 2.01）
+  brightBlue: "#2273a8", // A3 校准（原 #2b8fcc 3.33）
+  brightMagenta: "#a8458f", // A3 校准（原 #c586c0 2.60）
+  brightCyan: "#0a6880", // A3 校准（原 #22b8cd 2.23）
   brightWhite: "#3d5560", // 亮底主题 brightWhite 取深色（One Light 惯例），保证作为前景可读
 } as const;
 

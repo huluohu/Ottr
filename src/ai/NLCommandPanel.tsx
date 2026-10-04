@@ -49,6 +49,7 @@ export function NLCommandPanel({
   const command = useNlStore((s) => s.command);
   const errorKind = useNlStore((s) => s.errorKind);
   const error = useNlStore((s) => s.error);
+  const rounds = useNlStore((s) => s.rounds);
   const setInput = useNlStore((s) => s.setInput);
   const submit = useNlStore((s) => s.submit);
   const abort = useNlStore((s) => s.abort);
@@ -140,6 +141,29 @@ export function NLCommandPanel({
             <CodeBlockRow code={command} rustId={rustId} inserter={inserter} />
           </div>
         )}
+
+        {/* 往轮回看（批次三 T2，审计 ⌘J「生成结果无历史」）：rounds 随 close/begin
+            保留（面板生命周期 = 会话级）；done 态主结果区即最新轮，跳过首位防重复。
+            每条复用公共 InsertRow——往轮命令同样可（分档确认）插终端。 */}
+        {(() => {
+          const prior = status === "done" ? rounds.slice(1) : rounds;
+          if (prior.length === 0) return null;
+          return (
+            <div className="nl-history" data-testid="nl2cmd-history">
+              <p className="nl-history-title">{t("ai.nl2cmd.history")}</p>
+              <ul className="nl-history-list">
+                {prior.map((r, i) => (
+                  <li key={`${r.ts}-${i}`} className="nl-history-item" data-testid="nl2cmd-history-item">
+                    <span className="nl-history-input" title={r.input}>
+                      {r.input}
+                    </span>
+                    <CodeBlockRow code={r.command} rustId={rustId} inserter={inserter} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
 
         {status === "aborted" && (
           <p className="ai-aborted" data-testid="nl2cmd-aborted">

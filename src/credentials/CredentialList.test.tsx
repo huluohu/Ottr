@@ -114,11 +114,28 @@ describe("CredentialList 删除确认", () => {
     const item = screen.getByTestId("cred-item-9");
     expect(item.textContent).toContain("Key");
     expect(item.textContent).toContain("1 hosts bound");
-    // 公钥摘要（base64 前 12 字符）可展示
-    expect(item.textContent).toContain("AAAAQUFQc3Bp…");
+    // key 指纹（批次三 T3 BL-529）：# + base36 短指纹（旧「base64 头 12 字符」
+    // 在同型 key 下恒同，改切指纹）
+    expect(item.querySelector(".cred-pub")?.textContent).toMatch(/^#[0-9a-z]+$/);
     // 私钥材料（即使是误传的 secret 字段）永不渲染
     expect(item.textContent).not.toContain("PRIVATE KEY");
     expect(item.textContent).not.toContain("BEGIN OPENSSH");
+  });
+
+  it("同型（ed25519）双凭据指纹互异（BL-529：头 12 字符病灶不可辨）", () => {
+    seedStore(
+      [host(1, 9), host(2, 10)],
+      [
+        cred(9, "key", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGx8vQ0Tc1a2 kate@web-01"),
+        cred(10, "key", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFz9wR1Ud2e3 ops@db-01"),
+      ],
+    );
+    render(<CredentialList />);
+    const fp9 = screen.getByTestId("cred-item-9").querySelector(".cred-pub")?.textContent;
+    const fp10 = screen.getByTestId("cred-item-10").querySelector(".cred-pub")?.textContent;
+    expect(fp9).toBeTruthy();
+    expect(fp10).toBeTruthy();
+    expect(fp9).not.toBe(fp10);
   });
 });
 

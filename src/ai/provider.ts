@@ -52,7 +52,9 @@ export interface AIProvider {
 }
 
 /** provider 工厂：meta.kind 分派到对应实现；apiKey 明文只经本调用注入
- * （出库自 vault secrets，随请求头存活，不落任何全局）。 */
+ * （出库自 vault secrets，随请求头存活，不落任何全局）。kind "mock"（测试
+ * 端点，批次三 T3）按 openai 兼容走协议——mock 语义只在设置页徽标（测试端点
+ * 通常就是本地起一个 OpenAI 兼容假服务，见 BL-503 的 mock AI 脚本）。 */
 export function createProvider(meta: ProviderMeta, apiKey: string): AIProvider {
   switch (meta.kind) {
     case "anthropic":

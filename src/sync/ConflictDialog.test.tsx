@@ -142,7 +142,7 @@ describe("ConflictDialog", () => {
     void canonicalEntries;
   });
 
-  it("credentials 摘要（fix round 1 Minor-1）：kind + key_pub 前缀指纹（无 key_pub → updated_at 日期）；secret 永不入摘要", () => {
+  it("credentials 摘要（Minor-1 + 批次三 T3 BL-529）：kind + key 指纹（同型互异；无 key_pub → updated_at 日期）；secret 永不入摘要", () => {
     const creds = dataWith("credentials", [
       {
         id: 3,
@@ -156,6 +156,18 @@ describe("ConflictDialog", () => {
       },
       {
         id: 4,
+        kind: "key",
+        // 同型（ed25519）第二条：base64 体不同 → 指纹必须互异（BL-529 病灶：
+        // 头 12 字符恒为算法名+类型前缀，双凭据摘要全同）
+        key_pub: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAJ… other@host",
+        secret: null,
+        passphrase: null,
+        totp_secret: null,
+        created_at: 1_700_000_000,
+        updated_at: 1_700_000_002,
+      },
+      {
+        id: 5,
         kind: "password",
         key_pub: null,
         secret: "hunter2",
@@ -166,8 +178,10 @@ describe("ConflictDialog", () => {
       },
     ]);
     const summaries = entrySummaries("credentials", creds);
-    expect(summaries[0]).toBe("key · ssh-ed25519 ");
-    expect(summaries[1]).toBe("password · 2023-11-24");
+    expect(summaries[0]).toMatch(/^key · #[0-9a-z]+$/);
+    expect(summaries[1]).toMatch(/^key · #[0-9a-z]+$/);
+    expect(summaries[0]).not.toBe(summaries[1]); // 同型双 key 可辨识
+    expect(summaries[2]).toBe("password · 2023-11-24");
     const printed = summaries.join("\n");
     expect(printed).not.toContain("TOPSECRET");
     expect(printed).not.toContain("hunter2");

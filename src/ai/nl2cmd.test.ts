@@ -80,6 +80,7 @@ beforeEach(async () => {
   failProvider = false;
   providerOverride = null;
   useNlStore.getState().close();
+  useNlStore.setState({ rounds: [] }); // rounds 刻意不被 close 清（回看面）——测试显式隔离
   await i18n.changeLanguage("zh-CN"); // 断言面向 zh 词典键
 });
 
@@ -304,5 +305,60 @@ describe("nlStore 运行链（Mock provider）", () => {
     expect(st.command).toBeNull();
     expect(st.cwd).toBe("/tmp");
     expect(st.status).toBe("idle");
+  });
+});
+
+describe("rounds（生成结果保留，批次三 T2 审计 ⌘J 22）", () => {
+  it("done 轮入账：rounds[0] = {input, command, level, ts}，最新在前", async () => {
+    mockBackend();
+    useNlStore.getState().begin(null);
+    useNlStore.getState().setInput("列出容器");
+    await useNlStore.getState().submit();
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("done");
+    });
+    const st = useNlStore.getState();
+    expect(st.rounds).toHaveLength(1);
+    expect(st.rounds[0].input).toBe("列出容器");
+    expect(st.rounds[0].command).toBe("docker ps");
+    expect(st.rounds[0].level).toBe("green");
+    expect(typeof st.rounds[0].ts).toBe("number");
+  });
+
+  it("close()/begin() 均不清 rounds（面板生命周期 = 会话级回看面）", async () => {
+    mockBackend();
+    useNlStore.getState().begin(null);
+    useNlStore.getState().setInput("列出容器");
+    await useNlStore.getState().submit();
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("done");
+    });
+    useNlStore.getState().close();
+    expect(useNlStore.getState().rounds).toHaveLength(1);
+    useNlStore.getState().begin("/tmp");
+    expect(useNlStore.getState().rounds).toHaveLength(1);
+  });
+
+  it("容量封顶 10：超限丢最旧，新轮居首", async () => {
+    mockBackend();
+    useNlStore.setState({
+      // rounds 语义最新在前：种子 [旧轮9..旧轮0]（旧轮 0 最旧）
+      rounds: Array.from({ length: 10 }, (_, i) => ({
+        input: `旧轮 ${9 - i}`,
+        command: `echo ${9 - i}`,
+        level: "green" as const,
+        ts: i,
+      })),
+    });
+    useNlStore.getState().begin(null);
+    useNlStore.getState().setInput("新一轮");
+    await useNlStore.getState().submit();
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("done");
+    });
+    const rounds = useNlStore.getState().rounds;
+    expect(rounds).toHaveLength(10); // 不无界增长
+    expect(rounds[0].input).toBe("新一轮");
+    expect(rounds[1].input).toBe("旧轮 9"); // 最旧（旧轮 0）被挤出
   });
 });

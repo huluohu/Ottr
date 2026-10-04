@@ -1093,7 +1093,8 @@
       "failed": "同步失败",
       "checkTimeout": "检查超时：钥匙链或同步通道长时间无响应。可重试，或关闭后稍后再试。",
       "retry": "重试",
-      "close": "关闭"
+      "close": "关闭",
+      "refreshFailed": "云端数据已应用，但界面刷新失败"
     },
     "category": {
       "host_groups": "分组",

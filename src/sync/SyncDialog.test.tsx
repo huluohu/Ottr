@@ -176,6 +176,25 @@ describe("SyncDialog", () => {
     expect(await screen.findByTestId("sync-done-report").then((el) => el.textContent)).toContain("1");
   });
 
+  it("BL-525：导入后实体刷新失败 → 错误面如实呈现（form-error 可见，不吞不假成功）", async () => {
+    const store = fakeStore(statusOf("pull"), {
+      pull: vi.fn(async (_pass: string, cats?: readonly SyncCategory[]) => {
+        // 生产形态：SyncStore onImported（entityRefresh）在基线写盘前上抛的
+        // 本地化包装错误（zh = 「云端数据已应用，但界面刷新失败：…」）。
+        throw new Error("sync.dialog.refreshFailed：boom-cause");
+      }),
+    });
+    const fm = fakeModel({ store });
+    renderDialog(fm);
+    await waitFor(() => expect(screen.getByTestId("sync-pull-panel")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("sync-pull-start"));
+    const err = await screen.findByTestId("sync-error");
+    expect(err.textContent).toContain("sync.dialog.refreshFailed");
+    expect(err.textContent).toContain("boom-cause");
+    // 不落 done 面（不假成功）
+    expect(screen.queryByTestId("sync-done")).toBeNull();
+  });
+
   it("conflict 态：裁定（hosts=本机、snippets=云端）→ 先 pull 云端侧再 push 双侧有数据并集（全序）", async () => {
     const store = fakeStore(statusOf("conflict"));
     const fm = fakeModel({ store });

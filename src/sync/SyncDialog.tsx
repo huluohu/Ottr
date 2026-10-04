@@ -51,6 +51,7 @@ import { ConflictDialog, EntryList, entrySummaries } from "./ConflictDialog";
 import { Checkbox } from "../ui/Checkbox";
 import type { SyncTransport } from "./transport";
 import { openEnvelope, utf8 } from "./envelope";
+import { refreshEntitiesAfterImport } from "./entityRefresh";
 
 /** 对话框依赖面（生产接线见 {@link productionSyncModel}）。 */
 export interface SyncDialogModel {
@@ -91,7 +92,9 @@ export function productionSyncModel(): SyncDialogModel {
     return invoke<T>(cmd, args);
   };
   return {
-    store: createSyncStore({ bridge, transport: delegate }),
+    // BL-525：导入落地 → 本机实体 store 全量重取（复用既有 refresh 通道，
+    // 见 entityRefresh.ts 映射表）；刷新失败上抛 → 对话框错误面呈现。
+    store: createSyncStore({ bridge, transport: delegate, onImported: refreshEntitiesAfterImport }),
     localSnapshot: () => bridge.exportCategories([...SYNC_CATEGORIES]),
     remoteSnapshot: async (passphrase) => {
       const t = await ensureTransport();

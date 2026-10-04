@@ -652,7 +652,14 @@
       "hint": "Enter your master password to unlock this vault.",
       "unlock": "Unlock",
       "errEmpty": "Enter your master password",
-      "errWrongPassword": "Master password is incorrect"
+      "errWrongPassword": "Master password is incorrect",
+      "forgot": "Forgot password?",
+      "resetTitle": "The master password cannot be recovered",
+      "resetNoRecover": "Vault data is encrypted with your master password (AES-256-GCM). The password is never stored on this machine, so it cannot be recovered or bypassed.",
+      "resetExplain": "\"Reset app\" wipes the local vault (hosts, credentials, snippets, history — everything) and removes the keychain entry, returning Ottr to its first-launch state. This cannot be undone.",
+      "resetSyncNote": "If cloud sync is set up, the encrypted envelope on the server is unaffected; you can still pull your data back with the sync passphrase after reconfiguring sync.",
+      "resetArm": "I understand — reset app",
+      "resetArmed": "Confirm reset"
     },
     "wizard": {
       "stepPassword": "Set a master password (credentials will be re-encrypted)",
@@ -1087,7 +1094,8 @@
       "failed": "Sync failed",
       "checkTimeout": "Check timed out: the keychain or sync channel did not respond. Retry, or close and try again later.",
       "retry": "Retry",
-      "close": "Close"
+      "close": "Close",
+      "refreshFailed": "Cloud data was applied, but refreshing the interface failed"
     },
     "category": {
       "host_groups": "Groups",

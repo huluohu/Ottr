@@ -12,6 +12,11 @@ const HOST = "http://127.0.0.1:15773";
 const USER = "user";
 const PASS = "pass";
 
+// 生产默认 fetchImpl = Rust 代理（webview 专用，T4/BL-524；非 Tauri 环境明确
+// 报错）——vitest node 环境显式注入 node fetch 保持真 HTTP 端到端；代理包装
+// 自身面在 webdav.proxy.test.ts。
+const nodeFetch: typeof fetch = (...args) => fetch(...args);
+
 async function fixtureOrPanic(): Promise<void> {
   try {
     const res = await fetch(`${HOST}/`);
@@ -29,8 +34,8 @@ describe("WebDAV 通道（dufs 真容器）", () => {
     // 扁平文件名：dufs（与多数 WebDAV 服务器一致）PUT 不自动建父目录——
     // remotePath 的父目录需服务端已存在（webdav.ts 文件头有注记）
     const remotePath = `ottr-sync-${Date.now()}-${Math.floor(Math.random() * 1e9)}.json`;
-    const deviceA = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS });
-    const deviceB = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS });
+    const deviceA = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS }, { fetchImpl: nodeFetch });
+    const deviceB = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS }, { fetchImpl: nodeFetch });
 
     // 首次同步：远端无信封 → null；连接测试 true（可达且已授权）
     expect(await deviceB.fetch()).toBeNull();
@@ -51,7 +56,7 @@ describe("WebDAV 通道（dufs 真容器）", () => {
 
     // 错口令：信封层拒绝（与通道无关，通道只搬运密文）——
     // 认证错在通道层的形态是 401：错误凭据的实例 test=false
-    const stranger = createWebdavTransport({ server: HOST, remotePath, username: USER, password: "wrong" });
+    const stranger = createWebdavTransport({ server: HOST, remotePath, username: USER, password: "wrong" }, { fetchImpl: nodeFetch });
     expect(await stranger.test()).toBe(false);
     await expect(stranger.fetch()).rejects.toThrow("HTTP 401");
   }, 30_000);

@@ -512,6 +512,9 @@ button[data-active="true"] {
 .overlay {
   align-items: center;
   padding: 16px;
+  /* 矮窗兜底（BL-526 / T5 披露清偿）：对话框本体万一超出视口（未来面板漏挂
+     .dialog 上限类）时 overlay 自滚，内容不再结构性不可达。 */
+  overflow-y: auto;
 }
 .dialog,
 .host-form {
@@ -523,6 +526,19 @@ button[data-active="true"] {
   max-height: 86vh;
   overflow-y: auto;
   box-shadow: 0 12px 40px var(--scrim);
+}
+/* 矮窗滚动 affordance（BL-526 / T5 披露清偿）：max-height+内滚自 P1 既有，
+   但 macOS overlay 滚动条**静止期不可见**——600px 级矮窗下内容截断毫无可滚
+   提示（T5 走查 03 号截图「danger 按钮被裁」的缺陷本体）。常显细滚动条让
+   可滚性可见；无溢出的对话框不出现（仅滚动时占位），不破坏既有定宽/居中。 */
+.dialog::-webkit-scrollbar,
+.host-form::-webkit-scrollbar {
+  width: 8px;
+}
+.dialog::-webkit-scrollbar-thumb,
+.host-form::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
 }
 .dialog h2,
 .host-form h2 {
@@ -1922,6 +1938,39 @@ button[data-active="true"] {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* 忘记密码？引导（product-ready T5，BL-537 清偿）：link 式入口居中不抢解锁
+   主视觉；说明区就地展开（左对齐小字 + danger 二击确认按钮）。 */
+.lock-forgot {
+  align-self: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.lock-forgot:hover {
+  color: var(--fg);
+}
+.lock-reset-panel {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.lock-reset-panel p {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+.lock-reset-panel p.lock-reset-title {
+  font-weight: 600;
+  opacity: 1;
 }
 
 /* 设置对话框：分节标题 + 行式布局（label 左 / 控件右）。 */
@@ -3584,10 +3633,15 @@ button[data-active="true"] {
   border: 1px solid var(--border-subtle);
 }
 .kh-badge-ok {
-  color: var(--color-success-text, #2e7d32);
+  /* 产品就绪批次 T1 校准：原幽灵键 --color-success-text（tokens.css 无定义）
+   * 回退 #2e7d32 实渲染，亮色 overlay 3.93/raised 4.26 <4.5——迁校准语义键
+   * （teal-800：亮四面 5.81-7.58；暗 #2dd4bf 四面 6.13-8.01，tokens.test 钉死）。 */
+  color: var(--color-success);
 }
 .kh-badge-changed {
-  color: var(--color-danger-text, #c62828);
+  /* 原幽灵键 --color-danger-text 回退 #c62828，亮色 overlay 4.30 <4.5——迁
+   * #b42318（亮四面 5.03-6.57）。暗色 #f97066 沿 Phase 5 T8 §7-4 裁定不动。 */
+  color: var(--color-danger);
   border-color: currentColor;
 }
 .kh-badge-pending {
@@ -3599,7 +3653,7 @@ button[data-active="true"] {
   white-space: nowrap;
 }
 .kh-actions .kh-danger {
-  color: var(--color-danger-text, #c62828);
+  color: var(--color-danger); /* 同上：幽灵 --color-danger-text 回退清偿 */
 }
 .kh-seen {
   list-style: none;

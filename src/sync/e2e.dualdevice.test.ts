@@ -35,6 +35,10 @@ import { createWebdavTransport } from "./webdav";
 const HOST = "http://127.0.0.1:15773";
 const USER = "user";
 const PASS_DAV = "pass";
+// 生产默认 fetchImpl = Rust 代理（webview 专用，T4/BL-524）——本文件 TS 侧
+// 「生产代码原样」在 webview 网络面上有一个显式例外：vitest node 无 Tauri
+// IPC，注入 node fetch 保持真 HTTP 直连（代理包装自身面在 webdav.proxy.test.ts）。
+const nodeFetch: typeof fetch = (...args) => fetch(...args);
 /** 信封口令（双设备共享；与 vault 主密钥无关——双层加密语义）。 */
 const PASS_ENV = "p5t5-e2e-envelope-pass";
 
@@ -182,8 +186,8 @@ afterAll(() => {
 describe("双设备端到端（真 vault 双数据目录 + 真信封 + dufs + SyncStore）", () => {
   it("A 建→推→B 拉→B 改→推→A 拉→A 改→推→B 双变→conflict→保留云端→收敛一致", async () => {
     const remotePath = `ottr-sync-e2e-${Date.now()}-${Math.floor(Math.random() * 1e9)}.json`;
-    const transportA = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV });
-    const transportB = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV });
+    const transportA = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV }, { fetchImpl: nodeFetch });
+    const transportB = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV }, { fetchImpl: nodeFetch });
     const storeA = createSyncStore({ bridge: deviceA, transport: transportA });
     const storeB = createSyncStore({ bridge: deviceB, transport: transportB });
 
@@ -280,8 +284,8 @@ describe("双设备端到端（真 vault 双数据目录 + 真信封 + dufs + Sy
     // salt/nonce → 异指纹）→ 对端判「远端变 → pull」，导入同内容后重导出
     // 指纹不变 = no-op 收敛（last-writer 传输语义上的无害往返）。
     const remotePath = `ottr-sync-e2e-${Date.now()}-${Math.floor(Math.random() * 1e9)}.json`;
-    const tA = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV });
-    const tB = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV });
+    const tA = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV }, { fetchImpl: nodeFetch });
+    const tB = createWebdavTransport({ server: HOST, remotePath, username: USER, password: PASS_DAV }, { fetchImpl: nodeFetch });
     const a = createSyncStore({ bridge: deviceA, transport: tA });
     const b = createSyncStore({ bridge: deviceB, transport: tB });
 

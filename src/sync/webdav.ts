@@ -1,4 +1,5 @@
-// WebDAV 同步通道（Phase 5 Task 2）——HTTP GET/PUT + Basic 认证，路径可配。
+// WebDAV 同步通道（Phase 5 Task 2；product-ready T4 生产代理 BL-524 清偿）
+// ——HTTP GET/PUT + Basic 认证，路径可配。
 //
 // 语义面（SyncTransport 契约落点）：
 //   * fetch：GET <server>/<remotePath>，404 = 首次同步 → null；200 → 信封校验；
@@ -11,6 +12,14 @@
 //
 // 依赖注入沿渠道适配器（ChannelDeps.fetchImpl 同款）：单测 Mock fetch 记录
 // 请求，端到端真容器（fixtures/dufs，sigoden/dufs）零适配直连。
+//
+// 生产网络面（product-ready T4，BL-524）：默认 fetchImpl = tauriWebdavFetch
+// ——webview 原生 fetch 生产被 CORS 拦死（自建 WebDAV/dufs 不发跨域响应头，
+// tauri.conf connect-src 亦不放宽），改经 invoke 走 Rust reqwest 代理命令
+// sync_http_fetch（src-tauri commands/sync_http.rs：同源钉死 + method 白名单
+// + Authorization/Content-Type 全在 Rust 侧拼）。回执 {status, body} 还原成
+// Response——本文件上方全部语义（404=null / 错误消息 HTTP <status> / test
+// 布尔面）零漂移；vitest/端到端测试显式注入 fetchImpl（node fetch 或 Mock）。
 import { parseEnvelopeJson, type SyncTransport } from "./transport";
 import type { SyncEnvelope } from "./envelope";
 
@@ -23,7 +32,8 @@ export interface WebdavConfig {
   password: string;
 }
 
-/** 可注入端口（Mock HTTP 单测；生产 = 全局 fetch）。 */
+/** 可注入端口（Mock HTTP 单测 / node 端到端；生产缺省 = tauriWebdavFetch
+ * Rust 代理，见下方裁定）。 */
 export interface WebdavDeps {
   fetchImpl?: typeof fetch;
 }
@@ -48,8 +58,61 @@ function urlOf(config: WebdavConfig): string {
   return `${server}/${path}`;
 }
 
+/** Rust HTTP 代理命令（src-tauri commands/sync_http.rs）的回执面。 */
+export interface SyncHttpResult {
+  status: number;
+  body: string;
+}
+
+/** 代理 fetch 的注入面（单测 mock invoke；生产动态 import）。 */
+export interface WebdavProxyDeps {
+  invokeImpl?: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+}
+
+const PROXY_UNAVAILABLE =
+  "webdav proxy: tauri IPC unavailable (non-Tauri environments must inject deps.fetchImpl)";
+
+/** Tauri IPC 可达性（webview 注入 __TAURI_INTERNALS__；测试可用空对象放行）。 */
+function hasTauriInternals(): boolean {
+  const w = globalThis as unknown as { window?: Record<string, unknown> | undefined };
+  return typeof w.window === "object" && w.window !== null && "__TAURI_INTERNALS__" in w.window;
+}
+
+/**
+ * 生产 fetchImpl（webview 专用，product-ready T4 / BL-524）：原生 fetch 走
+ * webview 网络栈，生产被 CORS 拦死——改走 Rust reqwest 代理命令
+ * sync_http_fetch。凭据经 config 显式传入（单一事实源：设置表单/settings.get
+ * 本就把配置带进 webview；草稿「测试连接」天然可用，备选案 Rust 自读 vault
+ * settings 会破坏草稿测试并引入双事实源，裁定否）。同源钉死/method 白名单/
+ * header 拼接都在 Rust 侧权威执行——本包装发出的 init.headers 只服务
+ * fetchImpl 注入路径的语义面，代理路径不透传任意 header。回执 {status, body}
+ * → Response 还原：res.ok / res.status===404 判首同步 / test() 布尔面零漂移。
+ */
+export function tauriWebdavFetch(config: WebdavConfig, deps: WebdavProxyDeps = {}): typeof fetch {
+  return async (input, init) => {
+    const invokeCmd = async <T,>(cmd: string, args: Record<string, unknown>): Promise<T> => {
+      if (deps.invokeImpl) return deps.invokeImpl<T>(cmd, args);
+      if (!hasTauriInternals()) throw new Error(PROXY_UNAVAILABLE);
+      const core = (await import("@tauri-apps/api/core")) as typeof import("@tauri-apps/api/core");
+      return core.invoke<T>(cmd, args);
+    };
+    const result = await invokeCmd<SyncHttpResult>("sync_http_fetch", {
+      config: { server: config.server, username: config.username, password: config.password },
+      url: String(input),
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string" ? init.body : null,
+    });
+    // Response 构造器只吃 200-599：越界前置拦截（正常不会发生——Rust 回执
+    // status 取自真实 HTTP 响应；此处是防御面不是语义面）
+    if (!Number.isInteger(result.status) || result.status < 200 || result.status > 599) {
+      throw new Error(`webdav proxy: invalid status ${JSON.stringify(result.status)}`);
+    }
+    return new Response(result.body, { status: result.status });
+  };
+}
+
 export function createWebdavTransport(config: WebdavConfig, deps: WebdavDeps = {}): SyncTransport {
-  const doFetch = deps.fetchImpl ?? ((...args) => fetch(...args));
+  const doFetch = deps.fetchImpl ?? tauriWebdavFetch(config);
   const url = urlOf(config);
 
   async function get(): Promise<Response> {

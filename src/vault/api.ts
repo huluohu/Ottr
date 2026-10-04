@@ -639,6 +639,11 @@ export const vaultApi = {
     /** keyring → password 升级（重加密迁移）；resolve = 完成并返回重密封字段数。 */
     upgradeToMasterPassword: (password: string) =>
       invoke<number>("vault_upgrade_to_master_password", { password }),
+    /** 重置应用（product-ready T5，BL-537 清偿）：清本机库 + 清钥匙链条目后
+     * 进程重启回首启链。resolve 永不发生（进程重启，invoke 随 webview 销毁）
+     * ——reject = 清库失败（钥匙链拒绝/目录删不掉），数据未成功清除可重试。
+     * Rust 侧 confirm 门卫：不带显式 confirm=true 一律拒绝，不动任何数据。 */
+    reset: () => invoke<void>("vault_reset", { confirm: true }),
   },
   /** settings 表 JSON 读写（明文面：锁定可读——锁定屏要读主题/安全配置）。 */
   settings: {

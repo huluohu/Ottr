@@ -184,8 +184,8 @@ function emptyCategories(): Record<SyncCategory, unknown[]> {
 let vault: FakeVault;
 let transport: FakeTransport;
 
-function makeStore(): ReturnType<typeof createSyncStore> {
-  return createSyncStore({ bridge: vault, transport });
+function makeStore(onImported?: () => Promise<void>): ReturnType<typeof createSyncStore> {
+  return createSyncStore({ bridge: vault, transport, onImported });
 }
 
 const localData = (): SyncData => ({
@@ -284,6 +284,57 @@ describe("pull 全链", () => {
     const remoteVault = new FakeVault({ hosts: [{ id: 1 }] });
     await createSyncStore({ bridge: remoteVault, transport }).push(PASSPHRASE, ALL);
     await expect(makeStore().pull("wrong-passphrase", ALL)).rejects.toThrow(/authentication failed/);
+  });
+});
+
+describe("导入后实体刷新接线（BL-525：onImported 注入）", () => {
+  /** 远端信封在场（本机 pull 有东西可导入的最小布置）。 */
+  async function seedRemote(): Promise<void> {
+    const remoteVault = new FakeVault({ hosts: [{ id: 1, name: "alpha" }] });
+    await createSyncStore({ bridge: remoteVault, transport }).push(PASSPHRASE, ["hosts"]);
+  }
+
+  it("pull 导入成功 → onImported 恰调一次，且先于基线落 settings（刷新失败则基线不写，三态可见非谎报）", async () => {
+    await seedRemote();
+    const calls: number[] = [];
+    const store = makeStore(async () => {
+      calls.push(vault.settings.size);
+      return;
+    });
+    await store.pull(PASSPHRASE, ["hosts"]);
+    expect(calls).toEqual([0]); // 恰一次；当时 settings 尚无基线（导入→刷新→基线序）
+  });
+
+  it("导入失败（importCategories 抛错）→ onImported 零调用", async () => {
+    await seedRemote();
+    let calls = 0;
+    vault.importCategories = async () => {
+      throw new Error("vault locked");
+    };
+    const store = makeStore(async () => {
+      calls += 1;
+    });
+    await expect(store.pull(PASSPHRASE, ["hosts"])).rejects.toThrow("vault locked");
+    expect(calls).toBe(0);
+  });
+
+  it("push 不改本机实体 → onImported 零调用", async () => {
+    vault.data = localData();
+    let calls = 0;
+    const store = makeStore(async () => {
+      calls += 1;
+    });
+    await store.push(PASSPHRASE, ["hosts"]);
+    expect(calls).toBe(0);
+  });
+
+  it("刷新抛错 → pull 原样上抛（不吞）且基线未写（下次三态判 push/conflict，不谎报 synced）", async () => {
+    await seedRemote();
+    const store = makeStore(async () => {
+      throw new Error("refresh failed");
+    });
+    await expect(store.pull(PASSPHRASE, ["hosts"])).rejects.toThrow("refresh failed");
+    expect(vault.settings.has(SYNC_STATE_KEY)).toBe(false);
   });
 });
 

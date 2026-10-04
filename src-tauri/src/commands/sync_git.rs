@@ -52,9 +52,10 @@ const EXEC_TIMEOUT: Duration = Duration::from_secs(120);
 // ---------------------------------------------------------------------------
 
 /// 与 ottr-vault master_key::DEFAULT_SERVICE 同 service（正式数据命名空间），
-/// account 独立条目——主密码与信封口令互不可见。
-const SYNC_SERVICE: &str = "ottr.dev";
-const SYNC_ACCOUNT: &str = "sync-passphrase";
+/// account 独立条目——主密码与信封口令互不可见。pub(crate)：vault_reset
+/// 清库须同删本条目（T5 评审 P1——漏清则重置后云信封仍可被记忆口令解密）。
+pub(crate) const SYNC_SERVICE: &str = "ottr.dev";
+pub(crate) const SYNC_ACCOUNT: &str = "sync-passphrase";
 
 fn sync_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(SYNC_SERVICE, SYNC_ACCOUNT).map_err(|e| format!("entry new: {e}"))

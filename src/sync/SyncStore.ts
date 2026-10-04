@@ -100,6 +100,14 @@ export function tauriSyncBridge(): SyncVaultBridge {
 export interface SyncStoreDeps {
   bridge: SyncVaultBridge;
   transport: SyncTransport;
+  /** 导入落地后的本机实体刷新回调（BL-525）：pull 的 importCategories 是
+   * Rust 侧落库，前端 zustand store（侧栏主机/凭据/分组/跳板链、cron 表、
+   * 通知静音、语言/主题/终端配色）仍持导入前内存态——重启才恢复。此处注入
+   * **既有 refresh 通道**的直接调用例程（不开新事件路径），在 importCategories
+   * 成功后、基线落 settings 前调用：刷新失败原样上抛（基线不写 → 下次三态
+   * 判 push/conflict，可见非谎报 synced），由对话框错误面呈现。push 不改本机
+   * 实体，不触发。 */
+  onImported?: () => Promise<void>;
 }
 
 export interface PushResult {
@@ -169,7 +177,7 @@ function abandoned(guard?: SyncRunGuard): boolean {
 const ALL: SyncCategory[] = [...SYNC_CATEGORIES];
 
 export function createSyncStore(deps: SyncStoreDeps): SyncStore {
-  const { bridge, transport } = deps;
+  const { bridge, transport, onImported } = deps;
 
   function scopeKey(kind: "push" | "restore"): string {
     return kind === "push" ? SCOPE_PUSH_KEY : SCOPE_RESTORE_KEY;
@@ -243,6 +251,9 @@ export function createSyncStore(deps: SyncStoreDeps): SyncStore {
       // 关键闸：迟到的 pull 不得落库本机（replace 语义会覆盖放弃后的编辑）。
       if (abandoned(guard)) throw new SyncAbandonedError();
       const report = await bridge.importCategories(scope, data, "replace");
+      // 落库已完成 → 前端实体 store 必须重取（BL-525）：回调失败原样上抛，
+      // 基线不写（下次三态判 push/conflict 可见）——不静默假成功。
+      if (onImported) await onImported();
       const { localFp } = await exportAllWithFingerprint();
       // 落库已发生（放弃落在 invoke 窗口内）也不得写干净基线——否则三态谎报
       // synced，被覆盖的编辑静默无迹；跳过基线 → 下次判定 push/conflict（可见）。

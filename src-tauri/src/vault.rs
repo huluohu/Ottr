@@ -33,9 +33,9 @@ use ottr_vault::{
     AlertRule, AlertRuleInput, AlertRules, CredentialInput, CredentialPatch, Credentials,
     DeliveryFailure, History, HistoryEntry, HistoryInput, Host, HostGroups, HostInput, Hosts,
     KeyMode, KnownHosts, Notification, NotificationInput, Notifications, NotifyChannel,
-    NotifyChannelInput, NotifyChannelPatch, NotifyChannels, SecretField, Secrets,
-    SessionSummaries, Settings, SnippetInput, Snippets, SummaryEntry, SummaryInput, Vault,
-    VaultError, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT, SUMMARIES_LIST_LIMIT,
+    NotifyChannelInput, NotifyChannelPatch, NotifyChannels, SecretField, Secrets, SessionSummaries,
+    Settings, SnippetInput, Snippets, SummaryEntry, SummaryInput, Vault, VaultError,
+    HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT, SUMMARIES_LIST_LIMIT,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -343,9 +343,7 @@ pub fn notify_clear_delivery_failure(
     channel: String,
 ) -> CmdResult<Notification> {
     cmd(Notifications::clear_delivery_failure(
-        &state.0,
-        id,
-        &channel,
+        &state.0, id, &channel,
     ))
 }
 

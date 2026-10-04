@@ -255,14 +255,9 @@ fn clear_delivery_failure_removes_channel_and_nulls_when_empty() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
     let row = Notifications::insert(&vault, &input("transfer", "error", "a")).unwrap();
-    Notifications::mark_delivery_failed(&vault, row.id, &failure("slack#3", 3, "e1", 100))
+    Notifications::mark_delivery_failed(&vault, row.id, &failure("slack#3", 3, "e1", 100)).unwrap();
+    Notifications::mark_delivery_failed(&vault, row.id, &failure("dingtalk#4", 4, "e2", 200))
         .unwrap();
-    Notifications::mark_delivery_failed(
-        &vault,
-        row.id,
-        &failure("dingtalk#4", 4, "e2", 200),
-    )
-    .unwrap();
 
     let one_left = Notifications::clear_delivery_failure(&vault, row.id, "slack#3").unwrap();
     assert_eq!(
@@ -271,8 +266,7 @@ fn clear_delivery_failure_removes_channel_and_nulls_when_empty() {
     );
 
     // 最后一条翻正：集合空 → None（无标记态，非空数组）
-    let none_left =
-        Notifications::clear_delivery_failure(&vault, row.id, "dingtalk#4").unwrap();
+    let none_left = Notifications::clear_delivery_failure(&vault, row.id, "dingtalk#4").unwrap();
     assert_eq!(none_left.delivery_failures, None, "清空后回归无标记 NULL");
 
     // 幂等：渠道不存在/已清，重复清不炸、不复活
@@ -301,8 +295,11 @@ fn migration_0020_is_replayable_and_old_rows_default_to_no_marker() {
     // 把库手工退回 0020 之前形态：剥列 + schema_version=19（模拟旧库）。
     {
         let conn = vault.connection();
-        conn.execute("ALTER TABLE notifications DROP COLUMN delivery_failures", [])
-            .unwrap();
+        conn.execute(
+            "ALTER TABLE notifications DROP COLUMN delivery_failures",
+            [],
+        )
+        .unwrap();
         conn.execute("UPDATE meta SET value='19' WHERE key='schema_version'", [])
             .unwrap();
     }
@@ -321,11 +318,8 @@ fn migration_0020_is_replayable_and_old_rows_default_to_no_marker() {
     );
 
     // 重放后的列照常可用（mark 全链在新列上工作）
-    let updated = Notifications::mark_delivery_failed(
-        &vault,
-        row.id,
-        &failure("slack#3", 3, "e", 1),
-    )
-    .unwrap();
+    let updated =
+        Notifications::mark_delivery_failed(&vault, row.id, &failure("slack#3", 3, "e", 1))
+            .unwrap();
     assert_eq!(updated.delivery_failures.map(|f| f.len()), Some(1));
 }

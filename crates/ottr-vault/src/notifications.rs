@@ -187,7 +187,11 @@ impl Notifications {
     /// （按渠道名去重——同渠道重发再败只更新错误与时刻；他渠道追加），返回
     /// 更新后的完整行。行不存在 → [`VaultError::NotFound`]（清空面板竞态的
     /// 显式错误面；调用方尽力而为处理，见前端 retry.ts onGiveUp）。
-    pub fn mark_delivery_failed(vault: &Vault, id: i64, failure: &DeliveryFailure) -> Result<Notification> {
+    pub fn mark_delivery_failed(
+        vault: &Vault,
+        id: i64,
+        failure: &DeliveryFailure,
+    ) -> Result<Notification> {
         let conn = vault.connection();
         let tx = conn.unchecked_transaction()?;
         let current = read_failures_column(&tx, id)?;

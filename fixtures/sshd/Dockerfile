@@ -16,7 +16,13 @@ RUN set -eux; \
     curl -fsSL "https://github.com/trzsz/trzsz-go/releases/download/v1.2.0/trzsz_1.2.0_linux_${TRZSZ_ARCH}.tar.gz" \
       | tar xz -C /usr/local/bin --strip-components=1 "${TRZSZ_DIR}/trz" "${TRZSZ_DIR}/tsz" "${TRZSZ_DIR}/trzsz"; \
     chmod 755 /usr/local/bin/trz /usr/local/bin/tsz /usr/local/bin/trzsz
-RUN mkdir -p /run/sshd /home/spike/.ssh
+# 只预建 /run/sshd（sshd 运行时必需）。**不预建 /home/spike***（BL-216 根因
+# 修复）：镜像里 root 属主的空 home 会让 entrypoint 的 `useradd -m` 只告警不
+# 建家目录、也不拷 skel 不改属主——spike 对自家 home 无写权限，login shell 的
+# .profile→.bashrc 链缺失（LANG 注入无法落地），entrypoint 只能手动补齐。
+# home 与 .ssh/authorized_keys 的创建全部归 entrypoint 首启路径（useradd -m +
+# mkdir -p），重启路径由 entrypoint 的 mkdir -p 兜底。
+RUN mkdir -p /run/sshd
 # spike 用户在启动脚本里创建（需要注入公钥与密码哈希）
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

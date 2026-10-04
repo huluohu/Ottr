@@ -716,6 +716,9 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
     // 不进 PTY 数据流（探测输出不经转发循环）。仅正式 UI 面（probe_lang）。
     // 命中 GBK 家族 → `ottr://encoding-hint`（前端提示条「检测到 GBK，切换？」）；
     // UTF-8 兜底 / exec 失败 / 10s 超时 → 不提示（安全侧，绝不误报打扰）。
+    // 注意：家族成员（GBK/GB2312/GB18030）一律归到 GBK 解码建议——保守裁定的
+    // 理由与手动切 GB18030 的逃生口见 ottr-term `Encoding::detect_hint` 文档
+    // （BL-216 留档）。
     if let Some(probe_session) = probe_session {
         let probe_id = id.clone();
         tauri::async_runtime::spawn(async move {

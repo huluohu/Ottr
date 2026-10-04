@@ -1924,6 +1924,39 @@ button[data-active="true"] {
   gap: 10px;
 }
 
+/* 忘记密码？引导（product-ready T5，BL-537 清偿）：link 式入口居中不抢解锁
+   主视觉；说明区就地展开（左对齐小字 + danger 二击确认按钮）。 */
+.lock-forgot {
+  align-self: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.lock-forgot:hover {
+  color: var(--fg);
+}
+.lock-reset-panel {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.lock-reset-panel p {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+.lock-reset-panel p.lock-reset-title {
+  font-weight: 600;
+  opacity: 1;
+}
+
 /* 设置对话框：分节标题 + 行式布局（label 左 / 控件右）。 */
 .settings-dialog {
   width: min(520px, 100%);

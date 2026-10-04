@@ -651,7 +651,14 @@
       "hint": "输入主密码解锁当前库。",
       "unlock": "解锁",
       "errEmpty": "请输入主密码",
-      "errWrongPassword": "主密码不正确"
+      "errWrongPassword": "主密码不正确",
+      "forgot": "忘记密码？",
+      "resetTitle": "主密码无法找回",
+      "resetNoRecover": "库内数据以主密码加密（AES-256-GCM），主密码不存储在本机，因此无法找回，也没有绕过途径。",
+      "resetExplain": "「重置应用」会清空本机库（主机、凭据、片段、历史等全部数据）并清除钥匙链条目，应用回到首次启动状态。此操作不可撤销。",
+      "resetSyncNote": "若已开启云同步，服务器上的加密信封不受重置影响；重新配置同步后仍可用同步口令拉回数据。",
+      "resetArm": "我已知晓，重置应用",
+      "resetArmed": "确认重置"
     },
     "wizard": {
       "stepPassword": "设置主密码（升级后凭据将以主密码重新加密）",

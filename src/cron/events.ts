@@ -75,7 +75,17 @@ export function titleKeyOf(status: CronRunStatus): string {
 }
 
 /** 事件 → 通知管线（导出供单测直驱；限频/静音在管线内）。
- * 缺陷 17：missed 锁存——持续 missed 只首告一次，非 missed 轮重置（见模块文档）。 */
+ * 缺陷 17：missed 锁存——持续 missed 只首告一次，非 missed 轮重置（见模块文档）。
+ *
+ * 【锁存顺序裁定（批次三 T3 注释收口）】latch 的查/改在 notify() **之前**同步完成，
+ * 两条语义：
+ *   1. 并发去重：Rust 侧事件连发两轮时，第二条在入口即被 latch 拦下（notify 是
+ *      异步的，若先发后锁，两轮都可能越过查重窗口）；
+ *   2. 已接受的取舍：首轮 missed 通告若被管线限频窗（`cron:{host}:{job}` 60s
+ *      聚合，见模块文档「风暴面」）吞掉（如 60s 内刚发过同任务 ok 轮），latch 已
+ *      置位、本轮不再补发——持续 missed 的呈现面退到 CronPanel 徽标 + 运行历史
+ *      （仍在，非无声），恢复有会话执行后下一轮 missed 重新首告。不为补发引入
+ *      「notify 成功才置位」的异步顺序：那会重新打开并发双告窗口，得不偿失。 */
 export function notifyCronRun(event: CronRunEvent): Promise<boolean> {
   const key = missedLatchKey(event);
   if (event.status === "missed") {

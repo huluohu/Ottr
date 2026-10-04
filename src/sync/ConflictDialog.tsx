@@ -14,6 +14,7 @@
 // 超过 8 条截断计数（完整数据仍在快照里，裁定粒度是分类不是条目）。
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { keyFingerprint } from "../credentials/fingerprint";
 import {
   canonicalEntries,
   type CategoryConflict,
@@ -36,13 +37,14 @@ export function entrySummaries(cat: SyncCategory, data: SyncData): string[] {
         case "hosts":
           return `${String(o.name)} (${String(o.address)}:${String(o.port)})`;
         case "credentials": {
-          // 覆盖预告可辨识度（fix round 1 Minor-1）：kind + key_pub 前缀指纹
-          // （公钥材料可印）或 updated_at 兜底——secret/passphrase/totp_secret
-          // 永不出现在摘要面（红线不变）。
+          // 覆盖预告可辨识度（fix round 1 Minor-1 + 批次三 T3 BL-529）：kind +
+          // key 指纹（base64 体短指纹，同型 key 互异）或 updated_at 兜底——
+          // secret/passphrase/totp_secret 永不出现在摘要面（红线不变）。
           const kind = String(o.kind ?? "?");
-          const pubKey = typeof o.key_pub === "string" && o.key_pub !== "" ? o.key_pub.slice(0, 12) : null;
+          const fp =
+            typeof o.key_pub === "string" && o.key_pub !== "" ? keyFingerprint(o.key_pub) : null;
           const when = typeof o.updated_at === "number" ? new Date(o.updated_at * 1000).toISOString().slice(0, 10) : null;
-          const tag = pubKey ?? when;
+          const tag = fp !== null ? `#${fp}` : when;
           return tag === null ? kind : `${kind} · ${tag}`;
         }
         case "snippets":

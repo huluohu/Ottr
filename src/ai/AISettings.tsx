@@ -272,10 +272,15 @@ export function AISettings({ open, onClose }: AISettingsProps) {
               <li key={p.id} className="ai-provider-row" data-testid={`ai-provider-${p.id}`}>
                 <span className="ai-provider-name">
                   {idx === 0 && <span className="ai-default-badge">{t("ai.settings.defaultBadge")}</span>}
+                  {p.kind === "mock" && (
+                    <span className="ai-mock-badge" data-testid={`ai-mock-badge-${p.id}`}>
+                      {t("ai.settings.mockBadge")}
+                    </span>
+                  )}
                   {p.name}
                 </span>
                 <span className="ai-provider-meta">
-                  {p.kind === "anthropic" ? "Anthropic" : "OpenAI 兼容"} · {p.model}
+                  {p.kind === "anthropic" ? "Anthropic" : p.kind === "mock" ? "Mock" : "OpenAI 兼容"} · {p.model}
                 </span>
                 <span className="ai-provider-actions">
                   {idx !== 0 && (
@@ -342,13 +347,20 @@ export function AISettings({ open, onClose }: AISettingsProps) {
                   value={draft.kind}
                   onChange={(e) => {
                     const kind = e.currentTarget.value as ProviderMeta["kind"];
+                    // 预设 = 具体端点类型捷径；mock 刻意不自动填 baseURL
+                    // （测试端点地址由使用者显式给，防误指真实端点）
                     const preset =
-                      kind === "anthropic" ? BASE_URL_PRESETS.anthropic : BASE_URL_PRESETS.openai;
+                      kind === "anthropic"
+                        ? BASE_URL_PRESETS.anthropic
+                        : kind === "mock"
+                          ? ""
+                          : BASE_URL_PRESETS.openai;
                     setDraft({ ...draft, kind, baseURL: draft.baseURL || preset });
                   }}
                 >
                   <option value="openai-compatible">{t("ai.settings.kindOpenai")}</option>
                   <option value="anthropic">{t("ai.settings.kindAnthropic")}</option>
+                  <option value="mock">{t("ai.settings.kindMock")}</option>
                 </select>
               </label>
               <div className="ai-presets">

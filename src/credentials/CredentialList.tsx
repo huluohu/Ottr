@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi, type Credential } from "../vault/api";
 import { useVaultStore } from "../vault/store";
+import { keyFingerprint } from "./fingerprint";
 import { CredentialForm } from "./CredentialForm";
 
 export function CredentialList() {
@@ -67,12 +68,18 @@ export function CredentialList() {
         <ul className="cred-items">
           {credentials.map((c) => {
             const bound = boundHostCount(c.id);
-            const pubSnippet = c.key_pub ? c.key_pub.trim().split(/\s+/)[1]?.slice(0, 12) : undefined;
+            // key 指纹（批次三 T3，BL-529）：base64 体短指纹——旧「头 12 字符」
+            // 在同型 key（ed25519）下恒同，双凭据不可辨
+            const pubSnippet = c.key_pub ? keyFingerprint(c.key_pub) : null;
             return (
               <li key={c.id} className="cred-item" data-testid={`cred-item-${c.id}`}>
                 <span className={`cred-kind cred-kind-${c.kind}`}>{t(`credentials.kind_${c.kind}`)}</span>
                 <span className="cred-title">{t("credentials.itemTitle", { id: c.id })}</span>
-                {pubSnippet && <code className="cred-pub">{pubSnippet}…</code>}
+                {pubSnippet && (
+                  <code className="cred-pub" title={t("credentials.fingerprintTitle", { fp: pubSnippet })}>
+                    #{pubSnippet}
+                  </code>
+                )}
                 <span className="cred-meta">{t("credentials.boundCount", { count: bound })}</span>
                 {c.kind === "password" && (
                   <button

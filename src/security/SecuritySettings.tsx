@@ -16,8 +16,7 @@ import {
   TERMINAL_THEME_GALLERY,
   type TerminalThemeDef,
 } from "../theme/gallery";
-import { parseItermColors } from "../theme/importers/iterm";
-import { parseWintermSchemes } from "../theme/importers/winterm";
+import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
@@ -199,36 +198,20 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
     }
   }
 
-  /** 配色文件导入（B2 Step 3）：按扩展名分派解析器——.itermcolors 走 iTerm2
-   * plist，.json 走 Windows Terminal scheme；其余形态先按 JSON 试、失败再按
-   * plist 试（用户改扩展名的常见习惯）。多 scheme 全部入库，选中间第一个。 */
+  /** 配色文件导入（B2 Step 3）：解析分流收口在 theme/importers（BL-512 起
+   * 字节级嗅探——bplist00 魔数走二进制 plist 解析器，扩展名无关；文本按
+   * 扩展名 .itermcolors/.json/回退链分派）。多 scheme 全部入库，选中间第一个。 */
   async function importThemeFile(file: File | undefined) {
     if (!file) return;
     setThemeImportError(null);
     setThemeImportedCount(null);
     try {
-      const text = await file.text();
-      const lower = file.name.toLowerCase();
+      const bytes = new Uint8Array(await file.arrayBuffer());
       const stamp = Date.now();
-      let defs: TerminalThemeDef[];
-      if (lower.endsWith(".itermcolors")) {
-        const parsed = parseItermColors(text);
-        defs = [{ id: `custom-${stamp}-0`, ...parsed }];
-      } else if (lower.endsWith(".json")) {
-        defs = parseWintermSchemes(text).schemes.map((s, i) => ({
-          id: `custom-${stamp}-${i}`,
-          ...s,
-        }));
-      } else {
-        try {
-          defs = parseWintermSchemes(text).schemes.map((s, i) => ({
-            id: `custom-${stamp}-${i}`,
-            ...s,
-          }));
-        } catch {
-          defs = [{ id: `custom-${stamp}-0`, ...parseItermColors(text) }];
-        }
-      }
+      const defs: TerminalThemeDef[] = parseThemeFileBytes(file.name, bytes).map((s, i) => ({
+        id: `custom-${stamp}-${i}`,
+        ...s,
+      }));
       const { addCustom, select } = useTerminalThemeStore.getState();
       for (const def of defs) addCustom(def);
       select(defs[0].id); // 多 scheme 导入选中间第一个（其余在清单可选）

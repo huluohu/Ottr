@@ -12,12 +12,37 @@ import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
+// onSessionEnded 去抖测试（BL-510③）需要可控的端点替身：createProvider 工厂
+// mock（首个 chat 调用挂起直到测试放行；既有用例全走 opts.provider 注入不受影响）
+const providerChats: ChatRequest[] = [];
+let releaseChat: (() => void) | null = null;
+vi.mock("./provider", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("./provider")>();
+  return {
+    ...orig,
+    createProvider: () => ({
+      async *chat(req: ChatRequest) {
+        providerChats.push(req);
+        await new Promise<void>((r) => {
+          releaseChat = r;
+        });
+        yield { text: "纪要正文。" };
+      },
+      async testConnection() {
+        return "mock-ok";
+      },
+    }),
+  };
+});
+
 import i18n from "../i18n";
+import { resetRateLimiter } from "../notify/core";
 import type { ChatRequest } from "./provider";
 import {
   SUMMARY_MAX_TOKENS,
   buildSummaryPrompt,
   generateSessionSummary,
+  onSessionEnded,
   type SessionEndInfo,
 } from "./summary";
 
@@ -170,6 +195,9 @@ function notifiedPayloads(): Record<string, unknown>[] {
 
 beforeEach(() => {
   mockedInvoke.mockReset();
+  providerChats.length = 0;
+  releaseChat = null;
+  resetRateLimiter(); // notify 限频窗口（60s）不跨用例泄漏
 });
 
 describe("buildSummaryPrompt", () => {
@@ -327,5 +355,37 @@ describe("generateSessionSummary", () => {
     expect(ok).toBe(false);
     expect(provider.requests).toHaveLength(0);
     expect(insertedPayloads()).toHaveLength(0);
+  });
+});
+
+describe("onSessionEnded（双路径 in-flight 去抖，BL-510③）", () => {
+  it("同 session 在途重复派发 → 只生成一次（disconnect+closeTab 双收尾真实时序）", async () => {
+    mockBackend();
+    const req = { ...REQ, id: "tab-debounce-1" };
+    onSessionEnded(req);
+    // 第一次还在途——closeTab 紧跟 disconnect 的第二次派发（同步紧随，见不了微任务）
+    onSessionEnded(req);
+    // 在途确认：链路走到 chat 挂起点且只有一次派发；期间未入库
+    await vi.waitFor(() => expect(providerChats).toHaveLength(1));
+    expect(insertedPayloads()).toHaveLength(0);
+    releaseChat?.();
+    await vi.waitFor(() => expect(insertedPayloads()).toHaveLength(1));
+    // LLM 只派发一次（结果复用在途那次），通知恰一次
+    expect(providerChats).toHaveLength(1);
+    expect(notifiedPayloads()).toHaveLength(1);
+  });
+
+  it("在途完成后的新一次收尾 → 正常重新生成（去抖不误吞后续会话）", async () => {
+    mockBackend();
+    const first = { ...REQ, id: "tab-debounce-2" };
+    onSessionEnded(first);
+    await vi.waitFor(() => expect(providerChats).toHaveLength(1));
+    releaseChat?.();
+    await vi.waitFor(() => expect(insertedPayloads()).toHaveLength(1));
+    // 首次已结算（in-flight 已清）——同一会话再次收尾 = 新一轮生成
+    onSessionEnded(first);
+    await vi.waitFor(() => expect(providerChats).toHaveLength(2));
+    releaseChat?.();
+    await vi.waitFor(() => expect(insertedPayloads()).toHaveLength(2));
   });
 });

@@ -220,4 +220,20 @@ describe("触发链端到端（断开→生成→入库→面板可见）", () =
     expect(insertedPayloads()).toHaveLength(0);
     expect(mockedInvoke.mock.calls.some(([cmd]) => cmd === "notify_insert")).toBe(false);
   });
+
+  it("disconnect + closeTab 双路径收尾：in-flight 去抖只生成一次（BL-510③）", async () => {
+    backend();
+    setSessionEndHook(onSessionEnded);
+    // 真实双发时序：手动断开（状态回 disconnected，标签保留）→ 用户随即关标签
+    // ——两次 emitSessionEnded 同 session id；现状 = 两次全链生成靠 UNIQUE 兜底
+    const id = useSessionStore.getState().openTab(hostA, { autoConnect: false });
+    HISTORY_ROWS.forEach((r) => (r.session_id = id));
+    act(() => useSessionStore.getState().disconnect(id));
+    act(() => useSessionStore.getState().closeTab(id));
+    await act(async () => {});
+    await act(async () => {});
+    // LLM 恰派发一次（结果复用在途那次）、入库恰一次
+    expect(recordedRequests).toHaveLength(1);
+    expect(insertedPayloads()).toHaveLength(1);
+  });
 });

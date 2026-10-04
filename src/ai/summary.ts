@@ -191,12 +191,23 @@ export async function generateSessionSummary(
 }
 
 /**
+ * 同 session 在途去抖表（BL-510③）：disconnect 与 closeTab 双路径都会对同一
+ * 会话派发收尾（先断开再关标签的常见时序）——在途期间第二次派发直接复用首次
+ * 的生成（不重复出网、不重复入库；现状靠 UNIQUE upsert 兜底 = 白烧一次 LLM）。
+ * 结算即出表：后续新收尾照常重新生成。
+ */
+const inFlight = new Map<string, Promise<boolean>>();
+
+/**
  * 会话收尾入口（SessionStore 钩子；App 注入 setSessionEndHook）。
  * fire-and-forget：同步返回，失败静默——调用方（closeTab/disconnect 状态机）
  * 不感知纪要链路的存在。
  */
 export function onSessionEnded(info: SessionEndInfo): void {
-  void generateSessionSummary(info).catch((e) => {
+  if (inFlight.has(info.id)) return; // 在途：复用首次生成的结果，不重复派发
+  const p = generateSessionSummary(info);
+  inFlight.set(info.id, p);
+  void p.finally(() => inFlight.delete(info.id)).catch((e) => {
     console.warn("[summary] session end chain failed:", e);
   });
 }

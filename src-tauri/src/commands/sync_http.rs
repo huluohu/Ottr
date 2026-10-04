@@ -63,12 +63,23 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const ALLOWED_METHODS: [&str; 6] = ["GET", "PUT", "DELETE", "PROPFIND", "MKCOL", "HEAD"];
 
 /// 通道端点凭据（webdav 配置的代理所需子面——remotePath 不需要：URL 由
-/// TS 侧 urlOf 拼好整体传入，Rust 只做同源钉死）。
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+/// TS 侧 urlOf 拼好整体传入，Rust 只做同源钉死）。Debug 手写脱敏：结构体
+/// 含密码，派生 Debug 会让未来任何 {:?} 日志面变成凭据泄漏点（T4 评审 P2）。
+#[derive(Clone, Deserialize, PartialEq)]
 pub struct SyncHttpEndpoint {
     pub server: String,
     pub username: String,
     pub password: String,
+}
+
+impl std::fmt::Debug for SyncHttpEndpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyncHttpEndpoint")
+            .field("server", &self.server)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 /// 代理回执（fetch 语义还原面：TS 侧 `new Response(body, {status})`）。

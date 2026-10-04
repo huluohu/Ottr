@@ -1,40 +1,90 @@
-# Task 16（Phase 1）：正式发布流水线。
+# 发布流水线（2026-10-04 参考 sidecar-monitor 的 build-release.yml 形态重做）：
 #
-# 触发：push tag v* → 三矩阵构建 → updater 签名产物 → draft GitHub Release。
-# 沿用 spike.yml（Task 12）已验证的模式，不推翻：
-# - 同一套 Secrets：TAURI_SIGNING_PRIVATE_KEY / TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-#   （生成：npx tauri signer generate -w ottr-updater.key；公钥已在 tauri.conf.json）
-# - 同一套签名流程：updater 配置走 src-tauri/tauri.updater.conf.json overlay
-#   （--config 合并开启 createUpdaterArtifacts），基础配置不开——本地无签名私钥
-#   也能出包；CI 叠加 overlay 后由 env 私钥签 updater 产物
-# - 同一套平台依赖清单（Linux webkit2gtk-4.1 / Windows NASM）
+#   push tag v* → verify（tag 与版本号一致性，快速失败）→ build 三平台矩阵 →
+#   GitHub Release 自动发布（自动生成 notes + 全平台安装包）。
+#   workflow_dispatch 可无 tag 手动跑（verify/release 按条件跳过，仅出构建产物）。
 #
-# 与 spike 的差异：
-# - 权限 contents: read（build）+ contents: write（release job，建 draft release）
-# - 上传产物收窄为「可分发文件」（去掉裸 .app 目录——draft release 里只放文件，
-#   mac 分发物是 dmg + .app.tar.gz/.sig）
-# - 新增 release job：download-artifact 合流 → gh release create --draft +
-#   upload（gh 为 runner 预装 CLI，免第三方 action）
-# - 挂账（Phase 2 updater 真启用时补）：发布页还需生成 latest.json
-#   （updater endpoint 现为占位 releases.ottr.invalid，见 tauri.conf.json plugins.updater）
+# 相对 T16 旧版的关键差异（旧版从未真跑过——仓库彼时无 remote）：
+# - updater 签名条件化：配置了 TAURI_SIGNING_PRIVATE_KEY Secret 才叠加
+#   tauri.updater.conf.json overlay 签 updater 产物；未配置则出普通安装包。
+#   旧版强制签名——Secrets 缺失时打包阶段必红；且 updater endpoint 仍是占位
+#   （releases.ottr.invalid），签名产物暂非发布必需（真启用 updater 时把
+#   Secret 配上即自动恢复签名产物，本文件无需再改）。
+# - Linux 构建任务起全套测试夹具（scripts/spike-sshd.sh + spike-dufs.sh：
+#   2222/15773 两容器，密钥 known_hosts 现场生成）跑全量前端测试——含
+#   trzsz/WebDAV/双设备同步的真夹具端到端，夹具不可达即红不 skip；
+#   macOS/Windows runner 无 docker，只做 tsc 门 + 构建。
+# - 发布用 softprops/action-gh-release@v2 自动发布（sidecar 同款，替代旧版
+#   draft + gh CLI 手动 publish）。
+# - 产物路径 = 仓库根 target/（workspace 聚合 members，T16 本地实测）；
+#   产物清单补 rpm（bundle targets=all 在 Linux 会出 deb+rpm+AppImage，
+#   旧版漏收 rpm）。
+# - 环境版本对齐仓库现实：node 22（.nvmrc）/ ubuntu-24.04（webkit2gtk-4.1）。
+#
+# 真跑前提：仓库配置 GitHub remote 并启用 Actions；Secrets 全部可选
+# （TAURI_SIGNING_PRIVATE_KEY/_PASSWORD 仅影响是否产出 updater 签名件）。
 
-name: release
+name: Build and release
 
 on:
+  workflow_dispatch:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
 
 jobs:
+  verify:
+    name: Verify release version
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      # 版本单一事实源三处对齐：tag = tauri.conf.json（产物版本）= package.json。
+      - name: Verify tag matches app version
+        run: |
+          tag="$GITHUB_REF_NAME"
+          app_version="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          package_version="v$(node -p "require('./package.json').version")"
+          test "$tag" = "$app_version" || {
+            echo "::error::Tag $tag does not match tauri.conf.json version $app_version"
+            exit 1
+          }
+          test "$tag" = "$package_version" || {
+            echo "::error::Tag $tag does not match package.json version $package_version"
+            exit 1
+          }
+
   build:
+    name: Build ${{ matrix.name }}
+    needs: verify
+    if: ${{ !cancelled() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-22.04]
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
+        include:
+          - name: macOS
+            os: macos-14
+          - name: Windows
+            os: windows-2022
+          - name: Linux
+            os: ubuntu-24.04
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -42,19 +92,33 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
       - name: Install Linux system dependencies
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.name == 'Linux'
         run: |
           sudo apt-get update && sudo apt-get install -y \
             libwebkit2gtk-4.1-dev build-essential curl wget file \
             libxdo-dev libssl-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev
+
+      # 前端测试的全套真夹具（仅 Linux 任务，macOS/Windows runner 无 docker）：
+      # spike-sshd.sh = ottr-sshd（127.0.0.1:2222，密钥/known_hosts 现场生成）；
+      # spike-dufs.sh = ottr-dufs（127.0.0.1:15773，Basic user:pass）。
+      # trzsz/WebDAV/双设备同步端到端测试 fail-loud 依赖它们，缺了就红。
+      - name: Start test fixtures
+        if: matrix.name == 'Linux'
+        run: |
+          bash scripts/spike-sshd.sh
+          bash scripts/spike-dufs.sh
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc
+
+      - name: Run frontend tests (full suite with real fixtures)
+        if: matrix.name == 'Linux'
+        run: npm test
 
       # russh 默认 feature 走 aws-lc-rs → aws-lc-sys 在 Windows 需要 NASM
       # 汇编器（spike.yml 同款步骤，真跑失败先查这里）。
@@ -67,23 +131,38 @@ jobs:
             Add-Content $env:GITHUB_ENV "PATH=$env:PATH;C:\Program Files\NASM"
           }
 
-      - name: Install frontend dependencies
-        run: npm ci
+      # updater 签名条件化：配置了私钥 Secret 才叠加 overlay（出 *.sig/
+      # *.app.tar.gz/*.msi.zip 签名件），否则普通安装包——Secrets 缺失不红。
+      - name: Resolve updater signing (overlay only when signing key secret exists)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "TAURI_BUILD_ARGS=--config src-tauri/tauri.updater.conf.json" >> "$GITHUB_ENV"
+          else
+            echo "TAURI_BUILD_ARGS=" >> "$GITHUB_ENV"
+            echo "TAURI_SIGNING_PRIVATE_KEY not configured - building without updater artifacts"
+          fi
 
-      - name: Build Tauri app (updater overlay, artifacts signed)
+      - name: Build Tauri app
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build --config src-tauri/tauri.updater.conf.json
+        run: |
+          # TAURI_BUILD_ARGS 有意按空白分词（空 = 无参数；加引号会传空串当参数）
+          # shellcheck disable=SC2086
+          npx tauri build $TAURI_BUILD_ARGS
 
-      - name: Upload artifacts
+      - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: ottr-${{ matrix.os }}
+          name: ottr-${{ matrix.name }}
           if-no-files-found: error
-          # 注意：workspace 根 Cargo.toml 聚合 members → 构建产物在仓库根
-          # target/release/bundle/，不是 src-tauri/target/（T16 本地构建实测；
-          # spike.yml 同位置写法有同款问题，待其 owner 更正）。
+          # workspace 根 Cargo.toml 聚合 members → 产物在仓库根 target/，不是
+          # src-tauri/target/（T16 本地实测）。*.sig / *.app.tar.gz / *.msi.zip
+          # 仅在签名 overlay 生效时存在，不命中不报错。
           path: |
             target/release/bundle/dmg/*.dmg
             target/release/bundle/macos/*.app.tar.gz
@@ -91,27 +170,37 @@ jobs:
             target/release/bundle/msi/*.msi.zip
             target/release/bundle/nsis/*.exe
             target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/**/*.sig
 
   release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
+
     steps:
-      - name: Download all build artifacts
+      - name: Download packages
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          pattern: ottr-*
+          path: bundle
           merge-multiple: true
 
-      - name: Create draft GitHub Release and upload installers
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        # draft：人工核对产物与签名后再手动 publish；重跑时 release 已存在
-        # 则 create 失败、仅重传产物（--clobber 覆盖）。
-        run: |
-          gh release create "$TAG" --draft --title "Ottr $TAG" --generate-notes || true
-          find artifacts -type f -print0 | xargs -0 gh release upload "$TAG" --clobber
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            bundle/*.dmg
+            bundle/*.app.tar.gz
+            bundle/*.sig
+            bundle/*.msi
+            bundle/*.msi.zip
+            bundle/*.exe
+            bundle/*.deb
+            bundle/*.rpm
+            bundle/*.AppImage

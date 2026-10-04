@@ -37,6 +37,28 @@
   --color-on-accent: var(--ottr-ink-900);
   /* 控件面（input/button/select 底色；App.css --btn-bg 字面值的升格，T1 挂账 M-1） */
   --color-surface: #ffffff;
+
+  /* --- 亮色专项校准（ui-batch3 T1，审计 A3；实算口径 WCAG 2.x，脚本
+   * /tmp/ui3-t1/audit.mjs，断言 tokens.test「亮色专项校准」组）--- */
+  /* danger #d92d20→#b42318：原值作文字 on overlay 仅 3.70（raised 4.02），且
+   * 审计 47 号「亮色失败色刺眼」。加深后文字 bg/raised/overlay/surface =
+   * 6.15/5.47/5.03/6.57 全 ≥4.5；on-danger 白字 4.83→6.57。 */
+  --color-danger: #b42318;
+  /* warning #b45309→#92400e（amber-800）：原值 on overlay 3.85；加深后
+   * 6.63/5.90/5.43/7.09 全 ≥4.5。 */
+  --color-warning: #92400e;
+  /* success teal-700→teal-800：原值 on overlay 4.19；teal-800 = 7.09/6.31/
+   * 5.81/7.58 全 ≥4.5（与 accent-text 同深档，亮色 teal 可读下限一致）。 */
+  --color-success: var(--ottr-teal-800);
+  /* accent 作指示边框/描边/图表线专用键（A3：accent 边框 vs bg 2.33 <3，
+   * 1.4.11 非文本对比）——teal-700 vs bg/raised/overlay/surface =
+   * 5.12/4.55/4.19/5.47 全 ≥3。实底填充（选中底/按钮底/勾选底）仍用
+   * teal-500（fix 2 裁定保留，内部文字/勾形走 on-accent ≥4.5）。 */
+  --color-accent-border: var(--ottr-teal-700);
+  /* 弱化文字键（自 App.css :root 收编进语义层）：亮 60%→68% 墨——60% 逐面
+   * 合成在 raised/overlay 上仅 4.07/3.75；68% 逐面合成 = bg 5.99 / raised
+   * 5.66 / overlay 5.46 / surface 6.19 全 ≥4.5。 */
+  --fg-muted: color-mix(in srgb, var(--color-fg) 68%, transparent);
 }
 
 /* --- 语义层 · 暗色（背景 water-900，前景 cream-100 偏暖白，主色提亮为 teal-300） --- */
@@ -57,4 +79,7 @@
   --color-on-accent: var(--ottr-water-900);
   /* 控件面：白 8% 叠在 water-900 上（原 --btn-bg 暗色字面值，视觉不变） */
   --color-surface: rgba(255, 255, 255, 0.08);
+  /* 暗色校准沿用值（暗色已达标不动；键面随 T1 语义层收编补齐） */
+  --color-accent-border: var(--color-accent); /* teal-300，vs bg/raised/overlay 10.09/8.68/7.72 */
+  --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 原值原式，视觉零变化 */
 }

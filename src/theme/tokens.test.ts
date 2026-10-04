@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import tokensCss from "./tokens.css?raw";
 import appCss from "../App.css?raw";
+import { lightTerminalTheme } from "./terminal-themes";
 
 // --- WCAG 2.x 相对亮度 / 对比度 ---------------------------------------------
 
@@ -121,5 +122,83 @@ describe("App.css 消费点纪律（文字场景迁移）", () => {
     expect(btnAccent).toContain("color: var(--color-on-accent)");
     const btnDanger = appCss.slice(appCss.indexOf(".btn-danger {"), appCss.indexOf("}", appCss.indexOf(".btn-danger {")));
     expect(btnDanger).toContain("color: var(--color-on-danger)");
+  });
+});
+
+// --- 亮色专项校准（ui-batch3 T1，UI 审计 A3 清偿；沿 fix 2 制式：实算数字即规约） ---
+// 校准前缺口（全量实算 /tmp/ui3-t1/audit.mjs，WCAG 2.x）：
+//   danger/warning/success 作文字 on overlay = 3.70/3.85/4.19（<4.5）
+//   fg-muted(60%) on raised/overlay = 4.07/3.75（<4.5）
+//   accent 作指示边框 vs bg = 2.33（<3，1.4.11 非文本）
+//   终端亮色 bright 六槽（red/green/yellow/blue/magenta/cyan）= 3.04/2.33/2.01/3.33/2.60/2.23
+
+/** 从 color-mix(in srgb, var(--x) N%, transparent) 声明取 fg 引用与百分比。 */
+function parseFgMix(v: string | undefined): { ref: string; pct: number } {
+  expect(v, "--fg-muted 缺失").toBeTruthy();
+  const m = v!.match(/color-mix\(in srgb,\s*var\((--[\w-]+)\)\s+(\d+)%/);
+  expect(m, `fg-muted 定义非预期形态: ${v}`).toBeTruthy();
+  return { ref: m![1], pct: Number(m![2]) };
+}
+
+/** resolve 只解一层 var()；别名链（accent-border → accent → 品牌种子）在此解到底。 */
+function deepResolve(t: Map<string, string>, name: string): string {
+  let v = resolve(t, name);
+  for (let i = 0; i < 3 && v.startsWith("var("); i++) {
+    v = resolve(t, v.slice(4, -1));
+  }
+  return v;
+}
+
+describe("亮色专项校准（ui-batch3 T1，审计 A3）", () => {
+  const s = surfaces(light);
+
+  it("danger/warning/success 作文字：bg/raised/overlay/surface 全 ≥4.5（校准前 overlay 3.70/3.85/4.19）", () => {
+    for (const key of ["--color-danger", "--color-warning", "--color-success"] as const) {
+      const v = resolve(light, key);
+      for (const [name, surf] of Object.entries(s)) {
+        const ratio = contrast(v, surf);
+        expect(ratio, `${key} on ${name} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it("accent-border 指示边框键：bg/raised/overlay/surface 全 ≥3（校准前 accent 边框 2.33）", () => {
+    const v = resolve(light, "--color-accent-border");
+    for (const [name, surf] of Object.entries(s)) {
+      const ratio = contrast(v, surf);
+      expect(ratio, `accent-border vs ${name} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("暗色 accent-border 别名 accent（teal-300，暗色已达标不动）", () => {
+    expect(deepResolve(dark, "--color-accent-border")).toBe(deepResolve(dark, "--color-accent"));
+  });
+
+  it("亮色 fg-muted 合成：bg/raised/overlay/surface 全 ≥4.5（校准前 overlay 3.75）", () => {
+    const { ref, pct } = parseFgMix(light.get("--fg-muted"));
+    const fg = resolve(light, ref);
+    for (const [name, surf] of Object.entries(s)) {
+      const ratio = contrast(mix(fg, surf, pct), surf);
+      expect(ratio, `fg-muted on ${name} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("暗色 fg-muted 保持 60%（暗色视觉零变化）", () => {
+    expect(parseFgMix(dark.get("--fg-muted")).pct).toBe(60);
+  });
+
+  it("实底 on-danger 白字随校准加深仍 ≥4.5（#b42318 上 6.57）", () => {
+    const ratio = contrast(resolve(light, "--color-on-danger"), resolve(light, "--color-danger"));
+    expect(ratio, `on-danger on danger = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("亮色终端 ANSI 前景槽全 ≥4.5、光标 ≥3（校准前 bright 六槽 2.01–3.33）", () => {
+    const bg = lightTerminalTheme.background!;
+    for (const [ch, v] of Object.entries(lightTerminalTheme)) {
+      if (ch === "selectionBackground" || ch === "cursorAccent" || ch === "background") continue;
+      const req = ch === "cursor" ? 3 : 4.5;
+      const ratio = contrast(v as string, bg);
+      expect(ratio, `terminal light ${ch} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(req);
+    }
   });
 });

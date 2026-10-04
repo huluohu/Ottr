@@ -4,16 +4,18 @@
  * scrim）用 color-mix 从语义层混出，不写死色值（--btn-bg 字面值已升格
  * tokens 的 --color-surface，T1 挂账 M-1 清偿；accent 作文字色一律用
  * --color-accent-text、实底按钮文字用 --color-on-accent/--color-on-danger，
- * fix 2 裁定键，种子值备案 brand.md）。
+ * fix 2 裁定键，种子值备案 brand.md；accent 作指示边框/描边/图表线/状态点
+ * 一律用 --color-accent-border，ui-batch3 T1 键）。
  * ============================================================ */
 
 :root {
-  /* 页面级派生表面：由语义层混出（亮暗自动跟随） */
+  /* 页面级派生表面：由语义层混出（亮暗自动跟随）。
+   * --fg-muted 已收编进 tokens.css 语义层（ui-batch3 T1 亮色校准：亮 68% /
+   * 暗 60%，暗色视觉零变化），此处不再定义。 */
   --border-subtle: color-mix(in srgb, var(--color-fg) 14%, transparent);
   --surface-raised: color-mix(in srgb, var(--color-fg) 6%, var(--color-bg));
   --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, var(--color-bg));
   --scrim: color-mix(in srgb, var(--color-fg) 45%, transparent);
-  --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent);
 }
 
 :root {
@@ -59,19 +61,19 @@ button {
   transition: border-color 0.15s;
 }
 button:hover {
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 button:disabled {
   opacity: 0.6;
   cursor: default;
 }
 button[data-active="true"] {
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
   color: var(--color-accent-text);
 }
 .btn-accent {
   background-color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
   color: var(--color-on-accent);
   font-weight: 600;
 }
@@ -261,7 +263,7 @@ button[data-active="true"] {
   cursor: pointer;
 }
 .main-empty-card:hover {
-  border-color: var(--color-accent, var(--ottr-teal-500));
+  border-color: var(--color-accent-border);
 }
 .main-empty-card-title {
   font-weight: 600;
@@ -598,7 +600,7 @@ button[data-active="true"] {
 
 /* 内联凭据子表单（Phase 5 T1）：主机表单内就地展开的「新建凭据」卡 */
 .cred-inline {
-  border: 1px dashed color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--color-accent-border) 45%, transparent);
   border-radius: 8px;
   padding: 10px 12px 2px;
   margin: 2px 0 12px;
@@ -649,7 +651,7 @@ button[data-active="true"] {
   cursor: pointer;
 }
 .import-sources button[data-active="true"] {
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
   /* 文字场景走 accent-text（tokens 纪律：accent 作字面对比度不足） */
   color: var(--color-accent-text);
   font-weight: 600;
@@ -721,7 +723,7 @@ button[data-active="true"] {
 }
 .dialog-tabs button[data-active="true"] {
   color: var(--color-accent-text);
-  border-bottom-color: var(--color-accent);
+  border-bottom-color: var(--color-accent-border);
 }
 .cred-toolbar {
   display: flex;
@@ -751,7 +753,7 @@ button[data-active="true"] {
 }
 .cred-kind-key {
   color: var(--color-accent-text);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 .cred-title {
   font-weight: 600;
@@ -1094,7 +1096,7 @@ button[data-active="true"] {
 }
 .titlebar-close:hover {
   background: var(--color-danger);
-  color: #fff;
+  color: var(--color-on-danger);
 }
 .titlebar-menu {
   position: absolute;
@@ -1261,7 +1263,7 @@ button[data-active="true"] {
   visibility: visible;
 }
 .term-pane[data-focused="true"] {
-  outline: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--color-accent-border) 85%, transparent);
   outline-offset: -1px;
 }
 /* 生产环境主机 pane（B11）：常驻红框（聚焦红实线、非聚焦红半透明——所有
@@ -1386,7 +1388,7 @@ button[data-active="true"] {
 .encoding-badge[data-encoding="gbk"],
 .encoding-badge[data-encoding="gb18030"] {
   color: var(--color-accent-text);
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent-border) 55%, transparent);
 }
 
 /* 分隔条（Task 8）：命中面 = split.ts dividers() 矩形，拖拽回写 setPaneRatio */
@@ -1403,7 +1405,7 @@ button[data-active="true"] {
 }
 .split-divider:hover,
 .split-divider[data-dragging="true"] {
-  background: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--color-accent-border) 85%, transparent);
 }
 
 /* 搜索栏（⌘F / 右键菜单「搜索」） */
@@ -1600,7 +1602,7 @@ button[data-active="true"] {
 }
 .view-switch button[data-active="true"] {
   color: var(--color-accent-text);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 
 /* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲不丢。
@@ -1700,7 +1702,7 @@ button[data-active="true"] {
   background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }
 .file-pane[data-droptarget="true"] {
-  outline: 2px dashed color-mix(in srgb, var(--color-accent) 65%, transparent);
+  outline: 2px dashed color-mix(in srgb, var(--color-accent-border) 85%, transparent);
   outline-offset: -2px;
 }
 .file-pane-path {
@@ -1818,7 +1820,7 @@ button[data-active="true"] {
 }
 .queue-bar-fill {
   height: 100%;
-  background: var(--color-accent);
+  background: var(--color-accent-border);
   transition: width 0.15s linear;
 }
 .queue-meta {
@@ -2030,7 +2032,7 @@ button[data-active="true"] {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: var(--color-accent);
+  background: var(--color-accent-border);
 }
 /* severity 语义配色（令牌纪律：不引字面色） */
 .notify-item[data-severity="success"] .notify-sev {
@@ -2624,7 +2626,7 @@ button[data-active="true"] {
 }
 .jump-hop-row[data-over="true"] {
   border-style: solid;
-  border-color: var(--color-accent, var(--color-border));
+  border-color: var(--color-accent-border, var(--color-border));
 }
 .jump-hop-index {
   flex: none;
@@ -2685,8 +2687,7 @@ button[data-active="true"] {
   padding: 0;
 }
 .monitor-rail:hover {
-  background: var(--color-accent, var(--ottr-teal-500));
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--color-accent-border) 85%, transparent);
 }
 
 /* 展开态：右栏面板（AI 面板同构：固定宽、独立滚动、表面色） */
@@ -2751,17 +2752,17 @@ button[data-active="true"] {
   height: 28px;
 }
 .monitor-spark-line {
-  stroke: var(--color-accent, var(--ottr-teal-500));
+  stroke: var(--color-accent-border);
   stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 .monitor-spark-fill-strong {
-  stop-color: var(--color-accent, var(--ottr-teal-500));
+  stop-color: var(--color-accent-border);
   stop-opacity: 0.28;
 }
 .monitor-spark-fill-faint {
-  stop-color: var(--color-accent, var(--ottr-teal-500));
+  stop-color: var(--color-accent-border);
   stop-opacity: 0.02;
 }
 
@@ -2778,8 +2779,7 @@ button[data-active="true"] {
   padding: 0;
 }
 .plugin-rail:hover {
-  background: var(--color-accent, var(--ottr-teal-500));
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--color-accent-border) 85%, transparent);
 }
 
 /* 展开态：面板（监控侧栏同构：固定宽、独立滚动、表面色） */
@@ -2864,8 +2864,7 @@ button[data-active="true"] {
   padding: 1px 6px;
 }
 .plugin-cmd-copy:hover {
-  background: var(--color-accent, var(--ottr-teal-500));
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--color-accent-border) 85%, transparent);
 }
 
 /* --- Phase 3 Task 2（B4 下半）：多主机总览 + 进程浏览器 --------------------- */
@@ -2894,7 +2893,7 @@ button[data-active="true"] {
   text-align: left;
 }
 .overview-card:hover {
-  border-color: var(--color-accent, var(--ottr-teal-500));
+  border-color: var(--color-accent-border);
 }
 .overview-card[data-off="true"] {
   opacity: 0.55;
@@ -2969,7 +2968,7 @@ button[data-active="true"] {
 .overview-bar-fill {
   display: block;
   height: 100%;
-  background: var(--color-accent, var(--ottr-teal-500));
+  background: var(--color-accent-border);
 }
 .overview-bar-fill[data-warn="true"] {
   background: var(--color-danger);
@@ -3101,7 +3100,7 @@ button[data-active="true"] {
   gap: 8px;
 }
 .proc-confirm-actions button[data-armed="true"] {
-  color: #fff;
+  color: var(--color-on-danger);
   background: var(--color-danger);
   border-color: var(--color-danger);
 }
@@ -3192,7 +3191,7 @@ button[data-active="true"] {
 }
 .tree-host[data-checked="true"] .host-check {
   background: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 .tree-host[data-checked="true"] .host-row {
   background: var(--surface-raised);
@@ -3463,7 +3462,7 @@ button[data-active="true"] {
 }
 .recording-player-speeds button[data-active="true"] {
   color: var(--color-accent-text);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 .recording-player-actions {
   display: flex;
@@ -3658,7 +3657,7 @@ button[data-active="true"] {
 }
 .ui-switch:checked {
   background-color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 .ui-switch:checked::before {
   left: calc(100% - 14px);
@@ -3706,7 +3705,7 @@ button[data-active="true"] {
 }
 .ui-checkbox:checked {
   background-color: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 .ui-checkbox:checked::after {
   opacity: 1;
@@ -3740,7 +3739,7 @@ button[data-active="true"] {
 }
 .ui-segmented button[data-active="true"] {
   background: var(--color-accent);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
   color: var(--color-on-accent);
 }
 
@@ -3827,7 +3826,7 @@ button[data-active="true"] {
 }
 .main-view-head button:hover {
   color: var(--color-accent-text);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 
 /* 实体视图在 term-main-row 内（有会话时 overview/batch 视图）：自带内边距

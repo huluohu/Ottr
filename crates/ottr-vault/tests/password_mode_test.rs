@@ -610,3 +610,38 @@ fn vault_db_file_is_0600() {
         .mode();
     assert_eq!(mode & 0o777, 0o600, "vault.db must be owner-only (0600)");
 }
+
+/// BL-202：主密码最小长度计量 = Unicode 码点数（`chars().count()`），与前端
+/// 预检（SecuritySettings MIN_MASTER_PASSWORD，码点口径）同值同语义。
+/// 4 个增补平面字符（emoji，UTF-16 length 恰为 8）必须被权威校验拒绝；
+/// 8 个 emoji（8 码点）通过长度门卫、走到升级成功——钉死「不是按 UTF-16
+/// 码元也不是按字节数」的口径分叉面。
+#[test]
+fn master_password_min_len_counts_code_points_not_utf16_units() {
+    let four_emoji = "😀😀😀😀"; // 4 码点 / 8 UTF-16 码元 / 16 字节
+    assert_eq!(four_emoji.chars().count(), 4);
+    assert_eq!(four_emoji.len(), 16);
+
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Vault::open_with(dir.path(), &InMemoryStorage::new()).unwrap();
+    let err = vault
+        .set_master_password(four_emoji, &mut |_, _| {})
+        .unwrap_err();
+    match err {
+        VaultError::InvalidInput(msg) => {
+            assert!(
+                msg.contains("at least 8"),
+                "4 码点必须被最小长度门卫拒绝，实际 {msg}"
+            );
+        }
+        other => panic!("expected InvalidInput, got {other:?}"),
+    }
+
+    // 8 码点（同字符类）通过长度门卫：keyring 全新库升级成功、模式翻转。
+    let eight_emoji = "😀😀😀😀😀😀😀😀";
+    assert_eq!(eight_emoji.chars().count(), 8);
+    vault
+        .set_master_password(eight_emoji, &mut |_, _| {})
+        .expect("8 码点必须通过最小长度门卫");
+    assert_eq!(vault.mode(), KeyMode::Password);
+}

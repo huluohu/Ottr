@@ -62,7 +62,12 @@ fn verifier_aad() -> String {
 /// Argon2id 盐长度（128-bit，随机生成；NIST SP 800-132 推荐档）。
 const KDF_SALT_LEN: usize = 16;
 /// 主密码最小长度。空密码/一位数字把「全库凭据」押在花生壳上——显式拒绝；
-/// 上限不设（密码短语欢迎）。UI 侧同口径校验（security.wizard.errTooShort）。
+/// 上限不设（密码短语欢迎）。
+///
+/// **双端口径（BL-202）**：本侧是权威校验，计量 = `chars().count()`（Unicode
+/// 码点数）；前端预检（src/security/SecuritySettings.tsx `MIN_MASTER_PASSWORD`）
+/// 同值同语义（码点口径，非 JS `.length` 的 UTF-16 码元数——增补平面字符两边
+/// 才不会分叉）。预检只为 UX 提前拦截，绕过前端直连 IPC 仍由本侧拦截。
 pub const MASTER_PASSWORD_MIN_LEN: usize = 8;
 
 /// 主密钥来源模式（语义矩阵见模块文档与 task-11-report）。

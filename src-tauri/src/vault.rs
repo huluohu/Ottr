@@ -142,6 +142,29 @@ pub fn vault_security_status(state: State<'_, VaultState>) -> CmdResult<Security
 
 /// 解锁（password 模式）：主密码校验通过后 Master Key 进内存。
 /// 成功发 `ottr://vault-unlocked`（LockScreen 收口；keyring 模式/密码错显式报错）。
+///
+/// **明文主密码的 IPC 副本边界（BL-202 成文，不改行为）**——密码从输入框到
+/// 消费点的完整生命周期与既定边界：
+///
+/// 1. **webview 侧**：`LockScreen` useState（向导：SecuritySettings，成功/
+///    失败后清空重置）。JS 字符串在 GC 堆上**不可主动清零**——已知边界，
+///    收敛手段是输入框 `type="password"`（不进 DOM 明文）+ 组件随锁定态
+///    卸载后引用随 GC 回收。
+/// 2. **IPC 面**：`invoke("vault_unlock", { password })` → Tauri v2 进程内
+///    反序列化产生一份 `String` 副本（本命令栈上）。进程内 IPC 不出进程
+///    边界（无网络面）。
+/// 3. **消费点**：以 `&str` 借给 [`ottr_vault::Vault::unlock_with_password`]
+///    → Argon2id 派生 → **派生中间值（32B RawKey）用后即清**（store.rs
+///    `derive_cipher` 内 `key.zeroize()`）；内存中留存的只有
+///    [`ottr_vault::Cipher`]（aes-gcm zeroize feature：key schedule
+///    ZeroizeOnDrop，`vault_lock` 即取走 drop）。
+/// 4. **副本清零边界**：命令参数 `String` 与 IPC 反序列化中间缓冲在命令
+///    结束时普通 drop（非 zeroizing）——堆上留有可被同进程后续分配覆写的
+///    残留。**裁定接受**：本地单用户进程、副本生命周期限于单次命令调用、
+///    全链 zeroize 需自定义分配器改造，边际收益不成比例；作为交换，硬性
+///    不变量是：密码**不落盘、不进日志/事件/错误文案/遥测**（错误路径只回
+///    `VaultError::Display`，如 "master password is incorrect"，绝不内插
+///    密码本身），且**不跨命令缓存**（每次解锁重新输入）。
 #[tauri::command]
 pub fn vault_unlock(
     state: State<'_, VaultState>,
@@ -173,6 +196,9 @@ pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()>
 /// 重加密逐字段发 `ottr://reencrypt-progress`（向导进度条），成功后删除钥匙链
 /// 旧条目（失败路径什么都不动——vault 层单事务保证，残留由下次 open 兜底）。
 /// 返回值 = 重密封字段数（向导完成页展示）。
+/// 明文主密码的 IPC 副本边界与 [`vault_unlock`] 同一套（BL-202 成文，见彼处
+/// 四点生命周期）；本命令在库内跑的是重密封（Argon2id 派生 + 全表重加密），
+/// 副本生命周期因 Argon2 拉长到秒级，结论不变：不落盘、不进日志、不缓存。
 #[tauri::command]
 pub fn vault_upgrade_to_master_password(
     state: State<'_, VaultState>,

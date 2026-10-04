@@ -112,6 +112,28 @@ describe("SecuritySettings", () => {
     ).toHaveLength(0);
   });
 
+  // BL-202：长度口径必须与 Rust 侧权威校验（ottr-vault store.rs
+  // MASTER_PASSWORD_MIN_LEN，`chars().count()` = Unicode 码点数）同语义。
+  // JS `"😀".length` 是 UTF-16 码元数（增补平面字符 = 2），4 个 emoji 的
+  // `.length` 恰为 8——旧口径会放行、后端再以「至少 8 位」拒绝（前端预检
+  // 与权威门卫各说各话）。码点口径（[...password].length）下它必须本地拦截。
+  it("向导校验：增补平面字符按码点计数——4 个 emoji（UTF-16 长度恰 8）本地拦截", async () => {
+    seedMode("keyring");
+    renderDialog();
+    fireEvent.click(screen.getByTestId("start-upgrade"));
+    const fourEmoji = "😀😀😀😀"; // 4 码点 / 8 UTF-16 码元
+    expect(fourEmoji.length).toBe(8); // 守住本例与旧口径的分歧前提
+    fireEvent.change(screen.getByTestId("wizard-password"), { target: { value: fourEmoji } });
+    fireEvent.change(screen.getByTestId("wizard-confirm"), { target: { value: fourEmoji } });
+    fireEvent.click(screen.getByTestId("wizard-start"));
+    await waitFor(() =>
+      expect(screen.getByTestId("wizard-error").textContent).toContain("至少 8 位"),
+    );
+    expect(
+      mockedInvoke.mock.calls.filter(([cmd]) => cmd === "vault_upgrade_to_master_password"),
+    ).toHaveLength(0);
+  });
+
   it("向导完成：升级命令携密码、进度事件驱动计数、完成页展示字段数并翻模式", async () => {
     seedMode("keyring");
     let resolveUpgrade: ((fields: number) => void) | undefined;

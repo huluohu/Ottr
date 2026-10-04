@@ -77,8 +77,9 @@ export interface GenerateSummaryOptions {
  * 生成一条会话纪要（数据源 → 脱敏 → 单轮摘要 → 密文入库 → 通知）。
  * 返回是否生成成功（各失败分支 false；**恒不抛**——fire-and-forget 纪律，
  * 绝不反噬断开/关闭流程）。链路逐段静默：
- *   history 取数失败 / 命令数 < 3 / 未配 provider / key 读取失败 / 端点错误 /
- *   空回复 / 入库失败（vault 锁定等）→ false（console.warn 留痕）。
+ *   history 取数失败 / 命令数 < 3 / 未配 provider / vault 锁定（派发前闸门，
+ *   BL-510①）/ key 读取失败 / 端点错误 / 空回复 / 入库失败 → false
+ *   （console.warn 留痕）。
  */
 export async function generateSessionSummary(
   req: SessionEndInfo,
@@ -109,6 +110,23 @@ export async function generateSessionSummary(
     }
     const meta = settings.providers[0] ?? null;
     if (!meta) return false;
+
+    // --- 2.5 锁定态前置闸门（BL-510①）：vault 锁定时 summary_insert 必被拒
+    // （密文面过 ensure_unlocked 门卫）——现状是请求已发出、入库被拒静默丢，
+    // 还会留下一条「纪要就绪」的谎报通知。派发前先查锁定态：锁定即止损不出网，
+    // 失败原因 console.warn 留痕（不静默）。查询本身失败同样跳过（fail-closed
+    // ——宁可漏一条尽力而为的纪要，不赌一次白烧；insert 门卫仍是权威边界）。
+    let lockStatus;
+    try {
+      lockStatus = await vaultApi.security.status();
+    } catch (e) {
+      console.warn("[summary] lock status unavailable, skip:", e);
+      return false;
+    }
+    if (lockStatus?.locked) {
+      console.warn("[summary] vault locked, skip summary (insert would be rejected)");
+      return false;
+    }
 
     // --- 3. 明文 key 单点出库（空串 = 免 key 端点，同 aiStore fix 1/5 I-1）---
     let apiKey: string;

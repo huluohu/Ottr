@@ -91,8 +91,14 @@ function mockBackend(over: {
   history?: unknown[] | Error;
   secret?: string | null;
   insertRow?: unknown;
+  /** vault_security_status 注入口（BL-510① 锁定态闸门）：缺省 unlocked。 */
+  locked?: boolean | Error;
 } = {}): void {
   mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+    if (cmd === "vault_security_status") {
+      if (over.locked instanceof Error) throw over.locked;
+      return { mode: "password", locked: over.locked ?? false };
+    }
     if (cmd === "settings_get") {
       switch (args?.key) {
         case "ai_providers":
@@ -297,6 +303,26 @@ describe("generateSessionSummary", () => {
       provider: new RecordingProvider(["x"]),
     });
     expect(ok).toBe(false);
+    expect(insertedPayloads()).toHaveLength(0);
+  });
+
+  it("锁定态前置闸门：vault 锁定 → 不派发 LLM、不入库、不通知（BL-510①）", async () => {
+    mockBackend({ locked: true });
+    const provider = new RecordingProvider(["纪要正文。"]);
+    const ok = await generateSessionSummary(REQ, { provider });
+    expect(ok).toBe(false);
+    // 派发前置闸门：请求未出网（现状是请求已发出、入库被拒静默丢）
+    expect(provider.requests).toHaveLength(0);
+    expect(insertedPayloads()).toHaveLength(0);
+    expect(notifiedPayloads()).toHaveLength(0);
+  });
+
+  it("锁定态查询失败：fail-closed（宁可漏一条尽力而为的纪要，不赌白烧 LLM）", async () => {
+    mockBackend({ locked: new Error("backend gone") });
+    const provider = new RecordingProvider(["x"]);
+    const ok = await generateSessionSummary(REQ, { provider });
+    expect(ok).toBe(false);
+    expect(provider.requests).toHaveLength(0);
     expect(insertedPayloads()).toHaveLength(0);
   });
 });

@@ -50,12 +50,21 @@ function emptyDraft(): ProviderDraft {
   };
 }
 
-/** 预设候选（kind=DeepSeek/Ollama 皆为 openai-compatible，仅 baseURL 捷径）。 */
+/** 预设候选（kind=DeepSeek/Ollama/智谱 皆为 openai-compatible，仅 baseURL 捷径）。
+ * 智谱端点 OpenAI 兼容（open.bigmodel.cn /api/paas/v4）；预设不含 key——key 走
+ * vault secrets（运行时用户自填）。 */
 const BASE_URL_PRESETS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   deepseek: "https://api.deepseek.com",
   ollama: "http://localhost:11434/v1",
   anthropic: "https://api.anthropic.com",
+  zhipu: "https://open.bigmodel.cn/api/paas/v4",
+};
+
+/** 预设的默认模型（点预设时 draft.model 为空才填；仅智谱有——glm-4-flash
+ * 免费档可直用；展示名 i18n 键 = `ai.settings.preset<Cap(key)>`）。 */
+const PRESET_DEFAULT_MODELS: Record<string, string> = {
+  zhipu: "glm-4-flash",
 };
 
 export function AISettings({ open, onClose }: AISettingsProps) {
@@ -375,10 +384,15 @@ export function AISettings({ open, onClose }: AISettingsProps) {
                         ...draft,
                         kind: key === "anthropic" ? "anthropic" : "openai-compatible",
                         baseURL: url,
+                        // 默认模型仅补空（用户已填不覆盖；无默认模型的 preset 不动）
+                        model: draft.model || PRESET_DEFAULT_MODELS[key] || draft.model,
                       })
                     }
                   >
-                    {key}
+                    {/* 展示名 i18n（动态键与 settings.themeX 同款；缺键回落原始 key） */}
+                    {t(`ai.settings.preset${key.charAt(0).toUpperCase()}${key.slice(1)}`, {
+                      defaultValue: key,
+                    })}
                   </button>
                 ))}
               </div>

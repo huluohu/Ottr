@@ -178,7 +178,7 @@ describe("SyncDialog", () => {
 
   it("BL-525：导入后实体刷新失败 → 错误面如实呈现（form-error 可见，不吞不假成功）", async () => {
     const store = fakeStore(statusOf("pull"), {
-      pull: vi.fn(async (_pass: string, cats?: readonly SyncCategory[]) => {
+      pull: vi.fn(async (_pass: string, _cats?: readonly SyncCategory[]) => {
         // 生产形态：SyncStore onImported（entityRefresh）在基线写盘前上抛的
         // 本地化包装错误（zh = 「云端数据已应用，但界面刷新失败：…」）。
         throw new Error("sync.dialog.refreshFailed：boom-cause");

@@ -10,6 +10,10 @@ vi.hoisted(() => {
     value: "zh-CN",
     configurable: true,
   });
+  // webdav 生产默认 fetchImpl = Rust 代理包装（T4/BL-524，sync_http_fetch
+  // invoke）——包装器做 __TAURI_INTERNALS__ 可达性探针，测试环境放空对象
+  // 让被 mock 的 invoke 可达（包装器自身面在 webdav.proxy.test.ts）。
+  (window as { __TAURI_INTERNALS__?: Record<string, unknown> }).__TAURI_INTERNALS__ = {};
 });
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -108,22 +112,29 @@ describe("SyncSettings", () => {
     });
   });
 
-  it("webdav 测试连接：fetch 2xx → 连接正常；401 → 连接失败", async () => {
+  it("webdav 测试连接：代理命令 2xx/404 → 连接正常；401 → 连接失败（走 Rust 代理路径）", async () => {
     seedSettings({});
     renderSection();
     await waitFor(() => expect(screen.getByTestId("sync-channel-webdav")).toBeTruthy());
     fireEvent.click(screen.getByTestId("sync-channel-webdav"));
     fireEvent.change(screen.getByTestId("sync-webdav-server"), { target: { value: "https://dav.x" } });
 
-    const fetchMock = vi.fn(async () => new Response("", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+    // 生产默认 fetchImpl = Rust 代理（T4/BL-524）——mock sync_http_fetch 命令
+    // 面即可全链（包装器 → Response 还原 → transport.test() 布尔面）。
+    const proxyRespond = (status: number) =>
+      mockedInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "settings_get" || cmd === "sync_passphrase_get") return Promise.resolve(null);
+        if (cmd === "sync_http_fetch") return Promise.resolve({ status, body: "" });
+        return Promise.resolve();
+      });
+
+    proxyRespond(200);
     fireEvent.click(screen.getByTestId("sync-test"));
     await waitFor(() => expect(screen.getByTestId("sync-test-result").textContent).toContain("连接正常"));
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 401 })));
+    proxyRespond(401);
     fireEvent.click(screen.getByTestId("sync-test"));
     await waitFor(() => expect(screen.getByTestId("sync-test-result").textContent).toContain("连接失败"));
-    vi.unstubAllGlobals();
   });
 
   it("localdir：系统目录框选定 → 草稿回填并可保存", async () => {

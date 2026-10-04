@@ -145,6 +145,9 @@ describe("ImportDialog 迁移导入器来源（Phase 2 Task 10，B3）", () => {
     mockOpen.mockResolvedValue("/Users/ottr/tabby-config.json");
     fireEvent.click(screen.getByTestId("import-pick"));
     await waitFor(() => expect((screen.getByTestId("import-start") as HTMLButtonElement).disabled).toBe(false));
+    // BL-513：文件对话框放行 YAML 形态（生产配置 config.yaml）
+    const openArg = mockOpen.mock.calls[0][0] as { filters: { extensions: string[] }[] };
+    expect(openArg.filters[0].extensions).toEqual(["json", "yaml", "yml"]);
 
     fireEvent.click(screen.getByTestId("import-start"));
     await waitFor(() => expect(screen.getByTestId("import-report")).toBeTruthy());

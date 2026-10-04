@@ -84,6 +84,13 @@ zeroize = "1"
 # TLS = rustls（webpki-roots，免系统信任库平台差）。
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
+# BL-513（账本清零 G1）：Tabby 实际生产配置是 YAML（~/.config/tabby/config.yaml）
+# ——importers/tabby 补 YAML 形态。选型 serde_yaml 0.9 = dtolnay 原作（2024-03
+# 起归档冻结：无未修 CVE、API 稳定、生态事实标准），相较年轻分叉（serde-yaml-ng
+# 等）供应链面更小；版本锁死仅消费不追新。使用面 = importers/tabby 单模块，
+# 无传递扩散。
+serde_yaml = "0.9"
+
 # keyring v3 无默认 feature（无平台 store 即只剩 mock）；平台 store 按平台 opt-in，
 # 且 sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）——官方推荐按
 # target 分平台声明。Linux Secret Service 依赖 gnome-keyring：CI 无桌面环境预期失败，

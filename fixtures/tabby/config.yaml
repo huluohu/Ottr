@@ -1,0 +1,39 @@
+# Tabby 真实生产配置形态（~/.config/tabby/config.yaml）——手工构造的代表性
+# 样例：顶层带 version/settings/groups 等 Tabby 自有面，profiles 集与
+# fixtures/tabby/config.json 语义等价（importers/tabby KAT 对齐断言：
+# 同输入语义 → 同 ParseOutcome）。
+version: "5"
+settings:
+  fontSize: 14
+  accentColor: "#6A5ACD"
+groups:
+  - id: g1
+    name: lab
+profiles:
+  - id: p1
+    type: ssh
+    name: web-01
+    host: 192.168.1.10
+    port: 2222
+    user: deploy
+  - id: p2
+    type: ssh
+    name: db-master
+    host: 10.0.0.5
+  - id: p3
+    type: ssh
+    name: cache-01
+    host: 10.0.0.7
+    username: ops
+  - id: p4
+    type: serial
+    name: serial-box
+    host: COM3
+  - id: p5
+    type: ssh
+    name: no-host
+  - id: p6
+    type: ssh
+    name: bad-port
+    host: 10.0.0.99
+    port: -1

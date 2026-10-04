@@ -1,7 +1,9 @@
 //! Tabby 配置导入（Phase 2 Task 10，B3 迁移导入器）。
 //!
-//! 格式：Tabby 配置导出的 JSON——`{"profiles": [...]}` / 裸数组 / 单 profile
-//! 对象三形态都收（用户手里的导出件裁剪层不一）。SSH profile 字段：
+//! 格式：Tabby 配置导出的 JSON 或 YAML（实际生产配置 `~/.config/tabby/
+//! config.yaml` 即 YAML，BL-513 清偿）——`{"profiles": [...]}` / 裸数组 /
+//! 单 profile 对象三形态都收（用户手里的导出件裁剪层不一），两文本格式走
+//! 同一解析核。SSH profile 字段：
 //! `name` / `type`（缺省按 ssh）/ `host` / `port` / `user`（`username` 同义）。
 //! 解析规则（宁可少导不错导）：
 //!   * `type` 存在且非 ssh → 跳过计数（serial/telnet 等非本域 profile）；
@@ -15,9 +17,21 @@ use serde_json::Value;
 
 use crate::ssh_config::{import_entries, ImportReport, ParseOutcome, SshConfigEntry};
 
-/// 解析 Tabby 配置文本 → [`ParseOutcome`]。非 JSON / 无 profiles 面 → Err。
+/// JSON 文本 → [`ParseOutcome`]。非 JSON / 无 profiles 面 → Err。
 pub fn parse_config(content: &str) -> Result<ParseOutcome, String> {
     let doc: Value = serde_json::from_str(content).map_err(|e| format!("not valid JSON: {e}"))?;
+    parse_doc(doc)
+}
+
+/// YAML 文本 → [`ParseOutcome`]（BL-513）。serde_yaml 解析成 [`serde_json::Value`]
+/// 后走与 JSON 完全同一的解析核——YAML 1.2 是 JSON 超集，字段面零分叉。
+pub fn parse_config_yaml(content: &str) -> Result<ParseOutcome, String> {
+    let doc: Value = serde_yaml::from_str(content).map_err(|e| format!("not valid YAML: {e}"))?;
+    parse_doc(doc)
+}
+
+/// 形态分派 + profile 字段面解析核（JSON/YAML 两路共同下游，逻辑只此一份）。
+fn parse_doc(doc: Value) -> Result<ParseOutcome, String> {
     let profiles = match &doc {
         Value::Array(a) => a.clone(),
         Value::Object(o) => match o.get("profiles") {
@@ -90,12 +104,23 @@ pub fn parse_config(content: &str) -> Result<ParseOutcome, String> {
     Ok(outcome)
 }
 
-/// 导入入口：path = 配置 JSON 文件。解析 → 复用 ssh_config 去重落库。
+/// 导入入口：path = 配置文件（JSON 或 YAML，按内容嗅探——先试 JSON，语法解析
+/// 失败再试 YAML；两路皆败则错误同时携带两侧原因，诊断不猜格式）。
 pub fn import_path(vault: &Vault, path: &std::path::Path) -> ottr_vault::Result<ImportReport> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         ottr_vault::VaultError::InvalidInput(format!("read {}: {e}", path.display()))
     })?;
-    let outcome = parse_config(&content).map_err(ottr_vault::VaultError::InvalidInput)?;
+    let outcome = match parse_config(&content) {
+        Ok(o) => o,
+        Err(json_err) => match parse_config_yaml(&content) {
+            Ok(o) => o,
+            Err(yaml_err) => {
+                return Err(ottr_vault::VaultError::InvalidInput(format!(
+                    "not a tabby config (JSON: {json_err}; YAML: {yaml_err})"
+                )));
+            }
+        },
+    };
     import_entries(vault, outcome)
 }
 
@@ -192,5 +217,95 @@ mod tests {
         .unwrap();
         assert_eq!(rerun.added, 0);
         assert_eq!(rerun.skipped_duplicates, 3);
+    }
+
+    // -------------------------------------------------------------------------
+    // YAML 形态（BL-513）：Tabby 实际生产配置 ~/.config/tabby/config.yaml
+    // -------------------------------------------------------------------------
+
+    fn yaml_fixture() -> String {
+        std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../fixtures/tabby/config.yaml"
+        ))
+        .expect("read fixtures/tabby/config.yaml")
+    }
+
+    #[test]
+    fn parse_yaml_golden_aligned_with_json_golden() {
+        // KAT 对齐：语义等价的两份 fixture（YAML/JSON）→ 同一 ParseOutcome
+        // （SshConfigEntry/ParseOutcome 逐字段 PartialEq）
+        let yaml = parse_config_yaml(&yaml_fixture()).unwrap();
+        let json = parse_config(&fixture()).unwrap();
+        assert_eq!(yaml, json);
+        // 同时复述 JSON golden 断言：防两份 fixture 内容漂移时对齐变空转
+        assert_eq!(yaml.entries.len(), 3);
+        assert_eq!(yaml.skipped_wildcards, 2);
+        assert_eq!(yaml.errors, vec!["profiles[5]: port 不可解析"]);
+        let web = &yaml.entries[0];
+        assert_eq!(web.host, "web-01");
+        assert_eq!(web.hostname.as_deref(), Some("192.168.1.10"));
+        assert_eq!(web.port, Some(2222));
+        assert_eq!(web.user.as_deref(), Some("deploy"));
+    }
+
+    #[test]
+    fn yaml_shapes_match_json_shapes() {
+        // 三形态同构：裸数组 / 单 profile 对象（无 profiles 键但自带 host 面）
+        let bare_array =
+            "- name: s1\n  host: 10.9.9.9\n  port: 2200\n- name: s2\n  host: 10.9.9.8\n";
+        assert_eq!(parse_config_yaml(bare_array).unwrap().entries.len(), 2);
+        let single = parse_config_yaml("name: solo\nhost: 10.9.9.9\nport: 2200\n").unwrap();
+        assert_eq!(single.entries.len(), 1);
+        assert_eq!(single.entries[0].host, "solo");
+    }
+
+    #[test]
+    fn bad_yaml_is_error() {
+        // 非法 YAML 语法 → 显式报错（不是静默空 outcome）
+        assert!(parse_config_yaml("a: [unclosed")
+            .unwrap_err()
+            .contains("not valid YAML"));
+    }
+
+    #[test]
+    fn import_path_yaml_and_json_interoperate() {
+        // YAML 导入落库 → 同语义 JSON 再导入全去重（解析核同一份的端到端证词）
+        let tmp = tempfile::tempdir().unwrap();
+        let yaml_path = tmp.path().join("config.yaml");
+        std::fs::write(&yaml_path, yaml_fixture()).unwrap();
+        let vault = ottr_vault::Vault::open_with(
+            tmp.path(),
+            &ottr_vault::master_key::InMemoryStorage::new(),
+        )
+        .unwrap();
+        let report = import_path(&vault, &yaml_path).unwrap();
+        assert_eq!(report.added, 3);
+        let rerun = import_path(
+            &vault,
+            std::path::Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../fixtures/tabby/config.json"
+            )),
+        )
+        .unwrap();
+        assert_eq!(rerun.added, 0);
+        assert_eq!(rerun.skipped_duplicates, 3);
+    }
+
+    #[test]
+    fn import_path_garbage_reports_both_parse_failures() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("garbage.cfg");
+        std::fs::write(&p, "\t\t%%% not a config").unwrap();
+        let vault = ottr_vault::Vault::open_with(
+            tmp.path(),
+            &ottr_vault::master_key::InMemoryStorage::new(),
+        )
+        .unwrap();
+        let err = import_path(&vault, &p).unwrap_err().to_string();
+        assert!(err.contains("not a tabby config"), "actual: {err}");
+        assert!(err.contains("JSON"), "actual: {err}");
+        assert!(err.contains("YAML"), "actual: {err}");
     }
 }

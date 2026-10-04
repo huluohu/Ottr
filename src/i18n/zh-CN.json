@@ -129,12 +129,12 @@
     "source": "来源",
     "sourceSsh": "~/.ssh/config",
     "sourceXshell": "Xshell 会话目录",
-    "sourceTabby": "Tabby 配置（JSON）",
+    "sourceTabby": "Tabby 配置（JSON/YAML）",
     "pickFile": "选择文件…",
     "pickFolder": "选择目录…",
     "skippedEntries": "跳过 {{count}} 个不可用条目/文件",
     "xshellIntro": "选择 Xshell .xsh 会话文件所在目录（或单个 .xsh）。导入主机/端口/用户；按地址+端口+用户去重。",
-    "tabbyIntro": "选择 Tabby 配置 JSON 导出文件。导入其中 SSH 配置；按地址+端口+用户去重。"
+    "tabbyIntro": "选择 Tabby 配置导出文件（JSON 或 YAML，~/.config/tabby/config.yaml 即 YAML）。导入其中 SSH 配置；按地址+端口+用户去重。"
   },
   "palette": {
     "title": "命令面板",

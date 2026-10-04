@@ -129,12 +129,12 @@
     "source": "Source",
     "sourceSsh": "~/.ssh/config",
     "sourceXshell": "Xshell sessions folder",
-    "sourceTabby": "Tabby config (JSON)",
+    "sourceTabby": "Tabby config (JSON/YAML)",
     "pickFile": "Choose file…",
     "pickFolder": "Choose folder…",
     "skippedEntries": "Skipped {{count}} unusable entries/files",
     "xshellIntro": "Pick a folder of Xshell .xsh session files (or a single .xsh). Host/port/user are imported; duplicates by address+port+user are skipped.",
-    "tabbyIntro": "Pick a Tabby config JSON export. SSH profiles are imported; duplicates by address+port+user are skipped."
+    "tabbyIntro": "Pick a Tabby config export (JSON or YAML — ~/.config/tabby/config.yaml is YAML). SSH profiles are imported; duplicates by address+port+user are skipped."
   },
   "palette": {
     "title": "Command Palette",

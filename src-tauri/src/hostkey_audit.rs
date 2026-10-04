@@ -24,7 +24,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::Engine as _;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::{parse_endpoint_key, KnownHost, KnownHosts, Settings, Vault};
@@ -73,28 +72,11 @@ pub fn classify_probe(anchor: &str, seen: &[String]) -> ProbeVerdict {
 
 /// ssh-keyscan 输出行 → `SHA256:<unpadded-std-b64(sha256(key_blob))>` 指纹。
 /// 行形状：`host|'[host]:port' <keytype> <b64>`（注释行 `# ...` 跳过）。
-/// 口径与 commands/session.rs `known_hosts_fingerprint` 一致（同算法不同实现
-/// 位置：那边吃整份文件取首条，这边逐行——两者对同一行的输出逐字相同）。
+/// BL-211 收敛点：算法实现在 [`ottr_ssh::known_hosts::line_fingerprint`]，
+/// 本包装保留 keyscan 面的名字与语义（`|1|` hashed 行防御性跳过、marker 行
+/// `@cert-authority`/`@revoked` 不参与——keyscan 不产出这些行，规则一致）。
 pub fn keyscan_line_fingerprint(line: &str) -> Option<String> {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with('#') || line.starts_with('|') {
-        // `|1|...` 是 hashed known_hosts 形态，keyscan 不产出；防御性跳过
-        return None;
-    }
-    let mut parts = line.split_whitespace();
-    let b64 = match (parts.next(), parts.next(), parts.next()) {
-        (Some(_host), Some(_ktype), Some(b64)) if parts.next().is_none() => b64,
-        _ => return None,
-    };
-    let blob = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
-    use sha2::Digest;
-    let digest = sha2::Sha256::digest(&blob);
-    Some(format!(
-        "SHA256:{}",
-        base64::engine::general_purpose::STANDARD
-            .encode(digest)
-            .trim_end_matches('=')
-    ))
+    ottr_ssh::known_hosts::line_fingerprint(line)
 }
 
 // ---------------------------------------------------------------------------

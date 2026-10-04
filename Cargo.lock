@@ -3447,11 +3447,9 @@ dependencies = [
 name = "ottr-bench"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "ottr-ssh",
  "ottr-transfer",
  "russh",
- "sha2 0.10.9",
  "tokio",
 ]
 
@@ -3473,10 +3471,12 @@ dependencies = [
 name = "ottr-ssh"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "ottr-term",
  "rand 0.10.3",
  "russh",
  "serde",
+ "sha2 0.10.9",
  "tokio",
  "tokio-util",
 ]

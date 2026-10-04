@@ -21,8 +21,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as B64;
 use ottr_ssh::AuthMethod;
 use ottr_transfer::download_parallel;
 use ottr_transfer::sftp::CancelToken;
@@ -250,43 +248,17 @@ async fn session_worker(index: usize, deadline: Instant) -> ottr_ssh::Result<(u6
     Ok((sftp_iters, sftp_bytes, drain_bytes))
 }
 
-/// 与 src-tauri 同款 pin：解析仓库 `fixtures/known_hosts` 首条记录。
+/// 与 src-tauri 同款 pin：按 bench 夹具端点解析仓库 `fixtures/known_hosts`
+/// （BL-211 收敛点：实现在 [`ottr_ssh::known_hosts::fingerprint_for_host`]，
+/// 此前本文件内联的 host 过滤解析与 src-tauri 两处重复同一算法）。
 fn pinned_fingerprint() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/known_hosts");
     if let Ok(content) = std::fs::read_to_string(&path)
-        && let Some(fp) = known_hosts_fingerprint(&content)
+        && let Some(fp) =
+            ottr_ssh::known_hosts::fingerprint_for_host(&content, FIXTURE.0, FIXTURE.1)
     {
         return fp;
     }
     // 夹具文件缺失/不可解析时兜底为已 pin 值（与 src-tauri 常量一致）。
     "SHA256:nLaxv/1hXxccQNB7JauQUi63z0YmST4P3AvViyoNCIQ".to_string()
-}
-
-/// known_hosts 中 `[host]:port` 记录 → `SHA256:<unpadded-std-b64(sha256(key_blob))>`。
-/// 逻辑与 src-tauri lib.rs `known_hosts_fingerprint` / examples/real_fixture.rs
-/// 一致（bench 独立编译，不引 app 层）。
-fn known_hosts_fingerprint(content: &str) -> Option<String> {
-    use sha2::Digest;
-    let marker = format!("[{}]:{}", FIXTURE.0, FIXTURE.1);
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let mut parts = line.split_whitespace();
-        let b64 = match (parts.next(), parts.next(), parts.next()) {
-            (Some(host), Some(_ktype), Some(b64)) if parts.next().is_none() && host == marker => {
-                b64
-            }
-            _ => continue,
-        };
-        if let Ok(blob) = B64.decode(b64) {
-            let digest = sha2::Sha256::digest(&blob);
-            return Some(format!(
-                "SHA256:{}",
-                B64.encode(digest).trim_end_matches('=')
-            ));
-        }
-    }
-    None
 }

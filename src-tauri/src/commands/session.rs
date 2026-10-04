@@ -7,7 +7,6 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use base64::Engine as _;
 use russh::ChannelMsg;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -31,42 +30,22 @@ use crate::vault::VaultState;
 // 主机指纹 pin（来自 fixtures/known_hosts，spike 不允许静默跳过校验）
 // ---------------------------------------------------------------------------
 
-/// 写入时的夹具指纹常量；运行时优先从仓库夹具文件重新解析（防夹具重生成后漂移）。
+/// 写入时的夹具指纹常量；运行时优先从仓库夹具文件按端点解析（防夹具重生成
+/// 后漂移）。解析走 [`ottr_ssh::known_hosts::fingerprint_for_host`]（BL-211
+/// 收敛点：此前本文件内联的「整文件取首条」实现在多 host 文件上可能 pin 错
+/// key，且与 hostkey_audit/bench 三处重复同一算法）。
 const PINNED_FP_FALLBACK: &str = "SHA256:nLaxv/1hXxccQNB7JauQUi63z0YmST4P3AvViyoNCIQ";
 
-/// known_hosts 首条记录 → `SHA256:<unpadded-std-b64(sha256(key_blob))>` 指纹。
-fn known_hosts_fingerprint(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let mut parts = line.split_whitespace();
-        let b64 = match (parts.next(), parts.next(), parts.next()) {
-            (Some(_host), Some(_ktype), Some(b64)) if parts.next().is_none() => b64,
-            _ => continue,
-        };
-        if let Ok(blob) = base64::engine::general_purpose::STANDARD.decode(b64) {
-            use base64::engine::general_purpose::STANDARD as B64;
-            use sha2::Digest;
-            let digest = sha2::Sha256::digest(&blob);
-            return Some(format!(
-                "SHA256:{}",
-                B64.encode(digest).trim_end_matches('=')
-            ));
-        }
-    }
-    None
-}
-
 /// spike 主机密钥策略：指纹必须精确等于 pin 值，其余一律拒绝。
-fn pinned_host_key_policy() -> (HostKeyPolicy, String) {
+/// pin 目标 = 本次连接的 `(host, port)` 端点行（非首条记录）；文件缺失/无
+/// 该端点行 → 退回 `PINNED_FP_FALLBACK`（夹具重生成漂移的兜底，语义不变）。
+fn pinned_host_key_policy(host: &str, port: u16) -> (HostKeyPolicy, String) {
     let expected = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../fixtures/known_hosts"
     ))
     .ok()
-    .and_then(|c| known_hosts_fingerprint(&c))
+    .and_then(|c| ottr_ssh::known_hosts::fingerprint_for_host(&c, host, port))
     .unwrap_or_else(|| PINNED_FP_FALLBACK.to_string());
     let expected_for_cb = expected.clone();
     let policy: HostKeyPolicy = Arc::new(move |fingerprint: &str| fingerprint == expected_for_cb);
@@ -93,7 +72,7 @@ pub(crate) async fn attach_session(
     rows: u32,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<String, String> {
-    let (policy, pinned) = pinned_host_key_policy();
+    let (policy, pinned) = pinned_host_key_policy(&host, port);
     open_and_register(
         state.sessions.clone(),
         None,

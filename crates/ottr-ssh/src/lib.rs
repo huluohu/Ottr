@@ -25,6 +25,7 @@ pub mod forward;
 pub mod jump;
 pub mod jump_session;
 pub mod keygen;
+pub mod known_hosts;
 pub mod russh_impl;
 pub mod shell_integration;
 

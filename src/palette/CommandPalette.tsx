@@ -7,6 +7,12 @@
 // 交互：输入即过滤（命令区 + 主机区两段，扁平 activeIndex 连续导航），↑↓ 循环、
 // Enter 执行、Esc 关闭、点击遮罩关闭；命中字符 <mark> 高亮。
 // 无虚拟滚动刻意为之（T5 台账同款裁定：条目量级不需要）。
+//
+// 【UI 批次三 T2（审计 ⌘K 19/20）】命令区按语义分三组（连接与会话 / 面板与 AI /
+// 系统），空查询（浏览态）显示组节标题、条目按组聚拢；过滤态退扁平相关度排序
+// （组标题隐藏——检索时相关性优先于分类）。每条目带类型图标（命令/主机两型
+// 内联 SVG，stroke currentColor 随主题）。分组是展示层裁定，收在面板本地：
+// registry 是键位单一来源（T14 纪律），菜单/汉堡渲染不受影响。
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Host } from "../vault/api";
@@ -43,6 +49,70 @@ interface PaletteItem {
   action?: ActionId;
   host?: Host;
   score: number;
+}
+
+/** 命令子组（批次三 T2）：语义三分——连接类（主机/会话操作）、面板类（三个
+ * 呼出面板）、系统类（设置/外观/安全/退出）。组序 = 展示序；组内保持 registry
+ * 顺序。未知 id（测试注入缩表/未来新增未归组）回落 system，不炸渲染。 */
+const COMMAND_GROUPS: readonly { id: "connection" | "panels" | "system"; ids: readonly ActionId[] }[] = [
+  { id: "connection", ids: ["hosts.new", "session.splitRight", "session.splitDown"] },
+  { id: "panels", ids: ["palette.toggle", "history.search", "ai.nl2cmd"] },
+  {
+    id: "system",
+    ids: ["settings.open", "theme.toggle", "lang.toggle", "vault.lock", "app.quit"],
+  },
+];
+
+function groupOf(action: ActionId): "connection" | "panels" | "system" {
+  for (const g of COMMAND_GROUPS) {
+    if (g.ids.includes(action)) return g.id;
+  }
+  return "system";
+}
+
+/** 空查询（浏览态）的命令行模型：组节标题与条目交错，flat = 扁平导航下标。 */
+type CommandRow =
+  | { kind: "section"; key: string; label: string }
+  | { kind: "item"; key: string; item: PaletteItem; flat: number };
+
+/** 条目类型图标（内联 SVG，stroke currentColor 随主题；decorative——节标题已
+ * 有语义文本，aria 隐藏）。unicode 备选因跨平台字形不一致弃用。 */
+function PaletteIcon({ type }: { type: "command" | "host" }) {
+  return type === "command" ? (
+    <svg
+      className="palette-icon"
+      data-icon="command"
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+    >
+      {/* 终端提示符：方框 + >_ */}
+      <rect x="1.5" y="1.5" width="11" height="11" rx="2.5" fill="none" stroke="currentColor" />
+      <path
+        d="M4 4.8L6.2 7 4 9.2M7.6 9.4h2.4"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ) : (
+    <svg
+      className="palette-icon"
+      data-icon="host"
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+    >
+      {/* 服务器：两段机箱 + 指示点 */}
+      <rect x="1.5" y="2" width="11" height="4.2" rx="1.2" fill="none" stroke="currentColor" />
+      <rect x="1.5" y="7.8" width="11" height="4.2" rx="1.2" fill="none" stroke="currentColor" />
+      <circle cx="3.9" cy="4.1" r="0.9" fill="currentColor" />
+      <circle cx="3.9" cy="9.9" r="0.9" fill="currentColor" />
+    </svg>
+  );
 }
 
 /** 主机条目检索字段与权重：名称 > 地址 > 用户名 > 标签。 */
@@ -94,21 +164,26 @@ export function CommandPalette({
     }
   }, [open]);
 
-  // 过滤 + 排序（渲染即纯计算：命令区按序在前，主机区按得分降序）。
-  const { commandItems, hostItems } = useMemo(() => {
+  // 过滤 + 排序（渲染即纯计算）：空查询 = 浏览态（命令按组聚拢，registry 序）；
+  // 有查询 = 过滤态（命令/主机各按得分降序扁平排，组语义让位相关性）。
+  const { commandItems, commandRows, hostItems } = useMemo(() => {
     const q = query.trim();
     const cmds: PaletteItem[] = [];
     if (q.length === 0) {
-      for (const def of actions) {
-        cmds.push({
-          key: `cmd-${def.id}`,
-          kind: "command",
-          label: t(def.labelKey),
-          hint: shortcutLabel(def.id, plat),
-          match: null,
-          action: def.id,
-          score: 0,
-        });
+      // 浏览态：按组序展出（groupOf 全函数兜底——未知 id 落 system，条目恒齐全）
+      for (const g of COMMAND_GROUPS) {
+        for (const def of actions) {
+          if (groupOf(def.id) !== g.id) continue;
+          cmds.push({
+            key: `cmd-${def.id}`,
+            kind: "command",
+            label: t(def.labelKey),
+            hint: shortcutLabel(def.id, plat),
+            match: null,
+            action: def.id,
+            score: 0,
+          });
+        }
       }
     } else {
       for (const def of actions) {
@@ -163,7 +238,21 @@ export function CommandPalette({
       }
       hsts.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
     }
-    return { commandItems: cmds, hostItems: hsts };
+    // 浏览态再补组节标题行（过滤态无行模型——扁平渲染）；flat 下标与命令区
+    // 渲染序一致（cmds 已按组序构建），主机区接着命令区连续编号。
+    const rows: CommandRow[] = [];
+    if (q.length === 0) {
+      let cursor = 0;
+      for (const g of COMMAND_GROUPS) {
+        const inGroup = cmds.filter((c) => c.action !== undefined && groupOf(c.action) === g.id);
+        if (inGroup.length === 0) continue;
+        rows.push({ kind: "section", key: `grp-${g.id}`, label: t(`palette.group_${g.id}`) });
+        for (const item of inGroup) {
+          rows.push({ kind: "item", key: item.key, item, flat: cursor++ });
+        }
+      }
+    }
+    return { commandItems: cmds, commandRows: rows, hostItems: hsts };
   }, [query, actions, hosts, plat, t]);
 
   const flat = useMemo(() => [...commandItems, ...hostItems], [commandItems, hostItems]);
@@ -208,6 +297,7 @@ export function CommandPalette({
   }
 
   function renderItem(item: PaletteItem, idx: number) {
+    const icon = <PaletteIcon type={item.kind} />;
     if (item.kind === "command") {
       return (
         <button
@@ -216,6 +306,7 @@ export function CommandPalette({
           onMouseEnter={() => setActiveIndex(idx)}
           onClick={() => runItem(item)}
         >
+          {icon}
           <span className="host-name">
             <Highlighted text={item.label} match={item.match} />
           </span>
@@ -230,6 +321,7 @@ export function CommandPalette({
         onMouseEnter={() => setActiveIndex(idx)}
         onClick={() => runItem(item)}
       >
+        {icon}
         <span className="host-name">
           <Highlighted text={item.label} match={item.match} />
         </span>
@@ -267,9 +359,19 @@ export function CommandPalette({
               {t("palette.commands")}
             </li>
           )}
-          {commandItems.map((item, i) => (
-            <li key={item.key}>{renderItem(item, i)}</li>
-          ))}
+          {/* 浏览态：组节标题与条目交错（行模型）；过滤态：扁平相关度序 */}
+          {(commandRows.length > 0
+            ? commandRows.map((row) =>
+                row.kind === "section" ? (
+                  <li key={row.key} className="palette-section palette-subsection" aria-hidden="true">
+                    {row.label}
+                  </li>
+                ) : (
+                  <li key={row.key}>{renderItem(row.item, row.flat)}</li>
+                ),
+              )
+            : commandItems.map((item, i) => <li key={item.key}>{renderItem(item, i)}</li>)
+          )}
           {hostItems.length > 0 && (
             <li className="palette-section" aria-hidden="true">
               {t("palette.hosts")}

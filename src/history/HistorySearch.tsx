@@ -23,9 +23,47 @@ import type { Host, HistoryEntry, SummaryEntry } from "../vault/api";
 import { vaultApi } from "../vault/api";
 import { useDebouncedValue } from "../hosts/useDebouncedValue";
 import { historyPreview, historyTime } from "./format";
+import { highlightRanges } from "../palette/fuzzy";
 import { shortcutLabel } from "../shortcuts/registry";
 import type { Platform } from "../shortcuts/registry";
 import { RecordingPanel } from "./RecordingPanel";
+
+/**
+ * 搜索词命中下标（批次三 T2，审计 ⌘R 23/24/25）：大小写不敏感的**子串**命中
+ * （历史检索是 FTS/LIKE 语义，与 ⌘K 的子序列模糊不同源），多词空白分隔各自
+ * 命中、下标合并升序。纯函数，测试直测。
+ */
+export function queryHitIndices(text: string, query: string): number[] {
+  const t = text.toLowerCase();
+  const hits = new Set<number>();
+  for (const token of query.trim().split(/\s+/)) {
+    if (token === "") continue;
+    const needle = token.toLowerCase();
+    let from = 0;
+    for (;;) {
+      const at = t.indexOf(needle, from);
+      if (at === -1) break;
+      for (let i = at; i < at + needle.length; i++) hits.add(i);
+      from = at + 1;
+    }
+  }
+  return [...hits].sort((a, b) => a - b);
+}
+
+/** 命中段 <mark> 包裹（沿 CommandPalette.Highlighted 切分模式；无命中不切分）。 */
+function QueryHighlighted({ text, query }: { text: string; query: string }) {
+  const indices = queryHitIndices(text, query);
+  if (indices.length === 0) return <>{text}</>;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const range of highlightRanges(indices)) {
+    if (range.start > cursor) parts.push(text.slice(cursor, range.start));
+    parts.push(<mark key={range.start}>{text.slice(range.start, range.end)}</mark>);
+    cursor = range.end;
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
 
 export interface HistorySearchProps {
   open: boolean;
@@ -254,7 +292,7 @@ export function HistorySearch({
                 >
                   <span className="history-main">
                     <code className="history-cmd" title={entry.command}>
-                      {historyPreview(entry.command)}
+                      <QueryHighlighted text={historyPreview(entry.command)} query={debouncedQuery} />
                     </code>
                     <span className="history-meta">
                       <span className="history-host">{hostName(entry.host_id)}</span>

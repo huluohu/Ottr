@@ -397,6 +397,7 @@ button[data-active="true"] {
 /* 命令面板原貌锚定：旧全局 .host-name/.host-subtitle 规则收窄进树后，
    面板行在此原样补回（weight 600 + 副标题 mono 弱化），呈现零变化。 */
 .palette-item .host-name {
+  flex: 1;
   font-weight: 600;
 }
 .palette-item .host-subtitle {
@@ -884,6 +885,11 @@ button[data-active="true"] {
   border-radius: 8px;
   text-align: left;
 }
+/* 条目类型图标（批次三 T2，审计 ⌘K 19/20）：命令/主机两型 SVG，弱化色 */
+.palette-icon {
+  flex: none;
+  color: var(--fg-muted);
+}
 .palette-item[data-active="true"] {
   background: var(--surface-raised);
   color: inherit;
@@ -1033,6 +1039,11 @@ button[data-active="true"] {
 }
 .palette.nl2cmd {
   width: min(680px, 100%);
+  /* 审计 ⌘J 21「面板高度过矮（输入条+生成按钮贴边）」：给面板一个呼吸高度，
+   * 空闲态不再是一条贴边输入条；历史区超出滚动（批次三 T2）。 */
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
 }
 .nl-input-row {
   display: flex;
@@ -1058,6 +1069,38 @@ button[data-active="true"] {
 }
 .nl2cmd-result {
   margin-top: 8px;
+}
+/* 往轮回看区（批次三 T2，审计 ⌘J 22「生成结果无历史」） */
+.nl-history {
+  margin-top: 10px;
+  min-height: 0;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.nl-history-title {
+  margin: 0 0 6px;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  user-select: none;
+}
+.nl-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nl-history-item {
+  margin: 0 0 8px;
+}
+.nl-history-input {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.78em;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- A12 自绘标题栏（Task 14，win/linux；mac 不渲染走原生） --- */

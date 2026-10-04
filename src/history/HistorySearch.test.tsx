@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
-import { HistorySearch, exitBadgeClass } from "./HistorySearch";
+import { HistorySearch, exitBadgeClass, queryHitIndices } from "./HistorySearch";
 import type { HistoryEntry } from "../vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -259,6 +259,47 @@ describe("exitBadgeClass（退出码徽标语义类）", () => {
     expect(exitBadgeClass(0)).toContain("exit-ok");
     expect(exitBadgeClass(127)).toContain("exit-fail");
     expect(exitBadgeClass(null)).toContain("exit-none");
+  });
+});
+
+describe("搜索词高亮（批次三 T2，审计 ⌘R 23/24/25）", () => {
+  it("queryHitIndices：大小写不敏感子串命中，多词合并下标", () => {
+    expect(queryHitIndices("root@web:~$ Docker logs docker", "docker")).toEqual([
+      12, 13, 14, 15, 16, 17, 24, 25, 26, 27, 28, 29,
+    ]);
+    expect(queryHitIndices("docker logs", "DOCKER")).toEqual([0, 1, 2, 3, 4, 5]);
+    // 多词各自命中（"og" 命中 logs 中段）
+    expect(queryHitIndices("docker logs", "og")).toEqual([8, 9]);
+    expect(queryHitIndices("docker logs", "  ")).toEqual([]); // 纯空白无词
+    expect(queryHitIndices("docker logs", "")).toEqual([]); // 空查询不高亮
+    expect(queryHitIndices("docker logs", "zzz")).toEqual([]);
+  });
+
+  it("键入检索词后，结果行命令文本出现 <mark> 高亮（大小写不敏感）", async () => {
+    vi.useFakeTimers();
+    mockedInvoke.mockResolvedValue([entry()]);
+    renderPanel();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getAllByTestId("history-item")[0].querySelectorAll("mark")).toHaveLength(0);
+
+    fireEvent.change(screen.getByTestId("history-input"), { target: { value: "Docker LOGS" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    const marks = screen.getAllByTestId("history-item")[0].querySelectorAll("mark");
+    expect(marks.length).toBe(2); // docker 与 logs 各一段
+    expect(marks[0].textContent).toBe("docker");
+    expect(marks[1].textContent).toBe("logs");
+    vi.useRealTimers();
+  });
+
+  it("空查询（最近记录态）不高亮", async () => {
+    mockedInvoke.mockResolvedValue([entry()]);
+    renderPanel();
+    await act(async () => {});
+    expect(screen.getAllByTestId("history-item")[0].querySelectorAll("mark")).toHaveLength(0);
   });
 });
 

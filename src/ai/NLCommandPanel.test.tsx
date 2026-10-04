@@ -82,6 +82,7 @@ beforeEach(async () => {
   mockedInvoke.mockReset();
   useNlStore.setState({ submit: realSubmit }); // 还原被 spy 顶替的动作
   useNlStore.getState().close();
+  useNlStore.setState({ rounds: [] }); // rounds 刻意不被 close 清（回看面）——测试显式隔离
   seedSession(true);
   await i18n.changeLanguage("zh-CN");
 });
@@ -234,5 +235,55 @@ describe("live 流（input → submit → done 渲染）", () => {
     expect(screen.getByTestId("ai-code-text").textContent).toBe("docker ps");
     expect(screen.getByTestId("ai-code-level").textContent).toBe("安全");
     expect(screen.getByTestId("nl2cmd-run")).toBeTruthy(); // 回到输入态，可继续生成
+  });
+});
+
+describe("往轮回看（批次三 T2，审计 ⌘J 22「生成结果无历史」）", () => {
+  it("done 态主结果即最新轮：历史区不重复渲染当前轮", async () => {
+    backendWithProvider();
+    renderPanel();
+    fireEvent.change(screen.getByTestId("nl2cmd-input"), { target: { value: "列出运行中的容器" } });
+    fireEvent.click(screen.getByTestId("nl2cmd-run"));
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("done");
+    });
+    // 主结果区 1 个 codeblock；历史区隐藏（rounds 只剩当前轮，slice(1) 为空）
+    expect(screen.getAllByTestId("ai-codeblock")).toHaveLength(1);
+    expect(screen.queryByTestId("nl2cmd-history")).toBeNull();
+  });
+
+  it("关闭重开不丢结果：历史区回看往轮（含输入原文）且可分档插入", async () => {
+    backendWithProvider();
+    const first = renderPanel();
+    fireEvent.change(screen.getByTestId("nl2cmd-input"), { target: { value: "列出运行中的容器" } });
+    fireEvent.click(screen.getByTestId("nl2cmd-run"));
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("done");
+    });
+    fireEvent.keyDown(screen.getByTestId("nl2cmd-input"), { key: "Escape" }); // 关 = 清场（rounds 保留）
+    first.unmount();
+
+    const inserter = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ inserter }); // 重开：rounds 仍在
+    const history = screen.getByTestId("nl2cmd-history");
+    expect(history.textContent).toContain("列出运行中的容器");
+    const item = screen.getByTestId("nl2cmd-history-item");
+    expect(item.querySelector("[data-testid='ai-code-text']")?.textContent).toBe("docker ps");
+    // 往轮结果可插入（同一三档确认状态机）
+    fireEvent.click(screen.getByTestId("ai-insert"));
+    await vi.waitFor(() => {
+      expect(inserter).toHaveBeenCalledWith("pty-9", "docker ps");
+    });
+  });
+
+  it("新一轮生成中，上一轮完整出现在历史区（running 态不丢往轮）", async () => {
+    useNlStore.setState({
+      rounds: [{ input: "上一轮", command: "docker ps", level: "green", ts: 1 }],
+      status: "running",
+      answer: "do",
+    });
+    renderPanel();
+    expect(screen.getByTestId("nl2cmd-history-item").textContent).toContain("docker ps");
+    expect(screen.getByTestId("nl2cmd-stream")).toBeTruthy();
   });
 });

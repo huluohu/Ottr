@@ -79,7 +79,12 @@ async fn established_keys_on_fixture(poller: &ottr_ssh::SshSession) -> HashSet<S
         .expect("exec /proc/net/tcp");
     let text = String::from_utf8_lossy(&out.stdout);
     text.lines()
-        .filter_map(|line| line.split_whitespace().collect::<Vec<_>>().get(1..4).map(|f| f.to_vec()))
+        .filter_map(|line| {
+            line.split_whitespace()
+                .collect::<Vec<_>>()
+                .get(1..4)
+                .map(|f| f.to_vec())
+        })
         .filter(|f| f.len() == 3)
         .filter(|f| f[0].ends_with(":08AE")) // local port 2222
         .filter(|f| f[2] == "01") // ESTABLISHED

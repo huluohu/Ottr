@@ -882,17 +882,22 @@ pub(crate) fn ensure_reset_confirmed(confirm: Option<bool>) -> Result<(), String
 
 /// 清空 vault 数据目录全部条目（vault.db/-wal/-shm、cron-runs/、recordings/、
 /// mcp.sock 等——目录本身保留，重开时 create_dir_all 幂等）+ 删除钥匙链
-/// Master Key 条目。`storage` 注入（生产 = KeyringStorage，测试 = InMemoryStorage，
+/// 全部条目（`storages` 逐个删：Master Key + 同步信封口令——漏清后者则
+/// 重置后云信封仍可被记忆口令解密，「回到首启」语义破产，T5 评审 P1）。
+/// `storages` 注入（生产 = KeyringStorage 两条目，测试 = InMemoryStorage，
 /// 单测绝不碰真钥匙链）。错误如实上抛，不做部分成功的静默伪装。
 pub(crate) fn wipe_vault_data(
     dir: &std::path::Path,
-    storage: &dyn ottr_vault::master_key::KeyStorage,
+    storages: &[&dyn ottr_vault::master_key::KeyStorage],
 ) -> Result<(), String> {
-    // ① 钥匙链条目先删（abort-safe：清不掉就中止，库文件原样保留）。NoEntry
-    // 已由 KeyringStorage::delete 收敛为 Ok（主密码模式本就无条目）。
-    storage
-        .delete()
-        .map_err(|e| format!("keychain delete: {e}"))?;
+    // ① 钥匙链条目先删（abort-safe：任一条目清不掉就中止，库文件原样保留，
+    // 用户可原样重试；条目序 = 调用方语义序，无跨条目依赖）。NoEntry 已由
+    // KeyringStorage::delete 收敛为 Ok（条目本就不存在 = 已是目标态）。
+    for (i, storage) in storages.iter().enumerate() {
+        storage
+            .delete()
+            .map_err(|e| format!("keychain delete (entry {i}): {e}"))?;
+    }
     // ② 数据目录逐条目清除（文件/子目录一视同仁；删除中的打开句柄在
     // macOS/Windows 上 unlink 语义由各平台兜底，进程重启后无残留引用）。
     let entries =
@@ -932,10 +937,14 @@ pub fn vault_reset(
     if dir.parent().is_none() || dir == std::path::Path::new("/") {
         return Err(format!("refusing to wipe suspicious data dir: {}", dir.display()));
     }
-    wipe_vault_data(
-        &dir,
-        &ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE),
-    )?;
+    // 两条钥匙链条目：Master Key + 同步信封口令（重置 = 回到首启态，本应用
+    // 在正式 service 下的条目一个不留；entry 序对应错误消息 entry 0/1）。
+    let master = ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
+    let sync_pass = ottr_vault::master_key::KeyringStorage::with_account(
+        crate::commands::sync_git::SYNC_SERVICE,
+        crate::commands::sync_git::SYNC_ACCOUNT,
+    );
+    wipe_vault_data(&dir, &[&master, &sync_pass])?;
     eprintln!("[vault] reset confirmed: data dir wiped ({}), restarting app", dir.display());
     app.restart();
 }
@@ -1005,7 +1014,9 @@ mod tests {
         );
     }
 
-    /// wipe 清空数据目录全部条目（文件/子目录一视同仁）+ 删除钥匙链条目。
+    /// wipe 清空数据目录全部条目（文件/子目录一视同仁）+ 删除钥匙链条目
+    /// （Master Key + 同步信封口令——T5 评审 P1：漏清 sync-passphrase 会让
+    /// 重置后云信封仍可被记忆口令解密，「回到首启」语义破产）。
     /// storage 注入 InMemoryStorage——单测绝不碰真钥匙链（测试纪律同
     /// ottr-vault master_key）。
     #[test]
@@ -1018,20 +1029,27 @@ mod tests {
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::write(sub.join("1-2.log"), b"log").unwrap();
 
-        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        let master = ottr_vault::master_key::InMemoryStorage::default();
+        let sync_pass = ottr_vault::master_key::InMemoryStorage::default();
         use ottr_vault::master_key::KeyStorage as _;
-        storage.save("master-key-material").unwrap();
+        master.save("master-key-material").unwrap();
+        sync_pass.save("sync-passphrase-material").unwrap();
 
-        wipe_vault_data(dir.path(), &storage).unwrap();
+        wipe_vault_data(dir.path(), &[&master, &sync_pass]).unwrap();
 
         assert!(
             std::fs::read_dir(dir.path()).unwrap().next().is_none(),
             "数据目录必须清空（含子目录 cron-runs）"
         );
         assert_eq!(
-            storage.load().unwrap(),
+            master.load().unwrap(),
             None,
             "钥匙链 Master Key 条目必须删除"
+        );
+        assert_eq!(
+            sync_pass.load().unwrap(),
+            None,
+            "钥匙链同步口令条目必须删除（重置后云信封不得可解）"
         );
     }
 
@@ -1059,12 +1077,44 @@ mod tests {
                 )))
             }
         }
-        let err = wipe_vault_data(dir.path(), &BrokenStorage).unwrap_err();
+        let err = wipe_vault_data(dir.path(), &[&BrokenStorage]).unwrap_err();
         assert!(err.contains("keychain"), "错误须指明钥匙链环节：{err}");
         assert_eq!(
             std::fs::read_to_string(&db).unwrap(),
             "cipher",
             "钥匙链删除失败时库文件必须原样保留（可重试）"
+        );
+    }
+
+    /// 第二条目（同步口令）删除失败同样 abort-safe：任一钥匙链条目清不掉
+    /// 就绝不碰库文件（T5 评审 P1 伴随面——重置必须两条目原子语义）。
+    #[test]
+    fn wipe_vault_data_sync_entry_failure_aborts_before_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("vault.db");
+        std::fs::write(&db, b"cipher").unwrap();
+        struct BrokenStorage;
+        impl ottr_vault::master_key::KeyStorage for BrokenStorage {
+            fn load(&self) -> ottr_vault::Result<Option<String>> {
+                Ok(None)
+            }
+            fn save(&self, _secret: &str) -> ottr_vault::Result<()> {
+                Ok(())
+            }
+            fn delete(&self) -> ottr_vault::Result<()> {
+                Err(ottr_vault::VaultError::Io(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "keychain denied",
+                )))
+            }
+        }
+        let master = ottr_vault::master_key::InMemoryStorage::default();
+        let err = wipe_vault_data(dir.path(), &[&master, &BrokenStorage]).unwrap_err();
+        assert!(err.contains("keychain"), "错误须指明钥匙链环节：{err}");
+        assert_eq!(
+            std::fs::read_to_string(&db).unwrap(),
+            "cipher",
+            "同步口令条目删除失败时库文件必须原样保留（可重试）"
         );
     }
 
@@ -1076,6 +1126,6 @@ mod tests {
         // 目录本身不存在 → read_dir 失败必须显式报错（app_data_dir 解析异常
         // 的兜底面，静默 Ok 会伪装成「已重置」）。
         let missing = dir.path().join("does-not-exist");
-        assert!(wipe_vault_data(&missing, &storage).is_err());
+        assert!(wipe_vault_data(&missing, &[&storage]).is_err());
     }
 }

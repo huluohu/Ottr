@@ -166,6 +166,16 @@ impl KeyringStorage {
         }
     }
 
+    /// 同一 service 下的其他条目（vault_reset 清同步口令条目用——重置必须
+    /// 覆盖本应用在该 service 下的全部钥匙链条目，T5 评审 P1）。account 收
+    /// `&'static str` 与既有字段一致；NoEntry→Ok 幂等由 delete 共享。
+    pub fn with_account(service: &str, account: &'static str) -> Self {
+        Self {
+            service: service.to_string(),
+            account,
+        }
+    }
+
     fn entry(&self) -> Result<keyring::Entry> {
         Ok(keyring::Entry::new(&self.service, self.account)?)
     }

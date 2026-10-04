@@ -94,7 +94,8 @@ pub struct SyncHttpResult {
 fn basic_auth(username: &str, password: &str) -> String {
     format!(
         "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}").as_bytes())
+        base64::engine::general_purpose::STANDARD
+            .encode(format!("{username}:{password}").as_bytes())
     )
 }
 
@@ -139,8 +140,8 @@ pub async fn sync_http_fetch_core(
     if !ALLOWED_METHODS.contains(&method) {
         return Err(format!("sync-http: method not allowed: {method}"));
     }
-    let method =
-        Method::from_bytes(method.as_bytes()).map_err(|e| format!("sync-http: method parse: {e}"))?;
+    let method = Method::from_bytes(method.as_bytes())
+        .map_err(|e| format!("sync-http: method parse: {e}"))?;
     // 2. server/url 入口校验 + 同源钉死
     let server = parse_endpoint_url(&endpoint.server, "server")?;
     let target = parse_endpoint_url(url, "url")?;
@@ -157,9 +158,10 @@ pub async fn sync_http_fetch_core(
         .timeout(REQUEST_TIMEOUT)
         .build()
         .map_err(|e| format!("sync-http: client build: {e}"))?;
-    let mut req = client
-        .request(method, target)
-        .header(AUTHORIZATION, basic_auth(&endpoint.username, &endpoint.password));
+    let mut req = client.request(method, target).header(
+        AUTHORIZATION,
+        basic_auth(&endpoint.username, &endpoint.password),
+    );
     if let Some(b) = body {
         // Content-Type 由 Rust 固定（信封恒 JSON；不接受任意 header 参数）
         req = req.header(CONTENT_TYPE, "application/json").body(b);
@@ -217,7 +219,7 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-    use std::sync::mpsc::{Receiver, Sender, channel};
+    use std::sync::mpsc::{channel, Receiver, Sender};
 
     /// 读一个完整 HTTP 请求（请求行 + 头 + Content-Length 定长体）——只支持
     /// 本代理发出的请求形态（无 chunked）。
@@ -329,7 +331,9 @@ mod tests {
         }
     }
 
-    fn run(core: impl std::future::Future<Output = Result<SyncHttpResult, String>>) -> Result<SyncHttpResult, String> {
+    fn run(
+        core: impl std::future::Future<Output = Result<SyncHttpResult, String>>,
+    ) -> Result<SyncHttpResult, String> {
         tauri::async_runtime::block_on(core)
     }
 
@@ -350,16 +354,19 @@ mod tests {
         assert_eq!(out.status, 200);
         assert_eq!(out.body, "{\"resp\":1}");
 
-        let req = rx.recv_timeout(std::time::Duration::from_secs(5)).expect("request captured");
-        assert!(request_line(&req).starts_with("PUT /ottr-sync.json HTTP/1.1"), "req: {req}");
+        let req = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("request captured");
+        assert!(
+            request_line(&req).starts_with("PUT /ottr-sync.json HTTP/1.1"),
+            "req: {req}"
+        );
         assert_eq!(
             header_value(&req, "authorization").map(|h| h.to_string()),
             Some(format!(
                 "Basic {}",
-                base64::engine::general_purpose::STANDARD.encode(format!(
-                    "{}:{}",
-                    ep.username, ep.password
-                ))
+                base64::engine::general_purpose::STANDARD
+                    .encode(format!("{}:{}", ep.username, ep.password))
             ))
         );
         assert_eq!(header_value(&req, "content-type"), Some("application/json"));
@@ -381,10 +388,18 @@ mod tests {
         assert_eq!(out.status, 200);
         assert_eq!(out.body, "payload");
 
-        let req = rx.recv_timeout(std::time::Duration::from_secs(5)).expect("request captured");
-        assert!(request_line(&req).starts_with("GET /backups/s.json HTTP/1.1"), "req: {req}");
+        let req = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("request captured");
+        assert!(
+            request_line(&req).starts_with("GET /backups/s.json HTTP/1.1"),
+            "req: {req}"
+        );
         assert!(header_value(&req, "authorization").is_some());
-        assert!(header_value(&req, "content-type").is_none(), "GET 无体不带 Content-Type");
+        assert!(
+            header_value(&req, "content-type").is_none(),
+            "GET 无体不带 Content-Type"
+        );
         assert_eq!(body_of(&req), "");
     }
 
@@ -406,10 +421,7 @@ mod tests {
             let msg = out.unwrap_err();
             assert!(msg.contains("method not allowed"), "{method:?}: {msg}");
         }
-        assert!(
-            rx.try_recv().is_err(),
-            "白名单外 method 不得触达网络面"
-        );
+        assert!(rx.try_recv().is_err(), "白名单外 method 不得触达网络面");
     }
 
     // --- 同源钉死 ---
@@ -459,7 +471,11 @@ mod tests {
 
     #[test]
     fn passes_404_401_5xx_through_with_status_surface() {
-        for (status, reason) in [(404u16, "Not Found"), (401, "Unauthorized"), (500, "Internal Server Error")] {
+        for (status, reason) in [
+            (404u16, "Not Found"),
+            (401, "Unauthorized"),
+            (500, "Internal Server Error"),
+        ] {
             let (tx, rx): (Sender<String>, Receiver<String>) = channel();
             let addr = spawn_fake(vec![http_status(status, reason)], tx);
             let ep = endpoint(format!("http://{addr}"));
@@ -506,8 +522,13 @@ mod tests {
     #[test]
     fn error_messages_never_contain_credentials() {
         let ep = endpoint("http://127.0.0.1:9".into()); // discard 端口：连接必败
-        // 网络错
-        let out = run(sync_http_fetch_core(&ep, "http://127.0.0.1:9/s.json", "GET", None));
+                                                        // 网络错
+        let out = run(sync_http_fetch_core(
+            &ep,
+            "http://127.0.0.1:9/s.json",
+            "GET",
+            None,
+        ));
         let net_err = out.unwrap_err();
         // 同源错
         let out = run(sync_http_fetch_core(
@@ -518,7 +539,13 @@ mod tests {
         ));
         let origin_err = out.unwrap_err();
         // 白名单错 + 内嵌凭据错 + 非法 URL 错
-        let method_err = run(sync_http_fetch_core(&ep, "http://127.0.0.1:9/x", "TRACE", None)).unwrap_err();
+        let method_err = run(sync_http_fetch_core(
+            &ep,
+            "http://127.0.0.1:9/x",
+            "TRACE",
+            None,
+        ))
+        .unwrap_err();
         let userinfo_err = run(sync_http_fetch_core(
             &ep,
             "http://u:p@127.0.0.1:9/s.json",

@@ -900,10 +900,11 @@ pub(crate) fn wipe_vault_data(
     }
     // ② 数据目录逐条目清除（文件/子目录一视同仁；删除中的打开句柄在
     // macOS/Windows 上 unlink 语义由各平台兜底，进程重启后无残留引用）。
-    let entries =
-        std::fs::read_dir(dir).map_err(|e| format!("read {}: {e}", dir.display()))?;
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("read {}: {e}", dir.display()))?;
     for entry in entries {
-        let path = entry.map_err(|e| format!("readdir {}: {e}", dir.display()))?.path();
+        let path = entry
+            .map_err(|e| format!("readdir {}: {e}", dir.display()))?
+            .path();
         let removed = if path.is_dir() {
             std::fs::remove_dir_all(&path)
         } else {
@@ -935,17 +936,24 @@ pub fn vault_reset(
         .map_err(|e| format!("resolve app data dir: {e}"))?;
     // 防呆：app_data_dir 解析异常退化成根/无父目录时拒绝清（宁可不重置）。
     if dir.parent().is_none() || dir == std::path::Path::new("/") {
-        return Err(format!("refusing to wipe suspicious data dir: {}", dir.display()));
+        return Err(format!(
+            "refusing to wipe suspicious data dir: {}",
+            dir.display()
+        ));
     }
     // 两条钥匙链条目：Master Key + 同步信封口令（重置 = 回到首启态，本应用
     // 在正式 service 下的条目一个不留；entry 序对应错误消息 entry 0/1）。
-    let master = ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
+    let master =
+        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
     let sync_pass = ottr_vault::master_key::KeyringStorage::with_account(
         crate::commands::sync_git::SYNC_SERVICE,
         crate::commands::sync_git::SYNC_ACCOUNT,
     );
     wipe_vault_data(&dir, &[&master, &sync_pass])?;
-    eprintln!("[vault] reset confirmed: data dir wiped ({}), restarting app", dir.display());
+    eprintln!(
+        "[vault] reset confirmed: data dir wiped ({}), restarting app",
+        dir.display()
+    );
     app.restart();
 }
 
@@ -1001,7 +1009,10 @@ mod tests {
     /// 也走 None 拒绝路径，不会意外清库）。
     #[test]
     fn reset_confirm_guard_rejects_everything_but_explicit_true() {
-        assert!(ensure_reset_confirmed(None).is_err(), "缺 confirm 参数 = 拒绝");
+        assert!(
+            ensure_reset_confirmed(None).is_err(),
+            "缺 confirm 参数 = 拒绝"
+        );
         assert!(
             ensure_reset_confirmed(Some(false)).is_err(),
             "显式 false = 拒绝"

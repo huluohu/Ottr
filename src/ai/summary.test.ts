@@ -229,6 +229,9 @@ describe("generateSessionSummary", () => {
       title_key: "notify.title.summaryReady",
       body: "web-01",
     });
+    // payload 钉死（BL-510②）：session_id/command_count 随行——通知中心点开
+    // 可溯源到会话与规模；形状变化即此处红（防脱敏/重构时静默改形）
+    expect(nInput.payload).toEqual({ session_id: "tab-e2e", command_count: 3 });
   });
 
   it("门槛：<3 条命令静默跳过（不碰 settings/provider——未成会话不生成）", async () => {

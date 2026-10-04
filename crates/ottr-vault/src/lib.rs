@@ -39,7 +39,7 @@ pub use history::{
 };
 pub use jump_chains::{JumpChain, JumpChainInput, JumpChains};
 pub use master_key::MasterKey;
-pub use notifications::{Notification, NotificationInput, Notifications};
+pub use notifications::{DeliveryFailure, Notification, NotificationInput, Notifications};
 pub use notify_channels::{
     NotifyChannel, NotifyChannelInput, NotifyChannelPatch, NotifyChannels, CHANNEL_KINDS,
 };

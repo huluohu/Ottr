@@ -366,6 +366,10 @@ pub fn run() {
             vault::notify_mark_read,
             vault::notify_clear,
             vault::notify_unread_count,
+            // BL-530：投递失败标记持久化——标记/翻正清账落库（明文面，同上组
+            // 锁定语义；前端 src/notify/core.ts 写穿，重启 refresh 恢复标记）
+            vault::notify_mark_delivery_failed,
+            vault::notify_clear_delivery_failure,
             // Task 15（spec §5）：统一历史搜索 ⌘R（明文面，锁定可读写）
             vault::history_insert,
             vault::history_search,

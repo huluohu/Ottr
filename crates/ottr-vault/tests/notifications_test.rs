@@ -6,10 +6,21 @@
 //! 守卫；锁定态可读写不另测——settings 同语义）。
 
 use ottr_vault::master_key::InMemoryStorage;
-use ottr_vault::{HostInput, Hosts, NotificationInput, Notifications, Vault, VaultError};
+use ottr_vault::{
+    DeliveryFailure, HostInput, Hosts, NotificationInput, Notifications, Vault, VaultError,
+};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
     Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+}
+
+fn failure(channel: &str, channel_id: i64, error: &str, ts: i64) -> DeliveryFailure {
+    DeliveryFailure {
+        channel: channel.into(),
+        channel_id: Some(channel_id),
+        error: error.into(),
+        ts,
+    }
 }
 
 fn input(kind: &str, severity: &str, title_key: &str) -> NotificationInput {
@@ -197,4 +208,124 @@ fn insert_rejects_bad_severity_and_empty_kind() {
         Notifications::insert(&vault, &input("transfer", sev, "t")).unwrap();
     }
     assert_eq!(Notifications::list(&vault, 10).unwrap().len(), 4);
+}
+
+// --- BL-530：投递失败标记持久化（delivery_failures 列 + mark/clear 命令面）---
+
+/// 标记入账：mark → 行回读带失败集；同渠道再败去重覆盖（不堆叠）、他渠道追加；
+/// list 落库往返（标记进 DB，重启/reopen 不丢——本批核心语义）。
+#[test]
+fn mark_delivery_failed_dedupes_by_channel_and_persists() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let row = Notifications::insert(&vault, &input("transfer", "error", "a")).unwrap();
+    assert_eq!(row.delivery_failures, None, "新通知默认无失败标记");
+
+    let f1 = failure("slack#3", 3, "HTTP 502: bad gateway", 100);
+    let updated = Notifications::mark_delivery_failed(&vault, row.id, &f1).unwrap();
+    assert_eq!(updated.delivery_failures, Some(vec![f1.clone()]));
+
+    // 同渠道再败：覆盖（保留一条，错误与时刻更新）；他渠道：追加
+    let f1b = failure("slack#3", 3, "HTTP 504", 200);
+    let f2 = failure("dingtalk#4", 4, "errcode=310000", 300);
+    let updated = Notifications::mark_delivery_failed(&vault, row.id, &f1b).unwrap();
+    let updated = Notifications::mark_delivery_failed(&vault, updated.id, &f2).unwrap();
+    assert_eq!(
+        updated.delivery_failures,
+        Some(vec![f1b.clone(), f2.clone()]),
+        "同渠道去重覆盖、他渠道追加"
+    );
+
+    // 落库往返：list 回读一致（重启模拟 = drop vault 后重开）
+    drop(vault);
+    let vault = open_vault(dir.path());
+    let listed = Notifications::list(&vault, 10).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].delivery_failures,
+        Some(vec![f1b, f2]),
+        "失败标记持久化：reopen 后仍在"
+    );
+}
+
+/// 翻正清账：逐渠道摘除；渠道集空 → 列回归 NULL（= 无标记）；重复清幂等；
+/// 未知 id NotFound（与 mark_read 同防漏兵）。
+#[test]
+fn clear_delivery_failure_removes_channel_and_nulls_when_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let row = Notifications::insert(&vault, &input("transfer", "error", "a")).unwrap();
+    Notifications::mark_delivery_failed(&vault, row.id, &failure("slack#3", 3, "e1", 100))
+        .unwrap();
+    Notifications::mark_delivery_failed(
+        &vault,
+        row.id,
+        &failure("dingtalk#4", 4, "e2", 200),
+    )
+    .unwrap();
+
+    let one_left = Notifications::clear_delivery_failure(&vault, row.id, "slack#3").unwrap();
+    assert_eq!(
+        one_left.delivery_failures,
+        Some(vec![failure("dingtalk#4", 4, "e2", 200)])
+    );
+
+    // 最后一条翻正：集合空 → None（无标记态，非空数组）
+    let none_left =
+        Notifications::clear_delivery_failure(&vault, row.id, "dingtalk#4").unwrap();
+    assert_eq!(none_left.delivery_failures, None, "清空后回归无标记 NULL");
+
+    // 幂等：渠道不存在/已清，重复清不炸、不复活
+    let again = Notifications::clear_delivery_failure(&vault, row.id, "dingtalk#4").unwrap();
+    assert_eq!(again.delivery_failures, None);
+
+    // 未知行 NotFound（清空面板竞态的显式错误面，不静默伪装成功）
+    assert!(matches!(
+        Notifications::clear_delivery_failure(&vault, 9999, "slack#3"),
+        Err(VaultError::NotFound(_))
+    ));
+    assert!(matches!(
+        Notifications::mark_delivery_failed(&vault, 9999, &failure("s", 1, "e", 1)),
+        Err(VaultError::NotFound(_))
+    ));
+}
+
+/// 0020 迁移可重放 + 向后兼容：旧库（无该列）重开时补列，存量行默认无标记
+/// （NULL）；手工 DROP 后把版本退回 19 重开 = 迁移原样重放。
+#[test]
+fn migration_0020_is_replayable_and_old_rows_default_to_no_marker() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let row = Notifications::insert(&vault, &input("session", "warning", "t")).unwrap();
+
+    // 把库手工退回 0020 之前形态：剥列 + schema_version=19（模拟旧库）。
+    {
+        let conn = vault.connection();
+        conn.execute("ALTER TABLE notifications DROP COLUMN delivery_failures", [])
+            .unwrap();
+        conn.execute("UPDATE meta SET value='19' WHERE key='schema_version'", [])
+            .unwrap();
+    }
+    drop(vault);
+    let vault = open_vault(dir.path());
+    assert_eq!(
+        vault.schema_version().unwrap(),
+        ottr_vault::store::LATEST_SCHEMA_VERSION,
+        "重开即重放 0020 补列"
+    );
+    let listed = Notifications::list(&vault, 10).unwrap();
+    assert_eq!(listed[0].id, row.id);
+    assert_eq!(
+        listed[0].delivery_failures, None,
+        "迁移向后兼容：旧库行默认无失败标记"
+    );
+
+    // 重放后的列照常可用（mark 全链在新列上工作）
+    let updated = Notifications::mark_delivery_failed(
+        &vault,
+        row.id,
+        &failure("slack#3", 3, "e", 1),
+    )
+    .unwrap();
+    assert_eq!(updated.delivery_failures.map(|f| f.len()), Some(1));
 }

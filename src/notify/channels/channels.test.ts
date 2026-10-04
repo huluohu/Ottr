@@ -4,6 +4,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NotificationEvent } from "../core";
 
+// BL-530：core.ts 账本面写穿落库（notify_mark/clear_delivery_failed）——本文件
+// 只测渠道/重发流，invoke 一律回声（真后端契约由 core.test.ts / notifications_test 钉）。
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
+
 type Req = { url: string; init: RequestInit };
 
 /** 记录请求的假 fetch（可按序回放响应体）。 */
@@ -344,6 +348,12 @@ describe("工厂分派 + 注册表挂载/路由", () => {
   it("remountChannels：读启用渠道→reveal→挂载；subscribed 按规则 channels 路由", async () => {
     vi.doMock("../../vault/api", () => ({
       vaultApi: {
+        // BL-530：core.ts 账本面写穿用 notifications 组（本文件动态 import 的
+        // core 模块实例被缓存，mock 需覆盖全用到的组）
+        notifications: {
+          markDeliveryFailed: async () => undefined,
+          clearDeliveryFailure: async () => undefined,
+        },
         notifyChannels: {
           list: async () => [
             { id: 3, kind: "slack", template_overrides: null, enabled: true, created_at: 1, updated_at: 1 },
@@ -400,10 +410,11 @@ describe("工厂分派 + 注册表挂载/路由", () => {
       payload: { rule_id: 1 },
       read: false,
       ts: 1000,
+      delivery_failures: null,
     } as import("../../vault/api").Notification;
     useNotifyStore.setState({ items: [row], unread: 0 });
-    // 此前终败的账面（recordDeliveryFailure → payload 带失败标记）
-    recordDeliveryFailure(11, { channel: "slack#3", channel_id: 3, error: "HTTP 502", ts: 1 });
+    // 此前终败的账面（recordDeliveryFailure → payload 带失败标记；写穿 invoke 已 mock 回声）
+    await recordDeliveryFailure(11, { channel: "slack#3", channel_id: 3, error: "HTTP 502", ts: 1 });
     expect(readDeliveryFailures(useNotifyStore.getState().items[0].payload)).toHaveLength(1);
 
     const ok = await resendNotification(row, { channel: "slack#3", channel_id: 3, error: "HTTP 502", ts: 1 });

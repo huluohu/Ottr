@@ -13,7 +13,7 @@
 //! 现查（单连接串行化下 COUNT(read=0) 是廉价索引扫描）；清空策略是调用方
 //! 裁量（UI「清空」按钮全删；量级由通知频度决定，Phase 1 无自动衰减）。
 
-use rusqlite::{params, Row};
+use rusqlite::{params, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};
@@ -34,7 +34,7 @@ pub struct Notification {
     /// "info" | "success" | "warning" | "error"（DB CHECK 同集；UI 语义配色）。
     pub severity: String,
     pub host_id: Option<i64>,
-    /// i18n 词典键（展示时翻译；非明文标题——换语言不失效）。
+    /// i18n 词典键（展示时翻译；非明文标题——换语言历史通知标题跟着变）。
     pub title_key: String,
     /// 展示文本（远端路径 / 主机名 / 错误消息——事件自带内容，不进词典）。
     pub body: String,
@@ -42,6 +42,22 @@ pub struct Notification {
     pub payload: Option<serde_json::Value>,
     pub read: bool,
     /// 秒级 Unix 时间（实体表同口径）。
+    pub ts: i64,
+    /// 渠道投递失败标记（BL-530，delivery_failures 列；None = 无标记）。
+    /// 写入面 = [`Notifications::mark_delivery_failed`] /
+    /// [`Notifications::clear_delivery_failure`]（按渠道去重的 JSON 数组，
+    /// 落库持久——重启后 refresh 恢复标记与重发入口）。
+    #[serde(default)]
+    pub delivery_failures: Option<Vec<DeliveryFailure>>,
+}
+
+/// 一次渠道投递的终局失败记录（delivery_failures 数组元素；serde 面与 TS
+/// `DeliveryFailure` 同构——渠道挂载名 `kind#id`、终局错误文本、秒级时刻）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeliveryFailure {
+    pub channel: String,
+    pub channel_id: Option<i64>,
+    pub error: String,
     pub ts: i64,
 }
 
@@ -113,6 +129,7 @@ impl Notifications {
             payload: input.payload.clone(),
             read: false,
             ts,
+            delivery_failures: None,
         })
     }
 
@@ -165,10 +182,96 @@ impl Notifications {
         )
         .map_err(Into::into)
     }
+
+    /// 投递失败标记入账（BL-530）：把一次渠道终败并入 delivery_failures 列
+    /// （按渠道名去重——同渠道重发再败只更新错误与时刻；他渠道追加），返回
+    /// 更新后的完整行。行不存在 → [`VaultError::NotFound`]（清空面板竞态的
+    /// 显式错误面；调用方尽力而为处理，见前端 retry.ts onGiveUp）。
+    pub fn mark_delivery_failed(vault: &Vault, id: i64, failure: &DeliveryFailure) -> Result<Notification> {
+        let conn = vault.connection();
+        let tx = conn.unchecked_transaction()?;
+        let current = read_failures_column(&tx, id)?;
+        let mut list = current.unwrap_or_default();
+        list.retain(|f| f.channel != failure.channel);
+        list.push(failure.clone());
+        let raw = serde_json::to_string(&list)?;
+        let n = tx.execute(
+            "UPDATE notifications SET delivery_failures = ?1 WHERE id = ?2",
+            params![raw, id],
+        )?;
+        if n == 0 {
+            return Err(VaultError::NotFound(format!("notification id={id}")));
+        }
+        tx.commit()?;
+        get_row(&conn, id)
+    }
+
+    /// 投递失败翻正清账（BL-530）：从 delivery_failures 摘除一个渠道；集合
+    /// 清空 → 列回归 NULL（无标记态恒一形态）。渠道不存在 = 已是目标态，
+    /// 幂等不报错。行不存在 → [`VaultError::NotFound`]。
+    pub fn clear_delivery_failure(vault: &Vault, id: i64, channel: &str) -> Result<Notification> {
+        let conn = vault.connection();
+        let tx = conn.unchecked_transaction()?;
+        let current = read_failures_column(&tx, id)?;
+        let mut list = current.unwrap_or_default();
+        list.retain(|f| f.channel != channel);
+        let raw = if list.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(&list)?)
+        };
+        let n = tx.execute(
+            "UPDATE notifications SET delivery_failures = ?1 WHERE id = ?2",
+            params![raw, id],
+        )?;
+        if n == 0 {
+            return Err(VaultError::NotFound(format!("notification id={id}")));
+        }
+        tx.commit()?;
+        get_row(&conn, id)
+    }
+}
+
+/// 读单行 delivery_failures 列（None = 无标记/无行——无行由调用方
+/// UPDATE 命中数兜底 NotFound；列 JSON 损坏显式报错，同 payload 纪律）。
+fn read_failures_column(
+    conn: &rusqlite::Connection,
+    id: i64,
+) -> Result<Option<Vec<DeliveryFailure>>> {
+    // optional() 解「无行」（外层 None）+ 内层 Option 解列 NULL，flatten 合并——
+    // 两者在调用方语义一致（无标记），无行由 UPDATE 命中数兜底 NotFound。
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT delivery_failures FROM notifications WHERE id = ?1",
+            params![id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    match raw {
+        None => Ok(None),
+        Some(s) => serde_json::from_str(&s).map(Some).map_err(Into::into),
+    }
+}
+
+/// 按 id 取完整行（mark/clear 的返回面；行已确认存在）。
+fn get_row(conn: &rusqlite::Connection, id: i64) -> Result<Notification> {
+    let mut stmt = conn.prepare("SELECT * FROM notifications WHERE id = ?1")?;
+    let row = stmt.query_row(params![id], row_to_notification)?;
+    Ok(row)
 }
 
 /// payload 列 TEXT ↔ serde_json::Value；损坏 JSON 显式报错（同 tags/variables 纪律）。
 fn payload_from_json(raw: Option<String>) -> Result<Option<serde_json::Value>> {
+    match raw {
+        None => Ok(None),
+        Some(s) => serde_json::from_str(&s).map(Some).map_err(Into::into),
+    }
+}
+
+/// delivery_failures 列 TEXT ↔ Option<Vec<DeliveryFailure>>（NULL = 无标记；
+/// 损坏 JSON 显式报错——标记面静默吞错会伪装成「无失败」）。
+fn failures_from_json(raw: Option<String>) -> Result<Option<Vec<DeliveryFailure>>> {
     match raw {
         None => Ok(None),
         Some(s) => serde_json::from_str(&s).map(Some).map_err(Into::into),
@@ -182,6 +285,8 @@ fn row_to_notification(row: &Row) -> rusqlite::Result<Notification> {
     }
     let payload = payload_from_json(row.get("payload")?)
         .map_err(|e| conv_failure(row, "payload", &e.to_string()))?;
+    let delivery_failures = failures_from_json(row.get("delivery_failures")?)
+        .map_err(|e| conv_failure(row, "delivery_failures", &e.to_string()))?;
     Ok(Notification {
         id: row.get("id")?,
         kind: row.get("kind")?,
@@ -192,6 +297,7 @@ fn row_to_notification(row: &Row) -> rusqlite::Result<Notification> {
         payload,
         read: row.get::<_, i64>("read")? != 0,
         ts: row.get("ts")?,
+        delivery_failures,
     })
 }
 

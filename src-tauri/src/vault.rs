@@ -30,12 +30,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
-    AlertRule, AlertRuleInput, AlertRules, CredentialInput, CredentialPatch, Credentials, History,
-    HistoryEntry, HistoryInput, Host, HostGroups, HostInput, Hosts, KeyMode, KnownHosts,
-    Notification, NotificationInput, Notifications, NotifyChannel, NotifyChannelInput,
-    NotifyChannelPatch, NotifyChannels, SecretField, Secrets, SessionSummaries, Settings,
-    SnippetInput, Snippets, SummaryEntry, SummaryInput, Vault, VaultError, HISTORY_SEARCH_LIMIT,
-    HISTORY_SESSION_LIMIT, SUMMARIES_LIST_LIMIT,
+    AlertRule, AlertRuleInput, AlertRules, CredentialInput, CredentialPatch, Credentials,
+    DeliveryFailure, History, HistoryEntry, HistoryInput, Host, HostGroups, HostInput, Hosts,
+    KeyMode, KnownHosts, Notification, NotificationInput, Notifications, NotifyChannel,
+    NotifyChannelInput, NotifyChannelPatch, NotifyChannels, SecretField, Secrets,
+    SessionSummaries, Settings, SnippetInput, Snippets, SummaryEntry, SummaryInput, Vault,
+    VaultError, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT, SUMMARIES_LIST_LIMIT,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -320,6 +320,33 @@ pub fn notify_clear(state: State<'_, VaultState>) -> CmdResult<usize> {
 #[tauri::command]
 pub fn notify_unread_count(state: State<'_, VaultState>) -> CmdResult<i64> {
     cmd(Notifications::unread_count(&state.0))
+}
+
+/// 投递失败标记入账（BL-530）：渠道终败标记落库（按渠道去重），返回更新后
+/// 的行。明文面不过门卫（同 notify_* 组；投递失败发生在锁定态也要能落账）。
+/// 未知行显式报错（前端按尽力而为面 console 处理，内存账本保底 UI 不谎报）。
+#[tauri::command]
+pub fn notify_mark_delivery_failed(
+    state: State<'_, VaultState>,
+    id: i64,
+    failure: DeliveryFailure,
+) -> CmdResult<Notification> {
+    cmd(Notifications::mark_delivery_failed(&state.0, id, &failure))
+}
+
+/// 投递失败翻正清账（BL-530）：摘除一个渠道的标记（重发/后台重试成功时调
+/// 用）；集合清空回归 NULL。明文面不过门卫，同上。
+#[tauri::command]
+pub fn notify_clear_delivery_failure(
+    state: State<'_, VaultState>,
+    id: i64,
+    channel: String,
+) -> CmdResult<Notification> {
+    cmd(Notifications::clear_delivery_failure(
+        &state.0,
+        id,
+        &channel,
+    ))
 }
 
 // --- history（Task 15，spec §5 统一历史搜索 ⌘R）-------------------------------

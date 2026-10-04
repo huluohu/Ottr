@@ -40,6 +40,7 @@ function row(over: Partial<Notification> = {}): Notification {
     payload: null,
     read: false,
     ts: 1759084800, // 2025-09-29（确定性时间；时间文案不在断言面）
+    delivery_failures: null,
     ...over,
   };
 }
@@ -72,6 +73,27 @@ function seedBackend(items: Notification[], unread: number, muted: NotifyKind[] 
         data.items = [];
         data.unread = 0;
         return removed;
+      }
+      case "notify_mark_delivery_failed": {
+        // BL-530 写穿：按渠道记账进行的 delivery_failures（refresh 真源同步）
+        const id = args?.id as number;
+        const f = args?.failure as { channel: string; channel_id: number | null; error: string; ts: number };
+        data.items = data.items.map((n) => {
+          if (n.id !== id) return n;
+          const list = (n.delivery_failures ?? []).filter((x) => x.channel !== f.channel);
+          return { ...n, delivery_failures: [...list, f] };
+        });
+        return { id, delivery_failures: data.items.find((n) => n.id === id)?.delivery_failures ?? null };
+      }
+      case "notify_clear_delivery_failure": {
+        const id = args?.id as number;
+        const channel = args?.channel as string;
+        data.items = data.items.map((n) => {
+          if (n.id !== id) return n;
+          const list = (n.delivery_failures ?? []).filter((x) => x.channel !== channel);
+          return { ...n, delivery_failures: list.length > 0 ? list : null };
+        });
+        return { id, delivery_failures: data.items.find((n) => n.id === id)?.delivery_failures ?? null };
       }
       case "settings_set":
         return undefined;
@@ -267,14 +289,15 @@ describe("通知空态引导（ui2 T3，审计 A4）", () => {
 describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", () => {
   const failure = { channel: "slack#3", channel_id: 3, error: "HTTP 502: bad gateway", ts: 1759084800 };
 
-  /** seed 一条带投递失败账的条目（账本入账——refresh 重贴的真源）。 */
-  function seedFailed(id: number) {
+  /** seed 一条带投递失败账的条目（账本入账 + BL-530 写穿落库——refresh 真源
+   * 同步记账，见 seedBackend 的 notify_mark_delivery_failed 分支）。 */
+  async function seedFailed(id: number) {
     seedBackend([row({ id, payload: { transfer_id: "xfer-1" } })], 1);
-    recordDeliveryFailure(id, failure);
+    await recordDeliveryFailure(id, failure);
   }
 
   it("失败块渲染：状态标签 + 渠道名 + 错误摘要；refresh 重贴后仍在", async () => {
-    seedFailed(21);
+    await seedFailed(21);
     render(<NotificationCenter />);
     await openPanel();
     const block = screen.getByTestId("notify-dlv-21");
@@ -287,10 +310,10 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
   });
 
   it("点击重发 → 调 resendNotification(item, failure)；翻正清账后失败块消失", async () => {
-    seedFailed(21);
+    await seedFailed(21);
     mockedResend.mockImplementation(async (r, f) => {
       // 模拟生产翻正链路：装饰器 onDelivered 缺省回执清账
-      clearDeliveryFailure((r as Notification).id, (f as { channel: string }).channel);
+      await clearDeliveryFailure((r as Notification).id, (f as { channel: string }).channel);
       return true;
     });
     render(<NotificationCenter />);
@@ -303,7 +326,7 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
   });
 
   it("重发在途：按钮禁用并显示 Resending…；完成后恢复可用", async () => {
-    seedFailed(22);
+    await seedFailed(22);
     let resolve!: (v: boolean) => void;
     mockedResend.mockImplementation(
       () =>

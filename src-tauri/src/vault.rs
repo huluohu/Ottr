@@ -701,6 +701,8 @@ pub fn import_tabby_config(
 }
 
 /// CSV 导出主机清单。`path` 缺省写到系统下载目录 `ottr-hosts.csv`；返回落盘路径。
+/// CSV 组装（RFC4180 转义 + 实体 join）在 ottr-vault `hosts_csv`（BL-206：随
+/// 实体同库可独立单测）；本命令只保留路径解析与落盘。
 #[tauri::command]
 pub fn export_hosts_csv(
     app: tauri::AppHandle,
@@ -719,48 +721,9 @@ pub fn export_hosts_csv(
             dir.join("ottr-hosts.csv")
         }
     };
-    let csv = build_hosts_csv(&state.0).map_err(|e| e.to_string())?;
+    let csv = ottr_vault::hosts_csv(&state.0).map_err(|e| e.to_string())?;
     std::fs::write(&target, csv).map_err(|e| format!("write {}: {e}", target.display()))?;
     Ok(target.to_string_lossy().into_owned())
-}
-
-/// 主机清单 CSV（RFC4180：含逗号/引号/换行的字段加引号、引号翻倍）。
-fn build_hosts_csv(vault: &Vault) -> ottr_vault::Result<String> {
-    let groups: std::collections::HashMap<i64, String> = HostGroups::list(vault)?
-        .into_iter()
-        .map(|g| (g.id, g.name))
-        .collect();
-    let mut out = String::from("name,username,address,port,group,tags,encoding,notes\n");
-    for h in Hosts::list(vault)? {
-        let group = h
-            .group_id
-            .and_then(|id| groups.get(&id))
-            .map(String::as_str)
-            .unwrap_or("");
-        let row: Vec<String> = vec![
-            h.name.clone(),
-            h.username.clone().unwrap_or_default(),
-            h.address.clone(),
-            h.port.to_string(),
-            group.to_string(),
-            h.tags.join("|"),
-            h.encoding_override.clone().unwrap_or_default(),
-            h.notes.clone().unwrap_or_default(),
-        ];
-        let cells: Vec<String> = row.iter().map(|c| csv_field(c)).collect();
-        out.push_str(&cells.join(","));
-        out.push('\n');
-    }
-    Ok(out)
-}
-
-/// 单字段转义：危险字符（`,` `"` CR LF）任一出现即整体加引号、内部引号翻倍。
-fn csv_field(v: &str) -> String {
-    if v.contains(',') || v.contains('"') || v.contains('\n') || v.contains('\r') {
-        format!("\"{}\"", v.replace('"', "\"\""))
-    } else {
-        v.to_string()
-    }
 }
 
 // --- alert_rules（Phase 3 Task 3，B5 告警规则——存储侧命令面）------------------
@@ -986,14 +949,6 @@ pub fn vault_reset(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn csv_field_quotes_only_when_needed() {
-        assert_eq!(csv_field("plain"), "plain");
-        assert_eq!(csv_field("a,b"), "\"a,b\"");
-        assert_eq!(csv_field("he said \"hi\""), "\"he said \"\"hi\"\"\"");
-        assert_eq!(csv_field("line\nbreak"), "\"line\nbreak\"");
-    }
 
     /// Task 16.5：vault_init_status 的 serde 面与前端 VaultInitStatusPayload
     /// 同构（tag=status snake_case）——字段名漂移会让前端就绪门永远停在 loading。

@@ -1071,15 +1071,14 @@ pub fn host_endpoint_key(address: &str, port: i64) -> String {
 /// 端点键 → `(address, port)`。IPv6 的方括号形态剥括号还原；`legacy:{fp}`
 /// 虚拟端点（0004 迁移前的存量行）与一切畸形键返回 `None`——巡检面对
 /// parse 失败的行只能「跳过」，绝不拿不可探测的端点做 changed 判定。
-/// 端口须落在 u16 值域（1..=65535；0 端口非可探测端点，一并拒绝）。
+/// 端口须落在 u16 值域（1..=65535；0 端口非可探测端点，一并拒绝），且只认
+/// **规范十进制**（纯 ASCII 数字、无前导零、无符号——见 [`canonical_port`]，
+/// BL-206 宽松解析收紧）。
 pub fn parse_endpoint_key(host_key: &str) -> Option<(String, i64)> {
     let (address, port_str) = if let Some(rest) = host_key.strip_prefix('[') {
         // IPv6："[addr]:port"——先剥方括号，再取 "]:" 之后的端口段
         let close = rest.find("]:")?;
-        let port = rest[close + 2..].parse::<i64>().ok()?;
-        if port <= 0 || port > u16::MAX as i64 {
-            return None;
-        }
+        let port = canonical_port(&rest[close + 2..])?;
         return Some((rest[..close].to_string(), port));
     } else {
         let idx = host_key.rfind(':')?;
@@ -1090,11 +1089,24 @@ pub fn parse_endpoint_key(host_key: &str) -> Option<(String, i64)> {
         // 无括号的裸 IPv6（多冒号）不可能是 host_endpoint_key 的产物——拒绝
         return None;
     }
-    let port = port_str.parse::<i64>().ok()?;
+    let port = canonical_port(port_str)?;
+    Some((address.to_string(), port))
+}
+
+/// 规范十进制端口解析（BL-206 宽松解析收紧）：端点键是 [`host_endpoint_key`]
+/// 的 `format!("{port}")` 产物，只会是纯 ASCII 数字（正 i64 无前导零）。
+/// `i64::from_str` 的宽松面（前导零 `"080"`、显式符号 `"+80"`）在此一并拒绝
+/// ——非规范形态不是本 crate 的产出，接受会让同端点在改写/拼接场景下长出
+/// 两个键。返回 `None` = 拒绝（空串/非数字/带符号/前导零/越 u16 值域，含 0）。
+fn canonical_port(s: &str) -> Option<i64> {
+    if s.is_empty() || s.starts_with('0') || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let port = s.parse::<i64>().ok()?;
     if port <= 0 || port > u16::MAX as i64 {
         return None;
     }
-    Some((address.to_string(), port))
+    Some(port)
 }
 
 /// 主机指纹状态机（0004 起按 host 端点记账）：

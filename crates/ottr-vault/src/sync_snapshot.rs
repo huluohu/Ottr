@@ -463,266 +463,303 @@ pub fn import_categories(
     let tx = conn.unchecked_transaction()?;
 
     // --- 替换删除（子行在前；级联面语义见模块文档）--------------------------
-    if is_selected(&selected, "cron_jobs") {
-        tx.execute("DELETE FROM cron_jobs", [])?;
-    }
-    if is_selected(&selected, "alert_rules") {
-        tx.execute("DELETE FROM alert_rules", [])?;
-    }
-    if is_selected(&selected, "snippets") {
-        tx.execute("DELETE FROM snippets", [])?;
-    }
-    if is_selected(&selected, "hosts") {
-        // jump_chains 无 FK（hops JSON 列）：删主机前逐台从链上摘除（链变空
-        // 级联删链），不留死 hop id——Hosts::delete 的反向补偿同款。
-        let host_ids: Vec<i64> = {
-            let mut stmt = tx.prepare("SELECT id FROM hosts")?;
-            let rows = stmt.query_map([], |r| r.get(0))?;
-            rows.collect::<rusqlite::Result<Vec<i64>>>()?
-        };
-        for id in host_ids {
-            remove_host_from_chains(&tx, id)?;
+    import_step("replace-delete", || -> Result<()> {
+        if is_selected(&selected, "cron_jobs") {
+            tx.execute("DELETE FROM cron_jobs", [])?;
         }
-        tx.execute("DELETE FROM hosts", [])?;
-    }
-    if is_selected(&selected, "host_groups") {
-        tx.execute("DELETE FROM host_groups", [])?;
-    }
-    if is_selected(&selected, "credentials") {
-        tx.execute("DELETE FROM credentials", [])?;
-    }
-    if is_selected(&selected, "notify_channels") {
-        tx.execute("DELETE FROM notify_channels", [])?;
-    }
-    if is_selected(&selected, "settings") {
-        // 真全量替换：非簿记键清空后落快照键；sync.* 键是本机三态基线，免疫；
-        // 被拒键（sync.* / 越界已知键）豁免删除——本机现值保留（见上方防线注释）。
-        let mut excluded = format!("key NOT LIKE '{SYNC_SETTINGS_PREFIX}%'");
-        let excluded_keys: Vec<String> = settings_dropped.iter().map(|s| s.key.clone()).collect();
-        for (i, _key) in excluded_keys.iter().enumerate() {
-            excluded.push_str(&format!(" AND key != ?{}", i + 1));
+        if is_selected(&selected, "alert_rules") {
+            tx.execute("DELETE FROM alert_rules", [])?;
         }
-        tx.execute(
-            &format!("DELETE FROM settings WHERE {excluded}"),
-            rusqlite::params_from_iter(excluded_keys.iter()),
-        )?;
-    }
-
+        if is_selected(&selected, "snippets") {
+            tx.execute("DELETE FROM snippets", [])?;
+        }
+        if is_selected(&selected, "hosts") {
+            // jump_chains 无 FK（hops JSON 列）：删主机前逐台从链上摘除（链变空
+            // 级联删链），不留死 hop id——Hosts::delete 的反向补偿同款。
+            let host_ids: Vec<i64> = {
+                let mut stmt = tx.prepare("SELECT id FROM hosts")?;
+                let rows = stmt.query_map([], |r| r.get(0))?;
+                rows.collect::<rusqlite::Result<Vec<i64>>>()?
+            };
+            for id in host_ids {
+                remove_host_from_chains(&tx, id)?;
+            }
+            tx.execute("DELETE FROM hosts", [])?;
+        }
+        if is_selected(&selected, "host_groups") {
+            tx.execute("DELETE FROM host_groups", [])?;
+        }
+        if is_selected(&selected, "credentials") {
+            tx.execute("DELETE FROM credentials", [])?;
+        }
+        if is_selected(&selected, "notify_channels") {
+            tx.execute("DELETE FROM notify_channels", [])?;
+        }
+        if is_selected(&selected, "settings") {
+            // 真全量替换：非簿记键清空后落快照键；sync.* 键是本机三态基线，免疫；
+            // 被拒键（sync.* / 越界已知键）豁免删除——本机现值保留（见上方防线注释）。
+            let mut excluded = format!("key NOT LIKE '{SYNC_SETTINGS_PREFIX}%'");
+            let excluded_keys: Vec<String> =
+                settings_dropped.iter().map(|s| s.key.clone()).collect();
+            for (i, _key) in excluded_keys.iter().enumerate() {
+                excluded.push_str(&format!(" AND key != ?{}", i + 1));
+            }
+            tx.execute(
+                &format!("DELETE FROM settings WHERE {excluded}"),
+                rusqlite::params_from_iter(excluded_keys.iter()),
+            )?;
+        }
+        Ok(())
+    })?;
     // --- 插入 + id 重映射（依赖序）------------------------------------------
 
     // host_groups：先全插（parent 暂 NULL）再回填（源树 parent 可能 id 大于子）。
     let mut group_map: HashMap<i64, i64> = HashMap::new();
     if is_selected(&selected, "host_groups") {
-        let mut map: HashMap<i64, i64> = HashMap::new();
-        for g in &groups {
-            tx.execute(
-                "INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
-                 VALUES (?1, NULL, ?2, ?3, ?4)",
-                params![g.name, g.color, g.created_at, g.updated_at],
-            )?;
-            map.insert(g.id, tx.last_insert_rowid());
-        }
-        group_map = map;
-        for g in &groups {
-            if let Some(old_parent) = g.parent_id {
-                if let Some(new_parent) = group_map.get(&old_parent) {
-                    tx.execute(
-                        "UPDATE host_groups SET parent_id = ?1 WHERE id = ?2",
-                        params![new_parent, group_map[&g.id]],
-                    )?;
-                }
-                // parent 不在快照内（截断快照）→ 提根（引用切断语义）。
+        import_step("host_groups", || -> Result<()> {
+            let mut map: HashMap<i64, i64> = HashMap::new();
+            for g in &groups {
+                tx.execute(
+                    "INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
+                     VALUES (?1, NULL, ?2, ?3, ?4)",
+                    params![g.name, g.color, g.created_at, g.updated_at],
+                )?;
+                map.insert(g.id, tx.last_insert_rowid());
             }
-        }
-        sanitize_group_cycles(&tx, &group_map)?;
-        applied.insert("host_groups".into(), group_map.len());
+            group_map = map;
+            for g in &groups {
+                if let Some(old_parent) = g.parent_id {
+                    if let Some(new_parent) = group_map.get(&old_parent) {
+                        tx.execute(
+                            "UPDATE host_groups SET parent_id = ?1 WHERE id = ?2",
+                            params![new_parent, group_map[&g.id]],
+                        )?;
+                    }
+                    // parent 不在快照内（截断快照）→ 提根（引用切断语义）。
+                }
+            }
+            sanitize_group_cycles(&tx, &group_map)?;
+            applied.insert("host_groups".into(), group_map.len());
+            Ok(())
+        })?;
     }
 
     // credentials：行落地拿 id → 同事务按新 id AAD 重密封三个密文字段。
     let mut cred_map: HashMap<i64, i64> = HashMap::new();
     if is_selected(&selected, "credentials") {
-        let mut count = 0usize;
-        let mut map: HashMap<i64, i64> = HashMap::new();
-        for c in &credentials {
-            tx.execute(
-                "INSERT INTO credentials (kind, key_pub, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![c.kind.as_str(), c.key_pub, c.created_at, c.updated_at],
-            )?;
-            let new_id = tx.last_insert_rowid();
-            for (field, plain) in [
-                ("secret", c.secret.as_deref()),
-                ("passphrase", c.passphrase.as_deref()),
-                ("totp_secret", c.totp_secret.as_deref()),
-            ] {
-                let Some(plain) = plain else { continue };
-                let blob = cipher.seal(plain.as_bytes(), &aad("credentials", new_id, field))?;
+        import_step("credentials", || -> Result<()> {
+            let mut count = 0usize;
+            let mut map: HashMap<i64, i64> = HashMap::new();
+            for c in &credentials {
                 tx.execute(
-                    &format!("UPDATE credentials SET {field}_enc = ?1 WHERE id = ?2"),
-                    params![blob, new_id],
+                    "INSERT INTO credentials (kind, key_pub, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![c.kind.as_str(), c.key_pub, c.created_at, c.updated_at],
                 )?;
+                let new_id = tx.last_insert_rowid();
+                for (field, plain) in [
+                    ("secret", c.secret.as_deref()),
+                    ("passphrase", c.passphrase.as_deref()),
+                    ("totp_secret", c.totp_secret.as_deref()),
+                ] {
+                    let Some(plain) = plain else { continue };
+                    let blob = cipher.seal(plain.as_bytes(), &aad("credentials", new_id, field))?;
+                    tx.execute(
+                        &format!("UPDATE credentials SET {field}_enc = ?1 WHERE id = ?2"),
+                        params![blob, new_id],
+                    )?;
+                }
+                map.insert(c.id, new_id);
+                count += 1;
             }
-            map.insert(c.id, new_id);
-            count += 1;
-        }
-        cred_map = map;
-        applied.insert("credentials".into(), count);
+            cred_map = map;
+            applied.insert("credentials".into(), count);
+            Ok(())
+        })?;
     }
 
     // notify_channels：占位行拿 id → 同事务密封 config（NotifyChannels::create 同款）。
     let mut chan_map: HashMap<i64, i64> = HashMap::new();
     if is_selected(&selected, "notify_channels") {
-        let mut count = 0usize;
-        for c in &channels {
-            let overrides = c
-                .template_overrides
-                .as_ref()
-                .map(serde_json::to_string)
-                .transpose()?;
-            tx.execute(
-                "INSERT INTO notify_channels (kind, config_enc, template_overrides, enabled, created_at, updated_at)
-                 VALUES (?1, zeroblob(1), ?2, ?3, ?4, ?5)",
-                params![c.kind, overrides, c.enabled as i64, c.created_at, c.updated_at],
-            )?;
-            let new_id = tx.last_insert_rowid();
-            let config_str = serde_json::to_string(&c.config)?;
-            let blob = cipher.seal(
-                config_str.as_bytes(),
-                &aad("notify_channels", new_id, "config"),
-            )?;
-            tx.execute(
-                "UPDATE notify_channels SET config_enc = ?1 WHERE id = ?2",
-                params![blob, new_id],
-            )?;
-            chan_map.insert(c.id, new_id);
-            count += 1;
-        }
-        applied.insert("notify_channels".into(), count);
+        import_step("notify_channels", || -> Result<()> {
+            let mut count = 0usize;
+            for c in &channels {
+                let overrides = c
+                    .template_overrides
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?;
+                tx.execute(
+                    "INSERT INTO notify_channels (kind, config_enc, template_overrides, enabled, created_at, updated_at)
+                     VALUES (?1, zeroblob(1), ?2, ?3, ?4, ?5)",
+                    params![c.kind, overrides, c.enabled as i64, c.created_at, c.updated_at],
+                )?;
+                let new_id = tx.last_insert_rowid();
+                let config_str = serde_json::to_string(&c.config)?;
+                let blob = cipher.seal(
+                    config_str.as_bytes(),
+                    &aad("notify_channels", new_id, "config"),
+                )?;
+                tx.execute(
+                    "UPDATE notify_channels SET config_enc = ?1 WHERE id = ?2",
+                    params![blob, new_id],
+                )?;
+                chan_map.insert(c.id, new_id);
+                count += 1;
+            }
+            applied.insert("notify_channels".into(), count);
+            Ok(())
+        })?;
     }
 
     let mut host_map: HashMap<i64, i64> = HashMap::new();
     if is_selected(&selected, "hosts") {
-        for h in &hosts {
-            tx.execute(
-                "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
-                                    credential_id, encoding_override, theme_override,
-                                    monitor_enabled, is_production, notes, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-                params![
-                    h.name,
-                    h.group_id.and_then(|id| group_map.get(&id)),
-                    serde_json::to_string(&h.tags)?,
-                    h.address,
-                    h.port,
-                    h.username,
-                    h.protocol.as_str(),
-                    h.credential_id.and_then(|id| cred_map.get(&id)),
-                    h.encoding_override,
-                    h.theme_override,
-                    h.monitor_enabled as i64,
-                    h.is_production as i64,
-                    h.notes,
-                    h.created_at,
-                    h.updated_at,
-                ],
-            )?;
-            host_map.insert(h.id, tx.last_insert_rowid());
-        }
-        applied.insert("hosts".into(), host_map.len());
+        import_step("hosts", || -> Result<()> {
+            for h in &hosts {
+                tx.execute(
+                    "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
+                                        credential_id, encoding_override, theme_override,
+                                        monitor_enabled, is_production, notes, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                    params![
+                        h.name,
+                        h.group_id.and_then(|id| group_map.get(&id)),
+                        serde_json::to_string(&h.tags)?,
+                        h.address,
+                        h.port,
+                        h.username,
+                        h.protocol.as_str(),
+                        h.credential_id.and_then(|id| cred_map.get(&id)),
+                        h.encoding_override,
+                        h.theme_override,
+                        h.monitor_enabled as i64,
+                        h.is_production as i64,
+                        h.notes,
+                        h.created_at,
+                        h.updated_at,
+                    ],
+                )?;
+                host_map.insert(h.id, tx.last_insert_rowid());
+            }
+            applied.insert("hosts".into(), host_map.len());
+            Ok(())
+        })?;
     }
 
     if is_selected(&selected, "snippets") {
-        let mut count = 0usize;
-        for s in &snippets {
-            tx.execute(
-                "INSERT INTO snippets (name, body, variables, tags, host_scope, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    s.name,
-                    s.body,
-                    serde_json::to_string(&s.variables)?,
-                    serde_json::to_string(&s.tags)?,
-                    s.host_scope.and_then(|id| host_map.get(&id)),
-                    s.created_at,
-                    s.updated_at,
-                ],
-            )?;
-            count += 1;
-        }
-        applied.insert("snippets".into(), count);
+        import_step("snippets", || -> Result<()> {
+            let mut count = 0usize;
+            for s in &snippets {
+                tx.execute(
+                    "INSERT INTO snippets (name, body, variables, tags, host_scope, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        s.name,
+                        s.body,
+                        serde_json::to_string(&s.variables)?,
+                        serde_json::to_string(&s.tags)?,
+                        s.host_scope.and_then(|id| host_map.get(&id)),
+                        s.created_at,
+                        s.updated_at,
+                    ],
+                )?;
+                count += 1;
+            }
+            applied.insert("snippets".into(), count);
+            Ok(())
+        })?;
     }
 
     if is_selected(&selected, "alert_rules") {
-        let (mut count, mut skip) = (0usize, 0usize);
-        for r in &rules {
-            let Some(host_id) = host_map.get(&r.host_id) else {
-                skip += 1; // host_id NOT NULL：宿主不可重映射 → 整行跳过（不静默造悬空行）
-                continue;
-            };
-            let channels_json = remap_channel_ids(&r.channels, &chan_map);
-            tx.execute(
-                "INSERT INTO alert_rules (host_id, kind, params, channels, rate_limit, mute_window, last_fired, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8)",
-                params![
-                    host_id,
-                    r.kind,
-                    serde_json::to_string(&r.params)?,
-                    serde_json::to_string(&channels_json)?,
-                    r.rate_limit,
-                    r.mute_window,
-                    r.created_at,
-                    r.updated_at,
-                ],
-            )?;
-            count += 1;
-        }
-        applied.insert("alert_rules".into(), count);
-        skipped.insert("alert_rules".into(), skip);
+        import_step("alert_rules", || -> Result<()> {
+            let (mut count, mut skip) = (0usize, 0usize);
+            for r in &rules {
+                let Some(host_id) = host_map.get(&r.host_id) else {
+                    skip += 1; // host_id NOT NULL：宿主不可重映射 → 整行跳过（不静默造悬空行）
+                    continue;
+                };
+                let channels_json = remap_channel_ids(&r.channels, &chan_map);
+                tx.execute(
+                    "INSERT INTO alert_rules (host_id, kind, params, channels, rate_limit, mute_window, last_fired, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, ?8)",
+                    params![
+                        host_id,
+                        r.kind,
+                        serde_json::to_string(&r.params)?,
+                        serde_json::to_string(&channels_json)?,
+                        r.rate_limit,
+                        r.mute_window,
+                        r.created_at,
+                        r.updated_at,
+                    ],
+                )?;
+                count += 1;
+            }
+            applied.insert("alert_rules".into(), count);
+            skipped.insert("alert_rules".into(), skip);
+            Ok(())
+        })?;
     }
 
     if is_selected(&selected, "cron_jobs") {
-        let (mut count, mut skip) = (0usize, 0usize);
-        for j in &jobs {
-            let Some(host_id) = host_map.get(&j.host_id) else {
-                skip += 1;
-                continue;
-            };
-            let channels_json = remap_channel_ids(&j.channels, &chan_map);
-            tx.execute(
-                "INSERT INTO cron_jobs (host_id, schedule, script, channels, enabled, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    host_id,
-                    j.schedule.trim(),
-                    j.script,
-                    serde_json::to_string(&channels_json)?,
-                    j.enabled as i64,
-                    j.created_at,
-                    j.updated_at,
-                ],
-            )?;
-            count += 1;
-        }
-        applied.insert("cron_jobs".into(), count);
-        skipped.insert("cron_jobs".into(), skip);
+        import_step("cron_jobs", || -> Result<()> {
+            let (mut count, mut skip) = (0usize, 0usize);
+            for j in &jobs {
+                let Some(host_id) = host_map.get(&j.host_id) else {
+                    skip += 1;
+                    continue;
+                };
+                let channels_json = remap_channel_ids(&j.channels, &chan_map);
+                tx.execute(
+                    "INSERT INTO cron_jobs (host_id, schedule, script, channels, enabled, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        host_id,
+                        j.schedule.trim(),
+                        j.script,
+                        serde_json::to_string(&channels_json)?,
+                        j.enabled as i64,
+                        j.created_at,
+                        j.updated_at,
+                    ],
+                )?;
+                count += 1;
+            }
+            applied.insert("cron_jobs".into(), count);
+            skipped.insert("cron_jobs".into(), skip);
+            Ok(())
+        })?;
     }
 
     if is_selected(&selected, "settings") {
-        let mut count = 0usize;
-        for s in &settings_valid {
-            tx.execute(
-                "INSERT INTO settings(key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                params![s.key, serde_json::to_string(&s.value)?],
-            )?;
-            count += 1;
-        }
-        applied.insert("settings".into(), count);
-        skipped.insert("settings".into(), settings_dropped.len());
+        import_step("settings", || -> Result<()> {
+            let mut count = 0usize;
+            for s in &settings_valid {
+                tx.execute(
+                    "INSERT INTO settings(key, value) VALUES (?1, ?2)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    params![s.key, serde_json::to_string(&s.value)?],
+                )?;
+                count += 1;
+            }
+            applied.insert("settings".into(), count);
+            skipped.insert("settings".into(), settings_dropped.len());
+            Ok(())
+        })?;
     }
 
     tx.commit()?;
     Ok(SyncImportReport { applied, skipped })
+}
+
+/// 把一段写入体包进分类上下文（BL-206 反馈面）：中途任何错误升级为
+/// [`VaultError::ImportStep`]（`category` = 当前写入分类），原子回滚由外层
+/// 单事务不变地承担；`Ok` 值原样穿透。删除段统一记作 "replace-delete"。
+fn import_step<T>(category: &str, body: impl FnOnce() -> Result<T>) -> Result<T> {
+    body().map_err(|e| VaultError::ImportStep {
+        category: category.to_string(),
+        source: Box::new(e),
+    })
 }
 
 /// channels 数组逐 id 重映射；不可映射（渠道分类不在所选集）的剔除、可映射的

@@ -83,7 +83,9 @@ impl MasterKey {
             Some(raw) => Ok(MasterKey(decode_key(&raw)?)),
             None => {
                 let mut key: RawKey = [0u8; crypto::KEY_LEN];
-                rand::fill(&mut key);
+                // OS CSPRNG 直采（BL-206，见 crypto::fill_os）：Master Key
+                // 是全库信任根，不经用户态 ThreadRng 缓冲。
+                crate::crypto::fill_os(&mut key);
                 storage.save(&hex::encode(key))?;
                 Ok(MasterKey(key))
             }

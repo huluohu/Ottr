@@ -123,6 +123,22 @@ describe("App.css 消费点纪律（文字场景迁移）", () => {
     const btnDanger = appCss.slice(appCss.indexOf(".btn-danger {"), appCss.indexOf("}", appCss.indexOf(".btn-danger {")));
     expect(btnDanger).toContain("color: var(--color-on-danger)");
   });
+
+  // 产品就绪批次 T1（亮色全量实算 /tmp/pr-t1/audit-pr.mjs 新发现）：kh-* 键历史
+  // 徽标/危险动作消费幽灵键 --color-success-text/--color-danger-text（tokens.css
+  // 无定义），硬编码回退 #2e7d32/#c62828 实渲染——亮色 overlay 上 3.93/4.30 <4.5，
+  // 且暗色主题回退亮色系值更不可读。清偿：迁校准语义键（--color-success teal-800
+  // / --color-danger #b42318，两主题四面 ≥4.5 由上组断言钉死），幽灵键禁用。
+  it("kh-* 状态徽标/危险动作消费校准语义键（幽灵 --color-*-text 回退禁用）", () => {
+    // 幽灵键（tokens.css 无定义）带回退值 = 回退值实渲染，全库禁用
+    expect(/var\(--color-(success|danger)-text\b/.test(appCss)).toBe(false);
+    const khOk = appCss.slice(appCss.indexOf(".kh-badge-ok {"), appCss.indexOf("}", appCss.indexOf(".kh-badge-ok {")));
+    expect(khOk).toContain("color: var(--color-success)");
+    const khChanged = appCss.slice(appCss.indexOf(".kh-badge-changed {"), appCss.indexOf("}", appCss.indexOf(".kh-badge-changed {")));
+    expect(khChanged).toContain("color: var(--color-danger)");
+    const khActions = appCss.slice(appCss.indexOf(".kh-actions .kh-danger {"), appCss.indexOf("}", appCss.indexOf(".kh-actions .kh-danger {")));
+    expect(khActions).toContain("color: var(--color-danger)");
+  });
 });
 
 // --- 亮色专项校准（ui-batch3 T1，UI 审计 A3 清偿；沿 fix 2 制式：实算数字即规约） ---

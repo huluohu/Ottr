@@ -3584,10 +3584,15 @@ button[data-active="true"] {
   border: 1px solid var(--border-subtle);
 }
 .kh-badge-ok {
-  color: var(--color-success-text, #2e7d32);
+  /* 产品就绪批次 T1 校准：原幽灵键 --color-success-text（tokens.css 无定义）
+   * 回退 #2e7d32 实渲染，亮色 overlay 3.93/raised 4.26 <4.5——迁校准语义键
+   * （teal-800：亮四面 5.81-7.58；暗 #2dd4bf 四面 6.13-8.01，tokens.test 钉死）。 */
+  color: var(--color-success);
 }
 .kh-badge-changed {
-  color: var(--color-danger-text, #c62828);
+  /* 原幽灵键 --color-danger-text 回退 #c62828，亮色 overlay 4.30 <4.5——迁
+   * #b42318（亮四面 5.03-6.57）。暗色 #f97066 沿 Phase 5 T8 §7-4 裁定不动。 */
+  color: var(--color-danger);
   border-color: currentColor;
 }
 .kh-badge-pending {
@@ -3599,7 +3604,7 @@ button[data-active="true"] {
   white-space: nowrap;
 }
 .kh-actions .kh-danger {
-  color: var(--color-danger-text, #c62828);
+  color: var(--color-danger); /* 同上：幽灵 --color-danger-text 回退清偿 */
 }
 .kh-seen {
   list-style: none;

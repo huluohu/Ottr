@@ -350,6 +350,10 @@ pub fn run() {
             commands::sync_git::sync_passphrase_set,
             commands::sync_git::sync_passphrase_get,
             commands::sync_git::sync_passphrase_del,
+            // product-ready T4（BL-524 清偿，commands/sync_http.rs）：WebDAV
+            // 通道 HTTP 代理——webview fetch 生产被 CORS 拦死，改走 Rust
+            // reqwest（同源钉死 + method 白名单，安全面见模块文档）
+            commands::sync_http::sync_http_fetch,
             // Task 16.5（0×0 主窗 frame 修复）：vault 后台初始化就绪门取数面
             vault::vault_init_status,
             // Task 12（spec §7）：通知管线①应用内通知中心（明文面，锁定可读写）

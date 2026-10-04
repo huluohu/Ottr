@@ -46,6 +46,10 @@ pub mod ftp;
 // （task-2 裁定「存钥匙链归 Task 4」）。模块文档见本文件。
 pub mod session;
 pub mod sync_git;
+// 同步 WebDAV 通道 HTTP 代理（product-ready T4，BL-524 清偿）：webview 原生
+// fetch 生产被 CORS 拦死，改经 invoke 走 Rust reqwest（同源钉死 + method
+// 白名单 + Basic 头 Rust 侧拼接）。模块文档见本文件。
+pub mod sync_http;
 // spike 命令面生产闸门（Task 0 Step 4，终审C-2/BL-002）：Phase 0 测量/取数命令
 // 不进 release 产物——`spike_report_file` 是 webview 可达的任意路径写原语（路径
 // 白名单只是纵深防御）。debug 构建保留供 scripts/验收驱动面；release 构建整个

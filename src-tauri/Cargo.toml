@@ -77,6 +77,12 @@ tauri-plugin-dialog = "2"
 arboard = { version = "3", default-features = false }
 # 剪贴板明文 String 用后即清（vault 侧裸 key 同源纪律）。
 zeroize = "1"
+# product-ready T4（BL-524 清偿）：同步 WebDAV 通道的 Rust HTTP 代理
+# （commands/sync_http.rs）——webview 原生 fetch 生产被 CORS 拦死（自建
+# WebDAV/dufs 不发跨域头），改经 invoke 走 reqwest。default-features = false：
+# 关 default-tls（native-tls→openssl 依赖树）与 http2/charset 等非必需面；
+# TLS = rustls（webpki-roots，免系统信任库平台差）。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 # keyring v3 无默认 feature（无平台 store 即只剩 mock）；平台 store 按平台 opt-in，
 # 且 sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）——官方推荐按

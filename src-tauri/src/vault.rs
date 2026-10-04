@@ -855,6 +855,91 @@ pub fn sync_import_categories(
     ))
 }
 
+// --- 重置应用（BL-537 清偿：锁定屏「忘记密码？」终局出路）---------------------
+// 主密码不可找回（AES-256-GCM，Master Key 由主密码派生——密码丢失即密文永久
+// 不可开封），唯一出路 = 重置应用：清本机库 + 清钥匙链条目，回到首启状态
+// （1Password 同款语义）。安全纪律：
+//   * confirm 门卫——不带显式 confirm=true 的调用在入口拒绝，不动任何数据；
+//   * abort-safe 顺序——先删钥匙链条目（失败即中止，库文件原样保留可重试），
+//     再清数据目录（逐条目失败如实上抛，残余留给重试）；
+//   * 清完 `app.restart()`——进程级回到首启链：vault-init 线程重跑 `open_auto`
+//     （目录已空 → 全新 keyring 模式库、无锁）→ 前端就绪门/锁定状态机自然落
+//     到首启面。不做进程内 vault 热替换（Arc<Vault> 不可换、连接/密钥槽残留
+//     面大），重启是唯一语义完整的「回到首启」。
+
+/// 重置确认门卫（pub(crate) 供单测）：confirm 必须显式 `Some(true)`。
+/// 缺参（Tauri 反序列化 null → None）与显式 false 一律拒绝。
+pub(crate) fn ensure_reset_confirmed(confirm: Option<bool>) -> Result<(), String> {
+    if confirm == Some(true) {
+        return Ok(());
+    }
+    Err(
+        "vault_reset requires explicit confirmation: pass confirm=true (this wipes ALL local \
+         vault data and the keychain entry)"
+            .into(),
+    )
+}
+
+/// 清空 vault 数据目录全部条目（vault.db/-wal/-shm、cron-runs/、recordings/、
+/// mcp.sock 等——目录本身保留，重开时 create_dir_all 幂等）+ 删除钥匙链
+/// Master Key 条目。`storage` 注入（生产 = KeyringStorage，测试 = InMemoryStorage，
+/// 单测绝不碰真钥匙链）。错误如实上抛，不做部分成功的静默伪装。
+pub(crate) fn wipe_vault_data(
+    dir: &std::path::Path,
+    storage: &dyn ottr_vault::master_key::KeyStorage,
+) -> Result<(), String> {
+    // ① 钥匙链条目先删（abort-safe：清不掉就中止，库文件原样保留）。NoEntry
+    // 已由 KeyringStorage::delete 收敛为 Ok（主密码模式本就无条目）。
+    storage
+        .delete()
+        .map_err(|e| format!("keychain delete: {e}"))?;
+    // ② 数据目录逐条目清除（文件/子目录一视同仁；删除中的打开句柄在
+    // macOS/Windows 上 unlink 语义由各平台兜底，进程重启后无残留引用）。
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| format!("read {}: {e}", dir.display()))?;
+    for entry in entries {
+        let path = entry.map_err(|e| format!("readdir {}: {e}", dir.display()))?.path();
+        let removed = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        removed.map_err(|e| format!("remove {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// 重置应用命令（锁定屏「忘记密码？」确认后调用）。`confirm` 必须显式 true；
+/// 清库成功即进程重启（本命令不返回——`AppHandle::restart` diverges），前端
+/// invoke 永不 resolve 是预期形态；重启失败/清库失败错误如实回传上屏。
+#[tauri::command]
+pub fn vault_reset(
+    state: State<'_, VaultState>,
+    app: AppHandle,
+    confirm: Option<bool>,
+) -> CmdResult<()> {
+    ensure_reset_confirmed(confirm)?;
+    // 先落锁：password 模式把 Master Key 清出内存再动盘上数据（重启前不留
+    // 敏感材料；keyring 模式 lock 本就 no-op 语义）。
+    if state.0.mode() == KeyMode::Password {
+        state.0.lock();
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("resolve app data dir: {e}"))?;
+    // 防呆：app_data_dir 解析异常退化成根/无父目录时拒绝清（宁可不重置）。
+    if dir.parent().is_none() || dir == std::path::Path::new("/") {
+        return Err(format!("refusing to wipe suspicious data dir: {}", dir.display()));
+    }
+    wipe_vault_data(
+        &dir,
+        &ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE),
+    )?;
+    eprintln!("[vault] reset confirmed: data dir wiped ({}), restarting app", dir.display());
+    app.restart();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -898,5 +983,99 @@ mod tests {
         assert!(matches!(tracker.get(), VaultInitStatus::Ready));
         tracker.set(VaultInitStatus::Failed { error: "x".into() });
         assert!(matches!(tracker.get(), VaultInitStatus::Failed { .. }));
+    }
+
+    // --- vault_reset（BL-537 清偿：锁定屏「忘记密码？」终局出路）---------------
+
+    /// 确认门卫：confirm 必须显式 Some(true)。缺参/显式 false 一律拒绝——
+    /// 破坏性命令不接受任何静默默认（漏传 confirm = Tauri 反序列化层缺参，
+    /// 也走 None 拒绝路径，不会意外清库）。
+    #[test]
+    fn reset_confirm_guard_rejects_everything_but_explicit_true() {
+        assert!(ensure_reset_confirmed(None).is_err(), "缺 confirm 参数 = 拒绝");
+        assert!(
+            ensure_reset_confirmed(Some(false)).is_err(),
+            "显式 false = 拒绝"
+        );
+        assert_eq!(ensure_reset_confirmed(Some(true)), Ok(()));
+        let err = ensure_reset_confirmed(None).unwrap_err();
+        assert!(
+            err.contains("confirm"),
+            "错误消息必须指明 confirm 契约（前端可诊断）：{err}"
+        );
+    }
+
+    /// wipe 清空数据目录全部条目（文件/子目录一视同仁）+ 删除钥匙链条目。
+    /// storage 注入 InMemoryStorage——单测绝不碰真钥匙链（测试纪律同
+    /// ottr-vault master_key）。
+    #[test]
+    fn wipe_vault_data_clears_dir_and_keychain_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("vault.db");
+        std::fs::write(&db, b"cipher").unwrap();
+        std::fs::write(dir.path().join("vault.db-wal"), b"wal").unwrap();
+        let sub = dir.path().join("cron-runs");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("1-2.log"), b"log").unwrap();
+
+        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        use ottr_vault::master_key::KeyStorage as _;
+        storage.save("master-key-material").unwrap();
+
+        wipe_vault_data(dir.path(), &storage).unwrap();
+
+        assert!(
+            std::fs::read_dir(dir.path()).unwrap().next().is_none(),
+            "数据目录必须清空（含子目录 cron-runs）"
+        );
+        assert_eq!(
+            storage.load().unwrap(),
+            None,
+            "钥匙链 Master Key 条目必须删除"
+        );
+    }
+
+    /// 钥匙链删除失败 → 整体报错且**先于任何文件删除**（abort-safe 顺序：
+    /// 钥匙链清不掉就绝不碰库文件，用户可原样重试）。用「不可写目录」构造
+    /// 文件删除失败场景验证错误如实上抛。
+    #[test]
+    fn wipe_vault_data_reports_storage_failure_without_touching_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("vault.db");
+        std::fs::write(&db, b"cipher").unwrap();
+        // 刻意损坏的 storage：delete 恒败（模拟钥匙链拒绝访问）。
+        struct BrokenStorage;
+        impl ottr_vault::master_key::KeyStorage for BrokenStorage {
+            fn load(&self) -> ottr_vault::Result<Option<String>> {
+                Ok(None)
+            }
+            fn save(&self, _secret: &str) -> ottr_vault::Result<()> {
+                Ok(())
+            }
+            fn delete(&self) -> ottr_vault::Result<()> {
+                Err(ottr_vault::VaultError::Io(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "keychain denied",
+                )))
+            }
+        }
+        let err = wipe_vault_data(dir.path(), &BrokenStorage).unwrap_err();
+        assert!(err.contains("keychain"), "错误须指明钥匙链环节：{err}");
+        assert_eq!(
+            std::fs::read_to_string(&db).unwrap(),
+            "cipher",
+            "钥匙链删除失败时库文件必须原样保留（可重试）"
+        );
+    }
+
+    /// 目录删除失败（只读目录）→ 错误如实上抛，不静默（残余文件留给重试）。
+    #[test]
+    fn wipe_vault_data_reports_dir_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        // 目录本身不存在 → read_dir 失败必须显式报错（app_data_dir 解析异常
+        // 的兜底面，静默 Ok 会伪装成「已重置」）。
+        let missing = dir.path().join("does-not-exist");
+        assert!(wipe_vault_data(&missing, &storage).is_err());
     }
 }

@@ -356,6 +356,10 @@ pub fn run() {
             commands::sync_http::sync_http_fetch,
             // Task 16.5（0×0 主窗 frame 修复）：vault 后台初始化就绪门取数面
             vault::vault_init_status,
+            // product-ready T5（BL-537 清偿）：锁定屏「忘记密码？」重置应用——
+            // confirm 门卫 + 清库/钥匙链 + 进程重启回首启（破坏性命令，语义见
+            // vault.rs 模块内注释）
+            vault::vault_reset,
             // Task 12（spec §7）：通知管线①应用内通知中心（明文面，锁定可读写）
             vault::notify_insert,
             vault::notify_list,

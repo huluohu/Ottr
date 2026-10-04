@@ -8,13 +8,17 @@
 //!    `HopFailed { index: 1 }`，红线 **3s 内**（显式 CHANNEL_OPEN_FAILURE，
 //!    不是笼统超时）；
 //! 3. **teardown**（服务端视角，Phase 0 挂账清偿的最终证据）：链建立后容器内
-//!    `/proc/net/tcp` 有 3 条 local-port=2222 的 ESTABLISHED（链上 3 个连接的
-//!    服务端侧）；显式 disconnect 后轮询归零（只剩探测连接自己）——「中间跳
-//!    Handle drop 不关连接」的旧泄漏在容器 sshd 侧可观测地消失。
+//!    `/proc/net/tcp` 出现 3 条 local-port=2222 的 ESTABLISHED **新键**（链上
+//!    3 个连接的服务端侧，按连接四元组集合差分计量）；显式 disconnect 后
+//!    这 3 条键轮询消失——「中间跳 Handle drop 不关连接」的旧泄漏在容器
+//!    sshd 侧可观测地消失。集合差分而非绝对计数：全量回归时其他夹具测试
+//!    的并行连接会建立/拆除，绝对基线会被并行干扰污染（原实现因此在
+//!    `cargo test -p ottr-ssh` 全目标并行跑下偶发翻红）。
 //!
 //! 夹具未启动时跳过（同 deploy_fixture/forward_fixture 纪律）。
 //! Run: `cargo test -p ottr-ssh --test jump_session_fixture`
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -64,37 +68,23 @@ fn skip(name: &str) {
     println!("SKIP {name}: fixture down（先跑 scripts/spike-sshd.sh）");
 }
 
-/// 在夹具上 exec `cat /proc/net/tcp`，数 local-port=2222（hex 08AE）且
-/// state=01（ESTABLISHED）的行——容器 sshd 侧每条活连接恰好贡献一行
-/// （客户端侧套接字的 local port 是临时端口，不计数）。
-async fn established_on_fixture(poller: &ottr_ssh::SshSession) -> usize {
+/// 在夹具上 exec `cat /proc/net/tcp`，取 local-port=2222（hex 08AE）且
+/// state=01（ESTABLISHED）行的**连接键集合**（键 = `local-rem` 四元组原文）
+/// ——容器 sshd 侧每条活连接恰好贡献一行（客户端侧套接字的 local port 是
+/// 临时端口，不计数）。集合形态供差分计量（见模块文档第 3 点）。
+async fn established_keys_on_fixture(poller: &ottr_ssh::SshSession) -> HashSet<String> {
     let out = poller
         .exec("cat /proc/net/tcp")
         .await
         .expect("exec /proc/net/tcp");
     let text = String::from_utf8_lossy(&out.stdout);
     text.lines()
-        .filter_map(|line| {
-            line.split_whitespace()
-                .collect::<Vec<_>>()
-                .get(1..4)
-                .map(|f| f.to_vec())
-        })
+        .filter_map(|line| line.split_whitespace().collect::<Vec<_>>().get(1..4).map(|f| f.to_vec()))
         .filter(|f| f.len() == 3)
         .filter(|f| f[0].ends_with(":08AE")) // local port 2222
         .filter(|f| f[2] == "01") // ESTABLISHED
-        .count()
-}
-
-/// 轮询等待容器侧 established 收敛到目标值（teardown 观测）。
-async fn wait_established(poller: &ottr_ssh::SshSession, want: usize) -> usize {
-    let deadline = Instant::now() + TEARDOWN_BUDGET;
-    let mut n = established_on_fixture(poller).await;
-    while Instant::now() < deadline && n > want {
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        n = established_on_fixture(poller).await;
-    }
-    n
+        .map(|f| format!("{}-{}", f[0], f[1]))
+        .collect()
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -114,7 +104,7 @@ async fn two_hop_self_jump_chain_exec_teardown_on_real_fixture() {
         .await
         .expect("poller connect"),
     );
-    let baseline = established_on_fixture(&poller).await;
+    let baseline = established_keys_on_fixture(&poller).await;
 
     // ---- 自跳两级链：链路通 + target exec + 容器侧连接账本 +3 --------------
     let js = tokio::time::timeout(
@@ -131,20 +121,39 @@ async fn two_hop_self_jump_chain_exec_teardown_on_real_fixture() {
     let who = js.target().exec("whoami").await.expect("exec over chain");
     assert_eq!(String::from_utf8_lossy(&who.stdout).trim(), USER);
 
-    // 链上 3 个连接（conn1 直连 + conn2/conn3 容器内自跳）在服务端可见。
-    let after_chain = wait_established(&poller, baseline + 3).await;
-    assert!(
-        after_chain >= baseline + 3,
-        "链建立后容器侧应至少 +3 条 ESTABLISHED：baseline={baseline} actual={after_chain}"
-    );
+    // 链上 3 个连接（conn1 直连 + conn2/conn3 容器内自跳）在服务端可见：
+    // 轮询直到出现 ≥3 条「基线集合之外的新键」（并行测试的连接建立/拆除
+    // 不影响差分结果——只数本链自己的键）。
+    let deadline = Instant::now() + TEARDOWN_BUDGET;
+    let chain_keys = loop {
+        let current = established_keys_on_fixture(&poller).await;
+        let fresh: HashSet<String> = current.difference(&baseline).cloned().collect();
+        if fresh.len() >= 3 {
+            break fresh;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "链建立后容器侧应出现 ≥3 条新 ESTABLISHED：baseline={baseline:?} fresh={fresh:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
 
-    // ---- 显式 teardown：容器侧连接账本回落（旧泄漏在服务端可观测地消失）----
+    // ---- 显式 teardown：本链 3 条新键全部消失（旧泄漏在服务端可观测地消失；
+    // 并行测试的连接无关——只盯自己的键）------------------------------------
     js.disconnect().await.expect("disconnect");
-    let after_teardown = wait_established(&poller, baseline).await;
-    assert_eq!(
-        after_teardown, baseline,
-        "显式 disconnect 后容器侧必须回到基线（中间跳不得悬挂）"
-    );
+    let deadline = Instant::now() + TEARDOWN_BUDGET;
+    loop {
+        let current = established_keys_on_fixture(&poller).await;
+        let residue: HashSet<String> = chain_keys.intersection(&current).cloned().collect();
+        if residue.is_empty() {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "显式 disconnect 后链上 3 条连接必须全部从容器侧消失：residue={residue:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
     poller.disconnect().await.ok();
 }
 

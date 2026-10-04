@@ -31,6 +31,7 @@ function backendInvoke(cmd: string, args?: { key?: string }) {
     case "settings_get":
       if (args?.key === "ai_providers") return Promise.resolve(EXISTING);
       if (args?.key === "ai.enabled") return Promise.resolve(true);
+      if (args?.key === "ai.summary.enabled") return Promise.resolve(true);
       if (args?.key === "redaction")
         return Promise.resolve({ hostname: true, custom: [] });
       if (args?.key === "ai.max_tokens") return Promise.resolve(1024);
@@ -262,6 +263,19 @@ describe("通用", () => {
     await waitFor(() => {
       const call = mockedInvoke.mock.calls.find(
         ([c, a]) => c === "settings_set" && (a as { key?: string })?.key === "ai.enabled",
+      );
+      expect(call?.[1].value).toBe(false);
+    });
+  });
+
+  it("ai.summary.enabled 开关落库（BL-510④：纪要独立开关）", async () => {
+    render(<AISettings open onClose={() => {}} />);
+    const box = (await screen.findByTestId("ai-summary-enabled")) as HTMLInputElement;
+    expect(box.checked).toBe(true); // 默认开
+    fireEvent.click(box);
+    await waitFor(() => {
+      const call = mockedInvoke.mock.calls.find(
+        ([c, a]) => c === "settings_set" && (a as { key?: string })?.key === "ai.summary.enabled",
       );
       expect(call?.[1].value).toBe(false);
     });

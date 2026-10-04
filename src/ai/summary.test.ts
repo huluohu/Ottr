@@ -118,6 +118,8 @@ function mockBackend(over: {
   insertRow?: unknown;
   /** vault_security_status 注入口（BL-510① 锁定态闸门）：缺省 unlocked。 */
   locked?: boolean | Error;
+  /** ai.summary.enabled 注入口（BL-510④）：缺省 null（loadAiSettings 回落 true）。 */
+  summary?: boolean | null;
 } = {}): void {
   mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "vault_security_status") {
@@ -132,6 +134,8 @@ function mockBackend(over: {
           return { hostname: true, custom: [] };
         case "ai.enabled":
           return true;
+        case "ai.summary.enabled":
+          return over.summary === undefined ? null : over.summary;
         case "ai.max_tokens":
           return 1024;
         default:
@@ -355,6 +359,16 @@ describe("generateSessionSummary", () => {
     expect(ok).toBe(false);
     expect(provider.requests).toHaveLength(0);
     expect(insertedPayloads()).toHaveLength(0);
+  });
+
+  it("ai.summary.enabled=false：闸门静默跳过（不派发不入库；与 ai.enabled 独立，BL-510④）", async () => {
+    mockBackend({ summary: false });
+    const provider = new RecordingProvider(["纪要正文。"]);
+    const ok = await generateSessionSummary(REQ, { provider });
+    expect(ok).toBe(false);
+    expect(provider.requests).toHaveLength(0);
+    expect(insertedPayloads()).toHaveLength(0);
+    expect(notifiedPayloads()).toHaveLength(0);
   });
 });
 

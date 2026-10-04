@@ -20,7 +20,8 @@
 //     不进 prompt）；占位符原样进出（还原即泄露）；
 //   * BYOK 直连：明文 key 只经 vault secrets 单点出库 → createProvider 请求头；
 //   * ai.enabled **不管**本链路：该开关语义是「命令失败自动诊断」（设置页文案
-//     与 T13/T6 口径一致）；未配 provider 即天然全关——纪要无独立开关（挂账）。
+//     与 T13/T6 口径一致）；纪要独立开关 = `ai.summary.enabled`（BL-510④ 清偿，
+//     默认开，设置页同区可见）；未配 provider 即天然全关。
 //   * 无 abort：后台任务没有面板生命周期，进程退出即终止（LLM 端点超时自灭）。
 import i18n from "../i18n";
 import { notify } from "../notify/core";
@@ -110,6 +111,10 @@ export async function generateSessionSummary(
     }
     const meta = settings.providers[0] ?? null;
     if (!meta) return false;
+
+    // --- 2.4 独立开关闸门（BL-510④）：ai.summary.enabled 只管本链路（诊断链
+    // 的 ai.enabled 语义不变）；关闭 = 用户裁量不出网，静默 false 即可。
+    if (!settings.summaryEnabled) return false;
 
     // --- 2.5 锁定态前置闸门（BL-510①）：vault 锁定时 summary_insert 必被拒
     // （密文面过 ensure_unlocked 门卫）——现状是请求已发出、入库被拒静默丢，

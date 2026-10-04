@@ -404,6 +404,8 @@
       "general": "General",
       "autoDiagnose": "Auto-diagnose failed commands",
       "autoDiagnoseHint": "When off, failed commands no longer open the panel automatically; right-click Explain still works.",
+      "summaryEnabled": "Session summaries",
+      "summaryEnabledHint": "After a session disconnects or its tab closes, AI generates a session summary in the background (visible in history ⌘R); turning this off stops generation and does not affect the auto-diagnose switch.",
       "maxTokens": "Max reply tokens",
       "providers": "Providers (BYOK, direct connection)",
       "byokHint": "API keys are stored encrypted in the local vault; requests go straight from this machine to the endpoint you configure — no Ottr relay server.",

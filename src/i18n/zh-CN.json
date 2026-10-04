@@ -403,6 +403,8 @@
       "general": "通用",
       "autoDiagnose": "命令失败自动诊断",
       "autoDiagnoseHint": "关闭后命令失败不再自动打开诊断面板；右键「解释」仍然可用。",
+      "summaryEnabled": "会话纪要自动生成",
+      "summaryEnabledHint": "会话断开或关闭标签后，后台调用 AI 生成会话纪要（历史 ⌘R 可查）；关闭后不再生成，与「自动诊断」开关互不影响。",
       "maxTokens": "单次回复上限（tokens）",
       "providers": "Provider（自带密钥，直连）",
       "byokHint": "API Key 保存在本机 vault（加密），请求从本机直连你填写的端点——没有 Ottr 中转服务器。",

@@ -8,6 +8,7 @@ import {
   DEFAULT_MAX_TOKENS,
   apiKeySecretKey,
   loadAiSettings,
+  saveAiSummaryEnabled,
 } from "./settings";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -28,6 +29,7 @@ describe("loadAiSettings", () => {
     const s = await loadAiSettings();
     expect(s).toEqual({
       enabled: true,
+      summaryEnabled: true, // BL-510④：纪要独立开关默认开
       maxTokens: DEFAULT_MAX_TOKENS,
       providers: [],
       redaction: { hostname: true, custom: [] },
@@ -50,6 +52,21 @@ describe("loadAiSettings", () => {
     expect(s.providers).toEqual(providers);
     expect(s.redaction).toEqual(redaction);
     expect(s.enabled).toBe(false);
+    expect(s.summaryEnabled).toBe(true); // 未配置 → 默认开
+  });
+
+  it("ai.summary.enabled 键读写（BL-510④）：false 生效 / 坏值回落默认", async () => {
+    settingForKey("ai.summary.enabled", false);
+    expect((await loadAiSettings()).summaryEnabled).toBe(false);
+    for (const bad of ["yes", 1, null]) {
+      mockedInvoke.mockReset();
+      settingForKey("ai.summary.enabled", bad);
+      expect((await loadAiSettings()).summaryEnabled).toBe(true);
+    }
+    mockedInvoke.mockReset();
+    await saveAiSummaryEnabled(false);
+    const call = mockedInvoke.mock.calls.find(([c]) => c === "settings_set");
+    expect(call?.[1]).toMatchObject({ key: "ai.summary.enabled", value: false });
   });
 
   it("maxTokens 钳制：>8192/负值/非数 → 默认", async () => {

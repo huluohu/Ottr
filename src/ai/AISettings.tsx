@@ -17,6 +17,7 @@ import {
   loadAiSettings,
   saveAiEnabled,
   saveAiMaxTokens,
+  saveAiSummaryEnabled,
   saveProviders,
   saveRedaction,
   type RedactionConfig,
@@ -72,6 +73,7 @@ export function AISettings({ open, onClose }: AISettingsProps) {
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [redaction, setRedaction] = useState<RedactionConfig>({ hostname: true, custom: [] });
   const [enabled, setEnabled] = useState(true);
+  const [summaryEnabled, setSummaryEnabled] = useState(true);
   const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_TOKENS);
   const [draft, setDraft] = useState<ProviderDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export function AISettings({ open, onClose }: AISettingsProps) {
         setProviders(s.providers);
         setRedaction(s.redaction);
         setEnabled(s.enabled);
+        setSummaryEnabled(s.summaryEnabled);
         setMaxTokens(s.maxTokens);
       } catch {
         // 非 Tauri 环境 / 后端不可达：保持默认值（改动时报错）
@@ -250,6 +253,19 @@ export function AISettings({ open, onClose }: AISettingsProps) {
             />
           </label>
           <p className="settings-hint">{t("ai.settings.autoDiagnoseHint")}</p>
+          <label className="settings-row">
+            <span className="settings-label">{t("ai.settings.summaryEnabled")}</span>
+            <Switch
+              testid="ai-summary-enabled"
+              checked={summaryEnabled}
+              onChange={(e) => {
+                const v = e.currentTarget.checked;
+                setSummaryEnabled(v);
+                void saveAiSummaryEnabled(v).catch((err) => setFormError(String(err)));
+              }}
+            />
+          </label>
+          <p className="settings-hint">{t("ai.settings.summaryEnabledHint")}</p>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.maxTokens")}</span>
             <input

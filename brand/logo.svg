@@ -1,31 +1,38 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ottr logo">
-  <!-- Ottr — geometric otter head, for light backgrounds -->
+  <!-- Ottr v2 mark — geometric otter, lockup for light backgrounds (no plate).
+       Same geometry as brand/icon.svg; see that file for the style notes. -->
   <!-- ears -->
-  <circle cx="150" cy="112" r="56" fill="#8A5A3B"/>
-  <circle cx="362" cy="112" r="56" fill="#8A5A3B"/>
-  <circle cx="150" cy="104" r="26" fill="#D9A066"/>
-  <circle cx="362" cy="104" r="26" fill="#D9A066"/>
+  <polygon points="148,168 174,124 200,176" fill="#14B8A6"/>
+  <polygon points="364,168 338,124 312,176" fill="#14B8A6"/>
+
   <!-- head -->
-  <circle cx="256" cy="268" r="176" fill="#A9714B"/>
-  <!-- muzzle -->
-  <ellipse cx="256" cy="330" rx="118" ry="86" fill="#F6E7D4"/>
+  <polygon points="256,142 352,170 396,242 388,322 332,380 256,398 180,380 124,322 116,242 160,170" fill="#0F172A"/>
+
+  <!-- muzzle patch -->
+  <polygon points="256,296 320,310 332,346 296,372 216,372 180,346 192,310" fill="#1E293B"/>
+
   <!-- eyes -->
-  <circle cx="184" cy="248" r="17" fill="#2B1B12"/>
-  <circle cx="328" cy="248" r="17" fill="#2B1B12"/>
-  <circle cx="189" cy="243" r="5.5" fill="#FFFFFF"/>
-  <circle cx="333" cy="243" r="5.5" fill="#FFFFFF"/>
-  <!-- nose -->
-  <path d="M256 296 c14 0 26 4 26 14 0 12 -16 26 -26 26 -10 0 -26 -14 -26 -26 0 -10 12 -14 26 -14 Z" fill="#2B1B12"/>
-  <!-- mouth -->
-  <path d="M256 336 v14 c0 12 -9 20 -22 20 M256 350 c0 12 9 20 22 20"
-        fill="none" stroke="#2B1B12" stroke-width="9" stroke-linecap="round"/>
+  <ellipse cx="196" cy="258" rx="30" ry="26" fill="#5EEAD4"/>
+  <text x="196" y="270" text-anchor="middle" font-family="'SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="38" font-weight="bold" fill="#0F172A">~</text>
+  <ellipse cx="316" cy="258" rx="30" ry="26" fill="#5EEAD4"/>
+  <ellipse cx="316" cy="258" rx="9" ry="17" fill="#0F172A"/>
+  <circle cx="306" cy="247" r="5" fill="#FFFFFF" opacity="0.95"/>
+
+  <!-- nose + mouth -->
+  <path d="M240,314 Q256,306 272,314 L262,332 Q256,340 250,332 Z" fill="#F59E0B"/>
+  <path d="M256,342 v8 c0,9 -6,13 -14,13 M256,350 c0,9 6,13 14,13"
+        fill="none" stroke="#0F172A" stroke-width="7" stroke-linecap="round"/>
+
   <!-- whiskers -->
-  <g stroke="#6B4226" stroke-width="9" stroke-linecap="round">
-    <path d="M148 300 L86 286"/>
-    <path d="M144 324 L80 324"/>
-    <path d="M148 348 L86 362"/>
-    <path d="M364 300 L426 286"/>
-    <path d="M368 324 L432 324"/>
-    <path d="M364 348 L426 362"/>
+  <g stroke="#0F172A" stroke-linecap="round" fill="none">
+    <path d="M150,296 L84,282" stroke-width="8"/>
+    <path d="M146,318 L78,318" stroke-width="7"/>
+    <path d="M150,340 L84,354" stroke-width="7"/>
+    <path d="M362,296 L428,282" stroke-width="8"/>
+    <path d="M366,318 L434,318" stroke-width="7"/>
+    <path d="M362,340 L428,354" stroke-width="7"/>
   </g>
+
+  <!-- wordmark -->
+  <text x="256" y="460" text-anchor="middle" font-family="'SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="64" font-weight="900" letter-spacing="10" fill="#0F172A">OTTR</text>
 </svg>

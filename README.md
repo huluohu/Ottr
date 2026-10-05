@@ -1,124 +1,191 @@
 <div align="center">
 
-<img src="brand/icon.svg" alt="Ottr icon" width="128" />
+<img src="brand/logo.svg" alt="Ottr" width="180" />
 
-# Ottr
+### AI 原生的个人服务器管理工具
 
 *Swim through your servers.* ／ *如獭穿行于服务器之间。*
 
-**免费、三端、AI 原生的个人服务器管理工具**
+**免费 · 三端（macOS / Windows / Linux）· 闭源 · 数据主权 100% 归你**
 
-<!-- TODO(screenshot): 首个公开版本前补主界面截图（终端 + 分屏 + AI 诊断），放 docs/screenshots/ -->
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
+[![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
+[![Tests](https://img.shields.io/badge/tests-1400%2B%20green-5EEAD4)](#-测试)
+[![License](https://img.shields.io/badge/license-freeware%20(closed%20source)-F59E0B)](#-许可)
 
 </div>
 
 ---
 
-Ottr 是一款跨平台（macOS / Windows / Linux）SSH 客户端，把「连接终端」升级为
-「AI 懂你的终端 + 效率闭环 + 数据主权」：数据全部留在本地或用户自己的云，
-闭源、免费，承诺不联网上传任何主机数据（行为可抓包自行验证）。
+**Ottr** 把「连上服务器敲命令」升级为「AI 懂你的终端」：命令失败自动诊断、自然语言生成命令、全局历史检索，同时守住一条硬底线——**自带 AI Key（BYOK），请求直连你选的模型服务商并经脱敏，绝不经过任何第三方服务器**；主机、凭据、历史全部存在本机加密库或你自己的云盘里，隐私可以抓包自行验证。
 
-技术栈：**Tauri 2 + Rust**（russh / russh-sftp）+ **xterm.js** + React / TypeScript。
-包体约 10MB、内存约 100MB，三端一套代码。
+技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
 
-## 特性
+![终端会话：主机树 + 已连接会话 + 分屏/录制/编码](docs/screenshots/terminal-dark.png)
 
-基础必备（Table Stakes）：
+## ✨ 功能总览
 
-| # | 特性 | 说明 |
-|---|---|---|
-| A1 | SSH 终端 | 标签页 + 分屏（水平/垂直）、GPU 加速渲染、主题、字体连字 |
-| A2 | 主机管理 | 分组/标签/搜索、`~/.ssh/config` 与 CSV 导入导出、⌘K 模糊快速连接 |
-| A3 | 凭据管理 | 密码、SSH 密钥（ed25519/ecdsa/rsa）、TOTP 2FA、按主机绑定凭据 |
-| A4 | 密钥基础 | 生成、导入导出、指纹展示、known_hosts 校验 |
-| A5 | SFTP | 双栏文件管理器、拖拽传输、进度与队列、断点续传 |
-| A6 | 会话管理 | 断线自动重连、keepalive、连接健康状态灯、重启后还原标签 |
-| A7 | 安全底座 | 本地库 AES-256-GCM + 可选主密码 + 系统钥匙链、自动锁定 |
-| A8 | 终端基础体验 | 搜索、复制粘贴规范、URL 识别、转义序列完整支持 |
-| A9 | 编码自适应 | UTF-8/GBK 自动检测与切换（中文 Windows 服务器刚需） |
-| A10 | 主题系统 | 亮/暗/跟随系统一键切换；全部走设计令牌（CSS 变量） |
-| A11 | 多语言（i18n） | zh-CN / en-US 首发双语，语言跟随系统、可手动切换 |
-| A12 | 三端原生交互 | macOS 原生菜单栏、Windows/Linux 自绘标题栏、三端托盘、⌘K 命令面板 |
+### 终端与会话
 
-AI 能力（核心卖点，隐私优先）：
+- **标签页 + 分屏**（向右/向下），GPU 加速渲染，搜索、URL 识别、完整转义序列
+- **编码自适应**：UTF-8 / GBK / GB18030 自动检测与一键切换（中文 Windows 服务器刚需）
+- **断线自愈**：自动重连（退避）、keepalive 死链检测、连接健康状态灯、重启后还原标签
+- **会话录制**：[asciinema v2](https://docs.asciinema.org/manual/asciinema-v2/) 格式，内置时间轴回放（拖动 / 倍速），可导出**脱敏文本**分享
 
-- **报错即诊**：命令非零退出自动浮出「原因 + 建议命令」，需确认才执行，危险命令红色标注
-- **选中即释**：选中文本右键「解释 / 翻译 / 修复」
-- **统一历史**：⌘R 全局搜「我在哪台机器跑过 docker logs」
-- **BYOK**：OpenAI / Claude / DeepSeek / 本地 Ollama，自带 Key，发送前脱敏，**绝不经过我方服务器**
+### 主机与凭据
 
-> 当前处于 Phase 1（MVP）开发中：A1–A12 与 AI 最小版逐步落地，
-> 完整路线图见 [`docs/features-and-roadmap.md`](docs/features-and-roadmap.md)
-> （自有云 E2E 加密同步、会话录制回放、免 Agent 监控、告警与通知矩阵、批量执行等在后续阶段）。
+- 分组 / 标签 / 搜索 / **⌘K 模糊快速连接**；`~/.ssh/config`、CSV 导入导出，Tabby（JSON/YAML）、Xshell 第三方导入
+- 凭据库：密码、SSH 密钥（ed25519/ecdsa/rsa，生成/导入/部署公钥）、TOTP 两步验证，按主机绑定
+- **跳板链**：多级跳板可视化编排；**端口转发**：本地 / 动态 SOCKS / 远程，断线自动重挂
+- known_hosts **TOFU 首次信任 + 指纹巡检**，防中间人
 
-## 录制分享指引（会话回放与导出）
+![主机管理：分组树 + 标签过滤 + 行内编辑](docs/screenshots/main-dark.png)
 
-终端会话可录制为 [asciinema v2](https://docs.asciinema.org/manual/asciinema-v2/) 格式
-（连接后点「录制」页签；录制内容仅落本机，文件 0600）。分享/存档路径：
+### AI 能力（核心卖点，隐私优先）
 
-- **回放**：录制页内置时间轴回放（拖动 seek、倍速），无需任何外部工具；
-- **导出**：导出为脱敏文本（敏感串自动替换为占位符，可二次确认后导出原文）；
-- **转 GIF/嵌入网页**（Ottr 内不内置，用官方工具链处理导出的 `.cast` 文件）：
-  - `asciinema upload Recording.cast` → 获得可在 Markdown/网页直接嵌入的播放页链接；
-  - 或 `agg Recording.cast Recording.gif`（[asciinema/agg](https://github.com/asciinema/agg)，
-    单二进制，可将录制转 GIF/SVG）；
-- 敏感场景建议只分发脱敏导出文本；`.cast` 原文与终端原文等同，分享前自行确认内容。
+- **报错即诊**：命令非零退出自动浮出「原因 + 修复命令」，需确认才执行，危险命令红色标注
+- **⌘J 自然语言 → 命令**：中文/英文意图直接生成单行命令（附当前目录锚点）
+- **选中即释**：选中文本右键「解释 / 翻译 / 修复」；会话结束自动生成纪要，⌘R 全局检索
+- **BYOK 多服务商**：OpenAI 兼容（**OpenAI / DeepSeek / 智谱 GLM / 任意自建端点**）、Anthropic Claude、本地 Ollama——预设一键填端点，Key 加密存本机
+- **发送前脱敏**：主机名 / IP / 口令样式串自动替换为占位符；另内置 MCP 服务器，可接入 Claude Desktop 等宿主（主机级授权）
 
-## 构建与开发
+![AI 诊断：真端点流式回答 + 脱敏提示](docs/screenshots/ai-diagnose.png)
 
-### 前置要求
+### 监控 · 告警 · 运维
 
-- **Node.js ≥ 20** 与 npm
-- **Rust stable**（[rustup](https://rustup.rs/)）
-- 平台依赖：
-  - **macOS**：Xcode Command Line Tools
-  - **Windows**：Visual Studio C++ Build Tools（MSVC）；`aws-lc-sys` 需要 **NASM** 汇编器
-  - **Linux**：`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`（Debian/Ubuntu 包名）
+- **免 Agent 监控**：CPU / 内存 / 磁盘 / 负载 / 网络实时曲线 + 进程浏览器，多主机总览
+- **告警规则**（磁盘 / CPU / 进程 / 日志关键字）→ **12 种通知渠道**：企业微信、钉钉、飞书、Telegram、Slack、Discord、SMTP 邮件等国内外主流，限频 + 失败重试 + 投递记录持久化
+- **定时任务**中心（Rust 侧调度，错过即知）、**批量执行**（多选主机 + 片段库 + 并发/超时控制）
 
-### 开发
+![监控侧栏：实时曲线](docs/screenshots/monitor.png)
 
-```bash
-npm install          # 前端依赖（含 @tauri-apps/cli）
-npm run tauri dev    # 起 vite + Tauri 开发窗
+### 文件与同步
+
+- **SFTP 双栏文件管理器**：拖拽传输、并行分块、断点续传；trzsz（trz/tsz）支持；FTP / FTPS
+- **远程编辑**：本机编辑器直接改远端文件，原子保存（失败不损坏远端）、二进制嗅探防误编辑
+- **多设备同步**：端到端加密信封（AES-256-GCM + PBKDF2），通道三选一（**WebDAV / Git / 本地目录**——WebDAV 走 Rust 代理直连你的网盘，无跨域限制），分类粒度推送/拉取，冲突逐类人工裁定
+
+![多设备同步：分类预览 + 冲突裁定](docs/screenshots/sync-conflict.png)
+
+### 安全底座
+
+- 本地库 **AES-256-GCM**；主密码（Argon2id 派生）或系统钥匙链托管主密钥，双模式可选
+- 失焦自动锁定、剪贴板自动清除、锁定屏「忘记密码」重置引导（二次确认，云端备份不受影响）
+- 零遥测：不联网上传任何主机数据，行为可抓包自行验证
+
+![锁定屏](docs/screenshots/lockscreen.png)
+
+### 体验细节
+
+- 亮 / 暗 / 跟随系统主题，终端配色自定义（支持 iTerm2 主题导入，含二进制 plist）
+- 中文 / English 双语；macOS 原生菜单栏、Windows/Linux 自绘标题栏，三端托盘
+- 定时任务、告警、凭据、历史均有专属面板；截图之外还有等宽字体连字、命令面板、插件系统（网络摘要 / 快捷命令）
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/palette.png" alt="⌘K 命令面板"></td>
+    <td width="50%"><img src="docs/screenshots/cron.png" alt="定时任务中心"></td>
+  </tr>
+  <tr>
+    <td width="50%">⌘K 命令面板（模糊搜索）</td>
+    <td width="50%">定时任务中心</td>
+  </tr>
+</table>
+
+<details>
+<summary>更多截图</summary>
+
+![多主机总览](docs/screenshots/overview.png)
+![凭据管理](docs/screenshots/credentials.png)
+![亮色主题](docs/screenshots/light-theme.png)
+
+</details>
+
+## 📦 下载与安装
+
+前往 [**Releases**](../../releases) 下载对应平台安装包（推送版本标签后由 CI 自动构建发布）：
+
+| 平台 | 格式 |
+|---|---|
+| macOS（Apple Silicon） | `.dmg` |
+| Windows | `.msi` / `.exe`（安装向导） |
+| Linux | `.deb` / `.rpm` / `.AppImage` |
+
+首次启动会引导你建立本机加密库：**钥匙链模式**（免记密码，主密钥存系统钥匙链）或**主密码模式**（无密码不可解密，适合更高安全要求）。
+
+## 🚀 快速上手
+
+1. **加主机**：左侧「新建主机」或「导入 ssh config」→ 双击主机行连接（首次连接展示指纹，信任后免问询）
+2. **用 AI**：设置 → AI 助手 → 新增服务商（选「智谱 GLM」「DeepSeek」「Ollama」等预设，填 Key）→ 之后命令失败会自动诊断；`⌘J` 直接用中文要命令
+3. **配告警**：工具 → 告警 → 添加通知渠道（发测试消息验证）→ 建规则（如「根分区 > 90%」）
+4. **多设备同步**：第二台设备装好后，设置 → 同步 → 选通道（如 WebDAV 填你的网盘地址）→ 设置同步口令 → 「立即同步」
+5. **进阶**：`⌘R` 搜历史、`⌘D`/`⌘⇧D` 分屏、工具菜单里还有端口转发 / 跳板链 / 批量执行 / 定时任务 / 录制回放
+
+## 🛠 技术栈与工程结构
+
+```
+├─ src/                    # 前端（React + TypeScript + zustand + i18next + xterm.js）
+│  ├─ terminal/ workspace/ hosts/ credentials/ files/   # 终端 / 工作区 / 主机 / 凭据 / 文件
+│  ├─ ai/ notify/ sync/ monitor/ history/              # AI / 通知 / 同步 / 监控 / 历史
+│  └─ theme/ ui/ i18n/                                 # 主题令牌 / 基础组件 / 双语
+├─ src-tauri/              # Tauri 2 宿主 + 命令层（按域拆分：session/transfer/…）
+│  └─ crates/
+│     ├─ ottr-vault        # 加密库（AES-256-GCM + Argon2id + 钥匙链 + 同步快照）
+│     ├─ ottr-ssh          # SSH/SFTP 传输核（russh，trait 隔离）
+│     ├─ ottr-term         # 终端文本层（ANSI/OSC133 解析、编码、asciinema）
+│     ├─ ottr-transfer     # SFTP 并行传输 / FTP
+│     └─ ottr-monitor      # 免 Agent 监控采样 / cron 调度
+├─ brand/                  # 品牌（logo 源文件 + 手册）
+├─ docs/                   # 路线图 / 规格 / 验收报告 / 运行手册
+└─ .github/workflows/      # CI：tag → 三平台构建 + 自动发布；push → fmt + 构建
 ```
 
-本地 SSH 联调可起测试夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222）。同步通道 WebDAV 端到端需 dufs 夹具：`scripts/spike-dufs.sh`（127.0.0.1:15773，需 Docker）。
+### 开发环境
+
+**前置要求**：Node.js 22（仓库带 `.nvmrc`）、Rust stable（[rustup](https://rustup.rs/)），以及平台依赖——
+macOS：Xcode CLT；Windows：MSVC Build Tools + [NASM](https://www.nasm.us/)（`aws-lc-sys` 需要）；Linux：`libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev`（Debian/Ubuntu 包名）。
+
+```bash
+npm install            # 前端依赖
+npm run tauri dev      # 起 vite + Tauri 开发窗
+```
 
 ### 测试
 
 ```bash
-npm test             # 前端 vitest
-cargo test           # Rust 工作区全部单测/集成测试（src-tauri + crates/*）
+npm test               # 前端 vitest（1100+ 用例，含真夹具端到端）
+cargo test             # Rust 工作区全部单测/集成测试
+cargo fmt --all --check
 ```
+
+本地 SSH/WebDAV 联调可起 Docker 夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222）、`scripts/spike-dufs.sh`（127.0.0.1:15773）。仓库另有守护测试钉住设计约束（主题对比度实算、终端可见性契约、控件一致性等）。
 
 ### 发布构建
 
 ```bash
-npm run tauri build  # 产出 dmg / msi / nsis / deb / AppImage（按当前平台）
+npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前平台）
 ```
 
-构建产物位于 `target/release/bundle/`（workspace 根 `target/`，非 `src-tauri/target/`）。
+产物位于仓库根 `target/release/bundle/`。改了 `brand/icon.svg` 后用 `npx tauri icon brand/icon.svg` 重新生成全套图标。
 
-## Troubleshooting（开发环境实录）
+### CI
 
-- **Apple Silicon 上 `npm run tauri dev` 链接期报 `unable to load libxcrun ... need 'x86_64'`**：
-  根因是 Node.js 本身跑在 Rosetta 下（`node -p process.arch` 显示 `x64`，如
-  `/usr/local/bin/node` 的 x86_64 版本）——npm 按自身架构装了 x86_64 的
-  `@tauri-apps/cli` 原生二进制，其拉起的 `cc` 加载不了 arm64-only 的 libxcrun。
-  修法：换用 arm64 的 Node（nvm 在 Apple Silicon 上装的版本即 arm64）并重装依赖
-  （npm 对 optionalDependencies 按安装时平台取包，换架构后必须干净重装，见
-  npm/cli#4828）：
+- **`release.yml`**：推送 `v*` 标签 → 校验版本一致性 → 三平台矩阵构建（Linux 上带测试夹具跑全量前端测试）→ 自动发布 GitHub Release
+- **`spike.yml`**：推送 main → `cargo fmt --check` + 三平台编译冒烟
 
-  ```bash
-  nvm install 22 && nvm use 22   # arm64 node
-  node -p process.arch            # 应输出 arm64
-  npm ci                          # 或 rm -rf node_modules && npm install
-  ```
+### 已知开发环境坑（macOS Apple Silicon）
 
-  应急绕过（不动 node）：两个终端分开跑——终端 A `npm run dev`（vite），
-  终端 B `cargo build -p ottr --bin ottr && ./target/debug/ottr`
-  （devUrl `http://localhost:1420` 编译期内置，行为等价）。
+若 `npm run tauri dev` 链接期报 `unable to load libxcrun ... need 'x86_64'`：是 Node 跑在 Rosetta 下（`node -p process.arch` 显示 `x64`），npm 装了 x86_64 的 Tauri CLI 原生二进制。换 arm64 Node 并干净重装依赖：
 
-## License
+```bash
+nvm install 22 && nvm use 22 && node -p process.arch   # 应输出 arm64
+rm -rf node_modules && npm install
+```
 
-免费闭源（freeware）。版权所有，详见 [LICENSE](LICENSE)（最终 EULA 待定，当前为占位文本）。
+## 📋 项目状态
+
+路线图 Phase 0–5 与 UI 改造、产品就绪、账本清零各批次**已全部交付并验收**（本文档所列功能均为已实现状态）。设计规格、各阶段验收报告与运行手册见 [`docs/`](docs/)；路线图见 [`docs/features-and-roadmap.md`](docs/features-and-roadmap.md)。
+
+## 📄 许可
+
+免费闭源（freeware）。版权所有，详见 [LICENSE](LICENSE)。

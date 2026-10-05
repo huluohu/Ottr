@@ -1,20 +1,21 @@
 <svg width="44" height="32" viewBox="0 0 44 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ottr tray template">
-  <!-- Monochrome template icon: single fill, cutouts via mask.
+  <!-- Monochrome template icon (v2 angular mark): single fill, cutouts via mask.
        macOS menu bar: recolored automatically (template image).
        Windows/Linux tray: fill with currentColor.
-       Cutout geometry keeps ≥2px gaps at 16px render: chin band 2.5u,
-       eye-to-muzzle gap 4u, ear-to-head bridge 2.9u (44u canvas ≈ 16pt @1x). -->
+       Geometry = simplified silhouette of brand/icon.svg (ears + polygon head);
+       whiskers omitted (sub-16px noise). Cutout gaps ≥2u at 44u canvas:
+       eye-to-muzzle 2.6u, ear-to-head bridge 2.4u (16pt render ≈ 0.7px/u). -->
   <defs>
     <mask id="cutouts">
       <rect width="44" height="32" fill="white"/>
-      <ellipse cx="22" cy="22" rx="8" ry="5" fill="black"/>
-      <circle cx="15" cy="13.5" r="2" fill="black"/>
-      <circle cx="29" cy="13.5" r="2" fill="black"/>
+      <circle cx="16.5" cy="14" r="1.9" fill="black"/>
+      <circle cx="27.5" cy="14" r="1.9" fill="black"/>
+      <ellipse cx="22" cy="20" rx="5" ry="3.2" fill="black"/>
     </mask>
   </defs>
   <g mask="url(#cutouts)" fill="#000000">
-    <circle cx="10" cy="6" r="5"/>
-    <circle cx="34" cy="6" r="5"/>
-    <circle cx="22" cy="16" r="13.5"/>
+    <polygon points="11,6.8 14.5,1.5 18,7.6"/>
+    <polygon points="33,6.8 29.5,1.5 26,7.6"/>
+    <polygon points="22,4.5 31.5,7 35.5,12.5 34.8,19 30.8,23.6 22,25 13.2,23.6 9.2,19 8.5,12.5 12.5,7"/>
   </g>
 </svg>

@@ -8,6 +8,8 @@
 //! 守卫；锁定态可读写同 notifications，不另测）。
 
 use ottr_vault::master_key::InMemoryStorage;
+use ottr_vault::settings::SETTING_HISTORY_LIMIT;
+use ottr_vault::settings::Settings;
 use ottr_vault::{History, HistoryInput, HostInput, Hosts, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
@@ -224,5 +226,73 @@ fn deleting_host_cascades_history_rows() {
             .unwrap()
             .is_empty(),
         "级联删除同步清 FTS 索引"
+    );
+}
+
+/// BL-205①（TDD 红）：history.limit 可配——配置小上限 → 滚动窗口按配置裁
+/// 最旧（语义与既有行为兼容：超过即裁最旧，只差上限来源）。配置值取键范围
+/// 下限 100（写入侧 validate_known_setting 与读取侧收敛共用同一范围：
+/// 100..=1_000_000，范围外的值两道防线都回落默认，见 fallback 用例）。
+#[test]
+fn prune_uses_configured_history_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let h = Hosts::create(&vault, host_input("web01")).unwrap();
+
+    Settings::set_u64(&vault, SETTING_HISTORY_LIMIT, 100).unwrap();
+    // 最早一笔用唯一命名标记（fill 行的 cfg-N 互为中缀子串，FTS 中缀检索
+    // 会串扰——cfg-4 命中 cfg-40..cfg-104，不能作裁删证据）
+    History::insert(&vault, &hist(h.id, "prune-marker-earliest")).unwrap();
+    for i in 0..105 {
+        History::insert(&vault, &hist(h.id, &format!("cfg-{i}"))).unwrap();
+    }
+
+    let rest = History::search(&vault, "", None, 200).unwrap();
+    assert_eq!(rest.len(), 100, "配置上限=100 → 恰保留最近 100 条");
+    assert_eq!(rest[0].command, "cfg-104", "最近优先");
+    assert_eq!(rest[99].command, "cfg-5", "窗口边界：cfg-5 恰好幸存");
+    assert!(
+        History::search(&vault, "prune-marker-earliest", None, 10)
+            .unwrap()
+            .is_empty(),
+        "最早的标记行越界被裁"
+    );
+    assert!(
+        History::search(&vault, "cfg-0", None, 10).unwrap().is_empty(),
+        "次旧的 cfg-0 越界被裁（唯一命名，无中缀串扰）"
+    );
+}
+
+/// BL-205①：上限键读取侧收敛（security.rs *_from 同语义）——未设置/类型坏值/
+/// 越界一律回落默认 HISTORY_KEEP_ROWS；行为面：回落默认时小数据量照常全保留。
+#[test]
+fn history_limit_falls_back_to_default_on_missing_or_bad_value() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let from = ottr_vault::history::history_limit_from;
+
+    // 未配置 → 默认
+    assert_eq!(from(&vault), ottr_vault::HISTORY_KEEP_ROWS);
+    // 合法配置 → 生效
+    Settings::set_u64(&vault, SETTING_HISTORY_LIMIT, 500).unwrap();
+    assert_eq!(from(&vault), 500);
+    // 越界（低于下限 / 超过上限）→ 默认
+    Settings::set_u64(&vault, SETTING_HISTORY_LIMIT, 0).unwrap();
+    assert_eq!(from(&vault), ottr_vault::HISTORY_KEEP_ROWS);
+    Settings::set_u64(&vault, SETTING_HISTORY_LIMIT, 1_000_001).unwrap();
+    assert_eq!(from(&vault), ottr_vault::HISTORY_KEEP_ROWS);
+    // 类型坏值（绕过写入校验直写 JSON，模拟外部改写/旧库残留）→ 默认
+    Settings::set_str(&vault, SETTING_HISTORY_LIMIT, "many").unwrap();
+    assert_eq!(from(&vault), ottr_vault::HISTORY_KEEP_ROWS);
+
+    // 行为面：坏值回落默认（5 万）→ 5 条小数据量完整保留，照常入库
+    let h = Hosts::create(&vault, host_input("web01")).unwrap();
+    for i in 0..5 {
+        History::insert(&vault, &hist(h.id, &format!("fallback-{i}"))).unwrap();
+    }
+    assert_eq!(
+        History::search(&vault, "", None, 10).unwrap().len(),
+        5,
+        "坏值回落默认上限：既有行为不受影响"
     );
 }

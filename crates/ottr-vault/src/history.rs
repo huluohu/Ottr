@@ -16,18 +16,37 @@
 //! 为之：hosts 按 bm25 相关度，history 按 id 倒序（AUTOINCREMENT ≈ 时间序）——
 //! 「在哪跑过 docker logs」要的是最近一次，不是最相关一次。
 //!
-//! 保留上限（简报「简单 LITE 策略」）：[`HISTORY_KEEP_ROWS`] 条滚动窗口，每次
-//! insert 顺手清理超限旧行——`id <= max(id) - KEEP` 的范围删除在 rowid b-tree
-//! 上未超限时是 O(log n) 空扫，超限时一次删一批（无 COUNT 全表扫、无独立
-//! 清理任务）。settings 可配上限挂账（当前常量，见 task-15-report）。
+//! 保留上限（简报「简单 LITE 策略」）：滚动窗口，每次 insert 顺手清理超限
+//! 旧行——`id <= max(id) - KEEP` 的范围删除在 rowid b-tree 上未超限时是
+//! O(log n) 空扫，超限时一次删一批（无 COUNT 全表扫、无独立清理任务）。
+//! KEEP 由 settings 键 `history.limit` 可配（BL-205①）：默认
+//! [`HISTORY_KEEP_ROWS`]，读取侧收敛见 [`history_limit_from`]；写入侧越界
+//! 由 validate_known_setting 拒绝（settings_set 与 sync 导入同一注册表）。
 
 use rusqlite::{params, Row};
 use serde::{Deserialize, Serialize};
 
+use crate::settings::{Settings, HISTORY_LIMIT_MAX, HISTORY_LIMIT_MIN, SETTING_HISTORY_LIMIT};
 use crate::{Result, Vault, VaultError};
 
-/// 保留的最近历史行数（简报定值：默认 5 万；settings 可配挂账）。
+/// 保留的最近历史行数（简报定值：默认 5 万；BL-205① 起 settings 键
+/// `history.limit` 可配，本常量为未配置/坏值时的回落默认）。
 pub const HISTORY_KEEP_ROWS: i64 = 50_000;
+
+/// BL-205① history.limit 读取侧收敛（src-tauri security.rs *_from 同语义）：
+/// 未设置/类型错/越界/读取失败一律回落默认 [`HISTORY_KEEP_ROWS`]。写入侧
+/// （settings_set 与 sync 分类导入共享 validate_known_setting）已拒绝越界，
+/// 这里兜外部直写/旧库坏值——配置错误不挡历史入库（读取失败安全侧不断链）。
+///
+/// 锁纪律：本函数内部取 `vault.connection()`——**调用方不得在持有
+/// connection() 守卫期间调用**（同线程 Mutex 二次加锁死锁，store.rs with_conn
+/// 注记的 T8 同款根因）；`History::insert` 先读本函数再开连接。
+pub fn history_limit_from(vault: &Vault) -> i64 {
+    match Settings::get_u64(vault, SETTING_HISTORY_LIMIT) {
+        Ok(Some(n)) if (HISTORY_LIMIT_MIN..=HISTORY_LIMIT_MAX).contains(&n) => n as i64,
+        _ => HISTORY_KEEP_ROWS,
+    }
+}
 
 /// ⌘R 面板单次搜索返回上限（Tauri 命令面 `limit` 缺省同值）。
 pub const HISTORY_SEARCH_LIMIT: usize = 50;
@@ -71,8 +90,9 @@ pub struct History;
 
 impl History {
     /// 落一条命令历史并返回完整行（id/ts 由存储层定）；随后顺手执行滚动清理
-    /// （超 [`HISTORY_KEEP_ROWS`] 的旧行一次删尽）。host_id 必须指向存在的
-    /// 主机（FK 约束拒绝悬空插入——CASCADE 只管删主机联动删历史）。
+    /// （超上限的旧行一次删尽；上限 = `history.limit` 配置，未配置/坏值回落
+    /// [`HISTORY_KEEP_ROWS`]，见 [`history_limit_from`]）。host_id 必须指向
+    /// 存在的主机（FK 约束拒绝悬空插入——CASCADE 只管删主机联动删历史）。
     /// command 空白 → [`VaultError::InvalidInput`]（提示符噪声/纯回车在调用方
     /// 已滤，这里是兜底）。
     pub fn insert(vault: &Vault, input: &HistoryInput) -> Result<HistoryEntry> {
@@ -82,6 +102,9 @@ impl History {
             ));
         }
         let ts = now_ts();
+        // 锁纪律（见 history_limit_from）：先读上限再开连接——insert 持有
+        // connection() 守卫期间不得二次调用任何会取锁的高层方法。
+        let keep = history_limit_from(vault);
         let conn = vault.connection();
         conn.execute(
             "INSERT INTO history (host_id, command, cwd, exit_code, session_id, ts)
@@ -96,7 +119,7 @@ impl History {
             ],
         )?;
         let id = conn.last_insert_rowid();
-        Self::prune_conn(&conn)?;
+        Self::prune_conn(&conn, keep)?;
         Ok(HistoryEntry {
             id,
             host_id: input.host_id,
@@ -108,12 +131,12 @@ impl History {
         })
     }
 
-    /// 滚动清理：保留最近 [`HISTORY_KEEP_ROWS`] 条（id 单调递增，max(id)-KEEP
-    /// 以下的整段一次删尽；FTS 同步由 history_fts_ad 触发器承接）。
-    fn prune_conn(conn: &rusqlite::Connection) -> Result<()> {
+    /// 滚动清理：保留最近 `keep` 条（id 单调递增，max(id)-keep 以下的整段
+    /// 一次删尽；FTS 同步由 history_fts_ad 触发器承接）。
+    fn prune_conn(conn: &rusqlite::Connection, keep: i64) -> Result<()> {
         conn.execute(
             "DELETE FROM history WHERE id <= (SELECT max(id) FROM history) - ?1",
-            params![HISTORY_KEEP_ROWS],
+            params![keep],
         )?;
         Ok(())
     }

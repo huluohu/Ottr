@@ -100,6 +100,24 @@ describe("buildNl2cmdPrompt（装配）", () => {
     const noCwd = buildNl2cmdPrompt("解压 backup.tar.gz", { cwd: null });
     expect(noCwd.user).toBe("解压 backup.tar.gz");
   });
+
+  it("智谱端点不送 stop（端点 stop 语义差异：首 token 即命中 → 恒空回复）", () => {
+    // G6 真端点实证：智谱 glm-4-flash 对 stop:["\n"] 稳定返回空 content
+    //（finish=stop，首 token 即命中；curl 直发三连证），同 prompt 去 stop 产
+    // 'df -h'。装配层按端点豁免，客户端首行兜底（sanitizeNlCommand）照旧。
+    const zhipu = buildNl2cmdPrompt("查看磁盘占用", {
+      baseURL: "https://open.bigmodel.cn/api/paas/v4",
+    });
+    expect(zhipu.stop).toEqual([]);
+    const other = buildNl2cmdPrompt("查看磁盘占用", {
+      baseURL: "https://api.deepseek.com",
+    });
+    expect(other.stop).toEqual(["\n"]);
+    const deepseekV1 = buildNl2cmdPrompt("查看磁盘占用", {
+      baseURL: "https://open.bigmodel.cn.evil.example/api/paas/v4",
+    });
+    expect(deepseekV1.stop).toEqual(["\n"]);
+  });
 });
 
 describe("sanitizeNlCommand（端点差异兜底）", () => {

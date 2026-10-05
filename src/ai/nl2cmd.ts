@@ -36,10 +36,24 @@ export interface Nl2cmdPrompt {
   stop: string[];
 }
 
+/** 智谱 open 端点判定（hostname 精确匹配，防子域伪造如 open.bigmodel.cn.evil.example）。
+ * stop 豁免依据：G6 真端点实证——智谱对 stop:["\n"] 的语义是首 token 即命中，
+ * glm-4-flash 稳定返回空 content（finish=stop；curl 直发三连证），同 prompt
+ * 去 stop 产干净单行命令。空数组 = provider 实现自然省略该字段
+ * （openai.ts/anthropic.ts 均按 req.stop?.length 条件展开）。 */
+function isZhipuEndpoint(baseURL?: string | null): boolean {
+  if (!baseURL) return false;
+  try {
+    return new URL(baseURL).hostname === "open.bigmodel.cn";
+  } catch {
+    return false;
+  }
+}
+
 /** 装配 system/用户消息/stop（i18n 模板；cwd 有值才带目录锚点段）。 */
 export function buildNl2cmdPrompt(
   input: string,
-  opts: { cwd?: string | null } = {},
+  opts: { cwd?: string | null; baseURL?: string | null } = {},
 ): Nl2cmdPrompt {
   const cwdLine = opts.cwd
     ? `${i18n.t("ai.nl2cmd.cwd")}: ${opts.cwd}\n\n`
@@ -47,7 +61,7 @@ export function buildNl2cmdPrompt(
   return {
     system: i18n.t("ai.nl2cmd.prompt"),
     user: `${cwdLine}${input}`,
-    stop: ["\n"],
+    stop: isZhipuEndpoint(opts.baseURL) ? [] : ["\n"],
   };
 }
 
@@ -218,8 +232,9 @@ export const useNlStore = create<NlStore>((set, get) => ({
       return;
     }
 
-    // --- 3. 装配 + 流式（输入不过 redact，见文件头裁定）---
-    const prompt = buildNl2cmdPrompt(input, { cwd: get().cwd });
+    // --- 3. 装配 + 流式（输入不过 redact，见文件头裁定；baseURL 供端点
+    // stop 语义豁免——智谱见 isZhipuEndpoint）---
+    const prompt = buildNl2cmdPrompt(input, { cwd: get().cwd, baseURL: meta.baseURL });
     const messages: ChatMessage[] = [{ role: "user", content: prompt.user }];
     const ac = new AbortController();
     controller = ac;

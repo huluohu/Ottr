@@ -227,3 +227,119 @@ async fn snapshot_conflict_detects_third_party_change_only() {
     let _ = client.remove_file(remote).await;
     let _ = session.disconnect().await;
 }
+
+/// sudo 包装（fixture spike 带密码 sudo，B9 同款）：失败即断言退出码非零。
+async fn sudo_exec(session: &SshSession, cmd: &str) {
+    exec(
+        session,
+        &format!("echo spike-pass | sudo -S {cmd} 2>/dev/null"),
+    )
+    .await;
+}
+
+/// BL-204④（判别红测）：**换装失败 → 原文件完好**。构造：sticky 目录（1777）
+/// 里 root 属主 0666 文件——spike 可 TRUNC 写（旧实现会原地覆盖成功，截断/
+/// 覆盖风险真实存在）但不可 remove/rename（sticky 位挡他人文件）。断言：
+/// 保存失败（Err）且原文件内容原样——「失败的保存绝不损坏远端」。
+#[tokio::test]
+async fn failed_swap_leaves_original_intact() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let client = SftpClient::open(&session).await.expect("sftp open");
+
+    let dir = format!("/tmp/ottr-t3-2044-{}", std::process::id());
+    let remote = format!("{dir}/sticky.txt");
+
+    // 独立通道建造场景（ground truth 不经被测代码）：sticky 目录 + 他人可写文件
+    sudo_exec(&session, &format!("rm -rf {dir}")).await;
+    sudo_exec(&session, &format!("mkdir -p {dir}")).await;
+    sudo_exec(&session, &format!("chmod 1777 {dir}")).await;
+    sudo_exec(&session, &format!("sh -c \"printf 'v1\\n' > {remote}\"")).await;
+    sudo_exec(&session, &format!("chown root:root {remote}")).await;
+    sudo_exec(&session, &format!("chmod 666 {remote}")).await;
+
+    // spike 视角：文件「可写不可删」——换装在 remove 一步必然失败
+    let err = client
+        .write_remote_text(&remote, b"hostile overwrite\n")
+        .await
+        .err()
+        .expect("save must fail: sticky dir forbids removing a foreign-owned file");
+    assert!(
+        err.to_string().contains("remove"),
+        "error must name the failed swap step (remove), got: {err}"
+    );
+
+    // 判别断言：原文件完好（修复前原地 TRUNC 写会把它覆盖掉）
+    assert_eq!(
+        client.open_remote_text(&remote).await.expect("read back"),
+        b"v1\n",
+        "BL-204④: a failed save must leave the original file intact"
+    );
+
+    sudo_exec(&session, &format!("rm -rf {dir}")).await;
+    let _ = session.disconnect().await;
+}
+
+/// BL-204④（守卫）：换装保存保留原文件权限位（0640 → 仍 0640）——新 inode
+/// 不做 setstat 会拿服务器默认 umask，0600 敏感文件被静默放宽是真实风险面
+/// （authorized_keys 类场景）。内容换新 + 权限保真双断言（远端 stat 独立取证）。
+#[tokio::test]
+async fn write_preserves_mode_through_swap() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let client = SftpClient::open(&session).await.expect("sftp open");
+    let remote = format!("/tmp/ottr-t3-mode-{}.txt", std::process::id());
+
+    exec(&session, &format!("printf 'v1\\n' > {remote}")).await;
+    exec(&session, &format!("chmod 640 {remote}")).await;
+
+    let after = client
+        .write_remote_text(&remote, b"v2\n")
+        .await
+        .expect("save");
+    assert_eq!(after.mode & 0o7777, 0o640, "post-write stat keeps mode");
+    assert_eq!(
+        client.open_remote_text(&remote).await.expect("read back"),
+        b"v2\n"
+    );
+    // 独立取证：远端文件系统上的权限位一致
+    let mode = exec(&session, &format!("stat -c %a {remote}")).await;
+    assert_eq!(mode, "640", "remote fs mode must survive the swap");
+
+    let _ = exec(&session, &format!("rm -f {remote}")).await;
+    let _ = session.disconnect().await;
+}
+
+/// BL-204④（守卫）：符号链接目标**写穿透**语义保留——链接本体不被换装
+/// 顶掉（lstat 分流），target 内容更新。
+#[tokio::test]
+async fn symlink_write_through_preserves_link() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let client = SftpClient::open(&session).await.expect("sftp open");
+    let dir = format!("/tmp/ottr-t3-sym-{}", std::process::id());
+    let real = format!("{dir}/real.txt");
+    let link = format!("{dir}/link.txt");
+
+    exec(&session, &format!("rm -rf {dir} && mkdir -p {dir}")).await;
+    exec(&session, &format!("printf 'v1\\n' > {real}")).await;
+    exec(&session, &format!("ln -s real.txt {link}")).await;
+
+    client
+        .write_remote_text(&link, b"v2 through link\n")
+        .await
+        .expect("save through symlink");
+    // 穿透：target 内容更新；链接本体仍是符号链接（test -L 退出码 0 由 exec 断言）
+    assert_eq!(
+        client.open_remote_text(&real).await.expect("read real"),
+        b"v2 through link\n"
+    );
+    assert_eq!(
+        client.open_remote_text(&link).await.expect("read link"),
+        b"v2 through link\n"
+    );
+    exec(&session, &format!("test -L {link}")).await;
+
+    let _ = exec(&session, &format!("rm -rf {dir}")).await;
+    let _ = session.disconnect().await;
+}

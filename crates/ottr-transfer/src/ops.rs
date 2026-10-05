@@ -247,10 +247,83 @@ impl SftpClient {
         Ok(out)
     }
 
-    /// 全量覆盖回传（CREATE|TRUNCATE|WRITE，单通道顺序写；文件已存在时
-    /// 权限位由服务器保留），返回**写后 stat**——回传方以此更新冲突快照，
-    /// 绝不沿用下载时旧快照（否则下次回传必自冲突）。
+    /// 全量覆盖回传，返回**写后 stat**——回传方以此更新冲突快照，绝不沿用
+    /// 下载时旧快照（否则下次回传必自冲突）。
+    ///
+    /// ## BL-204④ 原子性（换装语义）
+    ///
+    /// 旧实现 `CREATE|TRUNCATE|WRITE` 原地逐块写：open 即截断，中段块失败
+    /// （网络断/远端盘满）= 远端停留**截断态**；自愈依赖调用方下轮全量重传，
+    /// 会话一旦消亡（本地副本被清）远端永久残缺。现实现改**同目录换装**：
+    /// 1. 先写同目录临时件（[`tmp_swap_path_for`]）——**原文件全程不被触碰**，
+    ///    临时件写失败（含逐块中断）即清理退出，远端只见原文件；
+    /// 2. setstat 临时件 = 原 mode（换装产生新 inode，不吃这一步会拿服务器
+    ///    默认 umask，0600 敏感文件被静默放宽——显式失败优于静默漂移）；
+    /// 3. remove 旧件 + rename 临时件上位（SFTP v3 rename 目标已存在即失败，
+    ///    posix-rename 扩展非普适；remove→rename 间是毫秒级「缺失」窗口且
+    ///    内容无损——临时件持有全量，下轮保存自愈）。NoSuchFile 容忍 = 对
+    ///    已被第三方删除的文件 force 覆盖照常可用。
+    ///
+    /// 已知边界（与主流编辑器原子保存同款取舍，刻意成文）：
+    /// * 符号链接目标走 [`Self::write_remote_text_inplace`] 原地写——换装会
+    ///   用常规文件顶掉链接本身，写穿透语义优先；
+    /// * 换装需要目标目录写权限（不可写目录上的可写文件将保存失败——vim 等
+    ///   原子保存编辑器同款约束）；
+    /// * 硬链接换装后分叉（rename 换 inode）。
     pub async fn write_remote_text(&self, path: &str, data: &[u8]) -> Result<DirEntry> {
+        // lstat 只做「符号链接分流」与权限快照：任何错误（含 NoSuchFile =
+        // force 覆盖已消失文件）不阻断保存——旧实现不做 lstat，不新增拒绝面。
+        let lstat = self.inner.lstat(path).await.ok();
+        if lstat
+            .as_ref()
+            .and_then(|a| a.attrs.permissions)
+            .is_some_and(|m| mode_is_symlink(m))
+        {
+            return self.write_remote_text_inplace(path, data).await;
+        }
+        let keep_mode = lstat.and_then(|a| a.attrs.permissions).map(|m| m & 0o7777);
+
+        let tmp_path = tmp_swap_path_for(path);
+        if let Err(e) = self.write_single_channel(&tmp_path, data).await {
+            // 临时件写失败：原文件未被触碰，best-effort 清理临时件
+            // （连接已死则清理静默失败，残留语义见 tmp_swap_path_for）
+            let _ = self.inner.remove(&tmp_path).await;
+            return Err(e);
+        }
+        if let Some(mode) = keep_mode {
+            if let Err(e) = self
+                .inner
+                .setstat(
+                    &tmp_path,
+                    FileAttributes {
+                        permissions: Some(mode),
+                        ..FileAttributes::default()
+                    },
+                )
+                .await
+            {
+                let _ = self.inner.remove(&tmp_path).await;
+                return Err(protocol_error(e, &format!("setstat {tmp_path}")));
+            }
+        }
+        if let Err(e) = self.inner.remove(path).await {
+            if !matches!(&e, SftpError::Status(s) if s.status_code == StatusCode::NoSuchFile) {
+                // 原文件在位且不可换（如 sticky 目录他人文件）：保存失败，
+                // 原文完好——临时件留作下轮重传的证据与材料
+                return Err(protocol_error(e, &format!("remove for swap {path}")));
+            }
+        }
+        self.inner
+            .rename(&tmp_path, path)
+            .await
+            .map_err(|e| protocol_error(e, &format!("rename swap {tmp_path} -> {path}")))?;
+        self.stat(path).await
+    }
+
+    /// 单通道顺序全量写（CREATE|TRUNCATE|WRITE + 逐块写 + close；写失败先
+    /// 收回 handle——旧实现错误路径泄漏 handle 直到会话销毁）。换装路径写
+    /// 临时件、原地路径写目标本体共用。
+    async fn write_single_channel(&self, path: &str, data: &[u8]) -> Result<()> {
         let handle = self
             .inner
             .open(
@@ -265,18 +338,45 @@ impl SftpClient {
         let mut offset: u64 = 0;
         while offset < data.len() as u64 {
             let end = (offset as usize + write_block as usize).min(data.len());
-            self.inner
+            match self
+                .inner
                 .write(handle.as_str(), offset, data[offset as usize..end].to_vec())
                 .await
-                .map_err(|e| protocol_error(e, &format!("write remote {path} @{offset}")))?;
-            offset = end as u64;
+            {
+                Ok(_) => offset = end as u64,
+                Err(e) => {
+                    let _ = self.inner.close(handle.clone()).await;
+                    return Err(protocol_error(e, &format!("write remote {path} @{offset}")));
+                }
+            }
         }
         self.inner
             .close(handle)
             .await
             .map_err(|e| protocol_error(e, &format!("close remote {path}")))?;
+        Ok(())
+    }
+
+    /// 原地全量覆盖写（BL-204④ 前的既有语义）：符号链接目标走这里保写穿透。
+    /// 截断窗口仅此分支按符号链接形态保留（罕见路径，用户显式选择了链接形态）。
+    async fn write_remote_text_inplace(&self, path: &str, data: &[u8]) -> Result<DirEntry> {
+        self.write_single_channel(path, data).await?;
         self.stat(path).await
     }
+}
+
+/// BL-204④：换装临时件名（**同目录**——SFTP rename 不保证跨目录/跨文件系统；
+/// 固定后缀便于失败后下一轮重传复用清空）。残留语义：进程崩溃/连接死亡时
+/// 可能留下 `{path}.ottr-tmp`（与编辑器 swap 文件同类残留；同路径下次成功
+/// 保存即被 CREATE|TRUNCATE 覆盖回收）。
+pub(crate) fn tmp_swap_path_for(path: &str) -> String {
+    format!("{path}.ottr-tmp")
+}
+
+/// BL-204④：lstat 权限位的文件类型判定（POSIX 类型位）——符号链接走原地
+/// 写（保留既有写穿透语义），其余形态走换装。
+fn mode_is_symlink(mode: u32) -> bool {
+    mode & 0o170_000 == 0o120_000
 }
 
 /// 回传冲突检测的远端状态快照（Phase 2 Task 3）：下载时捕获，回传前与
@@ -310,6 +410,26 @@ impl RemoteSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// BL-204④：换装临时件名推导——同目录、固定后缀（rename 不跨目录）。
+    #[test]
+    fn tmp_swap_path_keeps_directory() {
+        assert_eq!(
+            tmp_swap_path_for("/var/www/a.txt"),
+            "/var/www/a.txt.ottr-tmp"
+        );
+        assert_eq!(tmp_swap_path_for("/x"), "/x.ottr-tmp");
+    }
+
+    /// BL-204④：lstat 类型位判定符号链接（写穿透分流的依据）。
+    #[test]
+    fn mode_is_symlink_classification() {
+        assert!(mode_is_symlink(0o120_777));
+        assert!(mode_is_symlink(0o120_600));
+        assert!(!mode_is_symlink(0o100_644), "regular file is not a symlink");
+        assert!(!mode_is_symlink(0o040_755), "directory is not a symlink");
+        assert!(!mode_is_symlink(0), "no type bits is not a symlink");
+    }
 
     fn entry(size: u64, mtime: u32) -> DirEntry {
         DirEntry {

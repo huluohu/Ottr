@@ -279,3 +279,45 @@ describe("T6/B1：ai.nl2cmd（⌘J 全局直呼）", () => {
     expect(typeof enNode).toBe("string");
   });
 });
+
+// BL-203（终审C-12）守卫补实：此前只有 ai.nl2cmd.title 一键被上方用例钉住，
+// 其余 labelKey（尤其无全局键、无组件断言覆盖的 theme.toggle / lang.toggle /
+// vault.lock 三键）词典缺失时没有任何测试变红——UI 会渲染原始键名。本守卫
+// 遍历总表逐键查双语词典（沿上方词典行走法），并用「篡改键名探针」自证
+// 检出力（同 findConflicts 的 mutation 自检法）。
+describe("registry labelKey 双语守卫（BL-203）", () => {
+  async function dictOf(lang: "zh-CN" | "en-US"): Promise<Record<string, unknown>> {
+    const mod = await import(`../i18n/${lang}.json`);
+    return mod.default as Record<string, unknown>;
+  }
+
+  /** 词典行走（"palette.themeToggle" → palette 节点下的 themeToggle 值）。 */
+  function lookup(dict: Record<string, unknown>, labelKey: string): unknown {
+    const [top, ...rest] = labelKey.split(".");
+    let node: unknown = dict[top];
+    for (const k of rest) {
+      if (node == null || typeof node !== "object") return undefined;
+      node = (node as Record<string, unknown>)[k];
+    }
+    return node;
+  }
+
+  it("总表全部 labelKey 在 zh-CN / en-US 双语词典齐备且为字符串", async () => {
+    const zh = await dictOf("zh-CN");
+    const en = await dictOf("en-US");
+    expect(ACTIONS.length).toBeGreaterThan(0);
+    for (const def of ACTIONS) {
+      expect(lookup(zh, def.labelKey), `zh 缺键: ${def.id} -> ${def.labelKey}`).toBeTypeOf("string");
+      expect(lookup(en, def.labelKey), `en 缺键: ${def.id} -> ${def.labelKey}`).toBeTypeOf("string");
+    }
+  });
+
+  it("检出力自证：词典缺键时守卫必红（mutation 探针，不动真词典）", async () => {
+    const zh = await dictOf("zh-CN");
+    const ghostKey = "palette.definitelyNotAKey";
+    expect(lookup(zh, ghostKey)).toBeUndefined();
+    // 与 lookup 同判定的负样本：任何 ACTIONS 键都不允许落空（上一例已证），
+    // 这里只钉「落空可被观察」——lookup 对幽灵键返回 undefined 而非抛错。
+    expect(lookup(zh, "palette.title")).toBeTypeOf("string");
+  });
+});

@@ -163,7 +163,7 @@ describe("CredentialForm", () => {
     mockLists();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "credentials_update") return Promise.resolve(existing);
-      return mockLists(cmd);
+      return mockLists();
     });
     const keyCred: Credential = { ...existing, kind: "key", key_pub: "ssh-ed25519 AAAOld" };
     render(<CredentialForm credential={keyCred} onClose={vi.fn()} />);
@@ -192,7 +192,7 @@ describe("CredentialForm", () => {
     mockLists();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "credentials_update") return Promise.resolve(existing);
-      return mockLists(cmd);
+      return mockLists();
     });
     render(<CredentialForm credential={existing} onClose={vi.fn()} />);
     setKind("totp");
@@ -218,7 +218,7 @@ describe("CredentialForm", () => {
     mockLists();
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "credentials_update") return Promise.resolve(existing);
-      return mockLists(cmd);
+      return mockLists();
     });
     render(<CredentialForm credential={existing} onClose={vi.fn()} />);
     setKind("ftp");

@@ -154,4 +154,80 @@ describe("CredentialForm", () => {
       }),
     );
   });
+
+  // --- BL-204（终审C-13）改 kind 残留清偿 -------------------------------------
+  // Rust patch 语义：null = 保留现值、Some("") = 覆写为空。跨族 kind 变更时
+  // 旧族字段必须显式清空（""），否则旧密钥以残留形态挂在新族实体上。
+
+  it("key→password：新密码落地 + 旧 key_pub/passphrase 显式清空（不留残留）", async () => {
+    mockLists();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "credentials_update") return Promise.resolve(existing);
+      return mockLists(cmd);
+    });
+    const keyCred: Credential = { ...existing, kind: "key", key_pub: "ssh-ed25519 AAAOld" };
+    render(<CredentialForm credential={keyCred} onClose={vi.fn()} />);
+    setKind("password");
+    fireEvent.change(screen.getByTestId("cred-secret"), { target: { value: "new-pass" } });
+    fireEvent.click(screen.getByTestId("cred-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
+        id: 7,
+        patch: { kind: "password", secret: "new-pass", key_pub: "", passphrase: "", totp_secret: "" },
+      }),
+    );
+  });
+
+  it("password→key 跨族：私钥必须重新输入（留空豁免不适用），不发 update", async () => {
+    render(<CredentialForm credential={existing} onClose={vi.fn()} />);
+    setKind("key");
+    fireEvent.click(screen.getByTestId("cred-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("cred-error").textContent).toBe("Private key is required"),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("credentials_update", expect.anything());
+  });
+
+  it("password→totp 跨族：totp_secret 必填不豁免；旧 secret 显式清空", async () => {
+    mockLists();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "credentials_update") return Promise.resolve(existing);
+      return mockLists(cmd);
+    });
+    render(<CredentialForm credential={existing} onClose={vi.fn()} />);
+    setKind("totp");
+    // 留空提交：豁免不适用 → 拦截
+    fireEvent.click(screen.getByTestId("cred-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("cred-error").textContent).toBe("TOTP secret is required"),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalledWith("credentials_update", expect.anything());
+
+    // 合法输入：secret（旧密码）显式清空为 ""
+    fireEvent.change(screen.getByTestId("cred-totp-secret"), { target: { value: "JBSWY3DPEHPK3PXP" } });
+    fireEvent.click(screen.getByTestId("cred-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
+        id: 7,
+        patch: { kind: "totp", secret: "", key_pub: "", passphrase: "", totp_secret: "JBSWY3DPEHPK3PXP" },
+      }),
+    );
+  });
+
+  it("同族切换 password→ftp：留空豁免照旧（secret null 保留现值）", async () => {
+    mockLists();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "credentials_update") return Promise.resolve(existing);
+      return mockLists(cmd);
+    });
+    render(<CredentialForm credential={existing} onClose={vi.fn()} />);
+    setKind("ftp");
+    fireEvent.click(screen.getByTestId("cred-submit"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
+        id: 7,
+        patch: { kind: "ftp", secret: null, key_pub: null, passphrase: null, totp_secret: null },
+      }),
+    );
+  });
 });

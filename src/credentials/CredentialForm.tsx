@@ -45,6 +45,18 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  /**
+   * BL-204（终审C-13）跨族 kind 变更判定：新旧 kind 不同且不都是密码型
+   * （password/ftp/ftps 互转字段面完全一致 = 同族）。跨族（涉 key/totp 边界）
+   * 时旧族密钥不能以「保留现值」形态挂进新族实体。
+   */
+  function isCrossFamilyEdit(): boolean {
+    if (credential == null || kind === credential.kind) return false;
+    return !(
+      PASSWORD_LIKE_KINDS.includes(kind) && PASSWORD_LIKE_KINDS.includes(credential.kind)
+    );
+  }
+
   function validate(): boolean {
     const errKey = validateCredentialDraft({ kind, secret, keyPub, passphrase, totpSecret });
     if (errKey == null) {
@@ -54,7 +66,9 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
     // 编辑模式豁免：「必填」类错误 = 字段留空 = 保留现值（patch null 承接，
     // Rust 侧「未重输的密钥不重密封」）；「格式错」类（重输了但格式不对）仍拦。
     // 三个 err*Required 键只在对应字段为空时产生，豁免无需再查字段值。
-    if (credential != null && REQUIRED_KEYS.includes(errKey)) {
+    // 跨族 kind 变更豁免不适用：key/totp 边界两侧字段语义不同，新族必填密钥
+    // 必须重新输入（否则旧族的密码/PEM 会原样顶新族的密钥用）。
+    if (credential != null && !isCrossFamilyEdit() && REQUIRED_KEYS.includes(errKey)) {
       setError(null);
       return true;
     }
@@ -68,14 +82,28 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
     setSubmitting(true);
     try {
       if (credential) {
-        // patch null = 保留现值：编辑时未重输的密钥字段传 null
-        const patch: CredentialPatch = {
-          kind: kind === credential.kind ? null : kind,
-          secret: secret === "" ? null : secret,
-          key_pub: keyPub.trim() === "" ? null : keyPub.trim(),
-          passphrase: passphrase === "" ? null : passphrase,
-          totp_secret: totpSecret === "" ? null : totpSecret,
-        };
+        // patch null = 保留现值：编辑时未重输的密钥字段传 null。
+        // 跨族 kind 变更（BL-204）：非新族字段显式传 ""（Rust Some("") 覆写
+        // 为空），清掉旧族残留——否则 key_pub/passphrase/旧密码会挂在改族后
+        // 的实体上（kind→password 时旧公钥残留、kind→totp 时旧密码残留）。
+        let patch: CredentialPatch;
+        if (isCrossFamilyEdit()) {
+          patch = {
+            kind,
+            secret: PASSWORD_LIKE_KINDS.includes(kind) || kind === "key" ? secret : "",
+            key_pub: kind === "key" ? keyPub.trim() : "",
+            passphrase: kind === "key" ? passphrase : "",
+            totp_secret: kind === "totp" ? totpSecret : "",
+          };
+        } else {
+          patch = {
+            kind: kind === credential.kind ? null : kind,
+            secret: secret === "" ? null : secret,
+            key_pub: keyPub.trim() === "" ? null : keyPub.trim(),
+            passphrase: passphrase === "" ? null : passphrase,
+            totp_secret: totpSecret === "" ? null : totpSecret,
+          };
+        }
         await updateCredential(credential.id, patch);
       } else {
         await createCredential(credentialInputFrom({ kind, secret, keyPub, passphrase, totpSecret }));

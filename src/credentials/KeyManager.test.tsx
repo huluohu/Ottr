@@ -229,6 +229,26 @@ describe("KeyManager", () => {
     expect(screen.getByTestId("km-deploy-status").textContent).toBe("Appended to authorized_keys");
     expect(screen.getByTestId("km-deploy-result").textContent).toContain("SHA256:HOSTFP");
   });
+
+  it("BL-204：主机无用户名时部署预拦截（行内错误，不发 key_deploy）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => mockForLists(cmd));
+    useVaultStore.setState({
+      hosts: [{ ...hostRow, username: null }],
+      credentials: [passCred],
+      hostGroups: [],
+      loading: false,
+      error: null,
+    });
+    render(<KeyManager />);
+    fireEvent.change(screen.getByTestId("km-deploy-host"), { target: { value: "3" } });
+    fireEvent.change(screen.getByTestId("km-deploy-auth"), { target: { value: "5" } });
+    fireEvent.change(screen.getByTestId("km-deploy-pub"), {
+      target: { value: generated.public_openssh },
+    });
+    fireEvent.click(screen.getByTestId("km-deploy"));
+    await waitFor(() => expect(screen.getByTestId("km-error").textContent).not.toBe(""));
+    expect(mockedInvoke).not.toHaveBeenCalledWith("key_deploy", expect.anything());
+  });
 });
 
 /** 列表命令统一返回空（refresh 依赖）。 */

@@ -145,6 +145,13 @@ export function KeyManager() {
     }
     const host = hosts.find((h) => String(h.id) === deployHostId);
     if (!host) return;
+    // BL-204（终审C-13）：部署走 SSH「用户名@地址」——主机没配用户名时 key_deploy
+    // 会拿空串做 none-auth 尝试，失败报错发生在远端链路（慢且难懂）。预校验拦截
+    // 在表单层，行内错误直接指路（先配用户名再部署）。
+    if (host.username == null || host.username.trim() === "") {
+      setError(t("keyManager.errUsernameRequired", { name: host.name }));
+      return;
+    }
     setDeploying(true);
     try {
       const report = await vaultApi.keys.deploy(

@@ -267,6 +267,7 @@
     "errHostRequired": "先选择目标主机",
     "errAuthRequired": "选择登录目标机的凭据（password/key）",
     "errPubRequired": "公钥需为单行非空",
+    "errUsernameRequired": "主机「{{name}}」未配置用户名——请先在主机表单补上再部署",
     "khOk": "已核验",
     "khChanged": "已变更",
     "khPending": "未核验"

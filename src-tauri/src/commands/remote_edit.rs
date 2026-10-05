@@ -978,7 +978,10 @@ mod tests {
             v[last] = 0;
             v
         };
-        assert!(looks_binary(&edge_inside), "NUL on the last probe byte hits");
+        assert!(
+            looks_binary(&edge_inside),
+            "NUL on the last probe byte hits"
+        );
         let edge_outside = {
             let mut v = vec![b'a'; BINARY_SNIFF_BYTES + 1];
             v[BINARY_SNIFF_BYTES] = 0;

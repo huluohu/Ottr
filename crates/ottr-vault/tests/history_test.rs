@@ -8,8 +8,8 @@
 //! 守卫；锁定态可读写同 notifications，不另测）。
 
 use ottr_vault::master_key::InMemoryStorage;
-use ottr_vault::settings::SETTING_HISTORY_LIMIT;
 use ottr_vault::settings::Settings;
+use ottr_vault::settings::SETTING_HISTORY_LIMIT;
 use ottr_vault::{History, HistoryInput, HostInput, Hosts, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
@@ -258,7 +258,9 @@ fn prune_uses_configured_history_limit() {
         "最早的标记行越界被裁"
     );
     assert!(
-        History::search(&vault, "cfg-0", None, 10).unwrap().is_empty(),
+        History::search(&vault, "cfg-0", None, 10)
+            .unwrap()
+            .is_empty(),
         "次旧的 cfg-0 越界被裁（唯一命名，无中缀串扰）"
     );
 }

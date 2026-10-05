@@ -5,6 +5,8 @@
 //   redaction     — { hostname: boolean; custom: RedactRule[] }
 //   ai.enabled    — 诊断自动触发总开关（默认 true）
 //   ai.max_tokens — 单请求上限（默认 1024，Rust 写入侧 ≤8192 校验）
+//   ai.summary.enabled — 会话纪要独立开关（BL-510④ 清偿，默认 true）；
+//     ai.enabled 语义 = 「命令失败自动诊断」，不管纪要链（summary.ts 同口径）
 import { vaultApi } from "../vault/api";
 import type { ProviderMeta } from "./openai";
 import type { RedactRule } from "./redact";
@@ -26,6 +28,8 @@ export const DEFAULT_REDACTION: RedactionConfig = { hostname: true, custom: [] }
 
 export interface AiSettings {
   enabled: boolean;
+  /** 会话纪要独立开关（BL-510④；与 ai.enabled 诊断开关互不管辖）。 */
+  summaryEnabled: boolean;
   maxTokens: number;
   providers: ProviderMeta[];
   redaction: RedactionConfig;
@@ -33,6 +37,7 @@ export interface AiSettings {
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: true,
+  summaryEnabled: true,
   maxTokens: DEFAULT_MAX_TOKENS,
   providers: [],
   redaction: DEFAULT_REDACTION,
@@ -46,12 +51,23 @@ export async function loadAiSettings(): Promise<AiSettings> {
     vaultApi.settings.get<RedactionConfig>("redaction"),
     vaultApi.settings.get<boolean>("ai.enabled"),
     vaultApi.settings.get<number>("ai.max_tokens"),
+    vaultApi.settings.get<boolean>("ai.summary.enabled"),
   ]);
-  const [providers, redaction, enabled, maxTokens] = results.map((r) =>
+  const [providers, redaction, enabled, maxTokens, summaryEnabled] = results.map((r) =>
     r.status === "fulfilled" ? r.value : undefined,
-  ) as [ProviderMeta[] | undefined, RedactionConfig | undefined, boolean | undefined, number | undefined];
+  ) as [
+    ProviderMeta[] | undefined,
+    RedactionConfig | undefined,
+    boolean | undefined,
+    number | undefined,
+    boolean | undefined,
+  ];
   return {
     enabled: typeof enabled === "boolean" ? enabled : DEFAULT_AI_SETTINGS.enabled,
+    summaryEnabled:
+      typeof summaryEnabled === "boolean"
+        ? summaryEnabled
+        : DEFAULT_AI_SETTINGS.summaryEnabled,
     maxTokens:
       typeof maxTokens === "number" && maxTokens > 0 && maxTokens <= 8192
         ? Math.floor(maxTokens)
@@ -81,6 +97,11 @@ export function saveRedaction(redaction: RedactionConfig): Promise<void> {
 /** 保存诊断开关 / token 上限。 */
 export function saveAiEnabled(enabled: boolean): Promise<void> {
   return vaultApi.settings.set("ai.enabled", enabled);
+}
+
+/** 保存会话纪要独立开关（BL-510④）。 */
+export function saveAiSummaryEnabled(enabled: boolean): Promise<void> {
+  return vaultApi.settings.set("ai.summary.enabled", enabled);
 }
 
 export function saveAiMaxTokens(maxTokens: number): Promise<void> {

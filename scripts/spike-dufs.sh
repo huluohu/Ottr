@@ -1,7 +1,12 @@
 #!/bin/bash
 # WebDAV 夹具启动（Phase 5 Task 2，spike-sshd.sh 同纪律）：dufs 容器
-# （fixtures/dufs/Dockerfile，v0.46.0 摘要钉版）(--enable-cors：webview 生产面 fetch 需 Access-Control-Allow-Origin，T5 走查实测补) 供 src/sync/webdav.dufs.test.ts
+# （fixtures/dufs/Dockerfile，v0.46.0 摘要钉版）供 src/sync/webdav.dufs.test.ts
 # 端到端 roundtrip。凭据钉死 user:pass（测试常量对齐）。
+#
+# --enable-cors 仅为测试夹具使能（webview 直连 fetch 的手工调试/dev 场景要
+# Access-Control-Allow-Origin）；生产同步网络路径不经 webview fetch——跨源
+# 缺口已由 Rust HTTP 代理 sync_http_fetch（src-tauri commands/sync_http.rs，
+# product-ready T4 / BL-524 清偿）收口，代理侧按端点白名单放行、无 CORS 概念。
 set -euo pipefail
 cd "$(dirname "$0")/../fixtures"
 

@@ -177,3 +177,31 @@ fn corrupted_schema_version_is_explicit_error() {
         "{err}"
     );
 }
+
+/// BL-206：FK 子列索引齐备。SQLite 执行 FK 的 ON DELETE 动作（CASCADE / SET
+/// NULL）时要扫子表找引用行——子列无索引 = 删一个父行做一次全表扫（删凭据/
+/// 删组/删主机随子表规模线性劣化，且无主键前缀可用）。0002/0005 建表时
+///漏掉的 5 列由 0019 补齐（其余 FK 子列建表迁移已带索引，或 UNIQUE 约束
+/// 自动覆盖：mcp_grants.host_id、session_summaries(host_id,…)）。
+#[test]
+fn fk_child_columns_are_indexed() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path(), &InMemoryStorage::new());
+    for idx in [
+        "idx_host_groups_parent_id", // host_groups.parent_id → host_groups(id)
+        "idx_hosts_group_id",        // hosts.group_id → host_groups(id)
+        "idx_hosts_credential_id",   // hosts.credential_id → credentials(id)
+        "idx_snippets_host_scope",   // snippets.host_scope → hosts(id)
+        "idx_notifications_host_id", // notifications.host_id → hosts(id)
+    ] {
+        let n: i64 = vault
+            .connection()
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?1",
+                [idx],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1, "missing FK child-column index: {idx}");
+    }
+}

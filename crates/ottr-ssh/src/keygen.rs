@@ -17,7 +17,7 @@
 //! 指纹统一 `SHA256:<43 字符无填充标准 base64>`，与 `ssh-keygen -lf` 逐字一致
 //! （golden 断言见 `tests/keygen_test.rs`）。
 
-use russh::keys::ssh_key::{EcdsaCurve, LineEnding};
+use russh::keys::ssh_key::{EcdsaCurve, LineEnding, PrivateKey};
 use russh::keys::{Algorithm as SshAlgorithm, HashAlg, decode_secret_key};
 
 use crate::KeyError;
@@ -107,24 +107,32 @@ pub fn generate(
         },
         KeyAlgorithm::Rsa => SshAlgorithm::Rsa { hash: None },
     };
-    let mut key = russh::keys::PrivateKey::random(&mut rand::rng(), ssh_alg).map_err(|e| {
-        KeyError::Invalid {
-            message: format!("key generation failed: {e}"),
-            source: Some(Box::new(e)),
-        }
+    let mut key = PrivateKey::random(&mut os_rng(), ssh_alg).map_err(|e| KeyError::Invalid {
+        message: format!("key generation failed: {e}"),
+        source: Some(Box::new(e)),
     })?;
     key.set_comment(comment);
     // 加密必须在 set_comment 之后（comment 进加密段）；
     // encrypt 产出新值（原值未加密），覆盖即可。
     if let Some(pass) = passphrase.filter(|p| !p.is_empty()) {
         key = key
-            .encrypt(&mut rand::rng(), pass)
+            .encrypt(&mut os_rng(), pass)
             .map_err(|e| KeyError::Invalid {
                 message: format!("key encryption failed: {e}"),
                 source: Some(Box::new(e)),
             })?;
     }
     finish(key)
+}
+
+/// OS CSPRNG 直采适配（BL-206）：ssh-key 的 `PrivateKey::random`/`encrypt`
+/// 需要 `CryptoRng`（无错面）。rand 0.10 起 OS 熵源是 fallible 的
+/// `rngs::SysRng`，经 `rand_core::UnwrapErr` 适配为失败即 panic——OS 熵源
+/// 失败在密钥生成场景是进程不可继续的灾难，绝不静默降级；相对旧
+/// `rand::rng()`（ThreadRng 用户态缓冲）去掉了密钥面随机的中间层。
+fn os_rng() -> impl rand::CryptoRng {
+    use rand::rand_core::UnwrapErr;
+    UnwrapErr(rand::rngs::SysRng)
 }
 
 /// 解析 openssh 格式私钥 PEM（含加密私钥——口令缺失/错误统一报

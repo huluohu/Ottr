@@ -79,6 +79,18 @@ impl Decoder {
     /// - 含 `GBK` / `GB2312` / `GB18030` → [`Encoding::Gbk`]；
     /// - 其余（`C`、`C.UTF-8`、`en_*.*UTF-8`、`zh_CN.UTF-8`、`POSIX`、
     ///   无法识别的串、空串）→ [`Encoding::Utf8`] 兜底。
+    ///
+    /// **GB18030 提示映射 GBK 解码（BL-216 留档）**：hint 把整个 GBK 家族
+    /// （含 `zh_CN.gb18030` locale）归到 **GBK** 解码而非 GB18030，是有意的
+    /// 保守裁定，不是疏漏——
+    /// * 现实服务器的终端输出绝大多数落在 GBK 双字节区（GB18030 是超集，
+    ///   2 字节区与 GBK 逐字兼容），GBK 解码已覆盖；4 字节区（CJK 扩展 A/B、
+    ///   生僻字）在 GBK 下出替换符，属可感知的降级而非静默错字堆叠；
+    /// * GB18030 的 4 字节序列以 `0x30..=0x39` 为第二字节，与 ASCII 数字区
+    ///   交叠，误判家族成员的代价比「统一按 GBK」高；
+    /// * 精确档（hint 直接给 [`Encoding::Gb18030`]）需要区分家族成员并让
+    ///   提示条带出第三种建议——现 UI（两态提示「检测到 GBK，切换？」）不支持；
+    ///   用户遇到生僻字乱码可从编码菜单手动切 GB18030（Task 9 已收录）。
     pub fn detect_hint(locale_output: &str) -> Encoding {
         let lower = locale_output.to_ascii_lowercase();
         if Encoding::is_gbk_family(&lower) {

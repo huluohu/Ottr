@@ -226,6 +226,16 @@ export interface SecurityStatus {
   locked: boolean;
 }
 
+/** Rust `notifications::DeliveryFailure` 同构（BL-530 投递失败标记数组元素；
+ * channel = 渠道挂载名 `kind#id`，去重键）。 */
+export interface DeliveryFailure {
+  channel: string;
+  channel_id: number | null;
+  error: string;
+  /** 秒级 Unix 时刻（最近一次失败）。 */
+  ts: number;
+}
+
 /** Rust `notifications::Notification` 同构（Task 12，spec §7 通知中心行）。
  * severity ∈ "info" | "success" | "warning" | "error"（DB CHECK 同集）。 */
 export interface Notification {
@@ -241,6 +251,9 @@ export interface Notification {
   read: boolean;
   /** 秒级 Unix 时间。 */
   ts: number;
+  /** 渠道投递失败标记（BL-530 落库面；null = 无标记。标记/翻正经
+   * markDeliveryFailed/clearDeliveryFailure 写穿，重启不丢）。 */
+  delivery_failures: DeliveryFailure[] | null;
 }
 
 /** Rust `notifications::NotificationInput` 同构（notify_insert 载荷，snake_case）。 */
@@ -658,6 +671,12 @@ export const vaultApi = {
     list: (limit?: number) => invoke<Notification[]>("notify_list", { limit: limit ?? null }),
     /** 标记已读；id=null = 全部已读。返回受影响行数。 */
     markRead: (id: number | null) => invoke<number>("notify_mark_read", { id }),
+    /** 投递失败标记入账（BL-530；Rust 按渠道去重），返回更新后的行。 */
+    markDeliveryFailed: (id: number, failure: DeliveryFailure) =>
+      invoke<Notification>("notify_mark_delivery_failed", { id, failure }),
+    /** 投递失败翻正清账（BL-530；摘除渠道，集合空回归 null），返回更新后的行。 */
+    clearDeliveryFailure: (id: number, channel: string) =>
+      invoke<Notification>("notify_clear_delivery_failure", { id, channel }),
     /** 清空全部，返回删除行数。 */
     clear: () => invoke<number>("notify_clear"),
     unreadCount: () => invoke<number>("notify_unread_count"),

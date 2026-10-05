@@ -30,12 +30,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{
-    AlertRule, AlertRuleInput, AlertRules, CredentialInput, CredentialPatch, Credentials, History,
-    HistoryEntry, HistoryInput, Host, HostGroups, HostInput, Hosts, KeyMode, KnownHosts,
-    Notification, NotificationInput, Notifications, NotifyChannel, NotifyChannelInput,
-    NotifyChannelPatch, NotifyChannels, SecretField, Secrets, SessionSummaries, Settings,
-    SnippetInput, Snippets, SummaryEntry, SummaryInput, Vault, VaultError, HISTORY_SEARCH_LIMIT,
-    HISTORY_SESSION_LIMIT, SUMMARIES_LIST_LIMIT,
+    AlertRule, AlertRuleInput, AlertRules, CredentialInput, CredentialPatch, Credentials,
+    DeliveryFailure, History, HistoryEntry, HistoryInput, Host, HostGroups, HostInput, Hosts,
+    KeyMode, KnownHosts, Notification, NotificationInput, Notifications, NotifyChannel,
+    NotifyChannelInput, NotifyChannelPatch, NotifyChannels, SecretField, Secrets, SessionSummaries,
+    Settings, SnippetInput, Snippets, SummaryEntry, SummaryInput, Vault, VaultError,
+    HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT, SUMMARIES_LIST_LIMIT,
 };
 
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -142,6 +142,29 @@ pub fn vault_security_status(state: State<'_, VaultState>) -> CmdResult<Security
 
 /// 解锁（password 模式）：主密码校验通过后 Master Key 进内存。
 /// 成功发 `ottr://vault-unlocked`（LockScreen 收口；keyring 模式/密码错显式报错）。
+///
+/// **明文主密码的 IPC 副本边界（BL-202 成文，不改行为）**——密码从输入框到
+/// 消费点的完整生命周期与既定边界：
+///
+/// 1. **webview 侧**：`LockScreen` useState（向导：SecuritySettings，成功/
+///    失败后清空重置）。JS 字符串在 GC 堆上**不可主动清零**——已知边界，
+///    收敛手段是输入框 `type="password"`（不进 DOM 明文）+ 组件随锁定态
+///    卸载后引用随 GC 回收。
+/// 2. **IPC 面**：`invoke("vault_unlock", { password })` → Tauri v2 进程内
+///    反序列化产生一份 `String` 副本（本命令栈上）。进程内 IPC 不出进程
+///    边界（无网络面）。
+/// 3. **消费点**：以 `&str` 借给 [`ottr_vault::Vault::unlock_with_password`]
+///    → Argon2id 派生 → **派生中间值（32B RawKey）用后即清**（store.rs
+///    `derive_cipher` 内 `key.zeroize()`）；内存中留存的只有
+///    [`ottr_vault::Cipher`]（aes-gcm zeroize feature：key schedule
+///    ZeroizeOnDrop，`vault_lock` 即取走 drop）。
+/// 4. **副本清零边界**：命令参数 `String` 与 IPC 反序列化中间缓冲在命令
+///    结束时普通 drop（非 zeroizing）——堆上留有可被同进程后续分配覆写的
+///    残留。**裁定接受**：本地单用户进程、副本生命周期限于单次命令调用、
+///    全链 zeroize 需自定义分配器改造，边际收益不成比例；作为交换，硬性
+///    不变量是：密码**不落盘、不进日志/事件/错误文案/遥测**（错误路径只回
+///    `VaultError::Display`，如 "master password is incorrect"，绝不内插
+///    密码本身），且**不跨命令缓存**（每次解锁重新输入）。
 #[tauri::command]
 pub fn vault_unlock(
     state: State<'_, VaultState>,
@@ -173,6 +196,9 @@ pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()>
 /// 重加密逐字段发 `ottr://reencrypt-progress`（向导进度条），成功后删除钥匙链
 /// 旧条目（失败路径什么都不动——vault 层单事务保证，残留由下次 open 兜底）。
 /// 返回值 = 重密封字段数（向导完成页展示）。
+/// 明文主密码的 IPC 副本边界与 [`vault_unlock`] 同一套（BL-202 成文，见彼处
+/// 四点生命周期）；本命令在库内跑的是重密封（Argon2id 派生 + 全表重加密），
+/// 副本生命周期因 Argon2 拉长到秒级，结论不变：不落盘、不进日志、不缓存。
 #[tauri::command]
 pub fn vault_upgrade_to_master_password(
     state: State<'_, VaultState>,
@@ -294,6 +320,31 @@ pub fn notify_clear(state: State<'_, VaultState>) -> CmdResult<usize> {
 #[tauri::command]
 pub fn notify_unread_count(state: State<'_, VaultState>) -> CmdResult<i64> {
     cmd(Notifications::unread_count(&state.0))
+}
+
+/// 投递失败标记入账（BL-530）：渠道终败标记落库（按渠道去重），返回更新后
+/// 的行。明文面不过门卫（同 notify_* 组；投递失败发生在锁定态也要能落账）。
+/// 未知行显式报错（前端按尽力而为面 console 处理，内存账本保底 UI 不谎报）。
+#[tauri::command]
+pub fn notify_mark_delivery_failed(
+    state: State<'_, VaultState>,
+    id: i64,
+    failure: DeliveryFailure,
+) -> CmdResult<Notification> {
+    cmd(Notifications::mark_delivery_failed(&state.0, id, &failure))
+}
+
+/// 投递失败翻正清账（BL-530）：摘除一个渠道的标记（重发/后台重试成功时调
+/// 用）；集合清空回归 NULL。明文面不过门卫，同上。
+#[tauri::command]
+pub fn notify_clear_delivery_failure(
+    state: State<'_, VaultState>,
+    id: i64,
+    channel: String,
+) -> CmdResult<Notification> {
+    cmd(Notifications::clear_delivery_failure(
+        &state.0, id, &channel,
+    ))
 }
 
 // --- history（Task 15，spec §5 统一历史搜索 ⌘R）-------------------------------
@@ -675,6 +726,8 @@ pub fn import_tabby_config(
 }
 
 /// CSV 导出主机清单。`path` 缺省写到系统下载目录 `ottr-hosts.csv`；返回落盘路径。
+/// CSV 组装（RFC4180 转义 + 实体 join）在 ottr-vault `hosts_csv`（BL-206：随
+/// 实体同库可独立单测）；本命令只保留路径解析与落盘。
 #[tauri::command]
 pub fn export_hosts_csv(
     app: tauri::AppHandle,
@@ -693,48 +746,9 @@ pub fn export_hosts_csv(
             dir.join("ottr-hosts.csv")
         }
     };
-    let csv = build_hosts_csv(&state.0).map_err(|e| e.to_string())?;
+    let csv = ottr_vault::hosts_csv(&state.0).map_err(|e| e.to_string())?;
     std::fs::write(&target, csv).map_err(|e| format!("write {}: {e}", target.display()))?;
     Ok(target.to_string_lossy().into_owned())
-}
-
-/// 主机清单 CSV（RFC4180：含逗号/引号/换行的字段加引号、引号翻倍）。
-fn build_hosts_csv(vault: &Vault) -> ottr_vault::Result<String> {
-    let groups: std::collections::HashMap<i64, String> = HostGroups::list(vault)?
-        .into_iter()
-        .map(|g| (g.id, g.name))
-        .collect();
-    let mut out = String::from("name,username,address,port,group,tags,encoding,notes\n");
-    for h in Hosts::list(vault)? {
-        let group = h
-            .group_id
-            .and_then(|id| groups.get(&id))
-            .map(String::as_str)
-            .unwrap_or("");
-        let row: Vec<String> = vec![
-            h.name.clone(),
-            h.username.clone().unwrap_or_default(),
-            h.address.clone(),
-            h.port.to_string(),
-            group.to_string(),
-            h.tags.join("|"),
-            h.encoding_override.clone().unwrap_or_default(),
-            h.notes.clone().unwrap_or_default(),
-        ];
-        let cells: Vec<String> = row.iter().map(|c| csv_field(c)).collect();
-        out.push_str(&cells.join(","));
-        out.push('\n');
-    }
-    Ok(out)
-}
-
-/// 单字段转义：危险字符（`,` `"` CR LF）任一出现即整体加引号、内部引号翻倍。
-fn csv_field(v: &str) -> String {
-    if v.contains(',') || v.contains('"') || v.contains('\n') || v.contains('\r') {
-        format!("\"{}\"", v.replace('"', "\"\""))
-    } else {
-        v.to_string()
-    }
 }
 
 // --- alert_rules（Phase 3 Task 3，B5 告警规则——存储侧命令面）------------------
@@ -900,10 +914,11 @@ pub(crate) fn wipe_vault_data(
     }
     // ② 数据目录逐条目清除（文件/子目录一视同仁；删除中的打开句柄在
     // macOS/Windows 上 unlink 语义由各平台兜底，进程重启后无残留引用）。
-    let entries =
-        std::fs::read_dir(dir).map_err(|e| format!("read {}: {e}", dir.display()))?;
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("read {}: {e}", dir.display()))?;
     for entry in entries {
-        let path = entry.map_err(|e| format!("readdir {}: {e}", dir.display()))?.path();
+        let path = entry
+            .map_err(|e| format!("readdir {}: {e}", dir.display()))?
+            .path();
         let removed = if path.is_dir() {
             std::fs::remove_dir_all(&path)
         } else {
@@ -935,31 +950,30 @@ pub fn vault_reset(
         .map_err(|e| format!("resolve app data dir: {e}"))?;
     // 防呆：app_data_dir 解析异常退化成根/无父目录时拒绝清（宁可不重置）。
     if dir.parent().is_none() || dir == std::path::Path::new("/") {
-        return Err(format!("refusing to wipe suspicious data dir: {}", dir.display()));
+        return Err(format!(
+            "refusing to wipe suspicious data dir: {}",
+            dir.display()
+        ));
     }
     // 两条钥匙链条目：Master Key + 同步信封口令（重置 = 回到首启态，本应用
     // 在正式 service 下的条目一个不留；entry 序对应错误消息 entry 0/1）。
-    let master = ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
+    let master =
+        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
     let sync_pass = ottr_vault::master_key::KeyringStorage::with_account(
         crate::commands::sync_git::SYNC_SERVICE,
         crate::commands::sync_git::SYNC_ACCOUNT,
     );
     wipe_vault_data(&dir, &[&master, &sync_pass])?;
-    eprintln!("[vault] reset confirmed: data dir wiped ({}), restarting app", dir.display());
+    eprintln!(
+        "[vault] reset confirmed: data dir wiped ({}), restarting app",
+        dir.display()
+    );
     app.restart();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn csv_field_quotes_only_when_needed() {
-        assert_eq!(csv_field("plain"), "plain");
-        assert_eq!(csv_field("a,b"), "\"a,b\"");
-        assert_eq!(csv_field("he said \"hi\""), "\"he said \"\"hi\"\"\"");
-        assert_eq!(csv_field("line\nbreak"), "\"line\nbreak\"");
-    }
 
     /// Task 16.5：vault_init_status 的 serde 面与前端 VaultInitStatusPayload
     /// 同构（tag=status snake_case）——字段名漂移会让前端就绪门永远停在 loading。
@@ -1001,7 +1015,10 @@ mod tests {
     /// 也走 None 拒绝路径，不会意外清库）。
     #[test]
     fn reset_confirm_guard_rejects_everything_but_explicit_true() {
-        assert!(ensure_reset_confirmed(None).is_err(), "缺 confirm 参数 = 拒绝");
+        assert!(
+            ensure_reset_confirmed(None).is_err(),
+            "缺 confirm 参数 = 拒绝"
+        );
         assert!(
             ensure_reset_confirmed(Some(false)).is_err(),
             "显式 false = 拒绝"

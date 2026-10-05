@@ -7,7 +7,6 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use base64::Engine as _;
 use russh::ChannelMsg;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -31,42 +30,22 @@ use crate::vault::VaultState;
 // 主机指纹 pin（来自 fixtures/known_hosts，spike 不允许静默跳过校验）
 // ---------------------------------------------------------------------------
 
-/// 写入时的夹具指纹常量；运行时优先从仓库夹具文件重新解析（防夹具重生成后漂移）。
+/// 写入时的夹具指纹常量；运行时优先从仓库夹具文件按端点解析（防夹具重生成
+/// 后漂移）。解析走 [`ottr_ssh::known_hosts::fingerprint_for_host`]（BL-211
+/// 收敛点：此前本文件内联的「整文件取首条」实现在多 host 文件上可能 pin 错
+/// key，且与 hostkey_audit/bench 三处重复同一算法）。
 const PINNED_FP_FALLBACK: &str = "SHA256:nLaxv/1hXxccQNB7JauQUi63z0YmST4P3AvViyoNCIQ";
 
-/// known_hosts 首条记录 → `SHA256:<unpadded-std-b64(sha256(key_blob))>` 指纹。
-fn known_hosts_fingerprint(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let mut parts = line.split_whitespace();
-        let b64 = match (parts.next(), parts.next(), parts.next()) {
-            (Some(_host), Some(_ktype), Some(b64)) if parts.next().is_none() => b64,
-            _ => continue,
-        };
-        if let Ok(blob) = base64::engine::general_purpose::STANDARD.decode(b64) {
-            use base64::engine::general_purpose::STANDARD as B64;
-            use sha2::Digest;
-            let digest = sha2::Sha256::digest(&blob);
-            return Some(format!(
-                "SHA256:{}",
-                B64.encode(digest).trim_end_matches('=')
-            ));
-        }
-    }
-    None
-}
-
 /// spike 主机密钥策略：指纹必须精确等于 pin 值，其余一律拒绝。
-fn pinned_host_key_policy() -> (HostKeyPolicy, String) {
+/// pin 目标 = 本次连接的 `(host, port)` 端点行（非首条记录）；文件缺失/无
+/// 该端点行 → 退回 `PINNED_FP_FALLBACK`（夹具重生成漂移的兜底，语义不变）。
+fn pinned_host_key_policy(host: &str, port: u16) -> (HostKeyPolicy, String) {
     let expected = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../fixtures/known_hosts"
     ))
     .ok()
-    .and_then(|c| known_hosts_fingerprint(&c))
+    .and_then(|c| ottr_ssh::known_hosts::fingerprint_for_host(&c, host, port))
     .unwrap_or_else(|| PINNED_FP_FALLBACK.to_string());
     let expected_for_cb = expected.clone();
     let policy: HostKeyPolicy = Arc::new(move |fingerprint: &str| fingerprint == expected_for_cb);
@@ -93,7 +72,7 @@ pub(crate) async fn attach_session(
     rows: u32,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<String, String> {
-    let (policy, pinned) = pinned_host_key_policy();
+    let (policy, pinned) = pinned_host_key_policy(&host, port);
     open_and_register(
         state.sessions.clone(),
         None,
@@ -338,10 +317,7 @@ pub(crate) fn tofu_host_key_policy(
         let ask = |kind: &'static str| -> bool {
             let (tx, rx) = std::sync::mpsc::channel();
             let key = format!("{host_id}:{fingerprint}");
-            // 同键并发问询（双开同一主机）：顶掉旧端（旧等待方随 sender 被替换而判拒）
-            if let Some(old) = asks.lock().unwrap().insert(key, tx) {
-                drop(old);
-            }
+            register_host_key_ask(&asks, key, tx);
             if let Err(e) = app.emit(
                 "ottr://host-key-ask",
                 HostKeyAskPayload {
@@ -387,6 +363,16 @@ pub(crate) fn tofu_host_key_policy(
             Some(kind) => ask(kind), // first / pending / changed → 前端问询
         }
     })
+}
+
+/// 登记挂起问询端（BL-207③ 测试 seam）：**同键单槽覆盖**——同键并发问询
+/// （双开同一主机）时顶掉旧端；旧等待方随 sender 被 drop 而 recv 立即断开，
+/// 在 [`tofu_host_key_policy`] 的 `matches!(recv, Ok(true))` 折算下判拒
+/// （fail-closed：并发双开绝不双向放行，也绝不悬挂旧端等满 60s 超时）。
+fn register_host_key_ask(asks: &HostKeyAsks, key: String, tx: std::sync::mpsc::Sender<bool>) {
+    if let Some(old) = asks.lock().unwrap().insert(key, tx) {
+        drop(old);
+    }
 }
 
 /// known_hosts 记录 + 本次出示指纹 → 下一步动作（可测纯分类）：
@@ -716,6 +702,9 @@ async fn register_opened(args: RegisterArgs) -> Result<String, String> {
     // 不进 PTY 数据流（探测输出不经转发循环）。仅正式 UI 面（probe_lang）。
     // 命中 GBK 家族 → `ottr://encoding-hint`（前端提示条「检测到 GBK，切换？」）；
     // UTF-8 兜底 / exec 失败 / 10s 超时 → 不提示（安全侧，绝不误报打扰）。
+    // 注意：家族成员（GBK/GB2312/GB18030）一律归到 GBK 解码建议——保守裁定的
+    // 理由与手动切 GB18030 的逃生口见 ottr-term `Encoding::detect_hint` 文档
+    // （BL-216 留档）。
     if let Some(probe_session) = probe_session {
         let probe_id = id.clone();
         tauri::async_runtime::spawn(async move {
@@ -1341,6 +1330,45 @@ mod tests {
             changed_at: None,
             state,
         }
+    }
+
+    /// BL-207③：并发首连 hostKeyAsk **同键单槽覆盖**测试钉（fail-closed 语义
+    /// 已定，本例钉住行为不漂移）。双开同一主机（同 host_id + 同指纹）的两次
+    /// 问询：第二次登记顶掉第一次——旧等待端 recv 立即断开（折算拒绝：绝不
+    /// 双向放行、也不悬挂旧端等满 60s 超时），槽内只剩最新端且裁定可回传；
+    /// 不同键（不同主机）互不干扰、各占各槽。
+    #[test]
+    fn concurrent_host_key_ask_single_slot_displaces_old_waiter_fail_closed() {
+        let asks: HostKeyAsks = Arc::new(Mutex::new(HashMap::new()));
+        let key = "7:SHA256:fp".to_string();
+
+        let (tx1, rx1) = std::sync::mpsc::channel::<bool>();
+        register_host_key_ask(&asks, key.clone(), tx1);
+        let (tx2, rx2) = std::sync::mpsc::channel::<bool>();
+        register_host_key_ask(&asks, key.clone(), tx2);
+
+        // 单槽：同键只留最新端。
+        assert_eq!(asks.lock().unwrap().len(), 1);
+        assert!(asks.lock().unwrap().contains_key(&key));
+        // 旧等待方立即判拒：recv 断开（Err）→ ask() 闭包的
+        // matches!(recv_timeout, Ok(true)) 为 false = HostKeyRejected。
+        assert!(
+            rx1.recv_timeout(Duration::from_millis(200)).is_err(),
+            "被顶掉的旧等待方必须 fail-closed（recv 断开≠放行）"
+        );
+        // 最新端存活：host_key_decision 的真实流程 = remove 出槽再 send。
+        let held2 = asks.lock().unwrap().remove(&key).unwrap();
+        held2.send(true).unwrap();
+        assert_eq!(rx2.recv(), Ok(true));
+
+        // 不同键（另一台主机）各占各槽，互不顶掉。
+        let (tx3, rx3) = std::sync::mpsc::channel::<bool>();
+        register_host_key_ask(&asks, "8:SHA256:other".into(), tx3);
+        assert_eq!(asks.lock().unwrap().len(), 1, "前一键已随裁定出槽");
+        let held3 = asks.lock().unwrap().remove("8:SHA256:other").unwrap();
+        held3.send(false).unwrap();
+        assert_eq!(rx3.recv(), Ok(false), "拒绝裁定同样经槽回传");
+        assert!(asks.lock().unwrap().is_empty(), "裁定后槽位清空");
     }
 
     #[test]

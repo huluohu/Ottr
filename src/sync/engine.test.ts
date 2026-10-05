@@ -198,9 +198,125 @@ describe("双改冲突列表（逐分类生成）", () => {
     data.categories.host_groups = [{ id: 8, name: "g", parent_id: null, color: null }];
     const projected = canonicalEntries("hosts", data)[0]!;
     expect(projected).not.toContain('"id"');
-    // group 引用解析为分组名（id 无关）
+    // group 引用解析为父链全路径（BL-527 加宽；id 无关）
     const host = data.categories.hosts[0] as Record<string, unknown>;
     host.group_id = 8;
-    expect(canonicalEntries("hosts", data)[0]!).toContain('"group":"g"');
+    expect(canonicalEntries("hosts", data)[0]!).toContain('"group":["g"]');
+  });
+});
+
+// --- BL-527：自然键加宽（父链路径 / host·channel 区分字段）---------------------
+// 冷僻构造回归：同侧自然键重复 + 引用指向重复项分歧——加宽前引用投影无法区分
+// 指向哪一个重复项（漏报），加宽后照常进冲突列表。行 helper 字段以
+// canonicalEntries 实际读取面为准（多余字段不进投影，无碍）。
+
+function groupRow(over: Record<string, unknown>): Record<string, unknown> {
+  return { id: 0, name: "g", parent_id: null, color: null, created_at: 1, updated_at: 1, ...over };
+}
+function hostRow(over: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: 0, name: "web-01", address: "10.0.0.1", port: 22, username: null, tags: [],
+    protocol: "ssh", group_id: null, credential_id: null, encoding_override: null,
+    theme_override: null, monitor_enabled: false, is_production: false, notes: null,
+    created_at: 1, updated_at: 1, ...over,
+  };
+}
+function ruleRow(over: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: 0, host_id: 1, kind: "disk", params: {}, channels: [], rate_limit: 60,
+    mute_window: null, created_at: 1, updated_at: 1, ...over,
+  };
+}
+function chanRow(over: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: 0, kind: "webhook", config: {}, template_overrides: null, enabled: true,
+    created_at: 1, updated_at: 1, ...over,
+  };
+}
+
+describe("BL-527 自然键加宽：同侧自然键重复 + 引用指向分歧不再漏报", () => {
+  it("同名兄弟组（跨枝同名合法态）：主机分组指向分歧被识别", async () => {
+    // 两侧分组树同构（p/q 下各一个 web——0018 只禁同级同名），host_groups
+    // 多重集两侧一致；唯一分歧 = 主机 group 指向（p/web vs q/web）。
+    const tree = (): Record<string, unknown>[] => [
+      groupRow({ id: 1, name: "p" }),
+      groupRow({ id: 2, name: "q" }),
+      groupRow({ id: 3, name: "web", parent_id: 1 }),
+      groupRow({ id: 4, name: "web", parent_id: 2 }),
+    ];
+    const a = emptyData();
+    a.categories.host_groups = tree();
+    a.categories.hosts = [hostRow({ id: 10, group_id: 3 })];
+    const b = emptyData();
+    b.categories.host_groups = tree();
+    b.categories.hosts = [hostRow({ id: 20, group_id: 4 })];
+    expect((await buildConflictList(a, b)).map((c) => c.category)).toEqual(["hosts"]);
+  });
+
+  it("同名父组跨枝（组自身投影父链消歧）：颜色换位被识别", async () => {
+    // r、s 下各一个同名 p，p 下各一个 a——加宽前 a 的投影 parent 只有一级父名
+    // （两个 "p" 同名不可辨），颜色换位后两侧多重集同形 → 漏报；父链路径后
+    // r/p 与 s/p 可辨。
+    const mk = (swap: boolean): Record<string, unknown>[] => [
+      groupRow({ id: 1, name: "r" }),
+      groupRow({ id: 2, name: "s" }),
+      groupRow({ id: 3, name: "p", parent_id: 1 }),
+      groupRow({ id: 4, name: "p", parent_id: 2 }),
+      groupRow({ id: 5, name: "a", parent_id: 3, color: swap ? "#00f" : "#f00" }),
+      groupRow({ id: 6, name: "a", parent_id: 4, color: swap ? "#f00" : "#00f" }),
+    ];
+    const a = emptyData();
+    a.categories.host_groups = mk(false);
+    const b = emptyData();
+    b.categories.host_groups = mk(true);
+    expect((await buildConflictList(a, b)).map((c) => c.category)).toEqual(["host_groups"]);
+  });
+
+  it("同端点双主机（hosts 无端点唯一约束）：规则指向分歧被识别", async () => {
+    // 两侧 hosts 多重集一致（同 name+address+port、协议 ssh/sftp 各一行）；
+    // alert rule 指向换位 → 加宽前 hostKeyOf 分不出协议 → 漏报。
+    const hosts = (): Record<string, unknown>[] => [
+      hostRow({ id: 1, name: "web-01", address: "10.0.0.1", port: 22, protocol: "ssh" }),
+      hostRow({ id: 2, name: "web-01", address: "10.0.0.1", port: 22, protocol: "sftp" }),
+    ];
+    const a = emptyData();
+    a.categories.hosts = hosts();
+    a.categories.alert_rules = [ruleRow({ id: 5, host_id: 1 })];
+    const b = emptyData();
+    b.categories.hosts = hosts();
+    b.categories.alert_rules = [ruleRow({ id: 5, host_id: 2 })];
+    expect((await buildConflictList(a, b)).map((c) => c.category)).toEqual(["alert_rules"]);
+  });
+
+  it("同 kind+config 双渠道（overrides 不同）：订阅指向分歧被识别", async () => {
+    const chans = (): Record<string, unknown>[] => [
+      chanRow({ id: 1, kind: "webhook", config: { url: "https://x" }, template_overrides: { title: "A" } }),
+      chanRow({ id: 2, kind: "webhook", config: { url: "https://x" }, template_overrides: { title: "B" } }),
+    ];
+    const a = emptyData();
+    a.categories.notify_channels = chans();
+    a.categories.alert_rules = [ruleRow({ id: 5, channels: [1] })];
+    const b = emptyData();
+    b.categories.notify_channels = chans();
+    b.categories.alert_rules = [ruleRow({ id: 5, channels: [2] })];
+    expect((await buildConflictList(a, b)).map((c) => c.category)).toEqual(["alert_rules"]);
+  });
+
+  it("链断/环防线：确定性前缀路径，两侧同形不误报", async () => {
+    // 父 id 指向快照外（截断快照）：路径退化为 null（引用切断同形）；两侧同
+    // 构造 → 零误报。parent 环（手工构造）同理——visited 有界不悬挂。
+    const a = emptyData();
+    a.categories.host_groups = [
+      groupRow({ id: 3, name: "web", parent_id: 99 }),
+      groupRow({ id: 4, name: "cyc1", parent_id: 5 }),
+      groupRow({ id: 5, name: "cyc2", parent_id: 4 }),
+    ];
+    const b = emptyData();
+    b.categories.host_groups = [
+      groupRow({ id: 30, name: "web", parent_id: 98 }),
+      groupRow({ id: 40, name: "cyc1", parent_id: 50 }),
+      groupRow({ id: 50, name: "cyc2", parent_id: 40 }),
+    ];
+    expect(await buildConflictList(a, b)).toEqual([]);
   });
 });

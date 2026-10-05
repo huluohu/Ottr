@@ -555,7 +555,8 @@ fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
         let vault = open_vault(dir.path());
         HostGroups::create(&vault, "legacy", None, None).unwrap();
     }
-    // 模拟旧库：版本拨回 17 + 摘索引 + 直插一行同根级同名（历史缺陷产物）
+    // 模拟旧库：版本拨回 17 + 摘索引 + 摘 0020 列（拨回夹具同口径，防重放
+    // 撞「duplicate column name」）+ 直插一行同根级同名（历史缺陷产物）
     let db = dir.path().join("vault.db");
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
@@ -563,6 +564,7 @@ fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
             "UPDATE meta SET value='17' WHERE key='schema_version';
              DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
              DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;
+             ALTER TABLE notifications DROP COLUMN delivery_failures;
              INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
                SELECT name, parent_id, color, created_at, updated_at
                FROM host_groups WHERE name = 'legacy';",
@@ -876,6 +878,21 @@ fn parse_endpoint_key_roundtrip_and_rejects() {
         "端口越 u16 范围拒绝"
     );
     assert_eq!(parse_endpoint_key(""), None);
+    // 宽松解析拒绝面（BL-206）：端点键只认 host_endpoint_key 的规范十进制
+    // 产出——前导零（"080"）与带符号（"+80"）都不是它的产物，接受会让
+    // "h:80" 与 "h:080" 两个键在外部改写/拼接场景下语义漂移；巡检面按
+    // None 跳过（fail-closed）。
+    assert_eq!(
+        parse_endpoint_key("10.0.0.1:080"),
+        None,
+        "前导零端口（非规范十进制）拒绝"
+    );
+    assert_eq!(parse_endpoint_key("10.0.0.1:+80"), None, "带符号端口拒绝");
+    assert_eq!(
+        parse_endpoint_key("[fe80::1]:00022"),
+        None,
+        "IPv6 形态同样只认规范十进制端口"
+    );
 }
 
 /// KnownHosts::delete（B9 管理页，Task 6 Phase 3）：删除 = 忘记该端点——
@@ -969,6 +986,18 @@ fn migration_0004_preserves_legacy_rows() {
                  verified    INTEGER NOT NULL DEFAULT 0,
                  changed_at  INTEGER,
                  state       TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('ok','changed','pending'))
+             );
+             -- snippets 必须在（0019 起迁移会在其 host_scope 上建 FK 子列索引）：
+             -- 真实 v3 库必然带有 0002 的 snippets 表，夹具同形，缺表=夹具失真。
+             CREATE TABLE snippets (
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name       TEXT NOT NULL,
+                 body       TEXT NOT NULL,
+                 variables  TEXT NOT NULL DEFAULT '[]',
+                 tags       TEXT NOT NULL DEFAULT '[]',
+                 host_scope INTEGER REFERENCES hosts (id) ON DELETE SET NULL,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
              );
              INSERT INTO known_hosts (fingerprint, first_seen, verified, changed_at, state)
                  VALUES ('SHA256:OLD-KEY', 1000, 1, 2000, 'changed');",
@@ -1211,7 +1240,32 @@ fn migration_0010_preserves_sequence_watermark_from_v9_db_with_delete_history() 
              );
              INSERT INTO credentials (id, kind, secret_enc, created_at, updated_at)
                  VALUES (1, 'password', NULL, 1, 1), (2, 'key', NULL, 2, 2);
-             DELETE FROM credentials WHERE id = 2;",
+             DELETE FROM credentials WHERE id = 2;
+             -- snippets / notifications 必须在（0019 起迁移会在它们的 FK 子列上
+             -- 建索引）：真实 v9 库必然带有 0002 的 snippets 与 0005 的
+             -- notifications，夹具同形，缺表=夹具失真。
+             CREATE TABLE snippets (
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name       TEXT NOT NULL,
+                 body       TEXT NOT NULL,
+                 variables  TEXT NOT NULL DEFAULT '[]',
+                 tags       TEXT NOT NULL DEFAULT '[]',
+                 host_scope INTEGER REFERENCES hosts (id) ON DELETE SET NULL,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );
+             CREATE TABLE notifications (
+                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                 kind      TEXT NOT NULL,
+                 severity  TEXT NOT NULL DEFAULT 'info'
+                           CHECK (severity IN ('info', 'success', 'warning', 'error')),
+                 host_id   INTEGER REFERENCES hosts (id) ON DELETE SET NULL,
+                 title_key TEXT NOT NULL,
+                 body      TEXT NOT NULL DEFAULT '',
+                 payload   TEXT,
+                 read      INTEGER NOT NULL DEFAULT 0,
+                 ts        INTEGER NOT NULL
+             );",
         )
         .unwrap();
         // 确认弱面前提：seq > max(id)（删行历史在 sqlite_sequence 留痕）
@@ -1301,13 +1355,16 @@ fn migration_0012_legacy_v11_rows_default_to_zero() {
         Hosts::create(&vault, host_input("legacy-row", "")).unwrap();
     }
     // 手工把 schema_version 拨回 11 + 摘掉 is_production 列 + 摘掉 0018 索引
+    // + 摘掉 0020 投递失败标记列
     // → 模拟旧库重开（版本与 DDL 同事务提交，真实旧库不会有 0018 索引；
-    // 拨回夹具须同口径，否则重跑 0018 撞「index already exists」）。
+    // 拨回夹具须同口径，否则重跑 0018 撞「index already exists」、重跑 0020
+    // 撞「duplicate column name」）。
     let db = dir.path().join("vault.db");
     let conn = rusqlite::Connection::open(&db).unwrap();
     conn.execute_batch(
         "UPDATE meta SET value='11' WHERE key='schema_version';
          ALTER TABLE hosts DROP COLUMN is_production;
+         ALTER TABLE notifications DROP COLUMN delivery_failures;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;",
     )

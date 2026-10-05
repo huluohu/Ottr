@@ -776,3 +776,49 @@ fn import_severs_parent_cycles_in_corrupt_snapshot() {
         .expect("child-of-cycle 的 parent 引用保留");
     assert!(parent.name == "a" || parent.name == "b");
 }
+
+/// BL-206：导入**写入段**中途失败的反馈——错误必须带「失败在哪个分类」的
+/// 上下文（此前裸穿 rusqlite 原文，UI/日志无法定位坏在哪一类），且单事务
+/// 原子回滚语义不变。构造：手工快照携带两个同级同名根分组（0018 部分唯一
+/// 索引在第二条 INSERT 上失败——parse/预校验全过、写段才炸的 exactly 场景）。
+#[test]
+fn import_mid_write_failure_names_category_and_rolls_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault_b = open_vault(dir.path());
+    HostGroups::create(&vault_b, "survivor", None, None).unwrap();
+
+    let snap = json!({
+        "version": SYNC_DATA_VERSION,
+        "categories": {
+            "host_groups": [
+                { "id": 1, "name": "dup", "parent_id": null, "color": null,
+                  "created_at": 1, "updated_at": 1 },
+                { "id": 2, "name": "dup", "parent_id": null, "color": null,
+                  "created_at": 2, "updated_at": 2 }
+            ]
+        }
+    });
+    let err = sync_snapshot::import_categories(
+        &vault_b,
+        &["host_groups".to_string()],
+        &snap,
+        SyncImportMode::Replace,
+    )
+    .unwrap_err();
+    match &err {
+        VaultError::ImportStep { category, source } => {
+            assert_eq!(category, "host_groups");
+            assert!(
+                source.to_string().to_lowercase().contains("unique"),
+                "底层错误可经 source 追溯，实际 {source}"
+            );
+        }
+        other => panic!("expected ImportStep, got {other:?}"),
+    }
+    // Display 面直接带分类（错误直达 UI/日志时可定位）。
+    assert!(err.to_string().contains("host_groups"), "{}", err);
+    // 原子回滚不变：既有分组幸存、快照零落库。
+    let groups = HostGroups::list(&vault_b).unwrap();
+    assert_eq!(groups.len(), 1, "快照写入必须整体回滚");
+    assert_eq!(groups[0].name, "survivor");
+}

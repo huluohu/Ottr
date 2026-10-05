@@ -27,20 +27,9 @@ fn pinned_host_key_policy() -> ottr_ssh::HostKeyPolicy {
         "/../../fixtures/known_hosts"
     ))
     .expect("read fixtures/known_hosts（先跑 scripts/spike-sshd.sh）");
-    let marker = format!("[{HOST}]:{PORT}");
-    let base64 = content
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .find(|l| l.split_whitespace().next() == Some(marker.as_str()))
-        .unwrap_or_else(|| panic!("known_hosts has no entry for {marker}"))
-        .split_whitespace()
-        .nth(2)
-        .expect("known_hosts line has base64 column")
-        .to_string();
-    let pinned = russh::keys::parse_public_key_base64(&base64).expect("parse pinned host key");
-    let pinned_fp = pinned.fingerprint(russh::keys::HashAlg::Sha256).to_string();
-    let pinned_for_cb = pinned_fp.clone();
+    let pinned_fp = ottr_ssh::known_hosts::fingerprint_for_host(&content, HOST, PORT)
+        .unwrap_or_else(|| panic!("known_hosts has no entry for [{HOST}]:{PORT}"));
+    let pinned_for_cb = pinned_fp;
     std::sync::Arc::new(move |fingerprint: &str| fingerprint == pinned_for_cb)
 }
 

@@ -20,7 +20,8 @@
 //     不进 prompt）；占位符原样进出（还原即泄露）；
 //   * BYOK 直连：明文 key 只经 vault secrets 单点出库 → createProvider 请求头；
 //   * ai.enabled **不管**本链路：该开关语义是「命令失败自动诊断」（设置页文案
-//     与 T13/T6 口径一致）；未配 provider 即天然全关——纪要无独立开关（挂账）。
+//     与 T13/T6 口径一致）；纪要独立开关 = `ai.summary.enabled`（BL-510④ 清偿，
+//     默认开，设置页同区可见）；未配 provider 即天然全关。
 //   * 无 abort：后台任务没有面板生命周期，进程退出即终止（LLM 端点超时自灭）。
 import i18n from "../i18n";
 import { notify } from "../notify/core";
@@ -77,8 +78,9 @@ export interface GenerateSummaryOptions {
  * 生成一条会话纪要（数据源 → 脱敏 → 单轮摘要 → 密文入库 → 通知）。
  * 返回是否生成成功（各失败分支 false；**恒不抛**——fire-and-forget 纪律，
  * 绝不反噬断开/关闭流程）。链路逐段静默：
- *   history 取数失败 / 命令数 < 3 / 未配 provider / key 读取失败 / 端点错误 /
- *   空回复 / 入库失败（vault 锁定等）→ false（console.warn 留痕）。
+ *   history 取数失败 / 命令数 < 3 / 未配 provider / vault 锁定（派发前闸门，
+ *   BL-510①）/ key 读取失败 / 端点错误 / 空回复 / 入库失败 → false
+ *   （console.warn 留痕）。
  */
 export async function generateSessionSummary(
   req: SessionEndInfo,
@@ -109,6 +111,27 @@ export async function generateSessionSummary(
     }
     const meta = settings.providers[0] ?? null;
     if (!meta) return false;
+
+    // --- 2.4 独立开关闸门（BL-510④）：ai.summary.enabled 只管本链路（诊断链
+    // 的 ai.enabled 语义不变）；关闭 = 用户裁量不出网，静默 false 即可。
+    if (!settings.summaryEnabled) return false;
+
+    // --- 2.5 锁定态前置闸门（BL-510①）：vault 锁定时 summary_insert 必被拒
+    // （密文面过 ensure_unlocked 门卫）——现状是请求已发出、入库被拒静默丢，
+    // 还会留下一条「纪要就绪」的谎报通知。派发前先查锁定态：锁定即止损不出网，
+    // 失败原因 console.warn 留痕（不静默）。查询本身失败同样跳过（fail-closed
+    // ——宁可漏一条尽力而为的纪要，不赌一次白烧；insert 门卫仍是权威边界）。
+    let lockStatus;
+    try {
+      lockStatus = await vaultApi.security.status();
+    } catch (e) {
+      console.warn("[summary] lock status unavailable, skip:", e);
+      return false;
+    }
+    if (lockStatus?.locked) {
+      console.warn("[summary] vault locked, skip summary (insert would be rejected)");
+      return false;
+    }
 
     // --- 3. 明文 key 单点出库（空串 = 免 key 端点，同 aiStore fix 1/5 I-1）---
     let apiKey: string;
@@ -173,12 +196,23 @@ export async function generateSessionSummary(
 }
 
 /**
+ * 同 session 在途去抖表（BL-510③）：disconnect 与 closeTab 双路径都会对同一
+ * 会话派发收尾（先断开再关标签的常见时序）——在途期间第二次派发直接复用首次
+ * 的生成（不重复出网、不重复入库；现状靠 UNIQUE upsert 兜底 = 白烧一次 LLM）。
+ * 结算即出表：后续新收尾照常重新生成。
+ */
+const inFlight = new Map<string, Promise<boolean>>();
+
+/**
  * 会话收尾入口（SessionStore 钩子；App 注入 setSessionEndHook）。
  * fire-and-forget：同步返回，失败静默——调用方（closeTab/disconnect 状态机）
  * 不感知纪要链路的存在。
  */
 export function onSessionEnded(info: SessionEndInfo): void {
-  void generateSessionSummary(info).catch((e) => {
+  if (inFlight.has(info.id)) return; // 在途：复用首次生成的结果，不重复派发
+  const p = generateSessionSummary(info);
+  inFlight.set(info.id, p);
+  void p.finally(() => inFlight.delete(info.id)).catch((e) => {
     console.warn("[summary] session end chain failed:", e);
   });
 }

@@ -3431,6 +3431,7 @@ dependencies = [
  "russh",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2 0.10.9",
  "tauri",
  "tauri-build",
@@ -3446,11 +3447,9 @@ dependencies = [
 name = "ottr-bench"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "ottr-ssh",
  "ottr-transfer",
  "russh",
- "sha2 0.10.9",
  "tokio",
 ]
 
@@ -3472,10 +3471,12 @@ dependencies = [
 name = "ottr-ssh"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "ottr-term",
  "rand 0.10.3",
  "russh",
  "serde",
+ "sha2 0.10.9",
  "tokio",
  "tokio-util",
 ]
@@ -3487,7 +3488,6 @@ dependencies = [
  "encoding_rs",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -4936,6 +4936,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
 name = "serdect"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6136,6 +6149,12 @@ dependencies = [
  "crypto-common 0.2.2",
  "ctutils",
 ]
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"

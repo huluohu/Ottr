@@ -16,8 +16,7 @@ import {
   TERMINAL_THEME_GALLERY,
   type TerminalThemeDef,
 } from "../theme/gallery";
-import { parseItermColors } from "../theme/importers/iterm";
-import { parseWintermSchemes } from "../theme/importers/winterm";
+import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
@@ -34,8 +33,21 @@ export interface SecuritySettingsProps {
 
 const REENCRYPT_EVENT = "ottr://reencrypt-progress";
 
-/** 主密码最小长度（Rust MASTER_PASSWORD_MIN_LEN 同口径，双端校验）。 */
-const MIN_MASTER_PASSWORD = 8;
+/**
+ * 主密码最小长度（BL-202 双端口径）：**同值同语义**对齐 Rust 权威校验
+ * `ottr-vault store.rs::MASTER_PASSWORD_MIN_LEN`（值同为 8）。
+ *
+ * 语义 = **Unicode 码点数**（Rust `chars().count()`），不是 JS `.length`
+ * （UTF-16 码元数，增补平面字符计 2）——预检比权威门卫严一格或松一格都会
+ * 出现「前端放行、后端拒绝」的分叉体验（如 4 个 emoji：.length=8、码点=4）。
+ * 预检只是 UX 提前拦截，Rust 校验仍是权威（绕过前端直连 IPC 也拦得住）。
+ */
+export const MIN_MASTER_PASSWORD = 8;
+
+/** 主密码长度计量：Unicode 码点数（与 Rust `chars().count()` 同口径，见上）。 */
+function masterPasswordCodePoints(s: string): number {
+  return [...s].length;
+}
 
 const AUTOLOCK_CHOICES = [0, 1, 5, 10, 30] as const; // 分钟；0 = 关
 const CLIPBOARD_CHOICES = [0, 10, 30, 60] as const; // 秒；0 = 关
@@ -156,7 +168,9 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   if (!open) return null;
 
   function validate(): string | null {
-    if (password.length < MIN_MASTER_PASSWORD) {
+    // 码点口径（BL-202）：见 MIN_MASTER_PASSWORD 文档——`.length` 是 UTF-16
+    // 码元数，与 Rust 权威校验的 chars().count() 在增补平面字符上分歧。
+    if (masterPasswordCodePoints(password) < MIN_MASTER_PASSWORD) {
       return t("security.wizard.errTooShort", { min: MIN_MASTER_PASSWORD });
     }
     if (password !== confirm) {
@@ -199,36 +213,20 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
     }
   }
 
-  /** 配色文件导入（B2 Step 3）：按扩展名分派解析器——.itermcolors 走 iTerm2
-   * plist，.json 走 Windows Terminal scheme；其余形态先按 JSON 试、失败再按
-   * plist 试（用户改扩展名的常见习惯）。多 scheme 全部入库，选中间第一个。 */
+  /** 配色文件导入（B2 Step 3）：解析分流收口在 theme/importers（BL-512 起
+   * 字节级嗅探——bplist00 魔数走二进制 plist 解析器，扩展名无关；文本按
+   * 扩展名 .itermcolors/.json/回退链分派）。多 scheme 全部入库，选中间第一个。 */
   async function importThemeFile(file: File | undefined) {
     if (!file) return;
     setThemeImportError(null);
     setThemeImportedCount(null);
     try {
-      const text = await file.text();
-      const lower = file.name.toLowerCase();
+      const bytes = new Uint8Array(await file.arrayBuffer());
       const stamp = Date.now();
-      let defs: TerminalThemeDef[];
-      if (lower.endsWith(".itermcolors")) {
-        const parsed = parseItermColors(text);
-        defs = [{ id: `custom-${stamp}-0`, ...parsed }];
-      } else if (lower.endsWith(".json")) {
-        defs = parseWintermSchemes(text).schemes.map((s, i) => ({
-          id: `custom-${stamp}-${i}`,
-          ...s,
-        }));
-      } else {
-        try {
-          defs = parseWintermSchemes(text).schemes.map((s, i) => ({
-            id: `custom-${stamp}-${i}`,
-            ...s,
-          }));
-        } catch {
-          defs = [{ id: `custom-${stamp}-0`, ...parseItermColors(text) }];
-        }
-      }
+      const defs: TerminalThemeDef[] = parseThemeFileBytes(file.name, bytes).map((s, i) => ({
+        id: `custom-${stamp}-${i}`,
+        ...s,
+      }));
       const { addCustom, select } = useTerminalThemeStore.getState();
       for (const def of defs) addCustom(def);
       select(defs[0].id); // 多 scheme 导入选中间第一个（其余在清单可选）

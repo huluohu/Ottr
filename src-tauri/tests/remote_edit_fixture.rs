@@ -497,3 +497,57 @@ async fn oversize_edit_is_rejected() {
     let _ = exec(&session, &format!("rm -f {remote}")).await;
     let _ = session.disconnect().await;
 }
+
+/// BL-506 二进制嗅探（TDD 红）：远端含 NUL 字节的文件 → edit_open 以
+/// `binary_file` 稳定令牌拒绝（TS FilePanel 按令牌映射专用提示），不落临时
+/// 副本、不登记会话；纯文本对照面照常打开（同会话 id，互不影响）。
+#[tokio::test]
+async fn edit_open_rejects_binary_remote_file() {
+    fixture_or_panic().await;
+    let session = connect_fixture().await;
+    let client = SftpClient::open(&session).await.expect("sftp open");
+
+    let sid = format!("e2e-bin-{}", std::process::id());
+    let remote = format!("/tmp/ottr-t3-bin-{}.bin", std::process::id());
+    let edits: EditMap = EditMap::default();
+
+    // 真二进制（含 NUL）远端文件——独立通道建立（ground truth 不经被测代码）
+    exec(&session, &format!("printf 'bin\\x0001' > {remote}")).await;
+
+    let err = edit_open(&edits, &client, &sid, &remote)
+        .await
+        .err()
+        .expect("binary remote must be rejected");
+    assert!(
+        err.starts_with("binary_file"),
+        "stable token for TS mapping, got: {err}"
+    );
+    assert!(
+        !edits
+            .lock()
+            .unwrap()
+            .get(&sid)
+            .is_some_and(|m| m.contains_key(&remote)),
+        "no edit session may be registered for a binary file"
+    );
+    assert!(
+        !temp_path_for(&sid, &remote).exists(),
+        "no temp copy may be left behind for a binary file"
+    );
+
+    // 对照：纯文本照常打开（探针不误伤文本）
+    let text_remote = format!("/tmp/ottr-t3-bin-{}.txt", std::process::id());
+    exec(&session, &format!("printf 'plain\\n' > {text_remote}")).await;
+    let temp = edit_open(&edits, &client, &sid, &text_remote)
+        .await
+        .expect("text file opens normally");
+    assert_eq!(
+        std::fs::read(&temp).expect("read temp"),
+        b"plain\n",
+        "text download unaffected by the probe"
+    );
+    assert!(edit_close(&edits, &sid, &text_remote));
+
+    let _ = exec(&session, &format!("rm -f {remote} {text_remote}")).await;
+    let _ = session.disconnect().await;
+}

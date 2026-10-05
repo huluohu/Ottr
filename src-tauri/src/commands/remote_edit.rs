@@ -46,6 +46,25 @@ use super::state::AppState;
 /// files.editTooLarge），不静默吞大文件也不给它一条 2s 全量回传的通道。
 pub const MAX_EDIT_BYTES: u64 = 10 * 1024 * 1024;
 
+/// BL-506 二进制嗅探探针窗口（字节）：edit_open 只看下载内容的**首块**——
+/// 文本文件的 NUL（若有）几乎总在头部的 BOM/编码痕迹里；首块干净即放行
+/// （大文本后段嵌 NUL 不挡开编辑）。8192 = 常见文本头（含 shebang/BOM/
+/// frontmatter）与探针成本的折中。
+pub const BINARY_SNIFF_BYTES: usize = 8192;
+
+/// BL-506 二进制拒绝的稳定错误令牌：edit_open 命中探针时错误串以此为前缀，
+/// TS FilePanel.startEditing 按令牌映射专用提示（`files.editBinary`）——与
+/// 「too large」同款令牌识别形态，消息其余部分只有远端路径（无其他敏感面）。
+pub const ERR_BINARY_FILE: &str = "binary_file";
+
+/// BL-506 纯判定（单测面）：首块含 NUL 字节 → 疑似二进制。裁定口径「提示 +
+/// 放弃，不做强制编辑」：编辑器打开二进制易损坏（编码器重排/截断），宁在
+/// 门口拦下。已知边界：UTF-16 文本天然含 NUL 会被误报——按同口径可接受。
+pub fn looks_binary(data: &[u8]) -> bool {
+    let probe = &data[..data.len().min(BINARY_SNIFF_BYTES)];
+    probe.contains(&0u8)
+}
+
 // ---------------------------------------------------------------------------
 // 状态与纯函数（单测面，无 SFTP / 无 Tauri 依赖）
 // ---------------------------------------------------------------------------
@@ -266,6 +285,12 @@ pub async fn edit_open(
         .open_remote_text(remote)
         .await
         .map_err(|e| e.to_string())?;
+    // BL-506 二进制嗅探：落临时副本**之前**探首块 NUL——命中即在门口拒绝
+    // （零残留：无临时件、无表项，无需 edit_close 清理），错误以
+    // ERR_BINARY_FILE 令牌前缀回传（TS 映射 files.editBinary 专用提示）。
+    if looks_binary(&data) {
+        return Err(format!("{ERR_BINARY_FILE}: {remote}"));
+    }
     let temp_path = temp_path_for(id, remote);
     if let Some(parent) = temp_path.parent() {
         ensure_private_dir_chain(parent).map_err(|e| format!("create_dir_all {parent:?}: {e}"))?;
@@ -934,6 +959,35 @@ mod tests {
         ));
         assert_eq!(entry2.saved_local, at_read);
         assert_eq!(entry2.pending, None);
+    }
+
+    /// BL-506 二进制嗅探（TDD 红）：首块 NUL 探针纯判定——含 NUL → true
+    /// （疑似二进制），纯文本/空文件 → false；探针窗口边界：窗口内末字节
+    /// NUL 命中、窗口外 NUL 不算（大文本后段嵌 NUL 不至于挡开编辑——探针
+    /// 是「宁放弃勿损坏」的首因筛，不是全量判定）。
+    #[test]
+    fn binary_sniff_first_block_nul() {
+        assert!(looks_binary(b"hello\0world"));
+        assert!(looks_binary(&[0u8]));
+        assert!(!looks_binary(b"plain text\nwith lines\n"));
+        assert!(!looks_binary(b""), "empty file opens fine");
+        assert!(!looks_binary(&vec![b'a'; BINARY_SNIFF_BYTES]));
+        let edge_inside = {
+            let mut v = vec![b'a'; BINARY_SNIFF_BYTES];
+            let last = v.len() - 1;
+            v[last] = 0;
+            v
+        };
+        assert!(
+            looks_binary(&edge_inside),
+            "NUL on the last probe byte hits"
+        );
+        let edge_outside = {
+            let mut v = vec![b'a'; BINARY_SNIFF_BYTES + 1];
+            v[BINARY_SNIFF_BYTES] = 0;
+            v
+        };
+        assert!(!looks_binary(&edge_outside), "NUL beyond the window misses");
     }
 
     /// Fix round 1 I-2：临时目录链 0700、副本文件 0600（unix）；递归创建的

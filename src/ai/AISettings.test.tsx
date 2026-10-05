@@ -31,6 +31,7 @@ function backendInvoke(cmd: string, args?: { key?: string }) {
     case "settings_get":
       if (args?.key === "ai_providers") return Promise.resolve(EXISTING);
       if (args?.key === "ai.enabled") return Promise.resolve(true);
+      if (args?.key === "ai.summary.enabled") return Promise.resolve(true);
       if (args?.key === "redaction")
         return Promise.resolve({ hostname: true, custom: [] });
       if (args?.key === "ai.max_tokens") return Promise.resolve(1024);
@@ -124,6 +125,46 @@ describe("provider 列表与 CRUD", () => {
     const secretCall = mockedInvoke.mock.calls.find(([c]) => c === "secret_set");
     expect(secretCall?.[1].value).toBe("sk-new");
     expect(String(secretCall?.[1].key)).toMatch(/^ai\.apikey\.prov-/);
+  });
+
+  it("智谱预设：按钮渲染（i18n 展示名）+ 点击填 baseURL 与默认模型 glm-4-flash（BL-404 R5 前置）", async () => {
+    render(<AISettings open onClose={() => {}} />);
+    fireEvent.click(await screen.findByTestId("ai-add-provider"));
+    // 预设按钮沿既有 ai-preset-{key} 形态自动出现；展示名走 i18n（zh：智谱 GLM）
+    const btn = screen.getByTestId("ai-preset-zhipu");
+    expect(btn.textContent).toBe("智谱 GLM");
+    fireEvent.click(btn);
+    expect((screen.getByTestId("ai-field-baseurl") as HTMLInputElement).value).toBe(
+      "https://open.bigmodel.cn/api/paas/v4",
+    );
+    // 默认模型随手填（仅 draft.model 为空时；既有 preset 不带默认模型不受影响）
+    expect((screen.getByTestId("ai-field-model") as HTMLInputElement).value).toBe("glm-4-flash");
+    // 预设仅 baseURL/模型捷径，不含 key（key 走 vault secrets，表单留空可保存）
+    expect((screen.getByTestId("ai-field-apikey") as HTMLInputElement).value).toBe("");
+    fireEvent.change(screen.getByTestId("ai-field-name"), { target: { value: "智谱" } });
+    fireEvent.click(screen.getByTestId("ai-form-save"));
+    await waitFor(() => {
+      const setCall = mockedInvoke.mock.calls.find(([c]) => c === "settings_set");
+      const saved = (setCall?.[1].value as { name: string; baseURL: string; model: string }[])[1];
+      expect(saved).toMatchObject({
+        name: "智谱",
+        kind: "openai-compatible",
+        baseURL: "https://open.bigmodel.cn/api/paas/v4",
+        model: "glm-4-flash",
+      });
+    });
+    // 无 key 的新建 openai 兼容 provider 允许保存（同 Ollama 口径）：无 secret_set
+    expect(mockedInvoke.mock.calls.some(([c]) => c === "secret_set")).toBe(false);
+  });
+
+  it("既有 preset 不受默认模型面影响（ollama 只填 baseURL）", async () => {
+    render(<AISettings open onClose={() => {}} />);
+    fireEvent.click(await screen.findByTestId("ai-add-provider"));
+    fireEvent.click(screen.getByTestId("ai-preset-ollama"));
+    expect((screen.getByTestId("ai-field-baseurl") as HTMLInputElement).value).toBe(
+      "http://localhost:11434/v1",
+    );
+    expect((screen.getByTestId("ai-field-model") as HTMLInputElement).value).toBe("");
   });
 
   it("删除 provider → 列表移除 + secret_delete（防孤儿密文）", async () => {
@@ -222,6 +263,19 @@ describe("通用", () => {
     await waitFor(() => {
       const call = mockedInvoke.mock.calls.find(
         ([c, a]) => c === "settings_set" && (a as { key?: string })?.key === "ai.enabled",
+      );
+      expect(call?.[1].value).toBe(false);
+    });
+  });
+
+  it("ai.summary.enabled 开关落库（BL-510④：纪要独立开关）", async () => {
+    render(<AISettings open onClose={() => {}} />);
+    const box = (await screen.findByTestId("ai-summary-enabled")) as HTMLInputElement;
+    expect(box.checked).toBe(true); // 默认开
+    fireEvent.click(box);
+    await waitFor(() => {
+      const call = mockedInvoke.mock.calls.find(
+        ([c, a]) => c === "settings_set" && (a as { key?: string })?.key === "ai.summary.enabled",
       );
       expect(call?.[1].value).toBe(false);
     });

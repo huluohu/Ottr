@@ -36,9 +36,13 @@ impl Cipher {
     }
 
     /// 密封：随机 96-bit nonce 前置入 blob。正常存储路径一律用本方法。
+    ///
+    /// nonce 采样走 [`fill_os`]（BL-206：密钥面随机直接采 OS CSPRNG——GCM
+    /// nonce 重用是灾难级失败模式，采样源越短越好）。测试确定性路径走
+    /// [`Self::seal_with_nonce`]。
     pub fn seal(&self, plaintext: &[u8], aad: &str) -> Result<Vec<u8>, VaultError> {
         let mut nonce = [0u8; NONCE_LEN];
-        rand::fill(&mut nonce);
+        fill_os(&mut nonce);
         self.seal_with_nonce(&nonce, plaintext, aad)
     }
 
@@ -92,4 +96,17 @@ impl Cipher {
 /// `credentials:{id}:secret|passphrase|totp_secret`。
 pub fn aad(table: &str, row_id: impl std::fmt::Display, field: &str) -> String {
     format!("{table}:{row_id}:{field}")
+}
+
+/// 密钥面随机填充（BL-206）：**直接采操作系统 CSPRNG**。rand 0.10 起原
+/// OsRng 概念由 [`rand::rngs::SysRng`](rand::rngs::SysRng)（getrandom 直通、
+/// fallible）承担，经 `rand_core::UnwrapErr` 适配为失败即 panic 的无错 Rng
+/// ——OS 熵源失败是进程不可继续的灾难，宁可 panic 绝不静默降级；相对旧
+/// `rand::fill`（ThreadRng 用户态缓冲）去掉了密钥面随机与 OS 熵源之间的
+/// 中间层。密钥面场景：GCM nonce（本 crate）、Master Key（master_key.rs）、
+/// KDF 盐（store.rs 两处）。
+pub(crate) fn fill_os(dst: &mut [u8]) {
+    use rand::rand_core::UnwrapErr;
+    use rand::Rng as _;
+    UnwrapErr(rand::rngs::SysRng).fill_bytes(dst);
 }

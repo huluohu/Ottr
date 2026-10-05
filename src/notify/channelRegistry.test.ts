@@ -73,6 +73,7 @@ const row: Notification = {
   payload: { rule_id: 1 },
   read: false,
   ts: 1000,
+  delivery_failures: null,
 };
 
 describe("真实挂载链（factory → mountOne 改名装饰 → send → 回执/重发）", () => {

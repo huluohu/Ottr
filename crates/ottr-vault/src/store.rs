@@ -43,7 +43,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 18;
+pub const LATEST_SCHEMA_VERSION: u32 = 20;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -62,7 +62,12 @@ fn verifier_aad() -> String {
 /// Argon2id 盐长度（128-bit，随机生成；NIST SP 800-132 推荐档）。
 const KDF_SALT_LEN: usize = 16;
 /// 主密码最小长度。空密码/一位数字把「全库凭据」押在花生壳上——显式拒绝；
-/// 上限不设（密码短语欢迎）。UI 侧同口径校验（security.wizard.errTooShort）。
+/// 上限不设（密码短语欢迎）。
+///
+/// **双端口径（BL-202）**：本侧是权威校验，计量 = `chars().count()`（Unicode
+/// 码点数）；前端预检（src/security/SecuritySettings.tsx `MIN_MASTER_PASSWORD`）
+/// 同值同语义（码点口径，非 JS `.length` 的 UTF-16 码元数——增补平面字符两边
+/// 才不会分叉）。预检只为 UX 提前拦截，绕过前端直连 IPC 仍由本侧拦截。
 pub const MASTER_PASSWORD_MIN_LEN: usize = 8;
 
 /// 主密钥来源模式（语义矩阵见模块文档与 task-11-report）。
@@ -120,7 +125,12 @@ impl KeyMode {
 /// 默认全拒；明文面，无 *_enc 列，不动 scan_registry；协议引擎在
 /// src-tauri commands/mcp.rs，见迁移文件头）；0018 host_groups 同级同名
 /// 唯一（Phase 5 Task 0，BL-109 ②——两条部分唯一索引 + 存量同名保行改名
-/// 去重，明文面，无 *_enc 列，不动 scan_registry，见迁移文件头）。
+/// 去重，明文面，无 *_enc 列，不动 scan_registry，见迁移文件头）；
+/// 0019 FK 子列索引补齐（BL-206——0002/0005 漏配的 5 个 FK 子列各补普通
+/// 索引，删父行的 ON DELETE 动作不再全表扫；明文面，不动 scan_registry，
+/// 见迁移文件头）；0020 通知投递失败标记列（BL-530——notifications 补
+/// delivery_failures JSON 列，渠道投递终败标记/翻正/清账落库，重启不丢；
+/// 明文面，不动 scan_registry，见迁移文件头）。
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("../migrations/0001_init.sql")),
     (2, include_str!("../migrations/0002_entities.sql")),
@@ -148,6 +158,20 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         18,
         include_str!("../migrations/0018_host_groups_unique_name.sql"),
+    ),
+    // 0019 FK 子列索引补齐（BL-206）：0002/0005 漏配的 5 个 FK 子列
+    // （host_groups.parent_id、hosts.group_id/credential_id、
+    // snippets.host_scope、notifications.host_id）——父行删除的 ON DELETE
+    // 动作要按子列找引用行，无索引 = 全表扫。明文面，无 *_enc 列，不动
+    // scan_registry（见迁移文件头）。
+    (19, include_str!("../migrations/0019_fk_child_indexes.sql")),
+    // 0020 通知投递失败标记列（BL-530）：渠道投递终败标记此前是纯前端会话
+    // 内账本（重启丢失）——delivery_failures JSON 列落库后，标记/翻正/清账
+    // 经 Rust mark/clear 命令面写穿，重启 refresh 恢复标记与重发入口。
+    // 明文面，无 *_enc 列，不动 scan_registry（见迁移文件头）。
+    (
+        20,
+        include_str!("../migrations/0020_notification_delivery_failures.sql"),
     ),
 ];
 
@@ -372,7 +396,9 @@ impl Vault {
             // salt + verifier 与模式记录一个事务落盘。
             (None, None) => {
                 let mut salt = [0u8; KDF_SALT_LEN];
-                rand::fill(&mut salt);
+                // OS CSPRNG 直采（BL-206，见 crypto::fill_os）：KDF 盐是
+                // 密钥面随机——Argon2id 派生输入，盐可预测 = 主密码强度折扣。
+                crate::crypto::fill_os(&mut salt);
                 let cipher = derive_cipher(password, &salt)?;
                 let verifier = cipher.seal(VERIFIER_PLAINTEXT, &verifier_aad())?;
                 (cipher, Some(hex::encode(salt)), Some(hex::encode(verifier)))
@@ -435,7 +461,8 @@ impl Vault {
         let old = self.cipher()?; // 锁定 → Locked
 
         let mut salt = [0u8; KDF_SALT_LEN];
-        rand::fill(&mut salt);
+        // OS CSPRNG 直采（BL-206，见 crypto::fill_os）：同 unlock 首解锁路径。
+        crate::crypto::fill_os(&mut salt);
         // 盐的清理收口（fix 1/5 M-4）：闭包内任何错误早退路径统一清零后返回
         // ——盐虽随密文明文落盘（非密级），但清零是零成本的纵深防御。
         let outcome = (|| -> Result<usize> {

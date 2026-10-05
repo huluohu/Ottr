@@ -8,6 +8,7 @@ pub mod alert_rules;
 pub mod cron_jobs;
 pub mod crypto;
 pub mod entities;
+pub mod export;
 pub mod forwards;
 pub mod history;
 pub mod jump_chains;
@@ -24,11 +25,13 @@ pub mod summaries;
 pub mod sync_snapshot;
 
 pub use crypto::{aad, Cipher};
+// 主机清单 CSV 导出（BL-206：join/序列化随实体同库可单测；src-tauri 只管路径与落盘）
 pub use entities::{
     host_endpoint_key, parse_endpoint_key, Credential, CredentialInput, CredentialKind,
     CredentialPatch, Credentials, Host, HostGroup, HostGroups, HostInput, HostProtocol, Hosts,
     KnownHost, KnownHostState, KnownHosts, SecretField, Snippet, SnippetInput, Snippets,
 };
+pub use export::hosts_csv;
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};
 pub use history::{
     History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT,
@@ -36,7 +39,7 @@ pub use history::{
 };
 pub use jump_chains::{JumpChain, JumpChainInput, JumpChains};
 pub use master_key::MasterKey;
-pub use notifications::{Notification, NotificationInput, Notifications};
+pub use notifications::{DeliveryFailure, Notification, NotificationInput, Notifications};
 pub use notify_channels::{
     NotifyChannel, NotifyChannelInput, NotifyChannelPatch, NotifyChannels, CHANNEL_KINDS,
 };
@@ -101,6 +104,16 @@ pub enum VaultError {
     MasterKeyUnreachable,
     /// JSON 序列化/反序列化失败（tags/variables 等 JSON 列）。
     Json(serde_json::Error),
+    /// 同步快照导入**写入段**中途失败（BL-206 反馈面）：单事务原子回滚不变，
+    /// `category` 指明失败发生在哪个分类的写入（"host_groups"/"hosts"/…）——
+    /// 此前中途的 SQL/密封错误裸穿原文、无位置可循；底层原因经 `source`
+    /// 可追溯（`Display` 同样带分类前缀，直达 UI/日志即可定位）。
+    ImportStep {
+        /// 失败发生的写入分类（SYNC_CATEGORIES 之一或 "replace-delete"）。
+        category: String,
+        /// 底层错误（Sql/Json/Crypto…）。
+        source: Box<VaultError>,
+    },
 }
 
 impl fmt::Display for VaultError {
@@ -137,6 +150,9 @@ impl fmt::Display for VaultError {
                  restore the keychain service to open this vault"
             ),
             Self::Json(e) => write!(f, "json error: {e}"),
+            Self::ImportStep { category, source } => {
+                write!(f, "sync import failed while writing {category}: {source}")
+            }
         }
     }
 }
@@ -148,6 +164,7 @@ impl std::error::Error for VaultError {
             Self::Sql(e) => Some(e),
             Self::Keyring(e) => Some(e),
             Self::Json(e) => Some(e),
+            Self::ImportStep { source, .. } => Some(source.as_ref()),
             _ => None,
         }
     }

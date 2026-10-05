@@ -1,6 +1,7 @@
 // ImportDialog（Task 5 Step 3 → Phase 2 Task 10 扩展）：多来源一次性导入 +
 // 完成报告对话框。来源（B3 迁移导入器）：~/.ssh/config / Xshell 会话目录 /
-// Tabby 配置 JSON——Rust 侧四命令同构 ImportReport，报告展示零特判。
+// Tabby 配置（JSON/YAML，BL-513 补 YAML 形态）——Rust 侧四命令同构
+// ImportReport，报告展示零特判。
 // 报告展示（裁定 #4）：新增 N、跳过 N（ssh=通配 pattern；xshell/tabby=不可用
 // 条目/文件，分列）、解析错误行列表。导入成功后刷新 store（新主机立即可见）。
 import { useState } from "react";
@@ -47,7 +48,9 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
           : {
               multiple: false,
               title: t("importDialog.pickFile"),
-              filters: [{ name: "Tabby config", extensions: ["json"] }],
+              // BL-513：Tabby 生产配置是 YAML（~/.config/tabby/config.yaml）——
+              // 对话框放行 yaml/yml，Rust 侧按内容嗅探 JSON/YAML
+              filters: [{ name: "Tabby config", extensions: ["json", "yaml", "yml"] }],
             },
       );
       if (typeof picked === "string") setPickedPath(picked);

@@ -186,6 +186,21 @@ impl SshSession {
     }
 
     /// 记录的服务器主机公钥原始字节（ssh public key blob，TOFU 落库用）。
+    ///
+    /// **累积语义（BL-215 成文，行为不变）**——「何时重置、何时累积」：
+    /// * **每条连接一个独立缓冲**：缓冲在 [`handshake_parts`] 里新建，随该次
+    ///   `connect*` 的 Handler 走；新连接（直连/隧道每一跳）都是空缓冲起步，
+    ///   **绝不跨连接累积**——「会话表里每条 SshSession 的字节流」互不相干。
+    /// * **连接内只增不减（append-only）**：[`crate::auth`] 的
+    ///   `check_server_key` 对每次密钥交换都 `extend_from_slice`——包括认证
+    ///   前的首次交换与**会话存续期内的每次 rekey**（SSH 传输层 rekey 会重新
+    ///   走主机密钥校验，russh 对此复用同一 Handler）。
+    /// * 因此本方法返回的是「连接生命周期内见过的**全部** key blob 按时间序
+    ///   拼接」，而 [`Self::host_key_fingerprint`] 取 `last()` = **当前活跃**
+    ///   服务的密钥。两者口径不同：落库/比对信任锚应认 `host_key_fingerprint`
+    ///   （或按 blob 长度切分取末段）；把 `host_key_bytes()` 当单条 key 解析
+    ///   在发生过 rekey 的连接上是错的（会是两段 blob 拼接）。
+    /// * 现状无进程内消费方（TOFU 落库走指纹面）；文档钉死口径供未来消费者。
     pub fn host_key_bytes(&self) -> Vec<u8> {
         self.host_key_bytes.lock().unwrap().clone()
     }

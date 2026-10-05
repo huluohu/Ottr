@@ -2,6 +2,8 @@
 spike_ed25519*
 hostkeys/
 known_hosts
+# spike-sshd.sh keyscan 循环的中转文件：sshd 未就绪时残留（BL-212，勿入库）
+known_hosts.tmp
 # ftpd 自签证书（spike-ftpd.sh 生成，勿入库）
 ftpd/cert.pem
 ftpd/key.pem

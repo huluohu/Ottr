@@ -134,6 +134,74 @@ describe("RemoteEditManager", () => {
     ).toBe(2);
   });
 
+  // --- BL-505：瞬态 stat 错误与确删边界（连续失败计数） ----------------------
+
+  it("瞬态 Err ×1：下轮重试恢复，不判 gone、轮询不断", async () => {
+    vi.useFakeTimers();
+    mockedInvoke.mockResolvedValue({ local_path: "/tmp/x" });
+    const onRemoteGone = vi.fn();
+    await remoteEdits.open("pty-0", "/a");
+    remoteEdits.callbacks = { onRemoteGone };
+    let flips = 0;
+    mockedInvoke.mockImplementation(() => {
+      flips += 1;
+      if (flips === 1) return Promise.reject(new Error("connection reset"));
+      return poll("quiet");
+    });
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS); // Err #1
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS); // 恢复 quiet
+    expect(onRemoteGone).not.toHaveBeenCalled();
+    expect(remoteEdits.isActive("pty-0", "/a")).toBe(true);
+    // 再走两轮照常轮询（失败计数已被成功清零）
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS * 2);
+    expect(
+      mockedInvoke.mock.calls.filter((c) => c[0] === "remote_edit_poll").length,
+    ).toBeGreaterThanOrEqual(4);
+  });
+
+  it("连续 Err ×3：判 gone 停轮询 + 一次性 onRemoteGone", async () => {
+    vi.useFakeTimers();
+    mockedInvoke.mockResolvedValue({ local_path: "/tmp/x" });
+    const onRemoteGone = vi.fn();
+    await remoteEdits.open("pty-0", "/a");
+    remoteEdits.callbacks = { onRemoteGone };
+    mockedInvoke.mockImplementation(() => Promise.reject(new Error("conn gone")));
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS);
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS);
+    expect(remoteEdits.isActive("pty-0", "/a")).toBe(true); // 2 连败仍容忍
+    expect(onRemoteGone).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS);
+    expect(remoteEdits.isActive("pty-0", "/a")).toBe(false); // 3 连败 → gone
+    expect(onRemoteGone).toHaveBeenCalledTimes(1);
+    expect(onRemoteGone).toHaveBeenCalledWith("pty-0", "/a");
+    const calls = mockedInvoke.mock.calls.filter((c) => c[0] === "remote_edit_poll").length;
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS * 2);
+    expect(
+      mockedInvoke.mock.calls.filter((c) => c[0] === "remote_edit_poll").length,
+    ).toBe(calls);
+  });
+
+  it("Err ×2 后成功：计数清零，后续单次 Err 不触发 gone", async () => {
+    vi.useFakeTimers();
+    mockedInvoke.mockResolvedValue({ local_path: "/tmp/x" });
+    const onRemoteGone = vi.fn();
+    await remoteEdits.open("pty-0", "/a");
+    remoteEdits.callbacks = { onRemoteGone };
+    let round = 0;
+    mockedInvoke.mockImplementation(() => {
+      round += 1;
+      if (round <= 2) return Promise.reject(new Error("jitter"));
+      return poll("quiet");
+    });
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS * 3); // err, err, ok
+    expect(onRemoteGone).not.toHaveBeenCalled();
+    // 计数已清零：再单败一次不得判 gone
+    mockedInvoke.mockImplementation(() => Promise.reject(new Error("jitter2")));
+    await vi.advanceTimersByTimeAsync(EDIT_POLL_MS);
+    expect(remoteEdits.isActive("pty-0", "/a")).toBe(true);
+    expect(onRemoteGone).not.toHaveBeenCalled();
+  });
+
   it("close：停轮询 + remote_edit_close；Rust 端已清理时报错幂等吞掉", async () => {
     vi.useFakeTimers();
     mockedInvoke.mockResolvedValue({ local_path: "/tmp/x" });

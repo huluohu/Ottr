@@ -129,12 +129,12 @@
     "source": "Source",
     "sourceSsh": "~/.ssh/config",
     "sourceXshell": "Xshell sessions folder",
-    "sourceTabby": "Tabby config (JSON)",
+    "sourceTabby": "Tabby config (JSON/YAML)",
     "pickFile": "Choose file…",
     "pickFolder": "Choose folder…",
     "skippedEntries": "Skipped {{count}} unusable entries/files",
     "xshellIntro": "Pick a folder of Xshell .xsh session files (or a single .xsh). Host/port/user are imported; duplicates by address+port+user are skipped.",
-    "tabbyIntro": "Pick a Tabby config JSON export. SSH profiles are imported; duplicates by address+port+user are skipped."
+    "tabbyIntro": "Pick a Tabby config export (JSON or YAML — ~/.config/tabby/config.yaml is YAML). SSH profiles are imported; duplicates by address+port+user are skipped."
   },
   "palette": {
     "title": "Command Palette",
@@ -268,6 +268,7 @@
     "errHostRequired": "Pick a target host first",
     "errAuthRequired": "Pick a login credential (password/key)",
     "errPubRequired": "Public key must be a single non-empty line",
+    "errUsernameRequired": "Host \"{{name}}\" has no username set — add one in the host form before deploying",
     "khOk": "verified",
     "khChanged": "changed",
     "khPending": "pending"
@@ -404,6 +405,8 @@
       "general": "General",
       "autoDiagnose": "Auto-diagnose failed commands",
       "autoDiagnoseHint": "When off, failed commands no longer open the panel automatically; right-click Explain still works.",
+      "summaryEnabled": "Session summaries",
+      "summaryEnabledHint": "After a session disconnects or its tab closes, AI generates a session summary in the background (visible in history ⌘R); turning this off stops generation and does not affect the auto-diagnose switch.",
       "maxTokens": "Max reply tokens",
       "providers": "Providers (BYOK, direct connection)",
       "byokHint": "API keys are stored encrypted in the local vault; requests go straight from this machine to the endpoint you configure — no Ottr relay server.",
@@ -415,6 +418,11 @@
       "kindOpenai": "OpenAI-compatible (OpenAI/DeepSeek/Ollama...)",
       "kindAnthropic": "Anthropic",
       "kindMock": "Mock (test endpoint)",
+      "presetOpenai": "OpenAI",
+      "presetDeepseek": "DeepSeek",
+      "presetOllama": "Ollama",
+      "presetAnthropic": "Anthropic",
+      "presetZhipu": "Zhipu GLM",
       "fieldBaseUrl": "Base URL",
       "fieldModel": "Model",
       "fieldApiKey": "API key",
@@ -489,6 +497,7 @@
     "editClosed": "Stopped editing \"{{name}}\"",
     "editFailed": "Edit failed: {{message}}",
     "editTooLarge": "\"{{name}}\" is too large to edit (limit 10 MB)",
+    "editBinary": "\"{{name}}\" looks like a binary file — not opened",
     "remoteGone": "Remote file \"{{name}}\" was deleted — editing stopped",
     "errOctalMode": "Permissions must be 3-4 octal digits (e.g. 644, 0755)",
     "opFailed": "Operation failed: {{message}}",
@@ -678,6 +687,7 @@
       "loading": "Unlocking the data vault…",
       "failedTitle": "Ottr could not open its data vault",
       "failedHint": "The system keychain may have denied access. Restart the app to retry; if it keeps failing, reinstall or contact support.",
+      "timeout": "Data vault initialization timed out (no response for {{seconds}} seconds).",
       "quit": "Quit"
     }
   },

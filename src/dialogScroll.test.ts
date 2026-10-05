@@ -50,6 +50,15 @@ describe("对话框滚动语义守卫（BL-526 + T5 披露）", () => {
     expect(appCss).toMatch(/\.dialog::-webkit-scrollbar-thumb[^{]*\{/);
   });
 
+  it("滚动条 thumb 走语义令牌 --border-subtle（终审备注：防裸色值回潜——thumb 在亮/暗主题都必须可辨且随主题联动）", () => {
+    const rule = ruleOf(appCss, ".dialog::-webkit-scrollbar-thumb");
+    expect(rule).not.toBeNull();
+    expect(rule).toContain("background: var(--border-subtle)");
+    // thumb 块内禁十六进制字面量（语义令牌纪律，沿 tokens.test 消费点口径）
+    expect(rule).toMatch(/background:\s*var\(--/);
+    expect(rule).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+  });
+
   it("SyncDialog / LockScreen 容器挂 .dialog 类（承接滚动语义，防类名漂移）", () => {
     expect(syncDialogTsx).toContain('"dialog settings-dialog"');
     expect(lockScreenTsx).toContain('"dialog lock-card"');

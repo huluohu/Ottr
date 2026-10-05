@@ -15,6 +15,10 @@ tokio-util = { version = "0.7", default-features = false }
 rand = "0.10"
 # Task 6：KeyMaterial/DeployOutcome 序列化面（src-tauri 命令直出）
 serde = { version = "1", features = ["derive"] }
+# BL-211 known_hosts 指纹解析（SHA256: + unpadded std-b64；base64/sha2 与
+# src-tauri 同版本，收敛前三处重复实现也是这两个 crate）
+base64 = "0.22"
+sha2 = "0.10"
 # 注：russh-sftp / futures 随 Task 8 sftp.rs 迁入 ottr-transfer（Task 10 Step 1），
 # 本 crate 不再直接依赖。
 

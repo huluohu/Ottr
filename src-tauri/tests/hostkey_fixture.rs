@@ -25,23 +25,16 @@ async fn fixture_up() -> bool {
     .unwrap_or(false)
 }
 
-/// fixtures/known_hosts 首条（端点行）→ SHA256 指纹（与 session.rs 同口径）。
+/// fixtures/known_hosts 端点行 → SHA256 指纹（BL-211 收敛点：走
+/// ottr_ssh::known_hosts::fingerprint_for_host 按端点过滤，marker/注释行不参与）。
 fn pinned_fingerprint() -> String {
     let content = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../fixtures/known_hosts"
     ))
     .expect("read fixtures/known_hosts —— 先跑 scripts/spike-sshd.sh");
-    let line = content
-        .lines()
-        .map(str::trim)
-        .find(|l| {
-            !l.is_empty()
-                && !l.starts_with('#')
-                && l.split_whitespace().next() == Some(ENDPOINT_KEY)
-        })
-        .unwrap_or_else(|| panic!("known_hosts has no entry for {ENDPOINT_KEY}"));
-    ottr_lib::keyscan_line_fingerprint(line).expect("fixture line yields fingerprint")
+    ottr_ssh::known_hosts::fingerprint_for_host(&content, "127.0.0.1", 2222)
+        .expect("known_hosts has an entry for [127.0.0.1]:2222")
 }
 
 fn open_vault(dir: &std::path::Path) -> ottr_vault::Vault {

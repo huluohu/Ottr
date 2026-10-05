@@ -129,12 +129,12 @@
     "source": "来源",
     "sourceSsh": "~/.ssh/config",
     "sourceXshell": "Xshell 会话目录",
-    "sourceTabby": "Tabby 配置（JSON）",
+    "sourceTabby": "Tabby 配置（JSON/YAML）",
     "pickFile": "选择文件…",
     "pickFolder": "选择目录…",
     "skippedEntries": "跳过 {{count}} 个不可用条目/文件",
     "xshellIntro": "选择 Xshell .xsh 会话文件所在目录（或单个 .xsh）。导入主机/端口/用户；按地址+端口+用户去重。",
-    "tabbyIntro": "选择 Tabby 配置 JSON 导出文件。导入其中 SSH 配置；按地址+端口+用户去重。"
+    "tabbyIntro": "选择 Tabby 配置导出文件（JSON 或 YAML，~/.config/tabby/config.yaml 即 YAML）。导入其中 SSH 配置；按地址+端口+用户去重。"
   },
   "palette": {
     "title": "命令面板",
@@ -267,6 +267,7 @@
     "errHostRequired": "先选择目标主机",
     "errAuthRequired": "选择登录目标机的凭据（password/key）",
     "errPubRequired": "公钥需为单行非空",
+    "errUsernameRequired": "主机「{{name}}」未配置用户名——请先在主机表单补上再部署",
     "khOk": "已核验",
     "khChanged": "已变更",
     "khPending": "未核验"
@@ -403,6 +404,8 @@
       "general": "通用",
       "autoDiagnose": "命令失败自动诊断",
       "autoDiagnoseHint": "关闭后命令失败不再自动打开诊断面板；右键「解释」仍然可用。",
+      "summaryEnabled": "会话纪要自动生成",
+      "summaryEnabledHint": "会话断开或关闭标签后，后台调用 AI 生成会话纪要（历史 ⌘R 可查）；关闭后不再生成，与「自动诊断」开关互不影响。",
       "maxTokens": "单次回复上限（tokens）",
       "providers": "Provider（自带密钥，直连）",
       "byokHint": "API Key 保存在本机 vault（加密），请求从本机直连你填写的端点——没有 Ottr 中转服务器。",
@@ -414,6 +417,11 @@
       "kindOpenai": "OpenAI 兼容（OpenAI/DeepSeek/Ollama…）",
       "kindAnthropic": "Anthropic",
       "kindMock": "Mock（测试端点）",
+      "presetOpenai": "OpenAI",
+      "presetDeepseek": "DeepSeek",
+      "presetOllama": "Ollama",
+      "presetAnthropic": "Anthropic",
+      "presetZhipu": "智谱 GLM",
       "fieldBaseUrl": "端点 Base URL",
       "fieldModel": "模型",
       "fieldApiKey": "API Key",
@@ -488,6 +496,7 @@
     "editClosed": "已停止编辑「{{name}}」",
     "editFailed": "编辑失败：{{message}}",
     "editTooLarge": "「{{name}}」超出编辑大小上限（10 MB）",
+    "editBinary": "「{{name}}」疑似二进制文件，未打开",
     "remoteGone": "远端「{{name}}」已被删除，已停止编辑",
     "errOctalMode": "权限需为 3-4 位八进制数（如 644、0755）",
     "opFailed": "操作失败：{{message}}",
@@ -677,6 +686,7 @@
       "loading": "正在解锁数据保险库…",
       "failedTitle": "Ottr 无法打开数据保险库",
       "failedHint": "可能是系统钥匙链拒绝了访问。请重启应用重试；若持续失败，请重新安装或联系支持。",
+      "timeout": "数据保险库初始化超时（{{seconds}} 秒无响应）。",
       "quit": "退出"
     }
   },

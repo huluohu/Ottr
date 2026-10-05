@@ -52,7 +52,9 @@ function channelIdOf(name: string): number | null {
 }
 
 /** 终局回执缺省实现：中心条目打「投递失败」标记（notificationId 缺 = ①落库
- * 已失败、无条目可挂——只记 console，尽力而为面不抛）。 */
+ * 已失败、无条目可挂——只记 console，尽力而为面不抛）。【BL-530】内存账本
+ * 同步入账后写穿落库；落库失败如实上抛——此处收敛为 console（尽力而为面），
+ * 内存账本保底本会话显示（UI 不谎报，见 core.ts 投递失败面注释）。 */
 function defaultGiveUp(report: DeliveryGiveUp): void {
   console.warn(`[notify] channel ${report.channel} delivery failed:`, report.error);
   recordDeliveryFailure(report.notificationId ?? null, {
@@ -60,12 +62,18 @@ function defaultGiveUp(report: DeliveryGiveUp): void {
     channel_id: channelIdOf(report.channel),
     error: report.error,
     ts: Math.floor(defaultDeps.now() / 1000),
+  }).catch((e) => {
+    console.warn("[notify] delivery-failure persistence failed:", e);
   });
 }
 
-/** 重试翻正缺省实现：清掉该渠道的失败标记（手动重发/后台重试翻正即销账）。 */
+/** 重试翻正缺省实现：清掉该渠道的失败标记（手动重发/后台重试翻正即销账）。
+ * 【BL-530】内存墓碑同步后写穿清库；清库失败收敛为 console（同上）。 */
 function defaultDelivered(report: DeliveryOk): void {
-  if (report.notificationId != null) clearDeliveryFailure(report.notificationId, report.channel);
+  if (report.notificationId == null) return;
+  clearDeliveryFailure(report.notificationId, report.channel).catch((e) => {
+    console.warn("[notify] delivery-failure clear failed:", e);
+  });
 }
 
 /** 装饰后的渠道（= NotificationChannel + flush 测试排水口）。 */

@@ -101,6 +101,12 @@ pub const HOSTKEY_AUDIT_INTERVAL_MAX_SECS: u64 = 7 * 24 * 3600;
 pub const SETTING_SUDO_AUTOFILL: &str = "security.sudo_autofill";
 /// MCP server 总开关（Phase 4 Task 3，C1）：默认关。
 pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
+/// ⌘R 历史保留行数上限（BL-205①）：滚动窗口按此值裁最旧；默认 =
+/// [`crate::history::HISTORY_KEEP_ROWS`]（5 万）。写入范围 100..=1_000_000
+/// （下限防 0/极小值把历史清成摆设，上限防误输入把库撑爆）。
+pub const SETTING_HISTORY_LIMIT: &str = "history.limit";
+pub const HISTORY_LIMIT_MIN: u64 = 100;
+pub const HISTORY_LIMIT_MAX: u64 = 1_000_000;
 /// AI 单请求 token 上限（Task 13 成本护栏）：写入侧上限 8192（缺省 1024）。
 pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
 
@@ -160,6 +166,18 @@ pub fn validate_known_setting(
         SETTING_SUDO_AUTOFILL => bool_value(key, value),
         // C1（Phase 4 Task 3）：MCP server 总开关（布尔；默认关）
         SETTING_MCP_ENABLED => bool_value(key, value),
+        // BL-205①：⌘R 历史保留行数上限（100..=1_000_000，见常量处注释）
+        SETTING_HISTORY_LIMIT => {
+            let n = value
+                .as_u64()
+                .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+            if !(HISTORY_LIMIT_MIN..=HISTORY_LIMIT_MAX).contains(&n) {
+                return Err(format!(
+                    "{SETTING_HISTORY_LIMIT} must be {HISTORY_LIMIT_MIN}-{HISTORY_LIMIT_MAX}, got {n}"
+                ));
+            }
+            Ok(())
+        }
         // Task 13：AI 成本护栏（单请求 max_tokens 上限）与诊断自动触发开关
         "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
         "ai.enabled" => bool_value(key, value),
@@ -184,5 +202,42 @@ pub fn validate_known_setting(
             }
         }
         _ => Ok(()), // 未注册键放行（settings 表是通用配置面）
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// BL-205①（TDD 红）：history.limit 写入侧校验——范围内放行，越界/类型错
+    /// 显式拒绝（settings_set 与 sync 分类导入共享本注册表，导入侧不得绕过）。
+    #[test]
+    fn history_limit_write_side_validation() {
+        let key = SETTING_HISTORY_LIMIT;
+        assert!(
+            validate_known_setting(key, &serde_json::json!(HISTORY_LIMIT_MIN)).is_ok(),
+            "下限边界放行"
+        );
+        assert!(validate_known_setting(key, &serde_json::json!(50_000)).is_ok());
+        assert!(
+            validate_known_setting(key, &serde_json::json!(HISTORY_LIMIT_MAX)).is_ok(),
+            "上限边界放行"
+        );
+        assert!(
+            validate_known_setting(key, &serde_json::json!(0)).is_err(),
+            "低于下限拒绝（0/极小值把历史清成摆设）"
+        );
+        assert!(
+            validate_known_setting(key, &serde_json::json!(HISTORY_LIMIT_MAX + 1)).is_err(),
+            "超上限拒绝（防误输入把库撑爆）"
+        );
+        assert!(
+            validate_known_setting(key, &serde_json::json!(-1)).is_err(),
+            "负数拒绝（非非负整数）"
+        );
+        assert!(
+            validate_known_setting(key, &serde_json::json!("many")).is_err(),
+            "类型错拒绝"
+        );
     }
 }

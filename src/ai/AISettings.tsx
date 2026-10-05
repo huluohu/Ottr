@@ -17,6 +17,7 @@ import {
   loadAiSettings,
   saveAiEnabled,
   saveAiMaxTokens,
+  saveAiSummaryEnabled,
   saveProviders,
   saveRedaction,
   type RedactionConfig,
@@ -50,12 +51,21 @@ function emptyDraft(): ProviderDraft {
   };
 }
 
-/** 预设候选（kind=DeepSeek/Ollama 皆为 openai-compatible，仅 baseURL 捷径）。 */
+/** 预设候选（kind=DeepSeek/Ollama/智谱 皆为 openai-compatible，仅 baseURL 捷径）。
+ * 智谱端点 OpenAI 兼容（open.bigmodel.cn /api/paas/v4）；预设不含 key——key 走
+ * vault secrets（运行时用户自填）。 */
 const BASE_URL_PRESETS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   deepseek: "https://api.deepseek.com",
   ollama: "http://localhost:11434/v1",
   anthropic: "https://api.anthropic.com",
+  zhipu: "https://open.bigmodel.cn/api/paas/v4",
+};
+
+/** 预设的默认模型（点预设时 draft.model 为空才填；仅智谱有——glm-4-flash
+ * 免费档可直用；展示名 i18n 键 = `ai.settings.preset<Cap(key)>`）。 */
+const PRESET_DEFAULT_MODELS: Record<string, string> = {
+  zhipu: "glm-4-flash",
 };
 
 export function AISettings({ open, onClose }: AISettingsProps) {
@@ -63,6 +73,7 @@ export function AISettings({ open, onClose }: AISettingsProps) {
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [redaction, setRedaction] = useState<RedactionConfig>({ hostname: true, custom: [] });
   const [enabled, setEnabled] = useState(true);
+  const [summaryEnabled, setSummaryEnabled] = useState(true);
   const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_TOKENS);
   const [draft, setDraft] = useState<ProviderDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -85,6 +96,7 @@ export function AISettings({ open, onClose }: AISettingsProps) {
         setProviders(s.providers);
         setRedaction(s.redaction);
         setEnabled(s.enabled);
+        setSummaryEnabled(s.summaryEnabled);
         setMaxTokens(s.maxTokens);
       } catch {
         // 非 Tauri 环境 / 后端不可达：保持默认值（改动时报错）
@@ -242,6 +254,19 @@ export function AISettings({ open, onClose }: AISettingsProps) {
           </label>
           <p className="settings-hint">{t("ai.settings.autoDiagnoseHint")}</p>
           <label className="settings-row">
+            <span className="settings-label">{t("ai.settings.summaryEnabled")}</span>
+            <Switch
+              testid="ai-summary-enabled"
+              checked={summaryEnabled}
+              onChange={(e) => {
+                const v = e.currentTarget.checked;
+                setSummaryEnabled(v);
+                void saveAiSummaryEnabled(v).catch((err) => setFormError(String(err)));
+              }}
+            />
+          </label>
+          <p className="settings-hint">{t("ai.settings.summaryEnabledHint")}</p>
+          <label className="settings-row">
             <span className="settings-label">{t("ai.settings.maxTokens")}</span>
             <input
               type="number"
@@ -375,10 +400,15 @@ export function AISettings({ open, onClose }: AISettingsProps) {
                         ...draft,
                         kind: key === "anthropic" ? "anthropic" : "openai-compatible",
                         baseURL: url,
+                        // 默认模型仅补空（用户已填不覆盖；无默认模型的 preset 不动）
+                        model: draft.model || PRESET_DEFAULT_MODELS[key] || draft.model,
                       })
                     }
                   >
-                    {key}
+                    {/* 展示名 i18n（动态键与 settings.themeX 同款；缺键回落原始 key） */}
+                    {t(`ai.settings.preset${key.charAt(0).toUpperCase()}${key.slice(1)}`, {
+                      defaultValue: key,
+                    })}
                   </button>
                 ))}
               </div>

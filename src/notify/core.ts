@@ -257,21 +257,16 @@ export function resetRateLimiter(): void {
 // ④ 投递失败面（Phase 5 T1，BL-517 清偿）：渠道 send 三次退避后仍失败 →
 //   中心条目 payload 带「投递失败」标记 + 手动重发（channelRegistry.
 //   resendNotification 重跑该渠道 send；重发/后台重试翻正即清账）。
+//   【BL-530】标记落库持久化：标记/翻正写穿 delivery_failures 列（Rust
+//   notify_mark/clear_delivery_failed），重启后 refresh 恢复标记与重发入口。
 // ---------------------------------------------------------------------------
 
-/** 一次渠道投递的终局失败记录（payload.delivery_failed 数组项，按渠道去重）。 */
-export interface DeliveryFailure {
-  /** 渠道挂载名（`kind#id`；重发按名回查 core.channels 实例）。 */
-  channel: string;
-  /** 渠道行 id（从挂载名提取；测试假件无 id = null）。 */
-  channel_id: number | null;
-  /** 终局错误文本（最近一次）。 */
-  error: string;
-  /** 秒级 Unix 时刻（最近一次失败）。 */
-  ts: number;
-}
+/** 一次渠道投递的终局失败记录（Rust notifications::DeliveryFailure 同构；
+ * payload.delivery_failed 数组项 + delivery_failures 落库列同一形态）。 */
+export type DeliveryFailure = import("../vault/api").DeliveryFailure;
 
-/** 条目 payload 内的失败标记键（事件 payload 带失败标记——BL-517 定稿口径）。 */
+/** 条目 payload 内的失败标记键（展示层形态——DB 行 delivery_failures 列与
+ * 会话账本在 refresh 时合并重贴进 payload，中心渲染只读 payload）。 */
 export const DELIVERY_FAILED_KEY = "delivery_failed";
 
 /** 读条目 payload 的失败集（payload 形态不受信——非数组/坏形状一律回空）。 */
@@ -285,9 +280,16 @@ export function readDeliveryFailures(payload: unknown): DeliveryFailure[] {
   );
 }
 
-/** notificationId → 失败集（会话内瞬态账本：DB payload 不回写——notify 无
- * update 命令面；refresh 拉回 DB 行后按本账本重贴标记，clear 清空即销账）。
- * 应用重启丢失（失败发生在投递期，重启后重发入口随标记消失——挂账有限）。 */
+/** 读 DB 行落库的失败集（BL-530 列面；旧行/异常形态一律回空）。 */
+function readPersistedFailures(n: Notification): DeliveryFailure[] {
+  return Array.isArray(n.delivery_failures) ? n.delivery_failures : [];
+}
+
+/** notificationId → 失败集（会话账本；BL-530 起为 **写穿缓存**）：内存与
+ * DB 同步维护——标记/清账先动内存（UI 即时、不谎报）再 await 落库。
+ * 【墓碑语义】空数组条目 = 本会话已清账（清账写失败时遮蔽 DB 残留标记，
+ * refresh 不复活）；无条目 = 无会话知账，展示回落 DB 落库标记（重启后
+ * refresh 恢复标记与重发按钮的通路）。 */
 const deliveryLedger = new Map<number, DeliveryFailure[]>();
 
 /** 测试隔离：清空投递失败账本。 */
@@ -295,16 +297,19 @@ export function resetDeliveryLedger(): void {
   deliveryLedger.clear();
 }
 
-/** 账本 → 行列表：有账的条目把失败集并入 payload，无账的剥掉残留标记
- * （销账面——refresh 重贴与 clearDeliveryFailure 摘除共用同一重算）。 */
+/** 账本 → 行列表：有账条目（含空账墓碑）以会话账本为准；无账条目回落
+ * DB 落库标记（BL-530 重启恢复通路）。两种来源统一重算进 payload——
+ * refresh 重贴、clearDeliveryFailure 摘除、落库标记直显共用同一合并。 */
 function applyDeliveryLedger(items: Notification[]): Notification[] {
   return items.map((n) => {
-    const fails = deliveryLedger.get(n.id);
+    const fails = deliveryLedger.has(n.id)
+      ? deliveryLedger.get(n.id)!
+      : readPersistedFailures(n);
     const base =
       n.payload && typeof n.payload === "object"
         ? (n.payload as Record<string, unknown>)
         : {};
-    if (fails && fails.length > 0) {
+    if (fails.length > 0) {
       return { ...n, payload: { ...base, [DELIVERY_FAILED_KEY]: fails } };
     }
     if (DELIVERY_FAILED_KEY in base) {
@@ -317,9 +322,14 @@ function applyDeliveryLedger(items: Notification[]): Notification[] {
 }
 
 /** 终局失败入账（retry.ts onGiveUp 缺省回执；按渠道去重——同渠道重发再败只
- * 更新错误与时刻）。notificationId 空 = ①落库已失败、无条目可挂：只记
- * console（尽力而为面，不抛）。 */
-export function recordDeliveryFailure(notificationId: number | null, failure: DeliveryFailure): void {
+ * 更新错误与时刻）。内存账本同步入账（UI 立即显示），随后写穿落库；Rust 写
+ * 失败**如实上抛**——内存账本保底本会话显示（UI 不谎报），调用方收敛到
+ * console（尽力而为面）。notificationId 空 = ①落库已失败、无条目可挂：只记
+ * console，不落库（尽力而为面，不抛）。 */
+export async function recordDeliveryFailure(
+  notificationId: number | null,
+  failure: DeliveryFailure,
+): Promise<void> {
   if (notificationId == null) {
     console.warn(`[notify] delivery failed (no center row): ${failure.channel}`, failure.error);
     return;
@@ -330,16 +340,20 @@ export function recordDeliveryFailure(notificationId: number | null, failure: De
   list.push(failure);
   deliveryLedger.set(notificationId, list);
   useNotifyStore.setState((st) => ({ items: applyDeliveryLedger(st.items) }));
+  // 写穿（BL-530）：标记即落库——失败如实上抛，内存账本保底。
+  await vaultApi.notifications.markDeliveryFailed(notificationId, failure);
 }
 
-/** 销账（重发成功/后台重试翻正；渠道集空则整键摘除）。 */
-export function clearDeliveryFailure(notificationId: number, channel: string): void {
-  const list = deliveryLedger.get(notificationId);
-  if (!list) return;
-  const next = list.filter((f) => f.channel !== channel);
-  if (next.length === 0) deliveryLedger.delete(notificationId);
-  else deliveryLedger.set(notificationId, next);
+/** 销账（重发成功/后台重试翻正；渠道集空 → 空账墓碑遮蔽 DB 残留标记）。
+ * 内存先摘（UI 立即消失），随后写穿清账；Rust 写失败如实上抛（同上）。 */
+export async function clearDeliveryFailure(notificationId: number, channel: string): Promise<void> {
+  const list = (deliveryLedger.get(notificationId) ?? []).filter(
+    (f) => f.channel !== channel,
+  );
+  deliveryLedger.set(notificationId, list); // 空账墓碑：refresh 不复活残留标记
   useNotifyStore.setState((st) => ({ items: applyDeliveryLedger(st.items) }));
+  // 写穿（BL-530）：翻正即清库——失败如实上抛，内存墓碑保底。
+  await vaultApi.notifications.clearDeliveryFailure(notificationId, channel);
 }
 
 // ---------------------------------------------------------------------------

@@ -366,6 +366,30 @@ describe("FilePanel", () => {
     });
     expect(remoteEdits.isActive("pty-0", "/home/spike/big100")).toBe(false);
   });
+
+  it("二进制拒绝（BL-506）：remote_edit_open 报 binary_file → 专用提示，不起轮询", async () => {
+    mockListings();
+    mockedInvoke.mockImplementation((_cmd: string, args?: { path?: string }) => {
+      if (_cmd === "remote_edit_open") {
+        return Promise.reject(new Error("binary_file: /home/spike/big100"));
+      }
+      return (mockListingsDispatcher as (cmd: string, a: { path?: string }) => Promise<unknown>)(
+        _cmd,
+        args ?? { path: "" },
+      );
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("big100");
+    });
+    fireEvent.contextMenu(screen.getByText("big100"));
+    fireEvent.click(screen.getByText(/Edit "big100"/));
+    await waitFor(() => {
+      // 专用提示（zh/en 词典 files.editBinary），不是通用 editFailed 兜底
+      expect(screen.getByTestId("file-notice").textContent).toContain("binary file");
+    });
+    expect(remoteEdits.isActive("pty-0", "/home/spike/big100")).toBe(false);
+  });
 });
 
 /** mockListings 的分发体（编辑流用例复用同一目录数据）。 */

@@ -147,15 +147,32 @@ export function isEmptySnapshot(data: SyncData): boolean {
 // 本节把每类条目投影成 **id 无关的 canonical 形态**：
 //   * 剥除本地 id；
 //   * 引用字段（group_id/credential_id/host_scope/host_id/channels）解析为
-//     被引用条目在**同一侧快照内**的自然键（分组名 / 主机 name+address+port /
-//     凭据内容指纹 / 渠道 kind+config）——重映射只换 id 不换内容，投影不变；
+//     被引用条目在**同一侧快照内**的自然键（分组父链全路径 / 主机
+//     name+address+port+username+protocol / 凭据内容指纹 / 渠道
+//     kind+config+template_overrides+enabled）——重映射只换 id 不换内容，投影
+//     不变；
 //   * 条目数组按 canonical 串排序（行序差异不误报；重复自然键=多条目，multiset
 //     语义保留）。
 // 无法自然键匹配的差异（真新增/删除/内容改动）照常进指纹——误报消灭，真分歧
 // 不漏报。注意粒度边界（披露）：仅「分组归属变化」（host.group_id 指向换了名字
 // 不同的组）会同时体现在 hosts 与 host_groups 两类的投影里；被引用条目内容变化
-// 会传导到引用方投影（如凭据改密 → 引用它的主机也计分歧）——全量替换语义下
-// 引用方确实受牵连，宁多列不漏列。
+// 会传导到引用方投影（如凭据改密、主机 username/protocol 改动、渠道
+// template_overrides/enabled 切换 → 引用方也计分歧）——全量替换语义下引用方
+// 确实受牵连，宁多列不漏列。
+//
+// 【BL-527 加宽】同侧自然键重复 + 引用指向重复项分歧的漏报面：
+//   * 分组：0018 只禁**同级**同名——跨枝同名组是合法库态（r/p 与 s/p），一级
+//     父名区分不了两个同名父下的同名子组；引用键与组自身投影的 parent 均改用
+//     **父链全路径**（根→…→引用组，名字数组）。链断（父不在快照）返回已收集
+//     前缀、首查不中返回 null（截断快照「提根」语义同形）；visited 集合防手工
+//     构造快照的 parent 环（确定性，两侧同形不误报）。
+//   * 主机：hosts 表无端点唯一约束（0002）——同 name+address+port 双行（协议/
+//     用户名不同）真实可构造；引用键纳入 username+protocol 消歧。
+//   * 渠道：kind+config 相同而 template_overrides/enabled 不同的双行同理；
+//     引用键纳入两字段。
+//   * 剩余固有边界（成文披露）：被引用条目**全部内容字段**都相同的重复项
+//     （逐字段同值的 host/channel），引用指向哪一个在内容层面本就不可区分——
+//     全量替换导入后两者内容等价，无信息丢失。
 
 type Row = Record<string, unknown>;
 
@@ -175,6 +192,26 @@ const lookup = <T>(
   return hit === undefined ? null : key(hit);
 };
 
+/** 分组父链全路径（BL-527 加宽）：从引用 id 沿 parent 链收集名字，返回
+ * 根→…→引用组自身的名字数组（canonicalJson 会原样嵌入投影）；id 无关
+ * （remap 不变量）。visited 集合 + 链断即停：首查不中/空链 → null（与既有
+ * 「引用切断」投影形态一致）；环 → 已收集前缀（确定性——两侧环形态相同不
+ * 误报，不同则照常进冲突列表，宁多列不漏列）。 */
+function groupPathOf(rows: Row[], id: unknown): unknown {
+  if (id === null || id === undefined) return null;
+  const path: string[] = [];
+  const seen = new Set<unknown>();
+  let cur: unknown = id;
+  while (cur !== null && cur !== undefined && !seen.has(cur)) {
+    seen.add(cur);
+    const hit = rows.find((r) => r.id === cur);
+    if (hit === undefined) break; // 链断（父不在快照）：前缀即路径
+    path.unshift(String(hit.name));
+    cur = hit.parent_id;
+  }
+  return path.length > 0 ? path : null;
+}
+
 /**
  * 单类条目的自然键 canonical 投影（remap 不变量；id 与本地引用 id 已剥除/
  * 解析）。设置类条目天然带业务主键（key），其余类按上表投影。
@@ -185,16 +222,31 @@ export function canonicalEntries(cat: SyncCategory, data: SyncData): string[] {
   const hosts = rowsOf(data, "hosts");
   const chans = rowsOf(data, "notify_channels");
 
-  const groupKeyOf = (id: unknown): unknown =>
-    lookup(groups, id, (g) => g.name);
+  // 引用键（BL-527 加宽）：分组 = 父链全路径；主机 = name+address+port+
+  // username+protocol；渠道 = kind+config+template_overrides+enabled——
+  // 同侧自然键重复时引用指向仍可辨（消歧字段即被引用行的区分性内容）。
+  const groupKeyOf = (id: unknown): unknown => groupPathOf(groups, id);
   const hostKeyOf = (id: unknown): unknown =>
     lookup(hosts, id, (h) =>
-      canonicalJson({ name: h.name, address: h.address, port: h.port }),
+      canonicalJson({
+        name: h.name,
+        address: h.address,
+        port: h.port,
+        username: h.username,
+        protocol: h.protocol,
+      }),
     );
   const credKeyOf = (id: unknown): unknown =>
     lookup(creds, id, (c) => credentialEntry(c));
   const chanKeyOf = (id: unknown): unknown =>
-    lookup(chans, id, (c) => canonicalJson({ kind: c.kind, config: c.config }));
+    lookup(chans, id, (c) =>
+      canonicalJson({
+        kind: c.kind,
+        config: c.config,
+        template_overrides: c.template_overrides,
+        enabled: c.enabled,
+      }),
+    );
 
   switch (cat) {
     case "host_groups":

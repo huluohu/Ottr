@@ -19,6 +19,7 @@ import { SyncDialog } from "./sync/SyncDialog";
 import { McpApprovalDialog } from "./security/McpApprovalDialog";
 import { useVaultLockStore } from "./security/VaultLockStore";
 import { useVaultInitGate } from "./security/VaultInitGate";
+import { VaultInitGateOverlay } from "./security/VaultInitGateOverlay";
 import { syncLangFromVault, setLang, useLanguage } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
@@ -599,39 +600,10 @@ function HomeLayout() {
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockPhase === "locked" && <LockScreen />}
-      {/* Task 16.5 vault 初始化门遮罩（LockScreen 同款 overlay，z 序在锁屏之上——
-          初始化未完成时锁屏状态机尚未启动，两者互斥）。loading 期主壳无数据、
-          无命令在途；failed 语义 = 旧的「setup 失败即启动失败」，只是主窗已可见：
-          全屏错误面 + 退出按钮（真退出绕过关窗到托盘拦截）。 */}
-      {initPhase === "initializing" && (
-        <div className="overlay lock-screen" data-testid="vault-init-loading" role="status">
-          <div className="dialog lock-card">
-            <h2>Ottr</h2>
-            <p className="dialog-intro">{t("security.vaultInit.loading")}</p>
-          </div>
-        </div>
-      )}
-      {initPhase === "failed" && (
-        <div className="overlay lock-screen" data-testid="vault-init-failed" role="alert">
-          <div className="dialog lock-card">
-            <h2>{t("security.vaultInit.failedTitle")}</h2>
-            <p className="form-error" data-testid="vault-init-error">
-              {initError}
-            </p>
-            <p className="dialog-intro">{t("security.vaultInit.failedHint")}</p>
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn-accent"
-                data-testid="vault-init-quit"
-                onClick={() => invoke("quit_app").catch(() => {})}
-              >
-                {t("security.vaultInit.quit")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Task 16.5 vault 初始化门遮罩（BL-208 F3 迁入 security/VaultInitGateOverlay：
+          loading/failed 两态；failed = alertdialog 语义 + 退出按钮即聚焦（键盘可达），
+          z 序在锁屏之上——初始化未完成时锁屏状态机尚未启动，两者互斥）。 */}
+      <VaultInitGateOverlay phase={initPhase} error={initError} />
       {/* A12 命令面板（T5 QuickConnect 并入收口）：主机 + 命令统一搜索。
           动作经 handleAction 分派；连主机即开标签。 */}
       <CommandPalette

@@ -686,6 +686,7 @@
       "loading": "Unlocking the data vault…",
       "failedTitle": "Ottr could not open its data vault",
       "failedHint": "The system keychain may have denied access. Restart the app to retry; if it keeps failing, reinstall or contact support.",
+      "timeout": "Data vault initialization timed out (no response for {{seconds}} seconds).",
       "quit": "Quit"
     }
   },

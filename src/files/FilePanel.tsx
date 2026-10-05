@@ -124,6 +124,10 @@ export function FilePanel({ session }: { session: Session }) {
       // 超限拒绝（M-1，Rust MAX_EDIT_BYTES=10MB）单列提示，其余走通用失败
       if (msg.includes("too large")) {
         showNotice(t("files.editTooLarge", { name: fileNameOf(path) }));
+      } else if (msg.includes("binary_file")) {
+        // BL-506 二进制嗅探（Rust edit_open 首块 NUL 探针）：令牌映射专用提示，
+        // 提示+放弃（不做强制编辑路径）
+        showNotice(t("files.editBinary", { name: fileNameOf(path) }));
       } else {
         showNotice(t("files.editFailed", { message: msg }));
       }

@@ -497,6 +497,7 @@
     "editClosed": "Stopped editing \"{{name}}\"",
     "editFailed": "Edit failed: {{message}}",
     "editTooLarge": "\"{{name}}\" is too large to edit (limit 10 MB)",
+    "editBinary": "\"{{name}}\" looks like a binary file — not opened",
     "remoteGone": "Remote file \"{{name}}\" was deleted — editing stopped",
     "errOctalMode": "Permissions must be 3-4 octal digits (e.g. 644, 0755)",
     "opFailed": "Operation failed: {{message}}",

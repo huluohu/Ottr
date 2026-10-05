@@ -35,6 +35,13 @@ export function remoteEditClose(id: string, remote: string): Promise<boolean> {
 /** 轮询间隔：编辑器保存频率下、可感知延迟上的折中（Rust 侧另有二轮防抖）。 */
 export const EDIT_POLL_MS = 2000;
 
+/**
+ * 连续 poll 失败判 gone 的阈值（BL-505，T3 评审 minors）：单次 invoke Err
+ * （网络抖动/慢链路）下轮重试；连续 N 次仍失败才会按 remote_gone 语义收场
+ * （停轮询 + 一次性提示）。3 = 抖动容忍与死循环防护的折中。
+ */
+export const EDIT_POLL_MAX_CONSECUTIVE_ERRORS = 3;
+
 export interface EditCallbacks {
   /** 自动回传成功（静默保存的反馈面）。 */
   onSaved?: (id: string, remote: string) => void;
@@ -49,6 +56,8 @@ type Listener = () => void;
 class RemoteEditManager {
   private timers = new Map<string, ReturnType<typeof setInterval>>();
   private inflight = new Set<string>();
+  /** 连续 poll 失败计数（BL-505）：成功即清零；达阈值按 remote_gone 收场。 */
+  private failures = new Map<string, number>();
   private listeners = new Set<Listener>();
   /** FilePanel 按会话安装的回调（单面板消费，重装即替换）。 */
   callbacks: EditCallbacks = {};
@@ -93,6 +102,7 @@ class RemoteEditManager {
   private startPolling(id: string, remote: string): void {
     const key = this.key(id, remote);
     if (this.timers.has(key)) return;
+    this.failures.delete(key);
     this.timers.set(
       key,
       setInterval(() => void this.pollOnce(id, remote), EDIT_POLL_MS),
@@ -101,6 +111,7 @@ class RemoteEditManager {
 
   private stopPolling(id: string, remote: string): void {
     const key = this.key(id, remote);
+    this.failures.delete(key);
     const timer = this.timers.get(key);
     if (timer !== undefined) {
       clearInterval(timer);
@@ -114,6 +125,7 @@ class RemoteEditManager {
     this.inflight.add(key);
     try {
       const st = await invoke<EditPollStatus>("remote_edit_poll", { id, remote });
+      this.failures.delete(key); // BL-505：成功清零连续失败计数
       if (st.status === "gone") {
         // 会话已被 Rust 侧清理（关闭/断连/临时件被删）：停轮询即可
         this.stopPolling(id, remote);
@@ -130,7 +142,16 @@ class RemoteEditManager {
       if (st.status === "saved") this.callbacks.onSaved?.(id, remote);
       if (st.status === "conflict") this.callbacks.onConflict?.(id, remote);
     } catch {
-      // 单次 poll 失败（瞬时抖动）下轮重试；会话真没了 Rust 会返 gone 自清
+      // BL-505：单次 poll 失败（瞬时抖动）下轮重试；连续达阈值才按 remote_gone
+      // 收场（停轮询 + 一次性提示）——防会话真没了又收不到 gone 时死循环，
+      // 同时不因一次网络抖动误杀在途编辑会话。
+      const n = (this.failures.get(key) ?? 0) + 1;
+      this.failures.set(key, n);
+      if (n >= EDIT_POLL_MAX_CONSECUTIVE_ERRORS) {
+        this.stopPolling(id, remote);
+        this.notify();
+        this.callbacks.onRemoteGone?.(id, remote);
+      }
     } finally {
       this.inflight.delete(key);
     }
@@ -163,6 +184,7 @@ class RemoteEditManager {
     for (const timer of this.timers.values()) clearInterval(timer);
     this.timers.clear();
     this.inflight.clear();
+    this.failures.clear();
     this.listeners.clear();
     this.callbacks = {};
   }

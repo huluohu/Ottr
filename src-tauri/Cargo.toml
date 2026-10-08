@@ -5,6 +5,8 @@ version = "0.1.0"
 description = "Ottr - cross-platform SSH client"
 authors = ["Ottr contributors"]
 edition = "2021"
+# Tauri CLI 的 dev/构建流程（bin 数 >1：ottr + bin/ottr-mcp）——钉死默认二进制 = 应用本体。
+default-run = "ottr"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -21,7 +23,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # A12（Task 14）：tray-icon = 托盘（TrayIconBuilder）；image-png = 托盘模板位图
 # 解码（Image::from_bytes，icons/tray.png）。菜单 API 无需 feature。
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ottr-ssh = { path = "../crates/ottr-ssh" }

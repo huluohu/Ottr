@@ -35,3 +35,7 @@ src-tauri/gen/
 .vitest/
 .zcode/logs/*.log
 brand/drafts/
+
+# 内部开发过程文档（路线图/验收报告/规格/运行手册）——本地保留，不公开
+docs/*
+!docs/screenshots/

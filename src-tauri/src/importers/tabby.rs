@@ -15,7 +15,7 @@
 use ottr_vault::Vault;
 use serde_json::Value;
 
-use crate::ssh_config::{import_entries, ImportReport, ParseOutcome, SshConfigEntry};
+use crate::ssh_config::{ImportReport, ParseOutcome, SshConfigEntry, import_entries};
 
 /// JSON 文本 → [`ParseOutcome`]。非 JSON / 无 profiles 面 → Err。
 pub fn parse_config(content: &str) -> Result<ParseOutcome, String> {
@@ -176,15 +176,21 @@ mod tests {
 
     #[test]
     fn bad_shapes_are_errors() {
-        assert!(parse_config("not json")
-            .unwrap_err()
-            .contains("not valid JSON"));
-        assert!(parse_config(r#"{"settings":{}}"#)
-            .unwrap_err()
-            .contains("no profiles"));
-        assert!(parse_config("42")
-            .unwrap_err()
-            .contains("not a tabby config"));
+        assert!(
+            parse_config("not json")
+                .unwrap_err()
+                .contains("not valid JSON")
+        );
+        assert!(
+            parse_config(r#"{"settings":{}}"#)
+                .unwrap_err()
+                .contains("no profiles")
+        );
+        assert!(
+            parse_config("42")
+                .unwrap_err()
+                .contains("not a tabby config")
+        );
     }
 
     #[test]
@@ -263,9 +269,11 @@ mod tests {
     #[test]
     fn bad_yaml_is_error() {
         // 非法 YAML 语法 → 显式报错（不是静默空 outcome）
-        assert!(parse_config_yaml("a: [unclosed")
-            .unwrap_err()
-            .contains("not valid YAML"));
+        assert!(
+            parse_config_yaml("a: [unclosed")
+                .unwrap_err()
+                .contains("not valid YAML")
+        );
     }
 
     #[test]

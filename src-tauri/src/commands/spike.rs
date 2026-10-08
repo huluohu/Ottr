@@ -9,10 +9,10 @@
 //! （`/tmp/ottr-` 前缀白名单 + 拒 `..` 只是纵深防御，47be0b5）；`spike_keyring_*`
 //! 已隔离 `ottr.spike` service 不涉主钥，但同为 spike 面，一并闸门。
 use base64::Engine as _;
-use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::State;
+use tauri::ipc::{Channel, InvokeResponseBody};
 
-use super::state::{batch_limit, batch_window, flush_min_interval, snapshot, AppState};
+use super::state::{AppState, batch_limit, batch_window, flush_min_interval, snapshot};
 
 /// 延迟测量取数通道：前端测完 POST JSON，这里合并 Rust 侧计数后落盘。
 /// 路径可用 `OTTR_SPIKE_REPORT` 覆盖，默认 /tmp/ottr-latency.json（驱动脚本轮询此文件）。

@@ -13,7 +13,7 @@
 //! 现查（单连接串行化下 COUNT(read=0) 是廉价索引扫描）；清空策略是调用方
 //! 裁量（UI「清空」按钮全删；量级由通知频度决定，Phase 1 无自动衰减）。
 
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};

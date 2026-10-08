@@ -237,9 +237,13 @@ type ForwardedChannel = russh::Channel<Msg>;
 /// 迟到连接）→ 拒绝该 channel（ChannelOpenHandle 落 drop = 自动拒绝）。
 ///
 /// Clone = Arc 共享；随 SSH 会话存亡（SessionEntry 持有）。
+/// 远程转发入站数据槽：端点 → 转发通道发送端（Router 与 sinks 共享）。
+type RemoteForwardSinks =
+    Arc<Mutex<HashMap<(String, u16), mpsc::UnboundedSender<ForwardedChannel>>>>;
+
 #[derive(Clone, Debug, Default)]
 pub struct RemoteForwardRouter {
-    sinks: Arc<Mutex<HashMap<(String, u16), mpsc::UnboundedSender<ForwardedChannel>>>>,
+    sinks: RemoteForwardSinks,
 }
 
 impl RemoteForwardRouter {

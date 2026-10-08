@@ -20,8 +20,8 @@
 use std::time::Duration;
 
 use lettre::{
-    transport::smtp::authentication::Credentials, AsyncSmtpTransport, AsyncTransport,
-    Tokio1Executor,
+    AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
+    transport::smtp::authentication::Credentials,
 };
 use serde::Deserialize;
 

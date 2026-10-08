@@ -10,9 +10,9 @@
 //! * `key` 逻辑名约定：`ai.apikey.<providerId>`（前端 provider 删除时连带
 //!   `Secrets::delete`，防孤儿密文累积）。
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
-use crate::{aad, Result, Vault, VaultError};
+use crate::{Result, Vault, VaultError, aad};
 
 pub struct Secrets;
 

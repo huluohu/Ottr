@@ -40,7 +40,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use zeroize::Zeroize;
 
 use crate::master_key::{KeyStorage, MasterKey};
@@ -279,7 +279,7 @@ impl Vault {
                 // 模式行显式落盘（历史库首次补写、新库首写，之后 no-op）：
                 // 无模式行 = 「从没被 Ottr 打开过的全新库」。Linux fallback 据此
                 // 区分「首装走主密码」与「keyring 库的钥匙链死了（报错不换钥）」。
-                if read_key_mode_raw(&*vault.connection())?.is_none() {
+                if read_key_mode_raw(&vault.connection())?.is_none() {
                     set_meta(vault.connection(), META_KEY_MODE, KeyMode::Keyring.as_str())?;
                 }
             }
@@ -600,10 +600,10 @@ fn restrict_db_permissions(db_path: &Path) {
             db_path.with_file_name("vault.db-wal"),
             db_path.with_file_name("vault.db-shm"),
         ] {
-            if let Err(e) = std::fs::set_permissions(&path, mode.clone()) {
-                if path == *db_path || path.exists() {
-                    eprintln!("[vault] chmod 0600 failed ({}): {e}", path.display());
-                }
+            if let Err(e) = std::fs::set_permissions(&path, mode.clone())
+                && (path == *db_path || path.exists())
+            {
+                eprintln!("[vault] chmod 0600 failed ({}): {e}", path.display());
             }
         }
     }

@@ -1,5 +1,5 @@
 //! known_hosts 解析 API TDD（BL-211）：行级指纹（跳过 marker/注释/hashed 行）
-//! + host 过滤 pin（多 host 混合样本不再「取首条」）——`@cert-authority` /
+//! 加 host 过滤 pin（多 host 混合样本不再「取首条」）——`@cert-authority` /
 //! `@revoked` 行绝不参与 pin（fail-closed：filter 不命中 = None = 上层拒绝）。
 //!
 //! 金样向量：ed25519 公钥（`ssh-keygen -lf` 实测指纹），

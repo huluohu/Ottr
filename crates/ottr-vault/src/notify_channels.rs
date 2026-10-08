@@ -18,10 +18,10 @@
 //! 同款，无半密封窗口）；update 的 config=None = 保留现值（未重输的 token
 //! 不重密封，CredentialPatch 同语义）。
 
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
-use crate::{aad, Result, Vault, VaultError};
+use crate::{Result, Vault, VaultError, aad};
 
 fn now_ts() -> i64 {
     std::time::SystemTime::now()
@@ -180,12 +180,12 @@ impl NotifyChannels {
                 }
                 None => existing_kind,
             };
-            if let Some(config) = &patch.config {
-                if !config.is_object() {
-                    return Err(VaultError::InvalidInput(
-                        "channel config must be a JSON object".into(),
-                    ));
-                }
+            if let Some(config) = &patch.config
+                && !config.is_object()
+            {
+                return Err(VaultError::InvalidInput(
+                    "channel config must be a JSON object".into(),
+                ));
             }
             if let Some(enabled) = patch.enabled {
                 tx.execute(

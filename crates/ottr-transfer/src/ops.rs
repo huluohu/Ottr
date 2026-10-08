@@ -277,7 +277,7 @@ impl SftpClient {
         if lstat
             .as_ref()
             .and_then(|a| a.attrs.permissions)
-            .is_some_and(|m| mode_is_symlink(m))
+            .is_some_and(mode_is_symlink)
         {
             return self.write_remote_text_inplace(path, data).await;
         }
@@ -290,8 +290,8 @@ impl SftpClient {
             let _ = self.inner.remove(&tmp_path).await;
             return Err(e);
         }
-        if let Some(mode) = keep_mode {
-            if let Err(e) = self
+        if let Some(mode) = keep_mode
+            && let Err(e) = self
                 .inner
                 .setstat(
                     &tmp_path,
@@ -301,17 +301,16 @@ impl SftpClient {
                     },
                 )
                 .await
-            {
-                let _ = self.inner.remove(&tmp_path).await;
-                return Err(protocol_error(e, &format!("setstat {tmp_path}")));
-            }
+        {
+            let _ = self.inner.remove(&tmp_path).await;
+            return Err(protocol_error(e, &format!("setstat {tmp_path}")));
         }
-        if let Err(e) = self.inner.remove(path).await {
-            if !matches!(&e, SftpError::Status(s) if s.status_code == StatusCode::NoSuchFile) {
-                // 原文件在位且不可换（如 sticky 目录他人文件）：保存失败，
-                // 原文完好——临时件留作下轮重传的证据与材料
-                return Err(protocol_error(e, &format!("remove for swap {path}")));
-            }
+        if let Err(e) = self.inner.remove(path).await
+            && !matches!(&e, SftpError::Status(s) if s.status_code == StatusCode::NoSuchFile)
+        {
+            // 原文件在位且不可换（如 sticky 目录他人文件）：保存失败，
+            // 原文完好——临时件留作下轮重传的证据与材料
+            return Err(protocol_error(e, &format!("remove for swap {path}")));
         }
         self.inner
             .rename(&tmp_path, path)

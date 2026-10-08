@@ -25,10 +25,10 @@ use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use ottr_lib::{
-    auto_finalize_on_exit, export_recording, forward_pty_loop, read_recording, ExportEvent,
-    RecorderSlot, RecordingHandle, SessionCloseReason, SessionCounters, TextTail,
+    ExportEvent, RecorderSlot, RecordingHandle, SessionCloseReason, SessionCounters, TextTail,
+    auto_finalize_on_exit, export_recording, forward_pty_loop, read_recording,
 };
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, connect};
 use ottr_term::encoding::{Encoding, StreamDecoder};
 use ottr_vault::{HostInput, Hosts, Recordings, Vault};
 
@@ -202,12 +202,14 @@ async fn recording_full_chain_fixture() {
         let marker = cmd.trim_start_matches("echo ").trim_matches('\'');
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            let guard = captured.lock().unwrap();
-            let text = String::from_utf8_lossy(&guard);
-            if text.contains(marker) {
+            // 锁内只做判定取值，锁外等待（MutexGuard 不跨 await）。
+            let hit = {
+                let guard = captured.lock().unwrap();
+                String::from_utf8_lossy(&guard).contains(marker)
+            };
+            if hit {
                 break;
             }
-            drop(guard);
             assert!(
                 Instant::now() < deadline,
                 "timeout waiting for output of {cmd}"

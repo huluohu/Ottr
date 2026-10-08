@@ -3,8 +3,8 @@
 //! 纪律：一律 tempfile 临时目录，绝不触碰真实用户数据目录；
 //! Master Key 走可注入的 InMemoryStorage，绝不读写真钥匙链。
 
-use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::Vault;
+use ottr_vault::master_key::InMemoryStorage;
 
 fn open_vault(dir: &std::path::Path, storage: &InMemoryStorage) -> Vault {
     Vault::open_with(dir, storage).expect("open vault")

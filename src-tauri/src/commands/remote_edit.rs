@@ -36,8 +36,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ottr_transfer::ops::RemoteSnapshot;
 use ottr_transfer::SftpClient;
+use ottr_transfer::ops::RemoteSnapshot;
 
 use super::state::AppState;
 
@@ -147,11 +147,7 @@ pub fn sanitize_id(id: &str) -> String {
             }
         })
         .collect();
-    if s.is_empty() {
-        "_".into()
-    } else {
-        s
-    }
+    if s.is_empty() { "_".into() } else { s }
 }
 
 /// 编辑临时根：`$TMPDIR/ottr-edit`。

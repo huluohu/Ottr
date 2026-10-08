@@ -2,8 +2,8 @@
 //! 损坏条目→明确错误、Argon2id 派生原语（Linux 无钥匙链 fallback / 主密码模式）。
 //! 纪律：一律 InMemoryStorage——真钥匙链只在 examples/keyring_manual.rs 手动验证。
 
-use ottr_vault::master_key::{derive_key_argon2id, InMemoryStorage, KeyStorage, MasterKey};
 use ottr_vault::VaultError;
+use ottr_vault::master_key::{InMemoryStorage, KeyStorage, MasterKey, derive_key_argon2id};
 
 #[test]
 fn generated_key_matches_storage() {

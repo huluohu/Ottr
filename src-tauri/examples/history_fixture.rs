@@ -21,9 +21,9 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
 use ottr_lib::{
-    forward_pty_loop, inject_shell_integration, SessionCounters, ShellIntegrationOutcome, TextTail,
+    SessionCounters, ShellIntegrationOutcome, TextTail, forward_pty_loop, inject_shell_integration,
 };
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy, SshSession};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
 use ottr_vault::{History, HistoryInput, HostInput, Hosts};
 
 const HOST: &str = "127.0.0.1";
@@ -39,7 +39,7 @@ const CMD_MAX: Duration = Duration::from_secs(8);
 
 /// 从 known_hosts 提取 `[127.0.0.1]:2222` 指纹 pin（同 encoding_fixture）。
 fn pinned_host_key_policy() -> (HostKeyPolicy, String) {
-    use russh::keys::{parse_public_key_base64, HashAlg, PublicKey};
+    use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
     let content =
         std::fs::read_to_string(KNOWN_HOSTS).unwrap_or_else(|e| panic!("read {KNOWN_HOSTS}: {e}"));
     let marker = format!("[{HOST}]:{PORT}");
@@ -194,12 +194,12 @@ impl StreamReplay {
             }
         } else if let Some(rest) = body.strip_prefix("7;") {
             // file://<host><path> → 剥 host 留 path（parseOsc7Cwd 同语义）
-            if let Some(path) = rest.strip_prefix("file://") {
-                if let Some(slash) = path.find('/') {
-                    let cwd = path[slash..].to_string();
-                    self.last_cwd = Some(cwd.clone());
-                    self.osc7_paths.push(cwd);
-                }
+            if let Some(path) = rest.strip_prefix("file://")
+                && let Some(slash) = path.find('/')
+            {
+                let cwd = path[slash..].to_string();
+                self.last_cwd = Some(cwd.clone());
+                self.osc7_paths.push(cwd);
             }
         }
     }

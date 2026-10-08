@@ -27,9 +27,10 @@
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use ottr_monitor::{
-    run_cron_scheduler, BoxedCronExec, CronClock, CronExecOutput, CronExecResolver, CronExpr,
-    CronJobView, CronJobsProvider, CronLoopConfig, CronRunRecord, CronRunSink, CronRunStatus,
+use ottr_cron::{
+    BoxedCronExec, CronClock, CronExecOutput, CronExecResolver, CronExpr, CronJobView,
+    CronJobsProvider, CronLoopConfig, CronRunRecord, CronRunSink, CronRunStatus,
+    run_cron_scheduler,
 };
 use ottr_ssh::SshSession;
 use ottr_vault::{CronJob, CronJobInput, CronJobs, CronRun, CronRunInput, CronRuns};
@@ -134,10 +135,10 @@ fn persist_and_emit(
             .map_err(|e| eprintln!("[cron:{}] sidecar write failed: {e}", record.cron_id))
             .ok()
     };
-    if let Some(path) = &output_path {
-        if let Err(e) = CronRuns::attach_output(&vault, row.id, path) {
-            eprintln!("[cron:{}] attach output path failed: {e}", record.cron_id);
-        }
+    if let Some(path) = &output_path
+        && let Err(e) = CronRuns::attach_output(&vault, row.id, path)
+    {
+        eprintln!("[cron:{}] attach output path failed: {e}", record.cron_id);
     }
     let event = CronRunEvent {
         run_id: row.id,
@@ -195,7 +196,7 @@ fn output_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 pub fn spawn_cron_scheduler(app: AppHandle) {
     let config = CronLoopConfig::production();
     let cancel = CancellationToken::new();
-    let clock: CronClock = Arc::new(|| now_secs());
+    let clock: CronClock = Arc::new(now_secs);
 
     // 任务表快照：每 tick 全量读（明文面——锁定态照读；vault 未就绪 = 空表）
     let jobs_app = app.clone();
@@ -431,7 +432,7 @@ fn cron_settle_from_output(
         Some(n) => (
             CronRunStatus::Failed,
             Some(format!("exit code {n}")),
-            Some(i64::from(n)),
+            Some(n),
         ),
         None => (
             CronRunStatus::Failed,

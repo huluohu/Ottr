@@ -326,16 +326,17 @@ mod tests {
     fn default_ssh_config_path_resolves_home() {
         // 不依赖具体机器：固定 HOME 应得到 ~/.ssh/config；空 HOME 则 None
         let saved = std::env::var("HOME").ok();
-        std::env::set_var("HOME", "/home/ottr-test");
-        std::env::remove_var("USERPROFILE");
+        // SAFETY：测试进程单线程改 HOME（edition 2024 起 set_var 为 unsafe）
+        unsafe { std::env::set_var("HOME", "/home/ottr-test") };
+        unsafe { std::env::remove_var("USERPROFILE") };
         assert_eq!(
             default_ssh_config_path(),
             Some(PathBuf::from("/home/ottr-test/.ssh/config"))
         );
-        std::env::set_var("HOME", "");
+        unsafe { std::env::set_var("HOME", "") };
         assert_eq!(default_ssh_config_path(), None);
         if let Some(home) = saved {
-            std::env::set_var("HOME", home);
+            unsafe { std::env::set_var("HOME", home) };
         }
     }
 }

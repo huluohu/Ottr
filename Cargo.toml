@@ -1,6 +1,7 @@
 [workspace]
+
 resolver = "2"
-members = ["src-tauri", "crates/ottr-ssh", "crates/ottr-transfer", "crates/ottr-term", "crates/ottr-bench", "crates/ottr-vault", "crates/ottr-monitor"]
+members = ["src-tauri", "crates/ottr-ssh", "crates/ottr-transfer", "crates/ottr-term", "crates/ottr-bench", "crates/ottr-vault", "crates/ottr-monitor", "crates/ottr-cron"]
 
 # Mobile targets (P4-T5, docs/adr/0001-mobile-scope.md): aarch64-apple-ios /
 # aarch64-linux-android are CHECK-ONLY targets (rustup target add; no committed
@@ -16,3 +17,19 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# 共享依赖版本单点（2026-10-08 收敛）：版本/默认特性在根统一钉版，各 crate 只
+# 追加自己的 features（`dep = { workspace = true, features = [...] }`）——升级
+# 依赖改一处，不再逐 crate 对齐。russh/rand 的同源约束见 crates/ottr-ssh 注释。
+[workspace.dependencies]
+base64 = "0.22"
+bytes = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rand = "0.10"
+russh = "0.63.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1.53.1" }
+tokio-util = { version = "0.7", default-features = false }

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::state::{
-    AppState, TransferEntry, TransferMap, SFTP_CHUNKS, TRANSFER_PROGRESS_INTERVAL, TRANSFER_SEQ,
+    AppState, SFTP_CHUNKS, TRANSFER_PROGRESS_INTERVAL, TRANSFER_SEQ, TransferEntry, TransferMap,
 };
 
 // ---------------------------------------------------------------------------
@@ -430,8 +430,8 @@ fn spawn_transfer(
     journal_path: PathBuf,
     cancel: ottr_transfer::CancelToken,
     fut: impl std::future::Future<Output = ottr_transfer::Result<ottr_transfer::TransferStats>>
-        + Send
-        + 'static,
+    + Send
+    + 'static,
 ) {
     transfers.lock().unwrap().insert(
         transfer_id.clone(),
@@ -461,13 +461,13 @@ fn spawn_transfer(
         // Fix round 1 C-1a：**done 即删 journal**——journal 只为「未完成、可续传」
         // 存在；完成后保留会让同身份重传全命中（0 chunk + 稀疏全零文件/远端旧
         // 内容）并报 done，即静默数据损坏。取消/失败保留（续传语义）。
-        if status == "done" {
-            if let Err(e) = std::fs::remove_file(&journal_path) {
-                eprintln!(
-                    "[transfer:{transfer_id}] journal cleanup failed ({}): {e}",
-                    journal_path.display()
-                );
-            }
+        if status == "done"
+            && let Err(e) = std::fs::remove_file(&journal_path)
+        {
+            eprintln!(
+                "[transfer:{transfer_id}] journal cleanup failed ({}): {e}",
+                journal_path.display()
+            );
         }
         let _ = app.emit(
             "ottr://transfer-end",

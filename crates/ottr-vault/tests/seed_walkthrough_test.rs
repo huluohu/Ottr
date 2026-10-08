@@ -7,10 +7,8 @@
 //! "first" → 首连弹确认框。真机复现：/tmp/ui2-t2/red-08（2026-10-04，
 //! seed 后首连弹「首次连接确认」+ vault.db 双行取证）。
 
-use std::path::PathBuf;
-
 use ottr_vault::entities::{KnownHostState, KnownHosts};
-use ottr_vault::{host_endpoint_key, seed, Vault};
+use ottr_vault::{Vault, host_endpoint_key, seed};
 
 fn open_seeded(dir: &std::path::Path) -> Vault {
     let vault = Vault::open_password_only(dir).expect("open seeded vault");
@@ -20,14 +18,14 @@ fn open_seeded(dir: &std::path::Path) -> Vault {
 
 #[test]
 fn seeded_verified_known_hosts_is_visible_to_connect_time_lookup() {
-    let dir = PathBuf::from(std::env::temp_dir().join(format!(
+    let dir = std::env::temp_dir().join(format!(
         "ottr-seed-test-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos()
-    )));
+    ));
     std::fs::create_dir_all(&dir).unwrap();
 
     seed::seed_walkthrough_vault(&dir, "ottr-t7").expect("seed walkthrough vault");

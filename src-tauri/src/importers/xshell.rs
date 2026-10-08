@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 use ottr_vault::Vault;
 
-use crate::ssh_config::{import_entries, ImportReport, ParseOutcome, SshConfigEntry};
+use crate::ssh_config::{ImportReport, ParseOutcome, SshConfigEntry, import_entries};
 
 /// 单文件解析结论（三态：可导入 / 有效但不可导入 / 损坏）。
 #[derive(Debug, Clone, PartialEq)]
@@ -94,10 +94,10 @@ pub fn parse_xsh(content: &str, fallback_name: &str) -> XshParse {
         }
     }
 
-    if let Some(p) = &protocol {
-        if !matches!(p.as_str(), "SSH" | "SSH1" | "SSH2" | "SSHTUNNEL") {
-            return XshParse::Skipped("non-ssh session");
-        }
+    if let Some(p) = &protocol
+        && !matches!(p.as_str(), "SSH" | "SSH1" | "SSH2" | "SSHTUNNEL")
+    {
+        return XshParse::Skipped("non-ssh session");
     }
     let Some(address) = host else {
         return XshParse::Skipped("no Host= entry");
@@ -192,11 +192,7 @@ pub fn default_sessions_dir() -> Option<PathBuf> {
         .join("7")
         .join("Xshell")
         .join("Sessions");
-    if dir.is_dir() {
-        Some(dir)
-    } else {
-        None
-    }
+    if dir.is_dir() { Some(dir) } else { None }
 }
 
 // ---------------------------------------------------------------------------
@@ -336,12 +332,13 @@ mod tests {
         let fake = tempfile::tempdir().unwrap();
         let sessions = fake.path().join("NetSarang Computer/7/Xshell/Sessions");
         std::fs::create_dir_all(&sessions).unwrap();
-        std::env::set_var("APPDATA", fake.path());
+        // SAFETY：测试进程单线程改 APPDATA（edition 2024 起 set_var 为 unsafe）
+        unsafe { std::env::set_var("APPDATA", fake.path()) };
         assert_eq!(default_sessions_dir(), Some(sessions));
-        std::env::set_var("APPDATA", "");
+        unsafe { std::env::set_var("APPDATA", "") };
         assert_eq!(default_sessions_dir(), None);
         if let Some(v) = saved {
-            std::env::set_var("APPDATA", v);
+            unsafe { std::env::set_var("APPDATA", v) };
         }
     }
 }

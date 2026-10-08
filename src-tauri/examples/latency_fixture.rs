@@ -25,10 +25,10 @@ use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
-use ottr_lib::{forward_pty_loop, SessionCounters, TextTail};
+use ottr_lib::{SessionCounters, TextTail, forward_pty_loop};
 use ottr_term::encoding::{Encoding, StreamDecoder};
 
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, connect};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
@@ -49,7 +49,7 @@ struct Capture {
 }
 
 fn pinned_host_key_policy() -> HostKeyPolicy {
-    use russh::keys::{parse_public_key_base64, HashAlg, PublicKey};
+    use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
     let content =
         std::fs::read_to_string(KNOWN_HOSTS).unwrap_or_else(|e| panic!("read {KNOWN_HOSTS}: {e}"));
     let marker = format!("[{HOST}]:{PORT}");
@@ -198,7 +198,11 @@ async fn run() -> Result<String, String> {
         latencies_ms[0],
         latencies_ms[n - 1],
         mean,
-        latencies_ms.iter().map(|v| format!("{v:.2}")).collect::<Vec<_>>().join(","),
+        latencies_ms
+            .iter()
+            .map(|v| format!("{v:.2}"))
+            .collect::<Vec<_>>()
+            .join(","),
     );
     std::fs::create_dir_all("/tmp/ottr-t17").ok();
     std::fs::write(SAMPLES_PATH, body).map_err(|e| format!("write samples: {e}"))?;

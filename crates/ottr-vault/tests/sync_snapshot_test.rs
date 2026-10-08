@@ -6,14 +6,14 @@
 //! 单事务原子性、损坏快照显式拒绝、锁定拒绝）。
 //! 纪律（同 notify_channels_test）：tempfile 临时目录 + InMemoryStorage。
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::{
-    sync_snapshot, AlertRuleInput, AlertRules, CredentialInput, CredentialKind, CredentialPatch,
-    Credentials, CronJobInput, CronJobs, HostGroups, HostInput, HostProtocol, Hosts,
-    JumpChainInput, JumpChains, NotifyChannelInput, NotifyChannels, SecretField, Settings,
-    SnippetInput, Snippets, SyncImportMode, Vault, VaultError, SYNC_CATEGORIES, SYNC_DATA_VERSION,
+    AlertRuleInput, AlertRules, CredentialInput, CredentialKind, CredentialPatch, Credentials,
+    CronJobInput, CronJobs, HostGroups, HostInput, HostProtocol, Hosts, JumpChainInput, JumpChains,
+    NotifyChannelInput, NotifyChannels, SYNC_CATEGORIES, SYNC_DATA_VERSION, SecretField, Settings,
+    SnippetInput, Snippets, SyncImportMode, Vault, VaultError, sync_snapshot,
 };
 
 fn open_vault(dir: &std::path::Path) -> Vault {
@@ -395,9 +395,11 @@ fn import_subset_severs_references_and_skips_hostless_rules() {
     .unwrap();
     assert_eq!(report.applied.get("hosts"), Some(&2));
     let hosts = Hosts::list(&vault_b).unwrap();
-    assert!(hosts
-        .iter()
-        .all(|h| h.group_id.is_none() && h.credential_id.is_none()));
+    assert!(
+        hosts
+            .iter()
+            .all(|h| h.group_id.is_none() && h.credential_id.is_none())
+    );
     assert_eq!(HostGroups::list(&vault_b).unwrap().len(), 0);
 
     // 只导 alert_rules：host_id NOT NULL 且 hosts 不在所选集 → 整行跳过
@@ -564,13 +566,15 @@ fn import_rejects_corrupt_snapshots_atomically() {
     assert!(
         sync_snapshot::import_categories(&vault_b, &[], &snap, SyncImportMode::Replace).is_err()
     );
-    assert!(sync_snapshot::import_categories(
-        &vault_b,
-        &["nonsense".to_string()],
-        &snap,
-        SyncImportMode::Replace
-    )
-    .is_err());
+    assert!(
+        sync_snapshot::import_categories(
+            &vault_b,
+            &["nonsense".to_string()],
+            &snap,
+            SyncImportMode::Replace
+        )
+        .is_err()
+    );
 
     // mode 参数面：serde 小写反序列化（未知语义拒绝在反序列化层）
     assert_eq!(

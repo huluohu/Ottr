@@ -20,7 +20,7 @@ use ottr_vault::{JumpChain, JumpChainInput, JumpChains};
 
 use super::state::HostKeyAsks;
 use crate::keys;
-use crate::vault::{ensure_unlocked, CmdResult, VaultState};
+use crate::vault::{CmdResult, VaultState, ensure_unlocked};
 
 /// 链式连接的限时预算系数：每跳 = host key 问询窗口 60s（HOST_KEY_ASK_TIMEOUT）
 /// + 网络预算 15s（与直连路径 75s 同口径，乘跳数）。target 也算一跳。

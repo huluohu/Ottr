@@ -138,8 +138,8 @@ pub fn keyring_error_is_unavailable(e: &keyring::Error) -> bool {
 /// 对 Master Key 条目做一次无副作用的 `get_password`：
 /// * `Ok(_)`（已有条目）或 `NoEntry`（服务正常、首装无条目）→ 可用；
 /// * [`keyring_error_is_unavailable`] 命中 → 不可用。
-/// 其余错误（条目损坏等）按「可用」返回——损坏要在正式 load 路径显式报错，
-/// 探测不做越界诊断（单一职责：只回答「服务通不通」）。
+///   其余错误（条目损坏等）按「可用」返回——损坏要在正式 load 路径显式报错，
+///   探测不做越界诊断（单一职责：只回答「服务通不通」）。
 pub fn keyring_available() -> bool {
     let entry = match keyring::Entry::new(DEFAULT_SERVICE, MASTER_KEY_ACCOUNT) {
         Ok(e) => e,

@@ -2,7 +2,7 @@
 //! 清理/主机级联/删除。纪律同库内其他测试：tempfile 临时目录 + InMemoryStorage
 //! master key（keyring 测试纪律），不触真实钥匙链。
 
-use ottr_vault::{HostInput, Hosts, RecordingInput, Recordings, Vault, TEXT_INDEX_PREFIX};
+use ottr_vault::{HostInput, Hosts, RecordingInput, Recordings, TEXT_INDEX_PREFIX, Vault};
 
 fn vault() -> Vault {
     let dir = tempfile::tempdir().unwrap();
@@ -110,13 +110,17 @@ fn search_hits_cjk_via_fts_with_snippet() {
     let hits = Recordings::search(&v, "gs", None, 50).unwrap();
     assert_eq!(hits.len(), 1, "LIKE 兜底命中 'logs'");
     // host 过滤参与分派
-    assert!(Recordings::search(&v, "docker", Some(h + 5), 50)
-        .unwrap()
-        .is_empty());
+    assert!(
+        Recordings::search(&v, "docker", Some(h + 5), 50)
+            .unwrap()
+            .is_empty()
+    );
     // 语法注入安全：FTS 操作符按字面处理
-    assert!(Recordings::search(&v, "logs\" OR 1=1 --", None, 50)
-        .unwrap()
-        .is_empty());
+    assert!(
+        Recordings::search(&v, "logs\" OR 1=1 --", None, 50)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// 空文本录制：只入元数据，不进 FTS（搜不到、列表可见）。
@@ -145,9 +149,11 @@ fn delete_cleans_fts_and_missing_id_is_not_found() {
     let e = Recordings::insert(&v, &input(h, "/r/x.cast", 3.0, Some("delete me marker"))).unwrap();
     assert_eq!(Recordings::search(&v, "marker", None, 50).unwrap().len(), 1);
     Recordings::delete(&v, e.id).unwrap();
-    assert!(Recordings::search(&v, "marker", None, 50)
-        .unwrap()
-        .is_empty());
+    assert!(
+        Recordings::search(&v, "marker", None, 50)
+            .unwrap()
+            .is_empty()
+    );
     assert!(Recordings::list(&v, None, 50).unwrap().is_empty());
     assert!(matches!(
         Recordings::delete(&v, e.id),
@@ -168,9 +174,11 @@ fn host_cascade_removes_rows_and_fts() {
     );
     Hosts::delete(&v, h).unwrap();
     assert!(Recordings::list(&v, None, 50).unwrap().is_empty());
-    assert!(Recordings::search(&v, "cascade", None, 50)
-        .unwrap()
-        .is_empty());
+    assert!(
+        Recordings::search(&v, "cascade", None, 50)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// 空 path 显式拒绝（InvalidInput）；schema 版本不低于 15（0016 起后续

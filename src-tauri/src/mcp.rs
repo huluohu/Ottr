@@ -20,7 +20,7 @@
 //! （防御性：超长行按 parse error 回，不分配无界缓冲——引擎读侧同口径截断）。
 //! initialize 之前调 tools/* → -32600（规范状态机：client 必须先 initialize）。
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// 本 server 支持的最新 MCP 协议版本（2024-11-05 基础面）。
 pub const PROTOCOL_VERSION: &str = "2024-11-05";
@@ -491,22 +491,25 @@ mod tests {
         let mut s = McpServer::new();
         let handler = MockHandler::ok("");
         // 规范状态机的 notifications/initialized；未知 notification 同样静默。
-        assert!(s
-            .handle_frame(
+        assert!(
+            s.handle_frame(
                 br#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
                 &handler
             )
-            .is_none());
-        assert!(s
-            .handle_frame(
+            .is_none()
+        );
+        assert!(
+            s.handle_frame(
                 br#"{"jsonrpc":"2.0","method":"notifications/unknown"}"#,
                 &handler
             )
-            .is_none());
+            .is_none()
+        );
         // 无 method = client 对 server 请求的 response（本 server 不主动请求）→ 忽略。
-        assert!(s
-            .handle_frame(br#"{"jsonrpc":"2.0","id":1,"result":{}}"#, &handler)
-            .is_none());
+        assert!(
+            s.handle_frame(br#"{"jsonrpc":"2.0","id":1,"result":{}}"#, &handler)
+                .is_none()
+        );
     }
 
     #[test]

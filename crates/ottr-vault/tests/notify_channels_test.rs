@@ -7,7 +7,7 @@
 
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::{
-    NotifyChannelInput, NotifyChannelPatch, NotifyChannels, Vault, VaultError, CHANNEL_KINDS,
+    CHANNEL_KINDS, NotifyChannelInput, NotifyChannelPatch, NotifyChannels, Vault, VaultError,
 };
 
 fn open_vault(dir: &std::path::Path) -> Vault {

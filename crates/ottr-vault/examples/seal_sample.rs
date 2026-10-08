@@ -11,7 +11,7 @@
 
 use ottr_vault::entities::{CredentialInput, CredentialKind, Credentials};
 use ottr_vault::master_key::InMemoryStorage;
-use ottr_vault::{secrets, Vault};
+use ottr_vault::{Vault, secrets};
 
 const SECRET_SAMPLE: &str = "ottr-t17-sample-password-spike-pass";
 const PASSPHRASE_SAMPLE: &str = "ottr-t17-sample-passphrase";

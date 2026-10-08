@@ -24,8 +24,8 @@ use tauri::menu::{AboutMetadata, MenuBuilder, MenuEvent, MenuItem, SubmenuBuilde
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Listener, Manager, Runtime, Wry};
 
-use crate::vault::VaultState;
 use crate::AppState;
+use crate::vault::VaultState;
 
 /// 菜单动作事件（载荷 = ActionId 字符串；前端 App.tsx 监听并分派 handleAction）。
 pub const MENU_ACTION_EVENT: &str = "ottr://menu-action";
@@ -505,10 +505,10 @@ fn apply_zoom<R: Runtime>(app: &AppHandle<R>, delta: Option<f64>) {
         None => 1.0,
         Some(d) => (*current * d).clamp(0.5, 3.0),
     };
-    if let Some(w) = app.get_webview_window("main") {
-        if let Err(e) = w.set_zoom(*current) {
-            eprintln!("[menu] set_zoom({}) failed: {e}", *current);
-        }
+    if let Some(w) = app.get_webview_window("main")
+        && let Err(e) = w.set_zoom(*current)
+    {
+        eprintln!("[menu] set_zoom({}) failed: {e}", *current);
     }
 }
 

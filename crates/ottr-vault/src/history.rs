@@ -23,10 +23,10 @@
 //! [`HISTORY_KEEP_ROWS`]，读取侧收敛见 [`history_limit_from`]；写入侧越界
 //! 由 validate_known_setting 拒绝（settings_set 与 sync 导入同一注册表）。
 
-use rusqlite::{params, Row};
+use rusqlite::{Row, params};
 use serde::{Deserialize, Serialize};
 
-use crate::settings::{Settings, HISTORY_LIMIT_MAX, HISTORY_LIMIT_MIN, SETTING_HISTORY_LIMIT};
+use crate::settings::{HISTORY_LIMIT_MAX, HISTORY_LIMIT_MIN, SETTING_HISTORY_LIMIT, Settings};
 use crate::{Result, Vault, VaultError};
 
 /// 保留的最近历史行数（简报定值：默认 5 万；BL-205① 起 settings 键

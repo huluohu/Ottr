@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::collect::MonitorError;
 use crate::metrics::{Metrics, RawSample};
-use crate::sched::{JITTER_PERCENT, JitterRng, jittered, phase_delay};
+use ottr_cron::sched::{JITTER_PERCENT, JitterRng, jittered, phase_delay};
 
 /// 循环参数。`interval` 为基准值（实际每轮 ±jitter 抖动）。
 #[derive(Debug, Clone)]
@@ -84,7 +84,7 @@ where
         _ = cancel.cancelled() => return SamplingEnd::Cancelled,
     }
 
-    let mut rng = JitterRng::from_seed(crate::sched::fnv1a(seed));
+    let mut rng = JitterRng::from_seed(ottr_cron::sched::fnv1a(seed));
     // 差分基线：None = 首轮（只记基线不 emit）
     let mut prev: Option<(RawSample, std::time::Instant)> = None;
     let mut consecutive_failures: u32 = 0;
@@ -211,7 +211,7 @@ mod tests {
         .await;
         assert!(worked.is_err(), "无限循环面必须由限时兜住（不验证终态）");
         let got = emits.lock().unwrap();
-        assert!(got.len() >= 1, "首轮后必须有差分 emit");
+        assert!(!got.is_empty(), "首轮后必须有差分 emit");
         // 首个差分：Δtotal=1000、Δidle=700 → CPU = (1−0.7)×100 = 30%
         assert!((got[0].cpu_percent - 30.0).abs() < 1e-9);
         // 网络速率随样本 total×10：Δrx=10000 / 间隔（≥20ms 抖动）> 0

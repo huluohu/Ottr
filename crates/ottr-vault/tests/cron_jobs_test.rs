@@ -9,8 +9,8 @@
 //! crate 内测试（解析器不在本 crate——存储层不是解析器，分工见模块文档）。
 
 use ottr_vault::cron_jobs::{
-    CronJobInput, CronJobs, CronRunInput, CronRuns, CRON_RUNS_KEEP, CRON_SCHEDULE_MAX_BYTES,
-    CRON_SCRIPT_MAX_BYTES,
+    CRON_RUNS_KEEP, CRON_SCHEDULE_MAX_BYTES, CRON_SCRIPT_MAX_BYTES, CronJobInput, CronJobs,
+    CronRunInput, CronRuns,
 };
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::{HostInput, Hosts, Vault, VaultError};
@@ -148,7 +148,7 @@ fn runs_insert_list_prune_and_cascade() {
     let job = CronJobs::create(&vault, &input(h)).unwrap();
 
     for n in 0..(CRON_RUNS_KEEP + 5) {
-        let mut ri = run_input(job.id, 1_000 + n as i64);
+        let mut ri = run_input(job.id, 1_000 + n);
         if n % 4 != 0 {
             ri.status = "failed".into();
             ri.exit_code = Some(1);
@@ -159,7 +159,7 @@ fn runs_insert_list_prune_and_cascade() {
     let runs = CronRuns::list_for_job(&vault, job.id, 200).unwrap();
     assert_eq!(runs.len() as i64, CRON_RUNS_KEEP, "保留窗口裁剪");
     // ts 降序：最新在前；最老 5 条（1000..1004）被裁
-    assert_eq!(runs[0].ts, 1_000 + CRON_RUNS_KEEP as i64 + 4);
+    assert_eq!(runs[0].ts, 1_000 + CRON_RUNS_KEEP + 4);
     assert_eq!(runs.last().unwrap().ts, 1_005);
     assert!(runs.iter().all(|r| r.ts > 1_004));
 
@@ -173,9 +173,11 @@ fn runs_insert_list_prune_and_cascade() {
 
     // 删任务 → 历史级联清空
     CronJobs::delete(&vault, job.id).unwrap();
-    assert!(CronRuns::list_for_job(&vault, job.id, 10)
-        .unwrap()
-        .is_empty());
+    assert!(
+        CronRuns::list_for_job(&vault, job.id, 10)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]

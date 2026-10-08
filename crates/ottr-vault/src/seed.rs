@@ -12,11 +12,11 @@
 
 use std::path::Path;
 
-use crate::entities::{
-    host_endpoint_key, CredentialInput, CredentialKind, Credentials, HostInput, HostProtocol,
-    Hosts, KnownHosts,
-};
 use crate::Vault;
+use crate::entities::{
+    CredentialInput, CredentialKind, Credentials, HostInput, HostProtocol, Hosts, KnownHosts,
+    host_endpoint_key,
+};
 
 /// 夹具（fixtures/hostkeys）当前主机指纹；spike-sshd.sh 重建夹具且保留
 /// hostkeys 目录时不变。夹具换钥应走 changed 流程，本工具不追着改。

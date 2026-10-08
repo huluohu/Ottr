@@ -19,15 +19,15 @@
 //!     sha256(export JSON) 才能作为「本机数据指纹」参与三态判定。
 //!
 //! * **导入**（[`import_categories`]）= 全量替换所选分类（裁定：范围勾选 +
-//!     冲突按分类人工处理，非逐条 merge——粒度论证见 task-3-report）：
+//!   冲突按分类人工处理，非逐条 merge——粒度论证见 task-3-report）：
 //!   - 单个 SQLite 事务：全部所选分类要么整体落地要么整体不动（回滚）；
 //!   - id 全部重映射（AUTOINCREMENT 新 id），引用按「被引用分类也在所选集
 //!     内才保留，否则切断」重写：
-//!       host_groups.parent_id ← groups；hosts.group_id ← groups；
-//!       hosts.credential_id ← credentials；snippets.host_scope ← hosts；
-//!       alert_rules.host_id ← hosts（NOT NULL，不可保留即**整行跳过**计数）；
-//!       cron_jobs.host_id ← hosts（同上）；alert_rules/cron_jobs 的
-//!       `channels` 数组逐 id 过滤（不可映射的剔除，保其余）；
+//!     host_groups.parent_id ← groups；hosts.group_id ← groups；
+//!     hosts.credential_id ← credentials；snippets.host_scope ← hosts；
+//!     alert_rules.host_id ← hosts（NOT NULL，不可保留即**整行跳过**计数）；
+//!     cron_jobs.host_id ← hosts（同上）；alert_rules/cron_jobs 的
+//!     `channels` 数组逐 id 过滤（不可映射的剔除，保其余）；
 //!   - 替换删除的级联面（schema 裁定既有语义，非本模块发明）：删 hosts 级联
 //!     删 alert_rules/cron_jobs（FK CASCADE，且两表 host_id NOT NULL——宿主
 //!     没了规则无意义）、SET NULL snippets.host_scope；删 groups/credentials
@@ -49,12 +49,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::jump_chains::remove_host_from_chains;
 use crate::{
-    aad, AlertRules, CredentialKind, Credentials, CronJobs, HostGroups, HostProtocol, Hosts,
-    NotifyChannels, Result, SecretField, Snippets, Vault, VaultError,
+    AlertRules, CredentialKind, Credentials, CronJobs, HostGroups, HostProtocol, Hosts,
+    NotifyChannels, Result, SecretField, Snippets, Vault, VaultError, aad,
 };
 
 /// 快照格式版本（结构演进 bump；导入拒绝其它版本）。
@@ -528,15 +528,15 @@ pub fn import_categories(
             }
             group_map = map;
             for g in &groups {
-                if let Some(old_parent) = g.parent_id {
-                    if let Some(new_parent) = group_map.get(&old_parent) {
-                        tx.execute(
-                            "UPDATE host_groups SET parent_id = ?1 WHERE id = ?2",
-                            params![new_parent, group_map[&g.id]],
-                        )?;
-                    }
-                    // parent 不在快照内（截断快照）→ 提根（引用切断语义）。
+                if let Some(old_parent) = g.parent_id
+                    && let Some(new_parent) = group_map.get(&old_parent)
+                {
+                    tx.execute(
+                        "UPDATE host_groups SET parent_id = ?1 WHERE id = ?2",
+                        params![new_parent, group_map[&g.id]],
+                    )?;
                 }
+                // parent 不在快照内（截断快照）→ 提根（引用切断语义）。
             }
             sanitize_group_cycles(&tx, &group_map)?;
             applied.insert("host_groups".into(), group_map.len());
@@ -800,13 +800,12 @@ fn sanitize_group_cycles(tx: &rusqlite::Transaction, group_map: &HashMap<i64, i6
     loop {
         let mut changed = false;
         for id in &ids {
-            if !reaches_root.contains(id) {
-                if let Some(p) = parent_of[id] {
-                    if reaches_root.contains(&p) {
-                        reaches_root.insert(*id);
-                        changed = true;
-                    }
-                }
+            if !reaches_root.contains(id)
+                && let Some(p) = parent_of[id]
+                && reaches_root.contains(&p)
+            {
+                reaches_root.insert(*id);
+                changed = true;
             }
         }
         if !changed {

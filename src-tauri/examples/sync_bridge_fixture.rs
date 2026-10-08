@@ -3,7 +3,7 @@
 //! 后由 `src/sync/e2e.dualdevice.test.ts` spawn，两实例 = 两台设备）。
 //!
 //! 每实例驱动**一台真 vault**：独立数据目录（argv[1]，`Vault::open_with` 自建）
-//! + 独立 Master Key（InMemoryStorage，打开即解锁——测试纪律：绝不触真钥匙链）。
+//! ＋ 独立 Master Key（InMemoryStorage，打开即解锁——测试纪律：绝不触真钥匙链）。
 //! 命令面与 src-tauri vault.rs 同步相关命令**同款函数直调**：ottr-vault
 //! `sync_snapshot::{export_categories, import_categories}`、
 //! `Settings::{get, set}` + `validate_known_setting`（settings_set 命令体的
@@ -32,7 +32,7 @@ use ottr_vault::entities::HostInput;
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::settings::validate_known_setting;
 use ottr_vault::{HostGroups, Hosts, Settings, SyncImportMode, Vault};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn main() {
     let dir = std::env::args().nth(1).unwrap_or_else(|| usage_exit());

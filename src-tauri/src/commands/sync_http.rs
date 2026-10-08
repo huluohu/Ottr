@@ -219,7 +219,7 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-    use std::sync::mpsc::{channel, Receiver, Sender};
+    use std::sync::mpsc::{Receiver, Sender, channel};
 
     /// 读一个完整 HTTP 请求（请求行 + 头 + Content-Length 定长体）——只支持
     /// 本代理发出的请求形态（无 chunked）。
@@ -522,7 +522,7 @@ mod tests {
     #[test]
     fn error_messages_never_contain_credentials() {
         let ep = endpoint("http://127.0.0.1:9".into()); // discard 端口：连接必败
-                                                        // 网络错
+        // 网络错
         let out = run(sync_http_fetch_core(
             &ep,
             "http://127.0.0.1:9/s.json",

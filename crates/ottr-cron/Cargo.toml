@@ -1,0 +1,15 @@
+[package]
+name = "ottr-cron"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# cron next-fire 的本地时区换算（Local）。依赖树内已有（Cargo.lock 无新增包）——
+# 手写解析器的选型裁定见 src/cron.rs 模块文档。
+chrono = { workspace = true }
+# CronRunRecord/CronJobView 序列化面（src-tauri tauri::Emitter 直发 JSON）。
+serde = { workspace = true }
+# 调度循环：select!/sleep/timeout（time+macros）+ spawn（rt）。
+tokio = { workspace = true, features = ["time", "sync", "rt", "macros"] }
+# 取消令牌（调度循环 owner 语义：Drop/显式 cancel 即停）。
+tokio-util = { workspace = true }

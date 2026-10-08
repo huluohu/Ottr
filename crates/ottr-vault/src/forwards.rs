@@ -17,7 +17,7 @@
 //! dynamic 必须不带（传入的 target 值被丢弃归一为 None，不静默存储）。
 
 use rusqlite::OptionalExtension;
-use rusqlite::{params, Row};
+use rusqlite::{Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};

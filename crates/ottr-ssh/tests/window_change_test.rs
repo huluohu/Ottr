@@ -104,7 +104,7 @@ async fn window_change_reaches_server_with_correct_dimensions() {
     )
     .await
     .expect("connect mock sshd");
-    let mut channel = session.open_pty(80, 24).await.expect("session channel");
+    let channel = session.open_pty(80, 24).await.expect("session channel");
 
     // forward_pty_loop 的同一调用面（russh Channel::window_change）。
     channel

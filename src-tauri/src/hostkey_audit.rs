@@ -20,16 +20,16 @@
 //! （监听同事件 → notify(kind=security)）。手动巡检命令
 //! [`known_hosts_audit_run`] 与调度器走同一条 [`audit_round`]，事件形状一致。
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use ottr_vault::{parse_endpoint_key, KnownHost, KnownHosts, Settings, Vault};
+use ottr_vault::{KnownHost, KnownHosts, Settings, Vault, parse_endpoint_key};
 
 use crate::security::{
-    hostkey_audit_interval_from, SETTING_HOSTKEY_AUDIT, SETTING_HOSTKEY_AUDIT_INTERVAL,
+    SETTING_HOSTKEY_AUDIT, SETTING_HOSTKEY_AUDIT_INTERVAL, hostkey_audit_interval_from,
 };
 use crate::vault::VaultState;
 

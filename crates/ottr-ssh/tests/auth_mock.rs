@@ -219,7 +219,7 @@ async fn password_auth_wrong() {
 
     let err = result.expect_err("password auth with wrong password must fail");
     assert!(
-        matches!(err, Error::AuthRejected { .. }),
+        matches!(err, Error::AuthRejected),
         "expected AuthRejected, got {err:?}"
     );
     // 主机密钥交换先于认证，即使认证失败指纹也应被记录。
@@ -267,7 +267,7 @@ async fn key_auth_ok() {
     .await;
     let err = intruder.expect_err("key auth for a user outside the whitelist must fail");
     assert!(
-        matches!(err, Error::AuthRejected { .. }),
+        matches!(err, Error::AuthRejected),
         "expected AuthRejected, got {err:?}"
     );
 }

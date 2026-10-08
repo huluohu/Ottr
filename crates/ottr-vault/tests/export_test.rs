@@ -10,25 +10,6 @@ fn open_vault(dir: &std::path::Path) -> Vault {
     Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
 }
 
-fn host_input(name: &str, notes: &str) -> HostInput {
-    HostInput {
-        name: name.into(),
-        group_id: None,
-        tags: vec![],
-        address: "10.0.0.1".into(),
-        port: 22,
-        username: None,
-        protocol: Default::default(),
-        credential_id: None,
-        jump_chain_id: None,
-        encoding_override: None,
-        theme_override: None,
-        monitor_enabled: false,
-        is_production: false,
-        notes: Some(notes.into()),
-    }
-}
-
 /// 端到端：分组 join（group_id → 名）+ 各字段序列化 + 危险字符转义。
 /// （单字段转义纯函数面在 src/export.rs 单测内直测。）
 #[test]

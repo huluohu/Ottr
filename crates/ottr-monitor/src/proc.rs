@@ -52,7 +52,7 @@ pub fn parse_etime(s: &str) -> Option<u64> {
             .checked_add(part.parse::<u64>().ok()?)?;
         cols += 1;
     }
-    if cols < 1 || cols > 3 {
+    if !(1..=3).contains(&cols) {
         return None;
     }
     Some(days * 86_400 + secs)

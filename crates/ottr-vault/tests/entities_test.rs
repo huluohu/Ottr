@@ -224,9 +224,11 @@ fn search_hits_chinese_via_trigram_and_like_fallback_for_short_queries() {
         "1 字符查询同样兜底"
     );
 
-    assert!(Hosts::search(&vault, "彻底不存在的检索词")
-        .unwrap()
-        .is_empty());
+    assert!(
+        Hosts::search(&vault, "彻底不存在的检索词")
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
         Hosts::search(&vault, "  ").unwrap().len(),
         2,
@@ -655,9 +657,11 @@ fn snippets_crud_search_and_host_scope_unset_on_host_delete() {
         1,
         "2 字符走 LIKE 兜底"
     );
-    assert!(Snippets::search(&vault, "彻底不存在的检索词")
-        .unwrap()
-        .is_empty());
+    assert!(
+        Snippets::search(&vault, "彻底不存在的检索词")
+            .unwrap()
+            .is_empty()
+    );
 
     // 更新 body：旧词出索引、新词进索引（触发器同步）。
     Snippets::update(

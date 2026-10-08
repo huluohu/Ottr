@@ -37,36 +37,36 @@ use tauri::{Emitter, Manager};
 // crate::{AppState, disconnect_all_inner}）经一次 small re-export 保持原路径不变。
 pub(crate) use commands::session::disconnect_all_inner;
 pub use commands::session::{
-    forward_pty_loop, inject_shell_integration, SessionCloseReason, ShellIntegrationOutcome,
+    SessionCloseReason, ShellIntegrationOutcome, forward_pty_loop, inject_shell_integration,
 };
 pub(crate) use commands::state::AppState;
-pub use commands::state::{snapshot, SessionCounters, SessionResizeSlot, SessionStats, TextTail};
+pub use commands::state::{SessionCounters, SessionResizeSlot, SessionStats, TextTail, snapshot};
 // Phase 3 Task 6（B9）：指纹巡检面公开给夹具集成测试（tests/hostkey_fixture.rs：
 // 真 ssh-keyscan 探测 → classify → mark_changed 全链）。
-pub use hostkey_audit::{audit_once, keyscan_line_fingerprint, probe_endpoint, AuditOutcome};
+pub use hostkey_audit::{AuditOutcome, audit_once, keyscan_line_fingerprint, probe_endpoint};
 // Phase 3 Task 5（B3）：录制面公开给夹具集成测试（tests/recording_fixture.rs
 // 真容器全链：tee → auto-finalize → parse/FTS/export）与 example 直驱。
 pub use commands::recording::{
-    auto_finalize_on_exit, export_recording, read_recording, ExportEvent, RecorderSlot,
-    RecordingHandle,
+    ExportEvent, RecorderSlot, RecordingHandle, auto_finalize_on_exit, export_recording,
+    read_recording,
 };
 // Phase 2 Task 1（B7）：ForwardManager 公开给夹具集成测试（真容器断线恢复链）。
 pub use commands::forward::ForwardManager;
 // Phase 3 Task 4（B6）：批量执行池核公开给夹具集成测试（tests/batch_fixture.rs：
 // 同容器双连 = 两主机，真 exec 通道跑并发池/超时）。
 pub use commands::batch::{
-    run_batch, BatchResultEvent, BatchStatus, BatchTargetInput, ExecResolver,
+    BatchResultEvent, BatchStatus, BatchTargetInput, ExecResolver, run_batch,
 };
 // Phase 2 Task 3（B10 上半）：远端编辑生命周期核公开给夹具集成测试
 // （tests/remote_edit_fixture.rs：下载→编辑→回传→冲突→覆盖→清理全链）。
 pub use commands::remote_edit::{
-    apply_save_bookkeeping, close_all_edits, edit_close, edit_close_session, edit_dismiss,
-    edit_open, edit_poll, edit_save, local_stamp, poll_decision, sweep_stale_edits, temp_path_for,
-    temp_root, EditEntry, EditMap, EditPollStatus, LocalDecision, LocalStamp,
+    EditEntry, EditMap, EditPollStatus, LocalDecision, LocalStamp, apply_save_bookkeeping,
+    close_all_edits, edit_close, edit_close_session, edit_dismiss, edit_open, edit_poll, edit_save,
+    local_stamp, poll_decision, sweep_stale_edits, temp_path_for, temp_root,
 };
 // Phase 4 Task 3（C1）：MCP 引擎核公开给夹具集成测试（tests/mcp_fixture.rs：
 // relay 子进程 + UDS + 授权矩阵 + 真 exec/SFTP 全链）。
-pub use commands::mcp::{spawn_listener, ApprovalGate, HostSessionResolver, McpEngine};
+pub use commands::mcp::{ApprovalGate, HostSessionResolver, McpEngine, spawn_listener};
 
 // ---------------------------------------------------------------------------
 // 入口
@@ -141,7 +141,7 @@ pub fn run() {
                         // T11 自动锁定：失焦起计时 / 重聚焦作废（generation 机制见
                         // security.rs）。keyring 模式 / 已锁定 / 配置关闭时 no-op。
                         tauri::WindowEvent::Focused(focused) => {
-                            autolock.on_focus_changed(&watcher.app_handle(), *focused);
+                            autolock.on_focus_changed(watcher.app_handle(), *focused);
                         }
                         // A12（Task 14）关窗到托盘：开关开（默认）→ 拦截关闭 +
                         // 隐藏主窗（会话保活）；托盘菜单/左键可恢复。

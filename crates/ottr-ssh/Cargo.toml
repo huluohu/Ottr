@@ -4,25 +4,27 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-russh = "0.63.3"
+russh = { workspace = true }
+# pty.rs：PtyEvent::Data 持有 russh 消息里的 bytes::Bytes（同源 1.x，零重复树）
+bytes = { workspace = true }
 # forward.rs（Phase 2 Task 1）：TcpListener/TcpStream（net）+ copy_bidirectional
 # （io-util）+ 取消/超时需要的 sync/time/rt 面。
-tokio = { version = "1.53.1", features = ["net", "io-util", "sync", "time", "rt"] }
+tokio = { workspace = true, features = ["net", "io-util", "sync", "time", "rt"] }
 # forward.rs：CancellationToken（父令牌 → 每连接子令牌的取消树）。
-tokio-util = { version = "0.7", default-features = false }
+tokio-util = { workspace = true }
 # Task 6 keygen：与 russh 同版（0.10）的 rng —— PrivateKey::random 的 R: CryptoRng
 # 必须与 russh 的 rand_core 同 major，跨版本 trait 不兼容
-rand = "0.10"
+rand = { workspace = true }
 # Task 6：KeyMaterial/DeployOutcome 序列化面（src-tauri 命令直出）
-serde = { version = "1", features = ["derive"] }
+serde = { workspace = true }
 # BL-211 known_hosts 指纹解析（SHA256: + unpadded std-b64；base64/sha2 与
 # src-tauri 同版本，收敛前三处重复实现也是这两个 crate）
-base64 = "0.22"
-sha2 = "0.10"
+base64 = { workspace = true }
+sha2 = { workspace = true }
 # 注：russh-sftp / futures 随 Task 8 sftp.rs 迁入 ottr-transfer（Task 10 Step 1），
 # 本 crate 不再直接依赖。
 
 [dev-dependencies]
 # Task 6 spike#11：osc133_spike example 消费 ottr-term 的 OSC 133 解析器
 ottr-term = { path = "../ottr-term" }
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }

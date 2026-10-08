@@ -96,7 +96,7 @@ pub fn parse_proc_meminfo(text: &str) -> Option<MemInfo> {
     let field = |prefix: &str| -> Option<u64> {
         text.lines().find_map(|l| {
             l.strip_prefix(prefix)
-                .and_then(|rest| rest.trim_start().split_whitespace().next())
+                .and_then(|rest| rest.split_whitespace().next())
                 .and_then(|v| v.parse::<u64>().ok())
         })
     };

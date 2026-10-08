@@ -17,8 +17,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ottr_lib::{spawn_listener, ApprovalGate, HostSessionResolver, McpEngine};
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy, SshSession};
+use ottr_lib::{ApprovalGate, HostSessionResolver, McpEngine, spawn_listener};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::{HostInput, Hosts, McpGrantInput, McpGrants, Vault};
 
@@ -33,7 +33,7 @@ fn fixture_up() -> bool {
 }
 
 fn pinned_host_key_policy() -> HostKeyPolicy {
-    use russh::keys::{parse_public_key_base64, HashAlg};
+    use russh::keys::{HashAlg, parse_public_key_base64};
     let content = std::fs::read_to_string(KNOWN_HOSTS)
         .expect("read fixtures/known_hosts —— 先跑 scripts/spike-sshd.sh");
     let marker = format!("[{HOST}]:{PORT}");
@@ -172,7 +172,9 @@ impl Drop for RelayClient {
 #[test]
 fn mcp_relay_end_to_end_over_real_fixture() {
     if !fixture_up() {
-        println!("SKIP mcp_relay_end_to_end_over_real_fixture: fixture down —— 先跑 scripts/spike-sshd.sh");
+        println!(
+            "SKIP mcp_relay_end_to_end_over_real_fixture: fixture down —— 先跑 scripts/spike-sshd.sh"
+        );
         return;
     }
     // 显式测试 runtime：SSH connect/exec 的 async 宿主 + engine block_on 桥

@@ -399,7 +399,7 @@ fn plan_exec(
             return Err(format!(
                 "sync-git: argv shape not allowed (subcommand: {})",
                 s(0).unwrap_or("<empty>")
-            ))
+            ));
         }
     };
     // GIT_TERMINAL_PROMPT=0 恒设（除 commit 已带，其余形态补齐）。
@@ -657,10 +657,11 @@ mod tests {
         ] {
             let args: Vec<String> = args.iter().map(|x| x.to_string()).collect();
             let plan = plan_exec(&args, cwd, None, None).unwrap();
-            assert!(plan
-                .env
-                .iter()
-                .any(|(k, v)| k == "GIT_TERMINAL_PROMPT" && v == "0"));
+            assert!(
+                plan.env
+                    .iter()
+                    .any(|(k, v)| k == "GIT_TERMINAL_PROMPT" && v == "0")
+            );
         }
         // commit 作者经显式参数进 env，不接受任意 env 表
         let plan = plan_exec(
@@ -670,12 +671,14 @@ mod tests {
             Some("ottr@local".into()),
         )
         .unwrap();
-        assert!(plan
-            .env
-            .contains(&("GIT_AUTHOR_NAME".into(), "Ottr".into())));
-        assert!(plan
-            .env
-            .contains(&("GIT_COMMITTER_EMAIL".into(), "ottr@local".into())));
+        assert!(
+            plan.env
+                .contains(&("GIT_AUTHOR_NAME".into(), "Ottr".into()))
+        );
+        assert!(
+            plan.env
+                .contains(&("GIT_COMMITTER_EMAIL".into(), "ottr@local".into()))
+        );
     }
 
     // --- pin_scratch_path ---

@@ -18,7 +18,7 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager, State};
 
-use ottr_ssh::{deploy_public_key, AuthMethod, DeployStatus};
+use ottr_ssh::{AuthMethod, DeployStatus, deploy_public_key};
 use ottr_vault::{Credentials, KnownHostState, KnownHosts, SecretField};
 
 use crate::vault::VaultState;

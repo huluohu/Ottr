@@ -18,7 +18,7 @@
 //!   跳板意义，且解绑让引用主机回退直连而不是报 hop not found）。
 
 use rusqlite::OptionalExtension;
-use rusqlite::{params, Row};
+use rusqlite::{Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};

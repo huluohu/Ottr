@@ -33,7 +33,7 @@ use ottr_vault::{
 };
 
 use super::state::{AppState, SessionMap};
-use crate::vault::{ensure_unlocked, CmdResult, VaultState};
+use crate::vault::{CmdResult, VaultState, ensure_unlocked};
 
 // ---------------------------------------------------------------------------
 // ForwardManager：行 id → 运行实例注册表
@@ -66,6 +66,7 @@ impl ForwardManager {
     /// 启动（或换绑重启）一条转发。已在跑的同 id 实例先取消（pf_start 幂等/
     /// 换会话语义）。启动失败不抛——错误落进运行留痕（面板显示 error 灯 +
     /// 消息），返回快照给调用方打点。
+    #[allow(clippy::too_many_arguments)] // 转发启动全参数面（row/host/session/凭据授权槽）
     pub async fn start(
         &self,
         row_id: i64,
@@ -136,8 +137,7 @@ impl ForwardManager {
     /// * `true` → 标 Error **保留**、不进 skip 表（断灯可见，重连后
     ///   on_session_up 自动恢复 = 断线恢复链）；
     /// * `false` → 摘除（面板显示 stopped）+ 进 skip 表（重连后不自动恢复，
-    ///   直到用户显式 pf_start / pf_set_enabled(true)）。
-    /// 返回处理的条数。
+    ///   直到用户显式 pf_start / pf_set_enabled(true)）。返回处理的条数。
     pub fn session_down(&self, session_id: &str) -> usize {
         let mut runs = self.runs.lock().expect("forwards poisoned");
         let mut handled = 0;

@@ -27,11 +27,10 @@ fn main() {
 
     let outcome = ottr_vault::seed::seed_walkthrough_vault(&dir, &password).expect("seed vault");
     println!(
-        "seeded vault at {} (password mode) credential_id={} host_id={} ([{}]:2222 → {} verified)",
+        "seeded vault at {} (password mode) credential_id={} host_id={} ([127.0.0.1]:2222 → {} verified)",
         dir.display(),
         outcome.credential_id,
         outcome.host_id,
-        "127.0.0.1",
         ottr_vault::seed::FIXTURE_FINGERPRINT
     );
 }

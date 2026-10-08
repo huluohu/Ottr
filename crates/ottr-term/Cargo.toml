@@ -6,8 +6,8 @@ edition = "2024"
 [dependencies]
 encoding_rs = "0.8.42"
 # Task 5（B3）：asciinema v2 header/事件的 JSON 编解码（serde derive + serde_json）
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 # BL-216：本 crate 是纯同步的字节→文本/ANSI 处理层（解码/剥序列/录制编码），
 # 全库零 tokio 使用——原样声明却从未用到的 tokio 依赖已删除（异步运行时由
 # 消费方 ottr-ssh / src-tauri 各自持有）。

@@ -106,7 +106,7 @@ pub fn aad(table: &str, row_id: impl std::fmt::Display, field: &str) -> String {
 /// 中间层。密钥面场景：GCM nonce（本 crate）、Master Key（master_key.rs）、
 /// KDF 盐（store.rs 两处）。
 pub(crate) fn fill_os(dst: &mut [u8]) {
-    use rand::rand_core::UnwrapErr;
     use rand::Rng as _;
+    use rand::rand_core::UnwrapErr;
     UnwrapErr(rand::rngs::SysRng).fill_bytes(dst);
 }

@@ -13,10 +13,10 @@
 //! 列表（⌘R 纪要页签取数面）：id DESC（AUTOINCREMENT ≈ 时间倒序，最近优先），
 //! 可选 host 过滤（host_id 最左前缀走唯一索引）。
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::{aad, Result, Vault, VaultError};
+use crate::{Result, Vault, VaultError, aad};
 
 /// ⌘R 纪要页签单次返回上限（Tauri 命令面 `limit` 缺省同值）。
 pub const SUMMARIES_LIST_LIMIT: usize = 50;

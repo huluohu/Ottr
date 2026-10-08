@@ -4,7 +4,7 @@
 //! 引擎宿主裁定落地——脱离 webview 生命周期），本 crate 只供表。明文面
 //! （无 `*_enc` 列），锁定语义与 hosts 同（配置面命令统一 `ensure_unlocked`
 //! 门卫）。`channels` 以 JSON 文本落库（spec §3），存储层只校验「合法 JSON /
-//! channels 是数组」；`schedule` 的五段式语义校验在 ottr-monitor::cron::CronExpr
+//! channels 是数组」；`schedule` 的五段式语义校验在 ottr-cron::cron::CronExpr
 //! （命令层 create/update 前置），存储层只做非空+长度护栏（DB 不是解析器）。
 //!
 //! 运行历史（[`CronRuns`]）：每轮执行一条（ok/failed/timeout/missed），
@@ -12,7 +12,7 @@
 //! CronPanel 列表与库体积；输出正文不入库（sidecar 文件，路径在
 //! output_path；digest 对截断后输出算，完整性对账面）。
 
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};

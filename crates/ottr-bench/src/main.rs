@@ -22,9 +22,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ottr_ssh::AuthMethod;
+use ottr_ssh::PtyEvent;
 use ottr_transfer::download_parallel;
 use ottr_transfer::sftp::CancelToken;
-use russh::ChannelMsg;
 
 const FIXTURE: (&str, u16, &str, &str) = ("127.0.0.1", 2222, "spike", "spike-pass");
 const REMOTE_BIG: &str = "/tmp/big100";
@@ -153,20 +153,23 @@ async fn session_worker(index: usize, deadline: Instant) -> ottr_ssh::Result<(u6
             source: None,
         })??;
     eprintln!("[bench] session {index} pty open, requesting shell");
-    tokio::time::timeout(Duration::from_secs(10), channel.request_shell(true))
-        .await
-        .map_err(|_| ottr_ssh::Error::Protocol {
-            message: "request_shell timed out after 10s".into(),
-            source: None,
-        })?
-        .map_err(|e| ottr_ssh::Error::Protocol {
-            message: format!("request_shell: {e}"),
-            source: None,
-        })?;
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        ottr_ssh::pty::request_shell(&mut channel),
+    )
+    .await
+    .map_err(|_| ottr_ssh::Error::Protocol {
+        message: "request_shell timed out after 10s".into(),
+        source: None,
+    })?
+    .map_err(|e| ottr_ssh::Error::Protocol {
+        message: format!("request_shell: {e}"),
+        source: None,
+    })?;
     eprintln!("[bench] session {index} shell running, sending cmd");
     {
         use tokio::io::AsyncWriteExt;
-        let mut writer = channel.make_writer();
+        let mut writer = ottr_ssh::pty::writer(&channel);
         tokio::time::timeout(
             Duration::from_secs(10),
             writer.write_all(b"exec sh -c 'while :; do date +%s; sleep 5; done'\r\n"),
@@ -184,8 +187,8 @@ async fn session_worker(index: usize, deadline: Instant) -> ottr_ssh::Result<(u6
     eprintln!("[bench] session {index} cmd sent");
     let drain = tokio::spawn(async move {
         let mut drain_bytes = 0u64;
-        while let Some(msg) = channel.wait().await {
-            if let ChannelMsg::ExtendedData { data, .. } | ChannelMsg::Data { data } = msg {
+        while let Some(event) = ottr_ssh::pty::next_pty_event(&mut channel).await {
+            if let PtyEvent::Data(data) = event {
                 drain_bytes += data.len() as u64;
             }
         }

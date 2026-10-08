@@ -131,7 +131,7 @@ async fn sampling_worker(
                 async move {
                     let n = c.fetch_add(1, Ordering::Relaxed) + 1;
                     // 每 20 次 emit 一条进度（≈100s，外层 CSV 趋势粒度）
-                    if n % 20 == 0 {
+                    if n.is_multiple_of(20) {
                         eprintln!(
                             "[soak] {tag} sample #{n} cpu={:.1}% mem={:.1}%",
                             m.cpu_percent, m.mem_used_percent
@@ -255,7 +255,7 @@ async fn run(hold: u64, out_dir: PathBuf) -> (String, bool) {
                     break;
                 }
                 events += 1;
-                if events % 60 == 0 {
+                if events.is_multiple_of(60) {
                     eprintln!("[soak] rec events #{events} raw={raw_bytes}B");
                 }
             }

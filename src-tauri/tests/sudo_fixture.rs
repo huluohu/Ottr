@@ -1,9 +1,9 @@
 //! sudo 密码自动填充真夹具集成（Phase 3 Task 6，B9 收口）：真 ottr-sshd 容器
 //! 真 PTY 跑 `sudo -S true`——
-//!   1. 断言提示串恰为 `[sudo] password for spike:`（前端 SudoAutofill 检测
-//!      正则的真源锚点：夹具 sudo 挪动版本也不至于静默漂移）；
-//!   2. 填入 spike-pass（= 自动填充将写入 PTY 的同一内容）→ sudo 以退出码 0
-//!      结束（`echo MARK-$?` == MARK-0），且全程只出现一次提示（无错密重试）。
+//! ① 断言提示串恰为 `[sudo] password for spike:`（前端 SudoAutofill 检测
+//!    正则的真源锚点：夹具 sudo 挪动版本也不至于静默漂移）；
+//! ② 填入 spike-pass（= 自动填充将写入 PTY 的同一内容）→ sudo 以退出码 0
+//!    结束（`echo MARK-$?` == MARK-0），且全程只出现一次提示（无错密重试）。
 //! 即「检测 → 填充 → 命令成功」整链的服务端真相；前端链路单测见
 //! src/terminal/SudoAutofill.test.ts（喂同一提示串金样）。
 //!
@@ -14,7 +14,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, connect};
 use tokio::io::AsyncWriteExt as _;
 
 const HOST: &str = "127.0.0.1";

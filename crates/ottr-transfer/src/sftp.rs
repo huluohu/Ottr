@@ -400,6 +400,7 @@ pub async fn download_parallel(
         std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false) // 续传绝不截断：定长由下方 set_len 显式给出
             .open(local)?,
     );
     local_file.set_len(total)?;

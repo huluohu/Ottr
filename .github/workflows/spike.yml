@@ -41,6 +41,25 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all --check
 
+  # clippy 门（2026-10-08 结构收敛批次引入）：全仓零警告为基线，
+  # `-D warnings` 失败即红。与 fmt 同级解耦（不进三端构建矩阵——
+  # lint 单平台跑一次即可，警告平台差异此前未观测到）。
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable (clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo clippy --workspace --all-targets -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
   build:
     strategy:
       fail-fast: false

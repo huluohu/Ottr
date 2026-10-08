@@ -24,46 +24,46 @@ pub mod store;
 pub mod summaries;
 pub mod sync_snapshot;
 
-pub use crypto::{aad, Cipher};
+pub use crypto::{Cipher, aad};
 // 主机清单 CSV 导出（BL-206：join/序列化随实体同库可单测；src-tauri 只管路径与落盘）
 pub use entities::{
-    host_endpoint_key, parse_endpoint_key, Credential, CredentialInput, CredentialKind,
-    CredentialPatch, Credentials, Host, HostGroup, HostGroups, HostInput, HostProtocol, Hosts,
-    KnownHost, KnownHostState, KnownHosts, SecretField, Snippet, SnippetInput, Snippets,
+    Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials, Host, HostGroup,
+    HostGroups, HostInput, HostProtocol, Hosts, KnownHost, KnownHostState, KnownHosts, SecretField,
+    Snippet, SnippetInput, Snippets, host_endpoint_key, parse_endpoint_key,
 };
 pub use export::hosts_csv;
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};
 pub use history::{
-    History, HistoryEntry, HistoryInput, HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT,
-    HISTORY_SESSION_LIMIT,
+    HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT, History, HistoryEntry,
+    HistoryInput,
 };
 pub use jump_chains::{JumpChain, JumpChainInput, JumpChains};
 pub use master_key::MasterKey;
 pub use notifications::{DeliveryFailure, Notification, NotificationInput, Notifications};
 pub use notify_channels::{
-    NotifyChannel, NotifyChannelInput, NotifyChannelPatch, NotifyChannels, CHANNEL_KINDS,
+    CHANNEL_KINDS, NotifyChannel, NotifyChannelInput, NotifyChannelPatch, NotifyChannels,
 };
 // 告警规则（Phase 3 Task 3，B5；评估引擎在 TS 侧，本 crate 只供表）
 pub use alert_rules::{AlertRule, AlertRuleInput, AlertRules, RULE_KINDS};
 // cron 定时任务（Phase 4 Task 1，缺口①；调度引擎在 ottr-monitor——宿主裁定
 // 落地，本 crate 只供表 + 运行历史）
 pub use cron_jobs::{
-    CronJob, CronJobInput, CronJobs, CronRun, CronRunInput, CronRuns, CRON_RUNS_KEEP,
-    CRON_RUN_STATUSES, CRON_SCHEDULE_MAX_BYTES, CRON_SCRIPT_MAX_BYTES,
+    CRON_RUN_STATUSES, CRON_RUNS_KEEP, CRON_SCHEDULE_MAX_BYTES, CRON_SCRIPT_MAX_BYTES, CronJob,
+    CronJobInput, CronJobs, CronRun, CronRunInput, CronRuns,
 };
 // MCP 授权矩阵（Phase 4 Task 3，C1；协议引擎在 src-tauri commands/mcp.rs，
 // 本 crate 只供表——cron_jobs 同款分工）
-pub use mcp_grants::{McpGrant, McpGrantInput, McpGrants, MCP_READ_PATHS_MAX};
+pub use mcp_grants::{MCP_READ_PATHS_MAX, McpGrant, McpGrantInput, McpGrants};
 pub use secrets::Secrets;
 pub use settings::Settings;
 // 同步分类快照导出/导入（Phase 5 Task 3；编排引擎在 src/sync/SyncStore.ts，
 // 本 crate 只供 vault ↔ 快照 JSON 的双向翻译——cron_jobs 同款分工）
 pub use store::{KeyMode, Vault};
-pub use summaries::{SessionSummaries, SummaryEntry, SummaryInput, SUMMARIES_LIST_LIMIT};
-pub use sync_snapshot::{SyncImportMode, SyncImportReport, SYNC_CATEGORIES, SYNC_DATA_VERSION};
+pub use summaries::{SUMMARIES_LIST_LIMIT, SessionSummaries, SummaryEntry, SummaryInput};
+pub use sync_snapshot::{SYNC_CATEGORIES, SYNC_DATA_VERSION, SyncImportMode, SyncImportReport};
 // 录制审计回放（Phase 3 Task 5，B3；asciinema 原始流在 .cast 文件，本 crate 只供表+FTS）
 pub use recordings::{
-    RecordingEntry, RecordingHit, RecordingInput, Recordings, RECORDINGS_SEARCH_LIMIT,
+    RECORDINGS_SEARCH_LIMIT, RecordingEntry, RecordingHit, RecordingInput, Recordings,
     TEXT_INDEX_PREFIX,
 };
 

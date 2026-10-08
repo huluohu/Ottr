@@ -16,6 +16,7 @@ use crate::{AuthMethod, Error, Result, SshTransport};
 /// `Some(d)` 时 run loop 每 d 发送传输层 keepalive（SSH 全局请求，**不进任何
 /// channel 数据流**——不会污染终端）；`keepalive_max`（默认 3）个周期内未收到
 /// 对端任何数据即 KeepaliveTimeout 断连（死链检测，Phase 1 会话重连的消费点）。
+#[allow(clippy::type_complexity)] // 握手装配五元组（内部函数，仅 connect 一处消费）
 fn handshake_parts(
     host_key_cb: HostKeyPolicy,
     keepalive_interval: Option<Duration>,

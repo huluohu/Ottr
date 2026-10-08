@@ -32,8 +32,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use ottr_monitor::{
-    collect, collect_log_tail, collect_ps, kill_process, run_sampling, LogTailSample, LoopConfig,
-    Metrics, MonitorGuard, ProcEntry, SamplingEnd,
+    LogTailSample, LoopConfig, Metrics, MonitorGuard, ProcEntry, SamplingEnd, collect,
+    collect_log_tail, collect_ps, kill_process, run_sampling,
 };
 use ottr_ssh::SshSession;
 use ottr_vault::Settings;
@@ -42,7 +42,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 
 use super::state::AppState;
-use crate::security::{monitor_interval_from, SETTING_MONITOR_INTERVAL};
+use crate::security::{SETTING_MONITOR_INTERVAL, monitor_interval_from};
 use crate::vault::VaultState;
 
 /// `ottr://monitor` 事件载荷（serde snake_case）。`status`：

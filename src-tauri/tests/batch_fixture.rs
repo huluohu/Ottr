@@ -13,8 +13,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use ottr_lib::{run_batch, BatchResultEvent, BatchStatus, BatchTargetInput, ExecResolver};
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy, SshSession};
+use ottr_lib::{BatchResultEvent, BatchStatus, BatchTargetInput, ExecResolver, run_batch};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
 use tokio_util::sync::CancellationToken;
 
 const HOST: &str = "127.0.0.1";
@@ -34,7 +34,7 @@ async fn fixture_up() -> bool {
 }
 
 fn pinned_host_key_policy() -> HostKeyPolicy {
-    use russh::keys::{parse_public_key_base64, HashAlg};
+    use russh::keys::{HashAlg, parse_public_key_base64};
     let content = std::fs::read_to_string(KNOWN_HOSTS)
         .expect("read fixtures/known_hosts —— 先跑 scripts/spike-sshd.sh");
     let marker = format!("[{HOST}]:{PORT}");

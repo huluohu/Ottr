@@ -64,12 +64,12 @@ pub(crate) fn split_sections(text: &str) -> HashMap<String, String> {
     let mut current: Option<String> = None;
     for line in text.lines() {
         let trimmed = line.trim();
-        if let Some(name) = trimmed.strip_prefix(MARK_PREFIX) {
-            if let Some(end) = name.strip_suffix("===") {
-                current = Some(end.to_string());
-                out.entry(end.to_string()).or_default();
-                continue;
-            }
+        if let Some(name) = trimmed.strip_prefix(MARK_PREFIX)
+            && let Some(end) = name.strip_suffix("===")
+        {
+            current = Some(end.to_string());
+            out.entry(end.to_string()).or_default();
+            continue;
         }
         if let Some(name) = &current {
             out.entry(name.clone()).or_default().push_str(line);

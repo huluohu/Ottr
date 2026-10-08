@@ -208,9 +208,11 @@ fn list_filters_by_host_and_enabled() {
         vec![row_a.id],
         "list_enabled 只取 enabled 行"
     );
-    assert!(PortForwards::list(&vault, Some(999_999))
-        .unwrap()
-        .is_empty());
+    assert!(
+        PortForwards::list(&vault, Some(999_999))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// FK ON DELETE CASCADE：删主机连带删其转发配置（转发是主机附属配置，
@@ -227,9 +229,11 @@ fn deleting_host_cascades_to_forwards() {
         PortForwards::get(&vault, row.id).unwrap().is_none(),
         "级联删除"
     );
-    assert!(PortForwards::list(&vault, Some(host_id))
-        .unwrap()
-        .is_empty());
+    assert!(
+        PortForwards::list(&vault, Some(host_id))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// 输入校验：空白 bind_addr / 空白 target_host / local 缺 target / target_port=0

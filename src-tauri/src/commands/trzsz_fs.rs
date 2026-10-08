@@ -430,10 +430,12 @@ mod tests {
         );
         // 越界偏移 → 空串（EOF）
         let empty = read_inner(&p, 99, 10).unwrap();
-        assert!(base64::engine::general_purpose::STANDARD
-            .decode(empty)
-            .unwrap()
-            .is_empty());
+        assert!(
+            base64::engine::general_purpose::STANDARD
+                .decode(empty)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -596,24 +598,28 @@ mod tests {
         revoke_inner(&grants, "s1").unwrap();
         assert!(ensure_granted(&grants, &allowed.join("f").to_string_lossy()).is_err());
         assert!(ensure_granted(&grants, &p2).is_ok()); // s2 不被波及
-                                                       // 幂等：重复 revoke 不报错
+        // 幂等：重复 revoke 不报错
         revoke_inner(&grants, "s1").unwrap();
 
         // 空 scope / 未知 kind 显式报错
-        assert!(grant_inner(
-            &grants,
-            "",
-            &[allowed.to_string_lossy().into_owned()],
-            "dir"
-        )
-        .is_err());
-        assert!(grant_inner(
-            &grants,
-            "s3",
-            &[allowed.to_string_lossy().into_owned()],
-            "abs"
-        )
-        .is_err());
+        assert!(
+            grant_inner(
+                &grants,
+                "",
+                &[allowed.to_string_lossy().into_owned()],
+                "dir"
+            )
+            .is_err()
+        );
+        assert!(
+            grant_inner(
+                &grants,
+                "s3",
+                &[allowed.to_string_lossy().into_owned()],
+                "abs"
+            )
+            .is_err()
+        );
     }
 
     #[test]

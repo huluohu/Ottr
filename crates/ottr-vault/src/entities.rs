@@ -21,11 +21,11 @@
 //!   <3 走 LIKE 兜底（`%_\` 转义）；空查询返回全量。
 
 use rusqlite::types::Type;
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::Cipher;
-use crate::{aad, Result, Vault, VaultError};
+use crate::{Result, Vault, VaultError, aad};
 
 // ---------------------------------------------------------------------------
 // 公共工具

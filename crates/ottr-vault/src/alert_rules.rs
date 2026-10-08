@@ -11,7 +11,7 @@
 //! 存储层只校验「合法 JSON / channels 是数组」——类别内字段语义（threshold、
 //! consecutive、comm）归 TS 引擎消费面，存储层不越界解释。
 
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};
@@ -99,12 +99,12 @@ fn validate_input(input: &AlertRuleInput) -> Result<()> {
             "alert rule params must be a JSON object".into(),
         ));
     }
-    if let Some(w) = &input.mute_window {
-        if !valid_mute_window(w) {
-            return Err(VaultError::InvalidInput(
-                "mute_window must look like \"HH:MM-HH:MM\" (00-23:00-59)".into(),
-            ));
-        }
+    if let Some(w) = &input.mute_window
+        && !valid_mute_window(w)
+    {
+        return Err(VaultError::InvalidInput(
+            "mute_window must look like \"HH:MM-HH:MM\" (00-23:00-59)".into(),
+        ));
     }
     if input.rate_limit < 0 {
         return Err(VaultError::InvalidInput(

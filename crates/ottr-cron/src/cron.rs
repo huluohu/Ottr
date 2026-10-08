@@ -31,13 +31,14 @@
 //! （依赖树内已有）。DST：缺口期（不存在的本地时刻）解析为 None → 跳过该分
 //! 前进；重叠期取最早一次（`earliest()`）——两个选择都偏保守（不重复触发）。
 //!
-//! # 调度循环（[`run_cron_scheduler`]，先例 = [`crate::task::run_sampling`]）
+//! # 调度循环（[`run_cron_scheduler`]，先例 = ottr-monitor `task::run_sampling` 同款
+//! 注入式可测形态）
 //!
 //! 心跳 tick（生产 20s + 相位错峰 [`crate::sched::phase_delay`]）→ 拉任务表
 //! → 逐任务对账：到点即 spawn 单轮执行（互斥 in-flight：上一轮未完本轮跳过
 //! ——不叠跑，语义同系统 cron 的常见 `flock` 口径）→ 结果 [`CronRunRecord`]
 //! 交 sink（src-tauri 落 cron_runs + 发事件）。时钟/任务表/exec/sink 全部
-//! 注入（测试假件直驱，零真连接——[`crate::task`] 同款纪律）。
+//! 注入（测试假件直驱，零真连接——ottr-monitor `task` 同款纪律）。
 //!
 //! 【追赶口径】到点时若 next-fire 已逾期多个周期（长 GC/挂起），只跑**最近
 //! 错过的一次**并把 next-fire 前推到未来——不逐轮补放（补放 N 条通知是风暴
@@ -397,7 +398,7 @@ fn settle(
             CronRunRecord {
                 cron_id,
                 status,
-                exit_code: out.exit_code.map(i64::from),
+                exit_code: out.exit_code,
                 output,
                 truncated,
                 duration_ms,
@@ -755,6 +756,7 @@ mod tests {
     /// 返回（任务表写入端、exec 脚本写入端、记录收集器、取消令牌、循环句柄）：
     /// exec 脚本队列按 (job_id, 结果, 延迟 ms) 投递；不投 = resolver 同步 Err
     /// （= 无在册会话 → missed 路径）。
+    #[allow(clippy::type_complexity)] // 测试驱动面五元组：任务表/exec 脚本写端 + 记录收集器 + 令牌 + 句柄
     fn start(
         clock: Arc<AtomicI64>,
         exec_timeout: Duration,
@@ -1151,10 +1153,10 @@ mod tests {
         let (text, truncated) = combine_output(b"out", b"err", 1024);
         assert_eq!(text, "out\n[stderr]\nerr");
         assert!(!truncated);
-        let (text, truncated) = combine_output(&vec![b'x'; 100], &[], 50);
+        let (text, truncated) = combine_output(&[b'x'; 100], &[], 50);
         assert!(truncated);
         assert_eq!(text.chars().count(), 50);
-        let (text, truncated) = combine_output(&[], &vec![b'y'; 10], 4);
+        let (text, truncated) = combine_output(&[], &[b'y'; 10], 4);
         assert_eq!(text, "yyyy");
         assert!(truncated);
     }

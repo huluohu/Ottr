@@ -18,15 +18,15 @@
 //! Run: `cargo test -p ottr --test cron_fixture`（真分钟等待 ≤150s；
 //! 测试纪律 = perl alarm 外层硬超时）
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use ottr_monitor::{
-    run_cron_scheduler, BoxedCronExec, CronClock, CronExecOutput, CronExecResolver, CronJobView,
-    CronJobsProvider, CronLoopConfig, CronRunRecord, CronRunSink, CronRunStatus,
+use ottr_cron::{
+    BoxedCronExec, CronClock, CronExecOutput, CronExecResolver, CronJobView, CronJobsProvider,
+    CronLoopConfig, CronRunRecord, CronRunSink, CronRunStatus, run_cron_scheduler,
 };
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy, SshSession};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
 use ottr_vault::cron_jobs::{CronJobInput, CronJobs, CronRunInput, CronRuns};
 use ottr_vault::{HostInput, Hosts, Vault};
 use tokio_util::sync::CancellationToken;
@@ -47,7 +47,7 @@ async fn fixture_up() -> bool {
 }
 
 fn pinned_host_key_policy() -> HostKeyPolicy {
-    use russh::keys::{parse_public_key_base64, HashAlg};
+    use russh::keys::{HashAlg, parse_public_key_base64};
     let content = std::fs::read_to_string(KNOWN_HOSTS).expect("read fixtures/known_hosts");
     let marker = format!("[{HOST}]:{PORT}");
     let line = content
@@ -252,7 +252,7 @@ async fn cron_every_minute_two_rounds_two_runs_and_offline_missed() {
     };
 
     // 真时钟 + 10s 心跳（生产 20s；测试取短让触发延迟上界更紧）
-    let clock: CronClock = Arc::new(|| now_secs());
+    let clock: CronClock = Arc::new(now_secs);
     let config = CronLoopConfig {
         heartbeat: Duration::from_secs(10),
         exec_timeout: Duration::from_secs(30),

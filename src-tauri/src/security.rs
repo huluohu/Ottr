@@ -12,8 +12,8 @@
 //!   只认最新一次（同 generation 机制）——后复制的不被先复制的计时器清掉。
 //! * **配置校验**：`validate_setting` 给 settings_set 命令挡越界值。
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use zeroize::Zeroize;
@@ -22,7 +22,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::{Credentials, KeyMode, SecretField, Settings};
 
-use crate::vault::{dev_unlock_enabled, VaultState};
+use crate::vault::{VaultState, dev_unlock_enabled};
 
 // --- settings 已知键注册表（T3 fix round 1 I-1 迁移）---------------------------
 // 常量与已知键校验逻辑已**迁入 ottr-vault settings.rs**（单一事实源）：settings
@@ -31,12 +31,12 @@ use crate::vault::{dev_unlock_enabled, VaultState};
 // 既有引用路径（security::SETTING_* 等）全部不变。
 
 pub use ottr_vault::settings::{
-    validate_known_setting, AI_MAX_TOKENS_LIMIT, AUTOLOCK_DEFAULT_MINUTES, AUTOLOCK_MAX_MINUTES,
-    CLIPBOARD_DEFAULT_SECS, CLIPBOARD_MAX_SECS, HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS,
-    HOSTKEY_AUDIT_INTERVAL_MAX_SECS, HOSTKEY_AUDIT_INTERVAL_MIN_SECS,
-    MONITOR_INTERVAL_DEFAULT_SECS, MONITOR_INTERVAL_MAX_SECS, SETTING_AUTOLOCK, SETTING_CLIPBOARD,
-    SETTING_HOSTKEY_AUDIT, SETTING_HOSTKEY_AUDIT_INTERVAL, SETTING_MCP_ENABLED,
-    SETTING_MONITOR_INTERVAL, SETTING_SHELL_INTEGRATION, SETTING_SUDO_AUTOFILL,
+    AI_MAX_TOKENS_LIMIT, AUTOLOCK_DEFAULT_MINUTES, AUTOLOCK_MAX_MINUTES, CLIPBOARD_DEFAULT_SECS,
+    CLIPBOARD_MAX_SECS, HOSTKEY_AUDIT_INTERVAL_DEFAULT_SECS, HOSTKEY_AUDIT_INTERVAL_MAX_SECS,
+    HOSTKEY_AUDIT_INTERVAL_MIN_SECS, MONITOR_INTERVAL_DEFAULT_SECS, MONITOR_INTERVAL_MAX_SECS,
+    SETTING_AUTOLOCK, SETTING_CLIPBOARD, SETTING_HOSTKEY_AUDIT, SETTING_HOSTKEY_AUDIT_INTERVAL,
+    SETTING_MCP_ENABLED, SETTING_MONITOR_INTERVAL, SETTING_SHELL_INTEGRATION,
+    SETTING_SUDO_AUTOFILL, validate_known_setting,
 };
 
 /// shell.integration 配置 → 是否注入。`None`/非布尔 = 缺省开（validate_setting
@@ -166,7 +166,7 @@ impl AutoLockState {
     /// 焦点变化入口（lib.rs setup 的 WindowEvent::Focused 接线）。
     pub fn on_focus_changed(self: &Arc<Self>, app: &AppHandle, focused: bool) {
         self.focused.store(focused, Ordering::SeqCst);
-        let gen = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         if focused {
             return; // 聚焦 = 作废既有计时器（generation 已自增）
         }
@@ -184,12 +184,12 @@ impl AutoLockState {
             let is_locked = app
                 .try_state::<VaultState>()
                 .is_some_and(|v| v.0.is_locked());
-            if auto_lock_should_fire(gen, gen_current, focused, is_locked) {
-                if let Some(vault) = app.try_state::<VaultState>() {
-                    vault.0.lock();
-                    let _ = app.emit("ottr://vault-locked", ());
-                    eprintln!("[security] auto-locked after {minutes} min unfocused");
-                }
+            if auto_lock_should_fire(generation, gen_current, focused, is_locked)
+                && let Some(vault) = app.try_state::<VaultState>()
+            {
+                vault.0.lock();
+                let _ = app.emit("ottr://vault-locked", ());
+                eprintln!("[security] auto-locked after {minutes} min unfocused");
             }
         });
     }
@@ -223,13 +223,13 @@ pub fn clipboard_copy_with_autoclear(
     let Some(secs) = secs else {
         return Ok(());
     };
-    let gen = CLIPBOARD_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let generation = CLIPBOARD_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(secs)).await;
-        if CLIPBOARD_GEN.load(Ordering::SeqCst) == gen {
+        if CLIPBOARD_GEN.load(Ordering::SeqCst) == generation {
             // 只清「本应用最后一次复制」：期间用户复制了别的（本应用再次复制
-            // 也会自增 gen），计时器静默让位。外部程序的复制无法感知——已知
+            // 也会自增 generation），计时器静默让位。外部程序的复制无法感知——已知
             // 取舍，见 task-11-report。
             if let Ok(mut cb) = arboard::Clipboard::new() {
                 let _ = cb.clear();

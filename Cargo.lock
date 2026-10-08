@@ -3421,6 +3421,7 @@ dependencies = [
  "base64 0.22.1",
  "keyring",
  "lettre",
+ "ottr-cron",
  "ottr-monitor",
  "ottr-ssh",
  "ottr-term",
@@ -3450,15 +3451,24 @@ version = "0.1.0"
 dependencies = [
  "ottr-ssh",
  "ottr-transfer",
- "russh",
  "tokio",
+]
+
+[[package]]
+name = "ottr-cron"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
 name = "ottr-monitor"
 version = "0.1.0"
 dependencies = [
- "chrono",
+ "ottr-cron",
  "ottr-ssh",
  "ottr-term",
  "russh",
@@ -3473,6 +3483,7 @@ name = "ottr-ssh"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
  "ottr-term",
  "rand 0.10.3",
  "russh",

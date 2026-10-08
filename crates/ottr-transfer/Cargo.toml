@@ -13,12 +13,12 @@ russh-sftp = "3.0.1"
 # chunk 内子请求流水线（futures::future::try_join_all，随 Phase 0 sftp.rs 迁入）
 futures = "0.3"
 # Step 2（Task 10）：DirEntry 的 serde 面（src-tauri 命令直出）
-serde = { version = "1", features = ["derive"] }
+serde = { workspace = true }
 # Step 2（Task 10）：CancelToken（AtomicBool）与进度 hook 的原子计数
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 # Fix round 1（C-1）：journal 文件名身份派生（sha256 + base64url）
-sha2 = "0.10"
-base64 = "0.22"
+sha2 = { workspace = true }
+base64 = { workspace = true }
 # FTP/FTPS 第二后端（Phase 2 Task 5）：suppaftp 12（tokio 运行时 + native-tls
 # FTPS 显式/隐式；`deprecated` 只为 connect_secure_implicit——pyftpdlib 夹具
 # 只支持显式，隐式路径客户端能力保留）。被动模式为 suppaftp 默认。
@@ -30,5 +30,5 @@ async-native-tls = { version = "0.6", default-features = false, features = ["run
 [dev-dependencies]
 # 随迁测试（tests/sftp_test.rs）的取证通道：远端 exec（ChannelMsg 匹配）与
 # known_hosts 指纹 pin（russh::keys 解析）——与 Phase 0 原测试一致。
-russh = "0.63.3"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }
+russh = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }

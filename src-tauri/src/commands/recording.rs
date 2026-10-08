@@ -19,10 +19,10 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use ottr_term::asciinema::{event_line, parse, CastError, CastEvent, CastHeader, CastRecording};
+use ottr_term::asciinema::{CastError, CastEvent, CastHeader, CastRecording, event_line, parse};
 use ottr_vault::{Hosts, RecordingEntry, RecordingHit, RecordingInput, Recordings, Vault};
 
 use super::state::SessionMap;

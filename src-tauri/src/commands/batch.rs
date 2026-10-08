@@ -26,9 +26,9 @@
 //! （并发上限/超时/取消/失败结算/输出透传，全部零真连接）；真容器端到端在
 //! `src-tauri/tests/batch_fixture.rs`（同容器双连 = 两主机）。
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use ottr_ssh::ExecOutput;

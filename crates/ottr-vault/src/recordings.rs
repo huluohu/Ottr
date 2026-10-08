@@ -12,7 +12,7 @@
 //! MATCH（短语引号包裹防语法注入）、超短 LIKE 兜底（`%_\` 转义），排序
 //! id DESC（≈时间倒序），命中带 `snippet()` 高亮（⌘R「录制」页签预览面）。
 
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};
@@ -90,13 +90,13 @@ impl Recordings {
             "UPDATE recordings SET text_index_path = ?1 WHERE id = ?2",
             params![tip, id],
         )?;
-        if let Some(text) = input.text.as_deref() {
-            if !text.is_empty() {
-                tx.execute(
-                    "INSERT INTO recordings_fts (content, recording_id) VALUES (?1, ?2)",
-                    params![text, id],
-                )?;
-            }
+        if let Some(text) = input.text.as_deref()
+            && !text.is_empty()
+        {
+            tx.execute(
+                "INSERT INTO recordings_fts (content, recording_id) VALUES (?1, ?2)",
+                params![text, id],
+            )?;
         }
         tx.commit()?;
         Ok(RecordingEntry {

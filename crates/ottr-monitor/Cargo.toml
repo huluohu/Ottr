@@ -5,24 +5,23 @@ edition = "2024"
 
 [dependencies]
 # Metrics 事件载荷序列化面（src-tauri tauri::Emitter 直发 JSON）。
-serde = { version = "1", features = ["derive"] }
-# cron next-fire 的本地时区换算（Local）。依赖树内已有（Cargo.lock 无新增包）——
-# 手写解析器的选型裁定见 src/cron.rs 模块文档。
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde = { workspace = true }
 # 采样循环：sleep/timeout（time）+ CancellationToken（sync）+ spawn 测试（rt）。
-tokio = { version = "1.53.1", features = ["time", "sync", "rt"] }
+tokio = { workspace = true, features = ["time", "sync", "rt"] }
 # 取消令牌（ForwardManager 同款 owner 语义：Drop/显式 cancel 即停）。
-tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
+tokio-util = { workspace = true, features = ["rt"] }
 # collect(session) 经 SshSession::exec 走只读命令白名单（LANG/shell 探测同款
 # 独立 exec 通道先例）；ottr-monitor 不反向被 ottr-ssh 依赖（transfer 同向）。
 ottr-ssh = { path = "../ottr-ssh" }
+# 采样调度原语（间隔/抖动/相位错开）自 ottr-cron 消费（cron 引擎同源 crate）。
+ottr-cron = { path = "../ottr-cron" }
 
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
 # 真夹具集成测试：known_hosts 指纹解析（与 russh 同版约束，见 ottr-ssh Cargo.toml）
-russh = "0.63.3"
+russh = { workspace = true }
 # LogTailSample serde 形态测试（前端 api.ts 同构面锁形）
-serde_json = "1"
+serde_json = { workspace = true }
 # monitor_soak example（Phase 3 T7 验收）：录制负载取 asciinema v2 编码 +
 # Stripper 剥离的真代码路径（格式层+剥离层；app 层 RecordingHandle 的
 # 通道/写盘线程/入库由 src-tauri recording_fixture 覆盖，soak 不复刻）

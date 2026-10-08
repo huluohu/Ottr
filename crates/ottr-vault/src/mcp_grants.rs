@@ -10,7 +10,7 @@
 //! 字符串」——路径语义（绝对化/归一/白名单前缀匹配）在引擎层做（DB 不是
 //! 路径解析器，schedule 语义不在存储层同理）。
 
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::{Result, Vault, VaultError};

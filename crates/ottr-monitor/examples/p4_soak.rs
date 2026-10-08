@@ -10,6 +10,7 @@
 //!   - job 1（host 1，会话在册）→ 每分钟真 exec `echo p4-cron-ok` → **ok 轮**
 //!     （真 exec 成功链路长跑化，补 T1 实验「只走 missed 链路」的边界）；
 //!   - job 2（host 99，永无会话）→ 每分钟 **missed 轮**（不自动连接裁定面）。
+//!
 //!   调度核直驱（不经 src-tauri 装配层，装配点由 cron_fixture 覆盖）。
 //!
 //! 【RSS 口径】进程内 Rust 侧基线（russh+tokio+采样循环+cron 调度核），不含
@@ -29,7 +30,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use ottr_monitor::cron::{
+use ottr_cron::{
     BoxedCronExec, CronExecOutput, CronExecResolver, CronJobView, CronLoopConfig, CronRunRecord,
     CronRunStatus, run_cron_scheduler,
 };
@@ -115,7 +116,7 @@ async fn sampling_worker(
                 async move {
                     let n = c.fetch_add(1, Ordering::Relaxed) + 1;
                     // 每 60 次 emit 一条进度（≈300s，外层 CSV 趋势粒度）
-                    if n % 60 == 0 {
+                    if n.is_multiple_of(60) {
                         eprintln!(
                             "[soak] {tag} sample #{n} cpu={:.1}% mem={:.1}%",
                             m.cpu_percent, m.mem_used_percent
@@ -190,7 +191,7 @@ async fn run(hold: u64) -> (String, bool) {
     let cron_ok = Arc::new(AtomicU64::new(0));
     let cron_missed = Arc::new(AtomicU64::new(0));
     let cron_other = Arc::new(AtomicU64::new(0));
-    let sessions = vec![Arc::clone(&session0)];
+    let sessions = [Arc::clone(&session0)];
     let exec: CronExecResolver = Arc::new(move |job: &CronJobView| {
         // host 1 = 会话 0（生产 = session_for_host 在册表；此处按 host_id 映射）
         let session = match job.host_id {
@@ -216,7 +217,7 @@ async fn run(hold: u64) -> (String, bool) {
     let sink_ok = Arc::clone(&cron_ok);
     let sink_missed = Arc::clone(&cron_missed);
     let sink_other = Arc::clone(&cron_other);
-    let on_run: ottr_monitor::cron::CronRunSink =
+    let on_run: ottr_cron::cron::CronRunSink =
         Arc::new(move |record: CronRunRecord| match record.status {
             CronRunStatus::Ok => {
                 let n = sink_ok.fetch_add(1, Ordering::Relaxed) + 1;
@@ -278,7 +279,7 @@ async fn run(hold: u64) -> (String, bool) {
     let cron_end = tokio::time::timeout(Duration::from_secs(30), cron_task).await;
     match cron_end {
         // CronLoopEnd 现只有 Cancelled 一路（错误不终结循环——单任务失败不拖垮调度器）
-        Ok(Ok(ottr_monitor::cron::CronLoopEnd::Cancelled)) => {}
+        Ok(Ok(ottr_cron::cron::CronLoopEnd::Cancelled)) => {}
         Ok(Err(_)) => {
             errors += 1;
             eprintln!("[soak] error: cron task panicked");

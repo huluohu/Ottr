@@ -10,11 +10,11 @@
 //! 运行：`cargo run -p ottr-vault --example summary_seal_sample`
 //! 样本文件 /tmp/ottr-t12/summary-seal/vault.db。
 
+use ottr_vault::Vault;
 use ottr_vault::entities::{HostInput, Hosts};
 use ottr_vault::history::{History, HistoryInput};
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::summaries::{SessionSummaries, SummaryInput};
-use ottr_vault::Vault;
 
 const SUMMARY_SAMPLE: &str =
     "T12-sample: 用户在 prod-db-01 上执行了 rm -rf /tmp/scratch 且密码=hunter2 被纪要复述";
@@ -54,7 +54,7 @@ fn main() {
             &vault,
             &HistoryInput {
                 host_id: host.id,
-                session_id: Some(format!("t12-seal-sess-3")),
+                session_id: Some("t12-seal-sess-3".to_string()),
                 command: format!("echo demo-{i}"),
                 exit_code: Some(0),
                 cwd: Some("/tmp".into()),

@@ -15,14 +15,14 @@ use std::process::Command;
 use std::sync::Arc;
 
 use ottr_lib::{
-    apply_save_bookkeeping, edit_close, edit_dismiss, edit_open, edit_poll, edit_save, local_stamp,
-    temp_path_for, temp_root, EditMap, EditPollStatus,
+    EditMap, EditPollStatus, apply_save_bookkeeping, edit_close, edit_dismiss, edit_open,
+    edit_poll, edit_save, local_stamp, temp_path_for, temp_root,
 };
-use ottr_ssh::{connect, AuthMethod, SshSession};
-use ottr_transfer::ops::RemoteSnapshot;
+use ottr_ssh::{AuthMethod, SshSession, connect};
 use ottr_transfer::SftpClient;
-use russh::keys::{parse_public_key_base64, HashAlg, PublicKey};
+use ottr_transfer::ops::RemoteSnapshot;
 use russh::ChannelMsg;
+use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
@@ -113,12 +113,12 @@ async fn exec(session: &SshSession, cmd: &str) -> String {
 fn sha256_local(path: &str) -> String {
     let candidates: [Vec<&str>; 2] = [vec!["shasum", "-a", "256", path], vec!["sha256sum", path]];
     for cmd in candidates {
-        if let Ok(out) = Command::new(cmd[0]).args(&cmd[1..]).output() {
-            if out.status.success() {
-                let s = String::from_utf8_lossy(&out.stdout);
-                if let Some(h) = s.split_whitespace().next() {
-                    return h.to_string();
-                }
+        if let Ok(out) = Command::new(cmd[0]).args(&cmd[1..]).output()
+            && out.status.success()
+        {
+            let s = String::from_utf8_lossy(&out.stdout);
+            if let Some(h) = s.split_whitespace().next() {
+                return h.to_string();
             }
         }
     }
@@ -475,8 +475,7 @@ async fn oversize_edit_is_rejected() {
 
     let err = edit_open(&edits, &client, &sid, &remote)
         .await
-        .err()
-        .expect("oversize must be rejected");
+        .expect_err("oversize must be rejected");
     assert!(
         err.contains("too large"),
         "error must name the size limit, got: {err}"
@@ -516,8 +515,7 @@ async fn edit_open_rejects_binary_remote_file() {
 
     let err = edit_open(&edits, &client, &sid, &remote)
         .await
-        .err()
-        .expect("binary remote must be rejected");
+        .expect_err("binary remote must be rejected");
     assert!(
         err.starts_with("binary_file"),
         "stable token for TS mapping, got: {err}"

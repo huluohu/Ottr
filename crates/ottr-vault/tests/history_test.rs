@@ -8,8 +8,8 @@
 //! 守卫；锁定态可读写同 notifications，不另测）。
 
 use ottr_vault::master_key::InMemoryStorage;
-use ottr_vault::settings::Settings;
 use ottr_vault::settings::SETTING_HISTORY_LIMIT;
+use ottr_vault::settings::Settings;
 use ottr_vault::{History, HistoryInput, HostInput, Hosts, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
@@ -121,13 +121,17 @@ fn search_hits_chinese_via_trigram_and_like_fallback_for_short_queries() {
     );
     assert_eq!(History::search(&vault, "ps", None, 10).unwrap().len(), 1);
 
-    assert!(History::search(&vault, "彻底不存在的检索词", None, 10)
-        .unwrap()
-        .is_empty());
+    assert!(
+        History::search(&vault, "彻底不存在的检索词", None, 10)
+            .unwrap()
+            .is_empty()
+    );
     // FTS 语法注入字面量化：AND/OR/* 按普通文本检索，不当语法执行
-    assert!(History::search(&vault, "\"docker\" OR ps", None, 10)
-        .unwrap()
-        .is_empty());
+    assert!(
+        History::search(&vault, "\"docker\" OR ps", None, 10)
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
         History::search(&vault, "  ", None, 10).unwrap().len(),
         2,

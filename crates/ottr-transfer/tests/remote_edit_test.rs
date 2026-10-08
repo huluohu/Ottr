@@ -111,12 +111,12 @@ async fn exec(session: &SshSession, cmd: &str) -> String {
 fn sha256_local(path: &str) -> String {
     let candidates: [Vec<&str>; 2] = [vec!["shasum", "-a", "256", path], vec!["sha256sum", path]];
     for cmd in candidates {
-        if let Ok(out) = Command::new(cmd[0]).args(&cmd[1..]).output() {
-            if out.status.success() {
-                let s = String::from_utf8_lossy(&out.stdout);
-                if let Some(h) = s.split_whitespace().next() {
-                    return h.to_string();
-                }
+        if let Ok(out) = Command::new(cmd[0]).args(&cmd[1..]).output()
+            && out.status.success()
+        {
+            let s = String::from_utf8_lossy(&out.stdout);
+            if let Some(h) = s.split_whitespace().next() {
+                return h.to_string();
             }
         }
     }
@@ -262,8 +262,7 @@ async fn failed_swap_leaves_original_intact() {
     let err = client
         .write_remote_text(&remote, b"hostile overwrite\n")
         .await
-        .err()
-        .expect("save must fail: sticky dir forbids removing a foreign-owned file");
+        .expect_err("save must fail: sticky dir forbids removing a foreign-owned file");
     assert!(
         err.to_string().contains("remove"),
         "error must name the failed swap step (remove), got: {err}"

@@ -726,6 +726,10 @@ fn build_menu<R: Runtime>(
 }
 
 /// 构建菜单并收集全部 Check 项（主题勾选状态管理的注册面）。
+/// 同 menu_tree：win/linux 构建不装原生菜单（调用点在 cfg(macos) 块内），
+/// Linux 视角 dead_code——allow 不沿调用链传播，被调者须各自标注
+/// （v0.1.0 后 clippy 门首跑真绿时实测暴露）。
+#[allow(dead_code)]
 fn build_menu_with_checks<R: Runtime>(
     app: &AppHandle<R>,
     tree: &[MenuNode],
@@ -936,6 +940,8 @@ pub struct ThemeMenuState {
 }
 
 /// 构建产物登记（重建时重放勾选，保状态不闪失）。
+/// 同 build_menu_with_checks：仅 cfg(macos) 调用点可达。
+#[allow(dead_code)]
 fn register_theme_checks(app: &AppHandle<Wry>, checks: Vec<CheckMenuItem<Wry>>) {
     let state = app.state::<ThemeMenuState>();
     let remembered = state.current.lock().unwrap().clone();
@@ -971,6 +977,8 @@ pub fn menu_set_theme(theme_id: String, app: AppHandle) -> Result<(), String> {
 }
 
 /// 构建产物登记通知中心菜单项（按 id 找 tool.notify-center；重建重放未读数）。
+/// 同 build_menu_with_checks：仅 cfg(macos) 调用点可达。
+#[allow(dead_code)]
 fn register_notify_item(app: &AppHandle<Wry>, tree: &[MenuNode]) {
     fn find_label(tree: &[MenuNode], id: &str) -> Option<&'static str> {
         for node in tree {

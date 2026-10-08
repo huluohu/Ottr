@@ -194,13 +194,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          # upload-artifact 保留 bundle/ 下子目录结构（dmg/ macos/ msi/ …），
+          # download merge-multiple 后带前缀——通配必须 ** 递归（平铺 * 会
+          # 全部落空：v0.1.0 首发实测，Release 建成但零资产）。
           files: |
-            bundle/*.dmg
-            bundle/*.app.tar.gz
-            bundle/*.sig
-            bundle/*.msi
-            bundle/*.msi.zip
-            bundle/*.exe
-            bundle/*.deb
-            bundle/*.rpm
-            bundle/*.AppImage
+            bundle/**/*.dmg
+            bundle/**/*.app.tar.gz
+            bundle/**/*.sig
+            bundle/**/*.msi
+            bundle/**/*.msi.zip
+            bundle/**/*.exe
+            bundle/**/*.deb
+            bundle/**/*.rpm
+            bundle/**/*.AppImage

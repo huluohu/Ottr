@@ -22,11 +22,11 @@ use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
-use ottr_lib::{forward_pty_loop, SessionCloseReason, SessionCounters, TextTail};
-use ottr_term::encoding::{Encoding, StreamDecoder};
+use ottr_lib::{SessionCloseReason, SessionCounters, TextTail, forward_pty_loop};
 use ottr_term::Decoder;
+use ottr_term::encoding::{Encoding, StreamDecoder};
 
-use ottr_ssh::{connect, AuthMethod, HostKeyPolicy};
+use ottr_ssh::{AuthMethod, HostKeyPolicy, connect};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
@@ -61,7 +61,7 @@ fn escaped(s: &str) -> String {
 
 /// 从 known_hosts 提取 `[127.0.0.1]:2222` 指纹 pin（同 Phase 0 gbk_spike）。
 fn pinned_host_key_policy() -> (HostKeyPolicy, String) {
-    use russh::keys::{parse_public_key_base64, HashAlg, PublicKey};
+    use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
     let content =
         std::fs::read_to_string(KNOWN_HOSTS).unwrap_or_else(|e| panic!("read {KNOWN_HOSTS}: {e}"));
     let marker = format!("[{HOST}]:{PORT}");

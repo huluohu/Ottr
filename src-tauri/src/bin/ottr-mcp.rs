@@ -30,9 +30,9 @@ use std::path::PathBuf;
 #[cfg(unix)]
 use std::process::exit;
 #[cfg(unix)]
-use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(unix)]
 use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(unix)]
 use std::time::Duration;
 

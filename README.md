@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
 [![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
-[![Tests](https://img.shields.io/badge/tests-1400%2B%20green-5EEAD4)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-1760%2B%20green-5EEAD4)](#-测试)
 [![License](https://img.shields.io/badge/license-freeware%20(closed%20source)-F59E0B)](#-许可)
 
 </div>
@@ -19,7 +19,7 @@
 
 **Ottr** 把「连上服务器敲命令」升级为「AI 懂你的终端」：命令失败自动诊断、自然语言生成命令、全局历史检索，同时守住一条硬底线——**自带 AI Key（BYOK），请求直连你选的模型服务商并经脱敏，绝不经过任何第三方服务器**；主机、凭据、历史全部存在本机加密库或你自己的云盘里，隐私可以抓包自行验证。
 
-技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
+技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
 
 ![终端会话：主机树 + 已连接会话 + 分屏/录制/编码](docs/screenshots/terminal-dark.png)
 
@@ -34,7 +34,7 @@
 
 ### 主机与凭据
 
-- 分组 / 标签 / 搜索 / **⌘K 模糊快速连接**；`~/.ssh/config`、CSV 导入导出，Tabby（JSON/YAML）、Xshell 第三方导入
+- 分组 / 标签 / 搜索 / **⌘K 模糊快速连接**；`~/.ssh/config` 导入、主机清单 CSV 导出，Tabby（JSON/YAML）、Xshell 第三方导入
 - 凭据库：密码、SSH 密钥（ed25519/ecdsa/rsa，生成/导入/部署公钥）、TOTP 两步验证，按主机绑定
 - **跳板链**：多级跳板可视化编排；**端口转发**：本地 / 动态 SOCKS / 远程，断线自动重挂
 - known_hosts **TOFU 首次信任 + 指纹巡检**，防中间人
@@ -69,17 +69,21 @@
 
 ### 安全底座
 
-- 本地库 **AES-256-GCM**；主密码（Argon2id 派生）或系统钥匙链托管主密钥，双模式可选
-- 失焦自动锁定、剪贴板自动清除、锁定屏「忘记密码」重置引导（二次确认，云端备份不受影响）
+- 本地库 **AES-256-GCM**：**钥匙链免密模式**为默认（主密钥存系统钥匙链，打开即用），
+  **主密码模式**可选（Argon2id 派生，无密码不可解密），一键互转、数据跨模式重加密
+- 敏感复制自动清除（剪贴板中的凭据按配置定时清空）、锁定屏「忘记密码」重置引导
+  （二次确认，云端备份不受影响）
 - 零遥测：不联网上传任何主机数据，行为可抓包自行验证
 
 ![锁定屏](docs/screenshots/lockscreen.png)
 
 ### 体验细节
 
-- 亮 / 暗 / 跟随系统主题，终端配色自定义（支持 iTerm2 主题导入，含二进制 plist）
-- 中文 / English 双语；macOS 原生菜单栏、Windows/Linux 自绘标题栏，三端托盘
-- 定时任务、告警、凭据、历史均有专属面板；截图之外还有等宽字体连字、命令面板、插件系统（网络摘要 / 快捷命令）
+- **七套主题**：亮色 / 暗色 / 跟随系统 / 曜黑（OLED 纯黑）/ 幻紫 / 青野 / 雾镜（真透明毛玻璃），
+  终端配色逐主题跟随；支持 iTerm2 主题导入（含二进制 plist）与自定义配色
+- 中文 / English 双语（菜单栏同步切换）；**macOS 原生菜单栏承载全部功能入口**
+  （主题七选 / 工具 12 项 / 通知中心带未读数 / 新建主机与分组），Windows/Linux 自绘标题栏，三端托盘
+- 凭据、告警、转发、跳板链、定时任务、MCP 均有专属面板；另有等宽字体连字、命令面板、插件系统（网络摘要 / 快捷命令）
 
 <table>
   <tr>
@@ -115,29 +119,35 @@
 
 ## 🚀 快速上手
 
-1. **加主机**：左侧「新建主机」或「导入 ssh config」→ 双击主机行连接（首次连接展示指纹，信任后免问询）
+1. **加主机**：左侧「新建主机」（或菜单栏「文件 → 新建主机 / 新建分组」建分组归类）、
+   「导入 ssh config」→ 双击主机行连接（首次连接展示指纹，信任后免问询）
 2. **用 AI**：设置 → AI 助手 → 新增服务商（选「智谱 GLM」「DeepSeek」「Ollama」等预设，填 Key）→ 之后命令失败会自动诊断；`⌘J` 直接用中文要命令
-3. **配告警**：工具 → 告警 → 添加通知渠道（发测试消息验证）→ 建规则（如「根分区 > 90%」）
+3. **配告警**：菜单栏「工具 → 告警规则」→ 添加通知渠道（发测试消息验证）→ 建规则（如「根分区 > 90%」）
 4. **多设备同步**：第二台设备装好后，设置 → 同步 → 选通道（如 WebDAV 填你的网盘地址）→ 设置同步口令 → 「立即同步」
-5. **进阶**：`⌘R` 搜历史、`⌘D`/`⌘⇧D` 分屏、工具菜单里还有端口转发 / 跳板链 / 批量执行 / 定时任务 / 录制回放
+5. **进阶**：`⌘R` 搜历史、`⌘D`/`⌘⇧D` 分屏；菜单栏「工具」还有端口转发 / 跳板链 /
+   批量执行 / 定时任务 / 同步 / 导出主机 CSV / 通知中心（未读数直接标在菜单上）
 
 ## 🛠 技术栈与工程结构
 
 ```
 ├─ src/                    # 前端（React + TypeScript + zustand + i18next + xterm.js）
-│  ├─ terminal/ workspace/ hosts/ credentials/ files/   # 终端 / 工作区 / 主机 / 凭据 / 文件
-│  ├─ ai/ notify/ sync/ monitor/ history/              # AI / 通知 / 同步 / 监控 / 历史
-│  └─ theme/ ui/ i18n/                                 # 主题令牌 / 基础组件 / 双语
-├─ src-tauri/              # Tauri 2 宿主 + 命令层（按域拆分：session/transfer/…）
+│  ├─ terminal/ workspace/ hosts/ credentials/ files/  # 终端 / 工作区 / 主机 / 凭据 / 文件
+│  ├─ ai/ notify/ sync/ monitor/ history/ cron/        # AI / 通知 / 同步 / 监控 / 历史 / 定时任务
+│  ├─ session/ security/ vault/ batch/ forward/        # 会话状态机 / 安全 / 库 API / 批量 / 转发
+│  ├─ theme/ styles/ ui/ i18n/ shortcuts/ palette/     # 主题令牌 / 分节样式 / 基础组件 / 双语 / 键位 / ⌘K
+│  └─ vault/bindings.generated.ts                      # Rust 命令 TS 绑定（tauri-specta 自动生成，漂移即测试红）
+├─ src-tauri/              # Tauri 2 宿主 + 命令层（按域拆分：session/vault/mcp/…）
+│  ├─ tests/               # 真容器夹具集成 + 契约守护（命令名集合比对 / 绑定一致性）
 │  └─ crates/
 │     ├─ ottr-vault        # 加密库（AES-256-GCM + Argon2id + 钥匙链 + 同步快照）
-│     ├─ ottr-ssh          # SSH/SFTP 传输核（russh，trait 隔离）
+│     ├─ ottr-ssh          # SSH/SFTP 传输核（russh，trait 隔离 + PTY 收口层）
 │     ├─ ottr-term         # 终端文本层（ANSI/OSC133 解析、编码、asciinema）
 │     ├─ ottr-transfer     # SFTP 并行传输 / FTP
-│     └─ ottr-monitor      # 免 Agent 监控采样 / cron 调度
+│     ├─ ottr-monitor      # 免 Agent 监控采样
+│     └─ ottr-cron         # 定时任务引擎（五段式解析 + 调度 + 抖动原语）
 ├─ brand/                  # 品牌（logo 源文件 + 手册）
 ├─ docs/                   # 路线图 / 规格 / 验收报告 / 运行手册
-└─ .github/workflows/      # CI：tag → 三平台构建 + 自动发布；push → fmt + 构建
+└─ .github/workflows/      # CI：tag → 三平台构建 + 自动发布；push → fmt + clippy + 编译冒烟
 ```
 
 ### 开发环境
@@ -153,12 +163,13 @@ npm run tauri dev      # 起 vite + Tauri 开发窗
 ### 测试
 
 ```bash
-npm test               # 前端 vitest（1100+ 用例，含真夹具端到端）
-cargo test             # Rust 工作区全部单测/集成测试
+npm test               # 前端 vitest（1181 用例，含真夹具端到端）
+cargo test             # Rust 工作区全部单测/集成测试（586）
 cargo fmt --all --check
+cargo clippy --workspace --all-targets   # CI 同款 -D warnings 门，零告警基线
 ```
 
-本地 SSH/WebDAV 联调可起 Docker 夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222）、`scripts/spike-dufs.sh`（127.0.0.1:15773）。仓库另有守护测试钉住设计约束（主题对比度实算、终端可见性契约、控件一致性等）。
+本地 SSH/WebDAV 联调可起 Docker 夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222）、`scripts/spike-dufs.sh`（127.0.0.1:15773）。仓库另有守护测试钉住设计约束（主题对比度实算、前后端命令名契约比对、TS 绑定与 Rust 签名一致性、控件一致性等）。
 
 ### 发布构建
 
@@ -171,7 +182,7 @@ npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前
 ### CI
 
 - **`release.yml`**：推送 `v*` 标签 → 校验版本一致性 → 三平台矩阵构建（Linux 上带测试夹具跑全量前端测试）→ 自动发布 GitHub Release
-- **`spike.yml`**：推送 main → `cargo fmt --check` + 三平台编译冒烟
+- **`spike.yml`**：推送 main → `cargo fmt --check` + `cargo clippy -D warnings` + 三平台编译冒烟
 
 ### 已知开发环境坑（macOS Apple Silicon）
 
@@ -182,9 +193,19 @@ nvm install 22 && nvm use 22 && node -p process.arch   # 应输出 arm64
 rm -rf node_modules && npm install
 ```
 
+同理 `cargo` / `npx tauri build` 报 `libxcrun ... missing compatible architecture`：是走了 x86_64 的 cargo（如 `/usr/local/bin/cargo`）。把原生 cargo 前置即可：
+
+```bash
+PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:$PATH" npx tauri build
+```
+
 ## 📋 项目状态
 
-路线图 Phase 0–5 与 UI 改造、产品就绪、账本清零各批次**已全部交付并验收**（本文档所列功能均为已实现状态）。设计规格、各阶段验收报告与运行手册见 [`docs/`](docs/)；路线图见 [`docs/features-and-roadmap.md`](docs/features-and-roadmap.md)。
+路线图 Phase 0–5、UI 改造、产品就绪、账本清零、主题套件、**原生菜单栏整合**
+（顶栏功能全部收敛进菜单栏 + 关闭交互统一）与**结构收敛**（Rust 前后端 1760+
+测试全绿、TS 绑定自动生成守护、clippy 零告警门）各批次**已全部交付并验收**
+（本文档所列功能均为已实现状态）。设计规格、各阶段验收报告与运行手册见
+[`docs/`](docs/)；路线图见 [`docs/features-and-roadmap.md`](docs/features-and-roadmap.md)。
 
 ## 📄 许可
 

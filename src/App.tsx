@@ -7,7 +7,6 @@
 // Task 4/11 的 spike 测量页（latency/throughput/keyring/notify/render）与
 // 顶栏 keyring/notify 手动验证按钮随本重构消亡。
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { HostTree } from "./hosts/HostTree";
@@ -55,16 +54,10 @@ import {
   isTerminalTarget,
   matchActionEvent,
   platform,
-  shortcutLabel,
   warnShortcutConflicts,
   type ActionId,
 } from "./shortcuts/registry";
-import {
-  ThemeProvider,
-  useTheme,
-  syncThemeFromVault,
-  THEME_IDS,
-} from "./theme/ThemeContext";
+import { ThemeProvider, useTheme, syncThemeFromVault } from "./theme/ThemeContext";
 import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { useVaultStore } from "./vault/store";
 import { vaultApi, type Host } from "./vault/api";
@@ -85,117 +78,6 @@ const MENU_ACTION_EVENT = "ottr://menu-action";
 
 // --- 顶栏下拉菜单（Phase 5 T1 顶栏收纳） --------------------------------------
 //
-// 通用壳：按钮 + 弹出菜单。交互契约对齐 NotificationCenter（mousedown 在外
-// 收起）+ Esc 收起；选中条目即收起并执行 onSelect。纯呈现——条目与动作全部
-// 由调用方注入。条目去向两族：对话框族仍走 HomeLayout 就地 setState（凭据/
-// AI/同步）；工作区族（总览/批量→主区视图，转发/跳板链/定时任务/告警/MCP→
-// 右侧 dock）走 workspaceStore——registry ActionId 面零变化（T14 守卫不动）。
-
-interface TopbarMenuItem {
-  key: string;
-  label: string;
-  testid?: string;
-  /** 主题菜单用：当前模式高亮（data-active，勾选语义）。 */
-  active?: boolean;
-  onSelect: () => void;
-}
-
-function TopbarMenu({
-  label,
-  ariaLabel,
-  items,
-  buttonTestid,
-  menuTestid,
-}: {
-  label: string;
-  ariaLabel: string;
-  items: TopbarMenuItem[];
-  buttonTestid: string;
-  menuTestid: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className="topbar-menu" ref={rootRef}>
-      <button
-        data-testid={buttonTestid}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={ariaLabel}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {label}
-        <span className="topbar-caret" aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div className="topbar-menu-list" data-testid={menuTestid} role="menu" aria-label={ariaLabel}>
-          {items.map((item) => (
-            <button
-              key={item.key}
-              role="menuitem"
-              data-testid={item.testid}
-              data-active={item.active === true}
-              aria-checked={item.active === true}
-              onClick={() => {
-                setOpen(false);
-                item.onSelect();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 全部主题单选。
- * 2026-10-08 用户口径：快切菜单同步七主题全集（此前只列亮/暗/系统三键，
- * 七选在设置页网格——两处不同步被判定为缺陷）；全集 = THEME_IDS 单一来源，
- * 与设置页网格同序同词（settings.themes.<id>）。 */
-function ThemeMenu() {
-  const { mode, setMode } = useTheme();
-  const { t } = useTranslation();
-  const labelKey = `settings.themes.${mode}`;
-  return (
-    <TopbarMenu
-      label={t(labelKey)}
-      ariaLabel={t("settings.theme")}
-      buttonTestid="topbar-theme"
-      menuTestid="topbar-theme-menu"
-      items={THEME_IDS.map((id) => ({
-        key: id,
-        label: t(`settings.themes.${id}`),
-        testid: `topbar-theme-${id}`,
-        active: mode === id,
-        onSelect: () => setMode(id),
-      }))}
-    />
-  );
-}
-
 // --- 主页布局 ----------------------------------------------------------------
 
 type FormState = { mode: "new"; groupId: number | null } | { mode: "edit"; host: Host } | null;
@@ -210,8 +92,7 @@ function clampSidebarWidth(w: number): number {
 }
 
 function HomeLayout() {
-  const { t } = useTranslation();
-  // T11（A7）：安全底座——锁定遮罩盖全屏（password 模式）；设置对话框入口在顶栏。
+  // T11（A7）：安全底座——锁定遮罩盖全屏（password 模式）；设置入口在应用菜单（⌘,）。
   const lockPhase = useVaultLockStore((s) => s.phase);
   const hosts = useVaultStore((s) => s.hosts);
   const storeError = useVaultStore((s) => s.error);
@@ -260,6 +141,10 @@ function HomeLayout() {
   });
   const resizing = useRef(false);
 
+  // 2026-10-08 菜单栏启用批次：通知中心受控浮层（入口=工具菜单/汉堡 notify.center）
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  // 新建分组信号（File 菜单/汉堡 hosts.new_group → HostTree 分组态；计数即触发）
+  const [newGroupSignal, setNewGroupSignal] = useState(0);
   // theme-suite T1：工具菜单「导出主机 CSV」的行内反馈条（主区顶部）。path=null
   // 由 Rust 侧落系统下载目录并回传路径；成功显示路径、失败显示错误文本，6 秒
   // 自动清除。定时器句柄随卸载清理（重触发先清旧定时器，防泄漏/误清新消息）。
@@ -283,6 +168,7 @@ function HomeLayout() {
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
+        case "notify-center": setNotifyOpen((v) => !v); break;
         case "credentials": setCredentialsOpen(true); break;
         case "alerts": openDock("alerts"); break;
         case "mcp": openDock("mcp"); break;
@@ -390,6 +276,13 @@ function HomeLayout() {
           break;
         case "hosts.new":
           setForm({ mode: "new", groupId: null });
+          break;
+        case "hosts.new_group":
+          // 信号计数：HostTree useEffect 监听展开分组输入（连续触发也生效）。
+          setNewGroupSignal((n) => n + 1);
+          break;
+        case "notify.center":
+          setNotifyOpen((v) => !v);
           break;
         case "settings.open":
           setSettingsOpen(true);
@@ -508,107 +401,6 @@ function HomeLayout() {
       {PLATFORM !== "mac" && IS_TAURI && (
         <TitleBar plat={PLATFORM} onAction={handleAction} />
       )}
-      <header className="topbar">
-        <span className="topbar-title">Ottr</span>
-        <button className="topbar-palette" data-testid="open-palette" onClick={() => setPaletteOpen(true)}>
-          {t("palette.title")} <kbd>{shortcutLabel("palette.toggle", PLATFORM)}</kbd>
-        </button>
-        <div className="topbar-spacer" />
-        {/* Phase 5 T1 顶栏收纳：低频面板入口收进「工具」下拉；高频入口
-            （⌘K 面板 / 通知铃 / 设置 / 主题）保留在栏面。顺序 = 用户口径：
-            凭据/告警/MCP/AI/端口转发/跳板链/总览/批量执行/定时任务（AI 助手
-            原为栏面按钮，为「每个原入口都可达」一并收纳于此）。
-            【UI 批次一 Task 2】工作区族条目改调 workspaceStore：总览/批量 →
-            openMainView（主区互斥视图，T3 迁实体）；端口转发/跳板链/定时任务/
-            告警/MCP → openDock（右侧 dock 单槽，T4 迁实体）。registry 动作 ID
-            零新增零删除。 */}
-        <TopbarMenu
-          label={t("topbar.tools")}
-          ariaLabel={t("topbar.tools")}
-          buttonTestid="topbar-tools"
-          menuTestid="topbar-tools-menu"
-          items={[
-            {
-              key: "credentials",
-              label: t("credentials.openButton"),
-              testid: "menu-open-credentials",
-              onSelect: () => runToolAction("credentials"),
-            },
-            {
-              key: "alerts",
-              label: t("alert.sectionTitle"),
-              testid: "menu-open-alert-settings",
-              onSelect: () => runToolAction("alerts"),
-            },
-            {
-              key: "mcp",
-              label: t("mcp.title"),
-              testid: "menu-open-mcp-settings",
-              onSelect: () => runToolAction("mcp"),
-            },
-            {
-              key: "ai",
-              label: t("ai.title"),
-              testid: "menu-open-ai-settings",
-              onSelect: () => runToolAction("ai"),
-            },
-            {
-              key: "forwards",
-              label: t("forward.title"),
-              testid: "menu-open-forwards",
-              onSelect: () => runToolAction("forwards"),
-            },
-            {
-              key: "jump-chains",
-              label: t("jump.title"),
-              testid: "menu-open-jump-chains",
-              onSelect: () => runToolAction("jump-chains"),
-            },
-            {
-              key: "overview",
-              label: t("overview.title"),
-              testid: "menu-open-overview",
-              onSelect: () => runToolAction("overview"),
-            },
-            {
-              key: "batch",
-              label: t("batch.title"),
-              testid: "menu-open-batch",
-              onSelect: () => runToolAction("batch"),
-            },
-            {
-              key: "cron",
-              label: t("cron.title"),
-              testid: "menu-open-cron",
-              onSelect: () => runToolAction("cron"),
-            },
-            {
-              key: "sync",
-              label: t("sync.sectionTitle"),
-              testid: "menu-open-sync",
-              onSelect: () => runToolAction("sync"),
-            },
-            {
-              // theme-suite T1：导出主机清单 CSV（同 HostTree 工具栏按钮的命令面；
-              // 顶栏收纳口径下树外可达的第二入口）。
-              key: "export-hosts-csv",
-              label: t("hostTree.exportCsv"),
-              testid: "menu-export-hosts-csv",
-              onSelect: () => runToolAction("export-hosts-csv"),
-            },
-          ]}
-        />
-        <NotificationCenter />
-        <button
-          className="topbar-debug"
-          data-testid="open-settings"
-          aria-label={t("settings.title")}
-          onClick={() => setSettingsOpen(true)}
-        >
-          {t("settings.title")}
-        </button>
-        <ThemeMenu />
-      </header>
       {/* theme-suite T1：主区顶部行内状态条（复用 .tree-status 样式）——工具菜单
           导出 CSV 的落盘路径/错误反馈，6 秒自动清除。 */}
       {csvMsg && (
@@ -619,6 +411,7 @@ function HomeLayout() {
       <div className="app-body">
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <HostTree
+          newGroupSignal={newGroupSignal}
             selectedId={selectedId}
             onSelect={(host) => setSelectedId(host.id)}
             onOpen={(host) => openTab(host)}
@@ -651,6 +444,9 @@ function HomeLayout() {
             停靠壳（单槽互斥，openDock 换值即替换）；五工具面板实体渲染其中。 */}
         <DockPanel />
       </div>
+      {/* 通知中心浮层（2026-10-08 菜单栏启用批次）：入口=工具菜单/汉堡
+          notify.center；受控渲染，点外/Esc 收起。 */}
+      <NotificationCenter open={notifyOpen} onClose={() => setNotifyOpen(false)} />
 
       {form && (
         <HostForm

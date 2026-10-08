@@ -92,3 +92,43 @@
   box-sizing: border-box;
 }
 
+/* --- 对话框统一头部（2026-10-08 关闭交互统一）：标题 + 右上 X 常驻可视 ---
+   设置族面板（SecuritySettings/AISettings）此前关闭按钮埋在长面板底部（不滚到
+   底关不掉）；统一为 dialog-head（X + Esc），底部孤立关闭按钮移除。 */
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-3, 12px);
+}
+.dialog-head h2 {
+  margin: 0;
+}
+.dialog-close {
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary, inherit);
+  font-size: 20px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  flex: none;
+}
+.dialog-close:hover {
+  background: var(--color-bg-raised, rgba(128, 128, 128, 0.15));
+  color: var(--color-text, inherit);
+}
+
+/* 通知中心浮层（铃铛移除后）：固定右上（原 .notify-panel 是铃铛锚定下拉）。 */
+.notify-overlay {
+  background: transparent;
+}
+.notify-panel-floating {
+  position: fixed;
+  top: 48px;
+  right: 16px;
+  z-index: 90;
+}

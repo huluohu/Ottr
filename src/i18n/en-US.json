@@ -596,7 +596,8 @@
     "kindCron": "Scheduled tasks",
     "deliveryFailed": "Delivery failed",
     "resend": "Resend",
-    "resending": "Resending…"
+    "resending": "Resending…",
+    "centerTitle": "Notification Center"
   },
   "knownHosts": {
     "title": "Known host keys",

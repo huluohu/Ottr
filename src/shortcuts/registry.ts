@@ -37,6 +37,8 @@ export type ActionId =
   | "session.splitDown"
   | "ai.nl2cmd"
   | "vault.lock"
+  | "hosts.new_group"
+  | "notify.center"
   | "app.quit";
 
 /** 每平台键位（mac 用 ⌘ 系，win/linux 用 Ctrl 系；无差异时三份同值）。
@@ -136,6 +138,11 @@ export const ACTIONS: readonly ActionDef[] = [
     terminalSafe: true,
   },
   { id: "vault.lock", labelKey: "security.lockNow" },
+  // 新建分组（2026-10-08 菜单栏启用批次）：File 菜单/汉堡可及（无快捷键——
+  // ⌘G 是浏览器查找下一语义，不抢占）；App 直派 HostTree 分组态。
+  { id: "hosts.new_group", labelKey: "hostTree.addGroup" },
+  // 通知中心（工具族）：mac 原生工具菜单 + win/linux 汉堡同源入口。
+  { id: "notify.center", labelKey: "notify.centerTitle" },
   { id: "app.quit", labelKey: "palette.quit" },
 ];
 

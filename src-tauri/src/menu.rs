@@ -93,6 +93,13 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "File"
             }
         }
+        "new_group" => {
+            if zh {
+                "新建分组"
+            } else {
+                "New Group"
+            }
+        }
         "new_host" => {
             if zh {
                 "新建主机"
@@ -247,6 +254,13 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Tools"
             }
         }
+        "tool_notify_center" => {
+            if zh {
+                "通知中心"
+            } else {
+                "Notification Center"
+            }
+        }
         "tool_credentials" => {
             if zh {
                 "凭据…"
@@ -383,7 +397,8 @@ pub const THEME_IDS: [&str; 7] = [
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
-pub const TOOL_KEYS: [&str; 11] = [
+pub const TOOL_KEYS: [&str; 12] = [
+    "notify-center",
     "credentials",
     "alerts",
     "mcp",
@@ -428,6 +443,11 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     id: "hosts.new",
                     label: text(lang, "new_host"),
                     accelerator: Some("CmdOrCtrl+N"),
+                },
+                MenuNode::Item {
+                    id: "hosts.new_group",
+                    label: text(lang, "new_group"),
+                    accelerator: None,
                 },
                 MenuNode::Sep,
                 MenuNode::Predef(Predef::CloseWindow),
@@ -521,6 +541,11 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
         MenuNode::Sub {
             label: text(lang, "tools"),
             items: vec![
+                MenuNode::Item {
+                    id: "tool.notify-center",
+                    label: text(lang, "tool_notify_center"),
+                    accelerator: None,
+                },
                 MenuNode::Item {
                     id: "tool.credentials",
                     label: text(lang, "tool_credentials"),
@@ -651,8 +676,8 @@ pub fn dispatch_of(id: &str) -> Option<Dispatch> {
         return Some(Dispatch::Frontend);
     }
     match id {
-        "settings.open" | "hosts.new" | "session.splitRight" | "session.splitDown"
-        | "palette.toggle" => Some(Dispatch::Frontend),
+        "settings.open" | "hosts.new" | "hosts.new_group" | "session.splitRight"
+        | "session.splitDown" | "palette.toggle" => Some(Dispatch::Frontend),
         "app.quit" | "tray.quit" => Some(Dispatch::Quit),
         "view.zoom_in" => Some(Dispatch::ZoomIn),
         "view.zoom_out" => Some(Dispatch::ZoomOut),
@@ -694,6 +719,14 @@ fn build_menu_with_checks<R: Runtime>(
         }
     }
     Ok((mb.build()?, checks))
+}
+
+/// 通知中心菜单项状态（未读数进文案：「通知中心 (3)」；0/None = 素文案）。
+/// 与 [`ThemeMenuState`] 同模式：构建时登记、命令面驱动、重建重放。
+#[derive(Default)]
+pub struct NotifyMenuState {
+    item: std::sync::Mutex<Option<tauri::menu::MenuItem<Wry>>>,
+    unread: std::sync::Mutex<Option<u64>>,
 }
 
 #[allow(dead_code)] // 同 menu_tree
@@ -881,6 +914,66 @@ pub fn menu_set_theme(theme_id: String, app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 构建产物登记通知中心菜单项（按 id 找 tool.notify-center；重建重放未读数）。
+fn register_notify_item(app: &AppHandle<Wry>, tree: &[MenuNode]) {
+    fn find_label(tree: &[MenuNode], id: &str) -> Option<&'static str> {
+        for node in tree {
+            match node {
+                MenuNode::Item { id: i, label, .. } if *i == id => return Some(label),
+                MenuNode::Sub { items, .. } => {
+                    if let Some(l) = find_label(items, id) {
+                        return Some(l);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+    let Some(label) = find_label(tree, "tool.notify-center") else {
+        return;
+    };
+    let item =
+        tauri::menu::MenuItem::with_id(app, "tool.notify-center", label, true, None::<&str>).ok();
+    let state = app.state::<NotifyMenuState>();
+    *state.item.lock().unwrap() = item;
+    // 重建重放：把记忆的未读数刷进新实例文案。
+    let unread = *state.unread.lock().unwrap();
+    if let (Some(item), Some(n)) = (state.item.lock().unwrap().as_ref(), unread)
+        && let Some(l) = find_label(tree, "tool.notify-center")
+    {
+        let text = if n > 0 {
+            format!("{l} ({n})")
+        } else {
+            l.to_string()
+        };
+        if let Err(e) = item.set_text(text) {
+            eprintln!("[menu] notify item replay failed: {e}");
+        }
+    }
+}
+
+/// 前端未读数同步命令（useNotifyStore unread 变化即调；幂等）。
+/// 文案 = 菜单树词条 + 计数后缀（0 = 素文案）。win/linux 无原生菜单 → no-op。
+#[tauri::command]
+pub fn menu_set_notify_count(unread: u64, app: AppHandle) -> Result<(), String> {
+    let state = app.state::<NotifyMenuState>();
+    *state.unread.lock().unwrap() = Some(unread);
+    let guard = state.item.lock().unwrap();
+    let Some(item) = guard.as_ref() else {
+        return Ok(());
+    };
+    let base = item.text().map_err(|e| e.to_string())?;
+    // 素文案 = 剥掉历史计数后缀（"通知中心 (3)" → "通知中心"），再按新值拼。
+    let base = base.split(" (").next().unwrap_or(&base).to_string();
+    let text = if unread > 0 {
+        format!("{base} ({unread})")
+    } else {
+        base
+    };
+    item.set_text(text).map_err(|e| e.to_string())
+}
+
 // ---------------------------------------------------------------------------
 // setup（lib.rs run() 调用；mac 菜单 + 三端托盘 + 语言重建监听）
 // ---------------------------------------------------------------------------
@@ -892,12 +985,14 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     // 语言：Task 16.5 起 vault 就绪前此处拿不到 settings——menu_lang 按 En 兜底，
     // vault-ready 后 on_vault_ready 重建纠偏。
     app.manage(ThemeMenuState::default());
+    app.manage(NotifyMenuState::default());
     #[cfg(target_os = "macos")]
     {
         let lang = menu_lang(app);
         let (menu, checks) = build_menu_with_checks(app, &menu_tree(lang))?;
         app.set_menu(menu)?;
         register_theme_checks(app, checks);
+        register_notify_item(app, &menu_tree(lang));
     }
     app.manage(ZoomState::default());
     app.on_menu_event(on_app_menu_event);
@@ -957,6 +1052,7 @@ fn rebuild_menus(handle: &AppHandle<Wry>) {
                 eprintln!("[menu] rebuild failed: {e}");
             }
             register_theme_checks(handle, checks);
+            register_notify_item(handle, &menu_tree(lang));
         }
         Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
     }

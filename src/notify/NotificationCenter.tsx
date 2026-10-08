@@ -1,5 +1,8 @@
-// NotificationCenter（Task 12，spec §7①）：顶栏铃铛 + 下拉通知中心面板。
-// * 铃铛：未读数红点（badge，99+ 封顶）；点击开合面板。
+// NotificationCenter（Task 12，spec §7①）：通知中心面板（受控浮层）。
+// 【2026-10-08 菜单栏启用批次】顶栏铃铛移除——入口收敛到原生「工具 → 通知
+// 中心」（mac）与汉堡菜单（win/linux，registry notify.center）；未读数经
+// menu_set_notify_count 同步进菜单文案。本组件改受控：open/onClose 由 App
+// 持有，渲染为右上浮层（点外/Esc 收起）。
 // * 面板：列表（severity 语义配色 / 未读标记 / 点击单条已读）、全部已读、
 //   清空、按 kind 静音开关（存 vault settings，管线入口判定，见 core.ts）。
 //   【Phase 5 T1（BL-517）】投递失败块：条目 payload.delivery_failed（由重试
@@ -11,7 +14,8 @@
 //   （items.length === 0 分支），非空列表不渲染引导块。
 // * 数据面全部在 useNotifyStore（core.ts）；本组件只渲染 + 调 action。
 // * 主题/i18n 纪律：severity 走语义令牌（--color-*），文案全走词典键。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { Notification } from "../vault/api";
 import i18n from "../i18n";
@@ -20,12 +24,21 @@ import { resendNotification } from "./channelRegistry";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { Checkbox } from "../ui/Checkbox";
 
-/** 未读数徽标文案封顶（99+ 防 badge 撑爆铃铛）。 */
-const BADGE_CAP = 99;
-
 // Phase 3 Task 3（B5）：告警事件独立静音位（规则引擎事件走 kind="alert"）。
 // Phase 3 Task 6（B9）：指纹巡检 changed 告警独立静音位（kind="security"）。
 const MUTABLE_KINDS: NotifyKind[] = ["transfer", "session", "ai", "alert", "security", "cron"];
+
+/** Esc 关闭（对话框统一关闭交互；独立小组件便于清理监听）。 */
+function EscapeToClose({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return null;
+}
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString(undefined, {
@@ -34,21 +47,6 @@ function formatTime(ts: number): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function BellIcon() {
-  // 内联铃铛（不引图标库；与 stroke 色随 currentColor）
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 3a6 6 0 0 0-6 6v3.2l-1.6 3A1 1 0 0 0 5.3 16.7h13.4a1 1 0 0 0 .9-1.5L18 12.2V9a6 6 0 0 0-6-6Zm-2 15a2 2 0 0 0 4 0"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 /** 投递失败块（单渠道一行）：状态标签 + 渠道名（alert.kind 词典，剥 `#id`）
@@ -119,7 +117,13 @@ function NotificationRow({ item }: { item: Notification }) {
   );
 }
 
-export function NotificationCenter() {
+export function NotificationCenter({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const items = useNotifyStore((s) => s.items);
   const unread = useNotifyStore((s) => s.unread);
@@ -131,46 +135,30 @@ export function NotificationCenter() {
   // 空态引导入口（ui2 T3，A4）：告警规则面板走既有 dock 单槽动作。
   const openDock = useWorkspaceStore((s) => s.openDock);
 
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  // 开着时点面板外收起（document 级 mousedown；面板/铃铛内部不收）。
+  // 打开即对齐真源（多窗口/落库失败兜底）；未读数 → 原生菜单文案跟随。
   useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  const badge = unread > BADGE_CAP ? `${BADGE_CAP}+` : String(unread);
+    if (open) void refresh();
+  }, [open, refresh]);
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    invoke("menu_set_notify_count", { unread }).catch(() => {});
+  }, [unread]);
 
   return (
-    <div className="notify-root" ref={rootRef}>
-      <button
-        className="topbar-debug notify-bell"
-        data-testid="notify-bell"
-        aria-label={t("notify.bellAria") + (unread > 0 ? ` (${t("notify.unreadBadge", { count: unread })})` : "")}
-        aria-expanded={open}
-        onClick={() => {
-          const next = !open;
-          setOpen(next);
-          if (next) void refresh(); // 打开即对齐真源（多窗口/落库失败兜底）
-        }}
-      >
-        <BellIcon />
-        {unread > 0 && (
-          <span className="notify-badge" data-testid="notify-badge">
-            {badge}
-          </span>
-        )}
-      </button>
-
+    <>
       {open && (
-        <div className="notify-panel" data-testid="notify-panel">
+        <>
+          {/* 点外收起（透明背板）；Esc 同效（对话框关闭统一交互）。 */}
+          <div
+            className="overlay notify-overlay"
+            role="presentation"
+            onMouseDown={onClose}
+          />
+          <EscapeToClose onClose={onClose} />
+        </>
+      )}
+      {open && (
+        <div className="notify-panel notify-panel-floating" data-testid="notify-panel">
           <div className="notify-panel-head">
             <div className="notify-actions">
               <button
@@ -203,7 +191,7 @@ export function NotificationCenter() {
                 data-testid="notify-empty-alerts"
                 onClick={() => {
                   openDock("alerts");
-                  setOpen(false); // 导航即收：防下拉面板与右侧 dock 视觉叠压
+                  onClose(); // 导航即收：防下拉面板与右侧 dock 视觉叠压
                 }}
               >
                 {t("notify.emptyAlertsCta")}
@@ -233,6 +221,6 @@ export function NotificationCenter() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

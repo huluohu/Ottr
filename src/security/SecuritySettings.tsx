@@ -100,6 +100,21 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   const [hostkeyAuditInterval, setHostkeyAuditInterval] = useState<number | null>(null);
   const [sudoAutofill, setSudoAutofill] = useState<boolean | null>(null);
   const [sudoConfirm, setSudoConfirm] = useState(false);
+  // 关闭交互统一（2026-10-08）：Esc = 右上 X 等价；sudo 确认子层打开时先收
+  // 子层（Esc 逐层退出，不跨层关闭整个面板）。
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (sudoConfirm) {
+        setSudoConfirm(false);
+        return;
+      }
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose, sudoConfirm]);
   // B2 主题生态（Phase 2 Task 9）：配色导入的本地反馈面（选择/清单在全局 store）。
   const themeFileRef = useRef<HTMLInputElement | null>(null);
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
@@ -277,7 +292,18 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={t("settings.title")} data-testid="security-settings">
       <div className="dialog settings-dialog">
-        <h2>{t("settings.title")}</h2>
+        <div className="dialog-head">
+          <h2>{t("settings.title")}</h2>
+          <button
+            type="button"
+            className="dialog-close"
+            data-testid="settings-dialog-close"
+            aria-label={t("common.close")}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
 
         {/* --- 安全（T11 主区）--- */}
         <section aria-label={t("settings.sectionSecurity")} data-testid="security-section">
@@ -740,11 +766,6 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
           </label>
         </section>
 
-        <div className="form-actions">
-          <button type="button" className="btn-accent" data-testid="settings-close" onClick={onClose}>
-            {t("common.close")}
-          </button>
-        </div>
       </div>
     </div>
   );

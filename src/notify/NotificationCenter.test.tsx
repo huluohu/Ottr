@@ -6,6 +6,7 @@
 // Phase 5 T1（BL-517）：投递失败块（状态+渠道+错误）+ 手动重发按钮——失败
 // 标记经 recordDeliveryFailure 入账（账本才是 refresh 重贴的真源，直塞 payload
 // 会被 refresh 剥掉）；重发走 mock 的 channelRegistry.resendNotification。
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -116,12 +117,13 @@ afterEach(() => {
 });
 
 /** 打开面板并**等 refresh 的 set 落地**（list invoke 计数 + 一个宏任务 tick——
- * set 在 invoke 之后的下一微任务）。点击铃铛与点击行之间的 refresh 微任务若
- * 不先落定，会用 mock 真源覆盖行点击的本地乐观变更——生产里 refresh 早已
- * 完成，这是测试时序伪影，不是管线缺陷。 */
+ * set 在 invoke 之后的下一微任务）。挂载与挂载之间的 refresh 微任务若不先落定，
+ * 会用 mock 真源覆盖行点击的本地乐观变更——生产里 refresh 早已完成，这是测试
+ * 时序伪影，不是管线缺陷。受控化后（铃铛移除）open=重挂组件驱动 open effect。 */
 async function openPanel() {
   const before = mockedInvoke.mock.calls.filter(([c]) => c === "notify_list").length;
-  fireEvent.click(screen.getByTestId("notify-bell"));
+  cleanup();
+  render(<Harness />);
   await waitFor(() =>
     expect(mockedInvoke.mock.calls.filter(([c]) => c === "notify_list").length).toBeGreaterThan(
       before,
@@ -130,18 +132,25 @@ async function openPanel() {
   await new Promise((r) => setTimeout(r, 0));
 }
 
+/** 带状态受控壳：close 真收（面板收起类断言需要）；open=false 渲染 null。 */
+function Harness({ initialOpen = true }: { initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen);
+  return <NotificationCenter open={open} onClose={() => setOpen(false)} />;
+}
+
 describe("NotificationCenter（铃铛 + 面板）", () => {
-  it("未读数红点：unread=0 无 badge；3 条显示 3；超 99 封顶 99+", () => {
-    const { rerender } = render(<NotificationCenter />);
-    expect(screen.queryByTestId("notify-badge")).toBeNull();
-
+  it("未读数同步进原生菜单（menu_set_notify_count；铃铛已移除）", async () => {
+    // invoke 门卫（IS_TAURI）：jsdom 伪造运行时标记放行（先例 VaultInitGate.test）。
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    render(<Harness />);
     seedBackend([row(), row({ id: 2 }), row({ id: 3 })], 3);
-    rerender(<NotificationCenter />);
-    expect(screen.getByTestId("notify-badge").textContent).toBe("3");
-
-    seedBackend([row()], 120);
-    rerender(<NotificationCenter />);
-    expect(screen.getByTestId("notify-badge").textContent).toBe("99+");
+    await waitFor(() => {
+      expect(
+        mockedInvoke.mock.calls.some(
+          ([c, a]) => c === "menu_set_notify_count" && (a as { unread: number }).unread === 3,
+        ),
+      ).toBe(true);
+    });
   });
 
   it("面板：列表渲染（标题走词典键 + severity 标记 + 未读态），点单条已读", async () => {
@@ -169,7 +178,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
       }),
     ];
     seedBackend(items, 1);
-    render(<NotificationCenter />);
+    render(<Harness initialOpen={false} />);
     expect(screen.queryByTestId("notify-panel")).toBeNull();
     await openPanel();
     expect(screen.getByTestId("notify-panel")).toBeTruthy();
@@ -186,16 +195,20 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
     );
     expect(screen.getByTestId("notify-item-11").getAttribute("data-read")).toBe("true");
     expect(useNotifyStore.getState().unread).toBe(0); // 本地未读数同步递减
-    // 已读行再点不再发命令
+    // 已读行再点不再发命令（语义断言：id=11 的 mark_read 恒 1 次——总计数跨
+    // 用例有污染面，只有语义计数是这条守卫的真命题）
+    const reads11 = () =>
+      mockedInvoke.mock.calls.filter(
+        ([c, a]) => c === "notify_mark_read" && (a as { id: number }).id === 11,
+      ).length;
     fireEvent.click(screen.getByTestId("notify-item-11"));
-    // 打开面板 refresh 2 个读命令 + mark_read 1 次；再点已读行零新增
-    expect(mockedInvoke).toHaveBeenCalledTimes(3);
+    expect(reads11()).toBe(1);
   });
 
   it("全部已读：unread>0 才可用，发 notify_mark_read(id=null) 并清零", async () => {
     const items = [row({ id: 1 }), row({ id: 2, read: true })];
     seedBackend(items, 1);
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     const btn = screen.getByTestId("notify-mark-all") as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
@@ -213,7 +226,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
   it("清空：发 notify_clear 并清空列表；空表禁用", async () => {
     const items = [row({ id: 1 })];
     seedBackend(items, 1);
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     const btn = screen.getByTestId("notify-clear") as HTMLButtonElement;
     fireEvent.click(btn);
@@ -226,7 +239,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
 
   it("按 kind 静音：勾选即写 settings 并入 muted 集；已静音的 kind 勾选态回显", async () => {
     seedBackend([], 0, ["session"]);
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     const sessionBox = screen.getByTestId("notify-mute-session") as HTMLInputElement;
     expect(sessionBox.checked).toBe(true);
@@ -242,21 +255,17 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
   });
 
   it("空态：无通知时显示空态文案；打开面板触发 refresh 对齐真源（list+unread）", async () => {
-    render(<NotificationCenter />);
-    fireEvent.click(screen.getByTestId("notify-bell"));
+    render(<Harness />);
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("notify_list", { limit: 200 }),
     );
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("notify_unread_count"));
     expect(screen.getByTestId("notify-empty").textContent).toBe("No notifications");
 
-    // 后端出现新行：再开面板（关→开）对齐真源
-    const items = [row({ id: 9 })];
-    seedBackend(items, 1);
-    fireEvent.click(screen.getByTestId("notify-bell")); // 关
+    // 后端出现新行：重开面板（关→开）对齐真源
+    seedBackend([row({ id: 9 })], 1);
     await openPanel();
     await waitFor(() => expect(screen.getByTestId("notify-item-9")).toBeTruthy());
-    expect(screen.getByTestId("notify-badge").textContent).toBe("1");
   });
 });
 
@@ -265,7 +274,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
 // dock），点击后通知面板收起（导航即收，防与右侧 dock 视觉叠压）。
 describe("通知空态引导（ui2 T3，审计 A4）", () => {
   it("空态：引导块 + 查看告警规则按钮；点击 openDock('alerts') 且面板收起", async () => {
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     expect(useWorkspaceStore.getState().dockPanel).toBeNull();
     expect(screen.getByTestId("notify-empty-guide")).toBeTruthy();
@@ -279,7 +288,7 @@ describe("通知空态引导（ui2 T3，审计 A4）", () => {
 
   it("非空列表不渲染引导块（空态判定不变）", async () => {
     seedBackend([row({ id: 31 })], 1);
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     expect(screen.queryByTestId("notify-empty-guide")).toBeNull();
     expect(screen.queryByTestId("notify-empty-alerts")).toBeNull();
@@ -298,7 +307,7 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
 
   it("失败块渲染：状态标签 + 渠道名 + 错误摘要；refresh 重贴后仍在", async () => {
     await seedFailed(21);
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     const block = screen.getByTestId("notify-dlv-21");
     expect(block.textContent).toContain("Delivery failed");
@@ -316,7 +325,7 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
       await clearDeliveryFailure((r as Notification).id, (f as { channel: string }).channel);
       return true;
     });
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     fireEvent.click(screen.getByTestId("notify-resend-21"));
     await waitFor(() => expect(resendNotification).toHaveBeenCalledTimes(1));
@@ -334,7 +343,7 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
           resolve = r;
         }),
     );
-    render(<NotificationCenter />);
+    render(<Harness />);
     await openPanel();
     fireEvent.click(screen.getByTestId("notify-resend-22"));
     const btn = screen.getByTestId("notify-resend-22") as HTMLButtonElement;

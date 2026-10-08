@@ -10,6 +10,9 @@ import { useDebouncedValue } from "./useDebouncedValue";
 
 export interface HostTreeProps {
   selectedId: number | null;
+  /** 新建分组信号（2026-10-08 菜单栏启用批次）：File 菜单/汉堡 hosts.new_group
+   * → App 计数递增；本组件 useEffect 展开分组输入。0 = 从未触发。 */
+  newGroupSignal?: number;
   onSelect: (host: Host) => void;
   /** 双击主机行：打开会话标签并连接（Task 7 A6）。 */
   onOpen: (host: Host) => void;
@@ -35,6 +38,7 @@ export function HostTree({
   multiSelect = false,
   selectedIds,
   onToggle,
+  newGroupSignal = 0,
 }: HostTreeProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
@@ -49,6 +53,13 @@ export function HostTree({
   const [activeTags, setActiveTags] = useState<ReadonlySet<string>>(new Set());
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [grouping, setGrouping] = useState(false);
+  // 菜单/汉堡「新建分组」信号：>0 即展开分组输入（外部入口复用树内同一表单）。
+  useEffect(() => {
+    if (newGroupSignal > 0) {
+      setGroupError(null);
+      setGrouping(true);
+    }
+  }, [newGroupSignal]);
   const [newGroupName, setNewGroupName] = useState("");
   const [groupError, setGroupError] = useState<string | null>(null);
   // 过期响应守卫：连输两词时只采纳最后一次发出的请求

@@ -86,7 +86,7 @@ afterEach(() => {
 });
 
 describe("App 主页布局（集成）", () => {
-  it("渲染骨架：顶栏 + 主机树（refresh 后）+ 主区占位；Ctrl+K 呼出/关闭命令面板", async () => {
+  it("渲染骨架：主机树（refresh 后）+ 主区占位；Ctrl+K 呼出/关闭命令面板（顶栏已收敛进菜单栏）", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list") return Promise.resolve([web]);
       if (cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") return Promise.resolve([]);
@@ -95,7 +95,6 @@ describe("App 主页布局（集成）", () => {
 
     render(<App />);
     expect(screen.getByTestId("main-area")).toBeTruthy();
-    expect(screen.getByTestId("open-palette")).toBeTruthy();
     // refresh 完成后主机树可见
     await waitFor(() => expect(screen.getByText("web-01")).toBeTruthy());
     expect(screen.getByTestId("main-area").textContent).toContain("Pick a host on the left");
@@ -162,88 +161,11 @@ describe("App 主页布局（集成）", () => {
   });
 });
 
-// Phase 5 T1（顶栏收纳）：低频面板入口收进「工具」下拉、主题改单按钮下拉——
-// 呈现重排但功能零丢失：每个原入口仍可达（此处抽「凭据」全链 + 主题切换全链
-// 验证；其余条目与凭据同一 TopbarMenu 壳、同一 onSelect 收口）。
-describe("App 顶栏收纳（Phase 5 T1）", () => {
-  function listMock() {
-    mockedInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
-        return Promise.resolve([]);
-      }
-      return Promise.reject(new Error(`unexpected command: ${cmd}`));
-    });
-  }
-
-  it("工具下拉：九个面板入口齐全；点「凭据」打开凭据对话框", async () => {
-    listMock();
-    render(<App />);
-    await waitFor(() => expect(screen.getByTestId("open-palette")).toBeTruthy());
-
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    const menu = screen.getByTestId("topbar-tools-menu");
-    // 九入口（用户口径八项 + AI 助手收纳）：凭据/告警/MCP/AI/端口转发/跳板链/总览/批量执行/定时任务
-    for (const testid of [
-      "menu-open-credentials",
-      "menu-open-alert-settings",
-      "menu-open-mcp-settings",
-      "menu-open-ai-settings",
-      "menu-open-forwards",
-      "menu-open-jump-chains",
-      "menu-open-overview",
-      "menu-open-batch",
-      "menu-open-cron",
-    ]) {
-      expect(menu.querySelector(`[data-testid="${testid}"]`)).toBeTruthy();
-    }
-
-    // theme-suite T1：工具菜单补「导出主机 CSV」入口（主机树按钮保留，此为顶栏可达面）
-    expect(menu.querySelector('[data-testid="menu-export-hosts-csv"]')).toBeTruthy();
-
-    // 入口可达性全链：点「凭据」→ 凭据对话框挂载
-    fireEvent.click(screen.getByTestId("menu-open-credentials"));
-    await waitFor(() => expect(screen.getByTestId("credentials-dialog")).toBeTruthy());
-  });
-
-  it("工具下拉：点外/Escape 收起", async () => {
-    listMock();
-    render(<App />);
-    // 点外（mousedown 落在菜单壳之外，对齐 NotificationCenter 契约）收起
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    expect(screen.getByTestId("topbar-tools-menu")).toBeTruthy();
-    fireEvent.mouseDown(document.body);
-    expect(screen.queryByTestId("topbar-tools-menu")).toBeNull();
-    // Escape 收起
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    expect(screen.getByTestId("topbar-tools-menu")).toBeTruthy();
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByTestId("topbar-tools-menu")).toBeNull();
-  });
-
-  it("主题单按钮下拉：按钮面显示当前模式，菜单三选一即时生效", async () => {
-    listMock();
-    render(<App />);
-    // 默认 mode=system → 按钮面显示「System」（按钮面 = 当前模式名）
-    const themeButton = screen.getByTestId("topbar-theme");
-    expect(themeButton.textContent).toContain("System");
-
-    fireEvent.click(themeButton);
-    const menu = screen.getByTestId("topbar-theme-menu");
-    // 七主题全集同步快切菜单（2026-10-08 用户口径，防回退到三键）
-    for (const id of ["light", "dark", "system", "oled", "amethyst", "verdant", "glass"]) {
-      expect(menu.querySelector(`[data-testid="topbar-theme-${id}"]`)).toBeTruthy();
-    }
-    expect(menu.querySelectorAll("[data-testid^='topbar-theme-']").length).toBe(7);
-
-    // 选暗色 → data-theme 立即切换 + 按钮面更新（persistMode 走 localStorage 镜像）
-    fireEvent.click(menu.querySelector('[data-testid="topbar-theme-dark"]')!);
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(screen.getByTestId("topbar-theme").textContent).toContain("Dark");
-    // 菜单已收起
-    expect(screen.queryByTestId("topbar-theme-menu")).toBeNull();
-    localStorage.removeItem("ottr.settings.theme");
-  });
-});
+// Phase 5 T1 顶栏收纳 → 2026-10-08 菜单栏启用批次的演进：顶栏整排（命令面板/
+// 工具/通知/设置/主题）已收敛进原生菜单栏（用户口径：不占内容区空间）。原
+// 「工具下拉/主题下拉」交互测试随之退役，等价语义由「原生菜单栏动作分发」
+// describe 承担（同源 runToolAction/setMode）；入口齐全性由 menu.rs 单测钉
+// （tools_submenu_mirrors_topbar_tools / theme_submenu_lists_all_seven_themes）。
 
 // 2026-10-08 菜单栏启用批次：原生菜单动作（theme.set.* / tool.*）经
 // ottr://menu-action 直派单一来源（runToolAction / setMode），与顶栏下拉同源。
@@ -281,7 +203,8 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
   it("theme.set.<id> 切主题 + menu_set_theme 同步勾选", async () => {
     listMock();
     render(<App />);
-    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    await act(async () => {});
+    expect(menuActionHandler).toBeTruthy();
     act(() => menuActionHandler!({ payload: "theme.set.oled" }));
     // data-theme = 主题 id 本体（oled；暗底系 resolved 另算——见 ThemeContext）
     expect(document.documentElement.dataset.theme).toBe("oled");
@@ -291,19 +214,38 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
     localStorage.removeItem("ottr.settings.theme");
   });
 
+  it("tool.credentials 打开凭据对话框（原顶栏工具下拉主链的菜单等价）", async () => {
+    listMock();
+    render(<App />);
+    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    act(() => menuActionHandler!({ payload: "tool.credentials" }));
+    await waitFor(() => expect(screen.getByTestId("credentials-dialog")).toBeTruthy());
+  });
+
   it("tool.<key> 与顶栏工具下拉同源（openDock 路由）", async () => {
     listMock();
     useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
     render(<App />);
-    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    await act(async () => {});
+    expect(menuActionHandler).toBeTruthy();
     act(() => menuActionHandler!({ payload: "tool.cron" }));
     await waitFor(() => expect(useWorkspaceStore.getState().dockPanel).toBe("cron"));
   });
 });
 
-// theme-suite T1：工具菜单「导出主机 CSV」——path=null 落系统下载目录，主区
-// 顶部行内状态条反馈落盘路径/错误，6 秒自动清除（定时器卸载清理防泄漏）。
-describe("App 工具菜单导出主机 CSV（theme-suite T1）", () => {
+// theme-suite T1 → 2026-10-08 菜单栏启用批次：「导出主机 CSV」入口收敛到
+// 原生工具菜单（tool.export-hosts-csv → runToolAction 同一命令面）。状态条
+// 反馈（落盘路径/错误/6 秒自清）语义不变。
+describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）", () => {
+  // 菜单监听门卫（IS_TAURI）：jsdom 伪造运行时标记放行（先例 VaultInitGate.test）。
+  beforeEach(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    menuActionHandler = null;
+  });
+
   function listMock(exportImpl: () => Promise<string>) {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
@@ -314,20 +256,27 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1）", () => {
     });
   }
 
-  it("点击入口调 export_hosts_csv(null)，状态条显示落盘路径；6 秒后自动清除", async () => {
+  it("菜单动作调 export_hosts_csv(null)，状态条显示落盘路径；6 秒后自动清除", async () => {
     vi.useFakeTimers();
     try {
       listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
       render(<App />);
-      fireEvent.click(screen.getByTestId("topbar-tools"));
-      fireEvent.click(screen.getByTestId("menu-export-hosts-csv"));
+      // listen 是立即 resolve 的 mock：一轮 act 即赋值 handler（此处 fake timers
+      // 生效中，waitFor 的轮询定时器会被冻结——禁用 waitFor，防超时连锁）。
+      await act(async () => {});
+      expect(menuActionHandler).toBeTruthy();
+      act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
       // 冲刷 invoke promise 链（fake timers 不影响微任务）
       await act(async () => {});
       expect(mockedInvoke).toHaveBeenCalledWith("export_hosts_csv", { path: null });
       const status = screen.getByTestId("topbar-export-status");
       expect(status.textContent).toContain("/tmp/ottr/hosts-2026.csv");
 
-      await vi.advanceTimersByTimeAsync(6000);
+      // advance 包 act：定时器回调的 setState 需要 act 界内冲刷（React 调度
+      // 计时器同样被 fake，裸 advance 后 rerender 不落地）。
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6000);
+      });
       expect(screen.queryByTestId("topbar-export-status")).toBeNull();
     } finally {
       vi.useRealTimers();
@@ -337,8 +286,9 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1）", () => {
   it("导出失败：同一状态条显示错误文本", async () => {
     listMock(() => Promise.reject(new Error("vault locked")));
     render(<App />);
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-export-hosts-csv"));
+    await act(async () => {});
+    expect(menuActionHandler).toBeTruthy();
+    act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
     await waitFor(() => expect(screen.getByTestId("topbar-export-status")).toBeTruthy());
     expect(screen.getByTestId("topbar-export-status").textContent).toContain("vault locked");
   });
@@ -348,6 +298,15 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1）", () => {
 // 实现面——条目→openDock/openMainView 映射；registry 动作 ID 零新增零删除，
 // registry.test.ts 原样锁定）。对话框族（凭据/AI/同步）不在此列。
 describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () => {
+  // 菜单监听门卫（IS_TAURI）：jsdom 伪造运行时标记放行（先例 VaultInitGate.test）。
+  beforeEach(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    menuActionHandler = null;
+  });
+
   function listMock() {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
@@ -382,16 +341,15 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
   it("转发/定时任务 → openDock 单槽（后者替换前者）；dock 关闭按钮可用", async () => {
     listMock();
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId("open-palette")).toBeTruthy());
+    await act(async () => {});
+    expect(menuActionHandler).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-open-forwards"));
+    act(() => menuActionHandler!({ payload: "tool.forwards" }));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("forwards");
     expect(screen.getByTestId("forward-panel")).toBeTruthy(); // T4：实体在 dock 内
 
     // 单槽互斥走真菜单路径：开 cron 替换 forwards
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-open-cron"));
+    act(() => menuActionHandler!({ payload: "tool.cron" }));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("cron");
     expect(screen.getByTestId("cron-panel")).toBeTruthy();
     expect(screen.queryByTestId("forward-panel")).toBeNull();
@@ -403,28 +361,24 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
   it("告警/MCP/跳板链 → openDock 对应面板；总览/批量 → openMainView 主区实体视图", async () => {
     listMock();
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId("open-palette")).toBeTruthy());
+    await act(async () => {});
+    expect(menuActionHandler).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-open-alert-settings"));
+    act(() => menuActionHandler!({ payload: "tool.alerts" }));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("alerts");
     expect(screen.getByTestId("alert-settings")).toBeTruthy(); // T4：实体在 dock 内
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-open-mcp-settings"));
+    act(() => menuActionHandler!({ payload: "tool.mcp" }));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("mcp");
     expect(screen.getByTestId("mcp-settings")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-open-jump-chains"));
+    act(() => menuActionHandler!({ payload: "tool.jump-chains" }));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("jumpchains");
     expect(screen.getByTestId("jump-editor")).toBeTruthy();
 
     // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义；T3 起挂实体）。
     // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel。
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-open-overview"));
+    act(() => menuActionHandler!({ payload: "tool.overview" }));
     expect(screen.getByTestId("overview-panel").getAttribute("data-view")).toBe("overview");
-    fireEvent.click(screen.getByTestId("topbar-tools"));
-    fireEvent.click(screen.getByTestId("menu-open-batch"));
+    act(() => menuActionHandler!({ payload: "tool.batch" }));
     expect(screen.getByTestId("batch-panel").getAttribute("data-view")).toBe("batch");
     fireEvent.click(screen.getByTestId("slot-back-terminal"));
     expect(screen.queryByTestId("batch-panel")).toBeNull();

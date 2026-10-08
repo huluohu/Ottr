@@ -595,7 +595,8 @@
     "kindCron": "定时任务",
     "deliveryFailed": "投递失败",
     "resend": "重发",
-    "resending": "重发中…"
+    "resending": "重发中…",
+    "centerTitle": "通知中心"
   },
   "knownHosts": {
     "title": "已知主机密钥",

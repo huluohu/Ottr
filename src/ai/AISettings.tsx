@@ -77,6 +77,21 @@ export function AISettings({ open, onClose }: AISettingsProps) {
   const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_TOKENS);
   const [draft, setDraft] = useState<ProviderDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // 关闭交互统一（2026-10-08）：Esc = 右上 X 等价；Provider 草稿编辑态先收
+  // 草稿（Esc 逐层退出，不跨层关闭整个面板）。
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (draft) {
+        setDraft(null);
+        return;
+      }
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose, draft]);
   const [testing, setTesting] = useState<string | null>(null); // 正在测试的 provider id
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; msg: string } | null>(
     null,
@@ -235,7 +250,18 @@ export function AISettings({ open, onClose }: AISettingsProps) {
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={t("ai.title")} data-testid="ai-settings">
       <div className="dialog settings-dialog ai-settings-dialog">
-        <h2>{t("ai.settings.title")}</h2>
+        <div className="dialog-head">
+          <h2>{t("ai.settings.title")}</h2>
+          <button
+            type="button"
+            className="dialog-close"
+            data-testid="ai-settings-dialog-close"
+            aria-label={t("common.close")}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
 
         {/* --- 通用 --- */}
         <section aria-label={t("ai.settings.general")} data-testid="ai-general-section">
@@ -490,11 +516,6 @@ export function AISettings({ open, onClose }: AISettingsProps) {
             {formError}
           </p>
         )}
-        <div className="form-actions">
-          <button type="button" className="btn-accent" data-testid="ai-settings-close" onClick={onClose}>
-            {t("common.close")}
-          </button>
-        </div>
       </div>
     </div>
   );

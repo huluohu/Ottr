@@ -345,7 +345,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         // 布局未就绪（隐藏窗格/测试环境）不阻塞；恢复可见时 RO 会再 fit
       }
     }
-    applyTermTheme(term, resolved);
+    applyTermTheme(term, paletteKey);
     // trzsz 过滤器（B10 下半）：先于 sink 装配——PTY 出口与击键都经它中转。
     // write_session 沿用原 onData 体（rustId 实时读 store；重连自动跟随）。
     // 击键出口单点化：trzsz 透传与 ghost Tab 采纳共用同一写入闭包。

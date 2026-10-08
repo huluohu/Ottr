@@ -481,8 +481,6 @@ impl Vault {
             let verifier = new.seal(VERIFIER_PLAINTEXT, &verifier_aad())?;
 
             let conn = self.connection();
-            // 总数：按注册表逐表生成 COUNT（count 非空列求和）。
-            let total = count_enc_columns(&conn)?;
             let tx = conn.unchecked_transaction()?;
 
             // 逐表扫描重密封（fix 1/5 I-2b）：SELECT/UPDATE 的列清单一律由
@@ -553,7 +551,6 @@ impl Vault {
 
             let new = Cipher::new(&new_key)?;
             let conn = self.connection();
-            let total = count_enc_columns(&conn)?;
             let tx = conn.unchecked_transaction()?;
             let _done = reseal_all_enc_columns(&tx, &old, &new, progress)?;
             set_meta_tx(&tx, META_KEY_MODE, KeyMode::Keyring.as_str())?;

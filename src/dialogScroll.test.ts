@@ -45,6 +45,14 @@ describe("对话框滚动语义守卫（BL-526 + T5 披露）", () => {
     expect(rule).toContain("overflow-y: auto");
   });
 
+  it(".overlay 滚动条视觉隐藏（兜底面不得与 .dialog 内滚条并排成双条——2026-10-05 用户反馈；滚轮滚动能力保留）", () => {
+    const rule = ruleOf(appCss, ".overlay {");
+    expect(rule).toContain("scrollbar-width: none");
+    const webkitRule = ruleOf(appCss, ".overlay::-webkit-scrollbar");
+    expect(webkitRule).not.toBeNull();
+    expect(webkitRule).toContain("display: none");
+  });
+
   it(".dialog 滚动条可见化（::-webkit-scrollbar 常显——macOS 静止期 overlay 滚动条不可见即「被裁」假象）", () => {
     expect(appCss).toMatch(/\.dialog::-webkit-scrollbar[^{]*\{/);
     expect(appCss).toMatch(/\.dialog::-webkit-scrollbar-thumb[^{]*\{/);

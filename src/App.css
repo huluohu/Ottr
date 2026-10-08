@@ -523,8 +523,15 @@ button[data-active="true"] {
   align-items: center;
   padding: 16px;
   /* 矮窗兜底（BL-526 / T5 披露清偿）：对话框本体万一超出视口（未来面板漏挂
-     .dialog 上限类）时 overlay 自滚，内容不再结构性不可达。 */
+     .dialog 上限类）时 overlay 自滚，内容不再结构性不可达。
+     滚动条视觉隐藏（2026-10-05 用户反馈「右侧双滚动条太丑」）：overlay 是
+     兜底滚动面（.dialog 自 capped 86vh，仅极矮窗才触发），隐藏其滚动条消灭
+     「dialog 内滚条 + overlay 兜底条」并排双条；滚轮/触控板滚动能力不变。 */
   overflow-y: auto;
+  scrollbar-width: none;
+}
+.overlay::-webkit-scrollbar {
+  display: none;
 }
 .dialog,
 .host-form {
@@ -540,15 +547,19 @@ button[data-active="true"] {
 /* 矮窗滚动 affordance（BL-526 / T5 披露清偿）：max-height+内滚自 P1 既有，
    但 macOS overlay 滚动条**静止期不可见**——600px 级矮窗下内容截断毫无可滚
    提示（T5 走查 03 号截图「danger 按钮被裁」的缺陷本体）。常显细滚动条让
-   可滚性可见；无溢出的对话框不出现（仅滚动时占位），不破坏既有定宽/居中。 */
+   可滚性可见；无溢出的对话框不出现（仅滚动时占位），不破坏既有定宽/居中。
+   2026-10-05 精修：8px→6px + thumb 圆角收窄 + 离边距（border 透明 + 背景
+   裁切），滚动条更轻量不抢视觉。 */
 .dialog::-webkit-scrollbar,
 .host-form::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 .dialog::-webkit-scrollbar-thumb,
 .host-form::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
-  border-radius: 4px;
+  border-radius: 3px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 .dialog h2,
 .host-form h2 {

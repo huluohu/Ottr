@@ -22,7 +22,7 @@
 
 技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
 
-![终端会话：主机树 + 已连接会话 + 分屏/录制/编码](docs/screenshots/terminal-dark.png)
+![主界面：主机树 + 分组标签 + ⌘K 快速连接](docs/screenshots/main-dark.png)
 
 ## ✨ 功能总览
 
@@ -40,7 +40,7 @@
 - **跳板链**：多级跳板可视化编排；**端口转发**：本地 / 动态 SOCKS / 远程，断线自动重挂
 - known_hosts **TOFU 首次信任 + 指纹巡检**，防中间人
 
-![主机管理：分组树 + 标签过滤 + 行内编辑](docs/screenshots/main-dark.png)
+![凭据与密钥管理：凭据 / 密钥 / 已知主机](docs/screenshots/credentials.png)
 
 ### AI 能力（核心卖点，隐私优先）
 
@@ -50,7 +50,7 @@
 - **BYOK 多服务商**：OpenAI 兼容（**OpenAI / DeepSeek / 智谱 GLM / 任意自建端点**）、Anthropic Claude、本地 Ollama——预设一键填端点，Key 加密存本机
 - **发送前脱敏**：主机名 / IP / 口令样式串自动替换为占位符；另内置 MCP 服务器，可接入 Claude Desktop 等宿主（主机级授权）
 
-![AI 诊断：真端点流式回答 + 脱敏提示](docs/screenshots/ai-diagnose.png)
+![AI 设置：BYOK 多服务商 + 自动诊断 / 会话纪要开关](docs/screenshots/ai-diagnose.png)
 
 ### 监控 · 告警 · 运维
 
@@ -58,7 +58,7 @@
 - **告警规则**（磁盘 / CPU / 进程 / 日志关键字）→ **12 种通知渠道**：企业微信、钉钉、飞书、Telegram、Slack、Discord、SMTP 邮件等国内外主流，限频 + 失败重试 + 投递记录持久化
 - **定时任务**中心（Rust 侧调度，错过即知）、**批量执行**（多选主机 + 片段库 + 并发/超时控制）
 
-![监控侧栏：实时曲线](docs/screenshots/monitor.png)
+![多主机总览：主机卡 + 监控开启](docs/screenshots/overview.png)
 
 ### 文件与同步
 
@@ -66,14 +66,12 @@
 - **远程编辑**：本机编辑器直接改远端文件，原子保存（失败不损坏远端）、二进制嗅探防误编辑
 - **多设备同步**：端到端加密信封（AES-256-GCM + PBKDF2），通道三选一（**WebDAV / Git / 本地目录**——WebDAV 走 Rust 代理直连你的网盘，无跨域限制），分类粒度推送/拉取，冲突逐类人工裁定
 
-![多设备同步：分类预览 + 冲突裁定](docs/screenshots/sync-conflict.png)
-
 ### 安全底座
 
 - 本地库 **AES-256-GCM**：**钥匙链免密模式**为默认（主密钥存系统钥匙链，打开即用），
   **主密码模式**可选（Argon2id 派生，无密码不可解密），一键互转、数据跨模式重加密
-- 敏感复制自动清除（剪贴板中的凭据按配置定时清空）、锁定屏「忘记密码」重置引导
-  （二次确认，云端备份不受影响）
+- 失焦自动锁定（时长可配）、敏感复制自动清除（剪贴板中的凭据定时清空）、
+  锁定屏「忘记密码」重置引导（二次确认，云端备份不受影响）
 - 零遥测：不联网上传任何主机数据，行为可抓包自行验证
 
 ![锁定屏](docs/screenshots/lockscreen.png)

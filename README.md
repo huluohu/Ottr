@@ -12,7 +12,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
 [![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
 [![Tests](https://img.shields.io/badge/tests-1760%2B%20green-5EEAD4)](#-测试)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-5EEAD4)](#-许可与作者)
+[![License](https://img.shields.io/badge/license-MIT-5EEAD4)](#-许可与作者)
 
 </div>
 
@@ -147,7 +147,7 @@
 │     ├─ ottr-monitor      # 免 Agent 监控采样
 │     └─ ottr-cron         # 定时任务引擎（五段式解析 + 调度 + 抖动原语）
 ├─ brand/                  # 品牌（logo 源文件 + 手册）
-├─ docs/                   # 路线图 / 规格 / 验收报告 / 运行手册
+├─ docs/screenshots/       # README 截图（docs 其余为内部开发文档，不入库）
 └─ .github/workflows/      # CI：tag → 三平台构建 + 自动发布；push → fmt + clippy + 编译冒烟
 ```
 
@@ -205,19 +205,13 @@ PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:$PATH" npx tauri build
 路线图 Phase 0–5、UI 改造、产品就绪、账本清零、主题套件、**原生菜单栏整合**
 （顶栏功能全部收敛进菜单栏 + 关闭交互统一）与**结构收敛**（Rust 前后端 1760+
 测试全绿、TS 绑定自动生成守护、clippy 零告警门）各批次**已全部交付并验收**
-（本文档所列功能均为已实现状态）。设计规格、各阶段验收报告与运行手册见
-[`docs/`](docs/)；路线图见 [`docs/features-and-roadmap.md`](docs/features-and-roadmap.md)。
+（本文档所列功能均为已实现状态）。仓库内 `docs/screenshots/` 为 README 截图；
+开发过程文档（路线图 / 验收报告 / 运行手册）为内部资料，不入公开仓库。
 
 ## 📄 许可与作者
 
-**Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以
-**MIT OR Apache-2.0** 双协议开源（[`LICENSE-MIT`](LICENSE-MIT) /
-[`LICENSE-APACHE`](LICENSE-APACHE)，任选其一遵循）——欢迎 Issue 反馈与 PR；
-主仓库：[github.com/huluohu/Ottr](https://github.com/huluohu/Ottr)。
-
-> 选型说明：与 Rust/Tauri 生态标准一致（下游可任选其一，复用零摩擦）；
-> Apache-2.0 附带显式专利授权，对 SSH/加密类工具更稳；MIT 保证最大传播自由。
-> 二者均宽松，未来如需收紧（如转 GPL 防闭源套壳）单向可行。
+**Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以 [MIT](LICENSE-MIT) 协议开源——
+欢迎 Issue 反馈与 PR；主仓库：[github.com/huluohu/Ottr](https://github.com/huluohu/Ottr)。
 
 <div align="center">
 

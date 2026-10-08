@@ -55,6 +55,7 @@ fn valid_mute_window(w: &str) -> bool {
 
 /// 告警规则行（serde 面与 TS `AlertRule` 同构）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AlertRule {
     pub id: i64,
     pub host_id: i64,
@@ -76,6 +77,7 @@ pub struct AlertRule {
 
 /// 新建规则的输入（create/update 全量替换式提交，HostInput 同款）。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AlertRuleInput {
     pub host_id: i64,
     pub kind: String,

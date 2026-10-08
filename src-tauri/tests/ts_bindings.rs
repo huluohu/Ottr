@@ -13,6 +13,21 @@ use tauri_specta::{Builder, collect_commands};
 
 #[test]
 fn vault_domain_bindings_are_up_to_date() {
+    // specta 对大型类型图（62 命令 + 实体族）的导出是深递归——测试线程默认
+    // 2MB 栈会爆；放到 64MB 栈的专属线程跑（断言与产物 IO 都在其中完成）。
+    let result = std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(run_bindings_check)
+        .expect("spawn bindings thread")
+        .join();
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(msg)) => panic!("{msg}"),
+        Err(_) => panic!("bindings thread panicked"),
+    }
+}
+
+fn run_bindings_check() -> Result<(), String> {
     let builder = Builder::<tauri::Wry>::new()
         // 主机/凭据 id 是 i64：前端全链按 number 消费（恒 < 2^53），显式按
         // number 导出与现状口径一致（方法名带 dangerously = 大数会截断的告诫）。
@@ -42,6 +57,32 @@ fn vault_domain_bindings_are_up_to_date() {
             ottr_lib::vault::snippets_create,
             ottr_lib::vault::snippets_update,
             ottr_lib::vault::snippets_delete,
+            // —— 2026-10-08 推广第二批：vault 域剩余（58/62 条；安全状态机/重置/
+            //    初始化为密码语义面排除；settings/sync 四条 serde_json::Value 命令
+            //    因 specta rc 对自引用 Value 内联展开报无限递归而排除，见
+            //    docs/structure-refactor-plan.md 边界记录；settings/sync/nc/ar/notify
+            //    五组（任何触达 serde_json::Value 的命令，21 条）排除——上游 rc
+            //    限制：Value 官方 Type 实现为自引用内联枚举，specta-typescript
+            //    0.0.12 拒绝内联循环；治本方案（#[serde(transparent)] Json 包装
+            //    + 手写 any primitive Type）列第三批。本批入面 41 条）——
+            //    初始化为密码语义面，明确不进生成面）——
+            ottr_lib::vault::secret_set,
+            ottr_lib::vault::secret_get,
+            ottr_lib::vault::secret_delete,
+            ottr_lib::vault::secret_contains,
+            ottr_lib::vault::history_insert,
+            ottr_lib::vault::history_search,
+            ottr_lib::vault::history_list_session,
+            ottr_lib::vault::summary_insert,
+            ottr_lib::vault::summary_list,
+            ottr_lib::vault::host_groups_list,
+            ottr_lib::vault::host_groups_create,
+            ottr_lib::vault::host_groups_update,
+            ottr_lib::vault::host_groups_delete,
+            ottr_lib::vault::import_ssh_config,
+            ottr_lib::vault::import_xshell_sessions,
+            ottr_lib::vault::import_tabby_config,
+            ottr_lib::vault::export_hosts_csv,
         ]);
 
     let committed =
@@ -51,24 +92,27 @@ fn vault_domain_bindings_are_up_to_date() {
         let tmp = std::env::temp_dir().join("ottr-bindings-regenerated.ts");
         builder
             .export(specta_typescript::Typescript::default(), &tmp)
-            .expect("export bindings to temp");
-        std::fs::read_to_string(&tmp).expect("read regenerated bindings")
+            .map_err(|e| format!("export bindings to temp: {e}"))?;
+        std::fs::read_to_string(&tmp).map_err(|e| format!("read regenerated: {e}"))?
     };
 
     let on_disk = match std::fs::read_to_string(&committed) {
         Ok(s) => s,
         Err(_) => {
             // 首次生成：产物落库（此后一致性断言接管）。
-            std::fs::write(&committed, &regenerated).expect("write initial bindings");
-            panic!(
-                "bindings.generated.ts 首次生成完成——请把它随本改动一起提交（src/vault/bindings.generated.ts）"
-            );
+            std::fs::write(&committed, &regenerated)
+                .map_err(|e| format!("write initial bindings: {e}"))?;
+            return Err(String::from(
+                "bindings.generated.ts 首次生成完成——请把它随本改动一起提交（src/vault/bindings.generated.ts）",
+            ));
         }
     };
 
-    assert_eq!(
-        regenerated, on_disk,
-        "Rust 侧签名/类型漂移：重新生成 bindings.generated.ts 并随改动一起 review 提交\n\
-         （删除 src/vault/bindings.generated.ts 后重跑本测试即可重新落库）"
-    );
+    if regenerated != on_disk {
+        return Err(String::from(
+            "Rust 侧签名/类型漂移：重新生成 bindings.generated.ts 并随改动一起 review 提交\n\
+             （删除 src/vault/bindings.generated.ts 后重跑本测试即可重新落库）",
+        ));
+    }
+    Ok(())
 }

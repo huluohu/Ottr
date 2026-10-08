@@ -15,6 +15,7 @@ use super::{CmdResult, VaultState, cmd, ensure_unlocked};
 // ——锁定态下 session-closed 等事件也要能落表（与 settings 同一锁定语义）。
 // 事件源接线在前端 src/notify/core.ts（管线枢纽，spec §7 定案），Rust 只供表。
 
+#[specta::specta]
 #[tauri::command]
 pub fn notify_insert(
     state: State<'_, VaultState>,
@@ -24,6 +25,7 @@ pub fn notify_insert(
 }
 
 /// `limit` 缺省 200（None → 200；通知中心一屏量级）。
+#[specta::specta]
 #[tauri::command]
 pub fn notify_list(
     state: State<'_, VaultState>,
@@ -33,16 +35,19 @@ pub fn notify_list(
 }
 
 /// 标记已读：`id` 缺省 = 全部已读；未知 id 显式报错。
+#[specta::specta]
 #[tauri::command]
 pub fn notify_mark_read(state: State<'_, VaultState>, id: Option<i64>) -> CmdResult<usize> {
     cmd(Notifications::mark_read(&state.0, id))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn notify_clear(state: State<'_, VaultState>) -> CmdResult<usize> {
     cmd(Notifications::clear(&state.0))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn notify_unread_count(state: State<'_, VaultState>) -> CmdResult<i64> {
     cmd(Notifications::unread_count(&state.0))
@@ -51,6 +56,7 @@ pub fn notify_unread_count(state: State<'_, VaultState>) -> CmdResult<i64> {
 /// 投递失败标记入账（BL-530）：渠道终败标记落库（按渠道去重），返回更新后
 /// 的行。明文面不过门卫（同 notify_* 组；投递失败发生在锁定态也要能落账）。
 /// 未知行显式报错（前端按尽力而为面 console 处理，内存账本保底 UI 不谎报）。
+#[specta::specta]
 #[tauri::command]
 pub fn notify_mark_delivery_failed(
     state: State<'_, VaultState>,
@@ -62,6 +68,7 @@ pub fn notify_mark_delivery_failed(
 
 /// 投递失败翻正清账（BL-530）：摘除一个渠道的标记（重发/后台重试成功时调
 /// 用）；集合清空回归 NULL。明文面不过门卫，同上。
+#[specta::specta]
 #[tauri::command]
 pub fn notify_clear_delivery_failure(
     state: State<'_, VaultState>,
@@ -78,18 +85,21 @@ pub fn notify_clear_delivery_failure(
 // 面与 hosts 同一锁定语义）。规则评估引擎在前端 src/notify/rules.ts（数据源 =
 // ottr://monitor 事件流 + monitor_ps），Rust 只供表 + mark_fired 水位回写。
 
+#[specta::specta]
 #[tauri::command]
 pub fn ar_list(state: State<'_, VaultState>) -> CmdResult<Vec<AlertRule>> {
     ensure_unlocked(&state.0)?;
     cmd(AlertRules::list(&state.0))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn ar_create(state: State<'_, VaultState>, input: AlertRuleInput) -> CmdResult<AlertRule> {
     ensure_unlocked(&state.0)?;
     cmd(AlertRules::create(&state.0, &input))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn ar_update(
     state: State<'_, VaultState>,
@@ -100,6 +110,7 @@ pub fn ar_update(
     cmd(AlertRules::update(&state.0, id, &input))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn ar_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
     ensure_unlocked(&state.0)?;
@@ -107,6 +118,7 @@ pub fn ar_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
 }
 
 /// 触发水位回写（引擎放行一条告警时调用；规则刚被删 → NotFound 显式浮出）。
+#[specta::specta]
 #[tauri::command]
 pub fn ar_touch_fired(state: State<'_, VaultState>, id: i64, ts: i64) -> CmdResult<()> {
     ensure_unlocked(&state.0)?;
@@ -120,12 +132,14 @@ pub fn ar_touch_fired(state: State<'_, VaultState>, id: i64, ts: i64) -> CmdResu
 // 测试」与管线挂载时取一次）；发信面在 commands/notify.rs（SMTP）与前端
 // fetch 适配器（其余 11 渠道）。
 
+#[specta::specta]
 #[tauri::command]
 pub fn nc_list(state: State<'_, VaultState>) -> CmdResult<Vec<NotifyChannel>> {
     ensure_unlocked(&state.0)?;
     cmd(NotifyChannels::list(&state.0))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn nc_create(
     state: State<'_, VaultState>,
@@ -135,6 +149,7 @@ pub fn nc_create(
     cmd(NotifyChannels::create(&state.0, &input))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn nc_update(
     state: State<'_, VaultState>,
@@ -145,12 +160,14 @@ pub fn nc_update(
     cmd(NotifyChannels::update(&state.0, id, &patch))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn nc_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
     ensure_unlocked(&state.0)?;
     cmd(NotifyChannels::delete(&state.0, id))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn nc_reveal_config(state: State<'_, VaultState>, id: i64) -> CmdResult<serde_json::Value> {
     ensure_unlocked(&state.0)?;

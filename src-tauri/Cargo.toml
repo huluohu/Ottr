@@ -49,7 +49,7 @@ ottr-cron = { path = "../crates/ottr-cron" }
 # TS 类型绑定生成（tauri-specta 试点，2026-10-08）：仅 tests/ts_bindings.rs 消费，
 # 生产 Builder 链零改动；推广路径见 docs/structure-refactor-plan.md §2。
 tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
-specta = "2.0.0-rc.25"
+specta = { version = "2.0.0-rc.25", features = ["serde_json"] }
 specta-typescript = "0.0.12"
 # Phase 2 Task 1：CancellationToken（ForwardManager 运行实例取消树）。
 tokio-util = { workspace = true }

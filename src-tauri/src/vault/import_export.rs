@@ -13,6 +13,7 @@ use super::{CmdResult, VaultState, cmd, ensure_unlocked};
 /// 导入 ~/.ssh/config（`path` 缺省时用 `~/.ssh/config`；前端 MVP 无文件选择器，
 /// 传 None 即默认路径——留参数位给后续文件选择对话框）。
 /// 解析与去重规则见 ssh_config 模块文档；报告（新增/跳过/错误行）由前端对话框展示。
+#[specta::specta]
 #[tauri::command]
 pub fn import_ssh_config(
     state: State<'_, VaultState>,
@@ -32,6 +33,7 @@ pub fn import_ssh_config(
 /// 导入 Xshell 会话（Phase 2 Task 10，B3）。`path` = 会话目录或单个 .xsh；
 /// 缺省回落 Windows 惯例会话目录（不存在即报错——mac/Linux 无默认位置）。
 /// 解析规则与去重见 importers::xshell 模块文档；报告同构 ssh-config 导入。
+#[specta::specta]
 #[tauri::command]
 pub fn import_xshell_sessions(
     state: State<'_, VaultState>,
@@ -47,6 +49,7 @@ pub fn import_xshell_sessions(
 
 /// 导入 Tabby 配置（Phase 2 Task 10，B3）。`path` 必传（配置 JSON 无跨平台
 /// 惯例位置——前端经文件对话框选定）。解析规则见 importers::tabby 模块文档。
+#[specta::specta]
 #[tauri::command]
 pub fn import_tabby_config(
     state: State<'_, VaultState>,
@@ -62,6 +65,7 @@ pub fn import_tabby_config(
 /// CSV 导出主机清单。`path` 缺省写到系统下载目录 `ottr-hosts.csv`；返回落盘路径。
 /// CSV 组装（RFC4180 转义 + 实体 join）在 ottr-vault `hosts_csv`（BL-206：随
 /// 实体同库可独立单测）；本命令只保留路径解析与落盘。
+#[specta::specta]
 #[tauri::command]
 pub fn export_hosts_csv(
     app: tauri::AppHandle,
@@ -94,6 +98,7 @@ pub fn export_hosts_csv(
 
 /// 导出所选分类为快照 JSON（确定性输出；含解密后的凭据/渠道明文——返回值只进
 /// 信封加密，前端不得落盘/落日志）。
+#[specta::specta]
 #[tauri::command]
 pub fn sync_export_categories(
     state: State<'_, VaultState>,
@@ -106,6 +111,7 @@ pub fn sync_export_categories(
 }
 
 /// 全量替换式导入所选分类（单事务原子；返回逐分类落库/跳过计数）。
+#[specta::specta]
 #[tauri::command]
 pub fn sync_import_categories(
     state: State<'_, VaultState>,

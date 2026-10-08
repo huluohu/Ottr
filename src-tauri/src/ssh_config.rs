@@ -38,7 +38,7 @@ pub struct ParseOutcome {
 }
 
 /// 导入报告（裁定 #4：新增 N、跳过 N、解析错误行列表，导入完成对话框展示）。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct ImportReport {
     pub added: usize,
     pub skipped_wildcards: usize,

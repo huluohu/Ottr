@@ -31,6 +31,7 @@ fn now_ts() -> i64 {
 /// 纪要行（serde 面与 `src/vault/api.ts` 的 `SummaryEntry` 同构，snake_case；
 /// `summary` 为开封后的明文——密文只在 `summary_enc` 列，出库即开）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SummaryEntry {
     pub id: i64,
     pub host_id: i64,
@@ -44,6 +45,7 @@ pub struct SummaryEntry {
 
 /// 新建/覆盖纪要的输入（ts/id 由存储层定）。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SummaryInput {
     pub host_id: i64,
     pub session_id: String,

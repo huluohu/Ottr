@@ -49,6 +49,7 @@ pub const CHANNEL_KINDS: &[&str] = &[
 /// 渠道行（**不含任何密钥材料**——config_enc 不进结构体，明文只经
 /// [`NotifyChannels::reveal`] 单点取回）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct NotifyChannel {
     pub id: i64,
     /// "dingtalk" | "feishu" | ... | "webhook"（DB CHECK 同集 12 种）。
@@ -64,6 +65,7 @@ pub struct NotifyChannel {
 /// 新建渠道的输入：`config` 为明文 JSON 对象（字段面按 kind 见
 /// src/notify/channels/types.ts），存储层 seal。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct NotifyChannelInput {
     pub kind: String,
     pub config: serde_json::Value,
@@ -73,6 +75,7 @@ pub struct NotifyChannelInput {
 
 /// 更新补丁：`config` None = 保留现值（未重输的 token 不重密封）。
 #[derive(Debug, Clone, Default, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct NotifyChannelPatch {
     pub kind: Option<String>,
     pub config: Option<serde_json::Value>,

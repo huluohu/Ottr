@@ -100,6 +100,21 @@ export async function syncLangFromVault(): Promise<void> {
     } catch {
       // 迁移失败下次再试（localStorage 键保留即迁移未完成的标记）
     }
+    return;
+  }
+  // 分支 3 补全（2026-10-08 菜单语言根因修复）：两边皆无 ≠ 不动——界面语言来自
+  // 系统检测（navigator.language），此前从不落 vault，Rust 菜单读 ui.language
+  // 恒空 → 恒走 En 兜底，中文用户的原生菜单与界面语言不一致（验收实测复现：
+  // vault settings 只有 ui.theme 无 ui.language）。把检测语言落 vault 为真源
+  // 初始值（幂等；用户后续手动切换照旧走 setLang 覆盖）。
+  try {
+    await vaultApi.settings.set(LANG_SETTING_KEY, detectLang());
+    // 真源落地后发重建事件（同 setLang 契约）：菜单可能早于本函数在
+    // vault-ready 时按 En 兜底重建过，不补发则首启菜单停留英文。
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit("ottr://ui-language");
+  } catch {
+    // 非 Tauri 环境：无原生菜单，无须落库/通知
   }
 }
 

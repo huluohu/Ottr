@@ -63,12 +63,14 @@ pub fn hosts_search(state: State<'_, VaultState>, query: String) -> CmdResult<Ve
 
 // --- host_groups -----------------------------------------------------------
 
+#[specta::specta]
 #[tauri::command]
 pub fn host_groups_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vault::HostGroup>> {
     ensure_unlocked(&state.0)?;
     cmd(HostGroups::list(&state.0))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn host_groups_create(
     state: State<'_, VaultState>,
@@ -85,6 +87,7 @@ pub fn host_groups_create(
     ))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn host_groups_update(
     state: State<'_, VaultState>,
@@ -103,6 +106,7 @@ pub fn host_groups_update(
     ))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn host_groups_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
     ensure_unlocked(&state.0)?;

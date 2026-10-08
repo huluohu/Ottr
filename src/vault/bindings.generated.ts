@@ -69,6 +69,56 @@ export const commands = {
 	snippetsCreate: (input: SnippetInput) => typedError<Snippet, string>(__TAURI_INVOKE("snippets_create", { input })),
 	snippetsUpdate: (id: number, input: SnippetInput) => typedError<Snippet, string>(__TAURI_INVOKE("snippets_update", { id, input })),
 	snippetsDelete: (id: number) => typedError<null, string>(__TAURI_INVOKE("snippets_delete", { id })),
+	/**  写入/覆盖一个密文项（upsert）。 */
+	secretSet: (key: string, value: string) => typedError<null, string>(__TAURI_INVOKE("secret_set", { key, value })),
+	/**  读一个密文项（明文单点出库；未设置 → None）。 */
+	secretGet: (key: string) => typedError<string | null, string>(__TAURI_INVOKE("secret_get", { key })),
+	/**  删除一个密文项（未知 key 显式报错——provider 已删而密文在即 bug，宁可响）。 */
+	secretDelete: (key: string) => typedError<null, string>(__TAURI_INVOKE("secret_delete", { key })),
+	/**  密文项存在性（不派生明文——设置页「已保存 key」标记）。 */
+	secretContains: (key: string) => typedError<boolean, string>(__TAURI_INVOKE("secret_contains", { key })),
+	historyInsert: (input: HistoryInput) => typedError<HistoryEntry, string>(__TAURI_INVOKE("history_insert", { input })),
+	/**
+	 *  `query` 空白 = 最近记录（面板初始态）；`host_id` 缺省 = 跨主机；
+	 *  `limit` 缺省 [`HISTORY_SEARCH_LIMIT`]。≥3 字符 FTS trigram / 超短 LIKE 兜底
+	 *  （Rust 层分派，与 hosts_search 同语义）。
+	 */
+	historySearch: (query: string, hostId: number | null, limit: number | null) => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_search", { query, hostId, limit })),
+	/**
+	 *  会话维度的命令序列（Phase 2 Task 7 纪要数据源）：id 升序（≈ts 时序），
+	 *  `limit` 缺省 [`HISTORY_SESSION_LIMIT`]。明文面（锁定可读，同 history_search）。
+	 */
+	historyListSession: (hostId: number, sessionId: string, limit: number | null) => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_list_session", { hostId, sessionId, limit })),
+	summaryInsert: (input: SummaryInput) => typedError<SummaryEntry, string>(__TAURI_INVOKE("summary_insert", { input })),
+	/**  `host_id` 缺省 = 跨主机；`limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。 */
+	summaryList: (hostId: number | null, limit: number | null) => typedError<SummaryEntry[], string>(__TAURI_INVOKE("summary_list", { hostId, limit })),
+	hostGroupsList: () => typedError<HostGroup[], string>(__TAURI_INVOKE("host_groups_list")),
+	hostGroupsCreate: (name: string, parentId: number | null, color: string | null) => typedError<HostGroup, string>(__TAURI_INVOKE("host_groups_create", { name, parentId, color })),
+	hostGroupsUpdate: (id: number, name: string, parentId: number | null, color: string | null) => typedError<HostGroup, string>(__TAURI_INVOKE("host_groups_update", { id, name, parentId, color })),
+	hostGroupsDelete: (id: number) => typedError<null, string>(__TAURI_INVOKE("host_groups_delete", { id })),
+	/**
+	 *  导入 ~/.ssh/config（`path` 缺省时用 `~/.ssh/config`；前端 MVP 无文件选择器，
+	 *  传 None 即默认路径——留参数位给后续文件选择对话框）。
+	 *  解析与去重规则见 ssh_config 模块文档；报告（新增/跳过/错误行）由前端对话框展示。
+	 */
+	importSshConfig: (path: string | null) => typedError<ImportReport, string>(__TAURI_INVOKE("import_ssh_config", { path })),
+	/**
+	 *  导入 Xshell 会话（Phase 2 Task 10，B3）。`path` = 会话目录或单个 .xsh；
+	 *  缺省回落 Windows 惯例会话目录（不存在即报错——mac/Linux 无默认位置）。
+	 *  解析规则与去重见 importers::xshell 模块文档；报告同构 ssh-config 导入。
+	 */
+	importXshellSessions: (path: string | null) => typedError<ImportReport, string>(__TAURI_INVOKE("import_xshell_sessions", { path })),
+	/**
+	 *  导入 Tabby 配置（Phase 2 Task 10，B3）。`path` 必传（配置 JSON 无跨平台
+	 *  惯例位置——前端经文件对话框选定）。解析规则见 importers::tabby 模块文档。
+	 */
+	importTabbyConfig: (path: string) => typedError<ImportReport, string>(__TAURI_INVOKE("import_tabby_config", { path })),
+	/**
+	 *  CSV 导出主机清单。`path` 缺省写到系统下载目录 `ottr-hosts.csv`；返回落盘路径。
+	 *  CSV 组装（RFC4180 转义 + 实体 join）在 ottr-vault `hosts_csv`（BL-206：随
+	 *  实体同库可独立单测）；本命令只保留路径解析与落盘。
+	 */
+	exportHostsCsv: (path: string | null) => typedError<string, string>(__TAURI_INVOKE("export_hosts_csv", { path })),
 };
 
 /* Types */
@@ -112,6 +162,27 @@ export type CredentialPatch = {
 	totp_secret: string | null,
 };
 
+/**  历史行（serde 面与 `src/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。 */
+export type HistoryEntry = {
+	id: number,
+	host_id: number,
+	command: string,
+	cwd: string | null,
+	exit_code: number | null,
+	session_id: string | null,
+	/**  秒级 Unix 时间（实体表同口径）。 */
+	ts: number,
+};
+
+/**  新建历史行的输入（ts 由存储层定；command 非空校验在存储层）。 */
+export type HistoryInput = {
+	host_id: number,
+	command: string,
+	cwd: string | null,
+	exit_code: number | null,
+	session_id: string | null,
+};
+
 /**
  *  主机。tags 为 JSON 列；credential_id / group_id 可空、FK ON DELETE SET NULL；
  *  jump_chain_id 的目标表（jump_chains）未建，暂无 FK（0002 迁移注释）。
@@ -136,6 +207,16 @@ export type Host = {
 	monitor_enabled: boolean,
 	is_production: boolean,
 	notes: string | null,
+	created_at: number,
+	updated_at: number,
+};
+
+/**  主机分组（树形：parent_id 自引用）。删父组 → 子组提根；删组 → 组内主机脱离分组。 */
+export type HostGroup = {
+	id: number,
+	name: string,
+	parent_id: number | null,
+	color: string | null,
 	created_at: number,
 	updated_at: number,
 };
@@ -165,6 +246,14 @@ export type HostInput = {
  *  ssh（存量行零迁移）；FTP/FTPS 主机为文件传输会话（无 PTY 终端）。
  */
 export type HostProtocol = "ssh" | "ftp" | "ftps";
+
+/**  导入报告（裁定 #4：新增 N、跳过 N、解析错误行列表，导入完成对话框展示）。 */
+export type ImportReport = {
+	added: number,
+	skipped_wildcards: number,
+	skipped_duplicates: number,
+	errors: string[],
+};
 
 /**  已知主机指纹（TOFU 记录，以 host 端点为主键、fingerprint = 当前信任锚）。 */
 export type KnownHost = {
@@ -227,6 +316,29 @@ export type SnippetInput = {
 	variables: string[],
 	tags: string[],
 	host_scope: number | null,
+};
+
+/**
+ *  纪要行（serde 面与 `src/vault/api.ts` 的 `SummaryEntry` 同构，snake_case；
+ *  `summary` 为开封后的明文——密文只在 `summary_enc` 列，出库即开）。
+ */
+export type SummaryEntry = {
+	id: number,
+	host_id: number,
+	session_id: string,
+	summary: string,
+	/**  摘要覆盖的命令条数（面板徽标 + 溯源面）。 */
+	command_count: number,
+	/**  秒级 Unix 时间（upsert 时 = 最新一次生成时刻）。 */
+	ts: number,
+};
+
+/**  新建/覆盖纪要的输入（ts/id 由存储层定）。 */
+export type SummaryInput = {
+	host_id: number,
+	session_id: string,
+	summary: string,
+	command_count: number,
 };
 
 /* Tauri Specta runtime */

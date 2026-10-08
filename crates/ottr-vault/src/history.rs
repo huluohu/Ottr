@@ -64,6 +64,7 @@ fn now_ts() -> i64 {
 
 /// 历史行（serde 面与 `src/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HistoryEntry {
     pub id: i64,
     pub host_id: i64,
@@ -77,6 +78,7 @@ pub struct HistoryEntry {
 
 /// 新建历史行的输入（ts 由存储层定；command 非空校验在存储层）。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HistoryInput {
     pub host_id: i64,
     pub command: String,

@@ -531,13 +531,13 @@ describe("SecuritySettings 主题网格（theme-suite T2）", () => {
     localStorage.removeItem("ottr.settings.theme");
   });
 
-  it("主题名走 settings.themes.* 词典：中文环境显示「暗黑 OLED/自然之灵/透明毛玻璃」", async () => {
+  it("主题名走 settings.themes.* 词典：中文环境显示「曜黑/青野/雾镜」（两字意象名）", async () => {
     seedMode("keyring");
     renderDialog();
     const grid = screen.getByTestId("theme-grid");
-    expect(grid.textContent).toContain("暗黑 OLED");
-    expect(grid.textContent).toContain("自然之灵");
-    expect(grid.textContent).toContain("透明毛玻璃");
+    expect(grid.textContent).toContain("曜黑");
+    expect(grid.textContent).toContain("青野");
+    expect(grid.textContent).toContain("雾镜");
     expect(grid.textContent).toContain("跟随系统");
   });
 

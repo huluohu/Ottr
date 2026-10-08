@@ -17,6 +17,7 @@ use super::{CmdResult, VaultState, cmd, ensure_unlocked};
 // notifications 同一锁定语义。脱敏不在历史层做（spec 定案：历史是本地数据）。
 // 写入源 = 前端 CommandWatch（OSC133 命令完成事件），Rust 侧只供表。
 
+#[specta::specta]
 #[tauri::command]
 pub fn history_insert(
     state: State<'_, VaultState>,
@@ -28,6 +29,7 @@ pub fn history_insert(
 /// `query` 空白 = 最近记录（面板初始态）；`host_id` 缺省 = 跨主机；
 /// `limit` 缺省 [`HISTORY_SEARCH_LIMIT`]。≥3 字符 FTS trigram / 超短 LIKE 兜底
 /// （Rust 层分派，与 hosts_search 同语义）。
+#[specta::specta]
 #[tauri::command]
 pub fn history_search(
     state: State<'_, VaultState>,
@@ -45,6 +47,7 @@ pub fn history_search(
 
 /// 会话维度的命令序列（Phase 2 Task 7 纪要数据源）：id 升序（≈ts 时序），
 /// `limit` 缺省 [`HISTORY_SESSION_LIMIT`]。明文面（锁定可读，同 history_search）。
+#[specta::specta]
 #[tauri::command]
 pub fn history_list_session(
     state: State<'_, VaultState>,
@@ -65,6 +68,7 @@ pub fn history_list_session(
 // secrets 同一锁定语义——纪要生成是断开时的后台尽力而为任务（前端 fire-and-
 // forget 吞错误），锁定时插入被拒即静默丢弃；面板读取同样解锁后可用。
 
+#[specta::specta]
 #[tauri::command]
 pub fn summary_insert(
     state: State<'_, VaultState>,
@@ -75,6 +79,7 @@ pub fn summary_insert(
 }
 
 /// `host_id` 缺省 = 跨主机；`limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。
+#[specta::specta]
 #[tauri::command]
 pub fn summary_list(
     state: State<'_, VaultState>,

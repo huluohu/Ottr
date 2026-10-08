@@ -91,7 +91,7 @@
  * App.css color-mix(fg 6%/10%, bg) 自动派生，免定义。
  * ============================================================ */
 
-/* --- 暗黑 OLED（纯黑底省电屏）：bg/fg/accent 为简报钉死值 --- */
+/* --- 曜黑 OLED（纯黑底省电屏；2026-10-08 主题名统一：中文两字意象名）：bg/fg/accent 为简报钉死值 --- */
 [data-theme="oled"] {
   color-scheme: dark;
   --color-bg: #000000;
@@ -135,7 +135,7 @@
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 5.90/5.18/4.68/4.93 */
 }
 
-/* --- 自然之灵 Verdant（鼠尾草亮底）--- */
+/* --- 青野 Verdant（鼠尾草亮底）--- */
 [data-theme="verdant"] {
   color-scheme: light;
   --color-bg: #f4f7f1;
@@ -158,7 +158,7 @@
   --fg-muted: color-mix(in srgb, var(--color-fg) 72%, transparent); /* 5.72/5.13/4.75/6.19（68% on overlay 4.20 不够，+4） */
 }
 
-/* --- 透明毛玻璃 Glass（theme-suite T3，resolved=dark）-------------------------
+/* --- 雾镜 Glass（theme-suite T3，resolved=dark）-------------------------
  * 真透明：bg 带 alpha，透出主窗 vibrancy/acrylic 模糊面（src-tauri/vibrancy.rs
  * 常开施加；非 Glass 主题画满不透明背景，效果不可见）。
  * 合成参考（tokens.test「Glass 主题 alpha 合成」同源假设）：玻璃面后的桌面假定

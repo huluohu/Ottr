@@ -221,7 +221,7 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "theme_oled" => {
             if zh {
-                "暗黑 OLED"
+                "曜黑"
             } else {
                 "Dark OLED"
             }
@@ -235,14 +235,14 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "theme_verdant" => {
             if zh {
-                "自然之灵"
+                "青野"
             } else {
                 "Verdant"
             }
         }
         "theme_glass" => {
             if zh {
-                "透明毛玻璃"
+                "雾镜"
             } else {
                 "Frosted Glass"
             }

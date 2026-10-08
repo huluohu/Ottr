@@ -179,7 +179,7 @@
 .tp-dark .tp-surface { background: #1e3c43; }
 .tp-dark .tp-fg { background: #f6e7d4; }
 .tp-dark .tp-accent { background: #5eead4; }
-/* 暗黑 OLED */
+/* 曜黑 */
 .tp-oled .tp-bg { background: #000000; }
 .tp-oled .tp-surface { background: #0d0f12; }
 .tp-oled .tp-fg { background: #e5e7eb; }
@@ -189,12 +189,12 @@
 .tp-amethyst .tp-surface { background: #2a2443; }
 .tp-amethyst .tp-fg { background: #e9e4f9; }
 .tp-amethyst .tp-accent { background: #a78bfa; }
-/* 自然之灵 */
+/* 青野 */
 .tp-verdant .tp-bg { background: #f4f7f1; }
 .tp-verdant .tp-surface { background: #ffffff; }
 .tp-verdant .tp-fg { background: #1c2b22; }
 .tp-verdant .tp-accent { background: #2f855a; }
-/* 透明毛玻璃（半透明底示意；真效果见窗口 vibrancy/acrylic） */
+/* 雾镜（半透明底示意；真效果见窗口 vibrancy/acrylic） */
 .tp-glass .tp-bg { background: rgba(28, 36, 48, 0.55); }
 .tp-glass .tp-surface { background: rgba(255, 255, 255, 0.14); }
 .tp-glass .tp-fg { background: #e6edf3; }

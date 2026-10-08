@@ -27,6 +27,7 @@ fn now_ts() -> i64 {
 
 /// 通知行（serde 面与 TS `Notification` 同构；`read`/`severity` 已转原生形态）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Notification {
     pub id: i64,
     /// 事件类别（前端 `NotifyKind`："transfer" | "session"，按 kind 静音的键）。
@@ -54,6 +55,7 @@ pub struct Notification {
 /// 一次渠道投递的终局失败记录（delivery_failures 数组元素；serde 面与 TS
 /// `DeliveryFailure` 同构——渠道挂载名 `kind#id`、终局错误文本、秒级时刻）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DeliveryFailure {
     pub channel: String,
     pub channel_id: Option<i64>,
@@ -63,6 +65,7 @@ pub struct DeliveryFailure {
 
 /// 新建通知的输入（severity 合法集校验在存储层，DB CHECK 是第二道兵）。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct NotificationInput {
     pub kind: String,
     pub severity: String,

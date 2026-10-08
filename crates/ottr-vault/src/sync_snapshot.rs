@@ -82,12 +82,14 @@ const SYNC_SETTINGS_PREFIX: &str = "sync.";
 /// `replace` = 全量替换所选分类（裁定语义：范围勾选 + 分类粒度人工处理冲突）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum SyncImportMode {
     Replace,
 }
 
 /// 导入回执（serde 面与 TS `SyncImportReport` 同构；BTreeMap = 键序稳定）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SyncImportReport {
     /// 每个所选分类实际落库条数。
     pub applied: BTreeMap<String, usize>,

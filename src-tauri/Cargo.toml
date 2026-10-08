@@ -4,8 +4,10 @@ license = "MIT"
 version = "0.1.0"
 description = "Ottr - cross-platform SSH client"
 authors = ["Ottr contributors"]
-edition = "2021"
-# Tauri CLI 的 dev/构建流程（bin 数 >1：ottr + bin/ottr-mcp）——钉死默认二进制 = 应用本体。
+edition = "2024"
+# Tauri CLI 的 dev 流程走 `cargo run`（tauri.conf beforeDevCommand 链）——bin/ottr-mcp
+# （Phase 4 T3）入库后 bin 数 >1，缺省歧义即 `cargo run could not determine which
+# binary to run`（T7 验收 GUI 走查发现并修复）：钉死默认二进制 = 应用本体。
 default-run = "ottr"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -17,41 +19,97 @@ default-run = "ottr"
 name = "ottr_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# MCP stdio relay（Phase 4 Task 3，C1）：Claude Desktop 等 MCP 客户端 spawn 的
+# 子进程——纯 std 字节管道（stdin ↔ UDS ↔ stdout），不链接 ottr_lib/tauri。
+# 形态裁定与配置方法见 commands/mcp.rs 模块文档与 docs/mcp.md。
+[[bin]]
+name = "ottr-mcp"
+path = "src/bin/ottr-mcp.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # A12（Task 14）：tray-icon = 托盘（TrayIconBuilder）；image-png = 托盘模板位图
 # 解码（Image::from_bytes，icons/tray.png）。菜单 API 无需 feature。
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "image-png"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# theme-suite T3：macos-private-api = 主窗 transparent:true（macOS 透明窗口
+# API；tauri.conf.json Glass 主题真透明的前提）。
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 ottr-ssh = { path = "../crates/ottr-ssh" }
 # Task 9（A9）：转发路径解码（合批后、IPC 前）——ottr-term 流式会话解码器
 ottr-term = { path = "../crates/ottr-term" }
 # Task 10（A5）：SFTP 传输/文件操作（FileTransfer trait + SftpClient ops）
 ottr-transfer = { path = "../crates/ottr-transfer" }
 # Task 5：数据层接线（vault 命令 + ssh-config 导入）
-ottr-vault = { path = "../crates/ottr-vault" }
-tokio = { version = "1", features = ["io-util", "sync", "time"] }
-base64 = "0.22"
-sha2 = "0.10"
-# spike-pragmatic：PTY 读循环匹配 russh::ChannelMsg / Channel 类型。
-# 这是 ottr-ssh::SshTransport 文档记载的唯一 russh 泄漏点（Channel 关联类型）的延伸；
-# 正式版由 ottr-term 包装消除，届时移除本依赖。
-russh = "0.63.3"
+ottr-vault = { path = "../crates/ottr-vault", features = ["specta"] }
+# Phase 3 Task 1（B4 上半）：监控采集（/proc|df 解析 + 抖动调度 + 采样循环）
+ottr-monitor = { path = "../crates/ottr-monitor" }
+ottr-cron = { path = "../crates/ottr-cron" }
+# TS 类型绑定生成（tauri-specta 试点，2026-10-08）：仅 tests/ts_bindings.rs 消费，
+# 生产 Builder 链零改动；推广路径见 docs/structure-refactor-plan.md §2。
+tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
+specta = { version = "2.0.0-rc.25", features = ["serde_json"] }
+specta-typescript = "0.0.12"
+# Phase 2 Task 1：CancellationToken（ForwardManager 运行实例取消树）。
+tokio-util = { workspace = true }
+# B5（Phase 3 Task 3）：SMTP 通知渠道——lettre 异步发送（tokio1 运行时对齐
+# tauri::async_runtime）。TLS 走 native-tls（macOS Security.framework / Windows
+# schannel / Linux openssl），与 ottr-transfer 的 FTPS 栈（async-native-tls）
+# 同源，不引入第二套 TLS。spec §7 裁定「SMTP 走 Rust 侧 lettre 更稳（二选一
+# spike 定）」——TS 侧无 Node 运行时（nodemailer 不可用），webview 也无裸
+# TCP socket，故 Rust 命令面是唯一可行实现。
+lettre = { version = "0.11", default-features = false, features = [
+    "smtp-transport",
+    "builder",
+    "tokio1",
+    "tokio1-native-tls",
+] }
+# forward 命令域（Phase 2 Task 1）经 ottr-ssh 间接消费 net 面；本 crate 自身
+# commands/* 不直接摸 TCP，net 留给 ottr-ssh。rt = MCP 引擎（Phase 4 Task 3，
+# C1）在 UDS 连接专属 std 线程上经 Handle::block_on 桥接 SSH/SFTP 异步面。
+tokio = { workspace = true, features = ["io-util", "rt", "sync", "time"] }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+# spike-pragmatic 收口（pty.rs 落地）：PTY 读循环/建通道面已收敛到
+# ottr_ssh::pty（PtyChannel/PtyEvent），本 crate 生产代码零 russh 依赖；
+# russh 仅存于 [dev-dependencies]——进程内 mock sshd（russh::server::Handler）
+# 与真夹具集成测试直用。
 tauri-plugin-notification = "2"
+# Phase 2 Task 4（B10 下半）：trzsz 传输的文件/目录选择（chooseSendFiles /
+# chooseSaveDirectory 走原生对话框；JS 侧 @tauri-apps/plugin-dialog）。
+tauri-plugin-dialog = "2"
 # T11（A7）：剪贴板敏感复制自动清空——arboard（tauri-plugin-clipboard-manager
 # 的同源后端）Rust 侧直用，免插件/Capability 面（前端永不接触明文，见 security.rs）。
 # default-features = false：关 image-data（文本剪贴板够用，少拖 image 依赖树）。
 arboard = { version = "3", default-features = false }
 # 剪贴板明文 String 用后即清（vault 侧裸 key 同源纪律）。
 zeroize = "1"
+# product-ready T4（BL-524 清偿）：同步 WebDAV 通道的 Rust HTTP 代理
+# （commands/sync_http.rs）——webview 原生 fetch 生产被 CORS 拦死（自建
+# WebDAV/dufs 不发跨域头），改经 invoke 走 reqwest。default-features = false：
+# 关 default-tls（native-tls→openssl 依赖树）与 http2/charset 等非必需面；
+# TLS = rustls（webpki-roots，免系统信任库平台差）。
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+# BL-513（账本清零 G1）：Tabby 实际生产配置是 YAML（~/.config/tabby/config.yaml）
+# ——importers/tabby 补 YAML 形态。选型 serde_yaml 0.9 = dtolnay 原作（2024-03
+# 起归档冻结：无未修 CVE、API 稳定、生态事实标准），相较年轻分叉（serde-yaml-ng
+# 等）供应链面更小；版本锁死仅消费不追新。使用面 = importers/tabby 单模块，
+# 无传递扩散。
+serde_yaml = "0.9"
 
 # keyring v3 无默认 feature（无平台 store 即只剩 mock）；平台 store 按平台 opt-in，
 # 且 sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）——官方推荐按
 # target 分平台声明。Linux Secret Service 依赖 gnome-keyring：CI 无桌面环境预期失败，
 # fallback = 加密文件 + 主密码（Phase 1，见 docs/phase0-report.md §3 Spike#7 行）。
+
+# theme-suite T3（Glass 真透明/毛玻璃）：主窗平台模糊效果。选型 window-vibrancy
+# 0.8 = tauri 2.12 的既有传递依赖（升格直接依赖，锁文件零新增 crate）；0.5.0 起
+# `apply_under_window_blending` 已移除，实际 API = apply_vibrancy（macOS）/
+# apply_acrylic（Windows），Linux 不支持（CSS 兜底）——见 src/vibrancy.rs。
+window-vibrancy = "0.8"
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
 
@@ -63,4 +121,9 @@ keyring = { version = "3", features = ["sync-secret-service"] }
 
 [dev-dependencies]
 # vault 相关单测（tempfile 临时目录 + InMemoryStorage，测试纪律见 ottr-vault）
-tempfile = "3"
+tempfile = { workspace = true }
+# 终审 A1 回归：进程内 mock sshd（russh::server::Handler）——生产代码已经
+# ottr_ssh::pty 收口层零 russh（见 [dependencies] 段注释）；PrivateKey::random
+# 的 rand 版本须与 russh 同源对齐，同款约束见 crates/ottr-ssh Cargo.toml
+russh = { workspace = true }
+rand = { workspace = true }

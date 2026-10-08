@@ -19,17 +19,29 @@
 //! app_data_dir/mcp.sock；Claude Desktop 配置生成器会带全此参数）。
 //! Windows 不支持（UDS relay 待命名管道形态，见 task-3-report 偏差）。
 
+// relay 全部能力是 UDS 面（Windows 尚无命名管道形态，见下 main 的 fail-closed
+// 分支）——import/常量随门控走，Windows 下仅剩 stub main（零未用告警）。
+#[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::exit;
+#[cfg(unix)]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(unix)]
 use std::sync::Arc;
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+#[cfg(unix)]
 const RETRY_INTERVAL: Duration = Duration::from_millis(250);
 
+#[cfg(unix)]
 fn main() {
     let socket = parse_args();
     let stream = match connect_with_retry(&socket) {
@@ -102,8 +114,18 @@ fn main() {
     eprintln!("ottr-mcp: connection closed");
 }
 
+/// Windows 尚无 UDS relay（命名管道形态待定，见 task-3-report 偏差）：显式
+/// 失败退出，MCP 客户端会把 server 标记为不可用（fail-closed，同 App 侧
+/// McpManager::start 的 not(unix) 分支口径）。
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("ottr-mcp: Unix domain socket relay is not supported on this platform yet");
+    std::process::exit(1);
+}
+
 /// `--socket <path>`（必填——路径由 Ottr 设置页的配置生成器给出，避免在
 /// relay 里复刻各平台 app_data_dir 逻辑造成双份事实源）。
+#[cfg(unix)]
 fn parse_args() -> PathBuf {
     let args: Vec<String> = std::env::args().collect();
     let mut socket = None;
@@ -136,6 +158,7 @@ fn parse_args() -> PathBuf {
 }
 
 /// 带重试的连接（App 正在启动时 listener 可能还没 bind；总窗 10s）。
+#[cfg(unix)]
 fn connect_with_retry(socket: &PathBuf) -> Result<UnixStream, String> {
     let deadline = std::time::Instant::now() + CONNECT_TIMEOUT;
     loop {

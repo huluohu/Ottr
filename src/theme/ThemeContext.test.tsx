@@ -248,8 +248,22 @@ describe("ThemeContext 多主题（theme-suite T2）", () => {
   // theme-suite T3：平台标记（Linux 兜底 CSS 面）——glass 在 WebKitGTK 无系统
   // 模糊面，CSS 用 [data-platform="linux"] 把 bg alpha 提到近实底。
   it("data-platform：jsdom（非 Linux UA）挂 other；Linux UA 挂 linux", () => {
-    renderThemed();
-    expect(document.documentElement.dataset.platform).toBe("other");
+    // jsdom 默认 userAgent 按 process.platform 拼出（Linux runner 上含
+    // "Linux"）——用例不得看 runner 的 OS 脸色，显式钉 macOS UA 判 other
+    // （stub/还原形态同下一用例）。
+    const proto = Object.getPrototypeOf(window.navigator);
+    const desc = Object.getOwnPropertyDescriptor(proto, "userAgent")!;
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+      configurable: true,
+    });
+    try {
+      renderThemed();
+      expect(document.documentElement.dataset.platform).toBe("other");
+    } finally {
+      Reflect.deleteProperty(window.navigator, "userAgent");
+      Object.defineProperty(proto, "userAgent", desc);
+    }
   });
 
   it("data-platform：Linux UA（X11）挂 linux（Android 不算）", async () => {

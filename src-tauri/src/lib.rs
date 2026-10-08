@@ -65,8 +65,11 @@ pub use commands::remote_edit::{
     local_stamp, poll_decision, sweep_stale_edits, temp_path_for, temp_root,
 };
 // Phase 4 Task 3（C1）：MCP 引擎核公开给夹具集成测试（tests/mcp_fixture.rs：
-// relay 子进程 + UDS + 授权矩阵 + 真 exec/SFTP 全链）。
-pub use commands::mcp::{ApprovalGate, HostSessionResolver, McpEngine, spawn_listener};
+// relay 子进程 + UDS + 授权矩阵 + 真 exec/SFTP 全链）。spawn_listener 为
+// cfg(unix) 面，随源门控（Windows 编译不含 UDS listener）。
+pub use commands::mcp::{ApprovalGate, HostSessionResolver, McpEngine};
+#[cfg(unix)]
+pub use commands::mcp::spawn_listener;
 
 // ---------------------------------------------------------------------------
 // 入口

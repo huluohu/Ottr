@@ -47,7 +47,11 @@ mod listener;
 
 pub use approvals::{ApprovalGate, McpApprovals, UiApprovalGate};
 pub use engine::{APPROVAL_TIMEOUT, EXEC_TIMEOUT, HostSessionResolver, McpEngine};
-pub use listener::{ListenerHandle, spawn_listener};
+pub use listener::ListenerHandle;
+// spawn_listener 是 cfg(unix) 面（UDS listener）；Windows 编译仍需本模块
+// （McpManager.start 的 not(unix) 分支 fail-closed），故再导出须同门控。
+#[cfg(unix)]
+pub use listener::spawn_listener;
 
 // ---------------------------------------------------------------------------
 // Tauri 装配面（Manager / 命令 / vault-ready 挂点）
@@ -58,6 +62,7 @@ pub use listener::{ListenerHandle, spawn_listener};
 #[derive(Default)]
 pub struct McpManager {
     approvals: Arc<McpApprovals>,
+    #[cfg(unix)]
     listener: Mutex<Option<ListenerHandle>>,
 }
 
@@ -82,6 +87,7 @@ impl McpManager {
     }
 
     fn stop(&self) {
+        #[cfg(unix)]
         if let Some(h) = self.listener.lock().unwrap().take() {
             h.cancel.cancel();
             let _ = std::fs::remove_file(&h.socket_path);
@@ -90,11 +96,18 @@ impl McpManager {
     }
 
     fn socket(&self) -> Option<PathBuf> {
-        self.listener
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|h| h.socket_path.clone())
+        #[cfg(unix)]
+        {
+            self.listener
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|h| h.socket_path.clone())
+        }
+        #[cfg(not(unix))]
+        {
+            None
+        }
     }
 }
 

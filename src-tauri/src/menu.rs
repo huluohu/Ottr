@@ -177,6 +177,13 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Command Palette…"
             }
         }
+        "help_github" => {
+            if zh {
+                "GitHub 仓库"
+            } else {
+                "GitHub Repository"
+            }
+        }
         "tray_show" => {
             if zh {
                 "显示主窗口"
@@ -614,12 +621,21 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
         },
         MenuNode::Sub {
             label: text(lang, "help"),
-            // MVP 无帮助文档：帮助菜单入口 = 命令面板（命令即文档，搜索即发现）。
-            items: vec![MenuNode::Item {
-                id: "palette.toggle",
-                label: text(lang, "palette"),
-                accelerator: Some("CmdOrCtrl+K"),
-            }],
+            // MVP 无帮助文档：命令面板（命令即文档，搜索即发现）+ GitHub 仓库
+            // （浏览器打开，Issue 反馈入口）。
+            items: vec![
+                MenuNode::Item {
+                    id: "palette.toggle",
+                    label: text(lang, "palette"),
+                    accelerator: Some("CmdOrCtrl+K"),
+                },
+                MenuNode::Sep,
+                MenuNode::Item {
+                    id: "help.github",
+                    label: text(lang, "help_github"),
+                    accelerator: None,
+                },
+            ],
         },
     ]
 }
@@ -661,6 +677,8 @@ pub enum Dispatch {
     TrayShow,
     /// 托盘：断开全部会话。
     TrayDisconnectAll,
+    /// 帮助：浏览器打开 GitHub 仓库（Issue 反馈入口）。
+    OpenGitHub,
 }
 
 pub fn dispatch_of(id: &str) -> Option<Dispatch> {
@@ -678,6 +696,7 @@ pub fn dispatch_of(id: &str) -> Option<Dispatch> {
     match id {
         "settings.open" | "hosts.new" | "hosts.new_group" | "session.splitRight"
         | "session.splitDown" | "palette.toggle" => Some(Dispatch::Frontend),
+        "help.github" => Some(Dispatch::OpenGitHub),
         "app.quit" | "tray.quit" => Some(Dispatch::Quit),
         "view.zoom_in" => Some(Dispatch::ZoomIn),
         "view.zoom_out" => Some(Dispatch::ZoomOut),
@@ -784,6 +803,10 @@ fn add_predef<'m, R: Runtime>(
                     .unwrap_or_else(|| "Ottr".into()),
             ),
             version: Some(app.package_info().version.to_string()),
+            authors: Some(vec!["@huluohu".into()]),
+            website: Some(REPO_URL.into()),
+            website_label: Some("github.com/huluohu/Ottr".into()),
+            credits: Some(format!("By @huluohu\n{REPO_URL}")),
             ..Default::default()
         })),
         Predef::Services => sb.services(),
@@ -822,7 +845,40 @@ fn on_app_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
         Some(Dispatch::ZoomIn) => apply_zoom(app, Some(ZOOM_STEP)),
         Some(Dispatch::ZoomOut) => apply_zoom(app, Some(1.0 / ZOOM_STEP)),
         Some(Dispatch::ZoomReset) => apply_zoom(app, None),
+        Some(Dispatch::OpenGitHub) => open_repo_url(),
         _ => {}
+    }
+}
+
+/// 仓库地址（帮助菜单入口 + 关于面板共用）。
+const REPO_URL: &str = "https://github.com/huluohu/Ottr";
+
+/// 浏览器打开仓库页（spawn 即返回，不等浏览器）。
+/// macOS `open` / Linux `xdg-open` / Windows `cmd /C start`——三端写法同
+/// remote_edit `open_in_editor`。
+#[allow(dead_code)] // 同 menu_tree：win/linux 构建不装原生菜单，仅测试消费
+fn open_repo_url() {
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(REPO_URL);
+        c
+    };
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(REPO_URL);
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", ""]);
+        c.arg(REPO_URL);
+        c
+    };
+    if let Err(e) = cmd.spawn() {
+        eprintln!("[menu] open repo url failed: {e}");
     }
 }
 

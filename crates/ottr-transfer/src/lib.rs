@@ -13,6 +13,7 @@
 //! trait 边界上唯一已裁定的泄漏点的直接延伸，ottr-transfer 依赖 ottr-ssh
 //! 消费该流；libssh2 fallback 时随传输层实现整体替换，trait 消费方不动。
 
+mod fs_at;
 pub mod ftp;
 pub mod ops;
 pub mod sftp;

@@ -60,7 +60,6 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::io::Write;
-use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -73,6 +72,7 @@ use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 
 use ottr_ssh::SshSession;
 
+use crate::fs_at::{pread_exact, pwrite_all};
 use crate::{Error, Result};
 
 /// chunk 粒度（简报规定 1 MiB）。journal 记录的是 chunk 起始 offset，
@@ -437,7 +437,7 @@ pub async fn download_parallel(
                 let data =
                     read_chunk_pipelined(&sftp, &handle, offset, len as usize, read_block).await?;
                 // 顺序不变量：数据先完整写盘（页缓存，kill -9 不丢），后记 journal。
-                local_file.write_all_at(&data, offset)?;
+                pwrite_all(&local_file, offset, &data)?;
                 journal.record(offset)?;
                 let done_now = counter.fetch_add(1, Ordering::Relaxed) + 1;
                 let chunks_done = chunks_total as u64 - remaining + done_now;
@@ -630,7 +630,7 @@ pub async fn upload_parallel(
                     break;
                 };
                 let mut data = vec![0u8; len as usize];
-                local_file.read_exact_at(&mut data, offset)?;
+                pread_exact(&local_file, offset, &mut data)?;
                 // 远端写：块切分后一轮 try_join_all 流水线；raw write 对每个
                 // ack 校验 Status Ok。全部 ack 返回，chunk 才算完成 —— 然后才
                 // 记 journal（顺序不变量，见模块注释）。

@@ -47,7 +47,6 @@
 
 use std::future::Future;
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::time::Instant;
 
@@ -61,6 +60,7 @@ use suppaftp::types::{FileType, FtpError, Response};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
+use crate::fs_at::pwrite_all;
 use crate::ops::DirEntry;
 use crate::sftp::{
     CHUNK_SIZE, CancelToken, Journal, ProgressHook, TransferProgress, TransferStats,
@@ -499,7 +499,7 @@ async fn download_linear(
         if n == 0 {
             break; // EOF：数据收讫，226 由 finish() 确认
         }
-        local_file.write_all_at(&buf[..n], pos)?;
+        pwrite_all(&local_file, pos, &buf[..n])?;
         pos += n as u64;
         tracker.advance(pos);
     }

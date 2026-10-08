@@ -97,6 +97,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.platform;
 });
 
 describe("ThemeContext", () => {
@@ -242,5 +243,37 @@ describe("ThemeContext 多主题（theme-suite T2）", () => {
     expect(document.documentElement.dataset.theme).toBe("light");
     act(() => flipSystem(true));
     expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  // theme-suite T3：平台标记（Linux 兜底 CSS 面）——glass 在 WebKitGTK 无系统
+  // 模糊面，CSS 用 [data-platform="linux"] 把 bg alpha 提到近实底。
+  it("data-platform：jsdom（非 Linux UA）挂 other；Linux UA 挂 linux", () => {
+    renderThemed();
+    expect(document.documentElement.dataset.platform).toBe("other");
+  });
+
+  it("data-platform：Linux UA（X11）挂 linux（Android 不算）", async () => {
+    // jsdom 的 userAgent 定义在 Navigator.prototype 上（实例属性描述符为 undefined）
+    const proto = Object.getPrototypeOf(window.navigator);
+    const desc = Object.getOwnPropertyDescriptor(proto, "userAgent")!;
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15",
+      configurable: true,
+    });
+    try {
+      renderThemed();
+      expect(document.documentElement.dataset.platform).toBe("linux");
+    } finally {
+      Reflect.deleteProperty(window.navigator, "userAgent");
+      Object.defineProperty(proto, "userAgent", desc);
+    }
+    // Android 是 Linux 内核但走触摸/移动面，不按 Linux 兜底口径
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36",
+      configurable: true,
+    });
+    renderThemed();
+    expect(document.documentElement.dataset.platform).toBe("other");
+    Reflect.deleteProperty(window.navigator, "userAgent");
   });
 });

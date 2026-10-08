@@ -31,7 +31,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # A12（Task 14）：tray-icon = 托盘（TrayIconBuilder）；image-png = 托盘模板位图
 # 解码（Image::from_bytes，icons/tray.png）。菜单 API 无需 feature。
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# theme-suite T3：macos-private-api = 主窗 transparent:true（macOS 透明窗口
+# API；tauri.conf.json Glass 主题真透明的前提）。
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ottr-ssh = { path = "../crates/ottr-ssh" }
@@ -95,6 +97,12 @@ serde_yaml = "0.9"
 # 且 sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）——官方推荐按
 # target 分平台声明。Linux Secret Service 依赖 gnome-keyring：CI 无桌面环境预期失败，
 # fallback = 加密文件 + 主密码（Phase 1，见 docs/phase0-report.md §3 Spike#7 行）。
+
+# theme-suite T3（Glass 真透明/毛玻璃）：主窗平台模糊效果。选型 window-vibrancy
+# 0.8 = tauri 2.12 的既有传递依赖（升格直接依赖，锁文件零新增 crate）；0.5.0 起
+# `apply_under_window_blending` 已移除，实际 API = apply_vibrancy（macOS）/
+# apply_acrylic（Windows），Linux 不支持（CSS 兜底）——见 src/vibrancy.rs。
+window-vibrancy = "0.8"
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
 

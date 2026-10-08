@@ -18,6 +18,16 @@
   --scrim: color-mix(in srgb, var(--color-fg) 45%, transparent);
 }
 
+/* theme-suite T3（Glass 可读性兜底）：真透明主题下弹窗/scrim 若沿用半透明
+ * 派生面，内容会与桌面混叠不可读——glass 块把派生面提到近实底（对话框/scrim
+ * 高不透明；非玻璃面仍带 alpha 透出 vibrancy 模糊）。覆写与 :root 同特异性、
+ * 后置生效；合成参考见 tokens.css glass 块注释。 */
+[data-theme="glass"] {
+  --surface-raised: color-mix(in srgb, var(--color-fg) 6%, rgba(18, 13, 32, 0.97));
+  --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, rgba(18, 13, 32, 0.97));
+  --scrim: color-mix(in srgb, #050308 72%, transparent);
+}
+
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;

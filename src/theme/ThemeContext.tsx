@@ -151,6 +151,16 @@ function systemPrefersDark(): boolean {
   return window.matchMedia(MEDIA_QUERY).matches;
 }
 
+// theme-suite T3：平台标记（一次性，挂 `<html data-platform>`）。Glass 主题在
+// Linux（WebKitGTK）无系统模糊面（window-vibrancy 不支持），CSS 用
+// [data-theme="glass"][data-platform="linux"] 把 bg alpha 提到近实底兜底；
+// 其余平台挂 "other"（CSS 不命中）。判据 = userAgent（Android 是 Linux 内核
+// 但不按桌面 Linux 口径）。jsdom / 纯浏览器 dev 同样可得值。
+function detectPlatform(): "linux" | "other" {
+  const ua = navigator.userAgent;
+  return /linux/i.test(ua) && !/android/i.test(ua) ? "linux" : "other";
+}
+
 interface ThemeContextValue {
   mode: ThemeMode;
   setMode: (mode: ThemeMode) => void;
@@ -219,6 +229,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = mode === "system" ? resolved : mode;
   }, [mode, resolved]);
+
+  // data-platform 挂 root（theme-suite T3，一次性）：Glass 的 Linux 兜底 CSS 面。
+  useEffect(() => {
+    document.documentElement.dataset.platform = detectPlatform();
+  }, []);
 
   const value = useMemo<ThemeContextValue>(
     () => ({

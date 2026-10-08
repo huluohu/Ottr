@@ -17,6 +17,7 @@ pub mod hostkey_audit;
 pub mod importers;
 pub mod keys;
 pub mod menu;
+mod vibrancy;
 // MCP 协议核（Phase 4 Task 3，C1）：纯 JSON-RPC/MCP 消息层（无 tauri/IO 依赖），
 // 引擎装配与命令面在 commands/mcp.rs，stdio relay 子进程在 bin/ottr-mcp.rs。
 pub mod mcp;
@@ -120,6 +121,14 @@ pub fn run() {
                 #[cfg(not(target_os = "macos"))]
                 if let Err(e) = win.set_decorations(false) {
                     eprintln!("[setup] set_decorations(false) failed: {e}");
+                }
+                // theme-suite T3：主窗毛玻璃效果**常开**（macOS vibrancy /
+                // Windows acrylic / Linux 跳过——平台分支见 vibrancy.rs）。
+                // 非 Glass 主题画满不透明背景，效果不可见；Glass 主题的半透明
+                // 面透出系统模糊。失败不阻断启动（增强面，alpha 兜底可读）。
+                match vibrancy::apply_window_vibrancy(&win) {
+                    Ok(effect) => eprintln!("[setup] window vibrancy: {} applied", effect.label()),
+                    Err(e) => eprintln!("[setup] window vibrancy: {e}"),
                 }
                 let autolock: Arc<security::AutoLockState> =
                     app.state::<Arc<security::AutoLockState>>().inner().clone();

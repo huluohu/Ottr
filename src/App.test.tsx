@@ -1,7 +1,7 @@
 // App 布局集成测试（原 QuickConnect.test.tsx 的 App 集成面，Task 14 随
 // ⌘K 面板并入 palette 迁移至此）：主页骨架渲染 + Ctrl+K 呼出命令面板 +
 // refresh 失败横幅。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -189,6 +189,9 @@ describe("App 顶栏收纳（Phase 5 T1）", () => {
       expect(menu.querySelector(`[data-testid="${testid}"]`)).toBeTruthy();
     }
 
+    // theme-suite T1：工具菜单补「导出主机 CSV」入口（主机树按钮保留，此为顶栏可达面）
+    expect(menu.querySelector('[data-testid="menu-export-hosts-csv"]')).toBeTruthy();
+
     // 入口可达性全链：点「凭据」→ 凭据对话框挂载
     fireEvent.click(screen.getByTestId("menu-open-credentials"));
     await waitFor(() => expect(screen.getByTestId("credentials-dialog")).toBeTruthy());
@@ -229,6 +232,49 @@ describe("App 顶栏收纳（Phase 5 T1）", () => {
     // 菜单已收起
     expect(screen.queryByTestId("topbar-theme-menu")).toBeNull();
     localStorage.removeItem("ottr.settings.theme");
+  });
+});
+
+// theme-suite T1：工具菜单「导出主机 CSV」——path=null 落系统下载目录，主区
+// 顶部行内状态条反馈落盘路径/错误，6 秒自动清除（定时器卸载清理防泄漏）。
+describe("App 工具菜单导出主机 CSV（theme-suite T1）", () => {
+  function listMock(exportImpl: () => Promise<string>) {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      if (cmd === "export_hosts_csv") return exportImpl();
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+  }
+
+  it("点击入口调 export_hosts_csv(null)，状态条显示落盘路径；6 秒后自动清除", async () => {
+    vi.useFakeTimers();
+    try {
+      listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
+      render(<App />);
+      fireEvent.click(screen.getByTestId("topbar-tools"));
+      fireEvent.click(screen.getByTestId("menu-export-hosts-csv"));
+      // 冲刷 invoke promise 链（fake timers 不影响微任务）
+      await act(async () => {});
+      expect(mockedInvoke).toHaveBeenCalledWith("export_hosts_csv", { path: null });
+      const status = screen.getByTestId("topbar-export-status");
+      expect(status.textContent).toContain("/tmp/ottr/hosts-2026.csv");
+
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(screen.queryByTestId("topbar-export-status")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("导出失败：同一状态条显示错误文本", async () => {
+    listMock(() => Promise.reject(new Error("vault locked")));
+    render(<App />);
+    fireEvent.click(screen.getByTestId("topbar-tools"));
+    fireEvent.click(screen.getByTestId("menu-export-hosts-csv"));
+    await waitFor(() => expect(screen.getByTestId("topbar-export-status")).toBeTruthy());
+    expect(screen.getByTestId("topbar-export-status").textContent).toContain("vault locked");
   });
 });
 

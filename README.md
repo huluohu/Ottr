@@ -12,7 +12,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
 [![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
 [![Tests](https://img.shields.io/badge/tests-1760%2B%20green-5EEAD4)](#-测试)
-[![License](https://img.shields.io/badge/license-MIT-5EEAD4)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-5EEAD4)](#-许可与作者)
 
 </div>
 
@@ -210,8 +210,14 @@ PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:$PATH" npx tauri build
 
 ## 📄 许可与作者
 
-**Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以 [MIT](LICENSE) 协议开源——
-欢迎 Issue 反馈与 PR；主仓库：[github.com/huluohu/Ottr](https://github.com/huluohu/Ottr)。
+**Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以
+**MIT OR Apache-2.0** 双协议开源（[`LICENSE-MIT`](LICENSE-MIT) /
+[`LICENSE-APACHE`](LICENSE-APACHE)，任选其一遵循）——欢迎 Issue 反馈与 PR；
+主仓库：[github.com/huluohu/Ottr](https://github.com/huluohu/Ottr)。
+
+> 选型说明：与 Rust/Tauri 生态标准一致（下游可任选其一，复用零摩擦）；
+> Apache-2.0 附带显式专利授权，对 SSH/加密类工具更稳；MIT 保证最大传播自由。
+> 二者均宽松，未来如需收紧（如转 GPL 防闭源套壳）单向可行。
 
 <div align="center">
 

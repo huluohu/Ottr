@@ -32,7 +32,7 @@ use ottr_vault::entities::HostInput;
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::settings::validate_known_setting;
 use ottr_vault::{HostGroups, Hosts, Settings, SyncImportMode, Vault};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 fn main() {
     let dir = std::env::args().nth(1).unwrap_or_else(|| usage_exit());

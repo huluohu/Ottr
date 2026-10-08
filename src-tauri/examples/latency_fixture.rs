@@ -25,10 +25,10 @@ use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
-use ottr_lib::{SessionCounters, TextTail, forward_pty_loop};
+use ottr_lib::{forward_pty_loop, SessionCounters, TextTail};
 use ottr_term::encoding::{Encoding, StreamDecoder};
 
-use ottr_ssh::{AuthMethod, HostKeyPolicy, connect};
+use ottr_ssh::{connect, AuthMethod, HostKeyPolicy};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
@@ -49,7 +49,7 @@ struct Capture {
 }
 
 fn pinned_host_key_policy() -> HostKeyPolicy {
-    use russh::keys::{HashAlg, PublicKey, parse_public_key_base64};
+    use russh::keys::{parse_public_key_base64, HashAlg, PublicKey};
     let content =
         std::fs::read_to_string(KNOWN_HOSTS).unwrap_or_else(|e| panic!("read {KNOWN_HOSTS}: {e}"));
     let marker = format!("[{HOST}]:{PORT}");

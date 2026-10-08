@@ -20,7 +20,7 @@
 //! KDE 全局菜单适配（dbusmenu，spec §13 标注「可选」）：Phase 1 跳过，Linux 与
 //! Windows 共用自绘标题栏 + 汉堡菜单（前端 TitleBar），原生菜单仅 macOS 构建。
 
-use tauri::menu::{AboutMetadata, MenuBuilder, MenuEvent, MenuItem, SubmenuBuilder};
+use tauri::menu::{AboutMetadata, CheckMenuItem, MenuBuilder, MenuEvent, MenuItem, SubmenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Listener, Manager, Runtime, Wry};
 
@@ -184,6 +184,140 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Disconnect All"
             }
         }
+        "theme" => {
+            if zh {
+                "主题"
+            } else {
+                "Theme"
+            }
+        }
+        "theme_light" => {
+            if zh {
+                "亮色"
+            } else {
+                "Light"
+            }
+        }
+        "theme_dark" => {
+            if zh {
+                "暗色"
+            } else {
+                "Dark"
+            }
+        }
+        "theme_system" => {
+            if zh {
+                "跟随系统"
+            } else {
+                "System"
+            }
+        }
+        "theme_oled" => {
+            if zh {
+                "暗黑 OLED"
+            } else {
+                "Dark OLED"
+            }
+        }
+        "theme_amethyst" => {
+            if zh {
+                "幻紫"
+            } else {
+                "Amethyst"
+            }
+        }
+        "theme_verdant" => {
+            if zh {
+                "自然之灵"
+            } else {
+                "Verdant"
+            }
+        }
+        "theme_glass" => {
+            if zh {
+                "透明毛玻璃"
+            } else {
+                "Frosted Glass"
+            }
+        }
+        "tools" => {
+            if zh {
+                "工具"
+            } else {
+                "Tools"
+            }
+        }
+        "tool_credentials" => {
+            if zh {
+                "凭据…"
+            } else {
+                "Credentials…"
+            }
+        }
+        "tool_alerts" => {
+            if zh {
+                "告警规则"
+            } else {
+                "Alert Rules"
+            }
+        }
+        "tool_mcp" => "MCP",
+        "tool_ai" => {
+            if zh {
+                "AI 设置"
+            } else {
+                "AI Settings"
+            }
+        }
+        "tool_forwards" => {
+            if zh {
+                "端口转发"
+            } else {
+                "Port Forwards"
+            }
+        }
+        "tool_jump_chains" => {
+            if zh {
+                "跳板链"
+            } else {
+                "Jump Chains"
+            }
+        }
+        "tool_overview" => {
+            if zh {
+                "多主机总览"
+            } else {
+                "Overview"
+            }
+        }
+        "tool_batch" => {
+            if zh {
+                "批量执行"
+            } else {
+                "Batch Exec"
+            }
+        }
+        "tool_cron" => {
+            if zh {
+                "定时任务"
+            } else {
+                "Scheduled Tasks"
+            }
+        }
+        "tool_sync" => {
+            if zh {
+                "同步"
+            } else {
+                "Sync"
+            }
+        }
+        "tool_export_csv" => {
+            if zh {
+                "导出主机 CSV…"
+            } else {
+                "Export Hosts CSV…"
+            }
+        }
         "tray_quit" => {
             if zh {
                 "退出 Ottr"
@@ -229,6 +363,12 @@ pub enum MenuNode {
         label: &'static str,
         accelerator: Option<&'static str>,
     },
+    /// 勾选项（主题七选）：构建为 CheckMenuItem；勾选状态由 [`ThemeMenuState`]
+    /// 持有并经 `menu_set_theme` 命令驱动（前端 mode 单一来源）。
+    Check {
+        id: &'static str,
+        label: &'static str,
+    },
     Predef(Predef),
     Sep,
     Sub {
@@ -236,6 +376,26 @@ pub enum MenuNode {
         items: Vec<MenuNode>,
     },
 }
+
+/// 主题七态 id（与前端 THEME_IDS 同序同值；快切菜单/设置网格/原生菜单三处共用）。
+pub const THEME_IDS: [&str; 7] = [
+    "light", "dark", "system", "oled", "amethyst", "verdant", "glass",
+];
+
+/// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
+pub const TOOL_KEYS: [&str; 11] = [
+    "credentials",
+    "alerts",
+    "mcp",
+    "ai",
+    "forwards",
+    "jump-chains",
+    "overview",
+    "batch",
+    "cron",
+    "sync",
+    "export-hosts-csv",
+];
 
 /// 应用菜单树（HIG：应用/文件/编辑/视图/窗口/帮助）。
 /// 带键位的条目与前端 registry 镜像（见模块文档）。
@@ -300,6 +460,42 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     accelerator: Some("CmdOrCtrl+Shift+D"),
                 },
                 MenuNode::Sep,
+                // 主题七选子菜单（2026-10-08 菜单栏启用批次）：与顶栏快切/
+                // 设置网格同源同词；勾选态经 menu_set_theme 跟随前端 mode。
+                MenuNode::Sub {
+                    label: text(lang, "theme"),
+                    items: vec![
+                        MenuNode::Check {
+                            id: "theme.set.light",
+                            label: text(lang, "theme_light"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.dark",
+                            label: text(lang, "theme_dark"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.system",
+                            label: text(lang, "theme_system"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.oled",
+                            label: text(lang, "theme_oled"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.amethyst",
+                            label: text(lang, "theme_amethyst"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.verdant",
+                            label: text(lang, "theme_verdant"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.glass",
+                            label: text(lang, "theme_glass"),
+                        },
+                    ],
+                },
+                MenuNode::Sep,
                 MenuNode::Item {
                     id: "view.zoom_in",
                     label: text(lang, "zoom_in"),
@@ -317,6 +513,69 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 },
                 MenuNode::Sep,
                 MenuNode::Predef(Predef::Fullscreen),
+            ],
+        },
+        // 工具菜单（2026-10-08 菜单栏启用批次）：与顶栏「工具」下拉同源
+        // （id = tool.<key>，前端 runToolAction 单一分派）；macOS 惯例位于
+        // 视图与窗口之间。
+        MenuNode::Sub {
+            label: text(lang, "tools"),
+            items: vec![
+                MenuNode::Item {
+                    id: "tool.credentials",
+                    label: text(lang, "tool_credentials"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.alerts",
+                    label: text(lang, "tool_alerts"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.mcp",
+                    label: text(lang, "tool_mcp"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.ai",
+                    label: text(lang, "tool_ai"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.forwards",
+                    label: text(lang, "tool_forwards"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.jump-chains",
+                    label: text(lang, "tool_jump_chains"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.overview",
+                    label: text(lang, "tool_overview"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.batch",
+                    label: text(lang, "tool_batch"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.cron",
+                    label: text(lang, "tool_cron"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.sync",
+                    label: text(lang, "tool_sync"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.export-hosts-csv",
+                    label: text(lang, "tool_export_csv"),
+                    accelerator: None,
+                },
             ],
         },
         MenuNode::Sub {
@@ -380,6 +639,17 @@ pub enum Dispatch {
 }
 
 pub fn dispatch_of(id: &str) -> Option<Dispatch> {
+    // 主题七选（theme.set.<id>）与工具菜单（tool.<key>）：转前端统一分派
+    // （App.tsx runToolAction / setMode；id 形状由 THEME_IDS/TOOL_KEYS 钉住）。
+    if id
+        .strip_prefix("theme.set.")
+        .is_some_and(|t| THEME_IDS.contains(&t))
+        || id
+            .strip_prefix("tool.")
+            .is_some_and(|k| TOOL_KEYS.contains(&k))
+    {
+        return Some(Dispatch::Frontend);
+    }
     match id {
         "settings.open" | "hosts.new" | "session.splitRight" | "session.splitDown"
         | "palette.toggle" => Some(Dispatch::Frontend),
@@ -411,11 +681,37 @@ fn build_menu<R: Runtime>(
     mb.build()
 }
 
+/// 构建菜单并收集全部 Check 项（主题勾选状态管理的注册面）。
+fn build_menu_with_checks<R: Runtime>(
+    app: &AppHandle<R>,
+    tree: &[MenuNode],
+) -> tauri::Result<(tauri::menu::Menu<R>, Vec<CheckMenuItem<R>>)> {
+    let mut checks = Vec::new();
+    let mut mb = MenuBuilder::new(app);
+    for node in tree {
+        if let MenuNode::Sub { label, items } = node {
+            mb = mb.item(&build_submenu_collect(app, label, items, &mut checks)?);
+        }
+    }
+    Ok((mb.build()?, checks))
+}
+
 #[allow(dead_code)] // 同 menu_tree
 fn build_submenu<R: Runtime>(
     app: &AppHandle<R>,
     label: &str,
     items: &[MenuNode],
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    build_submenu_collect(app, label, items, &mut Vec::new())
+}
+
+/// [`build_submenu`] 的收集版：Check 项构建为 CheckMenuItem 并登记到 `checks`
+/// （主题勾选状态注册面）；嵌套 Sub 递归（2026-10-08 主题子菜单起两层以上）。
+fn build_submenu_collect<R: Runtime>(
+    app: &AppHandle<R>,
+    label: &str,
+    items: &[MenuNode],
+    checks: &mut Vec<CheckMenuItem<R>>,
 ) -> tauri::Result<tauri::menu::Submenu<R>> {
     let mut sb = SubmenuBuilder::new(app, label);
     for node in items {
@@ -427,8 +723,14 @@ fn build_submenu<R: Runtime>(
                 label,
                 accelerator,
             } => sb.item(&MenuItem::with_id(app, *id, *label, true, *accelerator)?),
-            // Phase 1 菜单只有两层；嵌套子菜单出现时再补递归（结构上不可能走到）。
-            MenuNode::Sub { .. } => sb,
+            MenuNode::Check { id, label } => {
+                let item = CheckMenuItem::with_id(app, *id, *label, true, false, None::<&str>)?;
+                checks.push(item.clone());
+                sb.item(&item)
+            }
+            MenuNode::Sub { label, items } => {
+                sb.item(&build_submenu_collect(app, label, items, checks)?)
+            }
         };
     }
     sb.build()
@@ -532,6 +834,54 @@ fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) {
 }
 
 // ---------------------------------------------------------------------------
+// 主题勾选状态（前端 mode 单一来源 → 原生菜单 checkmark 跟随）
+// ---------------------------------------------------------------------------
+
+/// 当前存活的主题 CheckMenuItem（按 id）+ 最近一次同步的主题 id。
+/// 菜单重建（语言切换/vault-ready）换新实例后由 [`register_theme_checks`]
+/// 重放勾选。win/linux 不装原生菜单，state 恒空（命令幂等 no-op）。
+#[derive(Default)]
+pub struct ThemeMenuState {
+    items: std::sync::Mutex<std::collections::HashMap<String, CheckMenuItem<Wry>>>,
+    current: std::sync::Mutex<Option<String>>,
+}
+
+/// 构建产物登记（重建时重放勾选，保状态不闪失）。
+fn register_theme_checks(app: &AppHandle<Wry>, checks: Vec<CheckMenuItem<Wry>>) {
+    let state = app.state::<ThemeMenuState>();
+    let remembered = state.current.lock().unwrap().clone();
+    let mut items = state.items.lock().unwrap();
+    items.clear();
+    for item in checks {
+        let id = item.id().as_ref().to_string();
+        if let Some(theme) = remembered.as_deref()
+            && id == format!("theme.set.{theme}")
+            && let Err(e) = item.set_checked(true)
+        {
+            eprintln!("[menu] theme check replay failed: {e}");
+        }
+        items.insert(id, item);
+    }
+}
+
+/// 前端主题同步命令：置对应项勾选、清其余（mode 变化即调；幂等）。
+/// 未知 id（老版本前端/竞态）静默忽略——菜单勾选只是跟随显示，真源在前端。
+#[tauri::command]
+pub fn menu_set_theme(theme_id: String, app: AppHandle) -> Result<(), String> {
+    let state = app.state::<ThemeMenuState>();
+    *state.current.lock().unwrap() = Some(theme_id.clone());
+    let items = state.items.lock().unwrap();
+    for (id, item) in items.iter() {
+        let checked = id == &format!("theme.set.{theme_id}");
+        // 值未变时 set_checked 也安全（muda 幂等），不做读回优化（省一次 IPC 往返）。
+        if let Err(e) = item.set_checked(checked) {
+            return Err(format!("set theme check: {e}"));
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // setup（lib.rs run() 调用；mac 菜单 + 三端托盘 + 语言重建监听）
 // ---------------------------------------------------------------------------
 
@@ -541,10 +891,13 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     // 故不构建（菜单 accelerator 的 win/linux 键盘面由前端 registry 全局监听兜住）。
     // 语言：Task 16.5 起 vault 就绪前此处拿不到 settings——menu_lang 按 En 兜底，
     // vault-ready 后 on_vault_ready 重建纠偏。
+    app.manage(ThemeMenuState::default());
     #[cfg(target_os = "macos")]
     {
         let lang = menu_lang(app);
-        app.set_menu(build_menu(app, &menu_tree(lang))?)?;
+        let (menu, checks) = build_menu_with_checks(app, &menu_tree(lang))?;
+        app.set_menu(menu)?;
+        register_theme_checks(app, checks);
     }
     app.manage(ZoomState::default());
     app.on_menu_event(on_app_menu_event);
@@ -589,20 +942,21 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
 /// vault 后台初始化就绪（Task 16.5，lib.rs 的 vault-init 线程调用）：初始菜单/
 /// 托盘在 vault 就绪前以 En 兜底构建（menu_lang），这里按 settings 真值重建
 /// 纠偏。语言本就是 En 时重建无害（同文案）。
-pub fn on_vault_ready<R: Runtime>(app: &AppHandle<R>) {
+pub fn on_vault_ready(app: &AppHandle<Wry>) {
     rebuild_menus(app);
 }
 
 /// 按 vault settings 现值重建 app 菜单（mac）与托盘菜单文案。UI_LANG_EVENT
 /// 监听与 [`on_vault_ready`] 共用；vault 未就绪（try_state 落空）按 En 兜底。
-fn rebuild_menus<R: Runtime>(handle: &AppHandle<R>) {
+fn rebuild_menus(handle: &AppHandle<Wry>) {
     let lang = menu_lang(handle);
     #[cfg(target_os = "macos")]
-    match build_menu(handle, &menu_tree(lang)) {
-        Ok(menu) => {
+    match build_menu_with_checks(handle, &menu_tree(lang)) {
+        Ok((menu, checks)) => {
             if let Err(e) = handle.set_menu(menu) {
                 eprintln!("[menu] rebuild failed: {e}");
             }
+            register_theme_checks(handle, checks);
         }
         Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
     }
@@ -659,7 +1013,7 @@ mod tests {
         let mut ids = Vec::new();
         for node in tree {
             match node {
-                MenuNode::Item { id, .. } => ids.push(*id),
+                MenuNode::Item { id, .. } | MenuNode::Check { id, .. } => ids.push(*id),
                 MenuNode::Sub { items, .. } => ids.extend(item_ids(items)),
                 _ => {}
             }
@@ -677,7 +1031,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(subs, vec!["Ottr", "File", "Edit", "View", "Window", "Help"]);
+        assert_eq!(
+            subs,
+            vec!["Ottr", "File", "Edit", "View", "Tools", "Window", "Help"]
+        );
     }
 
     /// 与前端 registry（src/shortcuts/registry.ts MIRRORED 测试）互为镜像：
@@ -762,7 +1119,9 @@ mod tests {
                 for node in &tree {
                     match node {
                         MenuNode::Sub { label, .. } => assert!(!label.is_empty()),
-                        MenuNode::Item { label, .. } => assert!(!label.is_empty()),
+                        MenuNode::Item { label, .. } | MenuNode::Check { label, .. } => {
+                            assert!(!label.is_empty())
+                        }
                         _ => {}
                     }
                 }
@@ -770,6 +1129,67 @@ mod tests {
         }
         assert_eq!(text(Lang::Zh, "tray_disconnect_all"), "断开全部连接");
         assert_eq!(text(Lang::En, "tray_disconnect_all"), "Disconnect All");
+    }
+
+    /// 主题子菜单（视图下）：七项 = 前端 THEME_IDS 同序（dispatch 前缀测试
+    /// 另行覆盖 id 合法性）。2026-10-08 菜单栏启用批次起钉住。
+    #[test]
+    fn theme_submenu_lists_all_seven_themes() {
+        let tree = menu_tree(Lang::En);
+        let view = tree
+            .iter()
+            .find_map(|n| match n {
+                MenuNode::Sub {
+                    label: "View",
+                    items,
+                } => Some(items),
+                _ => None,
+            })
+            .expect("View submenu");
+        let theme = view
+            .iter()
+            .find_map(|n| match n {
+                MenuNode::Sub {
+                    label: "Theme",
+                    items,
+                } => Some(items),
+                _ => None,
+            })
+            .expect("Theme submenu");
+        let ids: Vec<String> = theme
+            .iter()
+            .map(|n| match n {
+                MenuNode::Check { id, .. } => (*id).to_string(),
+                _ => panic!("theme submenu only contains checks"),
+            })
+            .collect();
+        let expected: Vec<String> = THEME_IDS.iter().map(|t| format!("theme.set.{t}")).collect();
+        assert_eq!(ids, expected);
+    }
+
+    /// 工具菜单：11 项 = 前端 TopbarMenu 工具下拉同源（tool.<key>）。
+    #[test]
+    fn tools_submenu_mirrors_topbar_tools() {
+        let tree = menu_tree(Lang::Zh);
+        let tools = tree
+            .iter()
+            .find_map(|n| match n {
+                MenuNode::Sub {
+                    label: "工具",
+                    items,
+                } => Some(items),
+                _ => None,
+            })
+            .expect("工具 submenu（zh）");
+        let ids: Vec<String> = tools
+            .iter()
+            .map(|n| match n {
+                MenuNode::Item { id, .. } => (*id).to_string(),
+                _ => panic!("tools submenu only contains items"),
+            })
+            .collect();
+        let expected: Vec<String> = TOOL_KEYS.iter().map(|k| format!("tool.{k}")).collect();
+        assert_eq!(ids, expected);
     }
 
     #[test]

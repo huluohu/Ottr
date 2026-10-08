@@ -51,7 +51,6 @@ export function HostTree({
   const [grouping, setGrouping] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [groupError, setGroupError] = useState<string | null>(null);
-  const [exportMsg, setExportMsg] = useState<string | null>(null);
   // 过期响应守卫：连输两词时只采纳最后一次发出的请求
   const searchSeq = useRef(0);
 
@@ -135,15 +134,6 @@ export function HostTree({
     }
   }
 
-  async function runExport() {
-    try {
-      const path = await vaultApi.exportHostsCsv(null);
-      setExportMsg(path);
-    } catch (e) {
-      setExportMsg(String(e));
-    }
-  }
-
   // 空态提示口径：过滤态看「有没有命中」；浏览态看「有没有内容可渲染」
   // （主机或分组任一存在即非空树——只有分组没主机也不是空库，BL-109 ①）。
   const hasVisible = filtering
@@ -175,9 +165,6 @@ export function HostTree({
           </button>
           <button data-testid="import-ssh-config" onClick={onImport}>
             {t("hostTree.importSshConfig")}
-          </button>
-          <button data-testid="export-csv" onClick={() => void runExport()}>
-            {t("hostTree.exportCsv")}
           </button>
         </div>
       )}
@@ -275,7 +262,6 @@ export function HostTree({
         );
       })()}
 
-      {exportMsg && <p className="tree-status">{exportMsg}</p>}
     </div>
   );
 }

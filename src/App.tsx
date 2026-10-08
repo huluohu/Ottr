@@ -277,6 +277,30 @@ function HomeLayout() {
     csvTimerRef.current = setTimeout(() => setCsvMsg(null), 6000);
   }
 
+  /** 工具动作单一来源（2026-10-08 菜单栏启用批次）：顶栏「工具」下拉与
+   * macOS 原生「工具」菜单（ottr://menu-action 的 tool.<key>）同一分派——
+   * 两入口永不分叉（用户口径：同类功能在两处必须同步）。 */
+  const runToolAction = useCallback(
+    (key: string) => {
+      switch (key) {
+        case "credentials": setCredentialsOpen(true); break;
+        case "alerts": openDock("alerts"); break;
+        case "mcp": openDock("mcp"); break;
+        case "ai": setAiSettingsOpen(true); break;
+        case "forwards": openDock("forwards"); break;
+        case "jump-chains": openDock("jumpchains"); break;
+        case "overview": openMainView("overview"); break;
+        case "batch": openMainView("batch"); break;
+        case "cron": openDock("cron"); break;
+        case "sync": setSyncOpen(true); break;
+        case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
+      }
+    },
+    // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定）+
+    // exportHostsCsvFromMenu（仅捕获稳定 setter），空数组无 staleness。
+    [],
+  );
+
   function exportHostsCsvFromMenu() {
     vaultApi
       .exportHostsCsv(null)
@@ -394,6 +418,13 @@ function HomeLayout() {
     [themeMode, setMode, lang],
   );
 
+  // 原生菜单主题勾选跟随（2026-10-08 菜单栏启用批次）：mode 单一来源在此，
+  // 菜单 checkmark 是纯显示面——变化即同步（幂等；非 Tauri 环境跳过）。
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    invoke("menu_set_theme", { themeId: themeMode }).catch(() => {});
+  }, [themeMode, setMode]);
+
   // 全局快捷键：registry 驱动（⌘K 面板 / ⌘N 新建主机 / ⌘, 设置 / 分屏…，
   // win/linux 同键位 Ctrl 系）。面板 input 内的 Esc/↑↓/Enter 由组件自管。
   // 评审 M-4 终端聚焦守卫：target 在终端容器内时只放行 terminalSafe 动作
@@ -419,7 +450,18 @@ function HomeLayout() {
     void (async () => {
       try {
         const stop = await listen<string>(MENU_ACTION_EVENT, (e) => {
-          handleAction(e.payload as ActionId);
+          const action = e.payload;
+          // 原生菜单扩展面（2026-10-08）：主题七选（theme.set.<id>）与工具
+          // 菜单（tool.<key>）不在 registry ActionId 内，按前缀直派单一来源。
+          if (action.startsWith("theme.set.")) {
+            setMode(action.slice("theme.set.".length) as Parameters<typeof setMode>[0]);
+            return;
+          }
+          if (action.startsWith("tool.")) {
+            runToolAction(action.slice("tool.".length));
+            return;
+          }
+          handleAction(action as ActionId);
         });
         if (disposed) stop();
         else unlisten = stop;
@@ -490,61 +532,61 @@ function HomeLayout() {
               key: "credentials",
               label: t("credentials.openButton"),
               testid: "menu-open-credentials",
-              onSelect: () => setCredentialsOpen(true),
+              onSelect: () => runToolAction("credentials"),
             },
             {
               key: "alerts",
               label: t("alert.sectionTitle"),
               testid: "menu-open-alert-settings",
-              onSelect: () => openDock("alerts"),
+              onSelect: () => runToolAction("alerts"),
             },
             {
               key: "mcp",
               label: t("mcp.title"),
               testid: "menu-open-mcp-settings",
-              onSelect: () => openDock("mcp"),
+              onSelect: () => runToolAction("mcp"),
             },
             {
               key: "ai",
               label: t("ai.title"),
               testid: "menu-open-ai-settings",
-              onSelect: () => setAiSettingsOpen(true),
+              onSelect: () => runToolAction("ai"),
             },
             {
               key: "forwards",
               label: t("forward.title"),
               testid: "menu-open-forwards",
-              onSelect: () => openDock("forwards"),
+              onSelect: () => runToolAction("forwards"),
             },
             {
               key: "jump-chains",
               label: t("jump.title"),
               testid: "menu-open-jump-chains",
-              onSelect: () => openDock("jumpchains"),
+              onSelect: () => runToolAction("jump-chains"),
             },
             {
               key: "overview",
               label: t("overview.title"),
               testid: "menu-open-overview",
-              onSelect: () => openMainView("overview"),
+              onSelect: () => runToolAction("overview"),
             },
             {
               key: "batch",
               label: t("batch.title"),
               testid: "menu-open-batch",
-              onSelect: () => openMainView("batch"),
+              onSelect: () => runToolAction("batch"),
             },
             {
               key: "cron",
               label: t("cron.title"),
               testid: "menu-open-cron",
-              onSelect: () => openDock("cron"),
+              onSelect: () => runToolAction("cron"),
             },
             {
               key: "sync",
               label: t("sync.sectionTitle"),
               testid: "menu-open-sync",
-              onSelect: () => setSyncOpen(true),
+              onSelect: () => runToolAction("sync"),
             },
             {
               // theme-suite T1：导出主机清单 CSV（同 HostTree 工具栏按钮的命令面；
@@ -552,7 +594,7 @@ function HomeLayout() {
               key: "export-hosts-csv",
               label: t("hostTree.exportCsv"),
               testid: "menu-export-hosts-csv",
-              onSelect: exportHostsCsvFromMenu,
+              onSelect: () => runToolAction("export-hosts-csv"),
             },
           ]}
         />

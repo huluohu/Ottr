@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 原生菜单动作事件（2026-10-08 菜单栏启用批次）：捕获回调直驱分发测试。
+let menuActionHandler: ((e: { payload: string }) => void) | null = null;
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (event: string, cb: (e: { payload: string }) => void) => {
+    if (event === "ottr://menu-action") menuActionHandler = cb;
+    return () => {};
+  }),
+}));
 // App 挂载即注册 Tauri 事件监听（Task 7 会话事件）；jsdom 无 Tauri runtime，stub 掉
 vi.mock("./session/events", () => ({ initSessionEvents: vi.fn(async () => {}) }));
 // Task 10（A5）传输事件同上（漏 mock 会让真 listen() 产生 unhandled rejection）
@@ -234,6 +242,62 @@ describe("App 顶栏收纳（Phase 5 T1）", () => {
     // 菜单已收起
     expect(screen.queryByTestId("topbar-theme-menu")).toBeNull();
     localStorage.removeItem("ottr.settings.theme");
+  });
+});
+
+// 2026-10-08 菜单栏启用批次：原生菜单动作（theme.set.* / tool.*）经
+// ottr://menu-action 直派单一来源（runToolAction / setMode），与顶栏下拉同源。
+describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
+  // App 的菜单监听有 Tauri 运行时门卫（IS_TAURI）——jsdom 下伪造标记放行。
+  beforeEach(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    menuActionHandler = null;
+  });
+
+  function listMock() {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "menu_set_theme") return Promise.resolve();
+      if (
+        cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" ||
+        cmd === "jc_list" || cmd === "pf_list" || cmd === "cj_list" || cmd === "nc_list" ||
+        cmd === "ar_list" || cmd === "mcp_grants_list"
+      ) {
+        return Promise.resolve([]);
+      }
+      if (cmd === "snippets_list") return Promise.resolve([]);
+      if (cmd === "mcp_status") {
+        return Promise.resolve({
+          enabled: false, listening: false, socket_path: null,
+          approvals_pending: 0, grants_count: 0,
+        });
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+  }
+
+  it("theme.set.<id> 切主题 + menu_set_theme 同步勾选", async () => {
+    listMock();
+    render(<App />);
+    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    act(() => menuActionHandler!({ payload: "theme.set.oled" }));
+    // data-theme = 主题 id 本体（oled；暗底系 resolved 另算——见 ThemeContext）
+    expect(document.documentElement.dataset.theme).toBe("oled");
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("menu_set_theme", { themeId: "oled" }),
+    );
+    localStorage.removeItem("ottr.settings.theme");
+  });
+
+  it("tool.<key> 与顶栏工具下拉同源（openDock 路由）", async () => {
+    listMock();
+    useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
+    render(<App />);
+    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    act(() => menuActionHandler!({ payload: "tool.cron" }));
+    await waitFor(() => expect(useWorkspaceStore.getState().dockPanel).toBe("cron"));
   });
 });
 

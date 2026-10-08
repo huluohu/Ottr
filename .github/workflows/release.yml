@@ -69,8 +69,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS
+          - name: macOS (Apple Silicon)
             os: macos-14
+          - name: macOS (Intel)
+            os: macos-13
           - name: Windows
             os: windows-2022
           - name: Linux
@@ -154,6 +156,17 @@ jobs:
           # TAURI_BUILD_ARGS 有意按空白分词（空 = 无参数；加引号会传空串当参数）
           # shellcheck disable=SC2086
           npx tauri build $TAURI_BUILD_ARGS
+
+      # 双 mac 矩阵后 updater 产物会撞名（Ottr.app.tar.gz / .sig 不含架构），
+      # merge-multiple 下载时后者覆盖前者——上传前按架构改名。
+      - name: Disambiguate macOS updater artifacts (per-arch)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "macos-13" ]; then arch=x86_64; else arch=aarch64; fi
+          dir=target/release/bundle/macos
+          [ -f "$dir/Ottr.app.tar.gz" ] && mv "$dir/Ottr.app.tar.gz" "$dir/Ottr_${arch}.app.tar.gz"
+          [ -f "$dir/Ottr.app.tar.gz.sig" ] && mv "$dir/Ottr.app.tar.gz.sig" "$dir/Ottr_${arch}.app.tar.gz.sig"
 
       - name: Upload packages
         uses: actions/upload-artifact@v4

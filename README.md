@@ -194,15 +194,6 @@ rm -rf node_modules && npm install
 PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:$PATH" npx tauri build
 ```
 
-## 📋 项目状态
-
-**v0.1.0 已发布**，本文档所列功能均为已实现状态，安装包见
-[Releases](https://github.com/huluohu/Ottr/releases)。
-
-- 项目活跃维护中；遇到问题或有功能建议，欢迎提
-  [Issue](https://github.com/huluohu/Ottr/issues)
-- 欢迎贡献 PR：`npm run tauri dev` 即可本地跑起（见上方开发环境）
-
 ## 📄 许可与作者
 
 **Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以 [MIT](LICENSE-MIT) 协议开源——

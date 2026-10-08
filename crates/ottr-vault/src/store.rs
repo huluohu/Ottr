@@ -28,6 +28,10 @@
 //! 由下次 open 兜底清理（best-effort delete）。verifier/salt/meta 与密文同事务，
 //! 不存在「密文已换、参数没换」的中间态。
 //!
+//! 反向降级（password → keyring，「免密模式」）走 [`Vault::clear_master_password`]：
+//! 同一套重密封机器 + meta 翻转，顺序上**先写钥匙链新条目、后开事务**——
+//! 崩溃窗口分析与升级对称（详见其文档）。
+//!
 //! 锁定时**需要密钥的操作**（凭据密封/解密、升级）返回 [`VaultError::Locked`]；
 //! 纯明文面（settings/meta/schema）保持可读——解锁、主题、自动锁定配置都发生在
 //! 锁定屏上，必须可用。命令面的整库封锁在 src-tauri 层做（ensure_unlocked 门卫）。
@@ -181,8 +185,9 @@ pub struct Vault {
     /// 密封器槽位：`None` = 锁定（Master Key 不在内存）。keyring 模式恒 Some；
     /// password 模式 open 时为 None，unlock 后 Some、lock 后回 None。
     cipher_slot: Mutex<Option<Cipher>>,
-    /// 主密钥模式（0=keyring 1=password）。运行期只在 `set_master_password`
-    /// 成功提交后翻转一次；Atomic 因 `&self` 命令面（Tauri State 共享）。
+    /// 主密钥模式（0=keyring 1=password）。运行期只在 [`Self::set_master_password`]
+    /// / [`Self::clear_master_password`] 成功提交后翻转（升级/降级各一次语义）；
+    /// Atomic 因 `&self` 命令面（Tauri State 共享）。
     mode: AtomicU8,
 }
 
@@ -308,7 +313,8 @@ impl Vault {
     }
 
     /// 主密钥模式（open 时从 meta 判定，生命周期内不变——模式切换只发生在
-    /// [`Self::set_master_password`]，切换后无需重开）。
+    /// [`Self::set_master_password`] / [`Self::clear_master_password`]，切换后
+    /// 无需重开）。
     pub fn mode(&self) -> KeyMode {
         match self.mode.load(Ordering::Relaxed) {
             MODE_PASSWORD => KeyMode::Password,
@@ -316,9 +322,14 @@ impl Vault {
         }
     }
 
-    /// 升级提交成功后的模式翻转（唯一合法写点；其他路径模式在构造时定死）。
+    /// 升级提交成功后的模式翻转（唯一合法写点之一；其他路径模式在构造时定死）。
     fn promote_to_password(&self) {
         self.mode.store(MODE_PASSWORD, Ordering::Relaxed);
+    }
+
+    /// 降级提交成功后的模式翻转（唯一合法写点之二，见 [`Self::clear_master_password`]）。
+    fn demote_to_keyring(&self) {
+        self.mode.store(MODE_KEYRING, Ordering::Relaxed);
     }
 
     /// 是否锁定（password 模式 open 后为 true；keyring 模式恒 false）。
@@ -471,84 +482,14 @@ impl Vault {
 
             let conn = self.connection();
             // 总数：按注册表逐表生成 COUNT（count 非空列求和）。
-            let mut total: i64 = 0;
-            for (table, cols) in scan_plan() {
-                let counts = cols
-                    .iter()
-                    .map(|c| format!("count({})", c.column))
-                    .collect::<Vec<_>>()
-                    .join(" + ");
-                total += conn.query_row(&format!("SELECT {counts} FROM {table}"), [], |r| {
-                    r.get::<_, i64>(0)
-                })?;
-            }
+            let total = count_enc_columns(&conn)?;
             let tx = conn.unchecked_transaction()?;
 
             // 逐表扫描重密封（fix 1/5 I-2b）：SELECT/UPDATE 的列清单一律由
-            // [`scan_registry`] 生成——单一事实源，不存在第二处手写列名。
-            // 读明文集中在内存即刻重封，不落任何中间文件；rowid = 各表
-            // INTEGER PRIMARY KEY 的别名（AUTOINCREMENT 保证永不复用，AAD
-            // 绑定值与实体层写入时一致）。
-            // 【T11 转交顺手项（Task 12）】读改写不再共用一条游标：SELECT 游标
-            // 未关闭时对同表 UPDATE，SQLite 对未访问行的可见性行为未定义
-            // （可能跳行/重访）。改为按 rowid 分批物化（每批 [`RESEAL_BATCH`]
-            // 行，语句作用域结束即关游标）后再逐行 UPDATE——UPDATE 不改 rowid，
-            // `rowid > ?` 分页键安全，内存占用恒有界。
-            const RESEAL_BATCH: i64 = 64;
-            let mut done = 0usize;
-            for (table, cols) in scan_plan() {
-                let col_list = cols.iter().map(|c| c.column).collect::<Vec<_>>().join(", ");
-                let sql = format!(
-                    "SELECT rowid, {col_list} FROM {table} WHERE rowid > ?1
-                     ORDER BY rowid LIMIT {RESEAL_BATCH}"
-                );
-                let mut last_rowid = 0i64;
-                loop {
-                    // 物化一批 (rowid, 密文…)；stmt/rows 随块结束 drop（游标已关），
-                    // 此后同表 UPDATE 是定义良好的语句序列。
-                    let batch: Vec<(i64, Vec<Option<Vec<u8>>>)> = {
-                        let mut stmt = tx.prepare(&sql)?;
-                        let mut rows = stmt.query(params![last_rowid])?;
-                        let mut batch = Vec::new();
-                        while let Some(row) = rows.next()? {
-                            let row_id: i64 = row.get(0)?;
-                            let mut blobs = Vec::with_capacity(cols.len());
-                            for idx in 0..cols.len() {
-                                blobs.push(row.get::<_, Option<Vec<u8>>>(idx + 1)?);
-                            }
-                            batch.push((row_id, blobs));
-                        }
-                        batch
-                    };
-                    if batch.is_empty() {
-                        break;
-                    }
-                    for (row_id, mut blobs) in batch {
-                        for (idx, col) in cols.iter().enumerate() {
-                            let Some(blob) = blobs[idx].take() else {
-                                continue;
-                            };
-                            let aad = col.aad(row_id);
-                            let mut plain = old.open(&blob, &aad)?; // 旧钥坏 → 整体回滚
-                            let resealed = match new.seal(&plain, &aad) {
-                                Ok(b) => b,
-                                Err(e) => {
-                                    plain.zeroize();
-                                    return Err(e);
-                                }
-                            };
-                            plain.zeroize();
-                            tx.execute(
-                                &format!("UPDATE {table} SET {} = ?1 WHERE rowid = ?2", col.column),
-                                params![resealed, row_id],
-                            )?;
-                            done += 1;
-                            progress(done, total.max(1) as usize);
-                        }
-                        last_rowid = row_id;
-                    }
-                }
-            }
+            // [`scan_registry`] 生成——单一事实源，不存在第二处手写列名（扫描
+            // 机器 [`reseal_all_enc_columns`] 与降级 [`Self::clear_master_password`]
+            // 共享，见其文档）。
+            let done = reseal_all_enc_columns(&tx, &old, &new, progress)?;
             set_meta_tx(&tx, META_KEY_MODE, KeyMode::Password.as_str())?;
             set_meta_tx(&tx, META_KEY_KDF_SALT, &hex::encode(salt))?;
             set_meta_tx(&tx, META_KEY_VERIFIER, &hex::encode(&verifier))?;
@@ -561,6 +502,71 @@ impl Vault {
             Ok(done)
         })();
         salt.zeroize();
+        outcome
+    }
+
+    /// 降级到免密钥匙链模式（password → keyring，设置页「切换到免密模式」向导
+    /// 的本体；升级 [`Self::set_master_password`] 的镜像逆操作）：
+    /// 1. 门卫：必须 password 模式（否则 [`VaultError::InvalidInput`]）且未锁定
+    ///    （旧钥要开封全部密文，锁定 → [`VaultError::Locked`]）；
+    /// 2. 新随机 32B key（OS CSPRNG 直采，同 [`MasterKey::load_with_storage`] /
+    ///    BL-206 的 crypto::fill_os 纪律）；
+    /// 3. **先写钥匙链**：`storage.save(&hex(new_key))`——此步在事务**前**。
+    ///    崩溃于此 = 钥匙链多一个未使用的新条目 + 库仍是 password 模式（打开
+    ///    路径读 meta 判模式，不碰该条目；password 模式的 open 还会顺手把它
+    ///    兜底删掉），完全无害、可直接重试；
+    /// 4. **单个 SQLite 事务**：按 [`scan_registry`] 全表重密封（旧钥开、新钥封，
+    ///    扫描机器 [`reseal_all_enc_columns`] 与升级共享）+ meta 翻转
+    ///    （mode=keyring、kdf_salt/verifier 清除）——事务提交前任何失败/崩溃 =
+    ///    整体回滚，库仍是 password 模式、旧钥完全可用，可重试；
+    /// 5. 提交成功后切内存态（mode 原子 + Cipher 槽位换新钥，保持解锁态——
+    ///    向导无需再输任何密码）。
+    ///
+    /// 事务失败路径的钥匙链新条目残留无害：password 模式打开不读它（下次 open
+    /// 的兜底清理会删），重试降级会直接覆盖它；不存在「密文已换、钥匙链未写」
+    /// 的死局（顺序保证钥匙链先就位）。
+    ///
+    /// `progress(done, total)` 逐字段回调（向导进度条，与升级同款）。storage
+    /// 注入纪律同 [`Self::open_with`]：生产 = [`KeyringStorage::new(DEFAULT_SERVICE)`]，
+    /// 测试 = `InMemoryStorage`（绝不触碰真钥匙链）。
+    pub fn clear_master_password(
+        &self,
+        storage: &dyn KeyStorage,
+        progress: &mut dyn FnMut(usize, usize),
+    ) -> Result<()> {
+        if self.mode() != KeyMode::Password {
+            return Err(VaultError::InvalidInput(
+                "vault is not in master-password mode; nothing to downgrade".into(),
+            ));
+        }
+        let old = self.cipher()?; // 锁定 → Locked
+
+        let mut new_key: crate::master_key::RawKey = [0u8; crate::crypto::KEY_LEN];
+        // OS CSPRNG 直采（BL-206）：新 Master Key 是全库信任根，不经用户态
+        // ThreadRng 缓冲（同 MasterKey::load_with_storage 生成路径）。
+        crate::crypto::fill_os(&mut new_key);
+        // 新钥就地清理收口：Cipher（key schedule ZeroizeOnDrop）之外的裸字节
+        // 在任何早退路径统一清零后返回（同 set_master_password 的盐清理纪律）。
+        let outcome = (|| -> Result<()> {
+            // ③ 先写钥匙链（事务前）：见文档崩溃窗口分析。save 幂等（先删后存）。
+            storage.save(&hex::encode(new_key))?;
+
+            let new = Cipher::new(&new_key)?;
+            let conn = self.connection();
+            let total = count_enc_columns(&conn)?;
+            let tx = conn.unchecked_transaction()?;
+            let _done = reseal_all_enc_columns(&tx, &old, &new, progress)?;
+            set_meta_tx(&tx, META_KEY_MODE, KeyMode::Keyring.as_str())?;
+            clear_master_password_params_tx(&tx)?;
+            tx.commit()?;
+
+            // 事务已提交：新钥接管内存槽位（保持解锁态）；旧钥材料随 old Cipher
+            // 在本函数结束处 drop（zeroize）。
+            self.demote_to_keyring();
+            *self.cipher_slot.lock().expect("cipher slot poisoned") = Some(new);
+            Ok(())
+        })();
+        new_key.zeroize();
         outcome
     }
 
@@ -688,6 +694,109 @@ fn scan_plan() -> Vec<(&'static str, Vec<SecretColumn>)> {
         }
     }
     plan
+}
+
+/// 重密封字段总数（注册表逐表 COUNT 非空列求和；set/clear 共享的进度总量）。
+fn count_enc_columns(conn: &Connection) -> Result<usize> {
+    let mut total: i64 = 0;
+    for (table, cols) in scan_plan() {
+        let counts = cols
+            .iter()
+            .map(|c| format!("count({})", c.column))
+            .collect::<Vec<_>>()
+            .join(" + ");
+        total += conn.query_row(&format!("SELECT {counts} FROM {table}"), [], |r| {
+            r.get::<_, i64>(0)
+        })?;
+    }
+    Ok(total.max(0) as usize)
+}
+
+/// 逐表扫描重密封（set_master_password 升级 / clear_master_password 降级
+/// **共享的扫描机器**）：SELECT/UPDATE 的列清单一律由 [`scan_registry`] 生成
+/// ——单一事实源，不存在第二处手写列名。读明文集中在内存即刻重封，不落任何
+/// 中间文件；rowid = 各表 INTEGER PRIMARY KEY 的别名（AUTOINCREMENT 保证永不
+/// 复用，AAD 绑定值与实体层写入时一致）。
+/// 【T11 转交顺手项（Task 12）】读改写不共用一条游标：SELECT 游标未关闭时对
+/// 同表 UPDATE，SQLite 对未访问行的可见性行为未定义（可能跳行/重访）。按
+/// rowid 分批物化（每批 `RESEAL_BATCH` 行，语句作用域结束即关游标）后再逐行
+/// UPDATE——UPDATE 不改 rowid，`rowid > ?` 分页键安全，内存占用恒有界。
+/// 任何一步失败（旧钥开封失败/密封失败/SQL 错误）→ 调用方的整体事务回滚。
+/// 返回值 = 重密封的字段数；`progress(done, total)` 逐字段回调（total 预先
+/// [`count_enc_columns`] 得出，调用方一致传入）。
+fn reseal_all_enc_columns(
+    conn: &Connection,
+    old: &Cipher,
+    new: &Cipher,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<usize> {
+    const RESEAL_BATCH: i64 = 64;
+    let total = count_enc_columns(conn)?;
+    let mut done = 0usize;
+    for (table, cols) in scan_plan() {
+        let col_list = cols.iter().map(|c| c.column).collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT rowid, {col_list} FROM {table} WHERE rowid > ?1
+             ORDER BY rowid LIMIT {RESEAL_BATCH}"
+        );
+        let mut last_rowid = 0i64;
+        loop {
+            // 物化一批 (rowid, 密文…)；stmt/rows 随块结束 drop（游标已关），
+            // 此后同表 UPDATE 是定义良好的语句序列。
+            let batch: Vec<(i64, Vec<Option<Vec<u8>>>)> = {
+                let mut stmt = conn.prepare(&sql)?;
+                let mut rows = stmt.query(params![last_rowid])?;
+                let mut batch = Vec::new();
+                while let Some(row) = rows.next()? {
+                    let row_id: i64 = row.get(0)?;
+                    let mut blobs = Vec::with_capacity(cols.len());
+                    for idx in 0..cols.len() {
+                        blobs.push(row.get::<_, Option<Vec<u8>>>(idx + 1)?);
+                    }
+                    batch.push((row_id, blobs));
+                }
+                batch
+            };
+            if batch.is_empty() {
+                break;
+            }
+            for (row_id, mut blobs) in batch {
+                for (idx, col) in cols.iter().enumerate() {
+                    let Some(blob) = blobs[idx].take() else {
+                        continue;
+                    };
+                    let aad = col.aad(row_id);
+                    let mut plain = old.open(&blob, &aad)?; // 旧钥坏 → 整体回滚
+                    let resealed = match new.seal(&plain, &aad) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            plain.zeroize();
+                            return Err(e);
+                        }
+                    };
+                    plain.zeroize();
+                    conn.execute(
+                        &format!("UPDATE {table} SET {} = ?1 WHERE rowid = ?2", col.column),
+                        params![resealed, row_id],
+                    )?;
+                    done += 1;
+                    progress(done, total.max(1));
+                }
+                last_rowid = row_id;
+            }
+        }
+    }
+    Ok(done)
+}
+
+/// 降级事务的 meta 参数清除（kdf_salt + verifier 与模式翻转同事务删除——
+/// keyring 模式无密码派生参数，残留只会误导后续诊断）。
+fn clear_master_password_params_tx(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "DELETE FROM meta WHERE key IN (?1, ?2)",
+        params![META_KEY_KDF_SALT, META_KEY_VERIFIER],
+    )?;
+    Ok(())
 }
 
 /// 主密码派生 + 立即密封器化（派生中间值用后即清）。返回值只含 `Aes256Gcm`

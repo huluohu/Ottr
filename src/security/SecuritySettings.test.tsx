@@ -400,6 +400,116 @@ describe("SecuritySettings", () => {
   });
 });
 
+// 降级向导（no-lock 任务）：password → keyring「切换到免密模式」——当前模式
+// 为 password 才显示入口；输当前主密码确认 → 进度（ottr://reencrypt-progress
+// 同款事件）→ 完成态（说明文案）；成功后模式翻 keyring（badge/入口随 store
+// refreshStatus 翻转）；失败回确认步显错（库原样未动可重试）。
+describe("SecuritySettings 降级向导（password → keyring）", () => {
+  it("password 模式显示降级入口；keyring 模式不显示", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    await waitFor(() => expect(screen.getByTestId("start-upgrade")).toBeTruthy());
+    expect(screen.queryByTestId("start-downgrade")).toBeNull();
+
+    cleanup();
+    seedMode("password");
+    renderDialog();
+    await waitFor(() => expect(screen.getByTestId("start-downgrade")).toBeTruthy());
+  });
+
+  it("空密码本地拦截，不发起降级命令", async () => {
+    seedMode("password");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    fireEvent.click(await waitFor(() => screen.getByTestId("start-downgrade")));
+    fireEvent.click(screen.getByTestId("downgrade-confirm"));
+    await waitFor(() =>
+      expect(screen.getByTestId("downgrade-error").textContent).toContain("请输入主密码"),
+    );
+    expect(
+      mockedInvoke.mock.calls.filter(([cmd]) => cmd === "vault_downgrade_to_keychain"),
+    ).toHaveLength(0);
+  });
+
+  it("成功路径：命令携密码、进度事件驱动计数、完成页说明、模式翻 keyring", async () => {
+    seedMode("password");
+    let resolveDowngrade: (() => void) | undefined;
+    mockedInvoke.mockImplementation((cmd: string, args?: { password?: string }) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "vault_downgrade_to_keychain") {
+        expect(args?.password).toBe("correct horse");
+        return new Promise<void>((resolve) => {
+          resolveDowngrade = resolve;
+        });
+      }
+      if (cmd === "vault_security_status") {
+        return Promise.resolve({ mode: "keyring", locked: false });
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    fireEvent.click(await waitFor(() => screen.getByTestId("start-downgrade")));
+    fireEvent.change(screen.getByTestId("downgrade-password"), {
+      target: { value: "correct horse" },
+    });
+    fireEvent.click(screen.getByTestId("downgrade-confirm"));
+
+    // 进度事件（Rust ottr://reencrypt-progress）：1/3 → 文本即时更新
+    await waitFor(() => expect(progressHandler).toBeTruthy());
+    progressHandler!({ payload: { done: 1, total: 3 } });
+    await waitFor(() =>
+      expect(screen.getByTestId("downgrade-progress-text").textContent).toBe("1/3"),
+    );
+
+    resolveDowngrade!();
+    await waitFor(() => expect(screen.getByTestId("downgrade-done")).toBeTruthy());
+    // 完成态说明文案：免密 + 安全性依赖本机账户。
+    expect(screen.getByTestId("downgrade-done-text").textContent).toContain("钥匙链");
+    expect(screen.getByTestId("downgrade-done-text").textContent).toContain("本机");
+    // 模式翻转经 store refreshStatus：badge 变钥匙链、锁定/降级入口消失、升级入口回归。
+    await waitFor(() =>
+      expect(screen.getByTestId("vault-mode").textContent).toContain("系统钥匙链"),
+    );
+    expect(screen.queryByTestId("lock-now")).toBeNull();
+    expect(screen.queryByTestId("start-downgrade")).toBeNull();
+    expect(screen.getByTestId("start-upgrade")).toBeTruthy();
+    expect(mockedInvoke).toHaveBeenCalledWith("vault_downgrade_to_keychain", {
+      password: "correct horse",
+    });
+  });
+
+  it("失败路径（密码错）：回确认步并展示错误，可重试", async () => {
+    seedMode("password");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "vault_downgrade_to_keychain") {
+        return Promise.reject(new Error("master password is incorrect"));
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    fireEvent.click(await waitFor(() => screen.getByTestId("start-downgrade")));
+    fireEvent.change(screen.getByTestId("downgrade-password"), {
+      target: { value: "wrong password" },
+    });
+    fireEvent.click(screen.getByTestId("downgrade-confirm"));
+    await waitFor(() =>
+      expect(screen.getByTestId("downgrade-error").textContent).toContain(
+        "master password is incorrect",
+      ),
+    );
+    expect(screen.getByTestId("downgrade-password")).toBeTruthy();
+    expect(screen.queryByTestId("downgrade-done")).toBeNull();
+  });
+});
+
 // theme-suite T2.4：主题选择从三选段控改网格卡片——七主题（含跟随系统卡），
 // 每卡主题名 + 迷你色板预览条 + radio 选中态 aria；点击即切换并持久化。
 describe("SecuritySettings 主题网格（theme-suite T2）", () => {

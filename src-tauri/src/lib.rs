@@ -344,6 +344,8 @@ pub fn run() {
             vault::vault_unlock,
             vault::vault_lock,
             vault::vault_upgrade_to_master_password,
+            // 降级到免密钥匙链模式（no-lock 任务：password → keyring 向导本体）
+            vault::vault_downgrade_to_keychain,
             vault::settings_get,
             vault::settings_set,
             // Phase 5 Task 3（同步编排）：分类快照导出/导入（过锁定门卫，

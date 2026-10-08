@@ -49,6 +49,11 @@ interface VaultLockStore {
 
   /** App 挂载时调用：查 status + 订阅事件。幂等（重复调用重挂监听前先清理）。 */
   init: () => Promise<void>;
+  /** 重查 status 并落地 mode/phase（模式切换命令成功后的收口：升级
+   * keyring→password / 降级 password→keyring 都要翻 store 的 mode——事件
+   * vault-unlocked 只置 phase 不动 mode）。查询失败 fail-closed 按锁定收敛
+   * （与 init 同语义）。 */
+  refreshStatus: () => Promise<void>;
   unlock: (password: string) => Promise<boolean>;
   /** 手动锁定（password 模式；keyring 模式 Rust 侧 no-op）。 */
   lock: () => Promise<void>;
@@ -56,24 +61,14 @@ interface VaultLockStore {
 
 let unlisteners: (() => void)[] = [];
 
-export const useVaultLockStore = create<VaultLockStore>((set) => ({
+export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
   phase: "boot",
   mode: null,
   error: null,
   unlocking: false,
 
   init: async () => {
-    try {
-      const status = await vaultApi.security.status();
-      set({
-        mode: status.mode,
-        phase: status.locked ? "locked" : "unlocked",
-        error: null,
-      });
-    } catch {
-      // status 查询失败（后端不可达等）：按锁定收敛——遮罩优于裸奔。
-      set({ phase: "locked", error: null });
-    }
+    await get().refreshStatus();
     // 事件订阅（幂等：先清理旧监听）。
     unlisteners.forEach((fn) => fn());
     unlisteners = [];
@@ -93,6 +88,20 @@ export const useVaultLockStore = create<VaultLockStore>((set) => ({
     } catch {
       // 非 Tauri 环境（纯浏览器 dev / vitest 无 mock 时）：静默降级，
       // 状态机仍由 init/unlock/lock 动作驱动。
+    }
+  },
+
+  refreshStatus: async () => {
+    try {
+      const status = await vaultApi.security.status();
+      set({
+        mode: status.mode,
+        phase: status.locked ? "locked" : "unlocked",
+        error: null,
+      });
+    } catch {
+      // status 查询失败（后端不可达等）：按锁定收敛——遮罩优于裸奔。
+      set({ phase: "locked", error: null });
     }
   },
 

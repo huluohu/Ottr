@@ -227,6 +227,51 @@ pub fn vault_upgrade_to_master_password(
     Ok(fields)
 }
 
+/// 降级到免密钥匙链模式（password → keyring，设置页「切换到免密模式」向导）：
+/// 先验当前主密码（复用 [`Vault::unlock_with_password`] 校验路径——密码错
+/// 如实拒绝 [`VaultError::BadMasterPassword`]；已解锁态下该校验无副作用，
+/// 锁定态则顺带解锁——降级本就需要旧钥在内存），再调库层
+/// [`Vault::clear_master_password`]（单事务重密封 + meta 翻转，崩溃安全顺序
+/// 见 ottr-vault store.rs）。成功后发 `ottr://vault-unlocked`（降级后必为
+/// 解锁态，前端状态机单一收口置 unlocked + 重拉 vault 数据）。
+///
+/// `storage` 注入纪律同 [`wipe_vault_data`]：生产 = [`KeyringStorage::new(DEFAULT_SERVICE)`]，
+/// 测试 = InMemoryStorage（单测绝不碰真钥匙链）。
+/// 明文主密码的 IPC 副本边界与 [`vault_unlock`] / [`vault_upgrade_to_master_password`]
+/// 同一套（BL-202 成文）：不落盘、不进日志/事件/错误文案、不跨命令缓存。
+pub(crate) fn downgrade_to_keychain(
+    vault: &Vault,
+    storage: &dyn ottr_vault::master_key::KeyStorage,
+    password: &str,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<(), VaultError> {
+    vault.unlock_with_password(password)?;
+    vault.clear_master_password(storage, progress)
+}
+
+/// 降级命令（设置页「切换到免密模式」向导本体，password → keyring）：
+/// 重密封逐字段发 `ottr://reencrypt-progress`（与升级向导同款进度事件），
+/// 成功发 `ottr://vault-unlocked`。返回值无载荷（降级完成态由模式/事件表达）。
+#[tauri::command]
+pub fn vault_downgrade_to_keychain(
+    state: State<'_, VaultState>,
+    app: AppHandle,
+    password: String,
+) -> CmdResult<()> {
+    let storage =
+        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
+    let emitter = app.clone();
+    downgrade_to_keychain(&state.0, &storage, &password, &mut |done, total| {
+        let _ = emitter.emit(
+            "ottr://reencrypt-progress",
+            serde_json::json!({ "done": done, "total": total }),
+        );
+    })
+    .map_err(|e| e.to_string())?;
+    let _ = app.emit("ottr://vault-unlocked", ());
+    Ok(())
+}
+
 // --- settings（T11：theme/language 迁 vault + 安全配置）-----------------------
 
 #[tauri::command]
@@ -1144,5 +1189,72 @@ mod tests {
         // 的兜底面，静默 Ok 会伪装成「已重置」）。
         let missing = dir.path().join("does-not-exist");
         assert!(wipe_vault_data(&missing, &[&storage]).is_err());
+    }
+
+    // --- 降级到免密钥匙链模式（no-lock 任务，2026-10-05）----------------------
+
+    use ottr_vault::store::KeyMode as TestKeyMode;
+
+    /// 密码错误如实拒绝（BadMasterPassword 语义，防误触门卫）：错误上抛、
+    /// 模式仍 password、数据仍可用原密码解锁（校验失败不破坏任何状态）。
+    #[test]
+    fn downgrade_helper_rejects_wrong_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        let vault = Vault::open_password_only(dir.path()).unwrap();
+        vault.unlock_with_password("correct horse").unwrap(); // 首解锁 = 设主密码
+        assert_eq!(vault.mode(), TestKeyMode::Password);
+
+        let err =
+            downgrade_to_keychain(&vault, &storage, "wrong password", &mut |_, _| {}).unwrap_err();
+        assert!(matches!(err, VaultError::BadMasterPassword), "实际 {err:?}");
+        assert_eq!(vault.mode(), TestKeyMode::Password, "拒绝不得翻转模式");
+        assert!(
+            storage.load().unwrap().is_none(),
+            "拒绝路径不得写钥匙链（新钥未生成/未落）"
+        );
+        vault.unlock_with_password("correct horse").unwrap();
+        assert!(!vault.is_locked(), "失败后原密码解锁仍可用");
+    }
+
+    /// 成功路径：验密 → 库层降级 → keyring 模式解锁态、钥匙链新钥就位、
+    /// 数据跨模式重密封后可解。
+    #[test]
+    fn downgrade_helper_success_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        let vault = Vault::open_password_only(dir.path()).unwrap();
+        vault.unlock_with_password("correct horse").unwrap();
+        let cred = Credentials::create(
+            &vault,
+            &CredentialInput {
+                kind: ottr_vault::CredentialKind::Password,
+                secret: Some("downgraded-secret-γ".into()),
+                key_pub: None,
+                passphrase: None,
+                totp_secret: None,
+            },
+        )
+        .unwrap();
+
+        let mut progress = Vec::new();
+        downgrade_to_keychain(&vault, &storage, "correct horse", &mut |done, total| {
+            progress.push((done, total));
+        })
+        .unwrap();
+
+        assert_eq!(vault.mode(), TestKeyMode::Keyring);
+        assert!(!vault.is_locked(), "降级后免密（解锁态）");
+        assert_eq!(progress.last(), Some(&(1, 1)));
+        assert!(
+            storage.load().unwrap().is_some(),
+            "钥匙链必须有新 Master Key 条目"
+        );
+        assert_eq!(
+            Credentials::reveal(&vault, cred.id, ottr_vault::SecretField::Secret)
+                .unwrap()
+                .as_deref(),
+            Some("downgraded-secret-γ")
+        );
     }
 }

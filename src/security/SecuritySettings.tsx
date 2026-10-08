@@ -83,6 +83,11 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   const [fieldsDone, setFieldsDone] = useState<number | null>(null);
   const [upgrading, setUpgrading] = useState(false);
 
+  // 降级向导状态（no-lock 任务：password → keyring「切换到免密模式」）。
+  const [downgradeStep, setDowngradeStep] = useState<"confirm" | "progress" | "done" | null>(null);
+  const [downgradePassword, setDowngradePassword] = useState("");
+  const [downgradeError, setDowngradeError] = useState<string | null>(null);
+
   // 配置项本地镜像（open 时从 vault settings 现读；改动即写）。
   const [autolock, setAutolock] = useState<number | null>(null);
   const [clipboard, setClipboard] = useState<number | null>(null);
@@ -110,6 +115,9 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       setProgress({ done: 0, total: 0 });
       setFieldsDone(null);
       setUpgrading(false);
+      setDowngradeStep(null);
+      setDowngradePassword("");
+      setDowngradeError(null);
       setThemeImportError(null);
       setThemeImportedCount(null);
       setSudoConfirm(false);
@@ -193,6 +201,9 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       const fields = await vaultApi.security.upgradeToMasterPassword(password);
       setFieldsDone(fields);
       setWizard("done");
+      // 模式已翻转（keyring → password）：store 的 mode 事件不覆盖，显式重查
+      // 落地（否则徽标/入口停留在旧模式直到重启）。
+      await useVaultLockStore.getState().refreshStatus();
     } catch (err2) {
       // 升级失败 = 库原样未动（Rust 侧单事务），回第一步重试。
       setWizardError(err2 instanceof Error ? err2.message : String(err2));
@@ -201,6 +212,31 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       setUpgrading(false);
       setPassword("");
       setConfirm("");
+    }
+  }
+
+  /** 降级向导提交（password → keyring）：当前主密码确认 → 单命令迁移 →
+   * 完成态。库层崩溃安全（先写钥匙链新钥、再单事务重密封+meta 翻转），
+   * 失败 = 库原样未动，回确认步可重试。 */
+  async function startDowngrade(e: FormEvent) {
+    e.preventDefault();
+    if (downgradePassword.length === 0) {
+      setDowngradeError(t("security.downgrade.errEmpty"));
+      return;
+    }
+    setDowngradeError(null);
+    setDowngradeStep("progress");
+    try {
+      await vaultApi.security.downgradeToKeychain(downgradePassword);
+      // 模式已翻转（password → keyring）且必为解锁态：重查落地 store
+      // （badge/入口即时翻面），再进完成态。
+      await useVaultLockStore.getState().refreshStatus();
+      setDowngradeStep("done");
+    } catch (err) {
+      setDowngradeError(err instanceof Error ? err.message : String(err));
+      setDowngradeStep("confirm");
+    } finally {
+      setDowngradePassword("");
     }
   }
 
@@ -275,6 +311,84 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               </button>
             </div>
           ) : null}
+
+          {/* 降级入口（no-lock 任务）：仅 password 模式显示——keyring 模式无可
+              降级，向导展开后入口隐藏（避免与步骤面板并列）。 */}
+          {isPasswordMode && downgradeStep === null && (
+            <div className="settings-row">
+              <button
+                type="button"
+                data-testid="start-downgrade"
+                onClick={() => setDowngradeStep("confirm")}
+              >
+                {t("security.downgrade.start")}
+              </button>
+            </div>
+          )}
+
+          {downgradeStep === "confirm" && (
+            <form
+              className="wizard-step"
+              onSubmit={(e) => void startDowngrade(e)}
+              noValidate
+              data-testid="downgrade-wizard"
+            >
+              <p className="dialog-intro" data-testid="downgrade-step-title">
+                {t("security.downgrade.stepConfirm")}
+              </p>
+              <label>
+                <span>{t("security.masterPassword")}</span>
+                <input
+                  type="password"
+                  data-testid="downgrade-password"
+                  value={downgradePassword}
+                  autoComplete="current-password"
+                  onChange={(e) => setDowngradePassword(e.currentTarget.value)}
+                />
+              </label>
+              <p className="settings-hint">{t("security.downgrade.intro")}</p>
+              {downgradeError && (
+                <p className="form-error" data-testid="downgrade-error">
+                  {downgradeError}
+                </p>
+              )}
+              <div className="form-actions">
+                <button
+                  type="button"
+                  data-testid="downgrade-cancel"
+                  onClick={() => {
+                    setDowngradeStep(null);
+                    setDowngradeError(null);
+                  }}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button type="submit" className="btn-accent" data-testid="downgrade-confirm">
+                  {t("security.downgrade.confirm")}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {downgradeStep === "progress" && (
+            <div className="wizard-step" data-testid="downgrade-progress" aria-busy="true">
+              <p className="dialog-intro">{t("security.downgrade.stepProgress")}</p>
+              <p className="settings-hint" data-testid="downgrade-progress-text">
+                {progress.total > 0
+                  ? t("security.wizard.progressOf", { done: progress.done, total: progress.total })
+                  : t("security.wizard.progressPending")}
+              </p>
+            </div>
+          )}
+
+          {downgradeStep === "done" && (
+            <div className="wizard-step" data-testid="downgrade-done">
+              <p className="dialog-intro">{t("security.downgrade.stepDone")}</p>
+              <p className="settings-hint" data-testid="downgrade-done-text">
+                {t("security.downgrade.doneDesc")}
+              </p>
+            </div>
+          )}
 
           {wizard === "password" && (
             <form className="wizard-step" onSubmit={(e) => void startUpgrade(e)} noValidate data-testid="upgrade-wizard">

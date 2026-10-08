@@ -692,6 +692,16 @@
       "errTooShort": "Master password must be at least {{min}} characters",
       "errMismatch": "Passwords do not match"
     },
+    "downgrade": {
+      "start": "Switch to passwordless mode…",
+      "stepConfirm": "Enter your current master password to confirm (credentials will be re-encrypted with a fresh keychain key)",
+      "intro": "After switching, the master key lives in the system keychain: the app starts without a password and never auto-locks; security relies on this machine's OS account. Your master password will be removed.",
+      "confirm": "Confirm switch",
+      "stepProgress": "Re-encrypting credentials…",
+      "stepDone": "Switched to passwordless mode",
+      "doneDesc": "The master key now lives in the system keychain: the app starts unlocked with no password; security relies on this machine's OS account (anyone with access to this OS account can read the credentials).",
+      "errEmpty": "Enter your master password"
+    },
     "vaultInit": {
       "loading": "Unlocking the data vault…",
       "failedTitle": "Ottr could not open its data vault",

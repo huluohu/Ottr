@@ -93,6 +93,26 @@ describe("VaultLockStore 状态机", () => {
     expect(useVaultLockStore.getState().error).toBeNull();
   });
 
+  it("refreshStatus：重查 status 落 mode/phase（模式切换命令成功后的收口）", async () => {
+    // 降级（password → keyring）成功后的场景：status 已翻 keyring，store 必须跟上。
+    mockStatus("password", false);
+    await useVaultLockStore.getState().init();
+    expect(useVaultLockStore.getState().mode).toBe("password");
+
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_security_status") return Promise.resolve({ mode: "keyring", locked: false });
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    await useVaultLockStore.getState().refreshStatus();
+    expect(useVaultLockStore.getState().mode).toBe("keyring");
+    expect(useVaultLockStore.getState().phase).toBe("unlocked");
+
+    // status 查询失败：fail-closed 按锁定收敛（与 init 同语义）。
+    mockedInvoke.mockImplementation(() => Promise.reject(new Error("backend gone")));
+    await useVaultLockStore.getState().refreshStatus();
+    expect(useVaultLockStore.getState().phase).toBe("locked");
+  });
+
   it("lock：手动锁定落 locked", async () => {
     mockStatus("keyring", false);
     await useVaultLockStore.getState().init();

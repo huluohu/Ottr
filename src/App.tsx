@@ -174,14 +174,17 @@ function TopbarMenu({
   );
 }
 
-/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 三模式三选一。 */
+/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 三模式三选一。
+ * theme-suite T2：mode 扩到七主题 id 后，快切菜单仍只列亮/暗/系统三键（完整
+ * 七选在设置页主题网格）；mode 为新 id 时按钮面回退该 id 词典名（不误标系统）。 */
 function ThemeMenu() {
   const { mode, setMode } = useTheme();
   const { t } = useTranslation();
-  const current = THEME_MODES.find((m) => m.value === mode) ?? THEME_MODES[2];
+  const labelKey =
+    THEME_MODES.find((m) => m.value === mode)?.labelKey ?? `settings.themes.${mode}`;
   return (
     <TopbarMenu
-      label={t(current.labelKey)}
+      label={t(labelKey)}
       ariaLabel={t("settings.theme")}
       buttonTestid="topbar-theme"
       menuTestid="topbar-theme-menu"

@@ -10,7 +10,7 @@ import {
   findGalleryTheme,
   type TerminalThemeDef,
 } from "./gallery";
-import { terminalThemes } from "./terminal-themes";
+import { terminalThemes, themeTerminalThemes } from "./terminal-themes";
 import {
   resetTerminalThemeStoreForTest,
   resolveTerminalTheme,
@@ -37,6 +37,21 @@ describe("resolveTerminalTheme（auto / 内置 / 自定义 / 兜底）", () => {
     const setting = { selection: AUTO_TERMINAL_THEME_ID, custom: [] };
     expect(resolveTerminalTheme("light", setting)).toBe(terminalThemes.light);
     expect(resolveTerminalTheme("dark", setting)).toBe(terminalThemes.dark);
+  });
+
+  // theme-suite T2.3：auto 升级为按**主题 id**取配套色板——light/dark 沿用旧两套
+  //（同引用不漂移），oled/amethyst/verdant/glass 各取新内置四套。
+  it("auto 按主题 id：oled/amethyst/verdant/glass 取配套色板（同引用）", () => {
+    const setting = { selection: AUTO_TERMINAL_THEME_ID, custom: [] };
+    expect(resolveTerminalTheme("oled", setting)).toBe(themeTerminalThemes.oled);
+    expect(resolveTerminalTheme("amethyst", setting)).toBe(themeTerminalThemes.amethyst);
+    expect(resolveTerminalTheme("verdant", setting)).toBe(themeTerminalThemes.verdant);
+    expect(resolveTerminalTheme("glass", setting)).toBe(themeTerminalThemes.glass);
+  });
+
+  it("auto：glass 色板底为半透明 rgba（主题玻璃面透出）", () => {
+    const setting = { selection: AUTO_TERMINAL_THEME_ID, custom: [] };
+    expect(resolveTerminalTheme("glass", setting).background).toMatch(/^rgba\(/);
   });
 
   it("内置 id：明暗无关，固定取画廊套", () => {

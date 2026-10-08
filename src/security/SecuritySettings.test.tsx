@@ -399,3 +399,43 @@ describe("SecuritySettings", () => {
     );
   });
 });
+
+// theme-suite T2.4：主题选择从三选段控改网格卡片——七主题（含跟随系统卡），
+// 每卡主题名 + 迷你色板预览条 + radio 选中态 aria；点击即切换并持久化。
+describe("SecuritySettings 主题网格（theme-suite T2）", () => {
+  it("七张主题卡齐全；当前模式 aria-checked；点 OLED 即切（data-theme=oled）并写 vault", async () => {
+    seedMode("keyring");
+    renderDialog();
+    for (const id of ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"]) {
+      expect(screen.getByTestId(`theme-card-${id}`)).toBeTruthy();
+    }
+    expect(screen.getByTestId("theme-card-system").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("theme-card-oled").getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(screen.getByTestId("theme-card-oled"));
+    expect(document.documentElement.dataset.theme).toBe("oled");
+    expect(screen.getByTestId("theme-card-oled").getAttribute("aria-checked")).toBe("true");
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("settings_set", { key: "ui.theme", value: "oled" }),
+    );
+    localStorage.removeItem("ottr.settings.theme");
+  });
+
+  it("主题名走 settings.themes.* 词典：中文环境显示「暗黑 OLED/自然之灵/透明毛玻璃」", async () => {
+    seedMode("keyring");
+    renderDialog();
+    const grid = screen.getByTestId("theme-grid");
+    expect(grid.textContent).toContain("暗黑 OLED");
+    expect(grid.textContent).toContain("自然之灵");
+    expect(grid.textContent).toContain("透明毛玻璃");
+    expect(grid.textContent).toContain("跟随系统");
+  });
+
+  it("迷你色板预览条：每卡 4 个色块（纯 CSS，aria-hidden）", async () => {
+    seedMode("keyring");
+    renderDialog();
+    const preview = screen.getByTestId("theme-card-verdant").querySelector(".theme-card-preview")!;
+    expect(preview.getAttribute("aria-hidden")).toBe("true");
+    expect(preview.querySelectorAll("i").length).toBe(4);
+  });
+});

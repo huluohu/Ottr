@@ -10,7 +10,14 @@ import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-import { ThemeProvider, useTheme, syncThemeFromVault } from "./ThemeContext";
+import {
+  ThemeProvider,
+  useTheme,
+  syncThemeFromVault,
+  type ThemeMode,
+} from "./ThemeContext";
+import { themeTerminalThemes, terminalThemes } from "./terminal-themes";
+import { resolveTerminalTheme } from "./terminalThemeStore";
 
 const mockedInvoke = invoke as unknown as Mock;
 const settingsStore = new Map<string, unknown>();
@@ -42,12 +49,18 @@ function flipSystem(dark: boolean) {
 
 function Probe() {
   const { mode, setMode, resolved } = useTheme();
+  const ids: ThemeMode[] = ["oled", "amethyst", "verdant", "glass"];
   return (
     <div>
       <span data-testid="mode">{mode}</span>
       <span data-testid="resolved">{resolved}</span>
       <button onClick={() => setMode("light")}>set-light</button>
       <button onClick={() => setMode("dark")}>set-dark</button>
+      {ids.map((id) => (
+        <button key={id} onClick={() => setMode(id)}>
+          set-{id}
+        </button>
+      ))}
     </div>
   );
 }
@@ -165,5 +178,69 @@ describe("ThemeContext", () => {
     fireEvent.click(screen.getByText("set-dark"));
     expect(localStorage.getItem("ottr.settings.theme")).toBe("dark");
     await waitFor(() => expect(settingsStore.get("ui.theme")).toBe("dark"));
+  });
+});
+
+// theme-suite T2：多主题模型——主题 id 扩到七态，二级解析 resolved（亮/暗），
+// data-theme 挂主题 id（system 挂解析结果）；白名单三处同步。
+describe("ThemeContext 多主题（theme-suite T2）", () => {
+  it.each([
+    ["oled", "dark"],
+    ["amethyst", "dark"],
+    ["glass", "dark"],
+    ["verdant", "light"],
+  ] as const)("二级解析：%s → resolved %s", async (id, want) => {
+    renderThemed();
+    fireEvent.click(screen.getByText(`set-${id}`));
+    expect(screen.getByTestId("mode").textContent).toBe(id);
+    expect(screen.getByTestId("resolved").textContent).toBe(want);
+    // data-theme 挂主题 id 本身（CSS 按 id 出块），不是 resolved
+    expect(document.documentElement.dataset.theme).toBe(id);
+    // 持久化面同样收新 id
+    expect(localStorage.getItem("ottr.settings.theme")).toBe(id);
+    await act(async () => {});
+    expect(settingsStore.get("ui.theme")).toBe(id);
+    localStorage.removeItem("ottr.settings.theme");
+  });
+
+  it("auto 终端色板按主题 id 解析：oled 取配套色板（不是 resolved 暗色套）", async () => {
+    renderThemed();
+    fireEvent.click(screen.getByText("set-oled"));
+    const mode = screen.getByTestId("mode").textContent!;
+    const setting = { selection: "auto", custom: [] };
+    expect(resolveTerminalTheme(mode as never, setting)).toBe(themeTerminalThemes.oled);
+    // 对照：resolved 虽是 dark，但不再回落 darkTerminalTheme
+    expect(themeTerminalThemes.oled).not.toBe(terminalThemes.dark);
+  });
+
+  it.each(["oled", "amethyst", "verdant", "glass"] as const)(
+    "重新挂载从 localStorage 恢复新主题 id（%s）",
+    (id) => {
+      localStorage.setItem("ottr.settings.theme", id);
+      renderThemed();
+      expect(screen.getByTestId("mode").textContent).toBe(id);
+      expect(document.documentElement.dataset.theme).toBe(id);
+    },
+  );
+
+  it("白名单拒绝：vault / localStorage 存在未知主题值 → 不采纳（回落默认 system）", async () => {
+    settingsStore.set("ui.theme", "solarized-ultra");
+    localStorage.setItem("ottr.settings.theme", "hacker-green");
+    renderThemed();
+    expect(screen.getByTestId("mode").textContent).toBe("system");
+    await act(async () => {
+      await syncThemeFromVault();
+    });
+    // 未知 vault 值不进状态，也不迁不明缓存
+    expect(screen.getByTestId("mode").textContent).toBe("system");
+    expect(mockedInvoke.mock.calls.filter(([cmd]) => cmd === "settings_set")).toHaveLength(0);
+  });
+
+  it("system 模式仍挂 resolved 亮/暗（data-theme=light/dark，CSS 块可命中）", () => {
+    renderThemed();
+    expect(screen.getByTestId("mode").textContent).toBe("system");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    act(() => flipSystem(true));
+    expect(document.documentElement.dataset.theme).toBe("dark");
   });
 });

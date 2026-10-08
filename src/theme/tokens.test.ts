@@ -1,12 +1,20 @@
 // tokens 对比度回归测试（Fix round 2，控制方裁定 T8 报告 §3.3/§7-4）：
 // 语义键 --color-accent-text / --color-on-accent / --color-on-danger 的取值
-// 必须在两主题的全部实际落面上 ≥4.5:1（WCAG AA 正文），App.css 的文字场景
+// 必须在全部主题的全部实际落面上 ≥4.5:1（WCAG AA 正文），App.css 的文字场景
 // 消费点必须迁到 accent-text / on-* 键。纯文本解析 + WCAG 相对亮度计算，
 // 防「改回去不红」——数字即规约。CSS 经 Vite ?raw 读入（不引 node 模块）。
+// theme-suite T2：data-theme 块改造为**发现全部块**（原硬编码 ：root/dark 两块
+// ——多主题三套新增后逐块过同一阈值）；终端新色板按既有纪律全 16 色核对。
 import { describe, expect, it } from "vitest";
 import tokensCss from "./tokens.css?raw";
 import appCss from "../App.css?raw";
-import { lightTerminalTheme } from "./terminal-themes";
+import {
+  lightTerminalTheme,
+  darkTerminalTheme,
+  themeTerminalThemes,
+} from "./terminal-themes";
+import { isDarkBackground } from "./gallery";
+import type { ITheme } from "@xterm/xterm";
 
 // --- WCAG 2.x 相对亮度 / 对比度 ---------------------------------------------
 
@@ -25,7 +33,7 @@ function contrast(a: string, b: string): number {
   return (la + 0.05) / (lb + 0.05);
 }
 
-/** color-mix(in srgb, fg p%, bg) 的等价合成。 */
+/** color-mix(in srgb, fg p%, bg) 的等价合成（不透明形态，既有口径）。 */
 function mix(fg: string, bg: string, p: number): string {
   const f = fg.replace("#", "");
   const g = bg.replace("#", "");
@@ -43,7 +51,63 @@ function mix(fg: string, bg: string, p: number): string {
   );
 }
 
-// --- tokens.css 解析（:root = 亮色块，[data-theme="dark"] = 暗色块） ----------
+// --- 颜色管线（theme-suite T2/T3）：rgba 令牌 → 参考底合成 → 不透明 hex ------
+// 玻璃等半透明令牌无法直接算对比度——先在假定桌面底上合成（tokens.css 注释
+// 同源参考底），合成后走同一 WCAG 口径；不透明令牌合成即自身，全主题统一管线。
+
+interface Rgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+function toRgba(v: string): Rgba {
+  const m = v.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: +m[4] };
+  const h = v.replace("#", "").toLowerCase();
+  expect(h, `非 hex/rgba 色: ${v}`).toMatch(/^[0-9a-f]{6}$/);
+  return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16), a: 1 };
+}
+
+function toHex(c: Rgba): string {
+  return "#" + [c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+}
+
+/** straight-alpha over 合成。 */
+function over(fg: Rgba, bg: Rgba): Rgba {
+  const a = fg.a + bg.a * (1 - fg.a);
+  return {
+    r: (fg.r * fg.a + bg.r * bg.a * (1 - fg.a)) / a,
+    g: (fg.g * fg.a + bg.g * bg.a * (1 - fg.a)) / a,
+    b: (fg.b * fg.a + bg.b * bg.a * (1 - fg.a)) / a,
+    a,
+  };
+}
+
+/** color-mix(in srgb, fg p%, bg) 的 RGBA 形态（premultiplied 直插值；对不透明
+ * 输入与上方 mix() 同结果）。 */
+function mixRgba(fg: Rgba, bg: Rgba, p: number): Rgba {
+  const t = p / 100;
+  return {
+    r: fg.r * t + bg.r * (1 - t),
+    g: fg.g * t + bg.g * (1 - t),
+    b: fg.b * t + bg.b * (1 - t),
+    a: fg.a * t + bg.a * (1 - t),
+  };
+}
+
+/** 半透明令牌的合成参考桌面底（假定用户深色壁纸 #1C2430；tokens.css glass
+ * 块注释同一假设）。 */
+const REF_DESKTOP: Rgba = toRgba("#1c2430");
+
+/** 任意令牌值 → 参考底合成后的不透明 hex（不透明即自身）。 */
+function flatten(v: string): string {
+  const c = toRgba(v);
+  return toHex(c.a >= 1 ? c : over(c, REF_DESKTOP));
+}
+
+// --- tokens.css 解析（:root = 亮色块；[data-theme="…"] = 具名主题块） ----------
 
 function parseBlock(css: string, selector: string): Map<string, string> {
   const start = css.indexOf(selector);
@@ -67,7 +131,7 @@ function resolve(
   expect(v, `缺语义键 ${name}`).toBeTruthy();
   const ref = v!.match(/^var\((--[\w-]+)\)$/);
   if (ref) {
-    // 暗色块引用品牌种子（定义在 :root）→ 回落 base 查
+    // 主题块引用品牌种子（定义在 :root）→ 回落 base 查
     v = map.get(ref[1]) ?? base.get(ref[1]);
     expect(v, `语义键 ${name} 引用的 ${ref[1]} 不存在`).toBeTruthy();
   }
@@ -75,23 +139,47 @@ function resolve(
 }
 
 const light = parseBlock(tokensCss, ":root");
-const dark = parseBlock(tokensCss, '[data-theme="dark"]');
 
-// App.css 派生面（与 :root 定义同式）：raised = fg6%/bg，overlay = fg10%/bg
+/** 发现全部具名主题块（theme-suite T2）：tokens.css 里每个
+ * [data-theme="…"] 选择器一主题，新块入册即受全部阈值组约束。
+ * color-scheme 无 -- 前缀（parseBlock 只收自定义属性），块体单抓。 */
+function discoverThemeBlocks(): { id: string; map: Map<string, string>; scheme: string }[] {
+  const ids = [...tokensCss.matchAll(/\[data-theme="([\w-]+)"\]/g)].map((m) => m[1]);
+  expect(ids.length, "data-theme 块发现为空").toBeGreaterThan(0);
+  return [...new Set(ids)].map((id) => {
+    const start = tokensCss.indexOf(`[data-theme="${id}"]`);
+    const open = tokensCss.indexOf("{", start);
+    const body = tokensCss.slice(open, tokensCss.indexOf("}", open));
+    const scheme = body.match(/color-scheme:\s*(light|dark)/);
+    expect(scheme, `主题块 ${id} 缺 color-scheme 声明`).toBeTruthy();
+    return { id, map: parseBlock(tokensCss, `[data-theme="${id}"]`), scheme: scheme![1] };
+  });
+}
+
+const themeBlocks = discoverThemeBlocks();
+
+// App.css 派生面（与 :root 定义同式）：raised = fg6%/bg，overlay = fg10%/bg。
+// 层叠口径：bg 先合成到参考桌面底（REF_DESKTOP），surface/派生面再叠其上——
+// 与真实渲染层序一致（surface 永远盖在窗口 bg 上）。
 function surfaces(t: Map<string, string>): Record<string, string> {
-  const bg = resolve(t, "--color-bg");
-  const fg = resolve(t, "--color-fg");
-  return { bg, raised: mix(fg, bg, 6), overlay: mix(fg, bg, 10) };
+  const bg = over(toRgba(resolve(t, "--color-bg")), REF_DESKTOP);
+  const fg = toRgba(resolve(t, "--color-fg"));
+  return {
+    bg: toHex(bg),
+    raised: toHex(mixRgba(fg, bg, 6)),
+    overlay: toHex(mixRgba(fg, bg, 10)),
+    surface: toHex(over(toRgba(resolve(t, "--color-surface")), bg)),
+  };
 }
 
 describe.each([
   ["亮色", light] as const,
-  ["暗色", dark] as const,
+  ...themeBlocks.map((b) => [b.id, b.map] as const),
 ])("语义键对比度（%s）", (_label, t) => {
   const s = surfaces(t);
-  const accentText = resolve(t, "--color-accent-text");
-  const onAccent = resolve(t, "--color-on-accent");
-  const onDanger = resolve(t, "--color-on-danger");
+  const accentText = flatten(resolve(t, "--color-accent-text"));
+  const onAccent = flatten(resolve(t, "--color-on-accent"));
+  const onDanger = flatten(resolve(t, "--color-on-danger"));
 
   it("accent-text 作文字色：bg / raised / overlay 全部 ≥4.5（fix 2 前：亮 2.33）", () => {
     for (const [name, surf] of Object.entries(s)) {
@@ -101,12 +189,12 @@ describe.each([
   });
 
   it("on-accent（主按钮实底上的文字）≥4.5（fix 2 前：亮 2.33）", () => {
-    const ratio = contrast(onAccent, resolve(t, "--color-accent"));
+    const ratio = contrast(onAccent, flatten(resolve(t, "--color-accent")));
     expect(ratio, `on-accent on accent = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
   });
 
   it("on-danger（danger 实底上的按钮文字）≥4.5（fix 2 前：暗 2.79）", () => {
-    const ratio = contrast(onDanger, resolve(t, "--color-danger"));
+    const ratio = contrast(onDanger, flatten(resolve(t, "--color-danger")));
     expect(ratio, `on-danger on danger = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
   });
 });
@@ -187,6 +275,7 @@ describe("亮色专项校准（ui-batch3 T1，审计 A3）", () => {
   });
 
   it("暗色 accent-border 别名 accent（teal-300，暗色已达标不动）", () => {
+    const dark = themeBlocks.find((b) => b.id === "dark")!.map;
     expect(deepResolve(dark, "--color-accent-border")).toBe(deepResolve(dark, "--color-accent"));
   });
 
@@ -200,6 +289,7 @@ describe("亮色专项校准（ui-batch3 T1，审计 A3）", () => {
   });
 
   it("暗色 fg-muted 保持 60%（暗色视觉零变化）", () => {
+    const dark = themeBlocks.find((b) => b.id === "dark")!.map;
     expect(parseFgMix(dark.get("--fg-muted")).pct).toBe(60);
   });
 
@@ -218,3 +308,110 @@ describe("亮色专项校准（ui-batch3 T1，审计 A3）", () => {
     }
   });
 });
+
+// --- 新主题块全键校准（theme-suite T2）：多主题新块逐块过全键阈值 --------------
+// 实算口径 WCAG 2.x（/tmp/theme-suite-t2/audit.mjs，数字写 tokens.css 各块注释）：
+//   oled     accent-text 14.20/13.05/12.11  danger 7.54/6.93/6.43/6.89
+//            warning 9.78/8.99/8.34/8.94    success 11.28/10.37/9.62/10.31
+//            fg-muted(60%) 6.14/5.65/5.24/5.61  on-accent 12.07  on-danger 6.41
+//   amethyst accent-text 6.72/5.90/5.34     danger 6.57/5.76/5.21/5.49
+//            warning 8.52/7.47/6.76/7.12    success 9.83/8.62/7.80/8.21
+//            fg-muted(60%) 5.90/5.18/4.68/4.93  on-accent 6.56  on-danger 6.41
+//   verdant  accent-text 6.22/5.58/5.16/6.73  danger 6.08/5.45/5.05/6.57
+//            warning 6.56/5.88/5.44/7.09    success 6.22/5.58/5.16/6.73
+//            fg-muted(72%) 5.72/5.13/4.75/6.19  on-accent 4.54  on-danger 6.57
+// 既有两块不在本组：亮色受「亮色专项校准」组同键约束；暗色按历史口径钉死
+//（danger 文字 on overlay 4.09 / fg-muted 60% on overlay 4.48——「原值原式，
+// 视觉零变化」纪律不回改），暗色受上方「语义键对比度」全块组约束。
+const NEW_THEME_BLOCKS = themeBlocks.filter((b) => b.id !== "dark");
+
+describe.each(NEW_THEME_BLOCKS.map((b) => [b.id, b.map, b.scheme] as const))(
+  "新主题块全键校准（%s，theme-suite T2）",
+  (_id, t, scheme) => {
+    const s = surfaces(t);
+
+    it("danger/warning/success 作文字：bg/raised/overlay/surface 全 ≥4.5", () => {
+      for (const key of ["--color-danger", "--color-warning", "--color-success"] as const) {
+        const v = flatten(resolve(t, key));
+        for (const [name, surf] of Object.entries(s)) {
+          const ratio = contrast(v, surf);
+          expect(ratio, `${key} on ${name} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    });
+
+    it("accent-border 指示边框键：bg/raised/overlay/surface 全 ≥3（1.4.11 非文本）", () => {
+      const v = flatten(deepResolve(t, "--color-accent-border"));
+      for (const [name, surf] of Object.entries(s)) {
+        const ratio = contrast(v, surf);
+        expect(ratio, `accent-border vs ${name} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+      }
+    });
+
+    it("fg-muted 合成：bg/raised/overlay/surface 全 ≥4.5", () => {
+      const { ref, pct } = parseFgMix(t.get("--fg-muted"));
+      // color-mix(fg p%, transparent) 的 premultiplied 结果 = fg 带 alpha p/100
+      //（向 transparent 混合不改 RGB）；合成到各落面上算可读性。
+      const fg = toRgba(flatten(resolve(t, ref)));
+      const muted: Rgba = { ...fg, a: (fg.a * pct) / 100 };
+      for (const [name, surf] of Object.entries(s)) {
+        const flattened = toHex(over(muted, toRgba(surf)));
+        const ratio = contrast(flattened, surf);
+        expect(ratio, `fg-muted on ${name} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it("color-scheme 与块内 --color-bg 明暗一致（二级解析的 CSS 面）", () => {
+      const bgLum = luminance(flatten(resolve(t, "--color-bg")));
+      if (scheme === "dark") expect(bgLum).toBeLessThan(0.5);
+      else expect(bgLum).toBeGreaterThanOrEqual(0.5);
+    });
+  },
+);
+
+// --- 终端色板对比度（theme-suite T2）：六套全核对 -----------------------------
+// 亮底口径（既有 light 纪律，tokens.test 亮色 ANSI 组同式）：16 槽 + fg 全 ≥4.5、
+//   光标 ≥3（verdant 按 bg #F4F7F1 亮底走此口径）；
+// 暗色口径：black/brightBlack 豁免（背景族——既有 dark 槽实算 1.11/2.03，本就
+//   不可达 4.5；只要求与底可区分 >1.02），其余 14 槽 + fg ≥4.5、光标 ≥3。
+// glass 半透明底：rgba 先合成到参考桌面底 #1C2430（REF_DESKTOP 同一假设）再算。
+
+const TERMINAL_PALETTES: { id: string; theme: ITheme }[] = [
+  { id: "light", theme: lightTerminalTheme },
+  { id: "dark", theme: darkTerminalTheme },
+  { id: "oled", theme: themeTerminalThemes.oled },
+  { id: "amethyst", theme: themeTerminalThemes.amethyst },
+  { id: "verdant", theme: themeTerminalThemes.verdant },
+  { id: "glass", theme: themeTerminalThemes.glass },
+];
+
+describe.each(TERMINAL_PALETTES.map((p) => [p.id, p.theme] as const))(
+  "终端色板对比度（%s，theme-suite T2）",
+  (id, theme) => {
+    const darkBg = isDarkBackground(flatten(theme.background!));
+    const bg = flatten(theme.background!);
+
+    it(`${darkBg ? "暗色口径（black 族豁免）" : "亮色口径"}：前景槽 ≥4.5、光标 ≥3、fg ≥4.5`, () => {
+      for (const [ch, v] of Object.entries(theme)) {
+        if (ch === "selectionBackground" || ch === "cursorAccent" || ch === "background") continue;
+        const isBlackFamily = ch === "black" || ch === "brightBlack";
+        const ratio = contrast(flatten(v as string), bg);
+        if (darkBg && isBlackFamily) {
+          expect(ratio, `terminal ${id} ${ch} 与底不可区分 = ${ratio.toFixed(2)}`).toBeGreaterThan(1.02);
+        } else {
+          const req = ch === "cursor" ? 3 : 4.5;
+          expect(ratio, `terminal ${id} ${ch} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(req);
+        }
+      }
+    });
+
+    it("glass 色板底为半透明 rgba（主题玻璃面透出；其余套不透明）", () => {
+      if (id === "glass") {
+        expect(theme.background).toMatch(/^rgba\(/);
+        expect(toRgba(theme.background!).a).toBeLessThan(1);
+      } else {
+        expect(theme.background).toMatch(/^#/);
+      }
+    });
+  },
+);

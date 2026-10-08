@@ -40,10 +40,11 @@ import { registerSink, unregisterSink, resizeSession, useSessionStore, encodingN
 import { useVaultStore } from "../vault/store";
 import { vaultApi } from "../vault/api";
 import { useVaultLockStore } from "../security/VaultLockStore";
-import { useTheme, type ResolvedTheme } from "../theme/ThemeContext";
+import { useTheme, terminalPaletteKey } from "../theme/ThemeContext";
 import {
   resolveTerminalTheme,
   useTerminalThemeStore,
+  type TerminalPaletteKey,
   type TerminalThemeSetting,
 } from "../theme/terminalThemeStore";
 import type { ITheme } from "@xterm/xterm";
@@ -77,19 +78,19 @@ import {
 } from "./ContextMenu";
 import { dividers, layout, leaf, type Divider, type Rect } from "./split";
 
-/** 主题同步 xterm 配色（亮/暗两套，A10；T1 terminalThemes 消费）。入参是
- * ThemeContext 的**解析结果**（resolved，非三态 mode）——system 模式下 OS
- * 明暗切换时 resolved 变化驱动本组件 effect 重跑，终端实时换套（简报 I面：
- * useTheme().resolved → xterm theme）。结构化入参便于单测，不绑定 xterm 类。
- * Phase 2 Task 9（B2 主题生态）：第三参 = 终端配色选择（缺省读全局 store）——
- * auto 跟随 resolved；选内置画廊/自定义配色则固定取该套（与界面明暗解耦）。 */
+/** 主题同步 xterm 配色（theme-suite T2.3：auto 按界面主题 id 取配套色板——
+ * light/dark 沿用旧亮暗两套，oled/amethyst/verdant/glass 各取内置四套；选
+ * 内置画廊/自定义配色则固定取该套，与界面主题解耦）。入参是 auto 色板键
+ * （terminalPaletteKey(mode, resolved)：system 已摊平为亮/暗）——system 模式
+ * OS 明暗切换时键变化驱动本组件 effect 重跑，终端实时换套。结构化入参便于
+ * 单测，不绑定 xterm 类。 */
 export function applyTermTheme(
   term: { options: { theme?: ITheme } },
-  resolved: ResolvedTheme,
+  paletteKey: TerminalPaletteKey,
   setting?: TerminalThemeSetting,
 ): void {
   term.options.theme = resolveTerminalTheme(
-    resolved,
+    paletteKey,
     setting ?? useTerminalThemeStore.getState(),
   );
 }
@@ -267,7 +268,9 @@ export function quotePathsForShell(paths: string[]): string {
 
 export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
-  const { resolved } = useTheme();
+  const { mode: themeMode, resolved } = useTheme();
+  // 终端 auto 色板键（theme-suite T2.3）：具体主题 id 直取，system 摊平为亮/暗。
+  const paletteKey = terminalPaletteKey(themeMode, resolved);
   // 终端配色选择（Phase 2 Task 9，B2）：selection/custom 任一变化都重跑主题 effect
   // （换画廊套即时生效；自定义主题被重导入覆盖时 custom 引用变化同样刷新）。
   const termSelection = useTerminalThemeStore((s) => s.selection);
@@ -538,7 +541,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       onAccept: writeToSession,
     });
     ghost.setColor(
-      resolveTerminalTheme(resolved, useTerminalThemeStore.getState()).brightBlack ?? "#808080",
+      resolveTerminalTheme(paletteKey, useTerminalThemeStore.getState()).brightBlack ?? "#808080",
     ); // 语义令牌：ANSI 注释灰（跟随当前终端配色，非固定品牌值）
     ghostRef.current = ghost;
 
@@ -618,10 +621,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   //     B2：终端配色选择（画廊/自定义/auto）变化同样实时生效） ---
   useEffect(() => {
     const setting: TerminalThemeSetting = { selection: termSelection, custom: termCustom };
-    if (termRef.current) applyTermTheme(termRef.current, resolved, setting);
+    if (termRef.current) applyTermTheme(termRef.current, paletteKey, setting);
     // B8：ghost 灰字随主题换（ANSI brightBlack = 注释灰语义令牌）
-    ghostRef.current?.setColor(resolveTerminalTheme(resolved, setting).brightBlack ?? "#808080");
-  }, [resolved, termSelection, termCustom]);
+    ghostRef.current?.setColor(resolveTerminalTheme(paletteKey, setting).brightBlack ?? "#808080");
+  }, [paletteKey, termSelection, termCustom]);
 
   // --- 粘贴拦截（宿主捕获阶段，先于 xterm 的 textarea 监听） ---
   useEffect(() => {

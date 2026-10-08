@@ -1,8 +1,12 @@
-// ThemeContext（A10，Task 1 产出；T11 接 vault settings）：
-// mode 三态 light/dark/system；system 跟随 `prefers-color-scheme`（matchMedia），
-// 并叠加 Tauri 侧 `ottr://system-theme` 事件兜底（Linux WebKitGTK 明暗动态跟随
-// 不可靠，src-tauri lib.rs 监听 WindowEvent::ThemeChanged 后推送）。
-// 解析结果挂 `<html data-theme="light|dark">`，tokens.css 按 [data-theme] 出两套语义层。
+// ThemeContext（A10，Task 1 产出；T11 接 vault settings；theme-suite T2 多主题）：
+// mode 七态 light/dark/system/oled/amethyst/verdant/glass；system 跟随
+// `prefers-color-scheme`（matchMedia），并叠加 Tauri 侧 `ottr://system-theme`
+// 事件兜底（Linux WebKitGTK 明暗动态跟随不可靠，src-tauri lib.rs 监听
+// WindowEvent::ThemeChanged 后推送）。
+// 二级解析：resolved: light|dark —— oled/amethyst/glass 为暗底系、verdant 亮底、
+// system 跟随系统；color-scheme 沿 resolved（tokens.css 各块自带声明）。
+// 解析结果挂 `<html data-theme="…">`：**主题 id 本身**（system 挂 resolved 亮/暗
+// ——CSS 语义层按 id 出块，tokens.css [data-theme="…"]）。
 // 持久化（T11 迁移完成）：真源 = vault settings `ui.theme`（明文面，锁定可读）；
 // localStorage 降级为启动缓存镜像（防首帧闪烁）+ 一次性迁移源（syncThemeFromVault）。
 import {
@@ -15,9 +19,59 @@ import {
 } from "react";
 import { listen } from "@tauri-apps/api/event";
 
-export type ThemeMode = "light" | "dark" | "system";
-/** 解析后的实际主题（data-theme 属性值 / terminalThemes 键）。 */
+export type ThemeMode =
+  | "light"
+  | "dark"
+  | "system"
+  | "oled"
+  | "amethyst"
+  | "verdant"
+  | "glass";
+/** 解析后的实际明暗（二级解析结果；terminal 旧亮暗链与 color-scheme 共用）。 */
 export type ResolvedTheme = "light" | "dark";
+
+/** 主题 id 全集（theme-suite T2）。白名单单一来源——load/persist/syncThemeFromVault
+ * 三处共用 isThemeId，新增主题只改这里。 */
+const THEME_IDS: readonly ThemeMode[] = [
+  "light",
+  "dark",
+  "system",
+  "oled",
+  "amethyst",
+  "verdant",
+  "glass",
+];
+
+function isThemeId(v: string | null | undefined): v is ThemeMode {
+  return v != null && (THEME_IDS as readonly string[]).includes(v);
+}
+
+/** 二级解析：主题 id → 亮/暗。oled/amethyst/glass 暗底系；verdant 亮底；
+ * system 跟随 prefers-color-scheme。 */
+function resolveMode(mode: ThemeMode, systemDark: boolean): ResolvedTheme {
+  switch (mode) {
+    case "light":
+    case "verdant":
+      return "light";
+    case "dark":
+    case "oled":
+    case "amethyst":
+    case "glass":
+      return "dark";
+    case "system":
+      return systemDark ? "dark" : "light";
+  }
+}
+
+/** 终端 auto 色板键（theme-suite T2.3，terminalThemeStore 消费）：具体主题 id
+ * 直取配套色板；system 摊平为解析后的亮/暗（无「系统」终端配色）。 */
+export function terminalPaletteKey(mode: ThemeMode, resolved: ResolvedTheme): TerminalPaletteKeySource {
+  return mode === "system" ? resolved : mode;
+}
+
+/** terminalPaletteKey 的返回（= terminalThemeStore.TerminalPaletteKey；此处
+ * 字面量并集避免模块环 import）。 */
+type TerminalPaletteKeySource = "light" | "dark" | "oled" | "amethyst" | "verdant" | "glass";
 
 const THEME_KEY = "ottr.settings.theme";
 const SETTING_KEY = "ui.theme"; // vault settings 键（T11 迁移目标，明文面锁定可读）
@@ -29,7 +83,7 @@ const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 function loadMode(): ThemeMode {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    if (v === "light" || v === "dark" || v === "system") return v;
+    if (isThemeId(v)) return v;
   } catch {
     // localStorage 不可用（隐私模式等）→ 默认跟随系统
   }
@@ -37,8 +91,9 @@ function loadMode(): ThemeMode {
 }
 
 /** 写真源（vault settings）+ 缓存镜像。vault 写失败不阻塞切换（会话内仍生效，
- * 重启后回落缓存/默认）。 */
+ * 重启后回落缓存/默认）。白名单拒写未知值（防脏数据进持久化面）。 */
 function persistMode(mode: ThemeMode): void {
+  if (!isThemeId(mode)) return;
   try {
     localStorage.setItem(THEME_KEY, mode);
   } catch {
@@ -52,9 +107,9 @@ function persistMode(mode: ThemeMode): void {
 }
 
 /** T11 迁移 + 真源对齐（App 挂载后调用一次）：
- * 1. vault 有值 → 以 vault 为准（修 localStorage 陈旧缓存）；
- * 2. vault 无值 + localStorage 有值 → 迁移：写 vault、清 localStorage 键；
- * 3. 两边皆无 → 不动（默认 system）。 */
+ * 1. vault 有值（白名单内）→ 以 vault 为准（修 localStorage 陈旧缓存）；
+ * 2. vault 无值 + localStorage 有值（白名单内）→ 迁移：写 vault、清 localStorage 键；
+ * 3. 两边皆无/皆不在白名单 → 不动（默认 system）。 */
 export async function syncThemeFromVault(): Promise<void> {
   const { vaultApi } = await import("../vault/api");
   let stored: string | null = null;
@@ -63,7 +118,7 @@ export async function syncThemeFromVault(): Promise<void> {
   } catch {
     return; // 后端不可达：维持现状
   }
-  if (stored === "light" || stored === "dark" || stored === "system") {
+  if (isThemeId(stored)) {
     if (stored !== loadMode()) {
       useThemeSyncApply(stored);
     }
@@ -75,7 +130,7 @@ export async function syncThemeFromVault(): Promise<void> {
   } catch {
     return;
   }
-  if (cached === "light" || cached === "dark" || cached === "system") {
+  if (isThemeId(cached)) {
     // vault 未配置 → 把 localStorage 值迁入，迁完清缓存键。
     try {
       await vaultApi.settings.set(SETTING_KEY, cached);
@@ -157,13 +212,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
   }, [mode]);
 
-  const resolved: ResolvedTheme =
-    mode === "system" ? (systemDark ? "dark" : "light") : mode;
+  const resolved: ResolvedTheme = resolveMode(mode, systemDark);
 
-  // data-theme 挂 root：CSS 语义层切换的唯一开关（tokens.css [data-theme="dark"]）。
+  // data-theme 挂 root：CSS 语义层切换的唯一开关（tokens.css [data-theme="…"]）。
+  // 挂主题 id 本身（多主题各出块）；system 无自有块 → 挂 resolved 亮/暗命中旧两块。
   useEffect(() => {
-    document.documentElement.dataset.theme = resolved;
-  }, [resolved]);
+    document.documentElement.dataset.theme = mode === "system" ? resolved : mode;
+  }, [mode, resolved]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({

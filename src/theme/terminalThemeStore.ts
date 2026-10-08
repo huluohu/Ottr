@@ -16,11 +16,23 @@ import {
   type TerminalThemeDef,
 } from "./gallery";
 import type { ResolvedTheme } from "./ThemeContext";
-import { terminalThemes } from "./terminal-themes";
+import { terminalThemes, themeTerminalThemes, type ThemedTerminalPaletteId } from "./terminal-themes";
 import type { ITheme } from "@xterm/xterm";
 
 const SETTING_KEY = "ui.terminalTheme"; // vault settings 键（JSON 一体面）
 const CACHE_KEY = "ottr.settings.terminalTheme"; // localStorage 缓存镜像键
+
+/** auto 色板键（theme-suite T2.3）：界面主题 id 直取配套色板；system 模式由
+ * ThemeContext 的 terminalPaletteKey 摊平为解析后的亮/暗——故本键集恒不含
+ * "system"。旧 light/dark 调用点（含既有测试）不受影响。 */
+export type TerminalPaletteKey = ResolvedTheme | ThemedTerminalPaletteId;
+
+/** auto 色板映射：light/dark 沿用旧亮暗两套（同引用不漂移），四主题取配套。 */
+const AUTO_PALETTES: Record<TerminalPaletteKey, ITheme> = {
+  light: terminalThemes.light,
+  dark: terminalThemes.dark,
+  ...themeTerminalThemes,
+};
 
 /** settings 值形态（读写同构；损坏按缺省收）。 */
 export interface TerminalThemeSetting {
@@ -71,17 +83,19 @@ async function persist(state: TerminalThemeSetting): Promise<void> {
 }
 
 export function resolveTerminalTheme(
-  resolved: ResolvedTheme,
+  paletteKey: TerminalPaletteKey,
   setting: TerminalThemeSetting,
 ): ITheme {
   if (setting.selection === AUTO_TERMINAL_THEME_ID) {
-    return terminalThemes[resolved]; // auto：跟随界面亮暗（terminalThemes 单源）
+    // auto：跟随界面主题 id 取配套色板（terminalThemes/themeTerminalThemes 单源）；
+    // 穷尽联合下 ?? 不可达（运行时脏值兜底回落暗色套）。
+    return AUTO_PALETTES[paletteKey] ?? terminalThemes.dark;
   }
   const custom = setting.custom.find((t) => t.id === setting.selection);
   if (custom) return custom.theme;
   const gallery = findGalleryTheme(setting.selection);
   if (gallery) return gallery.theme;
-  return terminalThemes[resolved]; // 未知 id（主题被删/降级）→ auto 兜底
+  return AUTO_PALETTES[paletteKey] ?? terminalThemes.dark; // 未知 id（主题被删/降级）→ auto 兜底
 }
 
 interface TerminalThemeStore {

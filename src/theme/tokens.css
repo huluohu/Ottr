@@ -83,3 +83,77 @@
   --color-accent-border: var(--color-accent); /* teal-300，vs bg/raised/overlay 10.09/8.68/7.72 */
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 原值原式，视觉零变化 */
 }
+
+/* ============================================================
+ * 多主题扩展（theme-suite T2）：三套新配色 + 配套终端色板。
+ * 口径同上：文字键实算 ≥4.5（WCAG 2.x，脚本 /tmp/theme-suite-t2/audit.mjs），
+ * 数字 = 对 bg/raised/overlay[/surface] 的实算对比度；raised/overlay 由
+ * App.css color-mix(fg 6%/10%, bg) 自动派生，免定义。
+ * ============================================================ */
+
+/* --- 暗黑 OLED（纯黑底省电屏）：bg/fg/accent 为简报钉死值 --- */
+[data-theme="oled"] {
+  color-scheme: dark;
+  --color-bg: #000000;
+  --color-fg: #e5e7eb;
+  --color-accent: #5eead4; /* teal-300 */
+  /* accent-text 同 accent：on bg/raised/overlay = 14.20/13.05/12.11 */
+  --color-accent-text: var(--color-accent);
+  /* 延用暗色档三色（纯黑底上比 water-900 更高）：danger 7.54/6.93/6.43/6.89
+   * warning 9.78/8.99/8.34/8.94  success 11.28/10.37/9.62/10.31（surface #0d0f12） */
+  --color-danger: #f97066;
+  --color-warning: var(--ottr-amber-500);
+  --color-success: #2dd4bf;
+  /* 墨色 on danger 6.41 / on accent(teal-300) 12.07（同 dark 键值） */
+  --color-on-danger: var(--ottr-ink-900);
+  --color-on-accent: var(--ottr-ink-900);
+  --color-surface: #0d0f12; /* 简报钉死：纯黑上的控件面（非 color-mix，防纯黑露灰） */
+  --color-accent-border: var(--color-accent); /* vs 四面 14.20/13.05/12.11/12.97 */
+  --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 6.14/5.65/5.24/5.61 */
+}
+
+/* --- 幻紫 Amethyst（紫调暗底，磨砂层叠）--- */
+[data-theme="amethyst"] {
+  color-scheme: dark;
+  --color-bg: #16102e;
+  --color-fg: #e9e4f9;
+  --color-accent: #a78bfa;
+  /* accent-text 同 accent：on bg/raised/overlay = 6.72/5.90/5.34 */
+  --color-accent-text: var(--color-accent);
+  /* 延用暗色档三色：danger 6.57/5.76/5.21/5.49  warning 8.52/7.47/6.76/7.12
+   * success 9.83/8.62/7.80/8.21（surface 合成面 = fg 8% 叠 bg） */
+  --color-danger: #f97066;
+  --color-warning: var(--ottr-amber-500);
+  --color-success: #2dd4bf;
+  /* 墨色 on danger 6.41 / on accent 6.56 */
+  --color-on-danger: var(--ottr-ink-900);
+  --color-on-accent: var(--ottr-ink-900);
+  /* 控件面：fg 8% 叠 bg（rgba 形态同 dark 口径；层叠磨砂质感由 Task 3 窗口
+   * 效果 + 面板半透明叠加成完），合成 on bg ≈ #2a2443 */
+  --color-surface: rgba(233, 228, 249, 0.08);
+  --color-accent-border: var(--color-accent); /* vs 四面 6.72/5.90/5.34/5.62 */
+  --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 5.90/5.18/4.68/4.93 */
+}
+
+/* --- 自然之灵 Verdant（鼠尾草亮底）--- */
+[data-theme="verdant"] {
+  color-scheme: light;
+  --color-bg: #f4f7f1;
+  --color-fg: #1c2b22; /* 墨色偏绿 */
+  --color-accent: #2f855a; /* green-600 */
+  /* accent-text 加深为 green-800：对 bg/raised/overlay/surface = 6.22/5.58/5.16/6.73
+   *（accent 本值作文字对 overlay 仅 5.16 仍够，但与亮色 teal-700 惯例同档取深） */
+  --color-accent-text: #276749;
+  /* 沿亮色校准档：danger 6.08/5.45/5.05/6.57  warning 6.56/5.88/5.44/7.09
+   * success = accent-text 深档 6.22/5.58/5.16/6.73 */
+  --color-danger: #b42318;
+  --color-warning: #92400e;
+  --color-success: #276749;
+  /* 白字 on accent 4.54 / on danger 6.57（亮色实底惯例白前景） */
+  --color-on-danger: #ffffff;
+  --color-on-accent: #ffffff;
+  --color-surface: #ffffff;
+  /* accent 作指示边框 vs 四面 4.20/3.77/3.49/4.54 全 ≥3（实底填充仍用 accent 本值） */
+  --color-accent-border: var(--color-accent);
+  --fg-muted: color-mix(in srgb, var(--color-fg) 72%, transparent); /* 5.72/5.13/4.75/6.19（68% on overlay 4.20 不够，+4） */
+}

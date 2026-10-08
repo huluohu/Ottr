@@ -44,7 +44,16 @@
     "terminalThemeImport": "Import color scheme…",
     "terminalThemeImported": "Imported {{count}} scheme(s); the first is selected.",
     "terminalThemeImportFailed": "Import failed: {{message}}",
-    "sectionSync": "Sync"
+    "sectionSync": "Sync",
+    "themes": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark",
+      "oled": "Dark OLED",
+      "amethyst": "Amethyst",
+      "verdant": "Verdant",
+      "glass": "Frosted Glass"
+    }
   },
   "hostForm": {
     "newTitle": "New Host",

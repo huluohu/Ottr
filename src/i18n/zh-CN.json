@@ -44,7 +44,16 @@
     "terminalThemeImport": "导入配色文件…",
     "terminalThemeImported": "已导入 {{count}} 个配色，已选中第一个。",
     "terminalThemeImportFailed": "导入失败：{{message}}",
-    "sectionSync": "同步"
+    "sectionSync": "同步",
+    "themes": {
+      "system": "跟随系统",
+      "light": "亮色",
+      "dark": "暗色",
+      "oled": "暗黑 OLED",
+      "amethyst": "幻紫",
+      "verdant": "自然之灵",
+      "glass": "透明毛玻璃"
+    }
   },
   "hostForm": {
     "newTitle": "新建主机",

@@ -4,7 +4,7 @@
 //   重加密进度（ottr://reencrypt-progress 事件驱动）→ 完成（字段数收尾）；
 // * 失焦自动锁定配置（password 模式专属；0 = 关）、剪贴板清空配置（0 = 关）；
 // * 手动锁定按钮（password 模式；Task 14 快捷键接 vault_lock 同一命令）；
-// * 外观（主题）/语言两项沿用 T2 词典键——persist 已迁 vault settings
+// * 外观（主题网格）/语言两项沿用 T2 词典键——persist 已迁 vault settings
 //   （ThemeContext / i18n index 负责读写，本页只触发 setMode/setLang）。
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -20,7 +20,6 @@ import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
-import { SegmentedControl } from "../ui/SegmentedControl";
 import { useVaultLockStore } from "./VaultLockStore";
 import { SyncSettings } from "../sync/SyncSettings";
 
@@ -51,7 +50,8 @@ function masterPasswordCodePoints(s: string): number {
 
 const AUTOLOCK_CHOICES = [0, 1, 5, 10, 30] as const; // 分钟；0 = 关
 const CLIPBOARD_CHOICES = [0, 10, 30, 60] as const; // 秒；0 = 关
-const THEME_CHOICES: ThemeMode[] = ["light", "dark", "system"];
+// theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
+const THEME_CHOICES: ThemeMode[] = ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 // B9 指纹巡检间隔（秒）：1h / 6h / 24h（默认）/ 7d（Rust 校验 60-604800）
 const HOSTKEY_AUDIT_CHOICES = [3_600, 21_600, 86_400, 604_800] as const;
@@ -478,18 +478,33 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
         {/* --- 外观 / 语言（T2 键面沿用；persist 已迁 vault settings）--- */}
         <section aria-label={t("settings.sectionAppearance")}>
           <h3>{t("settings.sectionAppearance")}</h3>
+          {/* theme-suite T2.4：主题网格卡片——每卡 = 主题名 + 迷你色板预览条
+              （4 色块纯 CSS，aria-hidden）+ radio 选中态；「跟随系统」保留为
+              一卡。radiogroup/radio 互斥单选语义（WAI-ARIA）。卡片缩略色块是
+              各主题静态预览（App.css .tp-* 值），不随当前主题走。 */}
           <div className="settings-row">
             <span className="settings-label">{t("settings.theme")}</span>
-            {/* 三选段控（Task 1，A2）：互斥单选语义的正确载体（旧 .theme-switch 三联） */}
-            <SegmentedControl
-              ariaLabel={t("settings.theme")}
-              value={themeMode}
-              onChange={setMode}
-              options={THEME_CHOICES.map((m) => ({
-                value: m,
-                label: t(`settings.theme${m[0].toUpperCase()}${m.slice(1)}`),
-              }))}
-            />
+          </div>
+          <div className="theme-grid" role="radiogroup" aria-label={t("settings.theme")} data-testid="theme-grid">
+            {THEME_CHOICES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={themeMode === m}
+                data-testid={`theme-card-${m}`}
+                className="theme-card"
+                onClick={() => setMode(m)}
+              >
+                <span className={`theme-card-preview tp-${m}`} aria-hidden="true">
+                  <i className="tp-swatch tp-bg" />
+                  <i className="tp-swatch tp-surface" />
+                  <i className="tp-swatch tp-fg" />
+                  <i className="tp-swatch tp-accent" />
+                </span>
+                <span className="theme-card-name">{t(`settings.themes.${m}`)}</span>
+              </button>
+            ))}
           </div>
           {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。 */}
           <label className="settings-row" data-testid="close-to-tray-row">

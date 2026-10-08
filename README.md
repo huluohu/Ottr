@@ -22,8 +22,6 @@
 
 技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
 
-![终端会话：主机树 + 已连接会话 + 分屏/录制/编码](docs/screenshots/terminal-dark.png)
-
 ## ✨ 功能总览
 
 ### 终端与会话
@@ -58,15 +56,11 @@
 - **告警规则**（磁盘 / CPU / 进程 / 日志关键字）→ **12 种通知渠道**：企业微信、钉钉、飞书、Telegram、Slack、Discord、SMTP 邮件等国内外主流，限频 + 失败重试 + 投递记录持久化
 - **定时任务**中心（Rust 侧调度，错过即知）、**批量执行**（多选主机 + 片段库 + 并发/超时控制）
 
-![监控侧栏：实时曲线](docs/screenshots/monitor.png)
-
 ### 文件与同步
 
 - **SFTP 双栏文件管理器**：拖拽传输、并行分块、断点续传；trzsz（trz/tsz）支持；FTP / FTPS
 - **远程编辑**：本机编辑器直接改远端文件，原子保存（失败不损坏远端）、二进制嗅探防误编辑
 - **多设备同步**：端到端加密信封（AES-256-GCM + PBKDF2），通道三选一（**WebDAV / Git / 本地目录**——WebDAV 走 Rust 代理直连你的网盘，无跨域限制），分类粒度推送/拉取，冲突逐类人工裁定
-
-![多设备同步：分类预览 + 冲突裁定](docs/screenshots/sync-conflict.png)
 
 ### 安全底座
 

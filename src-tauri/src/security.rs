@@ -22,7 +22,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::{Credentials, KeyMode, SecretField, Settings};
 
-use crate::vault::VaultState;
+use crate::vault::{dev_unlock_enabled, VaultState};
 
 // --- settings 已知键注册表（T3 fix round 1 I-1 迁移）---------------------------
 // 常量与已知键校验逻辑已**迁入 ottr-vault settings.rs**（单一事实源）：settings
@@ -96,15 +96,44 @@ pub fn validate_setting(key: &str, value: &serde_json::Value) -> Result<(), Stri
     validate_known_setting(key, value)
 }
 
-/// 失焦时刻现读自动锁定配置。`None` = 不计时（关闭 / keyring 模式无锁概念 /
-/// 已锁定 / settings 读取失败安全侧不断锁——读取失败按默认值走，见 *_from）。
-fn autolock_minutes(app: &AppHandle) -> Option<u64> {
-    let vault = app.try_state::<VaultState>()?;
-    if vault.0.mode() != KeyMode::Password || vault.0.is_locked() {
+/// 自动锁定分钟数决策（纯函数，OTTR_DEV_UNLOCK 旁路的 autolock 侧 gate）：
+/// * `dev_unlock_bypass` 命中 → `None`（**调度整体禁用**——失焦不起计时，
+///   本地开发/验收仪表化，见 vault::dev_unlock_enabled）；
+/// * 否则原语义：keyring 模式（无锁概念）/ 已锁定 → `None`；配置面同
+///   [`autolock_minutes_from`]（未配置默认 10、0 = 关、越界收敛）。
+///
+/// 单测见本模块 `dev_unlock_bypass_disables_autolock_scheduling`（纯函数带参测，
+/// 调用点传 env 结果，不读全局）。
+fn autolock_minutes_resolved(
+    dev_unlock_bypass: bool,
+    is_password_mode: bool,
+    locked: bool,
+    raw: Option<u64>,
+) -> Option<u64> {
+    if dev_unlock_bypass {
         return None;
     }
-    let raw = Settings::get_u64(&vault.0, SETTING_AUTOLOCK).ok().flatten();
+    if !is_password_mode || locked {
+        return None;
+    }
     autolock_minutes_from(raw)
+}
+
+/// 失焦时刻现读自动锁定配置。`None` = 不计时（关闭 / keyring 模式无锁概念 /
+/// 已锁定 / OTTR_DEV_UNLOCK 旁路 / settings 读取失败安全侧不断锁——读取失败
+/// 按默认值走，见 *_from）。
+fn autolock_minutes(app: &AppHandle) -> Option<u64> {
+    // OTTR_DEV_UNLOCK 旁路最先判（本地开发/验收仪表化：计时调度整体禁用）。
+    let bypass = dev_unlock_enabled(std::env::var_os("OTTR_DEV_UNLOCK").as_deref());
+    let vault = app.try_state::<VaultState>()?;
+    // settings 读 = 明文面（锁定可读，见 ottr-vault settings.rs），预读无害。
+    let raw = Settings::get_u64(&vault.0, SETTING_AUTOLOCK).ok().flatten();
+    autolock_minutes_resolved(
+        bypass,
+        vault.0.mode() == KeyMode::Password,
+        vault.0.is_locked(),
+        raw,
+    )
 }
 
 /// 到点复核（fix 1/5 I-1，纯函数）：自动锁定计时器到点是否真正落锁。
@@ -293,6 +322,47 @@ mod tests {
         // 竞态组合：generation 变了且已聚焦 / 已锁定，一律不打
         assert!(!auto_lock_should_fire(3, 4, true, true));
         assert!(!auto_lock_should_fire(3, 4, false, true));
+    }
+
+    /// OTTR_DEV_UNLOCK 旁路 gate（autolock 侧）：命中 = 自动锁定调度整体禁用
+    /// （None——失焦不起计时）；未命中 = 原语义矩阵逐格不变。纯函数带参测
+    /// （调用点 autolock_minutes 传 std::env::var_os 结果，不读全局 env）。
+    #[test]
+    fn dev_unlock_bypass_disables_autolock_scheduling() {
+        // 旁路命中：无论模式/锁定/配置，一律 None。
+        assert_eq!(
+            autolock_minutes_resolved(true, true, false, Some(10)),
+            None,
+            "旁路命中 = 计时整体禁用"
+        );
+        assert_eq!(autolock_minutes_resolved(true, false, false, None), None);
+        assert_eq!(autolock_minutes_resolved(true, true, true, Some(0)), None);
+        // 未命中：原语义矩阵不变。
+        assert_eq!(
+            autolock_minutes_resolved(false, true, false, Some(10)),
+            Some(10),
+            "password 模式未锁定 = 按配置计时"
+        );
+        assert_eq!(
+            autolock_minutes_resolved(false, true, false, None),
+            Some(10),
+            "未配置 = 默认 10 分钟"
+        );
+        assert_eq!(
+            autolock_minutes_resolved(false, true, false, Some(0)),
+            None,
+            "配置 0 = 关"
+        );
+        assert_eq!(
+            autolock_minutes_resolved(false, false, false, Some(10)),
+            None,
+            "keyring 模式无锁概念"
+        );
+        assert_eq!(
+            autolock_minutes_resolved(false, true, true, Some(10)),
+            None,
+            "已锁定不重复计时"
+        );
     }
 
     #[test]

@@ -179,12 +179,35 @@ pub fn vault_unlock(
     Ok(())
 }
 
+/// 开发/验收旁路开关（OTTR_DEV_UNLOCK 环境变量）的纯判定：仅值恰为 "1" 时真。
+/// 用途 = 本地开发与验收仪表化（截屏/自动化走查需要解锁态在长会话中稳定）：
+/// * [`vault_lock`] 开头命中 → 直接 Ok（不落锁、不发事件——幂等 no-op）；
+/// * security::autolock_minutes 开头命中 → 返回 None（失焦自动锁定调度整体
+///   禁用，计时器从不启动）。
+///
+/// **正常用户不受影响**：未设置该变量时两个 gate 与既往行为逐字节一致。
+///
+/// **披露边界**：旁路只防「再锁」（手动锁定/自动锁定），不解「已锁」——密码
+/// 模式已锁定的库仍需主密码解锁（验收/开发请用全新伪 home 数据目录，或先
+/// 解锁一次；钥匙链模式本无密码，天然不受影响）。
+///
+/// 纯函数带参测（三态单测见本模块 tests）：调用点传 `std::env::var_os` 结果，
+/// 本函数不读全局 env——测试不需要可变全局注入。
+pub(crate) fn dev_unlock_enabled(raw: Option<&std::ffi::OsStr>) -> bool {
+    raw.is_some_and(|v| v == std::ffi::OsStr::new("1"))
+}
+
 /// 手动锁定（password 模式）。幂等；成功才发 `ottr://vault-locked`
 /// （Task 14 快捷键挂同一命令）。keyring 模式无锁概念——**直接返回不发事件**
 /// （fix 1/5 M-1）：前端 LockScreen 只订阅事件置锁，keyring 模式带外调用若发
 /// 事件会弹一个永远解不开的锁屏（无解锁路径）。
 #[tauri::command]
 pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()> {
+    // OTTR_DEV_UNLOCK 旁路（本地开发/验收仪表化）：不落锁不发事件直接 Ok
+    //（语义见 dev_unlock_enabled 文档；正常用户未设置 = 走原路径）。
+    if dev_unlock_enabled(std::env::var_os("OTTR_DEV_UNLOCK").as_deref()) {
+        return Ok(());
+    }
     if state.0.mode() == KeyMode::Password {
         state.0.lock();
         let _ = app.emit("ottr://vault-locked", ());
@@ -1255,6 +1278,32 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("downgraded-secret-γ")
+        );
+    }
+
+    // --- OTTR_DEV_UNLOCK 开发/验收旁路 ----------------------------------------
+
+    /// 纯函数三态：仅值恰为 "1" 为真；未设置/其他值一律假。严格匹配防意外
+    /// 命中（"10"/"1 "/"true" 都不算开——旁路是显式仪表化动作，宁可打不开）。
+    /// 调用点（vault_lock / autolock gate）传 `std::env::var_os` 结果，本函数
+    /// 不读全局 env——可变全局注入在单测里回避，纯函数带参测。
+    #[test]
+    fn dev_unlock_enabled_is_true_only_for_exact_1() {
+        assert!(!dev_unlock_enabled(None), "未设置 = 关（正常用户不受影响）");
+        assert!(
+            dev_unlock_enabled(Some(std::ffi::OsStr::new("1"))),
+            "恰为 1 = 开"
+        );
+        assert!(!dev_unlock_enabled(Some(std::ffi::OsStr::new("0"))));
+        assert!(!dev_unlock_enabled(Some(std::ffi::OsStr::new(""))));
+        assert!(!dev_unlock_enabled(Some(std::ffi::OsStr::new("true"))));
+        assert!(
+            !dev_unlock_enabled(Some(std::ffi::OsStr::new("10"))),
+            "前缀不算（严格匹配）"
+        );
+        assert!(
+            !dev_unlock_enabled(Some(std::ffi::OsStr::new("1 "))),
+            "带空白不算"
         );
     }
 }

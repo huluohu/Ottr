@@ -22,6 +22,7 @@
   "settings": {
     "title": "设置",
     "sectionAppearance": "外观",
+    "sectionGeneral": "通用",
     "sectionLanguage": "语言",
     "theme": "主题",
     "themeLight": "亮色",

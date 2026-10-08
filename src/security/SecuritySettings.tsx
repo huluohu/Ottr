@@ -53,6 +53,18 @@ const CLIPBOARD_CHOICES = [0, 10, 30, 60] as const; // 秒；0 = 关
 // theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
 const THEME_CHOICES: ThemeMode[] = ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
+
+// 2026-10-09 设置页交互重构：左侧分区导航 + 右侧内容面板（原单列长滚动、
+// 行为开关混进外观节）。未激活面板 hidden 隐藏但**保持挂载**——控件状态、
+// 升级/降级向导进度与既有测试断言都不因切换丢面；DOM 顺序 = 导航顺序
+// （Tab 序一致）。面板内滚动替代整窗滚动（样式见 16-lock-security.css）。
+type SettingsPane = "security" | "sync" | "appearance" | "general";
+const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
+  { id: "security", labelKey: "settings.sectionSecurity" },
+  { id: "sync", labelKey: "settings.sectionSync" },
+  { id: "appearance", labelKey: "settings.sectionAppearance" },
+  { id: "general", labelKey: "settings.sectionGeneral" },
+];
 // B9 指纹巡检间隔（秒）：1h / 6h / 24h（默认）/ 7d（Rust 校验 60-604800）
 const HOSTKEY_AUDIT_CHOICES = [3_600, 21_600, 86_400, 604_800] as const;
 
@@ -100,6 +112,8 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   const [hostkeyAuditInterval, setHostkeyAuditInterval] = useState<number | null>(null);
   const [sudoAutofill, setSudoAutofill] = useState<boolean | null>(null);
   const [sudoConfirm, setSudoConfirm] = useState(false);
+  // 分区导航当前面板（默认安全——对话框的历史主区）。
+  const [pane, setPane] = useState<SettingsPane>("security");
   // 关闭交互统一（2026-10-08）：Esc = 右上 X 等价；sudo 确认子层打开时先收
   // 子层（Esc 逐层退出，不跨层关闭整个面板）。
   useEffect(() => {
@@ -136,6 +150,7 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       setThemeImportError(null);
       setThemeImportedCount(null);
       setSudoConfirm(false);
+      setPane("security");
       return;
     }
     let disposed = false;
@@ -305,9 +320,35 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
           </button>
         </div>
 
-        {/* --- 安全（T11 主区）--- */}
-        <section aria-label={t("settings.sectionSecurity")} data-testid="security-section">
-          <h3>{t("settings.sectionSecurity")}</h3>
+        <div className="settings-body">
+          <nav
+            className="settings-nav"
+            role="tablist"
+            aria-label={t("settings.title")}
+            data-testid="settings-nav"
+          >
+            {PANE_TABS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="tab"
+                aria-selected={pane === p.id}
+                data-testid={`settings-nav-${p.id}`}
+                onClick={() => setPane(p.id)}
+              >
+                {t(p.labelKey)}
+              </button>
+            ))}
+          </nav>
+          <div className="settings-panes">
+            {/* --- 安全（T11 主区）--- */}
+            <section
+              role="tabpanel"
+              aria-label={t("settings.sectionSecurity")}
+              hidden={pane !== "security"}
+              data-testid="security-section"
+            >
+              <h3>{t("settings.sectionSecurity")}</h3>
 
           <div className="settings-row" data-testid="vault-mode">
             <span className="settings-label">{t("security.mode")}</span>
@@ -612,12 +653,24 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
           )}
         </section>
 
-        {/* --- 同步（Phase 5 Task 4）：通道三选一/信封口令/测试连接/立即同步 --- */}
-        <SyncSettings onOpenSync={() => onOpenSyncDialog?.()} />
+            {/* --- 同步（Phase 5 Task 4）：通道三选一/信封口令/测试连接/立即同步 --- */}
+            <div
+              role="tabpanel"
+              aria-label={t("settings.sectionSync")}
+              hidden={pane !== "sync"}
+              data-testid="sync-pane"
+            >
+              <SyncSettings onOpenSync={() => onOpenSyncDialog?.()} />
+            </div>
 
-        {/* --- 外观 / 语言（T2 键面沿用；persist 已迁 vault settings）--- */}
-        <section aria-label={t("settings.sectionAppearance")}>
-          <h3>{t("settings.sectionAppearance")}</h3>
+            {/* --- 外观（T2 键面沿用；persist 已迁 vault settings）--- */}
+            <section
+              role="tabpanel"
+              aria-label={t("settings.sectionAppearance")}
+              hidden={pane !== "appearance"}
+              data-testid="appearance-section"
+            >
+              <h3>{t("settings.sectionAppearance")}</h3>
           {/* theme-suite T2.4：主题网格卡片——每卡 = 主题名 + 迷你色板预览条
               （4 色块纯 CSS，aria-hidden）+ radio 选中态；「跟随系统」保留为
               一卡。radiogroup/radio 互斥单选语义（WAI-ARIA）。卡片缩略色块是
@@ -646,35 +699,6 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               </button>
             ))}
           </div>
-          {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。 */}
-          <label className="settings-row" data-testid="close-to-tray-row">
-            <span className="settings-label">{t("settings.closeToTray")}</span>
-            <Switch
-              testid="close-to-tray-toggle"
-              checked={closeToTray ?? true}
-              onChange={(e) => {
-                const on = e.currentTarget.checked;
-                setCloseToTray(on);
-                void saveSetting("ui.close_to_tray", on ? 1 : 0);
-              }}
-            />
-          </label>
-          <p className="settings-hint">{t("settings.closeToTrayHint")}</p>
-          {/* Task 15 fix 1/5：shell 集成自动注入（⌘R 历史搜索 / T13 报错即诊的
-              数据源）。关 = attach 不探测不注入；已自带集成的远端自动跳过。 */}
-          <label className="settings-row" data-testid="shell-integration-row">
-            <span className="settings-label">{t("settings.shellIntegration")}</span>
-            <Switch
-              testid="shell-integration-toggle"
-              checked={shellIntegration ?? true}
-              onChange={(e) => {
-                const on = e.currentTarget.checked;
-                setShellIntegration(on);
-                void saveSetting("shell.integration", on);
-              }}
-            />
-          </label>
-          <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
           {/* --- 终端配色（B2 主题生态，Phase 2 Task 9）：auto 跟随界面 /
               内置画廊 / 自定义（iTerm2 .itermcolors 与 Windows Terminal .json
               导入，vault settings 持久化）--- */}
@@ -748,24 +772,60 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
           )}
         </section>
 
-        <section aria-label={t("settings.sectionLanguage")}>
-          <h3>{t("settings.sectionLanguage")}</h3>
-          <label className="settings-row">
-            <span className="settings-label">{t("settings.language")}</span>
-            <select
-              data-testid="language-select"
-              value={lang}
-              onChange={(e) => setLang(e.currentTarget.value as Lang)}
+            {/* --- 通用：语言 + 行为开关（关窗到托盘 / shell 集成，自外观节归位）--- */}
+            <section
+              role="tabpanel"
+              aria-label={t("settings.sectionGeneral")}
+              hidden={pane !== "general"}
+              data-testid="general-section"
             >
-              {LANG_CHOICES.map((l) => (
-                <option key={l} value={l}>
-                  {l === "zh-CN" ? t("settings.langZh") : t("settings.langEn")}
-                </option>
-              ))}
-            </select>
-          </label>
-        </section>
-
+              <h3>{t("settings.sectionGeneral")}</h3>
+              <label className="settings-row">
+                <span className="settings-label">{t("settings.language")}</span>
+                <select
+                  data-testid="language-select"
+                  value={lang}
+                  onChange={(e) => setLang(e.currentTarget.value as Lang)}
+                >
+                  {LANG_CHOICES.map((l) => (
+                    <option key={l} value={l}>
+                      {l === "zh-CN" ? t("settings.langZh") : t("settings.langEn")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。 */}
+              <label className="settings-row" data-testid="close-to-tray-row">
+                <span className="settings-label">{t("settings.closeToTray")}</span>
+                <Switch
+                  testid="close-to-tray-toggle"
+                  checked={closeToTray ?? true}
+                  onChange={(e) => {
+                    const on = e.currentTarget.checked;
+                    setCloseToTray(on);
+                    void saveSetting("ui.close_to_tray", on ? 1 : 0);
+                  }}
+                />
+              </label>
+              <p className="settings-hint">{t("settings.closeToTrayHint")}</p>
+              {/* Task 15 fix 1/5：shell 集成自动注入（⌘R 历史搜索 / T13 报错即诊的
+                  数据源）。关 = attach 不探测不注入；已自带集成的远端自动跳过。 */}
+              <label className="settings-row" data-testid="shell-integration-row">
+                <span className="settings-label">{t("settings.shellIntegration")}</span>
+                <Switch
+                  testid="shell-integration-toggle"
+                  checked={shellIntegration ?? true}
+                  onChange={(e) => {
+                    const on = e.currentTarget.checked;
+                    setShellIntegration(on);
+                    void saveSetting("shell.integration", on);
+                  }}
+                />
+              </label>
+              <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
+            </section>
+          </div>
+        </div>
       </div>
     </div>
   );

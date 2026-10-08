@@ -45,9 +45,78 @@
   opacity: 1;
 }
 
-/* 设置对话框：分节标题 + 行式布局（label 左 / 控件右）。 */
+/* 设置对话框（2026-10-09 交互重构）：左侧分区导航 + 右侧内容面板——四段
+   （安全/同步/外观/通用）原为单列长滚动、行为开关混进外观节；现按系统设置
+   形态分派（通用 = 语言 + 关窗到托盘 + shell 集成）。未激活面板 hidden
+   隐藏但保持挂载（控件状态/向导进度/测试断言不丢面），滚动收进面板内。 */
 .settings-dialog {
-  width: min(520px, 100%);
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  max-height: min(620px, 86vh);
+  overflow: hidden;
+}
+.settings-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.settings-nav {
+  flex: 0 0 148px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-subtle);
+}
+.settings-nav button {
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.92em;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.settings-nav button:hover {
+  color: var(--fg);
+  background: var(--surface-raised);
+}
+.settings-nav button[aria-selected="true"] {
+  color: var(--color-accent-text);
+  background: var(--surface-raised);
+  font-weight: 600;
+}
+.settings-panes {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-left: 18px;
+}
+.settings-panes [hidden] {
+  display: none !important;
+}
+.settings-panes h3:first-child {
+  margin-top: 2px;
+}
+/* 窄窗降级：导航横排到顶部（不做左右双栏）。 */
+@media (max-width: 620px) {
+  .settings-body {
+    flex-direction: column;
+  }
+  .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding-right: 0;
+    padding-bottom: 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .settings-panes {
+    padding-left: 0;
+    padding-top: 10px;
+  }
 }
 .settings-dialog h3 {
   margin: 14px 0 6px;
@@ -55,9 +124,6 @@
   opacity: 0.8;
   border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 4px;
-}
-.settings-dialog section:first-of-type h3 {
-  margin-top: 4px;
 }
 .settings-row {
   display: flex;

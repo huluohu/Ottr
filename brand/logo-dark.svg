@@ -1,41 +1,51 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ottr logo (dark backgrounds)">
-  <!-- Ottr v3 mark — light variant for dark backgrounds (no plate).
-       Same geometry as brand/icon.svg: light slate head + white muzzle,
-       teal ears/iris, amber nose, light whiskers, near-white wordmark. -->
-  <!-- ears -->
-  <polygon points="150,158 176,116 200,166" fill="#14B8A6"/>
-  <polygon points="362,158 336,116 312,166" fill="#14B8A6"/>
-  <polygon points="169,151 178,132 189,157" fill="#0B1220"/>
-  <polygon points="343,151 334,132 323,157" fill="#0B1220"/>
+  <!-- Ottr v4 mark — light variant for dark backgrounds (transparent, no plate).
+       Floating otter: light slate body/head + white belly, terminal inverted
+       (light frame + near-black screen + teal prompt), amber nose/paw-dot,
+       near-white wordmark. Same geometry as brand/logo.svg. -->
+  <g transform="rotate(-2 256 280)">
+    <circle cx="196" cy="244" r="18" fill="#F1F5F9"/>
 
-  <!-- head -->
-  <polygon points="256,146 348,170 392,238 386,318 334,376 256,394 178,376 126,318 120,238 164,170" fill="#F1F5F9"/>
+    <circle cx="150" cy="292" r="62" fill="#F1F5F9"/>
+    <ellipse cx="140" cy="258" rx="42" ry="32" fill="#FFFFFF"/>
+    <ellipse cx="134" cy="236" rx="11" ry="8" fill="#F59E0B"/>
+    <circle cx="124" cy="286" r="9" fill="#F1F5F9"/>
+    <circle cx="124" cy="288" r="6.5" fill="#0B1220"/>
+    <circle cx="127" cy="284" r="2.2" fill="#FFFFFF"/>
+    <circle cx="160" cy="290" r="9" fill="#F1F5F9"/>
+    <circle cx="160" cy="292" r="6.5" fill="#0B1220"/>
+    <circle cx="163" cy="288" r="2.2" fill="#FFFFFF"/>
+    <path d="M114 300 q10 9 22 7" fill="none" stroke="#0B1220" stroke-width="4.5" stroke-linecap="round"/>
+    <g stroke="#CBD5E1" stroke-width="4" stroke-linecap="round" fill="none">
+      <path d="M100 254 L74 248"/>
+      <path d="M100 268 L72 266"/>
+    </g>
 
-  <!-- muzzle -->
-  <polygon points="256,294 320,306 336,342 298,372 214,372 176,342 192,306" fill="#FFFFFF"/>
+    <path d="M196 276
+             C 250 252 340 254 396 276
+             C 418 286 420 300 402 314
+             C 376 334 240 338 202 320
+             C 186 312 184 288 196 276 Z" fill="#F1F5F9"/>
+    <ellipse cx="300" cy="288" rx="90" ry="38" fill="#FFFFFF"/>
 
-  <!-- eyes -->
-  <ellipse cx="196" cy="256" rx="28" ry="24" fill="#14B8A6"/>
-  <text x="196" y="267" text-anchor="middle" font-family="'SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="36" font-weight="bold" fill="#F1F5F9">~</text>
-  <ellipse cx="316" cy="256" rx="28" ry="24" fill="#14B8A6"/>
-  <ellipse cx="316" cy="258" rx="8" ry="15" fill="#0F172A"/>
-  <circle cx="312" cy="250" r="4" fill="#FFFFFF"/>
+    <path d="M398 294 C 430 294 452 310 456 328" fill="none" stroke="#F1F5F9" stroke-width="24" stroke-linecap="round"/>
+    <ellipse cx="384" cy="330" rx="18" ry="10" fill="#F1F5F9"/>
+    <ellipse cx="384" cy="326" rx="10" ry="5" fill="#FFFFFF"/>
 
-  <!-- nose + mouth -->
-  <path d="M240,310 Q256,302 272,310 L262,328 Q256,336 250,328 Z" fill="#F59E0B"/>
-  <path d="M256,338 v8 c0,9 -6,13 -14,13 M256,346 c0,9 6,13 14,13"
-        fill="none" stroke="#0F172A" stroke-width="7" stroke-linecap="round"/>
-
-  <!-- whiskers -->
-  <g stroke="#CBD5E1" stroke-linecap="round" fill="none">
-    <path d="M148,294 L82,280" stroke-width="8"/>
-    <path d="M144,316 L76,316" stroke-width="7"/>
-    <path d="M148,338 L82,352" stroke-width="7"/>
-    <path d="M364,294 L430,280" stroke-width="8"/>
-    <path d="M368,316 L436,316" stroke-width="7"/>
-    <path d="M364,338 L430,352" stroke-width="7"/>
+    <g transform="rotate(-5 300 224)">
+      <rect x="244" y="192" width="112" height="64" rx="14" fill="#F1F5F9" stroke="#0B1220" stroke-width="4"/>
+      <rect x="250" y="198" width="100" height="14" rx="7" fill="#94A3B8"/>
+      <text x="262" y="242" font-family="'SF Mono','Menlo',monospace" font-size="24" font-weight="bold" fill="#0B7C6E">&gt;_</text>
+      <circle cx="332" cy="240" r="5" fill="#F59E0B"/>
+    </g>
+    <circle cx="256" cy="254" r="14" fill="#F1F5F9" stroke="#0B1220" stroke-width="3.5"/>
+    <circle cx="346" cy="252" r="14" fill="#F1F5F9" stroke="#0B1220" stroke-width="3.5"/>
+    <path d="M242 258 a14 14 0 0 0 28 0 Z" fill="#F1F5F9"/>
+    <path d="M332 256 a14 14 0 0 0 28 0 Z" fill="#F1F5F9"/>
   </g>
 
-  <!-- wordmark -->
-  <text x="256" y="458" text-anchor="middle" font-family="'SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="64" font-weight="900" letter-spacing="10" fill="#F8FAFC">OTTR</text>
+  <path d="M16 358 C 100 344 180 368 256 360 C 332 352 410 372 496 358"
+        fill="none" stroke="#F8FAFC" stroke-width="6" opacity="0.5" stroke-linecap="round"/>
+
+  <text x="256" y="452" text-anchor="middle" font-family="'SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="58" font-weight="900" letter-spacing="10" fill="#F8FAFC">OTTR</text>
 </svg>

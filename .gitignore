@@ -34,3 +34,4 @@ src-tauri/gen/
 *.sw?
 .vitest/
 .zcode/logs/*.log
+brand/drafts/

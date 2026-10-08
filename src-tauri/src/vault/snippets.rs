@@ -8,12 +8,14 @@ use super::{CmdResult, VaultState, cmd, ensure_unlocked};
 
 // --- snippets --------------------------------------------------------------
 
+#[specta::specta]
 #[tauri::command]
 pub fn snippets_list(state: State<'_, VaultState>) -> CmdResult<Vec<ottr_vault::Snippet>> {
     ensure_unlocked(&state.0)?;
     cmd(Snippets::list(&state.0))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn snippets_get(
     state: State<'_, VaultState>,
@@ -23,6 +25,7 @@ pub fn snippets_get(
     cmd(Snippets::get(&state.0, id))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn snippets_search(
     state: State<'_, VaultState>,
@@ -32,6 +35,7 @@ pub fn snippets_search(
     cmd(Snippets::search(&state.0, &query))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn snippets_create(
     state: State<'_, VaultState>,
@@ -41,6 +45,7 @@ pub fn snippets_create(
     cmd(Snippets::create(&state.0, &input))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn snippets_update(
     state: State<'_, VaultState>,
@@ -51,6 +56,7 @@ pub fn snippets_update(
     cmd(Snippets::update(&state.0, id, &input))
 }
 
+#[specta::specta]
 #[tauri::command]
 pub fn snippets_delete(state: State<'_, VaultState>, id: i64) -> CmdResult<()> {
     ensure_unlocked(&state.0)?;

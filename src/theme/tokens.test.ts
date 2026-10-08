@@ -7,7 +7,7 @@
 // ——多主题三套新增后逐块过同一阈值）；终端新色板按既有纪律全 16 色核对。
 import { describe, expect, it } from "vitest";
 import tokensCss from "./tokens.css?raw";
-import appCss from "../App.css?raw";
+import { allAppCss } from "../styles/all-css";
 import {
   lightTerminalTheme,
   darkTerminalTheme,
@@ -202,13 +202,13 @@ describe.each([
 describe("App.css 消费点纪律（文字场景迁移）", () => {
   it("不再有 color: var(--color-accent) 文字消费（全部迁 accent-text）", () => {
     // 行首锚定 color: 声明本身（border-color/background-color 不在此列，留作非文字 accent）
-    expect(/^\s*color:\s*var\(--color-accent\);/m.test(appCss)).toBe(false);
+    expect(/^\s*color:\s*var\(--color-accent\);/m.test(allAppCss())).toBe(false);
   });
 
   it("实底按钮文字走 on-* 语义键（btn-accent / btn-danger）", () => {
-    const btnAccent = appCss.slice(appCss.indexOf(".btn-accent {"), appCss.indexOf("}", appCss.indexOf(".btn-accent {")));
+    const btnAccent = allAppCss().slice(allAppCss().indexOf(".btn-accent {"), allAppCss().indexOf("}", allAppCss().indexOf(".btn-accent {")));
     expect(btnAccent).toContain("color: var(--color-on-accent)");
-    const btnDanger = appCss.slice(appCss.indexOf(".btn-danger {"), appCss.indexOf("}", appCss.indexOf(".btn-danger {")));
+    const btnDanger = allAppCss().slice(allAppCss().indexOf(".btn-danger {"), allAppCss().indexOf("}", allAppCss().indexOf(".btn-danger {")));
     expect(btnDanger).toContain("color: var(--color-on-danger)");
   });
 
@@ -219,12 +219,12 @@ describe("App.css 消费点纪律（文字场景迁移）", () => {
   // / --color-danger #b42318，两主题四面 ≥4.5 由上组断言钉死），幽灵键禁用。
   it("kh-* 状态徽标/危险动作消费校准语义键（幽灵 --color-*-text 回退禁用）", () => {
     // 幽灵键（tokens.css 无定义）带回退值 = 回退值实渲染，全库禁用
-    expect(/var\(--color-(success|danger)-text\b/.test(appCss)).toBe(false);
-    const khOk = appCss.slice(appCss.indexOf(".kh-badge-ok {"), appCss.indexOf("}", appCss.indexOf(".kh-badge-ok {")));
+    expect(/var\(--color-(success|danger)-text\b/.test(allAppCss())).toBe(false);
+    const khOk = allAppCss().slice(allAppCss().indexOf(".kh-badge-ok {"), allAppCss().indexOf("}", allAppCss().indexOf(".kh-badge-ok {")));
     expect(khOk).toContain("color: var(--color-success)");
-    const khChanged = appCss.slice(appCss.indexOf(".kh-badge-changed {"), appCss.indexOf("}", appCss.indexOf(".kh-badge-changed {")));
+    const khChanged = allAppCss().slice(allAppCss().indexOf(".kh-badge-changed {"), allAppCss().indexOf("}", allAppCss().indexOf(".kh-badge-changed {")));
     expect(khChanged).toContain("color: var(--color-danger)");
-    const khActions = appCss.slice(appCss.indexOf(".kh-actions .kh-danger {"), appCss.indexOf("}", appCss.indexOf(".kh-actions .kh-danger {")));
+    const khActions = allAppCss().slice(allAppCss().indexOf(".kh-actions .kh-danger {"), allAppCss().indexOf("}", allAppCss().indexOf(".kh-actions .kh-danger {")));
     expect(khActions).toContain("color: var(--color-danger)");
   });
 });

@@ -76,6 +76,7 @@ fn conv_failure(
 
 /// 主机分组（树形：parent_id 自引用）。删父组 → 子组提根；删组 → 组内主机脱离分组。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HostGroup {
     pub id: i64,
     pub name: String,
@@ -250,6 +251,7 @@ fn row_to_group(row: &Row) -> rusqlite::Result<HostGroup> {
 /// 同存储面，只在 UI/连接分派时区分协议（Phase 2 Task 5）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum CredentialKind {
     Password,
     Key,
@@ -297,6 +299,7 @@ impl std::str::FromStr for CredentialKind {
 /// 参数反序列化依赖这里（TS 侧 totp_secret 传 "totp_secret"，缺 derive 会地雷式失败）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum SecretField {
     Secret,
     Passphrase,
@@ -324,6 +327,7 @@ impl SecretField {
 /// 凭据。**不含任何密钥材料**（`*_enc` 列不进结构体）——明文只经
 /// [`Credentials::reveal`] 单点取回，序列化面（TS 类型同构）天然无密钥。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Credential {
     pub id: i64,
     pub kind: CredentialKind,
@@ -335,6 +339,7 @@ pub struct Credential {
 /// 新建凭据的输入：`secret`（password/key 的主体：口令或私钥）、`passphrase`、
 /// `totp_secret` 为明文，存储层 seal；`key_pub` 非敏感，明文存储。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CredentialInput {
     pub kind: CredentialKind,
     pub secret: Option<String>,
@@ -345,6 +350,7 @@ pub struct CredentialInput {
 
 /// 更新凭据的补丁：全部 `None = 保留现值`（UI 语义：未重输的密钥不重密封）。
 #[derive(Debug, Clone, Default, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CredentialPatch {
     pub kind: Option<CredentialKind>,
     pub secret: Option<String>,
@@ -537,6 +543,7 @@ fn row_to_credential(row: &Row) -> rusqlite::Result<Credential> {
 /// ssh（存量行零迁移）；FTP/FTPS 主机为文件传输会话（无 PTY 终端）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum HostProtocol {
     #[default]
     Ssh,
@@ -575,6 +582,7 @@ impl std::str::FromStr for HostProtocol {
 /// is_production（0012 迁移）为生产环境标记——终端红框 + 页签 PROD 徽标 +
 /// danger 输入提醒的消费依据（B11 防呆），缺省 false。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Host {
     pub id: i64,
     pub name: String,
@@ -597,6 +605,7 @@ pub struct Host {
 
 /// 新建/全量更新主机的输入（字段名与 [`Host`] 可编辑子集同构）。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HostInput {
     pub name: String,
     pub group_id: Option<i64>,
@@ -870,6 +879,7 @@ fn row_to_host(row: &Row) -> rusqlite::Result<Host> {
 /// 命令片段：body 支持 `{{var}}` 模板，variables 为变量名清单（JSON 列）。
 /// host_scope 可选绑定单机；删该主机 → 转全局（SET NULL）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Snippet {
     pub id: i64,
     pub name: String,
@@ -883,6 +893,7 @@ pub struct Snippet {
 
 /// 新建/全量更新 snippet 的输入。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SnippetInput {
     pub name: String,
     pub body: String,
@@ -1114,6 +1125,7 @@ fn canonical_port(s: &str) -> Option<i64> {
 /// 作废）——verify 可再回到 ok。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum KnownHostState {
     Ok,
     Changed,
@@ -1135,6 +1147,7 @@ impl KnownHostState {
 
 /// 已知主机指纹（TOFU 记录，以 host 端点为主键、fingerprint = 当前信任锚）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct KnownHost {
     /// host 端点键（[`host_endpoint_key`]；0004 前的存量行为
     /// `"legacy:{fingerprint}"` 虚拟端点，信任关系待下次连接重建）。

@@ -1,0 +1,77 @@
+/* --- A12 自绘标题栏（Task 14，win/linux；mac 不渲染走原生） --- */
+.titlebar {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  user-select: none;
+}
+.titlebar-title {
+  padding: 0 4px;
+  font-weight: 700;
+  font-size: 0.85em;
+  color: var(--color-accent-text);
+}
+.titlebar-drag {
+  flex: 1;
+  align-self: stretch;
+}
+.titlebar-btn {
+  flex: none;
+  height: 100%;
+  padding: 0 12px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+}
+.titlebar-btn:hover {
+  background: var(--surface-raised);
+  color: var(--color-fg);
+}
+.titlebar-close:hover {
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+}
+.titlebar-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 60;
+  min-width: 240px;
+  padding: 6px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--scrim);
+}
+.titlebar-menu-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  border: none;
+  background: none;
+  box-shadow: none;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  text-align: left;
+}
+.titlebar-menu-item:hover {
+  background: var(--surface-raised);
+  color: inherit;
+}
+.titlebar-menu-item kbd {
+  font: inherit;
+  font-size: 0.8em;
+  color: var(--fg-muted);
+}
+
+/* --- A10 主题切换器：设置页三联按钮已迁 SegmentedControl（.ui-segmented，
+ * Task 1 / UI 审计 A2 清偿，样式见文件尾「基础控件」段）。 --- */
+

@@ -11,7 +11,7 @@
 //   4. SyncDialog / LockScreen 容器必须挂 .dialog 类（挂上才承接 1-3 的语义，
 //      防类名漂移静默掉守卫）。
 import { describe, expect, it } from "vitest";
-import appCss from "./App.css?raw";
+import { allAppCss } from "./styles/all-css";
 import syncDialogTsx from "./sync/SyncDialog.tsx?raw";
 import lockScreenTsx from "./security/LockScreen.tsx?raw";
 
@@ -33,33 +33,33 @@ function ruleOf(css: string, selectorPrefix: string): string | null {
 
 describe("对话框滚动语义守卫（BL-526 + T5 披露）", () => {
   it(".dialog 共享规则带 max-height 上限 + overflow-y:auto（既有语义防回归）", () => {
-    const rule = ruleOf(appCss, ".dialog,");
+    const rule = ruleOf(allAppCss(), ".dialog,");
     expect(rule).not.toBeNull();
     expect(rule).toContain("max-height:");
     expect(rule).toContain("overflow-y: auto");
   });
 
   it(".overlay 兜底 overflow-y:auto（内容超出视口时 overlay 自滚，不困死）", () => {
-    const rule = ruleOf(appCss, ".overlay {");
+    const rule = ruleOf(allAppCss(), ".overlay {");
     expect(rule).not.toBeNull();
     expect(rule).toContain("overflow-y: auto");
   });
 
   it(".overlay 滚动条视觉隐藏（兜底面不得与 .dialog 内滚条并排成双条——2026-10-05 用户反馈；滚轮滚动能力保留）", () => {
-    const rule = ruleOf(appCss, ".overlay {");
+    const rule = ruleOf(allAppCss(), ".overlay {");
     expect(rule).toContain("scrollbar-width: none");
-    const webkitRule = ruleOf(appCss, ".overlay::-webkit-scrollbar");
+    const webkitRule = ruleOf(allAppCss(), ".overlay::-webkit-scrollbar");
     expect(webkitRule).not.toBeNull();
     expect(webkitRule).toContain("display: none");
   });
 
   it(".dialog 滚动条可见化（::-webkit-scrollbar 常显——macOS 静止期 overlay 滚动条不可见即「被裁」假象）", () => {
-    expect(appCss).toMatch(/\.dialog::-webkit-scrollbar[^{]*\{/);
-    expect(appCss).toMatch(/\.dialog::-webkit-scrollbar-thumb[^{]*\{/);
+    expect(allAppCss()).toMatch(/\.dialog::-webkit-scrollbar[^{]*\{/);
+    expect(allAppCss()).toMatch(/\.dialog::-webkit-scrollbar-thumb[^{]*\{/);
   });
 
   it("滚动条 thumb 走语义令牌 --border-subtle（终审备注：防裸色值回潜——thumb 在亮/暗主题都必须可辨且随主题联动）", () => {
-    const rule = ruleOf(appCss, ".dialog::-webkit-scrollbar-thumb");
+    const rule = ruleOf(allAppCss(), ".dialog::-webkit-scrollbar-thumb");
     expect(rule).not.toBeNull();
     expect(rule).toContain("background: var(--border-subtle)");
     // thumb 块内禁十六进制字面量（语义令牌纪律，沿 tokens.test 消费点口径）

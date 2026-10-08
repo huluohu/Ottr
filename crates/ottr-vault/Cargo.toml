@@ -4,7 +4,14 @@ version = "0.1.0"
 edition = "2024"
 description = "Ottr storage engine and key hierarchy (AES-256-GCM / keyring / SQLite WAL)"
 
+[features]
+# TS 类型绑定生成（tauri-specta 试点，2026-10-08）：默认关——仅 src-tauri 的
+# bindings 生成测试启用；derive 经 cfg_attr 挂载，核心 crate 默认构建零增量。
+specta = ["dep:specta"]
+
 [dependencies]
+specta = { version = "2.0.0-rc.25", optional = true, features = ["derive"] }
+
 # bundled：自带编译 SQLite（≥3.34，含 trigram tokenizer）；FTS5 是 spec §3 的硬约束
 # ——命令历史/录制文本全文检索走 FTS5，CJK 检索统一 tokenize='trigram'（默认 unicode61
 # 会把连续中文当整块导致搜不到）。见 docs/superpowers/specs/2026-09-29-ottr-design.md §3。

@@ -221,9 +221,11 @@ describe("App 顶栏收纳（Phase 5 T1）", () => {
 
     fireEvent.click(themeButton);
     const menu = screen.getByTestId("topbar-theme-menu");
-    expect(menu.querySelector('[data-testid="topbar-theme-light"]')).toBeTruthy();
-    expect(menu.querySelector('[data-testid="topbar-theme-dark"]')).toBeTruthy();
-    expect(menu.querySelector('[data-testid="topbar-theme-system"]')).toBeTruthy();
+    // 七主题全集同步快切菜单（2026-10-08 用户口径，防回退到三键）
+    for (const id of ["light", "dark", "system", "oled", "amethyst", "verdant", "glass"]) {
+      expect(menu.querySelector(`[data-testid="topbar-theme-${id}"]`)).toBeTruthy();
+    }
+    expect(menu.querySelectorAll("[data-testid^='topbar-theme-']").length).toBe(7);
 
     // 选暗色 → data-theme 立即切换 + 按钮面更新（persistMode 走 localStorage 镜像）
     fireEvent.click(menu.querySelector('[data-testid="topbar-theme-dark"]')!);

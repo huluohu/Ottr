@@ -1,0 +1,96 @@
+/* ============================================================
+ * 布局样式（Task 5 起骨架，Task 7 标签化终端主区，Task 8 分屏/搜索/右键菜单）。
+ * 颜色纪律：组件层只引用 --color-* 语义层；派生表面（border/surface/
+ * scrim）用 color-mix 从语义层混出，不写死色值（--btn-bg 字面值已升格
+ * tokens 的 --color-surface，T1 挂账 M-1 清偿；accent 作文字色一律用
+ * --color-accent-text、实底按钮文字用 --color-on-accent/--color-on-danger，
+ * fix 2 裁定键，种子值备案 brand.md；accent 作指示边框/描边/图表线/状态点
+ * 一律用 --color-accent-border，ui-batch3 T1 键）。
+ * ============================================================ */
+
+:root {
+  /* 页面级派生表面：由语义层混出（亮暗自动跟随）。
+   * --fg-muted 已收编进 tokens.css 语义层（ui-batch3 T1 亮色校准：亮 68% /
+   * 暗 60%，暗色视觉零变化），此处不再定义。 */
+  --border-subtle: color-mix(in srgb, var(--color-fg) 14%, transparent);
+  --surface-raised: color-mix(in srgb, var(--color-fg) 6%, var(--color-bg));
+  --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, var(--color-bg));
+  --scrim: color-mix(in srgb, var(--color-fg) 45%, transparent);
+}
+
+/* theme-suite T3（Glass 可读性兜底）：真透明主题下弹窗/scrim 若沿用半透明
+ * 派生面，内容会与桌面混叠不可读——glass 块把派生面提到近实底（对话框/scrim
+ * 高不透明；非玻璃面仍带 alpha 透出 vibrancy 模糊）。覆写与 :root 同特异性、
+ * 后置生效；合成参考见 tokens.css glass 块注释。 */
+[data-theme="glass"] {
+  --surface-raised: color-mix(in srgb, var(--color-fg) 6%, rgba(18, 13, 32, 0.97));
+  --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, rgba(18, 13, 32, 0.97));
+  --scrim: color-mix(in srgb, #050308 72%, transparent);
+}
+
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+
+  /* A10：明暗由 ThemeContext 挂 data-theme + tokens.css 语义层驱动（弃用媒体查询） */
+  color: var(--color-fg);
+  background-color: var(--color-bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 控件底色（T1 挂账 M-1 清偿，Task 8）：字面值升格为 tokens 的 --color-surface，
+ * 亮暗跟随语义层；组件层不再出现任何颜色字面值。 */
+:root {
+  --btn-bg: var(--color-surface);
+}
+
+/* 控件基线（顶栏/树/表单/面板共用） */
+input,
+button,
+select,
+textarea {
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  padding: 0.4em 0.8em;
+  font-size: 1em;
+  font-family: inherit;
+  color: var(--color-fg);
+  background-color: var(--btn-bg);
+  outline: none;
+}
+
+button {
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+button:hover {
+  border-color: var(--color-accent-border);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+button[data-active="true"] {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent-text);
+}
+.btn-accent {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent-border);
+  color: var(--color-on-accent);
+  font-weight: 600;
+}
+.btn-accent:hover {
+  filter: brightness(1.08);
+}
+.icon-btn.danger {
+  color: var(--color-danger);
+}
+

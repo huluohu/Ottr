@@ -1,0 +1,47 @@
+/* --- 应用骨架 --- */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap; /* 窄窗兜底：按钮整只换行（绝无字内竖排折行） */
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.topbar-title {
+  font-weight: 700;
+  color: var(--color-accent-text);
+}
+/* Phase 5 T1 顶栏收纳：栏面条目整只不缩（防「命令面板」挤成竖排字的现场），
+   溢出压力交给 spacer / 整行换行兜底。 */
+.topbar-title,
+.topbar button,
+.topbar-menu {
+  flex: none;
+  white-space: nowrap;
+}
+.topbar-palette kbd {
+  font: inherit;
+  font-size: 0.8em;
+  padding: 0 4px;
+  margin-left: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--fg-muted);
+}
+.topbar-spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.topbar-debug {
+  font-size: 0.8em;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+

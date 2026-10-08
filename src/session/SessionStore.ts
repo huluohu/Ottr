@@ -29,7 +29,7 @@
 // 不自动连接（安全考虑：无人值守窗口重开不应悄悄发起 SSH 连接）。
 import { create } from "zustand";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { Host, HostProtocol } from "../vault/api";
+import type { Host } from "../vault/api";
 import {
   closeLeaf,
   leaf,
@@ -38,295 +38,43 @@ import {
   setRatioAt,
   type PaneTree,
 } from "../terminal/split";
+// 以下四个模块自本文件拆出（2026-10-08 遗留项②，公共 API 经 export * 原样）：
+// types（状态机类型）/ encoding（编码纯函数）/ retry（退避与本地设置）/
+// terminal（终端 sink 注册表 + 收尾钩子）。store 动作面共享同一 set()，
+// 保留单文件（评审裁定：zustand slice 拆动作的回归风险 > 收益）。
+import {
+  type EncodingHintPayload,
+  type SessionEncoding,
+  parseSessionEncoding,
+  persistDismissedEncodingHosts,
+} from "./encoding";
+import {
+  DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  type SessionSettings,
+  loadOpenTabIds,
+  loadSettings,
+  persistOpenTabs,
+  reconnectDelayMs,
+} from "./retry";
+import {
+  emitSessionEnded,
+  isHostKeyRejection,
+  sinks,
+  toBytes,
+  unregisterSink,
+} from "./terminal";
+import {
+  type HostKeyAsk,
+  type HostKeyAskPayload,
+  type Session,
+} from "./types";
+import { loadDismissedEncodingHosts } from "./encoding";
+import type { SessionClosedPayload } from "./types";
 
-export type SessionStatus =
-  | "disconnected"
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "waiting_host_key";
-
-/** `ottr://host-key-ask` 事件载荷（Rust HostKeyAskPayload 同构，serde snake_case）。
- * 跳板链逐跳问询（Phase 2 Task 2）：host_id = 该跳自己的主机 id（裁定时按它
- * 落端点信任锚）；hop = 跳序号（0 起，弹窗带「第 N 跳」标识）；origin_host_id =
- * 发起连接的主机（问询归属在途 connect 的标签）。直连问询两字段缺省。 */
-export interface HostKeyAskPayload {
-  host_id: number;
-  host_name: string;
-  fingerprint: string;
-  kind: "first" | "pending" | "changed";
-  hop?: number;
-  origin_host_id?: number;
-}
-
-/** 弹窗态的问询（挂上发起问询的会话）。 */
-export interface HostKeyAsk extends HostKeyAskPayload {
-  sessionId: string;
-}
-
-/** `ottr://session-closed` 事件载荷（Rust SessionClosedPayload 同构）。 */
-export interface SessionClosedPayload {
-  id: string;
-  reason: "cancelled" | "closed" | "ipc_failed";
-}
-
-export interface Session {
-  /** 标签 id（uuid，跨重连稳定）；Rust 会话 id 另存 rustId。 */
-  id: string;
-  hostId: number;
-  hostName: string;
-  address: string;
-  port: number;
-  username: string | null;
-  /** 主机协议（Phase 2 Task 5）：ftp/ftps = 纯文件会话（无 PTY 终端）。 */
-  protocol: HostProtocol;
-  /** 跳板链归属（host.jump_chain_id 会话内拷贝；分屏 pane 与标签同源）：
-   * 非空 = attach 走链式路径，Rust 侧 connect 预算 = 75s×(跳数+1)——
-   * attach 看门狗只护直连（见 ATTACH_WATCHDOG_MS 注释），链式不武装。 */
-  jumpChainId: number | null;
-  status: SessionStatus;
-  /** 当前 Rust 侧会话 id（attach 成功后非空；重连期间清空）。 */
-  rustId: string | null;
-  /** 已进行的自动重连次数（0 = 从未断线/已成功复位）。 */
-  attempt: number;
-  lastError: string | null;
-  /** 下一次自动重连的绝对时刻（Date.now 基）；null = 无挂起重连。 */
-  nextRetryAt: number | null;
-  /** 分屏归属（Task 8）：null = 标签根会话（TabBar 只渲染根）；
-   * 非空 = 所属标签根会话 id（一个标签一棵 pane 树，树叶 id = 会话 id）。 */
-  paneOf: string | null;
-  /** 会话编码（Task 9，A9）：初值 = host encoding_override（支持集内）兜底
-   * utf-8；setSessionEncoding 切换（即切即生效，不写回 host）。
-   * 【语义裁定（fix 1/5）】重连=新会话：connect 成功后编码一律从
-   * encodingOverride 重新派生——手动切换只活在当前连接内，不跨重连。 */
-  encoding: SessionEncoding;
-  /** host.encoding_override 的派生值（支持集内，兜底 utf-8；重连下发源）。 */
-  encodingOverride: SessionEncoding;
-  /** detect_hint 提示（Rust `ottr://encoding-hint`）：非空 = 展示
-   * 「检测到 GBK，切换？」提示条；接受/忽略后清空（per-host 一次，可关）。 */
-  encodingHint: SessionEncoding | null;
-  /** 生产环境主机标记（Phase 2 Task 11，B11）：终端 pane 红框 + TabBar PROD
-   * 徽标的依据；host.is_production 的会话内拷贝（分屏 pane 与标签同源）。 */
-  isProduction: boolean;
-  /** 监控开关（Phase 3 Task 1，B4 上半）：host.monitor_enabled 的会话内拷贝。
-   * attach 成功后按它决定是否 monitor_start（仅标签根会话——分屏 pane 与根
-   * 同主机，多份采样是纯浪费；面板消费面在 MonitorSidebar）。可选 = 存量测试
-   * 夹具/旧构造点不必逐个补字段，消费面统一 `=== true`（缺省关，安全侧）。 */
-  monitorEnabled?: boolean;
-}
-
-// --- 会话编码（Task 9，A9） --------------------------------------------------
-
-/** 会话编码支持集（与 Rust encoding_from_str / ottr-term Decoder 同口径；
- * big5 等其余 T8 菜单候选 Rust 侧无解码器，显式不支持）。 */
-export const SESSION_ENCODINGS = ["utf-8", "gbk", "gb18030"] as const;
-export type SessionEncoding = (typeof SESSION_ENCODINGS)[number];
-
-/** 编码 id → 展示名（徽标/提示条用；编码名不作 i18n）。 */
-export function encodingName(e: SessionEncoding): string {
-  return e === "utf-8" ? "UTF-8" : e === "gbk" ? "GBK" : "GB18030";
-}
-
-/** host 表 encoding_override 字符串 → 支持集内编码；无法识别 → null（兜底 utf-8）。 */
-export function parseSessionEncoding(v: string | null | undefined): SessionEncoding | null {
-  return (SESSION_ENCODINGS as readonly string[]).includes(v ?? "")
-    ? (v as SessionEncoding)
-    : null;
-}
-
-/** 编码徽标点击循环序（utf-8 → gbk → gb18030 → utf-8）。 */
-export function nextEncoding(e: SessionEncoding): SessionEncoding {
-  return SESSION_ENCODINGS[(SESSION_ENCODINGS.indexOf(e) + 1) % SESSION_ENCODINGS.length];
-}
-
-const HINT_DISMISSED_KEY = "ottr.encoding.hintDismissed";
-
-/** 已「不再提示」的 hostId 集（localStorage；「一次性可关」= 接受/忽略后同
- * host 不再弹，含换标签/重连）。 */
-export function loadDismissedEncodingHosts(): number[] {
-  try {
-    const raw = localStorage.getItem(HINT_DISMISSED_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((v): v is number => typeof v === "number") : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistDismissedEncodingHosts(ids: number[]): void {
-  try {
-    localStorage.setItem(HINT_DISMISSED_KEY, JSON.stringify(ids));
-  } catch {
-    // 持久化失败不阻塞提示条
-  }
-}
-
-/** `ottr://encoding-hint` 事件载荷（Rust EncodingHintPayload 同构）。 */
-export interface EncodingHintPayload {
-  /** Rust 会话 id（按 rustId 反查会话）。 */
-  id: string;
-  /** 固定 "gbk"（Rust 侧仅 detect_hint 命中 GBK 家族才发事件）。 */
-  encoding: "gbk";
-}
-
-export interface SessionSettings {
-  /** 自动重连上限（简报默认 5）。 */
-  maxReconnectAttempts: number;
-}
-
-// --- 常量与纯函数（可测面） --------------------------------------------------
-
-/** 重连退避基数/封顶（简报：1/2/4/8/16/30s 封顶）。 */
-export const RETRY_BASE_MS = 1_000;
-export const RETRY_CAP_MS = 30_000;
-
-/** 第 attempt 次（1 起）重连前的等待：2^(n-1) 秒，30s 封顶。 */
-export function reconnectDelayMs(attempt: number): number {
-  return Math.min(RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1), RETRY_CAP_MS);
-}
-
-export const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5;
-
-/** settings 迁移点（Task 8 settings 表落地后改走 vault；注释钉住） */
-const SETTINGS_KEY = "ottr.settings.session";
-/** 会话恢复迁移点（同上）：open_host_ids 暂存 localStorage。 */
-export const OPEN_TABS_KEY = "ottr.session.openHostIds";
-
-function loadSettings(): SessionSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<SessionSettings>;
-      if (typeof parsed.maxReconnectAttempts === "number" && parsed.maxReconnectAttempts >= 0) {
-        return { maxReconnectAttempts: parsed.maxReconnectAttempts };
-      }
-    }
-  } catch {
-    // 损坏/不可用 → 默认值
-  }
-  return { maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS };
-}
-
-function loadOpenTabIds(): number[] {
-  try {
-    const raw = localStorage.getItem(OPEN_TABS_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((v): v is number => typeof v === "number");
-  } catch {
-    return [];
-  }
-}
-
-function persistOpenTabs(sessions: Session[]): void {
-  // 只持久化标签根（paneOf=null）：分屏 pane 属于标签内部布局，恢复时由用户重开
-  try {
-    localStorage.setItem(
-      OPEN_TABS_KEY,
-      JSON.stringify(sessions.filter((s) => s.paneOf === null).map((s) => s.hostId)),
-    );
-  } catch {
-    // 持久化失败不阻塞会话管理
-  }
-}
-
-/** Rust Raw 帧应为 ArrayBuffer（Phase 0 定案）；string 仅 base64 fallback 时出现。 */
-export function toBytes(m: unknown): Uint8Array {
-  if (m instanceof ArrayBuffer) return new Uint8Array(m);
-  if (m instanceof Uint8Array) return m;
-  if (typeof m === "string") {
-    const bin = atob(m);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
-  }
-  throw new Error(`unexpected channel message type: ${typeof m}`);
-}
-
-// --- 终端 sink 与计时器（非响应式，模块级注册表） ----------------------------
-
-/** 每会话的终端写入口 + 尺寸（SessionTerminal 挂载时注册）。 */
-export interface TerminalSink {
-  write: (bytes: Uint8Array) => void;
-  /** 当前 cols/rows（attach 时取；未挂载回落 80x24）。 */
-  getSize: () => { cols: number; rows: number };
-}
-
-const sinks = new Map<string, TerminalSink>();
-const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
-/** 每会话最近一次下发的 PTY 尺寸（缺陷 34：同尺寸不去重会多打无谓重绘）。
- * 键 = 前端会话 id，值绑定 rustId——重连换新 PTY（新进程按 attach 尺寸重建，
- * 可能又是 2×1/80×24）时必须重发，绝不能按「会话 id + 尺寸」跨连接去重。 */
-const lastResize = new Map<string, { rustId: string; size: string }>();
-
-export function registerSink(sessionId: string, sink: TerminalSink): void {
-  sinks.set(sessionId, sink);
-}
-export function unregisterSink(sessionId: string): void {
-  sinks.delete(sessionId);
-  lastResize.delete(sessionId);
-}
-
-/** PTY 尺寸变更（缺陷 34）：fit 后把真实 cols/rows 投给 Rust
- * `resize_session`（挂起槽 → 转发循环 window_change）。守卫：会话在册且
- * rustId 已落地（connecting 期调用落空——fit 是视觉层语义，不打扰）；
- * 同一 rustId 上同尺寸去重（每次布局触发的 fit 不重复下发），rustId 变化
- * （重连 = 新 PTY 进程）必然重发。fire-and-forget：失败静默（会话可能刚断开）。 */
-export function resizeSession(
-  sessionId: string,
-  cols: number,
-  rows: number,
-): void {
-  const session = useSessionStore
-    .getState()
-    .sessions.find((x) => x.id === sessionId);
-  if (!session?.rustId || cols <= 0 || rows <= 0) return;
-  const size = `${cols}x${rows}`;
-  const last = lastResize.get(sessionId);
-  if (last && last.rustId === session.rustId && last.size === size) return;
-  lastResize.set(sessionId, { rustId: session.rustId, size });
-  void invoke("resize_session", { id: session.rustId, cols, rows }).catch(
-    () => {},
-  );
-}
-
-/** host key 拒绝的可识别错误串（Rust Error::HostKeyRejected Display 前缀）。 */
-export function isHostKeyRejection(err: string): boolean {
-  return err.includes("host key rejected");
-}
-
-// --- 会话结束钩子（Phase 2 Task 7 会话纪要）----------------------------------
-// 「会话收尾」三时机（closeTab / disconnect / 自动重连耗尽转 disconnected）向
-// App 注入的钩子派发一次（消费方 = src/ai/summary.ts onSessionEnded，异步生成
-// 会话纪要）。store 保持纯状态机、不反向依赖 AI 链路（setAiSettingsOpener 同
-// 惯例）；钩子异常绝不反噬状态机（closeTab/disconnect 是用户交互主路径）。
-
-/** 会话收尾信息（钩子入参；纪要生成链只需要归属三元组）。 */
-export interface SessionEndInfo {
-  hostId: number;
-  /** 前端会话 id（标签 uuid，跨重连稳定——history.session_id 同源）。 */
-  id: string;
-  hostName: string;
-}
-
-let sessionEndHook: ((info: SessionEndInfo) => void) | null = null;
-
-/** 注入/摘除会话结束钩子（App 挂载时接 onSessionEnded；null = 摘除）。 */
-export function setSessionEndHook(fn: ((info: SessionEndInfo) => void) | null): void {
-  sessionEndHook = fn;
-}
-
-/** 会话收尾派发（同步返回；钩子自身负责 fire-and-forget 与静默）。 */
-function emitSessionEnded(session: Session): void {
-  const hook = sessionEndHook;
-  if (!hook) return;
-  try {
-    hook({ hostId: session.hostId, id: session.id, hostName: session.hostName });
-  } catch (e) {
-    console.warn("[session] end hook failed:", e);
-  }
-}
+export * from "./types";
+export * from "./encoding";
+export * from "./retry";
+export * from "./terminal";
 
 // --- store ------------------------------------------------------------------
 
@@ -476,6 +224,8 @@ function cancelAttachWatchdog(id: string): void {
     attachWatchdogs.delete(id);
   }
 }
+
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],

@@ -1,0 +1,135 @@
+/* --- Phase 3 Task 5（B3）：会话录制开关 + 回放器 --------------------------- */
+
+/* 工具栏录制开关（view-switch 同款尺寸语言；录制中红点亮起） */
+.record-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75em;
+  padding: 0.15em 0.6em;
+  margin-right: 8px;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.record-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.record-toggle-dot {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: transparent;
+}
+.record-toggle[data-active="true"] {
+  color: var(--color-danger, #d33);
+  border-color: var(--color-danger, #d33);
+}
+.record-toggle[data-active="true"] .record-toggle-dot {
+  background: var(--color-danger, #d33);
+}
+
+/* ⌘R「录制」页签命中行 */
+.recording-item .recording-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.recording-badge {
+  color: var(--color-accent-text);
+  font-size: 0.8em;
+}
+.recording-item .history-cmd {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 回放器对话框 */
+.player-overlay {
+  z-index: 60;
+}
+.recording-player {
+  width: min(860px, 92vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.recording-player-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.recording-player-title {
+  font-weight: 600;
+}
+.recording-player-meta {
+  flex: 1;
+  color: var(--fg-muted);
+  font-size: 0.8em;
+}
+.recording-player-close {
+  box-shadow: none;
+  padding: 0.1em 0.5em;
+}
+.recording-player-term {
+  height: 55vh;
+  overflow: auto;
+  background: var(--bg-terminal, #101418);
+  border-radius: 6px;
+  padding: 4px;
+}
+.recording-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recording-player-play {
+  box-shadow: none;
+  padding: 0.1em 0.6em;
+}
+.recording-player-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+  font-size: 0.8em;
+  min-width: 44px;
+  text-align: center;
+}
+.recording-player-seek {
+  flex: 1;
+}
+.recording-player-speeds {
+  display: flex;
+  gap: 2px;
+}
+.recording-player-speeds button {
+  font-size: 0.75em;
+  padding: 0.1em 0.45em;
+  color: var(--fg-muted);
+  box-shadow: none;
+}
+.recording-player-speeds button[data-active="true"] {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent-border);
+}
+.recording-player-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recording-player-exportmsg {
+  color: var(--fg-muted);
+  font-size: 0.78em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recording-player-hint {
+  color: var(--fg-muted);
+  font-size: 0.78em;
+  margin: 0;
+}
+

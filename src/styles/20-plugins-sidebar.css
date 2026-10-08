@@ -1,0 +1,101 @@
+/* --- Phase 4 Task 6（C3 foundation）：插件卡片侧栏（终端右栏，监控侧栏同构） -- */
+
+/* 折叠态：窄竖条按钮（贴监控侧栏内侧，开合状态 localStorage 记忆） */
+.plugin-rail {
+  flex: none;
+  width: 14px;
+  border: none;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--color-surface);
+  cursor: pointer;
+  padding: 0;
+}
+.plugin-rail:hover {
+  background: color-mix(in srgb, var(--color-accent-border) 85%, transparent);
+}
+
+/* 展开态：面板（监控侧栏同构：固定宽、独立滚动、表面色） */
+.plugin-sidebar {
+  flex: none;
+  width: 224px;
+  border-left: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--color-surface);
+}
+.plugin-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.plugin-title {
+  font-weight: 600;
+  flex: 1;
+}
+.plugin-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  color: var(--color-fg);
+}
+
+/* 卡片：插件贡献面容器（内置面 foundation；主题全走令牌） */
+.plugin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+.plugin-card-title {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.plugin-state {
+  color: var(--fg-muted);
+  font-size: 0.82em;
+  margin: 0;
+}
+.plugin-net-row {
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+}
+.plugin-cmd-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.plugin-cmd-label {
+  flex: none;
+  min-width: 4.5em;
+  font-size: 0.8em;
+  color: var(--fg-muted);
+}
+.plugin-cmd-text {
+  flex: 1;
+  font-size: 0.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plugin-cmd-copy {
+  flex: none;
+  border: 1px solid var(--border-subtle);
+  background: none;
+  color: var(--color-fg);
+  font-size: 0.78em;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 1px 6px;
+}
+.plugin-cmd-copy:hover {
+  background: color-mix(in srgb, var(--color-accent-border) 85%, transparent);
+}
+

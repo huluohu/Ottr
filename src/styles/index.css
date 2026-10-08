@@ -1,0 +1,30 @@
+/* App.css 拆分入口（2026-10-08 结构收敛遗留项②）：分节文件按原 App.css 顺序
+ * @import——拼接顺序 = 原单文件顺序，构建产物 CSS 逐字节一致（拆分前已校验）。
+ * 新增样式进对应分节文件；新分节按序号插入本清单。 */
+@import './00-base.css';
+@import './01-app-shell.css';
+@import './02-topbar-menu.css';
+@import './03-host-tree.css';
+@import './04-dialogs-palette.css';
+@import './05-form-sections.css';
+@import './06-import-dialog.css';
+@import './07-credentials-dialog.css';
+@import './08-command-palette.css';
+@import './09-history-search.css';
+@import './10-summary-tab.css';
+@import './11-nl-command-bar.css';
+@import './12-titlebar-theme.css';
+@import './13-terminal-tabs.css';
+@import './14-hostkey-dialog.css';
+@import './15-files-panel.css';
+@import './16-lock-security.css';
+@import './17-notification-center.css';
+@import './18-ai-panel.css';
+@import './19-monitor-sidebar.css';
+@import './20-plugins-sidebar.css';
+@import './21-overview-processes.css';
+@import './22-recording.css';
+@import './23-known-hosts.css';
+@import './24-sync.css';
+@import './25-base-controls.css';
+@import './26-dock-views.css';

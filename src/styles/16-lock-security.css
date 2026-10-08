@@ -1,0 +1,119 @@
+/* --- T11（A7）：锁定遮罩 + 安全设置对话框 --- */
+
+/* 锁定遮罩盖一切（对话框 z-index 50/99/100/101 之上）；卡片窄栏居中。 */
+.lock-screen {
+  z-index: 200;
+  align-items: center;
+}
+.lock-card {
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 忘记密码？引导（product-ready T5，BL-537 清偿）：link 式入口居中不抢解锁
+   主视觉；说明区就地展开（左对齐小字 + danger 二击确认按钮）。 */
+.lock-forgot {
+  align-self: center;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: 0.85em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.lock-forgot:hover {
+  color: var(--fg);
+}
+.lock-reset-panel {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.lock-reset-panel p {
+  margin: 0;
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+.lock-reset-panel p.lock-reset-title {
+  font-weight: 600;
+  opacity: 1;
+}
+
+/* 设置对话框：分节标题 + 行式布局（label 左 / 控件右）。 */
+.settings-dialog {
+  width: min(520px, 100%);
+}
+.settings-dialog h3 {
+  margin: 14px 0 6px;
+  font-size: 0.95em;
+  opacity: 0.8;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 4px;
+}
+.settings-dialog section:first-of-type h3 {
+  margin-top: 4px;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+}
+.settings-row > select {
+  min-width: 120px;
+}
+.settings-label {
+  flex: 0 0 auto;
+}
+.settings-hint {
+  margin: 2px 0 8px;
+  font-size: 0.88em;
+  opacity: 0.75;
+}
+
+/* 升级向导步骤区（password → progress → done）。 */
+.wizard-step {
+  /* box-sizing 口径统一（批次三 T3，ui1 T1 minor「3px 口径不一致」随手清）：
+   * 容器与内部表单控件一致 border-box——定宽受限时容器边框不外溢，控件满宽
+   * 不再与容器错位。 */
+  box-sizing: border-box;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-step label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.92em;
+}
+.wizard-step input,
+.wizard-step select,
+.wizard-step textarea {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* 模式徽标：keyring（中性）/ password（accent）。 */
+.vault-mode-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.88em;
+}
+.vault-mode-badge.vault-mode-password {
+  color: var(--color-accent-text, inherit);
+  border-color: currentColor;
+}
+

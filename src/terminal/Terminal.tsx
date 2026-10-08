@@ -59,13 +59,7 @@ import {
   SUDO_AUTOFILL_SETTING_KEY,
   type SudoSkipReason,
 } from "./SudoAutofill";
-import {
-  getSearch,
-  registerSearch,
-  unregisterSearch,
-  SearchController,
-  type SearchResultSummary,
-} from "./SearchAddon";
+import { registerSearch, unregisterSearch, SearchController } from "./SearchAddon";
 import { createTrzszController, type TrzszController } from "./trzsz/TrzszController";
 import { GhostController } from "./completion";
 import { completionHistory } from "../history/cache";
@@ -77,6 +71,25 @@ import {
   type MenuContext,
 } from "./ContextMenu";
 import { dividers, layout, leaf, type Divider, type Rect } from "./split";
+// 对话框/右键菜单/搜索栏组件自本文件拆出（2026-10-08 遗留项②）——
+// 公共 API 经下方再导出保持原路径（组件测试 import 零改动）。
+import { ContextMenuView } from "./ContextMenuView";
+import {
+  DangerHintBar,
+  EncodingHintBar,
+  PasteConfirmDialog,
+  TrzszDropDialog,
+  quotePathsForShell,
+} from "./dialogs";
+import { SearchBar } from "./SearchBar";
+export {
+  ContextMenuView,
+  DangerHintBar,
+  EncodingHintBar,
+  PasteConfirmDialog,
+  TrzszDropDialog,
+  quotePathsForShell,
+};
 
 /** 主题同步 xterm 配色（theme-suite T2.3：auto 按界面主题 id 取配套色板——
  * light/dark 沿用旧亮暗两套，oled/amethyst/verdant/glass 各取内置四套；选
@@ -98,173 +111,15 @@ export function applyTermTheme(
 // 会话编码状态在 SessionStore（Task 9）：T8 的临时 sessionEncoding 内存表已删，
 // 右键菜单/徽标/提示条统一走 store.setSessionEncoding（Rust 侧即切即生效）。
 
-// ---------------------------------------------------------------------------
-// 单会话终端（xterm 装配 + 状态横幅 + 右键菜单 + 粘贴确认）
-// ---------------------------------------------------------------------------
-
 interface MenuState {
   x: number;
   y: number;
   items: ContextMenuItem[];
 }
 
-/** 粘贴确认弹层（导出供组件测试；verdict 由 assessPaste 现算——纯函数单源）。 */
-export function PasteConfirmDialog({
-  text,
-  onConfirm,
-  onCancel,
-}: {
-  text: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation();
-  const verdict = assessPaste(text);
-  const preview = text.length > 400 ? `${text.slice(0, 400)}…` : text;
-  return (
-    <div className="overlay paste-confirm" role="dialog" aria-modal="true" aria-label={t("terminal.pasteTitle")}>
-      <div className="dialog paste-dialog" data-testid="paste-confirm">
-        <h2>{t("terminal.pasteTitle")}</h2>
-        {verdict.findings.length > 0 && (
-          <>
-            <p className="paste-warning">{t("terminal.pasteDanger")}</p>
-            <ul className="paste-findings" data-testid="paste-findings">
-              {verdict.findings.map((f) => (
-                <li key={f.kind}>
-                  <code>{f.excerpt}</code>
-                  {" — "}
-                  {t(`ai.danger.${f.kind}`, { defaultValue: f.kind })}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {verdict.multiline && <p>{t("terminal.pasteMultiline")}</p>}
-        <pre data-testid="paste-preview">{preview}</pre>
-        <div className="form-actions">
-          <button onClick={onCancel}>{t("common.cancel")}</button>
-          <button
-            className={verdict.level === "danger" ? "btn-danger" : "btn-accent"}
-            data-testid="paste-confirm-button"
-            onClick={onConfirm}
-          >
-            {t("terminal.pasteConfirm")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 编码检测提示条（Task 9，A9）：Rust detect_hint 命中 GBK 家族后展示
- * 「检测到 GBK 编码，切换？」；「切换」= acceptEncodingHint（切编码 + 同 host
- * 记一次性可关），「忽略」= dismissEncodingHint。 */
-export function EncodingHintBar({ sessionId }: { sessionId: string }) {
-  const { t } = useTranslation();
-  const hint = useSessionStore(
-    (s) => s.sessions.find((x) => x.id === sessionId)?.encodingHint ?? null,
-  );
-  if (!hint) return null;
-  return (
-    <div className="encoding-hint" data-testid="encoding-hint" role="status">
-      <span className="encoding-hint-text">
-        {t("terminal.encodingHint", { encoding: encodingName(hint) })}
-      </span>
-      <button
-        className="encoding-hint-accept"
-        data-testid="encoding-hint-accept"
-        onClick={() => useSessionStore.getState().acceptEncodingHint(sessionId)}
-      >
-        {t("terminal.encodingHintAccept", { encoding: encodingName(hint) })}
-      </button>
-      <button
-        className="encoding-hint-dismiss"
-        aria-label={t("terminal.encodingHintDismiss")}
-        data-testid="encoding-hint-dismiss"
-        onClick={() => useSessionStore.getState().dismissEncodingHint(sessionId)}
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-/** 危险输入提醒条（Phase 2 Task 11，B11）：当前输入行命中 danger red/yellow
- * 档时行内提示（限频由 InputDangerWatch 管）；回车执行/手动关闭即撤。 */
-export function DangerHintBar({
-  finding,
-  onDismiss,
-}: {
-  finding: DangerFinding;
-  onDismiss: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="danger-hint" data-testid="danger-hint" role="alert">
-      <span className="danger-hint-title">{t("terminal.dangerInputTitle")}</span>
-      <span className="danger-hint-text">
-        {t("terminal.dangerInputHint", {
-          rule: t(`ai.danger.${finding.kind}`, { defaultValue: finding.kind }),
-          excerpt: finding.excerpt,
-        })}
-      </span>
-      <button
-        data-testid="danger-hint-dismiss"
-        aria-label={t("terminal.dangerInputDismiss")}
-        onClick={onDismiss}
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-/** 终端区拖拽落点对话框（Phase 2 Task 4，B10 下半）：文件拖入终端 pane 后询问
- * 「trz 上传」（TrzszController.uploadFiles，远端须装 trzsz）或「插入路径」
- * （单引号转义后 term.paste，与 SFTP 上传无关的纯文本插入）。 */
-export function TrzszDropDialog({
-  paths,
-  onUpload,
-  onInsert,
-  onCancel,
-}: {
-  paths: string[];
-  onUpload: () => void;
-  onInsert: () => void;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation();
-  const names = paths.map((p) => p.split("/").pop() ?? p).join("、");
-  return (
-    <div className="overlay" role="presentation" onMouseDown={onCancel}>
-      <div
-        className="dialog trzsz-drop-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("terminal.trzszDropAria")}
-        onMouseDown={(e) => e.stopPropagation()}
-        data-testid="trzsz-drop-dialog"
-      >
-        <h2>{t("terminal.trzszDropTitle")}</h2>
-        <p data-testid="trzsz-drop-files">{t("terminal.trzszDropHint", { count: paths.length, names })}</p>
-        <div className="form-actions">
-          <button onClick={onCancel}>{t("common.cancel")}</button>
-          <button data-testid="trzsz-drop-insert" onClick={onInsert}>
-            {t("terminal.trzszDropInsert")}
-          </button>
-          <button className="btn-accent" data-testid="trzsz-drop-upload" onClick={onUpload}>
-            {t("terminal.trzszDropUpload")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 拖拽路径 → shell 安全插入形态（单引号包裹，内部 ' 转义为 '\''）。 */
-export function quotePathsForShell(paths: string[]): string {
-  return paths.map((p) => `'${p.replace(/'/g, `'\\''`)}'`).join(" ");
-}
+// ---------------------------------------------------------------------------
+// 单会话终端（xterm 装配 + 状态横幅 + 右键菜单 + 粘贴确认）
+// ---------------------------------------------------------------------------
 
 export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
@@ -883,143 +738,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   );
 }
 
-/** 右键菜单渲染（含一级子菜单：编码）。纯展示：动作经 onAction(id) 上抛。 */
-export function ContextMenuView({
-  x,
-  y,
-  items,
-  onAction,
-  testPrefix,
-}: {
-  x: number;
-  y: number;
-  items: ContextMenuItem[];
-  onAction: (id: string) => void;
-  testPrefix: string;
-}) {
-  const [openSub, setOpenSub] = useState<string | null>(null);
-  const { t } = useTranslation();
-  return (
-    <div
-      className="ctx-menu"
-      role="menu"
-      aria-label={t("terminal.menuAria")}
-      style={{ left: x, top: y }}
-      data-testid={`ctx-menu-${testPrefix}`}
-    >
-      {items.map((item) => (
-        <div
-          key={item.id}
-          className="ctx-menu-row"
-          onMouseEnter={() => setOpenSub(item.children ? item.id : null)}
-        >
-          <button
-            role="menuitem"
-            className={`ctx-menu-item${item.danger ? " danger" : ""}`}
-            data-checked={item.checked === true}
-            disabled={item.disabled === true}
-            data-testid={`ctx-${item.id}`}
-            onClick={() => {
-              if (item.children) {
-                setOpenSub(openSub === item.id ? null : item.id);
-              } else {
-                onAction(item.id);
-              }
-            }}
-          >
-            <span>{item.label}</span>
-            <span className="ctx-hint">{item.children ? "›" : item.checked ? "✓" : ""}</span>
-          </button>
-          {item.children && openSub === item.id && (
-            <div className="ctx-submenu" role="menu">
-              {item.children.map((sub) => (
-                <button
-                  key={sub.id}
-                  role="menuitem"
-                  className="ctx-menu-item"
-                  data-checked={sub.checked === true}
-                  data-testid={`ctx-${sub.id}`}
-                  onClick={() => onAction(sub.id)}
-                >
-                  <span>{sub.label}</span>
-                  <span className="ctx-hint">{sub.checked ? "✓" : ""}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // 分屏主区（布局渲染 + 分隔条拖拽 + 搜索栏 + ⌘F）
 // ---------------------------------------------------------------------------
 
-function SearchBar({ sessionId }: { sessionId: string }) {
-  const { t } = useTranslation();
-  const [query, setQuery] = useState("");
-  const [summary, setSummary] = useState<SearchResultSummary | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-
-  function doSearch(dir: "next" | "prev") {
-    if (query === "") return;
-    const ctrl = getSearch(sessionId);
-    if (!ctrl) return;
-    const found = dir === "next" ? ctrl.findNext(query) : ctrl.findPrevious(query);
-    setSummary(
-      ctrl.lastResult ?? (found ? null : { resultIndex: -1, resultCount: 0 }),
-    );
-  }
-
-  function close() {
-    getSearch(sessionId)?.close();
-    useSessionStore.getState().openSearch(null);
-  }
-
-  return (
-    <div className="search-bar" data-testid="search-bar" role="search">
-      <input
-        ref={inputRef}
-        value={query}
-        placeholder={t("terminal.searchPlaceholder")}
-        data-testid="search-input"
-        onChange={(e) => setQuery(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            doSearch(e.shiftKey ? "prev" : "next");
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            close();
-          }
-        }}
-      />
-      <button data-testid="search-prev" aria-label={t("terminal.searchPrev")} onClick={() => doSearch("prev")}>
-        ↑
-      </button>
-      <button data-testid="search-next" aria-label={t("terminal.searchNext")} onClick={() => doSearch("next")}>
-        ↓
-      </button>
-      <span className="search-count" data-testid="search-count">
-        {summary === null
-          ? ""
-          : summary.resultCount > 0 && summary.resultIndex >= 0
-            ? `${summary.resultIndex + 1}/${summary.resultCount}`
-            : t("terminal.searchNoResult")}
-      </span>
-      <button data-testid="search-close" aria-label={t("common.close")} onClick={close}>
-        ×
-      </button>
-    </div>
-  );
-}
 
 /** 分屏终端主区（App.tsx 挂载）。bounds 驱动纯布局（split.ts），分隔条拖拽
  * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。 */

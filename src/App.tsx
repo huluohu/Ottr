@@ -59,12 +59,17 @@ import {
   warnShortcutConflicts,
   type ActionId,
 } from "./shortcuts/registry";
-import { ThemeProvider, useTheme, syncThemeFromVault, type ThemeMode } from "./theme/ThemeContext";
+import {
+  ThemeProvider,
+  useTheme,
+  syncThemeFromVault,
+  THEME_IDS,
+} from "./theme/ThemeContext";
 import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { useVaultStore } from "./vault/store";
 import { vaultApi, type Host } from "./vault/api";
 import "./theme/tokens.css";
-import "./App.css";
+import "./styles/index.css";
 
 // 开发期哨兵：键位表冲突即 console.warn（见 registry.ts）。
 warnShortcutConflicts();
@@ -77,14 +82,6 @@ const IS_TAURI = "__TAURI_INTERNALS__" in window;
 
 // A12：macOS 原生菜单动作回传事件（Rust menu.rs 把 ActionId 字符串转发过来）。
 const MENU_ACTION_EVENT = "ottr://menu-action";
-
-// 主题三态（A10 沿用）：Phase 5 T1 顶栏收纳后由三联按钮改为单按钮下拉——
-// 按钮面显示当前模式，菜单内三选一（亮 / 暗 / 跟随系统）。
-const THEME_MODES: { value: ThemeMode; labelKey: string }[] = [
-  { value: "light", labelKey: "settings.themeLight" },
-  { value: "dark", labelKey: "settings.themeDark" },
-  { value: "system", labelKey: "settings.themeSystem" },
-];
 
 // --- 顶栏下拉菜单（Phase 5 T1 顶栏收纳） --------------------------------------
 //
@@ -174,26 +171,26 @@ function TopbarMenu({
   );
 }
 
-/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 三模式三选一。
- * theme-suite T2：mode 扩到七主题 id 后，快切菜单仍只列亮/暗/系统三键（完整
- * 七选在设置页主题网格）；mode 为新 id 时按钮面回退该 id 词典名（不误标系统）。 */
+/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 全部主题单选。
+ * 2026-10-08 用户口径：快切菜单同步七主题全集（此前只列亮/暗/系统三键，
+ * 七选在设置页网格——两处不同步被判定为缺陷）；全集 = THEME_IDS 单一来源，
+ * 与设置页网格同序同词（settings.themes.<id>）。 */
 function ThemeMenu() {
   const { mode, setMode } = useTheme();
   const { t } = useTranslation();
-  const labelKey =
-    THEME_MODES.find((m) => m.value === mode)?.labelKey ?? `settings.themes.${mode}`;
+  const labelKey = `settings.themes.${mode}`;
   return (
     <TopbarMenu
       label={t(labelKey)}
       ariaLabel={t("settings.theme")}
       buttonTestid="topbar-theme"
       menuTestid="topbar-theme-menu"
-      items={THEME_MODES.map(({ value, labelKey }) => ({
-        key: value,
-        label: t(labelKey),
-        testid: `topbar-theme-${value}`,
-        active: mode === value,
-        onSelect: () => setMode(value),
+      items={THEME_IDS.map((id) => ({
+        key: id,
+        label: t(`settings.themes.${id}`),
+        testid: `topbar-theme-${id}`,
+        active: mode === id,
+        onSelect: () => setMode(id),
       }))}
     />
   );

@@ -42,10 +42,15 @@ ottr-term = { path = "../crates/ottr-term" }
 # Task 10（A5）：SFTP 传输/文件操作（FileTransfer trait + SftpClient ops）
 ottr-transfer = { path = "../crates/ottr-transfer" }
 # Task 5：数据层接线（vault 命令 + ssh-config 导入）
-ottr-vault = { path = "../crates/ottr-vault" }
+ottr-vault = { path = "../crates/ottr-vault", features = ["specta"] }
 # Phase 3 Task 1（B4 上半）：监控采集（/proc|df 解析 + 抖动调度 + 采样循环）
 ottr-monitor = { path = "../crates/ottr-monitor" }
 ottr-cron = { path = "../crates/ottr-cron" }
+# TS 类型绑定生成（tauri-specta 试点，2026-10-08）：仅 tests/ts_bindings.rs 消费，
+# 生产 Builder 链零改动；推广路径见 docs/structure-refactor-plan.md §2。
+tauri-specta = { version = "2.0.0-rc.25", features = ["typescript"] }
+specta = "2.0.0-rc.25"
+specta-typescript = "0.0.12"
 # Phase 2 Task 1：CancellationToken（ForwardManager 运行实例取消树）。
 tokio-util = { workspace = true }
 # B5（Phase 3 Task 3）：SMTP 通知渠道——lettre 异步发送（tokio1 运行时对齐

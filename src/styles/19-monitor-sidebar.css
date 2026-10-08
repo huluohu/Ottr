@@ -1,0 +1,92 @@
+/* --- Phase 3 Task 1（B4 上半）：监控侧栏（终端右栏折叠面板） --------------- */
+
+/* 折叠态：窄竖条按钮（贴右缘，开合状态 localStorage 记忆） */
+.monitor-rail {
+  flex: none;
+  width: 14px;
+  border: none;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--color-surface);
+  cursor: pointer;
+  padding: 0;
+}
+.monitor-rail:hover {
+  background: color-mix(in srgb, var(--color-accent-border) 85%, transparent);
+}
+
+/* 展开态：右栏面板（AI 面板同构：固定宽、独立滚动、表面色） */
+.monitor-sidebar {
+  flex: none;
+  width: 224px;
+  border-left: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--color-surface);
+}
+.monitor-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.monitor-title {
+  font-weight: 600;
+  flex: 1;
+}
+.monitor-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  color: var(--color-fg);
+}
+.monitor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.monitor-metric-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.monitor-metric-label {
+  font-size: 0.82em;
+  color: var(--fg-muted);
+  flex: 1;
+}
+.monitor-metric-value {
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+}
+.monitor-state {
+  color: var(--fg-muted);
+  font-size: 0.84em;
+  margin: 4px 0;
+}
+
+/* sparkline（零依赖 SVG）：色板全走主题令牌（暗/亮主题自跟随） */
+.monitor-spark {
+  display: block;
+  width: 100%;
+  height: 28px;
+}
+.monitor-spark-line {
+  stroke: var(--color-accent-border);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.monitor-spark-fill-strong {
+  stop-color: var(--color-accent-border);
+  stop-opacity: 0.28;
+}
+.monitor-spark-fill-faint {
+  stop-color: var(--color-accent-border);
+  stop-opacity: 0.02;
+}
+

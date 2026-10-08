@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 
-import appCss from "../App.css?raw";
+import { allAppCss } from "../styles/all-css";
 import "../i18n";
 import { OverviewPage } from "../monitor/OverviewPage";
 import { BatchPanel } from "../batch/BatchPanel";
@@ -85,7 +85,7 @@ describe("总览主区视图（宽屏利用）", () => {
   });
 
   it("CSS 规约：卡片网格 auto-fill minmax(280px,1fr)——列数随主区宽度自适应", () => {
-    const body = ruleBody(appCss, ".overview-grid {");
+    const body = ruleBody(allAppCss(), ".overview-grid {");
     expect(body).toContain("display: grid");
     expect(body).toContain("grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))");
   });
@@ -118,17 +118,17 @@ describe("批量主区视图（宽屏三栏）", () => {
   });
 
   it("CSS 规约：三栏 = 240px | 1fr | 1fr；窄屏 (max-width:1000px) 退化单列", () => {
-    const two = ruleBody(appCss, ".batch-cols {");
+    const two = ruleBody(allAppCss(), ".batch-cols {");
     expect(two).toContain("display: grid");
     expect(two).toContain("grid-template-columns: 240px minmax(0, 1fr)");
 
-    const three = ruleBody(appCss, '.batch-cols[data-has-results="true"] {');
+    const three = ruleBody(allAppCss(), '.batch-cols[data-has-results="true"] {');
     expect(three).toContain("grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr)");
 
     // 窄屏退化单列：媒体查询内两选择器都收敛到单列
-    const mq = appCss.indexOf("@media (max-width: 1000px)");
+    const mq = allAppCss().indexOf("@media (max-width: 1000px)");
     expect(mq, "App.css 缺窄屏媒体查询").toBeGreaterThanOrEqual(0);
-    const mqBody = appCss.slice(mq, appCss.indexOf("}", appCss.indexOf(".batch-cols[data-has-results", mq)));
+    const mqBody = allAppCss().slice(mq, allAppCss().indexOf("}", allAppCss().indexOf(".batch-cols[data-has-results", mq)));
     expect(mqBody).toContain(".batch-cols");
     expect(mqBody).toContain("grid-template-columns: minmax(0, 1fr)");
   });

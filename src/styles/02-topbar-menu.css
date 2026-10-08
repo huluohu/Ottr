@@ -1,0 +1,151 @@
+/* --- 顶栏下拉（Phase 5 T1）：「工具」菜单 + 主题单按钮下拉共用壳 ---
+   层次对齐 notify-panel（z 60）；绝对定位弹出，不挤压栏面布局。 */
+.topbar-menu {
+  position: relative;
+}
+.topbar-menu > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8em;
+  box-shadow: none;
+  color: var(--fg-muted);
+}
+.topbar-caret {
+  font-size: 0.75em;
+  line-height: 1;
+}
+.topbar-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px var(--scrim);
+  padding: 4px;
+  z-index: 60;
+}
+.topbar-menu-list button {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: inherit;
+}
+.topbar-menu-list button:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+}
+.topbar-menu-list button[data-active="true"] {
+  color: var(--color-accent-text);
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.sidebar {
+  flex: none;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 12px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.sidebar-resizer {
+  flex: none;
+  width: 5px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  z-index: 1;
+}
+.sidebar-resizer:hover {
+  background: var(--border-subtle);
+}
+
+.main-area {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+.main-error {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: 8px;
+  color: var(--color-danger);
+}
+.main-placeholder {
+  margin: auto;
+  text-align: center;
+  color: var(--fg-muted);
+}
+.main-placeholder h2 {
+  margin: 4px 0;
+  color: var(--color-fg);
+}
+.placeholder-caption {
+  margin: 0;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.placeholder-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--color-fg);
+}
+
+/* 空态快捷操作卡（ui-batch2 T3，审计 A4）：零会话占位面的三入口
+   （连接夹具 / 新建主机 / ⌘K 命令面板）——卡片式按钮，令牌全走语义面。 */
+.main-empty-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.main-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 176px;
+  padding: 14px 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  cursor: pointer;
+}
+.main-empty-card:hover {
+  border-color: var(--color-accent-border);
+}
+.main-empty-card-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.main-empty-card-desc {
+  color: var(--fg-muted);
+  font-size: 11.5px;
+}
+.main-empty-kbd {
+  font: inherit;
+  font-size: 0.9em;
+  padding: 0 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--fg-muted);
+}
+

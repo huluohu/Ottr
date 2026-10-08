@@ -17,11 +17,10 @@
 //     flex:1 与面板 50/50 均分主区）。
 // 局限说明（沿 ui-no-native-controls 先例）：grep 式文本扫描防「规则被顺手
 // 删/改名」这一主要复发路径；几何级语义仍靠真窗截图与布局回归兜底。
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { allAppCss } from "../styles/all-css";
 
-const css = readFileSync(join("src", "App.css"), "utf8");
+const css = allAppCss();
 
 describe("term 隐藏面 CSS 契约（ui2 T1，审计 48/49 守卫）", () => {
   it("隐藏 holder 内 pane 一律 visibility:hidden（压过 data-active 翻回）", () => {

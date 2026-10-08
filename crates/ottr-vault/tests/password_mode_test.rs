@@ -611,6 +611,230 @@ fn vault_db_file_is_0600() {
     assert_eq!(mode & 0o777, 0o600, "vault.db must be owner-only (0600)");
 }
 
+// ---------------------------------------------------------------------------
+// 降级（password → keyring）：clear_master_password（no-lock 任务，2026-10-05）
+// 崩溃安全核心：先写钥匙链（事务前，失败/崩溃 = 密码模式完好可重试）→
+// 单事务重密封 + meta 翻转 → 提交后切内存态。镜像 set_master_password 三件套。
+// ---------------------------------------------------------------------------
+
+/// set → clear → reopen：降级后 keyring 模式重开（新钥匙链钥）读数据一致、
+/// meta 无 salt/verifier 残留、旧钥匙链条目被新条目覆盖。
+#[test]
+fn downgrade_set_then_clear_reseals_and_reopens_in_keyring_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
+    let (id_a, id_b) = seed_fixed_credentials(&vault);
+    let old_key = storage.load().unwrap();
+    vault
+        .set_master_password(GOOD_PASSWORD, &mut |_, _| {})
+        .unwrap();
+    assert_eq!(vault.mode(), KeyMode::Password);
+    drop(vault);
+
+    // 重开（password 模式）→ 解锁 → 降级。open 时残留钥匙链条目被兜底清理
+    // （与升级同款），随后降级写回新钥——storage 是降级后的信任根。
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
+    vault.unlock_with_password(GOOD_PASSWORD).unwrap();
+    vault
+        .clear_master_password(&storage, &mut |_, _| {})
+        .unwrap();
+
+    // 提交后内存态已切：keyring 模式 + 解锁态，同会话数据可解。
+    assert_eq!(vault.mode(), KeyMode::Keyring, "降级必须翻转模式");
+    assert!(!vault.is_locked(), "keyring 模式无锁概念（open 即解锁）");
+    assert_eq!(
+        Credentials::reveal(&vault, id_a, ottr_vault::SecretField::Secret)
+            .unwrap()
+            .as_deref(),
+        Some("s3cret-password-α"),
+        "降级后同会话数据必须可解（新钥密封）"
+    );
+    // meta 翻转：mode=keyring、salt/verifier 清除（与密文同事务，无中间态）。
+    let mode: String = vault
+        .connection()
+        .query_row(
+            "SELECT value FROM meta WHERE key = 'master_key.mode'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(mode, "keyring", "meta 模式行必须落 keyring");
+    let leftovers: i64 = vault
+        .connection()
+        .query_row(
+            "SELECT count(*) FROM meta WHERE key IN ('master_key.kdf_salt','master_key.verifier')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        leftovers, 0,
+        "降级必须清除 salt/verifier（密码派生参数不残留）"
+    );
+    // 钥匙链条目 = 新随机钥（非旧钥、非密码材料）。
+    let new_key = storage.load().unwrap().expect("降级必须写回钥匙链");
+    assert_ne!(new_key, old_key.expect("升级前 keyring 条目存在"));
+    drop(vault);
+
+    // 重开（keyring 模式）：免密解锁、固定凭据集逐字段与迁移前一致。
+    let reopened = Vault::open_with(dir.path(), &storage).unwrap();
+    assert_eq!(reopened.mode(), KeyMode::Keyring);
+    assert!(!reopened.is_locked(), "keyring 模式重开即解锁");
+    for (id, field, want) in [
+        (id_a, ottr_vault::SecretField::Secret, "s3cret-password-α"),
+        (
+            id_a,
+            ottr_vault::SecretField::Passphrase,
+            "folder-passphrase",
+        ),
+        (
+            id_a,
+            ottr_vault::SecretField::TotpSecret,
+            "JBSWY3DPEHPK3PXP",
+        ),
+        (
+            id_b,
+            ottr_vault::SecretField::Secret,
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nseed-b\n-----END OPENSSH PRIVATE KEY-----",
+        ),
+    ] {
+        assert_eq!(
+            Credentials::reveal(&reopened, id, field)
+                .unwrap()
+                .as_deref(),
+            Some(want),
+            "{field:?} of cred {id}"
+        );
+    }
+    let host = &Hosts::list(&reopened).unwrap()[0];
+    assert_eq!(host.credential_id, Some(id_a), "元数据面完整");
+}
+
+/// 门卫：keyring 模式调用拒绝（InvalidInput——无可降级）；锁定态拒绝（Locked
+/// ——重密封需要旧钥）。锁定态拒绝后解锁仍可用（失败不破坏任何状态）。
+#[test]
+fn downgrade_rejects_keyring_mode_and_locked_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
+    assert!(
+        matches!(
+            vault.clear_master_password(&storage, &mut |_, _| {}),
+            Err(VaultError::InvalidInput(_))
+        ),
+        "keyring 模式无可降级，必须显式拒绝"
+    );
+
+    vault
+        .set_master_password(GOOD_PASSWORD, &mut |_, _| {})
+        .unwrap();
+    vault.lock();
+    assert!(
+        matches!(
+            vault.clear_master_password(&storage, &mut |_, _| {}),
+            Err(VaultError::Locked)
+        ),
+        "锁定态重密封无从取旧钥，必须拒绝"
+    );
+    vault.unlock_with_password(GOOD_PASSWORD).unwrap();
+    assert!(
+        vault
+            .clear_master_password(&storage, &mut |_, _| {})
+            .is_ok(),
+        "解锁后降级可用（锁定拒绝不破坏状态）"
+    );
+}
+
+/// storage.save 失败 → abort-safe：错误如实上抛、库原样（模式仍 password、
+/// 数据仍可用主密码解锁、meta 无残留）——事务尚未开始，什么都没发生。
+#[test]
+fn downgrade_aborts_when_keychain_save_fails_and_keeps_password_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
+    let (id_a, _) = seed_fixed_credentials(&vault);
+    vault
+        .set_master_password(GOOD_PASSWORD, &mut |_, _| {})
+        .unwrap();
+    // 预埋 salt/verifier 存在（降级事务本来要清掉它们）——abort 后必须原样。
+    let salt_before: i64 = vault
+        .connection()
+        .query_row(
+            "SELECT count(*) FROM meta WHERE key IN ('master_key.kdf_salt','master_key.verifier')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(salt_before, 2);
+
+    // 刻意损坏的 storage：save 恒败（模拟钥匙链拒绝访问）。
+    struct BrokenStorage;
+    impl KeyStorage for BrokenStorage {
+        fn load(&self) -> ottr_vault::Result<Option<String>> {
+            Ok(None)
+        }
+        fn save(&self, _secret: &str) -> ottr_vault::Result<()> {
+            Err(VaultError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "keychain denied",
+            )))
+        }
+        fn delete(&self) -> ottr_vault::Result<()> {
+            Ok(())
+        }
+    }
+    let err = vault
+        .clear_master_password(&BrokenStorage, &mut |_, _| {})
+        .unwrap_err();
+    assert!(matches!(err, VaultError::Io(_)), "实际 {err:?}");
+
+    assert_eq!(vault.mode(), KeyMode::Password, "失败降级不得翻转模式");
+    assert!(!vault.is_locked(), "失败降级不得动解锁态");
+    let leftovers: i64 = vault
+        .connection()
+        .query_row(
+            "SELECT count(*) FROM meta WHERE key IN ('master_key.kdf_salt','master_key.verifier')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(leftovers, 2, "失败降级不得清除 salt/verifier");
+    assert_eq!(
+        Credentials::reveal(&vault, id_a, ottr_vault::SecretField::Secret)
+            .unwrap()
+            .as_deref(),
+        Some("s3cret-password-α"),
+        "失败降级后旧钥必须原样可用"
+    );
+    // 可重试：换正常 storage 重跑 → 成功（中断安全闭环）。
+    vault
+        .clear_master_password(&storage, &mut |_, _| {})
+        .unwrap();
+    assert_eq!(vault.mode(), KeyMode::Keyring);
+}
+
+/// 进度回调：逐字段推进、次数 = 注册表非空字段总数、终值收口 (total, total)。
+#[test]
+fn downgrade_progress_callbacks_match_registry_total() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
+    seed_fixed_credentials(&vault); // A 三字段 + B 一字段 = 4
+    vault
+        .set_master_password(GOOD_PASSWORD, &mut |_, _| {})
+        .unwrap();
+
+    let mut progress = Vec::new();
+    vault
+        .clear_master_password(&storage, &mut |done, total| {
+            progress.push((done, total));
+        })
+        .unwrap();
+    assert_eq!(progress.len(), 4, "回调次数必须 = 重密封字段总数");
+    assert_eq!(progress.last(), Some(&(4, 4)), "进度终值必须收口在总数上");
+}
+
 /// BL-202：主密码最小长度计量 = Unicode 码点数（`chars().count()`），与前端
 /// 预检（SecuritySettings MIN_MASTER_PASSWORD，码点口径）同值同语义。
 /// 4 个增补平面字符（emoji，UTF-16 length 恰为 8）必须被权威校验拒绝；

@@ -44,7 +44,16 @@
     "terminalThemeImport": "导入配色文件…",
     "terminalThemeImported": "已导入 {{count}} 个配色，已选中第一个。",
     "terminalThemeImportFailed": "导入失败：{{message}}",
-    "sectionSync": "同步"
+    "sectionSync": "同步",
+    "themes": {
+      "system": "跟随系统",
+      "light": "亮色",
+      "dark": "暗色",
+      "oled": "暗黑 OLED",
+      "amethyst": "幻紫",
+      "verdant": "自然之灵",
+      "glass": "透明毛玻璃"
+    }
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -681,6 +690,16 @@
       "doneCount": "已重新加密 {{count}} 个密文字段，之后以主密码解锁。",
       "errTooShort": "主密码至少 {{min}} 位",
       "errMismatch": "两次输入不一致"
+    },
+    "downgrade": {
+      "start": "切换到免密模式…",
+      "stepConfirm": "输入当前主密码以确认切换（凭据将以新钥匙链密钥重新加密）",
+      "intro": "切换后主密钥改存系统钥匙链：启动不再需要密码，应用也不再自动锁定；安全性依赖本机系统账户。当前主密码将被移除。",
+      "confirm": "确认切换",
+      "stepProgress": "正在重新加密凭据…",
+      "stepDone": "已切换到免密模式",
+      "doneDesc": "主密钥已改存系统钥匙链：启动免密、凭据开箱即用；安全性依赖本机系统账户（拿到本机登录账户即能读取凭据）。",
+      "errEmpty": "请输入主密码"
     },
     "vaultInit": {
       "loading": "正在解锁数据保险库…",

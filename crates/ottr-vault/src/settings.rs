@@ -185,10 +185,16 @@ pub fn validate_known_setting(
             let s = value
                 .as_str()
                 .ok_or_else(|| "ui.theme expects a string".to_string())?;
-            if matches!(s, "light" | "dark" | "system") {
+            // theme-suite T2：白名单与前端 ThemeMode 对齐（七主题 id）。
+            if matches!(
+                s,
+                "light" | "dark" | "system" | "oled" | "amethyst" | "verdant" | "glass"
+            ) {
                 Ok(())
             } else {
-                Err(format!("ui.theme must be light|dark|system, got {s:?}"))
+                Err(format!(
+                    "ui.theme must be light|dark|system|oled|amethyst|verdant|glass, got {s:?}"
+                ))
             }
         }
         "ui.language" => {
@@ -239,5 +245,26 @@ mod tests {
             validate_known_setting(key, &serde_json::json!("many")).is_err(),
             "类型错拒绝"
         );
+    }
+
+    /// theme-suite T2（TDD 红）：ui.theme 白名单扩到七主题 id——四套新配色
+    /// （oled/amethyst/verdant/glass）与旧三值同等待遇；未知主题值仍拒绝。
+    #[test]
+    fn ui_theme_whitelist_covers_new_theme_ids() {
+        for id in [
+            "light", "dark", "system", "oled", "amethyst", "verdant", "glass",
+        ] {
+            assert!(
+                validate_known_setting("ui.theme", &serde_json::json!(id)).is_ok(),
+                "合法主题 id 放行: {id}"
+            );
+        }
+        for bad in ["solarized", "mono", "", "LIGHT"] {
+            assert!(
+                validate_known_setting("ui.theme", &serde_json::json!(bad)).is_err(),
+                "白名单外主题 id 拒绝: {bad:?}"
+            );
+        }
+        assert!(validate_known_setting("ui.theme", &serde_json::json!(1)).is_err());
     }
 }

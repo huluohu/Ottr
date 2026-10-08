@@ -18,6 +18,16 @@
   --scrim: color-mix(in srgb, var(--color-fg) 45%, transparent);
 }
 
+/* theme-suite T3（Glass 可读性兜底）：真透明主题下弹窗/scrim 若沿用半透明
+ * 派生面，内容会与桌面混叠不可读——glass 块把派生面提到近实底（对话框/scrim
+ * 高不透明；非玻璃面仍带 alpha 透出 vibrancy 模糊）。覆写与 :root 同特异性、
+ * 后置生效；合成参考见 tokens.css glass 块注释。 */
+[data-theme="glass"] {
+  --surface-raised: color-mix(in srgb, var(--color-fg) 6%, rgba(18, 13, 32, 0.97));
+  --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, rgba(18, 13, 32, 0.97));
+  --scrim: color-mix(in srgb, #050308 72%, transparent);
+}
+
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -3854,6 +3864,85 @@ button[data-active="true"] {
   border-color: var(--color-accent-border);
   color: var(--color-on-accent);
 }
+
+/* 主题网格卡片（theme-suite T2.4，设置页外观区）：每卡 = 迷你色板预览条
+ * （4 色块纯 CSS）+ 主题名；radio 选中态 = accent 描边。缩略色块是各主题
+ * 静态预览（不随当前主题走，值 = tokens.css 各块种子；展示用途的常量层）。 */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: none;
+  cursor: pointer;
+}
+.theme-card[aria-checked="true"] {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+.theme-card-preview {
+  display: flex;
+  gap: 3px;
+  height: 22px;
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.tp-swatch {
+  flex: 1;
+}
+.theme-card-name {
+  font-size: 12px;
+  color: var(--color-fg);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 跟随系统：左亮右暗拼接底 + 中性 swatch */
+.tp-system .tp-bg { background: linear-gradient(90deg, #faf7f1 50%, #0b2b33 50%); }
+.tp-system .tp-surface { background: linear-gradient(90deg, #ffffff 50%, #1e3c43 50%); }
+.tp-system .tp-fg { background: #5a6b70; }
+.tp-system .tp-accent { background: #14b8a6; }
+/* 亮色 */
+.tp-light .tp-bg { background: #faf7f1; }
+.tp-light .tp-surface { background: #ffffff; }
+.tp-light .tp-fg { background: #0f172a; }
+.tp-light .tp-accent { background: #14b8a6; }
+/* 暗色（surface = 白 8% 叠 water-900 的合成面） */
+.tp-dark .tp-bg { background: #0b2b33; }
+.tp-dark .tp-surface { background: #1e3c43; }
+.tp-dark .tp-fg { background: #f6e7d4; }
+.tp-dark .tp-accent { background: #5eead4; }
+/* 暗黑 OLED */
+.tp-oled .tp-bg { background: #000000; }
+.tp-oled .tp-surface { background: #0d0f12; }
+.tp-oled .tp-fg { background: #e5e7eb; }
+.tp-oled .tp-accent { background: #5eead4; }
+/* 幻紫（surface = fg 8% 叠 bg 合成面） */
+.tp-amethyst .tp-bg { background: #16102e; }
+.tp-amethyst .tp-surface { background: #2a2443; }
+.tp-amethyst .tp-fg { background: #e9e4f9; }
+.tp-amethyst .tp-accent { background: #a78bfa; }
+/* 自然之灵 */
+.tp-verdant .tp-bg { background: #f4f7f1; }
+.tp-verdant .tp-surface { background: #ffffff; }
+.tp-verdant .tp-fg { background: #1c2b22; }
+.tp-verdant .tp-accent { background: #2f855a; }
+/* 透明毛玻璃（半透明底示意；真效果见窗口 vibrancy/acrylic） */
+.tp-glass .tp-bg { background: rgba(28, 36, 48, 0.55); }
+.tp-glass .tp-surface { background: rgba(255, 255, 255, 0.14); }
+.tp-glass .tp-fg { background: #e6edf3; }
+.tp-glass .tp-accent { background: #93c5fd; }
 
 /* --- 右侧 dock 槽位 + 主区视图槽位（UI 批次一 Task 2；T4 承接实体）-------- *
  * dock：app-body 右缘停靠壳（sidebar | resizer | main-area | dock 四列 flex）。

@@ -179,12 +179,35 @@ pub fn vault_unlock(
     Ok(())
 }
 
+/// 开发/验收旁路开关（OTTR_DEV_UNLOCK 环境变量）的纯判定：仅值恰为 "1" 时真。
+/// 用途 = 本地开发与验收仪表化（截屏/自动化走查需要解锁态在长会话中稳定）：
+/// * [`vault_lock`] 开头命中 → 直接 Ok（不落锁、不发事件——幂等 no-op）；
+/// * security::autolock_minutes 开头命中 → 返回 None（失焦自动锁定调度整体
+///   禁用，计时器从不启动）。
+///
+/// **正常用户不受影响**：未设置该变量时两个 gate 与既往行为逐字节一致。
+///
+/// **披露边界**：旁路只防「再锁」（手动锁定/自动锁定），不解「已锁」——密码
+/// 模式已锁定的库仍需主密码解锁（验收/开发请用全新伪 home 数据目录，或先
+/// 解锁一次；钥匙链模式本无密码，天然不受影响）。
+///
+/// 纯函数带参测（三态单测见本模块 tests）：调用点传 `std::env::var_os` 结果，
+/// 本函数不读全局 env——测试不需要可变全局注入。
+pub(crate) fn dev_unlock_enabled(raw: Option<&std::ffi::OsStr>) -> bool {
+    raw.is_some_and(|v| v == std::ffi::OsStr::new("1"))
+}
+
 /// 手动锁定（password 模式）。幂等；成功才发 `ottr://vault-locked`
 /// （Task 14 快捷键挂同一命令）。keyring 模式无锁概念——**直接返回不发事件**
 /// （fix 1/5 M-1）：前端 LockScreen 只订阅事件置锁，keyring 模式带外调用若发
 /// 事件会弹一个永远解不开的锁屏（无解锁路径）。
 #[tauri::command]
 pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()> {
+    // OTTR_DEV_UNLOCK 旁路（本地开发/验收仪表化）：不落锁不发事件直接 Ok
+    //（语义见 dev_unlock_enabled 文档；正常用户未设置 = 走原路径）。
+    if dev_unlock_enabled(std::env::var_os("OTTR_DEV_UNLOCK").as_deref()) {
+        return Ok(());
+    }
     if state.0.mode() == KeyMode::Password {
         state.0.lock();
         let _ = app.emit("ottr://vault-locked", ());
@@ -225,6 +248,51 @@ pub fn vault_upgrade_to_master_password(
     }
     let _ = app.emit("ottr://vault-unlocked", ());
     Ok(fields)
+}
+
+/// 降级到免密钥匙链模式（password → keyring，设置页「切换到免密模式」向导）：
+/// 先验当前主密码（复用 [`Vault::unlock_with_password`] 校验路径——密码错
+/// 如实拒绝 [`VaultError::BadMasterPassword`]；已解锁态下该校验无副作用，
+/// 锁定态则顺带解锁——降级本就需要旧钥在内存），再调库层
+/// [`Vault::clear_master_password`]（单事务重密封 + meta 翻转，崩溃安全顺序
+/// 见 ottr-vault store.rs）。成功后发 `ottr://vault-unlocked`（降级后必为
+/// 解锁态，前端状态机单一收口置 unlocked + 重拉 vault 数据）。
+///
+/// `storage` 注入纪律同 [`wipe_vault_data`]：生产 = [`KeyringStorage::new(DEFAULT_SERVICE)`]，
+/// 测试 = InMemoryStorage（单测绝不碰真钥匙链）。
+/// 明文主密码的 IPC 副本边界与 [`vault_unlock`] / [`vault_upgrade_to_master_password`]
+/// 同一套（BL-202 成文）：不落盘、不进日志/事件/错误文案、不跨命令缓存。
+pub(crate) fn downgrade_to_keychain(
+    vault: &Vault,
+    storage: &dyn ottr_vault::master_key::KeyStorage,
+    password: &str,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<(), VaultError> {
+    vault.unlock_with_password(password)?;
+    vault.clear_master_password(storage, progress)
+}
+
+/// 降级命令（设置页「切换到免密模式」向导本体，password → keyring）：
+/// 重密封逐字段发 `ottr://reencrypt-progress`（与升级向导同款进度事件），
+/// 成功发 `ottr://vault-unlocked`。返回值无载荷（降级完成态由模式/事件表达）。
+#[tauri::command]
+pub fn vault_downgrade_to_keychain(
+    state: State<'_, VaultState>,
+    app: AppHandle,
+    password: String,
+) -> CmdResult<()> {
+    let storage =
+        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
+    let emitter = app.clone();
+    downgrade_to_keychain(&state.0, &storage, &password, &mut |done, total| {
+        let _ = emitter.emit(
+            "ottr://reencrypt-progress",
+            serde_json::json!({ "done": done, "total": total }),
+        );
+    })
+    .map_err(|e| e.to_string())?;
+    let _ = app.emit("ottr://vault-unlocked", ());
+    Ok(())
 }
 
 // --- settings（T11：theme/language 迁 vault + 安全配置）-----------------------
@@ -1144,5 +1212,98 @@ mod tests {
         // 的兜底面，静默 Ok 会伪装成「已重置」）。
         let missing = dir.path().join("does-not-exist");
         assert!(wipe_vault_data(&missing, &[&storage]).is_err());
+    }
+
+    // --- 降级到免密钥匙链模式（no-lock 任务，2026-10-05）----------------------
+
+    use ottr_vault::store::KeyMode as TestKeyMode;
+
+    /// 密码错误如实拒绝（BadMasterPassword 语义，防误触门卫）：错误上抛、
+    /// 模式仍 password、数据仍可用原密码解锁（校验失败不破坏任何状态）。
+    #[test]
+    fn downgrade_helper_rejects_wrong_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        let vault = Vault::open_password_only(dir.path()).unwrap();
+        vault.unlock_with_password("correct horse").unwrap(); // 首解锁 = 设主密码
+        assert_eq!(vault.mode(), TestKeyMode::Password);
+
+        let err =
+            downgrade_to_keychain(&vault, &storage, "wrong password", &mut |_, _| {}).unwrap_err();
+        assert!(matches!(err, VaultError::BadMasterPassword), "实际 {err:?}");
+        assert_eq!(vault.mode(), TestKeyMode::Password, "拒绝不得翻转模式");
+        assert!(
+            storage.load().unwrap().is_none(),
+            "拒绝路径不得写钥匙链（新钥未生成/未落）"
+        );
+        vault.unlock_with_password("correct horse").unwrap();
+        assert!(!vault.is_locked(), "失败后原密码解锁仍可用");
+    }
+
+    /// 成功路径：验密 → 库层降级 → keyring 模式解锁态、钥匙链新钥就位、
+    /// 数据跨模式重密封后可解。
+    #[test]
+    fn downgrade_helper_success_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        let vault = Vault::open_password_only(dir.path()).unwrap();
+        vault.unlock_with_password("correct horse").unwrap();
+        let cred = Credentials::create(
+            &vault,
+            &CredentialInput {
+                kind: ottr_vault::CredentialKind::Password,
+                secret: Some("downgraded-secret-γ".into()),
+                key_pub: None,
+                passphrase: None,
+                totp_secret: None,
+            },
+        )
+        .unwrap();
+
+        let mut progress = Vec::new();
+        downgrade_to_keychain(&vault, &storage, "correct horse", &mut |done, total| {
+            progress.push((done, total));
+        })
+        .unwrap();
+
+        assert_eq!(vault.mode(), TestKeyMode::Keyring);
+        assert!(!vault.is_locked(), "降级后免密（解锁态）");
+        assert_eq!(progress.last(), Some(&(1, 1)));
+        assert!(
+            storage.load().unwrap().is_some(),
+            "钥匙链必须有新 Master Key 条目"
+        );
+        assert_eq!(
+            Credentials::reveal(&vault, cred.id, ottr_vault::SecretField::Secret)
+                .unwrap()
+                .as_deref(),
+            Some("downgraded-secret-γ")
+        );
+    }
+
+    // --- OTTR_DEV_UNLOCK 开发/验收旁路 ----------------------------------------
+
+    /// 纯函数三态：仅值恰为 "1" 为真；未设置/其他值一律假。严格匹配防意外
+    /// 命中（"10"/"1 "/"true" 都不算开——旁路是显式仪表化动作，宁可打不开）。
+    /// 调用点（vault_lock / autolock gate）传 `std::env::var_os` 结果，本函数
+    /// 不读全局 env——可变全局注入在单测里回避，纯函数带参测。
+    #[test]
+    fn dev_unlock_enabled_is_true_only_for_exact_1() {
+        assert!(!dev_unlock_enabled(None), "未设置 = 关（正常用户不受影响）");
+        assert!(
+            dev_unlock_enabled(Some(std::ffi::OsStr::new("1"))),
+            "恰为 1 = 开"
+        );
+        assert!(!dev_unlock_enabled(Some(std::ffi::OsStr::new("0"))));
+        assert!(!dev_unlock_enabled(Some(std::ffi::OsStr::new(""))));
+        assert!(!dev_unlock_enabled(Some(std::ffi::OsStr::new("true"))));
+        assert!(
+            !dev_unlock_enabled(Some(std::ffi::OsStr::new("10"))),
+            "前缀不算（严格匹配）"
+        );
+        assert!(
+            !dev_unlock_enabled(Some(std::ffi::OsStr::new("1 "))),
+            "带空白不算"
+        );
     }
 }

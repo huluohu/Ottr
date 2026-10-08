@@ -78,3 +78,127 @@ export const terminalThemes: Record<"light" | "dark", ITheme> = {
   light: lightTerminalTheme,
   dark: darkTerminalTheme,
 };
+
+// ---------------------------------------------------------------------------
+// 主题配套终端色板（theme-suite T2.3）：oled/amethyst/verdant/glass 四套。
+// 纪律同上（16 色 + fg/bg/cursor/selection 全通道；tokens.test 终端色板组逐套
+// 实算核对）：
+//   * 暗底口径（oled/amethyst/glass）：14 槽 ≥4.5，black/brightBlack 豁免
+//    （背景族——既有 dark 槽实算 1.11/2.03 本就不可达 4.5，只要求与底可区分）；
+//   * 亮底口径（verdant，bg #F4F7F1 同 light 暖纸白档）：16 槽全 ≥4.5、光标 ≥3；
+//   * glass 底为 rgba 半透明（xterm 背景支持 rgba，主题玻璃面透出），对比度按
+//     合成参考桌面底 #1C2430 实算（与 tokens.test REF_DESKTOP 同一假设）。
+// ---------------------------------------------------------------------------
+
+/** 配套色板的四主题 id（= ThemeMode 新增四态；auto 解析键）。 */
+export type ThemedTerminalPaletteId = "oled" | "amethyst" | "verdant" | "glass";
+
+/** OLED：纯黑底（省电屏），ANSI 全亮档；fg=E5E7EB（简报钉死）。 */
+export const oledTerminalTheme: ITheme = {
+  foreground: "#e5e7eb",
+  background: "#000000",
+  cursor: "#5eead4",
+  cursorAccent: "#000000",
+  selectionBackground: "#5eead466",
+  black: "#2a3038",
+  red: "#ff6b6b",
+  green: "#34d399",
+  yellow: "#fbbf24",
+  blue: "#60a5fa",
+  magenta: "#e879f9",
+  cyan: "#22d3ee",
+  white: "#c9ced6",
+  brightBlack: "#565e6b",
+  brightRed: "#ff9b9b",
+  brightGreen: "#6ee7b7",
+  brightYellow: "#fde047",
+  brightBlue: "#93c5fd",
+  brightMagenta: "#f0abfc",
+  brightCyan: "#67e8f9",
+  brightWhite: "#f3f4f6",
+};
+
+/** Amethyst：紫调暗底（bg #16102E），ANSI 走紫邻色相；fg/accent 同界面令牌。 */
+export const amethystTerminalTheme: ITheme = {
+  foreground: "#e9e4f9",
+  background: "#16102e",
+  cursor: "#a78bfa",
+  cursorAccent: "#16102e",
+  selectionBackground: "#a78bfa66",
+  black: "#241c40",
+  red: "#e36f94",
+  green: "#3fc98c",
+  yellow: "#e8b45a",
+  blue: "#8fa8f0",
+  magenta: "#c084fc",
+  cyan: "#56b6d9",
+  white: "#c8c2de",
+  brightBlack: "#564b7e",
+  brightRed: "#ff8fac",
+  brightGreen: "#6fe0ac",
+  brightYellow: "#f6ce7e",
+  brightBlue: "#b4c4f7",
+  brightMagenta: "#d8b4fe",
+  brightCyan: "#8ad5ec",
+  brightWhite: "#efebfa",
+};
+
+/** Verdant：鼠尾草亮底（bg #F4F7F1 同界面令牌），LIGHT_ANSI 同款深档纪律
+ *（亮底 bright 变体取深），green/yellow 系偏鼠尾草色相。 */
+export const verdantTerminalTheme: ITheme = {
+  foreground: "#1c2b22",
+  background: "#f4f7f1",
+  cursor: "#2f855a",
+  cursorAccent: "#f4f7f1",
+  selectionBackground: "#2f855a44",
+  black: "#14201a",
+  red: "#a8433b",
+  green: "#256b49",
+  yellow: "#8f4a09",
+  blue: "#1a5f8e",
+  magenta: "#8a4276",
+  cyan: "#0c647c",
+  white: "#4f6157",
+  brightBlack: "#3d5749",
+  brightRed: "#a83226",
+  brightGreen: "#0b7a6c", /* 原档 #0c8073 对 #F4F7F1 4.46 不够，加深一档 4.84 */
+  brightYellow: "#8a6006",
+  brightBlue: "#1c6494",
+  brightMagenta: "#8f3b80",
+  brightCyan: "#0a5c74",
+  brightWhite: "#33473c",
+};
+
+/** Glass：半透明底（rgba——xterm 背景支持），对比度按合成参考桌面底 #1C2430
+ * 实算（tokens.test 同一假设）；冷调 ANSI，选中/光标走冰蓝。 */
+export const glassTerminalTheme: ITheme = {
+  foreground: "#e6edf3",
+  background: "rgba(16, 20, 32, 0.62)", /* 合成 #1C2430 后 ≈ #151a26，各槽实算基于此 */
+  cursor: "#93c5fd",
+  cursorAccent: "#101420",
+  selectionBackground: "rgba(125, 211, 252, 0.32)",
+  black: "#222a3a",
+  red: "#e3707e",
+  green: "#3ecf8e",
+  yellow: "#e5b567",
+  blue: "#7aa2f7",
+  magenta: "#bb9af7",
+  cyan: "#7dcfff",
+  white: "#c4cbd8",
+  brightBlack: "#4e5a70",
+  brightRed: "#ff9aa5",
+  brightGreen: "#73e0ac",
+  brightYellow: "#f0c987",
+  brightBlue: "#9fc0ff",
+  brightMagenta: "#d2b8fc",
+  brightCyan: "#a4e0f8",
+  brightWhite: "#eceff5",
+};
+
+/** 主题 id → 配套终端色板（auto 解析表；terminalThemeStore 消费）。 */
+export const themeTerminalThemes: Record<ThemedTerminalPaletteId, ITheme> = {
+  oled: oledTerminalTheme,
+  amethyst: amethystTerminalTheme,
+  verdant: verdantTerminalTheme,
+  glass: glassTerminalTheme,
+};

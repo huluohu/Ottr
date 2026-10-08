@@ -4,7 +4,7 @@
 //   重加密进度（ottr://reencrypt-progress 事件驱动）→ 完成（字段数收尾）；
 // * 失焦自动锁定配置（password 模式专属；0 = 关）、剪贴板清空配置（0 = 关）；
 // * 手动锁定按钮（password 模式；Task 14 快捷键接 vault_lock 同一命令）；
-// * 外观（主题）/语言两项沿用 T2 词典键——persist 已迁 vault settings
+// * 外观（主题网格）/语言两项沿用 T2 词典键——persist 已迁 vault settings
 //   （ThemeContext / i18n index 负责读写，本页只触发 setMode/setLang）。
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -20,7 +20,6 @@ import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
-import { SegmentedControl } from "../ui/SegmentedControl";
 import { useVaultLockStore } from "./VaultLockStore";
 import { SyncSettings } from "../sync/SyncSettings";
 
@@ -51,7 +50,8 @@ function masterPasswordCodePoints(s: string): number {
 
 const AUTOLOCK_CHOICES = [0, 1, 5, 10, 30] as const; // 分钟；0 = 关
 const CLIPBOARD_CHOICES = [0, 10, 30, 60] as const; // 秒；0 = 关
-const THEME_CHOICES: ThemeMode[] = ["light", "dark", "system"];
+// theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
+const THEME_CHOICES: ThemeMode[] = ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 // B9 指纹巡检间隔（秒）：1h / 6h / 24h（默认）/ 7d（Rust 校验 60-604800）
 const HOSTKEY_AUDIT_CHOICES = [3_600, 21_600, 86_400, 604_800] as const;
@@ -83,6 +83,11 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   const [fieldsDone, setFieldsDone] = useState<number | null>(null);
   const [upgrading, setUpgrading] = useState(false);
 
+  // 降级向导状态（no-lock 任务：password → keyring「切换到免密模式」）。
+  const [downgradeStep, setDowngradeStep] = useState<"confirm" | "progress" | "done" | null>(null);
+  const [downgradePassword, setDowngradePassword] = useState("");
+  const [downgradeError, setDowngradeError] = useState<string | null>(null);
+
   // 配置项本地镜像（open 时从 vault settings 现读；改动即写）。
   const [autolock, setAutolock] = useState<number | null>(null);
   const [clipboard, setClipboard] = useState<number | null>(null);
@@ -110,6 +115,9 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       setProgress({ done: 0, total: 0 });
       setFieldsDone(null);
       setUpgrading(false);
+      setDowngradeStep(null);
+      setDowngradePassword("");
+      setDowngradeError(null);
       setThemeImportError(null);
       setThemeImportedCount(null);
       setSudoConfirm(false);
@@ -193,6 +201,9 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       const fields = await vaultApi.security.upgradeToMasterPassword(password);
       setFieldsDone(fields);
       setWizard("done");
+      // 模式已翻转（keyring → password）：store 的 mode 事件不覆盖，显式重查
+      // 落地（否则徽标/入口停留在旧模式直到重启）。
+      await useVaultLockStore.getState().refreshStatus();
     } catch (err2) {
       // 升级失败 = 库原样未动（Rust 侧单事务），回第一步重试。
       setWizardError(err2 instanceof Error ? err2.message : String(err2));
@@ -201,6 +212,31 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       setUpgrading(false);
       setPassword("");
       setConfirm("");
+    }
+  }
+
+  /** 降级向导提交（password → keyring）：当前主密码确认 → 单命令迁移 →
+   * 完成态。库层崩溃安全（先写钥匙链新钥、再单事务重密封+meta 翻转），
+   * 失败 = 库原样未动，回确认步可重试。 */
+  async function startDowngrade(e: FormEvent) {
+    e.preventDefault();
+    if (downgradePassword.length === 0) {
+      setDowngradeError(t("security.downgrade.errEmpty"));
+      return;
+    }
+    setDowngradeError(null);
+    setDowngradeStep("progress");
+    try {
+      await vaultApi.security.downgradeToKeychain(downgradePassword);
+      // 模式已翻转（password → keyring）且必为解锁态：重查落地 store
+      // （badge/入口即时翻面），再进完成态。
+      await useVaultLockStore.getState().refreshStatus();
+      setDowngradeStep("done");
+    } catch (err) {
+      setDowngradeError(err instanceof Error ? err.message : String(err));
+      setDowngradeStep("confirm");
+    } finally {
+      setDowngradePassword("");
     }
   }
 
@@ -275,6 +311,84 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               </button>
             </div>
           ) : null}
+
+          {/* 降级入口（no-lock 任务）：仅 password 模式显示——keyring 模式无可
+              降级，向导展开后入口隐藏（避免与步骤面板并列）。 */}
+          {isPasswordMode && downgradeStep === null && (
+            <div className="settings-row">
+              <button
+                type="button"
+                data-testid="start-downgrade"
+                onClick={() => setDowngradeStep("confirm")}
+              >
+                {t("security.downgrade.start")}
+              </button>
+            </div>
+          )}
+
+          {downgradeStep === "confirm" && (
+            <form
+              className="wizard-step"
+              onSubmit={(e) => void startDowngrade(e)}
+              noValidate
+              data-testid="downgrade-wizard"
+            >
+              <p className="dialog-intro" data-testid="downgrade-step-title">
+                {t("security.downgrade.stepConfirm")}
+              </p>
+              <label>
+                <span>{t("security.masterPassword")}</span>
+                <input
+                  type="password"
+                  data-testid="downgrade-password"
+                  value={downgradePassword}
+                  autoComplete="current-password"
+                  onChange={(e) => setDowngradePassword(e.currentTarget.value)}
+                />
+              </label>
+              <p className="settings-hint">{t("security.downgrade.intro")}</p>
+              {downgradeError && (
+                <p className="form-error" data-testid="downgrade-error">
+                  {downgradeError}
+                </p>
+              )}
+              <div className="form-actions">
+                <button
+                  type="button"
+                  data-testid="downgrade-cancel"
+                  onClick={() => {
+                    setDowngradeStep(null);
+                    setDowngradeError(null);
+                  }}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button type="submit" className="btn-accent" data-testid="downgrade-confirm">
+                  {t("security.downgrade.confirm")}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {downgradeStep === "progress" && (
+            <div className="wizard-step" data-testid="downgrade-progress" aria-busy="true">
+              <p className="dialog-intro">{t("security.downgrade.stepProgress")}</p>
+              <p className="settings-hint" data-testid="downgrade-progress-text">
+                {progress.total > 0
+                  ? t("security.wizard.progressOf", { done: progress.done, total: progress.total })
+                  : t("security.wizard.progressPending")}
+              </p>
+            </div>
+          )}
+
+          {downgradeStep === "done" && (
+            <div className="wizard-step" data-testid="downgrade-done">
+              <p className="dialog-intro">{t("security.downgrade.stepDone")}</p>
+              <p className="settings-hint" data-testid="downgrade-done-text">
+                {t("security.downgrade.doneDesc")}
+              </p>
+            </div>
+          )}
 
           {wizard === "password" && (
             <form className="wizard-step" onSubmit={(e) => void startUpgrade(e)} noValidate data-testid="upgrade-wizard">
@@ -478,18 +592,33 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
         {/* --- 外观 / 语言（T2 键面沿用；persist 已迁 vault settings）--- */}
         <section aria-label={t("settings.sectionAppearance")}>
           <h3>{t("settings.sectionAppearance")}</h3>
+          {/* theme-suite T2.4：主题网格卡片——每卡 = 主题名 + 迷你色板预览条
+              （4 色块纯 CSS，aria-hidden）+ radio 选中态；「跟随系统」保留为
+              一卡。radiogroup/radio 互斥单选语义（WAI-ARIA）。卡片缩略色块是
+              各主题静态预览（App.css .tp-* 值），不随当前主题走。 */}
           <div className="settings-row">
             <span className="settings-label">{t("settings.theme")}</span>
-            {/* 三选段控（Task 1，A2）：互斥单选语义的正确载体（旧 .theme-switch 三联） */}
-            <SegmentedControl
-              ariaLabel={t("settings.theme")}
-              value={themeMode}
-              onChange={setMode}
-              options={THEME_CHOICES.map((m) => ({
-                value: m,
-                label: t(`settings.theme${m[0].toUpperCase()}${m.slice(1)}`),
-              }))}
-            />
+          </div>
+          <div className="theme-grid" role="radiogroup" aria-label={t("settings.theme")} data-testid="theme-grid">
+            {THEME_CHOICES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={themeMode === m}
+                data-testid={`theme-card-${m}`}
+                className="theme-card"
+                onClick={() => setMode(m)}
+              >
+                <span className={`theme-card-preview tp-${m}`} aria-hidden="true">
+                  <i className="tp-swatch tp-bg" />
+                  <i className="tp-swatch tp-surface" />
+                  <i className="tp-swatch tp-fg" />
+                  <i className="tp-swatch tp-accent" />
+                </span>
+                <span className="theme-card-name">{t(`settings.themes.${m}`)}</span>
+              </button>
+            ))}
           </div>
           {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。 */}
           <label className="settings-row" data-testid="close-to-tray-row">

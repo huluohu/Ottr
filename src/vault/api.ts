@@ -652,6 +652,10 @@ export const vaultApi = {
     /** keyring → password 升级（重加密迁移）；resolve = 完成并返回重密封字段数。 */
     upgradeToMasterPassword: (password: string) =>
       invoke<number>("vault_upgrade_to_master_password", { password }),
+    /** password → keyring 降级（no-lock 任务：切换到免密模式，重加密迁移）；
+     * resolve = 完成且已解锁（免密）。密码错 reject（master password is incorrect）。 */
+    downgradeToKeychain: (password: string) =>
+      invoke<void>("vault_downgrade_to_keychain", { password }),
     /** 重置应用（product-ready T5，BL-537 清偿）：清本机库 + 清钥匙链条目后
      * 进程重启回首启链。resolve 永不发生（进程重启，invoke 随 webview 销毁）
      * ——reject = 清库失败（钥匙链拒绝/目录删不掉），数据未成功清除可重试。

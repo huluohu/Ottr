@@ -62,7 +62,7 @@ import {
 import { ThemeProvider, useTheme, syncThemeFromVault, type ThemeMode } from "./theme/ThemeContext";
 import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { useVaultStore } from "./vault/store";
-import type { Host } from "./vault/api";
+import { vaultApi, type Host } from "./vault/api";
 import "./theme/tokens.css";
 import "./App.css";
 
@@ -174,14 +174,17 @@ function TopbarMenu({
   );
 }
 
-/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 三模式三选一。 */
+/** 主题单按钮下拉（Phase 5 T1）：按钮面 = 当前模式名，菜单 = 三模式三选一。
+ * theme-suite T2：mode 扩到七主题 id 后，快切菜单仍只列亮/暗/系统三键（完整
+ * 七选在设置页主题网格）；mode 为新 id 时按钮面回退该 id 词典名（不误标系统）。 */
 function ThemeMenu() {
   const { mode, setMode } = useTheme();
   const { t } = useTranslation();
-  const current = THEME_MODES.find((m) => m.value === mode) ?? THEME_MODES[2];
+  const labelKey =
+    THEME_MODES.find((m) => m.value === mode)?.labelKey ?? `settings.themes.${mode}`;
   return (
     <TopbarMenu
-      label={t(current.labelKey)}
+      label={t(labelKey)}
       ariaLabel={t("settings.theme")}
       buttonTestid="topbar-theme"
       menuTestid="topbar-theme-menu"
@@ -259,6 +262,30 @@ function HomeLayout() {
     return 280;
   });
   const resizing = useRef(false);
+
+  // theme-suite T1：工具菜单「导出主机 CSV」的行内反馈条（主区顶部）。path=null
+  // 由 Rust 侧落系统下载目录并回传路径；成功显示路径、失败显示错误文本，6 秒
+  // 自动清除。定时器句柄随卸载清理（重触发先清旧定时器，防泄漏/误清新消息）。
+  const [csvMsg, setCsvMsg] = useState<string | null>(null);
+  const csvTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (csvTimerRef.current !== null) clearTimeout(csvTimerRef.current);
+    };
+  }, []);
+
+  function flashCsvStatus(msg: string) {
+    setCsvMsg(msg);
+    if (csvTimerRef.current !== null) clearTimeout(csvTimerRef.current);
+    csvTimerRef.current = setTimeout(() => setCsvMsg(null), 6000);
+  }
+
+  function exportHostsCsvFromMenu() {
+    vaultApi
+      .exportHostsCsv(null)
+      .then((path) => flashCsvStatus(path))
+      .catch((e) => flashCsvStatus(String(e)));
+  }
 
   // Task 16.5 就绪门取数（仅 Tauri）：先挂事件监听、后查 vault_init_status
   // （两端夹逼无漏窗，见 VaultInitGate 模块文档）。
@@ -522,6 +549,14 @@ function HomeLayout() {
               testid: "menu-open-sync",
               onSelect: () => setSyncOpen(true),
             },
+            {
+              // theme-suite T1：导出主机清单 CSV（同 HostTree 工具栏按钮的命令面；
+              // 顶栏收纳口径下树外可达的第二入口）。
+              key: "export-hosts-csv",
+              label: t("hostTree.exportCsv"),
+              testid: "menu-export-hosts-csv",
+              onSelect: exportHostsCsvFromMenu,
+            },
           ]}
         />
         <NotificationCenter />
@@ -535,6 +570,13 @@ function HomeLayout() {
         </button>
         <ThemeMenu />
       </header>
+      {/* theme-suite T1：主区顶部行内状态条（复用 .tree-status 样式）——工具菜单
+          导出 CSV 的落盘路径/错误反馈，6 秒自动清除。 */}
+      {csvMsg && (
+        <p className="tree-status" data-testid="topbar-export-status" role="status">
+          {csvMsg}
+        </p>
+      )}
       <div className="app-body">
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <HostTree

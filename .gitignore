@@ -33,3 +33,4 @@ src-tauri/gen/
 *.sln
 *.sw?
 .vitest/
+.zcode/logs/*.log

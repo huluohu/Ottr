@@ -6,12 +6,13 @@
 
 *Swim through your servers.* ／ *如獭穿行于服务器之间。*
 
-**免费 · 三端（macOS / Windows / Linux）· 闭源 · 数据主权 100% 归你**
+**开源 · 免费 · 三端（macOS / Windows / Linux）· 数据主权 100% 归你**
 
+[![GitHub](https://img.shields.io/badge/GitHub-huluohu%2FOttr-0F172A)](https://github.com/huluohu/Ottr)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
 [![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
 [![Tests](https://img.shields.io/badge/tests-1760%2B%20green-5EEAD4)](#-测试)
-[![License](https://img.shields.io/badge/license-freeware%20(closed%20source)-F59E0B)](#-许可)
+[![License](https://img.shields.io/badge/license-MIT-5EEAD4)](LICENSE)
 
 </div>
 
@@ -107,7 +108,7 @@
 
 ## 📦 下载与安装
 
-前往 [**Releases**](../../releases) 下载对应平台安装包（推送版本标签后由 CI 自动构建发布）：
+前往 [**Releases**](https://github.com/huluohu/Ottr/releases) 下载对应平台安装包（推送版本标签后由 CI 自动构建发布）：
 
 | 平台 | 格式 |
 |---|---|
@@ -207,6 +208,13 @@ PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:$PATH" npx tauri build
 （本文档所列功能均为已实现状态）。设计规格、各阶段验收报告与运行手册见
 [`docs/`](docs/)；路线图见 [`docs/features-and-roadmap.md`](docs/features-and-roadmap.md)。
 
-## 📄 许可
+## 📄 许可与作者
 
-免费闭源（freeware）。版权所有，详见 [LICENSE](LICENSE)。
+**Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以 [MIT](LICENSE) 协议开源——
+欢迎 Issue 反馈与 PR；主仓库：[github.com/huluohu/Ottr](https://github.com/huluohu/Ottr)。
+
+<div align="center">
+
+*Swim through your servers.* 🦦
+
+</div>

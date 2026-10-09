@@ -179,9 +179,9 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "help_github" => {
             if zh {
-                "GitHub 仓库"
+                "项目主页"
             } else {
-                "GitHub Repository"
+                "Project Homepage"
             }
         }
         "tray_show" => {

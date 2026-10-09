@@ -23,7 +23,10 @@ use crate::commands::state::{LANG_PROBE_TIMEOUT, TextTail};
 //   3. 用户开关：settings `shell.integration`（缺省开，validate_setting 注册）；
 //   4. 片段本身带 PROMPT_COMMAND/DEBUG 护栏（T6 终稿），重复注入天然幂等
 //      （覆盖式 export / 重定义 precmd）。
-// 注入行会回显在用户终端（一次性，T6 spike 同款已知行为；隐身注入挂账）。
+// 注入走**两步隐身通道**（2026-10-09，T6 挂账「隐身注入」清偿）：第 1 步先
+// 关远端回显（此行自身回显一次，内容很短），第 2 步在静默中下发片段并恢复
+// 回显、顺带擦除第 1 步的回显残留——净可见残留为零。远端无 stty 时第 2 步
+// 退化为旧的可见行为（清理步骤仍会收敛大部分残留）。
 
 /// `echo $SHELL` 输出 → ShellKind（basename 判定；其他 shell 显式 None）。
 fn detect_shell_kind(shell_path: &str) -> Option<ottr_ssh::shell_integration::ShellKind> {
@@ -92,6 +95,21 @@ async fn wait_initial_output(text_tail: &TextTail) -> bool {
     text_tail.raw_head_has_133()
 }
 
+/// 等第 1 步的 `stty -echo` 执行生效：判定面 = 远端回显（"stty -echo" 出现
+/// 在 TextTail 原始头部）落地后再缓冲 150ms（让 stty 真正执行完，而非仅被
+/// 行纪律回显）；封顶 1.5s——超时按已生效处理，最坏退化为旧的可见行为。
+async fn wait_echo_off(text_tail: &TextTail) {
+    const MARKER: &str = ottr_ssh::shell_integration::ECHO_OFF_LINE;
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_millis(1500) {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        if text_tail.raw_head_contains(MARKER) {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            return;
+        }
+    }
+}
+
 /// shell 集成注入（生产 attach 与 fixture example 共用同一实现）：
 /// 开关→shell 探测→幂等探测→片段下发。返回结果供打点/断言；失败不打扰
 /// 会话（注入是增强面，缺了只是历史/诊断不工作）。
@@ -117,12 +135,23 @@ pub async fn inject_shell_integration(
     if wait_initial_output(text_tail).await {
         return ShellIntegrationOutcome::SkippedAlreadyIntegrated;
     }
-    // 片段下发（单行 + \r，交互 shell 在提示符处读入执行；T6 真机验证终稿）
-    let snippet = ottr_ssh::shell_integration::inject_for(kind);
+    // 片段下发（**隐身注入两步**，2026-10-09 T6 挂账清偿）：
+    //   第 1 步 `stty -echo`——此行自身回显一次（很短），执行后进入静默；
+    //   等回显落在 TextTail 后再下发第 2 步（否则第 2 步会被回显）。
+    //   第 2 步 静默下发集成片段 + 恢复回显 + 光标上移擦除第 1 步残留——
+    //   shell 的新提示符正好落在擦净的位置，净可见残留为零。
+    //   stty 缺失的远端：第 1 步报错、回显不关，第 2 步退化为旧的可见行为
+    //   （清理步骤仍会收敛大部分残留），功能不受影响。
+    let snippet_line = ottr_ssh::shell_integration::hidden_inject_line(kind);
     let result = (async {
         use tokio::io::AsyncWriteExt;
         let mut w = writer.lock().await;
-        w.write_all(snippet.as_bytes()).await?;
+        w.write_all(ottr_ssh::shell_integration::ECHO_OFF_LINE.as_bytes())
+            .await?;
+        w.write_all(b"\r").await?;
+        w.flush().await?;
+        wait_echo_off(text_tail).await;
+        w.write_all(snippet_line.as_bytes()).await?;
         w.write_all(b"\r").await?;
         Ok::<(), std::io::Error>(())
     })

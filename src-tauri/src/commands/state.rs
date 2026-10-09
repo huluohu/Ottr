@@ -256,6 +256,11 @@ impl TextTail {
         self.raw_head.lock().unwrap().contains("\x1b]133;")
     }
 
+    /// 原始头部是否包含给定子串（隐身注入等待 `stty -echo` 回显落地的判定面）。
+    pub fn raw_head_contains(&self, needle: &str) -> bool {
+        self.raw_head.lock().unwrap().contains(needle)
+    }
+
     /// 头部原始探针当前长度（注入任务等待「输出稳定」的观察面）。
     pub fn raw_head_len(&self) -> usize {
         self.raw_head.lock().unwrap().len()

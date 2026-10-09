@@ -60,6 +60,24 @@ pub fn inject_for(shell: ShellKind) -> &'static str {
     }
 }
 
+/// 隐身注入第一步：关闭远端终端回显。此行自身会回显一次（内容很短），
+/// `stty` 执行生效后，后续下发的输入不再可见。
+pub const ECHO_OFF_LINE: &str = "stty -echo";
+
+/// 隐身注入第二步：把集成片段包进「执行后恢复回显 + 光标上移擦行」的
+/// 包装——净可见残留为零（擦掉第一步的回显行与其后的空提示行，shell 的
+/// 新提示符正好落在擦净的位置）。
+///
+/// 仅适用于单行提示符的常规 shell：多行 PS1 下擦除行数会有 ±N 偏差，纯
+/// 外观无功能影响；`stty` 缺失的远端退化为旧的可见行为（清理步骤仍会
+/// 收敛大部分残留）。
+pub fn hidden_inject_line(shell: ShellKind) -> String {
+    format!(
+        "{}; stty echo; printf '\\e[2K\\r\\e[1A\\e[2K'",
+        inject_for(shell)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,6 +86,17 @@ mod tests {
     fn snippets_are_single_line() {
         assert!(!BASH_SNIPPET.contains('\n'));
         assert!(!ZSH_SNIPPET.contains('\n'));
+    }
+
+    #[test]
+    fn hidden_line_wraps_snippet_restores_echo_and_cleans_up() {
+        for kind in [ShellKind::Bash, ShellKind::Zsh] {
+            let line = hidden_inject_line(kind);
+            assert!(line.starts_with(inject_for(kind)));
+            // 执行序 = 注入 → 恢复回显 → 擦除第一步的回显残留
+            assert!(line.contains("; stty echo; printf '\\e[2K\\r\\e[1A\\e[2K'"));
+            assert!(!line.contains('\n'));
+        }
     }
 
     #[test]

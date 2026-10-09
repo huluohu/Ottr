@@ -24,7 +24,7 @@
 
 技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
 
-![欢迎首页：时段问候 + 快捷卡 + 应用级侧栏](docs/screenshots/home-welcome.png)
+![欢迎首页：时段问候 + 快捷卡 + 应用级侧栏（青野主题）](docs/screenshots/home-welcome.png)
 
 ## ✨ 功能总览
 
@@ -42,7 +42,7 @@
 - **跳板链**：多级跳板可视化编排；**端口转发**：本地 / 动态 SOCKS / 远程，断线自动重挂
 - known_hosts **TOFU 首次信任 + 指纹巡检**，防中间人
 
-![主机管理：分组树 + 标签过滤 + 行内编辑](docs/screenshots/main-dark.png)
+![暗色主题 · 应用级侧栏主机树（分组 / 标签 / 行内编辑）+ 欢迎首页](docs/screenshots/main-dark.png)
 
 ### AI 能力（核心卖点，隐私优先）
 

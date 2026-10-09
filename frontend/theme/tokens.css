@@ -163,7 +163,7 @@
 }
 
 /* --- 雾镜 Glass（theme-suite T3，resolved=dark）-------------------------
- * 真透明：bg 带 alpha，透出主窗 vibrancy/acrylic 模糊面（src-tauri/vibrancy.rs
+ * 真透明：bg 带 alpha，透出主窗 vibrancy/acrylic 模糊面（desktop/vibrancy.rs
  * 常开施加；非 Glass 主题画满不透明背景，效果不可见）。
  * 合成参考（tokens.test「Glass 主题 alpha 合成」同源假设）：玻璃面后的桌面假定
  * 深色壁纸 #1C2430——半透明令牌实算一律先合成：

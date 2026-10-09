@@ -96,10 +96,10 @@ fi
 # ---------------------------------------------------------------- 版本号对齐
 bump_versions() {
   local old new f
-  old=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+  old=$(python3 -c "import json;print(json.load(open('desktop/tauri.conf.json'))['version'])")
   new="$VERSION"
   [ "$old" != "$new" ] || die "tauri.conf.json 已是 $new——确认版本号是否要变更"
-  for f in src-tauri/tauri.conf.json package.json; do
+  for f in desktop/tauri.conf.json package.json; do
     python3 -c "
 import sys
 p, o, n = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -116,7 +116,7 @@ s = open(p, encoding='utf-8').read()
 needle = 'version = \"%s\"' % o
 assert needle in s, '%s: 未找到 %s' % (p, needle)
 open(p, 'w', encoding='utf-8').write(s.replace(needle, 'version = \"%s\"' % n, 1))
-" src-tauri/Cargo.toml "$old" "$new"
+" desktop/Cargo.toml "$old" "$new"
   # 锁文件同步：npm 重算根版本；cargo 用增量 check 同步（不扰动依赖版本）
   command -v npm >/dev/null && npm install --package-lock-only --silent
   if command -v cargo >/dev/null; then
@@ -190,14 +190,14 @@ if [ "$DRYRUN" = 1 ]; then
   gen_notes "$PREV_TAG" HEAD "$NOTES_FILE"
   cat "$NOTES_FILE"
   step "dry-run 结束——还原版本号修改"
-  git checkout -- src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml package-lock.json Cargo.lock 2>/dev/null || true
+  git checkout -- desktop/tauri.conf.json package.json desktop/Cargo.toml package-lock.json Cargo.lock 2>/dev/null || true
   rm -f "$NOTES_FILE"
   echo "✓ 演练完成，未提交/未推送/未打 tag"
   exit 0
 fi
 
 step "提交版本号并推送 main"
-git add src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml package-lock.json Cargo.lock
+git add desktop/tauri.conf.json package.json desktop/Cargo.toml package-lock.json Cargo.lock
 git commit -m "chore(release): v$VERSION 版本号三处对齐（tauri.conf/package.json/Cargo.toml）+ 锁文件同步"
 git push origin main
 SHA=$(git rev-parse HEAD)

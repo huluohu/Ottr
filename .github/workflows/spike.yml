@@ -7,7 +7,7 @@
 # -w ottr-updater.key，见 task-12-report.md）。
 #
 # 设计说明（相对简报底稿的调整）：
-# - updater 签名段放在 src-tauri/tauri.updater.conf.json overlay，经
+# - updater 签名段放在 desktop/tauri.updater.conf.json overlay，经
 #   --config 合并启用（bundle.createUpdaterArtifacts: true）。基础
 #   tauri.conf.json 不开 createUpdaterArtifacts——本地 `npx tauri build`
 #   不配置签名私钥也能出包，CI 才叠加签名。pubkey（非秘密）在基础配置。
@@ -57,7 +57,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      # workspace clippy 会编译 src-tauri → tauri 依赖需要 glib/webkit2gtk
+      # workspace clippy 会编译 desktop → tauri 依赖需要 glib/webkit2gtk
       # 系统库（同 build 矩阵的 Linux 步骤）；裸 runner 没有，v0.1.0 首跑
       # 实测 glib-2.0.pc not found——这步缺失时 clippy 任务从未绿过。
       - name: Install Linux system dependencies
@@ -123,7 +123,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "TAURI_BUILD_ARGS=--config src-tauri/tauri.updater.conf.json" >> "$GITHUB_ENV"
+            echo "TAURI_BUILD_ARGS=--config desktop/tauri.updater.conf.json" >> "$GITHUB_ENV"
           else
             echo "TAURI_BUILD_ARGS=" >> "$GITHUB_ENV"
             echo "TAURI_SIGNING_PRIVATE_KEY not configured - building without updater artifacts"
@@ -157,7 +157,7 @@ jobs:
           name: ottr-${{ matrix.os }}
           if-no-files-found: error
           # 注意：workspace 根 Cargo.toml 聚合 members → 构建产物在仓库根
-          # target/release/bundle/，不是 src-tauri/target/（T16 本地实测更正）。
+          # target/release/bundle/，不是 desktop/target/（T16 本地实测更正）。
           path: |
             target/release/bundle/dmg/*.dmg
             target/release/bundle/macos/*.app.tar.gz

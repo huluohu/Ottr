@@ -28,7 +28,7 @@ fn now_ts() -> i64 {
         .as_secs() as i64
 }
 
-/// 纪要行（serde 面与 `src/vault/api.ts` 的 `SummaryEntry` 同构，snake_case；
+/// 纪要行（serde 面与 `frontend/vault/api.ts` 的 `SummaryEntry` 同构，snake_case；
 /// `summary` 为开封后的明文——密文只在 `summary_enc` 列，出库即开）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]

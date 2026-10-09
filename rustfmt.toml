@@ -1,6 +1,6 @@
 # Task 0（Phase 2）fmt 政策：仓库统一基线。
 #
-# * edition 2024 为仓库基线（2026-10-08 收敛完成：src-tauri 与 ottr-vault 已从
+# * edition 2024 为仓库基线（2026-10-08 收敛完成：desktop 与 ottr-vault 已从
 #   2021 提升，BL-213 挂账清偿；全仓单一 edition，fmt 行为单一确定）。
 # * 其余项保持 rustfmt 默认（与 `rustfmt --check` CI 门一致，见
 #   .github/workflows/spike.yml fmt job——fmt --check 失败即红）。

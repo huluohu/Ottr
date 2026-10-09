@@ -1,6 +1,6 @@
 // 诊断链路测试（T13 Step 4）：exit_code≠0 → 面板开 → tail 取数 → 脱敏 →
 // provider 流式 → 通知落库（notify kind="ai"）。provider 层 mock（MockProvider
-// 记录请求），invoke 全量 mock（真后端命令已在 src-tauri 接线）。
+// 记录请求），invoke 全量 mock（真后端命令已在 desktop 接线）。
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 

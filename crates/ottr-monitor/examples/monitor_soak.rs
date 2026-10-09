@@ -213,7 +213,7 @@ async fn run(hold: u64, out_dir: PathBuf) -> (String, bool) {
     )
     .expect("write v2 header");
 
-    // PTY + 周期输出：与 src-tauri attach 同序（open_pty → request_shell →
+    // PTY + 周期输出：与 desktop attach 同序（open_pty → request_shell →
     // make_writer 写入），每步限时（phase0 attach 停滞教训）。
     let mut channel = tokio::time::timeout(Duration::from_secs(10), session0.open_pty(120, 40))
         .await

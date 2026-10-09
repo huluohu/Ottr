@@ -16,7 +16,7 @@ dist-ssr
 target/
 
 # Tauri 生成物
-src-tauri/gen/
+desktop/gen/
 
 # 系统与工具
 .DS_Store

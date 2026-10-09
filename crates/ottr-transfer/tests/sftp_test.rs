@@ -585,7 +585,7 @@ async fn download_cancel_at_chunk_boundary_then_resume_completes() {
 
 /// Fix round 1 C-1 回归（真夹具）：**done 即删 journal 后重下必须全量重传**。
 ///
-/// 钉住 src-tauri spawn_transfer 的 done 分支策略（成功完成 → 删 journal）的
+/// 钉住 desktop spawn_transfer 的 done 分支策略（成功完成 → 删 journal）的
 /// 生命周期契约，并实证删除为何是 load-bearing 的：
 /// 1. 完整下载后删本地文件、保留 journal → 重下 = journal 全命中 = 0 chunk
 ///    传输 + set_len 稀疏文件 → **sha256 不一致（全零文件）**——这就是修复前

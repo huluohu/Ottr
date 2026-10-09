@@ -160,7 +160,7 @@ fn hop(addr: std::net::SocketAddr) -> HopSpec {
         port: addr.port(),
         username: "tester".into(),
         auth: AuthMethod::Password("pw".into()),
-        // 测试面：指纹全放行（主机密钥策略语义由 src-tauri TOFU 层测试承担）
+        // 测试面：指纹全放行（主机密钥策略语义由 desktop TOFU 层测试承担）
         host_key: Arc::new(|_| true),
     }
 }

@@ -2,11 +2,11 @@
 //!
 //! 规则是**明文面**：无 `*_enc` 列（敏感材料在 [`crate::notify_channels`] 的
 //! config_enc，0014），锁定语义与 hosts 同（配置面命令统一 `ensure_unlocked`
-//! 门卫）。评估引擎在 TS（src/notify/rules.ts）——数据源是前端监控事件流
+//! 门卫）。评估引擎在 TS（frontend/notify/rules.ts）——数据源是前端监控事件流
 //! （ottr://monitor）与进程采集（monitor_ps）；Rust 只供表 + `mark_fired`
 //! 回写（引擎防重复触发的水位持久化，重启不重放旧告警）。
 //!
-//! 序列化面即前端契约：[`AlertRule`] 字段与 `src/vault/api.ts` 的 `AlertRule`
+//! 序列化面即前端契约：[`AlertRule`] 字段与 `frontend/vault/api.ts` 的 `AlertRule`
 //! 接口同构（snake_case）。`params`/`channels` 以 JSON 文本落库（spec §3），
 //! 存储层只校验「合法 JSON / channels 是数组」——类别内字段语义（threshold、
 //! consecutive、comm）归 TS 引擎消费面，存储层不越界解释。

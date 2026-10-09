@@ -1,7 +1,7 @@
 //! 密钥生成 / openssh 导入解析 / 指纹（Task 6，A4）。
 //!
 //! 定位：KeyManager UI 与 `key_*` Tauri 命令的纯计算底座——只碰密钥材料，
-//! 不做 IO（落盘在 src-tauri 侧）、不做网络（部署在 [`crate::deploy`]）。
+//! 不做 IO（落盘在 desktop 侧）、不做网络（部署在 [`crate::deploy`]）。
 //!
 //! 底层全部走 russh 自带的 ssh-key（russh 0.63 default features：ed25519/p256/
 //! p384/p521/encryption/rsa 全开），因此**生成与导入能力边界 = russh 的边界**：

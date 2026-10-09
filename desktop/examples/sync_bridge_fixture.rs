@@ -1,10 +1,10 @@
 //! Task 5 双设备端到端（Phase 5）——「第二台设备」桥夹具（example 驱动模式，
 //! encoding_fixture 同款：`cargo build -p ottr --example sync_bridge_fixture`
-//! 后由 `src/sync/e2e.dualdevice.test.ts` spawn，两实例 = 两台设备）。
+//! 后由 `frontend/sync/e2e.dualdevice.test.ts` spawn，两实例 = 两台设备）。
 //!
 //! 每实例驱动**一台真 vault**：独立数据目录（argv[1]，`Vault::open_with` 自建）
 //! ＋ 独立 Master Key（InMemoryStorage，打开即解锁——测试纪律：绝不触真钥匙链）。
-//! 命令面与 src-tauri vault.rs 同步相关命令**同款函数直调**：ottr-vault
+//! 命令面与 desktop vault.rs 同步相关命令**同款函数直调**：ottr-vault
 //! `sync_snapshot::{export_categories, import_categories}`、
 //! `Settings::{get, set}` + `validate_known_setting`（settings_set 命令体的
 //! 薄委托链，T3 fix I-1 单一事实源）——生产 Tauri 命令体即这些函数的薄包装。

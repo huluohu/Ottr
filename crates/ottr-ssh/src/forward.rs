@@ -20,7 +20,7 @@
 //! `Arc<AtomicU64>`）+ 连接计数）。停止一律经 [`tokio_util::sync::
 //! CancellationToken`]（父令牌取消子连接任务），状态落 stopped 仅当此前处于
 //! starting/active——会话断开时 ForwardManager 先标 error 再取消（见
-//! src-tauri commands/forward.rs），stopped 不得覆盖 error。
+//! desktop commands/forward.rs），stopped 不得覆盖 error。
 //!
 //! 字节计数口径：`tx_bytes` = 写入 SSH channel 方向（客户端→目标），
 //! `rx_bytes` = 从 SSH channel 读出方向（目标→客户端）。计数器包在 channel
@@ -45,7 +45,7 @@ use crate::{Error, Result};
 // ---------------------------------------------------------------------------
 
 /// 转发类型。ottr-vault 另有 serde 面 `ForwardKind`（存库字符串），此处是
-/// 运行面定义——两者字符串口径一致（local/remote/dynamic），src-tauri 命令层
+/// 运行面定义——两者字符串口径一致（local/remote/dynamic），desktop 命令层
 /// 负责映射（crate 间不互相依赖：ottr-ssh 不依赖 ottr-vault）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ForwardKind {
@@ -151,7 +151,7 @@ impl ForwardStats {
     }
 
     /// 失败（bind / tcpip_forward / 路由通道消亡等）。pub = ForwardManager 的
-    /// 会话断开收尾面（session_down 标 Error 的 owner 在 src-tauri 命令域）。
+    /// 会话断开收尾面（session_down 标 Error 的 owner 在 desktop 命令域）。
     pub fn set_error(&self, message: impl Into<String>) {
         self.set(ForwardState::Error(message.into()));
     }

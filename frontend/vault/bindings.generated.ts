@@ -162,7 +162,7 @@ export type CredentialPatch = {
 	totp_secret: string | null,
 };
 
-/**  历史行（serde 面与 `src/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。 */
+/**  历史行（serde 面与 `frontend/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。 */
 export type HistoryEntry = {
 	id: number,
 	host_id: number,
@@ -319,7 +319,7 @@ export type SnippetInput = {
 };
 
 /**
- *  纪要行（serde 面与 `src/vault/api.ts` 的 `SummaryEntry` 同构，snake_case；
+ *  纪要行（serde 面与 `frontend/vault/api.ts` 的 `SummaryEntry` 同构，snake_case；
  *  `summary` 为开封后的明文——密文只在 `summary_enc` 列，出库即开）。
  */
 export type SummaryEntry = {

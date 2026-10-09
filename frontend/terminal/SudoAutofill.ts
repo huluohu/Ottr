@@ -7,7 +7,7 @@
 //     模式限定（keyring 模式 gate 恒 false）；每次提示只填一次（冷却窗防重放）。
 //
 // 真源锚点：夹具 sudo 1.x 的提示串逐字为 `[sudo] password for spike: `
-// （src-tauri/tests/sudo_fixture.rs 实测断言）；正则容忍用户名缺失与空白变体。
+// （desktop/tests/sudo_fixture.rs 实测断言）；正则容忍用户名缺失与空白变体。
 //
 // 关键时序（真夹具实测踩坑）：sudo 打印提示**之后**才 tcsetattr 关回显——
 // TCSAFLUSH 语义会把尚未读取的入缓冲冲掉。检测到提示立刻喂密码 = 密码被冲、

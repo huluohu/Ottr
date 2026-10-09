@@ -5,7 +5,7 @@ edition = "2024"
 description = "Ottr storage engine and key hierarchy (AES-256-GCM / keyring / SQLite WAL)"
 
 [features]
-# TS 类型绑定生成（tauri-specta 试点，2026-10-08）：默认关——仅 src-tauri 的
+# TS 类型绑定生成（tauri-specta 试点，2026-10-08）：默认关——仅 desktop 的
 # bindings 生成测试启用；derive 经 cfg_attr 挂载，核心 crate 默认构建零增量。
 specta = ["dep:specta"]
 
@@ -25,7 +25,7 @@ aes-gcm = { version = "0.11", features = ["zeroize"] }
 argon2 = "0.6"
 hex = "0.4"
 rand = { workspace = true }
-# 实体结构体的 serde 序列化形态即前端契约（src/vault/api.ts 同构类型，Task 4）；
+# 实体结构体的 serde 序列化形态即前端契约（frontend/vault/api.ts 同构类型，Task 4）；
 # tags/variables 列以 JSON 文本落库（spec §3）。
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -34,7 +34,7 @@ serde_json = { workspace = true }
 # （spec §14 backlog 的本任务内联部分，替代 Task 3 的暂不引入裁定）。
 zeroize = "1"
 
-# keyring 平台 store 按 target opt-in——照抄 src-tauri（Phase 0 Task 11 先例）：
+# keyring 平台 store 按 target opt-in——照抄 desktop（Phase 0 Task 11 先例）：
 # v3 无默认 feature；sync-secret-service 依赖 dbus（macOS 无 libdbus 不能全局启用）。
 # Linux 无 Secret Service → 加密文件 + Argon2id 主密码 fallback（见 master_key.rs 文档）。
 [target.'cfg(target_os = "macos")'.dependencies]

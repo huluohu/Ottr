@@ -1,7 +1,7 @@
 // ThemeContext（A10，Task 1 产出；T11 接 vault settings；theme-suite T2 多主题）：
 // mode 七态 light/dark/system/oled/amethyst/verdant/glass；system 跟随
 // `prefers-color-scheme`（matchMedia），并叠加 Tauri 侧 `ottr://system-theme`
-// 事件兜底（Linux WebKitGTK 明暗动态跟随不可靠，src-tauri lib.rs 监听
+// 事件兜底（Linux WebKitGTK 明暗动态跟随不可靠，desktop lib.rs 监听
 // WindowEvent::ThemeChanged 后推送）。
 // 二级解析：resolved: light|dark —— oled/amethyst/glass 为暗底系、verdant 亮底、
 // system 跟随系统；color-scheme 沿 resolved（tokens.css 各块自带声明）。

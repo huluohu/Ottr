@@ -90,7 +90,7 @@ pub fn export_hosts_csv(
 }
 
 // --- 同步分类快照（Phase 5 Task 3；ottr-vault sync_snapshot 模块）-------------
-// 分类快照导出/导入 = 同步编排（src/sync/SyncStore.ts）的数据面。两者都开封/
+// 分类快照导出/导入 = 同步编排（frontend/sync/SyncStore.ts）的数据面。两者都开封/
 // 重密封凭据与渠道密文（双层加密语义：信封口令保护传输面、本机主密码保护落盘
 // 面，见 task-3-report）——过 ensure_unlocked 门卫，与凭据 CRUD 同一锁定语义。
 // 命令名即简报裁定面：sync_export_categories(cats) / sync_import_categories(cats,

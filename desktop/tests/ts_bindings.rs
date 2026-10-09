@@ -1,6 +1,6 @@
 //! TS 类型绑定生成（tauri-specta 试点，2026-10-08 遗留项①）：
 //! vault 域四组命令（hosts / known_hosts / credentials / snippets，24 条）的
-//! 签名与类型自动导出为 `src/vault/bindings.generated.ts`，并以「重生成一致性」
+//! 签名与类型自动导出为 `frontend/vault/bindings.generated.ts`，并以「重生成一致性」
 //! 断言守护——Rust 侧签名/字段漂移会让重生成结果与提交物 diff，本测试即红
 //! （提交更新产物即是一次显式 review）。生产 Builder 链零改动（推广路径见
 //! docs/structure-refactor-plan.md §2）。
@@ -85,8 +85,8 @@ fn run_bindings_check() -> Result<(), String> {
             ottr_lib::vault::export_hosts_csv,
         ]);
 
-    let committed =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/vault/bindings.generated.ts");
+    let committed = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../frontend/vault/bindings.generated.ts");
 
     let regenerated = {
         let tmp = std::env::temp_dir().join("ottr-bindings-regenerated.ts");
@@ -103,7 +103,7 @@ fn run_bindings_check() -> Result<(), String> {
             std::fs::write(&committed, &regenerated)
                 .map_err(|e| format!("write initial bindings: {e}"))?;
             return Err(String::from(
-                "bindings.generated.ts 首次生成完成——请把它随本改动一起提交（src/vault/bindings.generated.ts）",
+                "bindings.generated.ts 首次生成完成——请把它随本改动一起提交（frontend/vault/bindings.generated.ts）",
             ));
         }
     };
@@ -111,7 +111,7 @@ fn run_bindings_check() -> Result<(), String> {
     if regenerated != on_disk {
         return Err(String::from(
             "Rust 侧签名/类型漂移：重新生成 bindings.generated.ts 并随改动一起 review 提交\n\
-             （删除 src/vault/bindings.generated.ts 后重跑本测试即可重新落库）",
+             （删除 frontend/vault/bindings.generated.ts 后重跑本测试即可重新落库）",
         ));
     }
     Ok(())

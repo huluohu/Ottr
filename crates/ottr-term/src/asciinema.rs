@@ -76,7 +76,7 @@ impl CastHeader {
 }
 
 /// 一条输出事件（`time` = 相对录制起点的秒；`data` = 终端输出原文，转义序列保留
-/// ——回放靠它们还原屏幕，FTS 索引面由录制器另行剥离）。serde 面供 src-tauri
+/// ——回放靠它们还原屏幕，FTS 索引面由录制器另行剥离）。serde 面供 desktop
 /// recording_read/export 命令直接出/入参（snake_case 字段名即 serde 默认）。
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastEvent {

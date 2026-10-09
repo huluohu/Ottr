@@ -4,7 +4,7 @@
 //   * 本文件的接口镜像 crates/ottr-vault/src/entities.rs 的 serde 结构——字段名
 //     逐字 snake_case（serde 默认不重命名）、`Option<T>` ↔ `T | null`、i64 ↔ number、
 //     bool ↔ boolean。Rust 侧改字段必须同步这里（Task 5 接线后两侧不符会在编译期报错）。
-//   * invoke 命令名 = Task 5 在 src-tauri 注册 Tauri 命令时的契约名，逐字对齐：
+//   * invoke 命令名 = Task 5 在 desktop 注册 Tauri 命令时的契约名，逐字对齐：
 //       hosts_list hosts_get hosts_create hosts_update hosts_delete
 //       hosts_list_by_group hosts_search
 //       credentials_list credentials_get credentials_create credentials_update
@@ -15,12 +15,12 @@
 //       known_hosts_list known_hosts_upsert known_hosts_verify known_hosts_mark_changed
 //       known_hosts_delete known_hosts_probe known_hosts_audit_run（B9 生命周期收口）
 //       import_ssh_config export_hosts_csv（Task 5 导入/导出）
-//       key_generate key_inspect key_export key_deploy（Task 6 密钥管理，src-tauri keys.rs）
+//       key_generate key_inspect key_export key_deploy（Task 6 密钥管理，desktop keys.rs）
 //       vault_security_status vault_unlock vault_lock vault_upgrade_to_master_password
 //       settings_get settings_set（T11 安全底座 + theme/language 迁 vault）
-//       vault_copy_credential_secret（T11 剪贴板，src-tauri security.rs）
+//       vault_copy_credential_secret（T11 剪贴板，desktop security.rs）
 //       notify_insert notify_list notify_mark_read notify_clear notify_unread_count
-//       （Task 12 通知中心，spec §7①；事件源接线在 src/notify/core.ts）
+//       （Task 12 通知中心，spec §7①；事件源接线在 frontend/notify/core.ts）
 //       session_tail（Task 13 AI 诊断：会话输出尾部剥 ANSI 纯文本）
 //       secret_set secret_get secret_delete secret_contains
 //       （Task 13 secrets 密文 KV：AI provider api key，锁定即拒）
@@ -35,10 +35,10 @@
 //       （summary_enc 已登记 scan_registry，summary_insert/list 过锁定门卫））
 //       pf_list pf_create pf_update pf_delete pf_set_enabled pf_start pf_stop
 //       （Phase 2 Task 1 端口转发中心，B7 上半；配置面过锁定门卫，运行面
-//       ForwardManager 在 src-tauri commands/forward.rs）
+//       ForwardManager 在 desktop commands/forward.rs）
 //       jc_list jc_create jc_update jc_delete jc_test
 //       （Phase 2 Task 2 跳板链，B7 下半；配置面过锁定门卫，测试连接面
-//       jc_test 在 src-tauri commands/jump.rs）
+//       jc_test 在 desktop commands/jump.rs）
 //   * 顶层 invoke 参数走 Tauri v2 的 camelCase 约定（groupId / hostGroups...）；
 //     载荷对象内部（HostInput 等）是 serde 反序列化面，保持 snake_case。
 //
@@ -626,7 +626,7 @@ export const vaultApi = {
     /** 手动全量巡检一轮（探测 + changed 落账 + 通知事件），返回巡检回执。 */
     auditRun: () => invoke<HostKeyAuditOutcome>("known_hosts_audit_run"),
   },
-  /** 密钥管理（Task 6，A4；Rust 侧 src-tauri/src/keys.rs）。
+  /** 密钥管理（Task 6，A4；Rust 侧 desktop/src/keys.rs）。
    * 导出调用契约（裁定 #2）：加密私钥必须先经 keyInspect 验证 passphrase
    * 通过后才允许 keyExport——主密码模式 Task 11 落地后在此收口升级。 */
   keys: {
@@ -674,7 +674,7 @@ export const vaultApi = {
     set: (key: string, value: unknown) => invoke<void>("settings_set", { key, value }),
   },
   /** 通知中心（Task 12，spec §7①）：明文面命令（锁定可读写，Rust 侧不过门卫）。
-   * 事件源接线与管线在 src/notify/core.ts；本组只是表的类型化 invoke 面。 */
+   * 事件源接线与管线在 frontend/notify/core.ts；本组只是表的类型化 invoke 面。 */
   notifications: {
     insert: (input: NotificationInput) => invoke<Notification>("notify_insert", { input }),
     /** 最近通知（ts DESC）；limit 缺省 200（Rust 侧 unwrap_or）。 */
@@ -732,7 +732,7 @@ export const vaultApi = {
     contains: (key: string) => invoke<boolean>("secret_contains", { key }),
   },
   /** 告警规则（Phase 3 Task 3，B5）：vault 配置面（锁定即拒，同 hosts）。
-   * 评估引擎在 src/notify/rules.ts（数据源 ottr://monitor + monitor_ps）。 */
+   * 评估引擎在 frontend/notify/rules.ts（数据源 ottr://monitor + monitor_ps）。 */
   alertRules: {
     list: () => invoke<AlertRule[]>("ar_list"),
     create: (input: AlertRuleInput) => invoke<AlertRule>("ar_create", { input }),

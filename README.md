@@ -178,14 +178,14 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 ## 🛠 技术栈与工程结构
 
 ```
-├─ src/                    # 前端（React + TypeScript + zustand + i18next + xterm.js）
+├─ frontend/               # 前端（React + TypeScript + zustand + i18next + xterm.js）
 │  ├─ app/ dock/ home/ titlebar/                       # 壳层侧栏 / 工具面板停靠 / 欢迎首页 / 自绘标题栏
 │  ├─ terminal/ workspace/ hosts/ credentials/ files/  # 终端 / 工作区 / 主机 / 凭据 / 文件
 │  ├─ ai/ notify/ sync/ monitor/ history/ cron/ update/  # AI / 通知 / 同步 / 监控 / 历史 / 定时任务 / 检查更新
 │  ├─ session/ security/ vault/ batch/ forward/ plugins/  # 会话状态机 / 安全 / 库 API / 批量 / 转发 / 插件
 │  ├─ theme/ styles/ ui/ i18n/ shortcuts/ palette/     # 主题令牌 / 分节样式 / 基础组件 / 双语 / 键位 / ⌘K
 │  └─ vault/bindings.generated.ts                      # Rust 命令 TS 绑定（tauri-specta 自动生成，漂移即测试红）
-├─ src-tauri/              # Tauri 2 宿主 + 命令层（按域拆分：session/vault/mcp/…）
+├─ desktop/              # Tauri 2 宿主 + 命令层（按域拆分：session/vault/mcp/…）
 │  ├─ tests/               # 真容器夹具集成 + 契约守护（命令名集合比对 / 绑定一致性）
 │  └─ crates/
 │     ├─ ottr-vault        # 加密库（AES-256-GCM + Argon2id + 钥匙链 + 同步快照）

@@ -33,7 +33,7 @@ use crate::{Result, Vault, VaultError};
 /// `history.limit` 可配，本常量为未配置/坏值时的回落默认）。
 pub const HISTORY_KEEP_ROWS: i64 = 50_000;
 
-/// BL-205① history.limit 读取侧收敛（src-tauri security.rs *_from 同语义）：
+/// BL-205① history.limit 读取侧收敛（desktop security.rs *_from 同语义）：
 /// 未设置/类型错/越界/读取失败一律回落默认 [`HISTORY_KEEP_ROWS`]。写入侧
 /// （settings_set 与 sync 分类导入共享 validate_known_setting）已拒绝越界，
 /// 这里兜外部直写/旧库坏值——配置错误不挡历史入库（读取失败安全侧不断链）。
@@ -62,7 +62,7 @@ fn now_ts() -> i64 {
         .as_secs() as i64
 }
 
-/// 历史行（serde 面与 `src/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。
+/// 历史行（serde 面与 `frontend/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HistoryEntry {

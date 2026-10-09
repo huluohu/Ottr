@@ -1,5 +1,5 @@
 // 批量执行（Phase 3 Task 4，B6）invoke 契约层：类型与 Rust
-// `src-tauri/src/commands/batch.rs` serde 面逐字对齐（vault/api 同款纪律）。
+// `desktop/src/commands/batch.rs` serde 面逐字对齐（vault/api 同款纪律）。
 // 命令：
 //   batch_exec(targets, concurrency?, timeoutSecs?) → batch_id（立即返回，
 //     结果经 ottr://batch-result 逐主机事件流回，见 ./events.ts）

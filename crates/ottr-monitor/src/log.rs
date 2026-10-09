@@ -34,7 +34,7 @@ pub const LOG_STAT_MARK: &str = "===OTTR:LSTAT===";
 /// 数据段 marker（数据段取到 EOF，其后日志正文即使出现 marker 文本也不误切）。
 pub const LOG_DATA_MARK: &str = "===OTTR:LDATA===";
 
-/// 单轮日志采样（serde snake_case，前端 src/monitor/api.ts 同构）。
+/// 单轮日志采样（serde snake_case，前端 frontend/monitor/api.ts 同构）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct LogTailSample {
     /// 文件 inode（stat 失败/远端非 GNU stat = None——该轮 TS 静默跳过）。

@@ -14,7 +14,7 @@
 //! **完整 App 口径**——完整数字由 `docs/runbooks/spike-win-linux.md` 在真实
 //! Win/Linux 机器上人工补，两者在报告中分开呈现，不许混判。
 //!
-//! 主机密钥：与 src-tauri 相同的 pin 语义（解析 `fixtures/known_hosts` 首条记录
+//! 主机密钥：与 desktop 相同的 pin 语义（解析 `fixtures/known_hosts` 首条记录
 //! 为 SHA256 指纹，不匹配即拒），不允许静默跳过校验。
 
 use std::path::PathBuf;
@@ -141,7 +141,7 @@ async fn session_worker(index: usize, deadline: Instant) -> ottr_ssh::Result<(u6
     })??;
     eprintln!("[bench] session {index} connected (fp pinned)");
 
-    // PTY + 周期性输出：与 src-tauri attach_session 同序（open_pty →
+    // PTY + 周期性输出：与 desktop attach_session 同序（open_pty →
     // request_shell(true) → make_writer 写入），每步限时——连接类操作不允许
     // 无限等待（phase0-report §5 的 attach 停滞教训）。shell 起来后 exec 成
     // 每 5s 打一行 date 的循环，输出由排空任务持续消费。
@@ -251,9 +251,9 @@ async fn session_worker(index: usize, deadline: Instant) -> ottr_ssh::Result<(u6
     Ok((sftp_iters, sftp_bytes, drain_bytes))
 }
 
-/// 与 src-tauri 同款 pin：按 bench 夹具端点解析仓库 `fixtures/known_hosts`
+/// 与 desktop 同款 pin：按 bench 夹具端点解析仓库 `fixtures/known_hosts`
 /// （BL-211 收敛点：实现在 [`ottr_ssh::known_hosts::fingerprint_for_host`]，
-/// 此前本文件内联的 host 过滤解析与 src-tauri 两处重复同一算法）。
+/// 此前本文件内联的 host 过滤解析与 desktop 两处重复同一算法）。
 fn pinned_fingerprint() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/known_hosts");
     if let Ok(content) = std::fs::read_to_string(&path)
@@ -262,6 +262,6 @@ fn pinned_fingerprint() -> String {
     {
         return fp;
     }
-    // 夹具文件缺失/不可解析时兜底为已 pin 值（与 src-tauri 常量一致）。
+    // 夹具文件缺失/不可解析时兜底为已 pin 值（与 desktop 常量一致）。
     "SHA256:nLaxv/1hXxccQNB7JauQUi63z0YmST4P3AvViyoNCIQ".to_string()
 }

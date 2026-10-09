@@ -1,5 +1,5 @@
 //! known_hosts 解析与指纹（BL-211 收敛点）：此前指纹解析逻辑在
-//! src-tauri commands/session.rs（整文件取首条）、src-tauri hostkey_audit.rs
+//! desktop commands/session.rs（整文件取首条）、desktop hostkey_audit.rs
 //! （keyscan 逐行）、crates/ottr-bench（host 过滤）三处各写一份 + ottr-ssh
 //! 测试助手两处——算法相同（`SHA256:<unpadded-std-b64(sha256(key_blob))>`，
 //! 与 `ssh-keygen -lf` 逐字一致）但行为细节（marker 行、host 过滤）不一，

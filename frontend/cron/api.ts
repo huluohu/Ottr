@@ -1,5 +1,5 @@
 // cron 定时任务（Phase 4 Task 1，缺口①）invoke 契约层：类型与 Rust
-// `src-tauri/src/commands/cron.rs` serde 面逐字对齐（batch/api 同款纪律）。
+// `desktop/src/commands/cron.rs` serde 面逐字对齐（batch/api 同款纪律）。
 // 命令：
 //   cj_list / cj_create / cj_update / cj_delete      配置面（锁定门卫内）
 //   cj_runs(cronId, limit)                           运行历史（明文读面）

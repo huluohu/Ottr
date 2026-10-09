@@ -4,7 +4,7 @@
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM"],
     "module": "ESNext",
-    // trzsz 测试面（src/terminal/trzsz/*.test.ts）驱动 node:fs 真件；显式点名
+    // trzsz 测试面（frontend/terminal/trzsz/*.test.ts）驱动 node:fs 真件；显式点名
     // node（TS6 对未点名的 @types/node 拒给 node: 模块解析）。仅类型面，无运行时。
     "types": ["node"],
     "skipLibCheck": true,
@@ -23,6 +23,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": ["frontend"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

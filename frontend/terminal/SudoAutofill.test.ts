@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("SudoPromptDetector", () => {
-  // 真夹具金样：src-tauri/tests/sudo_fixture.rs 实测的逐字提示
+  // 真夹具金样：desktop/tests/sudo_fixture.rs 实测的逐字提示
   // （ssh -tt spike@127.0.0.1 'sudo -S true' 的 PTY 流原样字节）。
   const FIXTURE_PROMPT = "[sudo] password for spike: ";
 

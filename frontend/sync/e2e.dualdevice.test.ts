@@ -3,7 +3,7 @@
 // SyncStore 编排（三态判定/冲突列表/裁定应用）——UI 层以下全链的整合验证。
 //
 // 「设备」构成：
-//   * Rust 侧 = `src-tauri/examples/sync_bridge_fixture.rs`（stdio JSON 线协议，
+//   * Rust 侧 = `desktop/examples/sync_bridge_fixture.rs`（stdio JSON 线协议，
 //     直调与 Tauri 命令体同款的 ottr-vault 函数：sync_export/import_categories、
 //     settings_get/set + validate_known_setting）——两个实例 = 两台设备；
 //   * TS 侧 = 生产代码原样（createSyncStore + createWebdavTransport + engine），

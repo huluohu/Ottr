@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Metrics 事件载荷序列化面（src-tauri tauri::Emitter 直发 JSON）。
+# Metrics 事件载荷序列化面（desktop tauri::Emitter 直发 JSON）。
 serde = { workspace = true }
 # 采样循环：sleep/timeout（time）+ CancellationToken（sync）+ spawn 测试（rt）。
 tokio = { workspace = true, features = ["time", "sync", "rt"] }
@@ -24,5 +24,5 @@ russh = { workspace = true }
 serde_json = { workspace = true }
 # monitor_soak example（Phase 3 T7 验收）：录制负载取 asciinema v2 编码 +
 # Stripper 剥离的真代码路径（格式层+剥离层；app 层 RecordingHandle 的
-# 通道/写盘线程/入库由 src-tauri recording_fixture 覆盖，soak 不复刻）
+# 通道/写盘线程/入库由 desktop recording_fixture 覆盖，soak 不复刻）
 ottr-term = { path = "../ottr-term" }

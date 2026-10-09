@@ -342,7 +342,7 @@ describe("工厂分派 + 注册表挂载/路由", () => {
 
   // 【fix round 1（C-1）】重试装饰不在工厂层——工厂只出裸适配器（name=裸 kind），
   // 装饰在 channelRegistry.mountOne 以挂载名（kind#id）收口；真实挂载链的
-  // 集成回归在 src/notify/channelRegistry.test.ts（单测绕过 mountOne 测不到
+  // 集成回归在 frontend/notify/channelRegistry.test.ts（单测绕过 mountOne 测不到
   // 改名/装饰顺序缺陷）。
 
   it("remountChannels：读启用渠道→reveal→挂载；subscribed 按规则 channels 路由", async () => {

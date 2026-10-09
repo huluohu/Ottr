@@ -1,9 +1,9 @@
 //! 前后端命令名契约守护（2026-10-08 结构收敛批次）：前端 `invoke("<name>")`
 //! 的每一个命令名都必须在 lib.rs 的 `generate_handler![...]` 注册表里。
 //!
-//! 背景：TS 侧命令名与 Rust 命令 fn 是手工镜像（src/vault/api.ts 文件头契约），
+//! 背景：TS 侧命令名与 Rust 命令 fn 是手工镜像（frontend/vault/api.ts 文件头契约），
 //! 漂移目前只能靠前端单测的 mock 命中兜底。本测试从**两侧真源**（lib.rs 注册
-//! 文本 + src/ 全部 invoke 字面量）做集合校验——前端调到未注册的命令名 = 运行
+//! 文本 + frontend/ 全部 invoke 字面量）做集合校验——前端调到未注册的命令名 = 运行
 //! 时 invoke 必败，直接红灯到具体名字，不再等人工排查。
 //!
 //! 口径：
@@ -26,8 +26,8 @@ fn repo_root() -> PathBuf {
 
 /// lib.rs 注册表：generate_handler![...] 块内所有路径的最后一段。
 fn registered_commands() -> BTreeSet<String> {
-    let lib = std::fs::read_to_string(repo_root().join("src-tauri/src/lib.rs"))
-        .expect("read src-tauri/src/lib.rs");
+    let lib = std::fs::read_to_string(repo_root().join("desktop/src/lib.rs"))
+        .expect("read desktop/src/lib.rs");
     let start = lib
         .find("generate_handler!")
         .unwrap_or_else(|| panic!("lib.rs 未找到 generate_handler! 注册表"));
@@ -60,10 +60,10 @@ fn registered_commands() -> BTreeSet<String> {
         .collect()
 }
 
-/// 前端 src/**/*.{ts,tsx} 里全部 invoke 字面量命令名。
+/// 前端 frontend/**/*.{ts,tsx} 里全部 invoke 字面量命令名。
 fn invoked_commands() -> BTreeSet<(String, PathBuf)> {
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in std::fs::read_dir(dir).expect("read src/") {
+        for entry in std::fs::read_dir(dir).expect("read frontend/") {
             let path = entry.unwrap().path();
             if path.is_dir() {
                 walk(&path, out);
@@ -76,7 +76,7 @@ fn invoked_commands() -> BTreeSet<(String, PathBuf)> {
         }
     }
     let mut files = Vec::new();
-    walk(&repo_root().join("src"), &mut files);
+    walk(&repo_root().join("frontend"), &mut files);
 
     let mut found = BTreeSet::new();
     for file in files {

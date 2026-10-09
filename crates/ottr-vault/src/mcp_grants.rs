@@ -1,6 +1,6 @@
 //! mcp_grants 表访问（Phase 4 Task 3，C1 MCP Server 接入——存储侧）。
 //!
-//! 与 [`crate::cron_jobs`] 同款分工：MCP 协议引擎在 src-tauri（commands/mcp.rs
+//! 与 [`crate::cron_jobs`] 同款分工：MCP 协议引擎在 desktop（commands/mcp.rs
 //! ——工具面/审批门/UDS listener 都与 App 生命周期耦合），本 crate 只供表。
 //! 授权矩阵语义（默认全拒 / 主机粒度 / 逐次审批档 / read 目录白名单）见
 //! 0017 迁移文件头。明文面（无 `*_enc` 列），锁定语义与 hosts 同（配置面

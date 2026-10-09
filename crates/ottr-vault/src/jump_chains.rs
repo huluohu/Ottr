@@ -6,7 +6,7 @@
 //! `hops` 列 = JSON 数组（host_id 有序序列，serde 直通）：顺序即连接序——
 //! hops[0] 本地直连，hops[i] 经 hops[i-1] 的 direct-tcpip 隧道（Phase 0
 //! jump.rs 拓扑），target = 引用本链的 hosts 行（连接侧解析，见
-//! src-tauri commands/jump.rs）。反向链与正向链是**不同的链**。
+//! desktop commands/jump.rs）。反向链与正向链是**不同的链**。
 //!
 //! FK 语义由存储层承担（0009 偏差记录，SQLite 无法对既有列补 REFERENCES）：
 //! * create/update 校验 hops 非空、无重复、指向的主机存在（= FK 存在性），

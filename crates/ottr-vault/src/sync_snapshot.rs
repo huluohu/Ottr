@@ -2,7 +2,7 @@
 //!
 //! 八类分类快照（spec Phase 5 裁定面）：host_groups / credentials / hosts /
 //! snippets / notify_channels / alert_rules / cron_jobs / settings——每类一条
-//! 数组，条目含全部业务字段。信封加密在 TS 侧（src/sync/envelope.ts，Phase 5
+//! 数组，条目含全部业务字段。信封加密在 TS 侧（frontend/sync/envelope.ts，Phase 5
 //! Task 2），本模块只负责「vault ↔ 快照 JSON」的双向翻译：
 //!
 //! * **导出**（[`export_categories`]）= 忠实快照 + 本地性剥离：
@@ -42,7 +42,7 @@
 //!   （未来加分类/改字段）走版本 bump + 迁移转换，绝不静默误读。
 //!
 //! 锁定语义：导出要开封凭据/渠道密文（`cipher()` 锁定即拒）；导入要重密封
-//! ——两者都过密钥面，与凭据 CRUD 同一锁定语义（src-tauri 命令层再过
+//! ——两者都过密钥面，与凭据 CRUD 同一锁定语义（desktop 命令层再过
 //! `ensure_unlocked` 门卫统一报错文案）。
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -75,7 +75,7 @@ pub const SYNC_CATEGORIES: [&str; 8] = [
 
 /// 本机同步簿记的 settings 键前缀：不导出、导入不波及。
 /// 现有键：`sync.state`（三态判定基线）、`sync.scope.push` / `sync.scope.restore`
-/// （范围勾选偏好，src/sync/SyncStore.ts）。
+/// （范围勾选偏好，frontend/sync/SyncStore.ts）。
 const SYNC_SETTINGS_PREFIX: &str = "sync.";
 
 /// 导入语义（版本化枚举：未来 merge 语义在此扩展，传输参数面向前兼容）。

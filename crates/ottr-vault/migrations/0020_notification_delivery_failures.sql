@@ -2,7 +2,7 @@
 -- 为什么：渠道投递终败的「投递失败」标记此前是纯前端会话内账本（重启丢失，
 -- 重发入口随标记一起消失）；本迁移给 notifications 补 delivery_failures 列，
 -- 标记/翻正/清账全部落库（Rust mark/clear 命令面 + 前端写穿，见
--- notifications.rs 与 src/notify/core.ts）。
+-- notifications.rs 与 frontend/notify/core.ts）。
 -- 列形态：JSON 数组（元素 {channel, channel_id, error, ts}——渠道挂载名按
 -- 「kind#id」去重键），NULL = 无标记（旧库升级后的默认态，向后兼容）；集合
 -- 清空时写回 NULL 而非 '[]'（无标记态恒一形态）。

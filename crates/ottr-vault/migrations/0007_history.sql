@@ -6,7 +6,7 @@
 -- 列（0002 台账裁定的形态 + 本任务补 cwd）：
 --   host_id    产生该命令的会话主机（NOT NULL：前端 SessionStore 会话恒有 hostId）
 --   command    命令行文本（OSC133 A..C 提取，含提示符原文——文本层已知限制，
---              见 src/terminal/CommandWatch.ts 模块文档）
+--              见 frontend/terminal/CommandWatch.ts 模块文档）
 --   cwd        命令运行目录（shell 集成 OSC 7 在提示符时点上报的 PWD；未上报 = NULL）
 --   exit_code  退出码（shell 未上报 = NULL；含 0 —— 历史记录全量命令，与 AI
 --              诊断「仅失败触发」的门槛不同）

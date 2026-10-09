@@ -2,7 +2,7 @@
 //! snippets / known_hosts；history 表 Task 15、notifications Task 12 各自成迁移）。
 //!
 //! 设计要点：
-//! - **序列化面即前端契约**：结构体字段与 serde 形态由 `src/vault/api.ts` 同构镜像
+//! - **序列化面即前端契约**：结构体字段与 serde 形态由 `frontend/vault/api.ts` 同构镜像
 //!   （snake_case、`Option<T>` ↔ `T | null`）。敏感字段（`*_enc`）绝不进结构体——
 //!   明文只经 [`Credentials::reveal`] 单点出库。
 //! - **密文纪律**：调用方传明文，存储层经 [`Vault::crypto`] seal；AAD 一律走

@@ -163,7 +163,7 @@ async function nodeWriteFile(workDir: string, relPath: string, data: string): Pr
 
 /**
  * 生产接线（webview）：git exec / scratch 生命周期走 Rust 白名单桥
- * （src-tauri commands/sync_git.rs——argv 形态钉死 + repoUrl scheme 复验 +
+ * （desktop commands/sync_git.rs——argv 形态钉死 + repoUrl scheme 复验 +
  * cwd 钉死 ottr-sync-git-* 命名空间；安全面论证见该模块文档）。env 面只透传
  * commit 作者两项（Rust 侧显式参数，不接受任意 env 表）；GIT_TERMINAL_PROMPT=0
  * 由 Rust 恒设。

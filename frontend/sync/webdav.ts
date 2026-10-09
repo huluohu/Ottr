@@ -16,7 +16,7 @@
 // 生产网络面（product-ready T4，BL-524）：默认 fetchImpl = tauriWebdavFetch
 // ——webview 原生 fetch 生产被 CORS 拦死（自建 WebDAV/dufs 不发跨域响应头，
 // tauri.conf connect-src 亦不放宽），改经 invoke 走 Rust reqwest 代理命令
-// sync_http_fetch（src-tauri commands/sync_http.rs：同源钉死 + method 白名单
+// sync_http_fetch（desktop commands/sync_http.rs：同源钉死 + method 白名单
 // + Authorization/Content-Type 全在 Rust 侧拼）。回执 {status, body} 还原成
 // Response——本文件上方全部语义（404=null / 错误消息 HTTP <status> / test
 // 布尔面）零漂移；vitest/端到端测试显式注入 fetchImpl（node fetch 或 Mock）。
@@ -58,7 +58,7 @@ function urlOf(config: WebdavConfig): string {
   return `${server}/${path}`;
 }
 
-/** Rust HTTP 代理命令（src-tauri commands/sync_http.rs）的回执面。 */
+/** Rust HTTP 代理命令（desktop commands/sync_http.rs）的回执面。 */
 export interface SyncHttpResult {
   status: number;
   body: string;

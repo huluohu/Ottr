@@ -1,5 +1,5 @@
 // Task 10（A5）文件面板命令面封装：Rust 命令名契约与载荷类型同构。
-// Rust 侧定义见 src-tauri/src/lib.rs「Task 10」节；ottr_transfer::DirEntry 直出。
+// Rust 侧定义见 desktop/src/lib.rs「Task 10」节；ottr_transfer::DirEntry 直出。
 import { invoke } from "@tauri-apps/api/core";
 
 /** 远端目录项（Rust ottr_transfer::DirEntry 同构）。mode 为 POSIX 权限位。 */

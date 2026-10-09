@@ -50,7 +50,7 @@ jobs:
       - name: Verify tag matches app version
         run: |
           tag="$GITHUB_REF_NAME"
-          app_version="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          app_version="v$(node -p "require('./desktop/tauri.conf.json').version")"
           package_version="v$(node -p "require('./package.json').version")"
           test "$tag" = "$app_version" || {
             echo "::error::Tag $tag does not match tauri.conf.json version $app_version"
@@ -148,7 +148,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "TAURI_BUILD_ARGS=--config src-tauri/tauri.updater.conf.json" >> "$GITHUB_ENV"
+            echo "TAURI_BUILD_ARGS=--config desktop/tauri.updater.conf.json" >> "$GITHUB_ENV"
           else
             echo "TAURI_BUILD_ARGS=" >> "$GITHUB_ENV"
             echo "TAURI_SIGNING_PRIVATE_KEY not configured - building without updater artifacts"
@@ -208,7 +208,7 @@ jobs:
           name: ottr-${{ matrix.name }}
           if-no-files-found: error
           # workspace 根 Cargo.toml 聚合 members → 产物在仓库根 target/，不是
-          # src-tauri/target/（T16 本地实测）。*.sig / *.app.tar.gz / *.msi.zip
+          # desktop/target/（T16 本地实测）。*.sig / *.app.tar.gz / *.msi.zip
           # 仅在签名 overlay 生效时存在，不命中不报错。
           path: |
             target/release/bundle/dmg/*.dmg

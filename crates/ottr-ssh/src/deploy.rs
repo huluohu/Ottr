@@ -5,7 +5,7 @@
 //! 幂等：部署前 `grep -qxF`（整行精确匹配）检查，已存在则跳过（回执
 //! [`DeployStatus::AlreadyPresent`]）。SFTP 写入版列为 Task 10 后可选升级。
 //!
-//! 主机密钥策略沿用 [`HostKeyPolicy`] 回调——部署命令的调用方（src-tauri）
+//! 主机密钥策略沿用 [`HostKeyPolicy`] 回调——部署命令的调用方（desktop）
 //! 决定接受策略；本模块只负责把会话记录到的服务器指纹带回回执
 //! （[`DeployOutcome::host_key_fingerprint`]），供 TOFU 落库。
 

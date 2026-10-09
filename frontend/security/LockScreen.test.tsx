@@ -146,7 +146,7 @@ describe("LockScreen 忘记密码引导", () => {
     const { resolve } = await import("node:path");
     // vitest cwd = 项目根；直接按根相对路径读词典源文件（不用 import：与
     // i18n.test 同理，避免 i18n 实例 resources 共享对象引用互相污染）。
-    const read = (f: string) => readFileSync(resolve(process.cwd(), "src/i18n", f), "utf-8");
+    const read = (f: string) => readFileSync(resolve(process.cwd(), "frontend/i18n", f), "utf-8");
     const zh = JSON.parse(read("zh-CN.json")) as Record<string, unknown>;
     const en = JSON.parse(read("en-US.json")) as Record<string, unknown>;
     const keys = [

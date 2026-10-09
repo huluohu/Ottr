@@ -21,7 +21,7 @@
 //!   采样调度原语（间隔/抖动/相位错开）与 cron 定时任务引擎已迁至
 //!   ottr-cron（crate 命名与内容对齐；[`task`] 经 ottr_cron::sched 消费）
 //!
-//! 消费面：src-tauri `commands/monitor.rs`（MonitorManager + `ottr://monitor`
+//! 消费面：desktop `commands/monitor.rs`（MonitorManager + `ottr://monitor`
 //! 事件推前端）。本 crate 不含 Tauri/前端类型，循环以闭包注入可离线测试。
 //!
 //! ```no_run

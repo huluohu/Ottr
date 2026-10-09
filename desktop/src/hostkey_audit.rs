@@ -16,7 +16,7 @@
 //!     或未就绪跳过本轮（下轮重试）。last_run 是进程内原子时间戳——改间隔
 //!     即时生效（下一跳按新间隔对账）。
 //!
-//! 通知接线：本模块只 emit 事件；落库/系统通知/限频在前端 src/notify/core.ts
+//! 通知接线：本模块只 emit 事件；落库/系统通知/限频在前端 frontend/notify/core.ts
 //! （监听同事件 → notify(kind=security)）。手动巡检命令
 //! [`known_hosts_audit_run`] 与调度器走同一条 [`audit_round`]，事件形状一致。
 

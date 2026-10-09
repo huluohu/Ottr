@@ -42,7 +42,7 @@ pub use keygen::{KeyAlgorithm, KeyMaterial, PublicKeyInfo, generate, inspect, pa
 pub use pty::{PtyChannel, PtyEvent};
 pub use russh_impl::{ExecOutput, RusshTransport, SshSession, connect, connect_with_keepalive};
 // ExecOutput（SshSession::exec 的结果类型）随方法一起出根：Phase 3 Task 4（B6）
-// 批量执行在 src-tauri 侧消费 exec 面（并发池 + 逐主机结果事件）。
+// 批量执行在 desktop 侧消费 exec 面（并发池 + 逐主机结果事件）。
 
 // KeyError 随 Error 一起导出（Error::KeyLoad 的 source 类型）。
 

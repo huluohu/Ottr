@@ -11,7 +11,7 @@
 //!     （真 exec 成功链路长跑化，补 T1 实验「只走 missed 链路」的边界）；
 //!   - job 2（host 99，永无会话）→ 每分钟 **missed 轮**（不自动连接裁定面）。
 //!
-//!   调度核直驱（不经 src-tauri 装配层，装配点由 cron_fixture 覆盖）。
+//!   调度核直驱（不经 desktop 装配层，装配点由 cron_fixture 覆盖）。
 //!
 //! 【RSS 口径】进程内 Rust 侧基线（russh+tokio+采样循环+cron 调度核），不含
 //! webview；RSS 由外层 `scripts/soak-p4-30m.sh` 以 `ps -o rss=` 采样。

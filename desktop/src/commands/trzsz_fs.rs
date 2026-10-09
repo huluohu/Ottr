@@ -4,7 +4,7 @@
 //! 带内协议、xterm 集成成熟），**前端强制走它的 node 模式**——浏览器模式依赖
 //! File System Access API（WKWebView 无 `showDirectoryPicker`，上传/下载皆不可
 //! 用），node 模式要求宿主提供 callback 风格 fs。Tauri webview 无 Node 运行时，
-//! 故由前端 fs 垫片（src/terminal/trzsz/fsShim.ts）把库的 fs 调用映射到本模块
+//! 故由前端 fs 垫片（frontend/terminal/trzsz/fsShim.ts）把库的 fs 调用映射到本模块
 //! 命令（invoke 桥），本模块是唯一 IO 落点。
 //!
 //! **路径管控（Fix round 1 I-1，评审方案 b）**：七命令全部收口在授权白名单——

@@ -13,7 +13,7 @@
 //!   CONNECT 到容器 2222 → 流交给 [`connect_stream`] 完整 SSH（同 L 闭环）。
 //!
 //! 断线恢复（stop 容器 → error → start 容器 → 重连 → 自动恢复）在
-//! src-tauri/tests/forward_manager_fixture.rs（ForwardManager 属命令域）。
+//! desktop/tests/forward_manager_fixture.rs（ForwardManager 属命令域）。
 //!
 //! 夹具未启动时跳过（同 deploy_fixture 纪律）。
 //! Run: `cargo test -p ottr-ssh --test forward_fixture`
@@ -295,7 +295,7 @@ async fn dynamic_forward_socks5_carries_ssh() {
 // 本用例钉住不变量的**库层前提**：start_forward 失败时同步返回 Err，且 Error
 // 状态已带上富消息（"bind 127.0.0.1:<port> failed: …"，端口+语义）。
 // 生产路径（ForwardManager::start 不得覆盖该富消息）由 Manager 层守卫测试
-// 承接：src-tauri/tests/forward_manager_fixture.rs 的
+// 承接：desktop/tests/forward_manager_fixture.rs 的
 // manager_start_*_keeps_rich_error 两例。
 
 #[tokio::test(flavor = "multi_thread")]

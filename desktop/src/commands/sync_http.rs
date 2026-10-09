@@ -1,5 +1,5 @@
 //! 同步通道 HTTP 代理（product-ready T4，BL-524 清偿）：WebDAV 通道的
-//! webview 侧网络面换轨——原生 fetch（src/sync/webdav.ts）走 webview 网络栈，
+//! webview 侧网络面换轨——原生 fetch（frontend/sync/webdav.ts）走 webview 网络栈，
 //! 生产被 CORS 拦死（自建 WebDAV/dufs 不发跨域响应头；tauri.conf connect-src
 //! 亦不放宽），同步功能生产不可用。本模块提供 `sync_http_fetch` 单命令：
 //! webview 经 invoke 把（endpoint 凭据 + url + method + body）交给 Rust

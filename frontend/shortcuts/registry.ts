@@ -6,7 +6,7 @@
 //   * 命令面板（palette/CommandPalette）：命令条目 = ACTIONS + 主机，标签取
 //     labelKey、键位提示取 shortcutLabel()；
 //   * Win/Linux 汉堡菜单（titlebar/TitleBar）：同一张 ACTIONS 渲染；
-//   * macOS 原生菜单（src-tauri/src/menu.rs menu_tree()）：**镜像**本表带键位的
+//   * macOS 原生菜单（desktop/src/menu.rs menu_tree()）：**镜像**本表带键位的
 //     条目（Rust 侧无法 import TS，两侧各有一份字面量；下方 MAC_MENU_MIRRORED
 //     测试把镜像值钉死，改动键位需两侧同步，否则测试红）。
 // Rust 菜单/托盘的动作回传走 `ottr://menu-action` 事件（载荷 = ActionId 字符串），
@@ -65,7 +65,7 @@ export interface ActionDef {
 /**
  * 动作总表（顺序 = 面板/汉堡菜单的展示顺序）。
  *
- * macOS 菜单镜像（src-tauri/src/menu.rs，改动需两侧同步 + 跑两侧测试）——
+ * macOS 菜单镜像（desktop/src/menu.rs，改动需两侧同步 + 跑两侧测试）——
  * 只镜像 **mac 键位**（菜单是 mac 专属呈现；⌘ 系 chord 与终端 Ctrl 系控制键
  * 分属不同修饰键命名空间，不构成 EOF 劫持面）：
  *   palette.toggle = ⌘K   hosts.new = ⌘N   settings.open = ⌘,

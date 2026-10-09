@@ -6,9 +6,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export function allAppCss(): string {
-  return readdirSync("src/styles")
+  return readdirSync("frontend/styles")
     .filter((f) => f.endsWith(".css") && f !== "index.css")
     .sort()
-    .map((f) => readFileSync(join("src/styles", f), "utf8"))
+    .map((f) => readFileSync(join("frontend/styles", f), "utf8"))
     .join("\n");
 }

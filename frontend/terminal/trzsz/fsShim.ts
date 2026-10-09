@@ -55,7 +55,7 @@ export function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-// --- Tauri invoke 后端（生产；命令域 src-tauri/src/commands/trzsz_fs.rs） -----
+// --- Tauri invoke 后端（生产；命令域 desktop/src/commands/trzsz_fs.rs） -----
 
 function tauriFsBackend(): FsBackend {
   // 延迟 import：避免无 Tauri 环境在模块加载期即触发 @tauri-apps/api 副作用

@@ -5,7 +5,7 @@
 //! ② 填入 spike-pass（= 自动填充将写入 PTY 的同一内容）→ sudo 以退出码 0
 //!    结束（`echo MARK-$?` == MARK-0），且全程只出现一次提示（无错密重试）。
 //! 即「检测 → 填充 → 命令成功」整链的服务端真相；前端链路单测见
-//! src/terminal/SudoAutofill.test.ts（喂同一提示串金样）。
+//! frontend/terminal/SudoAutofill.test.ts（喂同一提示串金样）。
 //!
 //! 夹具不可达 → SKIP（batch_fixture 同纪律）。容器须已 sudo 化
 //! （fixtures/sshd/Dockerfile + entrypoint.sh，scripts/spike-sshd.sh 重建）。

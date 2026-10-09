@@ -1,5 +1,5 @@
 // 同步传输层契约（Phase 5 Task 2）——三通道（WebDAV / Git / 本地目录）的
-// 统一最小面，沿渠道适配器模式（src/notify/channels/）：
+// 统一最小面，沿渠道适配器模式（frontend/notify/channels/）：
 //   * 接口只认信封（SyncEnvelope），通道细节（HTTP/git/fs）全部内敛在实现里；
 //   * 可注入 deps（fetchImpl/exec/fs 后端）——单测零真网、端到端真夹具两栖
 //     （e2e.trzsz.test.ts / channels.test.ts 同纪律）；

@@ -116,13 +116,13 @@ pub fn run() {
             // 并发」的窗口——init 的钥匙链访问本就不占 setup 主线程，先后无碍。
 
             // A10（Task 1）：系统主题监听。前端主通道是 matchMedia(prefers-color-scheme)
-            // （src/theme/ThemeContext.tsx）；这里补 Rust 侧兜底推送 `ottr://system-theme`
+            // （frontend/theme/ThemeContext.tsx）；这里补 Rust 侧兜底推送 `ottr://system-theme`
             // （payload: "light"/"dark"）——Linux WebKitGTK 对系统明暗动态跟随不可靠，
             // 由窗口 ThemeChanged 事件兜底。初始值无需推送：前端挂载时读 matchMedia。
             // T11：同一挂点接 Focused → security::AutoLockState（失焦自动锁定计时）。
             if let Some(win) = app.get_webview_window("main") {
                 // A12（Task 14）：Win/Linux 关原生装饰——前端自绘标题栏补壳
-                // （src/titlebar/TitleBar.tsx：汉堡/拖拽区/min-max-close）。
+                // （frontend/titlebar/TitleBar.tsx：汉堡/拖拽区/min-max-close）。
                 // macOS 保留原生装饰（红绿灯 + 系统菜单栏）。
                 #[cfg(not(target_os = "macos"))]
                 if let Err(e) = win.set_decorations(false) {
@@ -357,7 +357,7 @@ pub fn run() {
             vault::settings_get,
             vault::settings_set,
             // Phase 5 Task 3（同步编排）：分类快照导出/导入（过锁定门卫，
-            // ottr-vault sync_snapshot 模块；编排引擎在 src/sync/SyncStore.ts）
+            // ottr-vault sync_snapshot 模块；编排引擎在 frontend/sync/SyncStore.ts）
             vault::sync_export_categories,
             vault::sync_import_categories,
             // Phase 5 Task 4（同步 UI 宿主桥，commands/sync_git.rs）：git 通道
@@ -386,7 +386,7 @@ pub fn run() {
             vault::notify_clear,
             vault::notify_unread_count,
             // BL-530：投递失败标记持久化——标记/翻正清账落库（明文面，同上组
-            // 锁定语义；前端 src/notify/core.ts 写穿，重启 refresh 恢复标记）
+            // 锁定语义；前端 frontend/notify/core.ts 写穿，重启 refresh 恢复标记）
             vault::notify_mark_delivery_failed,
             vault::notify_clear_delivery_failure,
             // Task 15（spec §5）：统一历史搜索 ⌘R（明文面，锁定可读写）
@@ -407,7 +407,7 @@ pub fn run() {
             commands::recording::recording_delete,
             commands::recording::recording_export,
             security::vault_copy_credential_secret,
-            // vault（Task 5 接线，命令名契约见 src/vault/api.ts 文件头）
+            // vault（Task 5 接线，命令名契约见 frontend/vault/api.ts 文件头）
             vault::hosts_list,
             vault::hosts_get,
             vault::hosts_create,
@@ -441,10 +441,10 @@ pub fn run() {
             hostkey_audit::known_hosts_audit_run,
             vault::import_ssh_config,
             vault::export_hosts_csv,
-            // 迁移导入器（Phase 2 Task 10，B3；命令名契约见 src/vault/api.ts）
+            // 迁移导入器（Phase 2 Task 10，B3；命令名契约见 frontend/vault/api.ts）
             vault::import_xshell_sessions,
             vault::import_tabby_config,
-            // 密钥管理（Task 6，A4；命令名契约见 src/vault/api.ts keys 段）
+            // 密钥管理（Task 6，A4；命令名契约见 frontend/vault/api.ts keys 段）
             keys::key_generate,
             keys::key_inspect,
             keys::key_export,

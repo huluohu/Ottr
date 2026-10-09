@@ -1,7 +1,7 @@
 -- 0008_port_forwards（Phase 2 Task 1，B7 上半；spec §3 port_forwards 实体）。
 -- 明文配置面：地址/端口/开关不含任何密钥材料——无 *_enc 列、不经 AAD 绑定、
 -- 不涉 scan_registry（重密封扫描注册表），锁定语义与 hosts 同（实体命令面统一
--- 过 ensure_unlocked 门卫，见 src-tauri vault.rs）。
+-- 过 ensure_unlocked 门卫，见 desktop vault.rs）。
 --
 -- 列（spec 字段 + 本任务的结构化拆分）：
 --   host_id        转发挂在哪台主机上（经该主机的 SSH 会话运行）

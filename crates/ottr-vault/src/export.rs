@@ -1,6 +1,6 @@
 //! 主机清单 CSV 导出（BL-206：导出函数归 vault crate——实体 join 与序列化
-//! 是数据层职责，随 Hosts/HostGroups 同库可独立单测；src-tauri 命令面只保留
-//! 路径解析（下载目录缺省）与落盘，见 src-tauri vault.rs `export_hosts_csv`）。
+//! 是数据层职责，随 Hosts/HostGroups 同库可独立单测；desktop 命令面只保留
+//! 路径解析（下载目录缺省）与落盘，见 desktop vault.rs `export_hosts_csv`）。
 //!
 //! 口径（RFC4180）：分隔符 `,`、行尾 `\n`；含逗号/引号/换行的字段整体加引号、
 //! 内部引号翻倍；无引号需求的字段原样。表头固定八列。

@@ -24,7 +24,7 @@
 //!
 //! 【测试面】并发池核心 [`run_batch`] 以 [`ExecResolver`] 注入 mock exec
 //! （并发上限/超时/取消/失败结算/输出透传，全部零真连接）；真容器端到端在
-//! `src-tauri/tests/batch_fixture.rs`（同容器双连 = 两主机）。
+//! `desktop/tests/batch_fixture.rs`（同容器双连 = 两主机）。
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -39,7 +39,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::state::AppState;
 
-/// exec future（手写别名：src-tauri 不直接依赖 futures crate，`Pin<Box<dyn Future>>`
+/// exec future（手写别名：desktop 不直接依赖 futures crate，`Pin<Box<dyn Future>>`
 /// 即全部所需——不必要的依赖树面不引入）。
 pub type BoxExecFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<ExecOutput, String>> + Send>>;

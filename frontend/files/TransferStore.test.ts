@@ -1,5 +1,5 @@
 // TransferStore 状态机测试（Task 10 Step 4）：队列条目生命周期 + 事件竞态 +
-// 取消/重试/清除。invoke 全量 mock（真后端命令已在 src-tauri 接线）。
+// 取消/重试/清除。invoke 全量 mock（真后端命令已在 desktop 接线）。
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 

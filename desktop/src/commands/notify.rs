@@ -26,7 +26,7 @@ use lettre::{
 use serde::Deserialize;
 
 /// SMTP 连接配置（notify_channels.config_enc 内 `smtp` 类的字段面，与
-/// src/notify/channels/types.ts 的 `SmtpConfig` 同构 snake_case）。
+/// frontend/notify/channels/types.ts 的 `SmtpConfig` 同构 snake_case）。
 #[derive(Debug, Clone, Deserialize)]
 pub struct SmtpConfig {
     /// SMTP 主机名（如 smtp.example.com）。

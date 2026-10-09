@@ -29,7 +29,7 @@ use std::fmt;
 use std::path::Path;
 
 /// 文件传输收口 trait（Task 10 简报 Step 1；Phase 2 Task 5 通用化重构）：
-/// 上传/下载 + 断点续传。消费方（src-tauri 传输命令、bench、测试）依赖本 trait
+/// 上传/下载 + 断点续传。消费方（desktop 传输命令、bench、测试）依赖本 trait
 /// 而非具体后端，传输后端可替换（SFTP = [`sftp`] 模块实现；FTP/FTPS = ftp
 /// 模块实现，Phase 2 Task 5）。
 ///

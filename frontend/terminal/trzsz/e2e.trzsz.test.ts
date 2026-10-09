@@ -21,7 +21,7 @@ import { createTrzszController, type TrzszController } from "./TrzszController";
 const HOST = "127.0.0.1";
 const PORT = 2222;
 // vitest 的 vite-node 无 import.meta.dirname → fileURLToPath 解析（相对本文件
-// src/terminal/trzsz/ 上溯 3 级到仓库根）
+// frontend/terminal/trzsz/ 上溯 3 级到仓库根）
 const ROOT = new URL("../../..", import.meta.url).pathname;
 const KEY = join(ROOT, "fixtures/spike_ed25519");
 const KNOWN_HOSTS = join(ROOT, "fixtures/known_hosts");

@@ -2,7 +2,7 @@
 //! 取消/生命周期 owner 化（[`MonitorGuard`] Drop 即停）。
 //!
 //! 与传输面解耦：采集与消费都是闭包（crate 内测试用计数器/罐头样本驱动，
-//! 无需 SSH；src-tauri `commands/monitor.rs` 注入真 `collect` + 事件 emit）。
+//! 无需 SSH；desktop `commands/monitor.rs` 注入真 `collect` + 事件 emit）。
 //!
 //! 生命周期契约（简报：per-session 采样任务挂会话生命周期——断开/关闭即停）：
 //! * [`MonitorGuard`] 持取消令牌，**Drop 即 cancel**——会话表项移除

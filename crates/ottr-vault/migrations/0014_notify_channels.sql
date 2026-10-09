@@ -1,7 +1,7 @@
 -- 0014_notify_channels（Phase 3 Task 3，B5 渠道全矩阵——存储侧）：
 -- 外部通知渠道配置（spec §3：钉钉/飞书/企微/Bark/Server酱/Telegram/Discord/
 -- Slack/SMTP/Pushover/ntfy/自定义 webhook 共 12 种）。适配器实现在 TS
--- （src/notify/channels/*，统一 fetch），SMTP 经 Rust lettre 命令
+-- （frontend/notify/channels/*，统一 fetch），SMTP 经 Rust lettre 命令
 -- （smtp_send/smtp_test，commands/notify.rs）。
 --
 -- 【密文面裁定】（task-3 简报裁定 #2）：渠道配置含 webhook URL / bot token /
@@ -16,7 +16,7 @@
 -- 列：
 --   kind               渠道类别（spec §3 同集 12 种；DB CHECK 约束）
 --   config_enc         渠道配置密文 blob = nonce(12B) || ct || tag(16B)
---                      （各 kind 字段面见 src/notify/channels/types.ts）
+--                      （各 kind 字段面见 frontend/notify/channels/types.ts）
 --   template_overrides 渠道级文案覆写 JSON（可空；title/body 模板，MVP 仅
 --                      webhook 的 body 模板变量 {{host}} {{rule}} {{value}}）
 --   enabled            渠道启用位（禁用 = 挂载层跳过挂载；删除前先禁用的软开关）

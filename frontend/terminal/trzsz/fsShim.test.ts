@@ -1,7 +1,7 @@
 // fsShim 单测（Phase 2 Task 4）：node callback 语义（errback 契约 / fd 偏移推进 /
 // 首写截断后续追加 / access 模式 / errno 解析 / realpath）——走 node:fs 后端 +
 // 真实临时目录，即 vitest 运行时下生产 invoke 后端的同语义替身（命令侧语义已由
-// src-tauri trzsz_fs 单测独立钉住）。
+// desktop trzsz_fs 单测独立钉住）。
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

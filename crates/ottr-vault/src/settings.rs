@@ -6,7 +6,7 @@
 //!
 //! 值一律 JSON 序列化落盘（spec §3：settings 存 JSON）；键名由调用方约定
 //! （前端当前键面：`ui.theme` / `ui.language` / `security.autolock_minutes` /
-//! `security.clipboard_clear_secs`——见 src/security 与 src-tauri security.rs）。
+//! `security.clipboard_clear_secs`——见 frontend/security 与 desktop security.rs）。
 
 use rusqlite::OptionalExtension;
 
@@ -65,10 +65,10 @@ impl Settings {
 
 // --- 已知 settings 键注册表 + 写入校验（单一事实源）-----------------------------
 //
-// Phase 5 T3 fix round 1（I-1）：校验逻辑自 src-tauri security.rs **迁入本 crate**
+// Phase 5 T3 fix round 1（I-1）：校验逻辑自 desktop security.rs **迁入本 crate**
 // ——settings 写入（settings_set）与**同步分类导入**（sync_snapshot，快照是
 // 跨机/跨版本来源，已知键越界值不得经导入绕过范围检查）两个写入口必须共享
-// 同一份注册表；src-tauri security.rs 的 validate_setting 现为薄委托（re-export
+// 同一份注册表；desktop security.rs 的 validate_setting 现为薄委托（re-export
 // 常量保持既有引用路径不变）。
 //
 // 注册纪律：新增已知键必须在本 match 登记——漏登 = 该键经 sync 导入绕过范围
@@ -111,7 +111,7 @@ pub const HISTORY_LIMIT_MAX: u64 = 1_000_000;
 pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
 
 /// 已知 settings 键的写入校验（越界/类型错显式拒绝，不静默收敛——写入侧拒绝
-/// 比读取侧收敛更能暴露 bug；读取侧仍收敛兜底，见 src-tauri security.rs *_from）。
+/// 比读取侧收敛更能暴露 bug；读取侧仍收敛兜底，见 desktop security.rs *_from）。
 /// 未注册键放行（settings 表是通用配置面，未知键无法校验也不挡）。
 pub fn validate_known_setting(
     key: &str,

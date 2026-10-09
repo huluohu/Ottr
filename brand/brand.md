@@ -73,7 +73,7 @@
   的备选方案会把暗色 danger 文字对比拖到 3.09，弃。
 * `#FFFFFF` 作为亮色 on-danger 值与 `--color-surface` 同为语义层白（cream-100 对
   #d92d20 仅 3.98，不可用）。
-* 回归钉：`src/theme/tokens.test.ts`（解析 tokens.css 实算对比度，退回即红）。
+* 回归钉：`frontend/theme/tokens.test.ts`（解析 tokens.css 实算对比度，退回即红）。
 
 **终端默认主题映射建议**（ANSI 16 色）：normal 色取品牌同色系低饱和值（red→#D97066 系、green→teal 系、yellow→amber 系、blue→水色系），bright 色取同色相高饱和值；前景 `--ottr-cream-100` 偏暖白，背景 `--ottr-water-900`。生产环境主机红色边框（B11）复用 ANSI red bright。
 

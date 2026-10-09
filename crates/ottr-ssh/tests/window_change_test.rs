@@ -2,7 +2,7 @@
 //!
 //! 会话命令域的 resize 链（缺陷 34）= 前端 fit → `resize_session` 命令投
 //! 挂起槽 → 合批转发循环 select 唤醒后调 `Channel::window_change(cols, rows,
-//! 0, 0)`（src-tauri commands/session.rs `forward_pty_loop`）。本测试钉住该
+//! 0, 0)`（desktop commands/session.rs `forward_pty_loop`）。本测试钉住该
 //! 链的**最后一环**：客户端 `window_change` 调用确实以正确的 cols/rows 抵达
 //! 服务端（russh server `window_change_request` 回调观测）——readline 收
 //! SIGWINCH 重绘的前提。挂起槽/命令面/前端守卫由各自测试覆盖（state.rs

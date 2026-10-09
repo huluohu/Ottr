@@ -34,7 +34,7 @@
 //!
 //! 锁定时**需要密钥的操作**（凭据密封/解密、升级）返回 [`VaultError::Locked`]；
 //! 纯明文面（settings/meta/schema）保持可读——解锁、主题、自动锁定配置都发生在
-//! 锁定屏上，必须可用。命令面的整库封锁在 src-tauri 层做（ensure_unlocked 门卫）。
+//! 锁定屏上，必须可用。命令面的整库封锁在 desktop 层做（ensure_unlocked 门卫）。
 
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -69,7 +69,7 @@ const KDF_SALT_LEN: usize = 16;
 /// 上限不设（密码短语欢迎）。
 ///
 /// **双端口径（BL-202）**：本侧是权威校验，计量 = `chars().count()`（Unicode
-/// 码点数）；前端预检（src/security/SecuritySettings.tsx `MIN_MASTER_PASSWORD`）
+/// 码点数）；前端预检（frontend/security/SecuritySettings.tsx `MIN_MASTER_PASSWORD`）
 /// 同值同语义（码点口径，非 JS `.length` 的 UTF-16 码元数——增补平面字符两边
 /// 才不会分叉）。预检只为 UX 提前拦截，绕过前端直连 IPC 仍由本侧拦截。
 pub const MASTER_PASSWORD_MIN_LEN: usize = 8;
@@ -127,7 +127,7 @@ impl KeyMode {
 /// 列，不动 scan_registry；调度引擎在 ottr-monitor，见迁移文件头）；
 /// 0017 mcp_grants（Phase 4 Task 3，C1 MCP Server 接入——主机粒度授权矩阵，
 /// 默认全拒；明文面，无 *_enc 列，不动 scan_registry；协议引擎在
-/// src-tauri commands/mcp.rs，见迁移文件头）；0018 host_groups 同级同名
+/// desktop commands/mcp.rs，见迁移文件头）；0018 host_groups 同级同名
 /// 唯一（Phase 5 Task 0，BL-109 ②——两条部分唯一索引 + 存量同名保行改名
 /// 去重，明文面，无 *_enc 列，不动 scan_registry，见迁移文件头）；
 /// 0019 FK 子列索引补齐（BL-206——0002/0005 漏配的 5 个 FK 子列各补普通
@@ -453,7 +453,7 @@ impl Vault {
     ///
     /// 中断安全（TDD 三件套之三）：事务提交前任何一步失败（含旧密文损坏、
     /// 进程崩溃）→ 整体回滚，库仍是 keyring 模式、旧钥完全可用，可直接重试；
-    /// 提交后钥匙链条目的删除由调用方（src-tauri 持有 storage 句柄）执行，
+    /// 提交后钥匙链条目的删除由调用方（desktop 持有 storage 句柄）执行，
     /// 漏删的残留由下次 open 兜底清理（见 [`Self::open_with`]）。
     ///
     /// `progress(done, total)` 逐字段回调（向导进度条；total 预先 COUNT 得出）。

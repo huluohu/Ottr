@@ -25,7 +25,7 @@ pub mod summaries;
 pub mod sync_snapshot;
 
 pub use crypto::{Cipher, aad};
-// 主机清单 CSV 导出（BL-206：join/序列化随实体同库可单测；src-tauri 只管路径与落盘）
+// 主机清单 CSV 导出（BL-206：join/序列化随实体同库可单测；desktop 只管路径与落盘）
 pub use entities::{
     Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials, Host, HostGroup,
     HostGroups, HostInput, HostProtocol, Hosts, KnownHost, KnownHostState, KnownHosts, SecretField,
@@ -51,12 +51,12 @@ pub use cron_jobs::{
     CRON_RUN_STATUSES, CRON_RUNS_KEEP, CRON_SCHEDULE_MAX_BYTES, CRON_SCRIPT_MAX_BYTES, CronJob,
     CronJobInput, CronJobs, CronRun, CronRunInput, CronRuns,
 };
-// MCP 授权矩阵（Phase 4 Task 3，C1；协议引擎在 src-tauri commands/mcp.rs，
+// MCP 授权矩阵（Phase 4 Task 3，C1；协议引擎在 desktop commands/mcp.rs，
 // 本 crate 只供表——cron_jobs 同款分工）
 pub use mcp_grants::{MCP_READ_PATHS_MAX, McpGrant, McpGrantInput, McpGrants};
 pub use secrets::Secrets;
 pub use settings::Settings;
-// 同步分类快照导出/导入（Phase 5 Task 3；编排引擎在 src/sync/SyncStore.ts，
+// 同步分类快照导出/导入（Phase 5 Task 3；编排引擎在 frontend/sync/SyncStore.ts，
 // 本 crate 只供 vault ↔ 快照 JSON 的双向翻译——cron_jobs 同款分工）
 pub use store::{KeyMode, Vault};
 pub use summaries::{SUMMARIES_LIST_LIMIT, SessionSummaries, SummaryEntry, SummaryInput};

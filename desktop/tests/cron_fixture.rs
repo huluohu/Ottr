@@ -6,7 +6,7 @@
 //! * 离线主机任务同表 → 触发即 **missed**（如实入库，不自动连接——简报裁定
 //!   #3 的真链路证据）；
 //! * 「2 轮 → 通知 1 条（聚合语义）」的另一半在 TS 管线（限频 key
-//!   `cron:{host}:{job}`，src/cron/events.test.ts 钉死）——本测试钉的是 Rust
+//!   `cron:{host}:{job}`，frontend/cron/events.test.ts 钉死）——本测试钉的是 Rust
 //!   侧「每轮都发事件」的事实（事件流 2 条 + 管线聚合 1 条 = 端到端口径）。
 //!
 //! 宿主裁定注记：本测试直驱调度核（与生产同一 [`run_cron_scheduler`]），
@@ -317,7 +317,7 @@ async fn cron_every_minute_two_rounds_two_runs_and_offline_missed() {
     assert!(offline.iter().all(|r| r.status == "missed"));
     assert!(offline.iter().all(|r| r.exit_code.is_none()));
 
-    // 事件流：每轮一条（Rust 侧事实；TS 管线聚合语义见 src/cron/events.test.ts）
+    // 事件流：每轮一条（Rust 侧事实；TS 管线聚合语义见 frontend/cron/events.test.ts）
     let events = EVENTS.load(Ordering::SeqCst);
     assert!(events >= 3, "事件数（online 2 + offline ≥1）= {events}");
 }

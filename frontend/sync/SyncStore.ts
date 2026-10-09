@@ -75,7 +75,7 @@ export interface SyncVaultBridge {
   settingsSet(key: string, value: unknown): Promise<void>;
 }
 
-/** 生产接线：命令名与 src-tauri 注册逐字对齐。 */
+/** 生产接线：命令名与 desktop 注册逐字对齐。 */
 export function tauriSyncBridge(): SyncVaultBridge {
   return {
     exportCategories: async (cats) => {

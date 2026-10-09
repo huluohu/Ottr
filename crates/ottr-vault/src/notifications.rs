@@ -4,7 +4,7 @@
 //! ——异常断开等事件在锁定时也要能落表（与 settings/meta 同一锁定语义，
 //! 见 store.rs 模块文档「锁定语义」）。
 //!
-//! 序列化面即前端契约：[`Notification`] 字段与 `src/vault/api.ts` 的
+//! 序列化面即前端契约：[`Notification`] 字段与 `frontend/vault/api.ts` 的
 //! `Notification` 接口同构（snake_case）。`title_key` 存 i18n 词典键（UI 渲染
 //! 时 `t(title_key)`，换语言历史通知标题跟着变），`body` 存展示文本（路径/
 //! 错误消息等事件自带内容，不进词典），二者分工见 0005 迁移文件头。

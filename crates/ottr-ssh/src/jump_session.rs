@@ -35,7 +35,7 @@ use std::time::Duration;
 ///
 /// 所有权拓扑：`hops[0..n]` 按跳序持有跳板会话；`target` 是 Arc 化的目标会话
 /// （消费方——会话表/SFTP/转发——拿 `Arc<SshSession>` 与直连路径同一形状，
-/// 见 src-tauri SessionEntry 集成）。`disconnect()` 拆 target + 全部 hops。
+/// 见 desktop SessionEntry 集成）。`disconnect()` 拆 target + 全部 hops。
 pub struct JumpSession {
     /// 跳板会话，按跳序（hop0 = 本地直连的第一跳）。
     hops: Vec<SshSession>,

@@ -33,7 +33,7 @@ pub mod mcp;
 pub mod recording;
 // SMTP 通知命令域（Phase 3 Task 3，B5 渠道全矩阵）：smtp_send 单命令
 // （lettre tokio1 + native-tls；选型与安全面论证见模块文档）。其余 11 渠道
-// 适配器在前端 fetch（src/notify/channels/*），不经 Rust。
+// 适配器在前端 fetch（frontend/notify/channels/*），不经 Rust。
 pub mod notify;
 // 远端文件本地编辑域（Phase 2 Task 3，B10 上半）：编辑会话表 + 轮询防抖 +
 // 冲突检测回传 + 清理（显式关闭/会话消失/App 退出/24h 惰性清扫）。

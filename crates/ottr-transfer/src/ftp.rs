@@ -39,7 +39,7 @@
 //! ## FilePanel 操作面
 //!
 //! 与 [`crate::ops::SftpClient`] 同形 API（list/mkdir/rename/remove/chmod/
-//! stat/realpath/exists），命令层（src-tauri transfer.rs）按会话类型分派。
+//! stat/realpath/exists），命令层（desktop transfer.rs）按会话类型分派。
 //! 差异如实记录：列目录/stat 走 **MLSD/MLST**（RFC 3659，结构化无解析地狱，
 //! pyftpdlib 等现代服务器支持；LIST 文本解析不实现——MVP 裁定）；`realpath`
 //! 仅 `.` 展开（FTP 协议无 realpath，其余路径原样透传）；`mode` 只有 9 位

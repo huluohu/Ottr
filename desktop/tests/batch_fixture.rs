@@ -3,7 +3,7 @@
 //! 免第二容器），把真 exec 通道喂给 [`run_batch`] 并发池：
 //! * 双主机 `whoami` → 两台 ok、输出同文（= 前端「多数派折叠」的全同组）；
 //! * `echo $((41+1))` / `echo $((41+2))` → 42 / 43 两样输出（= 前端差异高亮
-//!   场景的真数据面；diff 计算本身在前端纯函数，见 src/batch/diff.test.ts）；
+//!   场景的真数据面；diff 计算本身在前端纯函数，见 frontend/batch/diff.test.ts）；
 //! * `sleep 5` + 1s 超时 → timeout 结算（真实远端慢命令被单主机超时截断）。
 //!
 //! 夹具不可达即 SKIP 并提示启动命令（forward_manager_fixture 同纪律；

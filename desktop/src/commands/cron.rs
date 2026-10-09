@@ -9,7 +9,7 @@
 //! * 关窗到托盘（`menu::on_close_requested` 隐藏主窗）→ webview 隐藏但本循环
 //!   照跑（终审「关窗后是否照跑」的肯定面——真窗实验见 task-1-report §6）；
 //! * 通知触发只 emit `ottr://cron-run` 事件，落库/系统通知/外部渠道分发都在
-//!   TS 管线（`src/cron/events.ts` → `notify(kind=cron)`）——隐藏的 webview
+//!   TS 管线（`frontend/cron/events.ts` → `notify(kind=cron)`）——隐藏的 webview
 //!   仍存活，管线照走（同事件在库表的通知行可复核「关窗期间通知照发」）；
 //! * **真退出**（quit_app / 菜单退出）→ 进程没了，调度随停——「App 退出即停」
 //!   是产品语义（cron 不是系统级守护，不写 crontab），文档明示；

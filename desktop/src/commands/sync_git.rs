@@ -1,6 +1,6 @@
 //! 同步通道宿主桥（Phase 5 Task 4）：git 通道 exec 桥 + 信封口令钥匙链。
 //!
-//! 背景（task-2-report 披露，归本任务清偿）：GitTransport（src/sync/git.ts）
+//! 背景（task-2-report 披露，归本任务清偿）：GitTransport（frontend/sync/git.ts）
 //! 的 `GitExec` 注入面 + node 后端只覆盖 vitest/e2e——webview 无 child_process，
 //! Rust 侧此前亦无通用 shell 命令，git 通道在生产 webview 不可用。本模块沿
 //! trzsz_fs 先例交付**白名单 git exec 桥**：不是通用 shell，而是把

@@ -6,7 +6,7 @@
 //!   open_pty + request_shell → 正式转发循环（真合批/解码，TextTail 头部原始
 //!   探针随行）→ [`ottr_lib::inject_shell_integration`]（生产注入核：$SHELL
 //!   探测 → 首输出 133 幂等探测 → 片段经 PTY writer 下发）→ 跑 3 条命令 →
-//!   流重放（CommandWatch 语义，单测在 src/terminal/CommandWatch.test.ts）出
+//!   流重放（CommandWatch 语义，单测在 frontend/terminal/CommandWatch.test.ts）出
 //!   (command, exit_code, cwd) → ottr-vault History::insert 真库落账 →
 //!   History::search 断言（「连接→跑 3 命令 → ⌘R 搜到」的产品路径闭环）。
 //!   另断言幂等（二次注入 → SkippedAlreadyIntegrated）与开关（关 → SkippedDisabled）。
@@ -214,7 +214,7 @@ impl StreamReplay {
     }
 }
 
-/// 提示符剥离（src/history/format.ts stripPromptPrefix 的测试架同款保守
+/// 提示符剥离（frontend/history/format.ts stripPromptPrefix 的测试架同款保守
 /// 启发式）：行首无空白 token 以提示符字符结尾再随空白 → 剥到命令本体。
 fn strip_prompt(line: &str) -> String {
     let trimmed = line.trim_start();
@@ -230,7 +230,7 @@ fn strip_prompt(line: &str) -> String {
     trimmed.to_string()
 }
 
-/// 注入行回声/完成事件的噪声过滤（src/history/record.ts isIntegrationNoise
+/// 注入行回声/完成事件的噪声过滤（frontend/history/record.ts isIntegrationNoise
 /// 的测试架同款 + 注入片段换行回声的片段特征）。
 fn is_integration_noise(command: &str) -> bool {
     [

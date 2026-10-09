@@ -50,7 +50,7 @@
 //! ## spike 简化（如实注明）
 //!
 //! - 续传日志仍 `println!`（Task 8 裁定要求进程日志含 `resume from chunk N`）；
-//!   进度日志已在 Task 10 Step 2 换成 [`ProgressHook`] 回调（src-tauri 转成
+//!   进度日志已在 Task 10 Step 2 换成 [`ProgressHook`] 回调（desktop 转成
 //!   Tauri 事件）；
 //! - 错误统一映射为 crate [`Error::Protocol`]（另有 [`Error::Cancelled`] /
 //!   [`Error::Io`]），无结构化重试分类；

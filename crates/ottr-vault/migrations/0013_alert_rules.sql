@@ -1,5 +1,5 @@
 -- 0013_alert_rules（Phase 3 Task 3，B5 告警规则引擎 + 渠道全矩阵——存储侧）：
--- 告警规则配置（spec §3）。评估引擎在 TS（src/notify/rules.ts）——数据源是
+-- 告警规则配置（spec §3）。评估引擎在 TS（frontend/notify/rules.ts）——数据源是
 -- 前端监控事件流（ottr://monitor）与进程采集（monitor_ps），Rust 只供表
 -- （与 notifications「事件源接线在前端，Rust 只供表」同一分工纪律）。
 --
@@ -10,7 +10,7 @@
 --                process（进程消失）——log（日志关键字）Phase 3 MVP 裁定延后，
 --                DB CHECK 仍放行 "log"（spec §3 同集；引擎侧延后评估）
 --   params       类别参数 JSON：disk { mount?, threshold }、cpu { threshold,
---                consecutive }、process { comm }（引擎消费面见 src/notify/rules.ts）
+--                consecutive }、process { comm }（引擎消费面见 frontend/notify/rules.ts）
 --   channels     订阅渠道 id 数组 JSON（notify_channels.id；③外部渠道按此路由）
 --   rate_limit   同规则再次告警的最小间隔（秒；0 = 只用管线全局 60s 聚合）
 --   mute_window  静音时段 "HH:MM-HH:MM"（本地时区，可跨午夜；NULL = 不静音）

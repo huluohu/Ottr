@@ -7,7 +7,7 @@
 //!
 //! Phase 4 Task 2 追加日志关键字采样（[`collect_log_tail`]）：容器写日志行
 //! → 轮询采样逐字取证（游标续读不重复 / 残行不交付 / truncate / rotate）。
-//! 「命中 → 告警 → 通知到达」的另一半在 TS 管线（src/notify/rules.test.ts
+//! 「命中 → 告警 → 通知到达」的另一半在 TS 管线（frontend/notify/rules.test.ts
 //! 端到端链）——两侧证据链合成端到端口径（cron_fixture 同款分工）。
 
 use std::sync::Arc;
@@ -357,7 +357,7 @@ async fn log_tail_rejects_unsafe_path() {
     assert!(err.to_string().contains("unsafe log path"), "{err}");
 }
 
-/// LogTailSample serde 形态（前端 src/monitor/api.ts 同构面：snake_case +
+/// LogTailSample serde 形态（前端 frontend/monitor/api.ts 同构面：snake_case +
 /// inode Option → null）。
 #[test]
 fn log_tail_sample_serde_shape() {

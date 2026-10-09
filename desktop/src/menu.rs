@@ -4,7 +4,7 @@
 //!   * 菜单树 = [`menu_tree`]/[`tray_tree`] **纯数据**（无运行时即可单测，钉住
 //!     结构/键位/双语标签）；`build_menu` 只是把数据走成 muda 菜单——构建面薄到
 //!     不需要运行时测试；
-//!   * 键位与前端 `src/shortcuts/registry.ts` 互为镜像（TS 侧 MIRRORED 测试 +
+//!   * 键位与前端 `frontend/shortcuts/registry.ts` 互为镜像（TS 侧 MIRRORED 测试 +
 //!     本侧 `menu_tree_accelerators_match_frontend_registry` 双向锁定，改动键位
 //!     必须两侧同步）；
 //!   * 动作分派 = [`dispatch_of`] 纯分类：前端动作（ActionId 同字面量）经
@@ -1044,7 +1044,7 @@ pub fn menu_set_notify_count(unread: u64, app: AppHandle) -> Result<(), String> 
 
 pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     // macOS 原生菜单（HIG）。win/linux：decorations:false 菜单栏不可见，
-    // 对应交互由前端自绘标题栏/汉堡菜单承担（src/titlebar/TitleBar.tsx），
+    // 对应交互由前端自绘标题栏/汉堡菜单承担（frontend/titlebar/TitleBar.tsx），
     // 故不构建（菜单 accelerator 的 win/linux 键盘面由前端 registry 全局监听兜住）。
     // 语言：Task 16.5 起 vault 就绪前此处拿不到 settings——menu_lang 按 En 兜底，
     // vault-ready 后 on_vault_ready 重建纠偏。
@@ -1197,7 +1197,7 @@ mod tests {
         );
     }
 
-    /// 与前端 registry（src/shortcuts/registry.ts MIRRORED 测试）互为镜像：
+    /// 与前端 registry（frontend/shortcuts/registry.ts MIRRORED 测试）互为镜像：
     /// 改键位必须两侧同步（TS 侧断言 ⌘K/Ctrl+K 展示，本侧钉 accelerator 字面量）。
     #[test]
     fn menu_tree_accelerators_match_frontend_registry() {

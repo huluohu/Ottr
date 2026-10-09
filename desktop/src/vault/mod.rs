@@ -35,7 +35,7 @@ pub fn init(app: &tauri::AppHandle) -> Result<VaultState, Box<dyn std::error::Er
 // vault::init（含钥匙链 SecItem 访问）已移出 setup 主线程。init 完成前
 // `VaultState` 尚未 manage，vault 命令在 Tauri 的 State 抽取层即被拒（invoke
 // promise reject："state not managed …"，进程不崩）。前端就绪门
-// （src/security/VaultInitGate.ts）以下面的状态面为唯一放行依据：
+// （frontend/security/VaultInitGate.ts）以下面的状态面为唯一放行依据：
 //   * `vault_init_status` 命令——无 VaultState 依赖，初始化窗口期可安全调用；
 //   * `ottr://vault-ready` / `ottr://vault-init-failed` 事件——就绪快路径。
 //

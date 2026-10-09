@@ -3,7 +3,7 @@
 //! 封装 russh-sftp 的 [`RawSftpSession`]：目录浏览（opendir/readdir）、mkdir /
 //! rename / 删除 / chmod / stat / realpath。**russh-sftp 类型不出 crate 公共
 //! API**（I-1 同款纪律，与 ottr-ssh Error 的类型擦除同思路）——命令面
-//! （src-tauri）只见 [`SftpClient`] 与 serde 的 [`DirEntry`]。
+//! （desktop）只见 [`SftpClient`] 与 serde 的 [`DirEntry`]。
 //!
 //! ## 为什么远端操作走 SFTP 而不是 exec（Task 10 裁定记录）
 //!
@@ -13,7 +13,7 @@
 //! - 权限口径一致：chmod 走 setstat permissions，与列目录展示的 mode 位同一
 //!   SFTP 属性集；exec 路径在编码（Task 9）/本地化（LC_ALL）下输出不可控。
 //! - 通道成本：复用既有 SSH 连接开一条 subsystem channel（懒开 + 随会话表项
-//!   缓存，见 src-tauri SessionEntry）。
+//!   缓存，见 desktop SessionEntry）。
 //!
 //! 取消语义不适用本模块：单请求操作天然短命（无 chunk 边界可检查），失败即返回。
 
@@ -26,7 +26,7 @@ use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 
 use crate::{Error, Result};
 
-/// 目录项（serde 直出 src-tauri 命令面）。`mode` 为 POSIX 权限位（含类型位，
+/// 目录项（serde 直出 desktop 命令面）。`mode` 为 POSIX 权限位（含类型位，
 /// 与 chmod 回写同一口径）；`mtime` 为秒级 Unix 时间。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DirEntry {

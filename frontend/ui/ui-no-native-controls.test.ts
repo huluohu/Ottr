@@ -10,7 +10,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const UI_DIR = join("src", "ui");
+const UI_DIR = join("frontend", "ui");
 
 function collectOffenders(dir: string): string[] {
   const offenders: string[] = [];
@@ -31,6 +31,6 @@ function collectOffenders(dir: string): string[] {
 
 describe("全仓无裸原生勾选控件（A2 守卫）", () => {
   it("src/ 的 .tsx（ui/ 与测试除外）不出现 <input type=\"checkbox\" 与 className=\"theme-switch\"", () => {
-    expect(collectOffenders("src")).toEqual([]);
+    expect(collectOffenders("frontend")).toEqual([]);
   });
 });

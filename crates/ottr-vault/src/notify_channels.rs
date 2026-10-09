@@ -8,7 +8,7 @@
 //! `reencrypt_scan_covers_all_enc_columns` 动态比对强制）；锁定语义与
 //! secrets/summaries 相同（`Vault::cipher()` 锁定即拒）。
 //!
-//! 序列化面（与 `src/vault/api.ts` 同构）刻意分两层：
+//! 序列化面（与 `frontend/vault/api.ts` 同构）刻意分两层：
 //! * [`NotifyChannel`] —— 不含任何密钥材料（config_enc 不进结构体，凭据
 //!   同款纪律）；`enabled`/`template_overrides` 非敏感明文列随行返回；
 //! * [`NotifyChannels::reveal`] —— 明文 config 单点出库（设置页「发送测试」
@@ -63,7 +63,7 @@ pub struct NotifyChannel {
 }
 
 /// 新建渠道的输入：`config` 为明文 JSON 对象（字段面按 kind 见
-/// src/notify/channels/types.ts），存储层 seal。
+/// frontend/notify/channels/types.ts），存储层 seal。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct NotifyChannelInput {

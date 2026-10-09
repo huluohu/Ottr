@@ -589,7 +589,7 @@ fn import_rejects_corrupt_snapshots_atomically() {
 // --- 锁定语义 -------------------------------------------------------------------
 
 /// 密钥面拒绝：锁定（password 模式）时，含凭据的导出与一切导入都拒绝
-/// （要开封/重密封密文）。src-tauri 命令层另有 ensure_unlocked 门卫统一文案。
+/// （要开封/重密封密文）。desktop 命令层另有 ensure_unlocked 门卫统一文案。
 #[test]
 fn locked_vault_rejects_secret_bearing_export_and_any_import() {
     let dir = tempfile::tempdir().unwrap();

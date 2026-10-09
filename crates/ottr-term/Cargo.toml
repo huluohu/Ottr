@@ -10,4 +10,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 # BL-216：本 crate 是纯同步的字节→文本/ANSI 处理层（解码/剥序列/录制编码），
 # 全库零 tokio 使用——原样声明却从未用到的 tokio 依赖已删除（异步运行时由
-# 消费方 ottr-ssh / src-tauri 各自持有）。
+# 消费方 ottr-ssh / desktop 各自持有）。

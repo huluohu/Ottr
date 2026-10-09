@@ -1,7 +1,7 @@
 -- 0016_cron（Phase 4 Task 1，Phase 3 缺口①：cron 定时任务——存储侧）：
 -- 任务配置（cron_jobs，spec §3）+ 运行历史（cron_runs，本任务设计）。
 --
--- 调度/评估引擎在 Rust 侧（ottr-monitor src/cron.rs + src-tauri
+-- 调度/评估引擎在 Rust 侧（ottr-monitor src/cron.rs + desktop
 -- commands/cron.rs——引擎宿主裁定落地：调度脱离 webview 生命周期，
 -- 「App 退出即停」语义在模块文档明示，托盘常驻=运行）；本 crate 只供表，
 -- 与 alert_rules「评估在 TS、Rust 只供表」同一分工纪律。

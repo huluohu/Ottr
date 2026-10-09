@@ -23,7 +23,7 @@ use ottr_transfer::sftp::{CancelToken, ProgressHook, TransferProgress};
 use ottr_transfer::{download_parallel, upload_parallel};
 
 /// 每 16 chunk 打一行进度（Phase 0 println 行为的 hook 复刻；Task 10 Step 2
-/// 起进度走 [`ProgressHook`]，src-tauri 再转 Tauri 事件）。
+/// 起进度走 [`ProgressHook`]，desktop 再转 Tauri 事件）。
 fn printing_hook() -> ProgressHook {
     let n = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     Arc::new(move |p: TransferProgress| {

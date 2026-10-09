@@ -1,7 +1,7 @@
 -- 0009_jump_chains（Phase 2 Task 2，B7 下半；spec §3 jump_chains 实体）。
 -- 明文配置面：链名 + hop 主机 id 列表不含任何密钥材料——无 *_enc 列、不经 AAD
 -- 绑定、不涉 scan_registry（重密封扫描注册表），锁定语义与 hosts 同（实体命令
--- 面统一过 ensure_unlocked 门卫，见 src-tauri vault.rs）。
+-- 面统一过 ensure_unlocked 门卫，见 desktop vault.rs）。
 --
 -- 列（spec §3）：
 --   id         INTEGER PRIMARY KEY AUTOINCREMENT（沿用实体表惯例：免未来加

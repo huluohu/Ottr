@@ -3,7 +3,7 @@
 //!
 //! # 宿主裁定（简报裁定 #2）
 //!
-//! 调度与 exec 评估在 **Rust 侧 tokio 运行时**（本模块 + src-tauri
+//! 调度与 exec 评估在 **Rust 侧 tokio 运行时**（本模块 + desktop
 //! `commands/cron.rs` 的 spawn 点），与 webview 生命周期解耦：
 //! * 关窗到托盘（`menu::on_close_requested` 隐藏主窗）= webview 隐藏但 Rust
 //!   运行时照常在跑 → **cron 照常触发**；通知触发经 `ottr://cron-run` 事件
@@ -37,7 +37,7 @@
 //! 心跳 tick（生产 20s + 相位错峰 [`crate::sched::phase_delay`]）→ 拉任务表
 //! → 逐任务对账：到点即 spawn 单轮执行（互斥 in-flight：上一轮未完本轮跳过
 //! ——不叠跑，语义同系统 cron 的常见 `flock` 口径）→ 结果 [`CronRunRecord`]
-//! 交 sink（src-tauri 落 cron_runs + 发事件）。时钟/任务表/exec/sink 全部
+//! 交 sink（desktop 落 cron_runs + 发事件）。时钟/任务表/exec/sink 全部
 //! 注入（测试假件直驱，零真连接——ottr-monitor `task` 同款纪律）。
 //!
 //! 【追赶口径】到点时若 next-fire 已逾期多个周期（长 GC/挂起），只跑**最近
@@ -252,7 +252,7 @@ pub enum CronRunStatus {
     Missed,
 }
 
-/// 一轮执行的结果（core 产出，src-tauri sink 消费：落库 + sidecar + 事件）。
+/// 一轮执行的结果（core 产出，desktop sink 消费：落库 + sidecar + 事件）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CronRunRecord {
     pub cron_id: i64,
@@ -270,7 +270,7 @@ pub struct CronRunRecord {
     pub error: Option<String>,
 }
 
-/// 任务表行（src-tauri 从 vault cron_jobs 投影；core 只消费 id/schedule/
+/// 任务表行（desktop 从 vault cron_jobs 投影；core 只消费 id/schedule/
 /// enabled，host_id 随行透传给 resolver/事件面——exec 会话解析按主机）。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct CronJobView {

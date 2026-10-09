@@ -11,7 +11,7 @@ const host = process.env.TAURI_DEV_HOST;
  * 这些裸 require 改写成 browser-external 代理——生产 webview 里探测恒判「浏览器
  * 模式」，而浏览器模式依赖 File System Access API（WKWebView 无此 API，上传/
  * 下载皆不可用），且 fs 落成空壳。本插件在打包前把两处探测改写为显式
- * `globalThis.require(...)`（src/terminal/trzsz/requireShim.ts 安装的 fs/path
+ * `globalThis.require(...)`（frontend/terminal/trzsz/requireShim.ts 安装的 fs/path
  * 垫片，IO 走 commands/trzsz_fs.rs invoke 桥），强制 node 模式（Electron 同款
  * 路径，选型论证见 task-4 报告）。改写未命中即构建失败（库升级形态变化时人工
  * 复核，不静默漂移）。optimizeDeps.exclude 让 dev 预打包也不碰它，dev/build
@@ -77,8 +77,8 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `desktop`
+      ignored: ["**/desktop/**"],
     },
   },
 }));

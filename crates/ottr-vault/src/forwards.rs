@@ -29,7 +29,7 @@ fn now_ts() -> i64 {
         .as_secs() as i64
 }
 
-/// 转发类型（serde 面与 `src/vault/api.ts` 同构小写串：local/remote/dynamic）。
+/// 转发类型（serde 面与 `frontend/vault/api.ts` 同构小写串：local/remote/dynamic）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ForwardKind {

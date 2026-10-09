@@ -13,7 +13,7 @@ use super::{CmdResult, VaultState, cmd, ensure_unlocked};
 // --- notifications（Task 12，spec §7 通知管线①应用内通知中心）-----------------
 // 明文面（通知无 *_enc 列，见 0005 迁移文件头）：**不过 ensure_unlocked 门卫**
 // ——锁定态下 session-closed 等事件也要能落表（与 settings 同一锁定语义）。
-// 事件源接线在前端 src/notify/core.ts（管线枢纽，spec §7 定案），Rust 只供表。
+// 事件源接线在前端 frontend/notify/core.ts（管线枢纽，spec §7 定案），Rust 只供表。
 
 #[specta::specta]
 #[tauri::command]
@@ -82,7 +82,7 @@ pub fn notify_clear_delivery_failure(
 
 // --- alert_rules（Phase 3 Task 3，B5 告警规则——存储侧命令面）------------------
 // 明文面（无 *_enc 列，见 0013 迁移文件头）：**过 ensure_unlocked 门卫**（配置
-// 面与 hosts 同一锁定语义）。规则评估引擎在前端 src/notify/rules.ts（数据源 =
+// 面与 hosts 同一锁定语义）。规则评估引擎在前端 frontend/notify/rules.ts（数据源 =
 // ottr://monitor 事件流 + monitor_ps），Rust 只供表 + mark_fired 水位回写。
 
 #[specta::specta]

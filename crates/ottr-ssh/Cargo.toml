@@ -15,10 +15,10 @@ tokio-util = { workspace = true }
 # Task 6 keygen：与 russh 同版（0.10）的 rng —— PrivateKey::random 的 R: CryptoRng
 # 必须与 russh 的 rand_core 同 major，跨版本 trait 不兼容
 rand = { workspace = true }
-# Task 6：KeyMaterial/DeployOutcome 序列化面（src-tauri 命令直出）
+# Task 6：KeyMaterial/DeployOutcome 序列化面（desktop 命令直出）
 serde = { workspace = true }
 # BL-211 known_hosts 指纹解析（SHA256: + unpadded std-b64；base64/sha2 与
-# src-tauri 同版本，收敛前三处重复实现也是这两个 crate）
+# desktop 同版本，收敛前三处重复实现也是这两个 crate）
 base64 = { workspace = true }
 sha2 = { workspace = true }
 # 注：russh-sftp / futures 随 Task 8 sftp.rs 迁入 ottr-transfer（Task 10 Step 1），

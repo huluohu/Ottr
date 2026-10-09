@@ -1,7 +1,7 @@
 //! PTY 通道操作面（russh 收口层）：[`crate::SshTransport::Channel`]（trait
 //! 边界上唯一的 russh 类型泄漏点）的消费封装。
 //!
-//! 消费方（src-tauri 合批转发循环 / ottr-bench 排空任务）只依赖本模块的
+//! 消费方（desktop 合批转发循环 / ottr-bench 排空任务）只依赖本模块的
 //! 自有类型与函数，**不再直接依赖 russh**：通道类型以 [`PtyChannel`] 别名
 //! 命名，消息面归一为 [`PtyEvent`]，shell / resize / writer 各有薄封装。
 //! russh 仍是传输实现；未来切 libssh2 时改动收敛在本 crate（SshTransport

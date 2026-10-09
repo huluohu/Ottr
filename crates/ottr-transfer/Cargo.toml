@@ -12,7 +12,7 @@ ottr-ssh = { path = "../ottr-ssh" }
 russh-sftp = "3.0.1"
 # chunk 内子请求流水线（futures::future::try_join_all，随 Phase 0 sftp.rs 迁入）
 futures = "0.3"
-# Step 2（Task 10）：DirEntry 的 serde 面（src-tauri 命令直出）
+# Step 2（Task 10）：DirEntry 的 serde 面（desktop 命令直出）
 serde = { workspace = true }
 # Step 2（Task 10）：CancelToken（AtomicBool）与进度 hook 的原子计数
 tokio = { workspace = true, features = ["sync", "time"] }

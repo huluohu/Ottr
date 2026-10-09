@@ -139,7 +139,7 @@ describe("findConflicts（开发期冲突检测）", () => {
   });
 });
 
-// macOS 原生菜单（src-tauri/src/menu.rs menu_tree()）镜像值钉死：Rust 侧无法
+// macOS 原生菜单（desktop/src/menu.rs menu_tree()）镜像值钉死：Rust 侧无法
 // import 本表，两侧字面量靠本用例 + Rust 单测双向锁定——改动键位必须两侧同步。
 // 镜像只覆盖 **mac 键位**（菜单是 mac 专属呈现）；win/linux 键位独立，其中
 // 分屏右已按评审 M-4 收敛为 Ctrl+Shift+D（裸 Ctrl+D 是终端 EOF，见 ACTIONS 注）。

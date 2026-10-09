@@ -103,7 +103,7 @@ bump_versions() {
   old=$(python3 -c "import json;print(json.load(open('desktop/tauri.conf.json'))['version'])")
   new="$VERSION"
   if [ "$old" = "$new" ]; then
-    echo "  版本号已是 $new（断点重跑），跳过对齐"
+    echo "  版本号已是 ${new}（断点重跑），跳过对齐"
     return 0
   fi
   for f in desktop/tauri.conf.json package.json; do
@@ -224,7 +224,7 @@ if [ "$SKIP_GATE" = 0 ]; then
     case "$line" in
       completed|*) status="${line%%|*}"; concl="${line#*|}";;
     esac
-    [ "${line%%|*}" = "completed" ] && { [ "${line#*|}" = "success" ] && break || die "推送门未全绿（$line）——已中止打 tag；修复后重跑本脚本（tag 未创建）"; }
+    [ "${line%%|*}" = "completed" ] && { [ "${line#*|}" = "success" ] && break || die "推送门未全绿（${line}）——已中止打 tag；修复后重跑本脚本（tag 未创建）"; }
     [ $waited -ge "$GATE_TIMEOUT" ] && die "推送门等待超时——可用 --skip-gate 跳过，或稍后重跑"
   done
 fi

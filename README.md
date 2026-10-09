@@ -20,9 +20,9 @@
 
 ---
 
-**Ottr** 把「连上服务器敲命令」升级为「AI 懂你的终端」：命令失败自动诊断、自然语言生成命令、全局历史检索，同时守住一条硬底线——**自带 AI Key（BYOK），请求直连你选的模型服务商并经脱敏，绝不经过任何第三方服务器**；主机、凭据、历史全部存在本机加密库或你自己的云盘里，隐私可以抓包自行验证。
+**Ottr** 是一款轻量级的开源 AI SSH 客户端——安装包约 14 MB、常驻内存约 100 MB，不安装任何后台服务或 Agent。它把「连上服务器敲命令」升级为「AI 懂你的终端」：命令失败自动诊断、自然语言生成命令、全局历史检索，同时守住一条硬底线——**自带 AI Key（BYOK），请求直连你选的模型服务商并经脱敏，绝不经过任何第三方服务器**；主机、凭据、历史全部存在本机加密库或你自己的云盘里，隐私可以抓包自行验证。
 
-技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
+技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住，三端一套代码。
 
 ![欢迎首页：时段问候 + 快捷卡 + 应用级侧栏（青野主题）](docs/screenshots/home-welcome.png)
 
@@ -186,7 +186,7 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 │  ├─ theme/ styles/ ui/ i18n/ shortcuts/ palette/     # 主题令牌 / 分节样式 / 基础组件 / 双语 / 键位 / ⌘K
 │  └─ vault/bindings.generated.ts                      # Rust 命令 TS 绑定（tauri-specta 自动生成，漂移即测试红）
 ├─ desktop/              # Tauri 2 宿主 + 命令层（按域拆分：session/vault/mcp/…）
-│  ├─ tests/               # 真容器夹具集成 + 契约守护（命令名集合比对 / 绑定一致性）
+│  ├─ tests/               # 起真实 SSH/FTP 容器跑集成测试 + 前后端命令契约守护（命令名集合比对 / 绑定一致性）
 │  └─ crates/
 │     ├─ ottr-vault        # 加密库（AES-256-GCM + Argon2id + 钥匙链 + 同步快照）
 │     ├─ ottr-ssh          # SSH/SFTP 传输核（russh，trait 隔离 + PTY 收口层）
@@ -195,7 +195,7 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 │     ├─ ottr-monitor      # 免 Agent 监控采样
 │     ├─ ottr-cron         # 定时任务引擎（五段式解析 + 调度 + 抖动原语）
 │     └─ ottr-bench        # 性能基准（传输 / PTY 吞吐）
-├─ scripts/                # 发布自动化（release.sh）+ 本地夹具（sshd/dufs）+ 更新清单生成
+├─ scripts/                # 发布自动化（release.sh）+ 本地测试服务器（sshd/dufs）+ 更新清单生成
 ├─ brand/                  # 品牌（logo 源文件 + 手册）
 ├─ docs/screenshots/       # README 截图（docs 其余为内部开发文档，不入库）
 └─ .github/workflows/      # CI：push → fmt + clippy + 三平台全量构建；tag → 双架构 macOS / Windows / Linux 构建 + 签名更新件 + latest.json 自动发布
@@ -214,13 +214,13 @@ npm run tauri dev      # 起 vite + Tauri 开发窗
 ### 测试
 
 ```bash
-npm test               # 前端 vitest（1199 用例，含真夹具端到端）
+npm test               # 前端 vitest（1199 用例，含端到端）
 cargo test             # Rust 工作区全部单测/集成测试（约 590）
 cargo fmt --all --check
 cargo clippy --workspace --all-targets   # CI 同款 -D warnings 门，零告警基线
 ```
 
-本地 SSH/WebDAV 联调可起 Docker 夹具：`scripts/spike-sshd.sh`（127.0.0.1:2222）、`scripts/spike-dufs.sh`（127.0.0.1:15773）。仓库另有守护测试钉住设计约束（主题对比度实算、前后端命令名契约比对、TS 绑定与 Rust 签名一致性、控件一致性等）。
+本地 SSH/WebDAV 联调可起 Docker 测试服务器：`scripts/spike-sshd.sh`（127.0.0.1:2222）、`scripts/spike-dufs.sh`（127.0.0.1:15773）。仓库另有守护测试钉住设计约束（主题对比度实算、前后端命令名契约比对、TS 绑定与 Rust 签名一致性、控件一致性等）。
 
 ### 发布构建
 
@@ -234,7 +234,7 @@ npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前
 
 ### CI
 
-- **`release.yml`**：推送 `v*` 标签 → 校验版本一致性 → 三平台矩阵构建（Linux 上带测试夹具跑全量前端测试）→ 自动发布 GitHub Release
+- **`release.yml`**：推送 `v*` 标签 → 校验版本一致性 → 三平台矩阵构建（Linux 上起真实测试服务器跑全量前端测试）→ 自动发布 GitHub Release
 - **`spike.yml`**：推送 main → `cargo fmt --check` + `cargo clippy -D warnings` + 三平台编译冒烟
 
 ## 📄 许可与作者

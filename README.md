@@ -2,6 +2,8 @@
 
 <img src="brand/logo.svg" alt="Ottr" width="180" />
 
+# Ottr · 喔獭
+
 ### AI 原生的个人服务器管理工具
 
 *Swim through your servers.* ／ *如獭穿行于服务器之间。*

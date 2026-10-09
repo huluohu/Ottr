@@ -96,14 +96,25 @@ button[data-active="true"] {
   border-color: var(--color-accent-border);
   color: var(--color-accent-text);
 }
+/* 键盘焦点环（2026-10-10 原生一致性）：所有控件可见焦点态，
+   与 macOS 系统焦点圈同构（accent 描边 35% 三环）。 */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-border) 35%, transparent);
+}
 .btn-accent {
   background-color: var(--color-accent);
   border-color: var(--color-accent-border);
   color: var(--color-on-accent);
   font-weight: 600;
+  /* 默认按钮微光（macOS default button 的 key 光圈同构） */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-border) 30%, transparent);
 }
 .btn-accent:hover {
   filter: brightness(1.08);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-border) 45%, transparent);
 }
 .icon-btn.danger {
   color: var(--color-danger);

@@ -33,11 +33,11 @@ function makeHost(overrides: Partial<Host>): Host {
     monitor_enabled: false,
     is_production: false,
     notes: null,
+    created_at: 1,
+    updated_at: 1,
     ...overrides,
   };
 }
-
-const noop = () => {};
 
 function renderHome(overrides?: Partial<Parameters<typeof HomeWelcome>[0]>) {
   const props: Parameters<typeof HomeWelcome>[0] = {

@@ -113,33 +113,29 @@ describe("Sidebar", () => {
     expect(shell.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("主题子菜单：行点击展开七选项，点选即应用（data-theme 随勾选）", async () => {
+  it("主题子菜单：行点击弹出浮层七选项；选即应用并收起（不挤动侧栏布局）", async () => {
     renderSidebar();
-    const row = screen.getByTestId("sidebar-theme");
-    fireEvent.click(row);
-    const submenu = screen.getByTestId("sidebar-submenu-theme");
-    expect(submenu).toBeTruthy();
-    // 七主题选项齐全
+    const treeBefore = screen.getByTestId("app-sidebar").textContent;
+    fireEvent.click(screen.getByTestId("sidebar-theme"));
+    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
     for (const id of ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"]) {
       expect(screen.getByTestId(`sidebar-theme-${id}`)).toBeTruthy();
     }
-    // 点选 OLED → 应用 + 勾选
     fireEvent.click(screen.getByTestId("sidebar-theme-oled"));
     expect(document.documentElement.dataset.theme).toBe("oled");
-    // 再点行收起子菜单
-    fireEvent.click(row);
-    expect(screen.queryByTestId("sidebar-submenu-theme")).toBeNull();
+    // 选即关（原生菜单语义）
+    expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
+    // 侧栏自身文本不变 = 布局未被顶动
+    expect(screen.getByTestId("app-sidebar").textContent).toBe(treeBefore);
   });
 
-  it("语言子菜单：展开后中英选项，点选切换 i18n 实例语言", async () => {
+  it("语言子菜单：浮层展开中英选项，点选切换 i18n 实例语言并收起", async () => {
     renderSidebar();
     fireEvent.click(screen.getByTestId("sidebar-lang"));
-    const submenu = screen.getByTestId("sidebar-submenu-lang");
-    expect(submenu).toBeTruthy();
+    expect(screen.getByTestId("sidebar-flyout-lang")).toBeTruthy();
     fireEvent.click(screen.getByTestId("sidebar-lang-zh-CN"));
     await waitFor(() => expect(i18n.language).toBe("zh-CN"));
-    // 再点行收起
-    fireEvent.click(screen.getByTestId("sidebar-lang"));
-    expect(screen.queryByTestId("sidebar-submenu-lang")).toBeNull();
+    // 选即关
+    expect(screen.queryByTestId("sidebar-flyout-lang")).toBeNull();
   });
 });

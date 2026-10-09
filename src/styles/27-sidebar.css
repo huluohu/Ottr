@@ -90,26 +90,26 @@
   padding: 6px;
 }
 
-/* 子菜单（ZCode 式）：行内展开的选项列表，勾选当前项；chevron 随展开旋转。 */
-.sidebar-chevron {
-  margin-left: auto;
-  transition: transform 140ms ease;
-  opacity: 0.6;
-}
-.sidebar-chevron.open {
-  transform: rotate(90deg);
-}
-.sidebar-submenu {
+/* 子菜单浮层（ZCode 式 flyout）：fixed 锚定行侧弹出——不改变侧栏布局；
+ * 选即关（原生菜单语义），点外/Esc 同收。z 层高于 dock(150)/toast(150)。 */
+.sidebar-flyout {
+  position: fixed;
+  z-index: 300;
+  min-width: 170px;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-overlay);
+  box-shadow: 0 12px 40px var(--scrim);
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 0 4px 12px;
 }
-.sidebar-submenu button {
+.sidebar-flyout button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border: none;
   border-radius: 7px;
   background: none;
@@ -118,13 +118,13 @@
   text-align: left;
   cursor: pointer;
 }
-.sidebar-submenu button:hover {
+.sidebar-flyout button:hover {
   background: var(--surface-raised);
 }
-.sidebar-submenu button[data-checked="true"] {
+.sidebar-flyout button[data-checked="true"] {
   color: var(--color-accent-text);
   font-weight: 600;
 }
-.sidebar-submenu button[data-checked="true"] svg {
+.sidebar-flyout button[data-checked="true"] svg {
   margin-left: auto;
 }

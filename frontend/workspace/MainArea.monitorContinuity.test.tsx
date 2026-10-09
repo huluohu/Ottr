@@ -106,7 +106,7 @@ function cpuValue(): string {
 
 beforeEach(() => {
   localStorage.setItem("ottr.monitor.sidebarOpen", "1"); // 展开态（默认收起）
-  useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
+  useWorkspaceStore.setState({ mainView: "terminal", dockTabs: [], dockActive: null });
   useSessionStore.setState({ sessions: [fakeSession()], activeId: "sess-1" });
   useVaultStore.setState({ hosts: [fakeHost], hostGroups: [], credentials: [], loading: false, error: null });
   useMonitorStore.setState({ windows: { "pty-1": win(42, [40, 41, 42]) } });

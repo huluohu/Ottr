@@ -33,7 +33,7 @@ function fakeSession(over: Partial<Session> = {}): Session {
 
 beforeEach(() => {
   // 回默认态：zustand 模块级单例，跨用例必须复位（防用例间互斥语义串扰）
-  useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
+  useWorkspaceStore.setState({ mainView: "terminal", dockTabs: [], dockActive: null });
   useSessionStore.setState({ sessions: [], activeId: null });
 });
 
@@ -61,44 +61,83 @@ describe("mainView 状态机", () => {
   });
 });
 
-describe("dockPanel 单槽互斥（同时只开一个）", () => {
-  it("默认 null（无面板）", () => {
-    expect(useWorkspaceStore.getState().dockPanel).toBeNull();
+describe("dock 多页签（共存 + 激活，2026-10-09 根治互相覆盖）", () => {
+  it("默认空（dock 关闭）", () => {
+    expect(useWorkspaceStore.getState().dockTabs).toEqual([]);
+    expect(useWorkspaceStore.getState().dockActive).toBeNull();
   });
 
-  it("openDock 全量取值可设；换值即替换（不叠加）", () => {
-    for (const p of DOCK_PANELS as readonly DockPanel[]) {
-      useWorkspaceStore.getState().openDock(p);
-      expect(useWorkspaceStore.getState().dockPanel).toBe(p);
-    }
-    // 单槽核心不变量：开着 cron 时开 forwards，cron 被替换
-    useWorkspaceStore.getState().openDock("cron");
-    useWorkspaceStore.getState().openDock("forwards");
-    expect(useWorkspaceStore.getState().dockPanel).toBe("forwards");
+  it("openDock：新页签追加并激活；重复打开仅激活（不重复追加）", () => {
+    const ws = () => useWorkspaceStore.getState();
+    ws().openDock("cron");
+    ws().openDock("alerts");
+    expect(ws().dockTabs).toEqual(["cron", "alerts"]);
+    expect(ws().dockActive).toBe("alerts");
+    ws().openDock("cron");
+    expect(ws().dockTabs).toEqual(["cron", "alerts"]); // 不重复追加
+    expect(ws().dockActive).toBe("cron"); // 仅激活
   });
 
-  it("closeDock 置空；对已空状态幂等", () => {
-    useWorkspaceStore.getState().openDock("alerts");
-    useWorkspaceStore.getState().closeDock();
-    expect(useWorkspaceStore.getState().dockPanel).toBeNull();
-    useWorkspaceStore.getState().closeDock();
-    expect(useWorkspaceStore.getState().dockPanel).toBeNull();
+  it("切换不互相关闭（根治「开 A 顶掉 B」的核心不变量）", () => {
+    const ws = () => useWorkspaceStore.getState();
+    ws().openDock("cron");
+    ws().openDock("alerts");
+    ws().openDock("mcp");
+    ws().openDock("cron"); // 切回最先打开的页签
+    expect(ws().dockTabs).toEqual(["cron", "alerts", "mcp"]); // 三页签共存
+    expect(ws().dockActive).toBe("cron");
   });
 
-  it("toggleDock：同值关、异值换（开关二态语义）", () => {
-    const ws = useWorkspaceStore.getState();
-    ws.toggleDock("mcp");
-    expect(useWorkspaceStore.getState().dockPanel).toBe("mcp");
-    ws.toggleDock("mcp");
-    expect(useWorkspaceStore.getState().dockPanel).toBeNull();
-    ws.toggleDock("jumpchains");
-    ws.toggleDock("cron"); // 异值 = 切换到新面板而非关闭
-    expect(useWorkspaceStore.getState().dockPanel).toBe("cron");
+  it("closeTab：关活动页活动权移交右邻，关尾页签回落最右；关非活动页不影响激活", () => {
+    const ws = () => useWorkspaceStore.getState();
+    ws().openDock("cron");
+    ws().openDock("alerts");
+    ws().openDock("mcp");
+    ws().openDock("alerts"); // active=alerts, tabs=[cron,alerts,mcp]
+    ws().closeTab("alerts");
+    expect(ws().dockTabs).toEqual(["cron", "mcp"]);
+    expect(ws().dockActive).toBe("mcp"); // 右邻
+    ws().closeTab("mcp"); // 关尾页签 → 回落
+    expect(ws().dockTabs).toEqual(["cron"]);
+    expect(ws().dockActive).toBe("cron");
+    ws().openDock("alerts");
+    ws().closeTab("cron"); // 关非活动页（激活不动）
+    expect(ws().dockTabs).toEqual(["alerts"]);
+    expect(ws().dockActive).toBe("alerts");
   });
 
-  it("工具面板五值集合与类型口径一致（防漂移）", () => {
-    expect(TOOL_DOCK_PANELS).toEqual(["forwards", "jumpchains", "cron", "alerts", "mcp"]);
-    // 全量 DockPanel = 侧栏二值 + 工具五值
+  it("closeDock 清空全部页签；对已空状态幂等", () => {
+    const ws = () => useWorkspaceStore.getState();
+    ws().openDock("alerts");
+    ws().closeDock();
+    expect(ws().dockTabs).toEqual([]);
+    expect(ws().dockActive).toBeNull();
+    ws().closeDock();
+    expect(ws().dockTabs).toEqual([]);
+  });
+
+  it("toggleDock：活动页同值关、异值开/激活（异值不关闭已开页签）", () => {
+    const ws = () => useWorkspaceStore.getState();
+    ws().toggleDock("mcp");
+    expect(ws().dockActive).toBe("mcp");
+    ws().toggleDock("mcp");
+    expect(ws().dockActive).toBeNull();
+    ws().toggleDock("cron");
+    ws().toggleDock("mcp"); // 异值 = 打开/激活新页签，cron 页签保留
+    expect(ws().dockTabs).toEqual(["cron", "mcp"]);
+    expect(ws().dockActive).toBe("mcp");
+  });
+
+  it("工具面板六值集合与类型口径一致（防漂移）", () => {
+    expect(TOOL_DOCK_PANELS).toEqual([
+      "forwards",
+      "jumpchains",
+      "cron",
+      "alerts",
+      "mcp",
+      "notifications",
+    ]);
+    // 全量 DockPanel = 侧栏二值 + 工具六值
     expect(DOCK_PANELS).toEqual(["monitor", "plugins", ...TOOL_DOCK_PANELS]);
   });
 });

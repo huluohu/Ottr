@@ -16,10 +16,56 @@
 .dock-head {
   flex: none;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 10px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border-subtle);
+}
+/* 页签条（2026-10-09 dock 多页签）：已开面板共存，点页签切换（keep-alive
+   不卸载），页签内 ✕ 关单页签（多页签时才显示）。 */
+.dock-tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+}
+.dock-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 50%;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dock-tab:hover {
+  color: var(--color-fg);
+  background: var(--surface-raised);
+}
+.dock-tab[data-active="true"] {
+  color: var(--color-accent-text);
+  border-color: var(--color-accent-border);
+  background: var(--surface-raised);
+  font-weight: 600;
+}
+.dock-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dock-tab-close {
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 1;
+}
+.dock-tab-close:hover {
+  color: var(--color-danger);
 }
 .dock-title {
   font-weight: 600;
@@ -28,15 +74,28 @@
 .dock-close {
   border: none;
   background: none;
-  font-size: 16px;
+  font-size: 14px;
   cursor: pointer;
   line-height: 1;
   color: var(--color-fg);
+  flex: none;
 }
 .dock-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+/* keep-alive 面板容器：非活动页 CSS 隐藏（组件保持挂载，切换不丢状态）；
+   活动页撑满 dock-body（滚动面仍在 dock-body）。 */
+.dock-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.dock-pane[hidden] {
+  display: none !important;
 }
 /* dock 内实体面板容器（T4）：原对话框体（.dialog）迁移后的内容形态——
    自带留白与纵向流；宽度/滚动交给 dock 壳（不再有对话框的圆角/阴影/

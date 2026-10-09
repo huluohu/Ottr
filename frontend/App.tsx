@@ -41,7 +41,6 @@ import { initBatchEvents } from "./batch/events";
 // cron 定时任务（Phase 4 Task 1，缺口①）：任务中心面板 + ottr://cron-run 接线
 // （事件源在 Rust 调度器——宿主裁定见 commands/cron.rs；TS 侧管通知分发）。
 import { initCronEvents } from "./cron/events";
-import { NotificationCenter } from "./notify/NotificationCenter";
 import { CommandPalette } from "./palette/CommandPalette";
 import { HistorySearch } from "./history/HistorySearch";
 import { stripPromptPrefix } from "./history/format";
@@ -143,8 +142,6 @@ function HomeLayout() {
   });
   const resizing = useRef(false);
 
-  // 2026-10-08 菜单栏启用批次：通知中心受控浮层（入口=工具菜单/汉堡 notify.center）
-  const [notifyOpen, setNotifyOpen] = useState(false);
   // 新建分组信号（File 菜单/汉堡 hosts.new_group → HostTree 分组态；计数即触发）
   const [newGroupSignal, setNewGroupSignal] = useState(0);
   // theme-suite T1：工具菜单「导出主机 CSV」反馈（2026-10-10 起）——
@@ -157,7 +154,7 @@ function HomeLayout() {
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
-        case "notify-center": setNotifyOpen((v) => !v); break;
+        case "notify-center": openDock("notifications"); break;
         case "credentials": setCredentialsOpen(true); break;
         case "alerts": openDock("alerts"); break;
         case "mcp": openDock("mcp"); break;
@@ -281,7 +278,7 @@ function HomeLayout() {
           setNewGroupSignal((n) => n + 1);
           break;
         case "notify.center":
-          setNotifyOpen((v) => !v);
+          openDock("notifications");
           break;
         case "settings.open":
           setSettingsOpen(true);
@@ -414,8 +411,6 @@ function HomeLayout() {
           onImport={() => setImportOpen(true)}
           onQuickConnect={() => setPaletteOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onToggleNotifications={() => setNotifyOpen((v) => !v)}
-          notificationsOpen={notifyOpen}
         />
         <div
           className="sidebar-resizer"
@@ -443,9 +438,6 @@ function HomeLayout() {
       </div>
       {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
       <Toaster />
-      {/* 通知中心浮层（2026-10-08 菜单栏启用批次）：入口=工具菜单/汉堡
-          notify.center；受控渲染，点外/Esc 收起。 */}
-      <NotificationCenter open={notifyOpen} onClose={() => setNotifyOpen(false)} />
 
       {form && (
         <HostForm

@@ -30,8 +30,6 @@ function shellProps(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
     style: undefined,
     onQuickConnect: vi.fn(),
     onOpenSettings: vi.fn(),
-    onToggleNotifications: vi.fn(),
-    notificationsOpen: false,
     ...overrides,
   };
 }
@@ -47,7 +45,7 @@ function renderSidebar(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ dockPanel: null });
+  useWorkspaceStore.setState({ dockTabs: [], dockActive: null });
   useNotifyStore.setState({ unread: 0 });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
   vi.stubGlobal(
@@ -68,9 +66,9 @@ afterEach(() => {
 });
 
 describe("Sidebar", () => {
-  it("三段式渲染：快捷连接/主机区（新建主机入口）/导航/设置", () => {
+  it("三段式渲染：搜索/主机区（新建主机入口）/导航/设置", () => {
     renderSidebar();
-    expect(screen.getByTestId("sidebar-quick-connect")).toBeTruthy();
+    expect(screen.getByTestId("sidebar-search")).toBeTruthy();
     expect(screen.getByTestId("add-host")).toBeTruthy(); // 主机区 = HostTree 原样嵌入
     expect(screen.getByTestId("sidebar-nav-cron")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-alerts")).toBeTruthy();
@@ -79,13 +77,16 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-nav-settings")).toBeTruthy();
   });
 
-  it("导航点击开对应 dock 面板（真店断言 dockPanel 落位）", () => {
-    const { shell } = renderSidebar();
-    void shell;
+  it("导航点击开对应 dock 页签（共存不互关）；再点同页签关闭（开关二态）", () => {
+    renderSidebar();
     fireEvent.click(screen.getByTestId("sidebar-nav-cron"));
-    expect(useWorkspaceStore.getState().dockPanel).toBe("cron");
+    expect(useWorkspaceStore.getState().dockActive).toBe("cron");
     fireEvent.click(screen.getByTestId("sidebar-nav-alerts"));
-    expect(useWorkspaceStore.getState().dockPanel).toBe("alerts");
+    expect(useWorkspaceStore.getState().dockActive).toBe("alerts");
+    expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron", "alerts"]); // 共存
+    fireEvent.click(screen.getByTestId("sidebar-nav-alerts")); // 再点 = 关该页签
+    expect(useWorkspaceStore.getState().dockActive).toBe("cron"); // 活动权移交右邻
+    expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron"]);
   });
 
   it("未读数徽标：unread=3 显示 3；归零消失", () => {
@@ -98,17 +99,14 @@ describe("Sidebar", () => {
     expect(screen.queryByTestId("sidebar-unread")).toBeNull();
   });
 
-  it("壳层动作：快速连接/通知中心开关/设置回调接线", () => {
+  it("壳层动作：搜索/设置回调接线（通知中心行已收编 nav，走 dock 不再经壳回调）", () => {
     const shell = shellProps({
       onQuickConnect: vi.fn(),
-      onToggleNotifications: vi.fn(),
       onOpenSettings: vi.fn(),
     });
     renderSidebar(shell);
-    fireEvent.click(screen.getByTestId("sidebar-quick-connect"));
+    fireEvent.click(screen.getByTestId("sidebar-search"));
     expect(shell.onQuickConnect).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByTestId("sidebar-nav-notifications"));
-    expect(shell.onToggleNotifications).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId("sidebar-nav-settings"));
     expect(shell.onOpenSettings).toHaveBeenCalledTimes(1);
   });

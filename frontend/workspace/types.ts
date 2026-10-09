@@ -5,8 +5,9 @@
 //  * mainView 单值互斥：五视图（terminal/files/processes/overview/batch）
 //    同一时刻只见其一。terminal 恒为默认；files/processes 自原 setState
 //    互斥体系迁入；overview/batch 自原顶栏对话框迁入（实体 T3 迁入）。
-//  * dockPanel 单槽互斥：右侧 dock 同时只开一个工具面板——openDock 换值
-//    即替换（不叠加）。
+//  * dock 多页签（2026-10-09 用户裁定「根治互相覆盖」）：面板以页签共存
+//    （dockTabs 保序），openDock 打开/激活、切换不卸载不互相关闭——
+//    旧「单槽 openDock 换值即替换」语义废除。
 //  * monitor/plugins **并存语义沿现状**：二者是终端右栏自管折叠侧栏
 //    （MonitorSidebar/PluginSidebar 内部 state + localStorage 记忆开合），
 //    现实现中两竖条常驻、两展开面可同开、且与 dock 工具面板不互斥——
@@ -28,12 +29,13 @@ export type DockPanel =
   | "jumpchains"
   | "cron"
   | "alerts"
-  | "mcp";
+  | "mcp"
+  | "notifications";
 
 /** dock 工具面板（dock/DockPanel 实际承载的五值；monitor/plugins 不经此壳）。 */
 export type ToolDockPanel = Extract<
   DockPanel,
-  "forwards" | "jumpchains" | "cron" | "alerts" | "mcp"
+  "forwards" | "jumpchains" | "cron" | "alerts" | "mcp" | "notifications"
 >;
 
 /** 全量取值表（测试枚举 + 防漂移：联合类型扩员时此表必须同步）。 */
@@ -52,6 +54,7 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   "cron",
   "alerts",
   "mcp",
+  "notifications",
 ];
 export const TOOL_DOCK_PANELS: readonly ToolDockPanel[] = [
   "forwards",
@@ -59,6 +62,7 @@ export const TOOL_DOCK_PANELS: readonly ToolDockPanel[] = [
   "cron",
   "alerts",
   "mcp",
+  "notifications",
 ];
 
 /** dock 工具面板标题 i18n 键（全部复用既有键——零新增文案键，双语守卫直接过）。 */
@@ -68,4 +72,5 @@ export const DOCK_PANEL_TITLE_KEY: Record<ToolDockPanel, string> = {
   cron: "cron.title",
   alerts: "alert.sectionTitle",
   mcp: "mcp.title",
+  notifications: "nav.notifications",
 };

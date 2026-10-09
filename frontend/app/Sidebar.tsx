@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactElement } fr
 import { useTranslation } from "react-i18next";
 import { HostTree, type HostTreeProps } from "../hosts/HostTree";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
-import type { DockPanel } from "../workspace/types";
+import type { ToolDockPanel } from "../workspace/types";
 import { useNotifyStore } from "../notify/core";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n";
@@ -25,11 +25,9 @@ const THEME_CYCLE: readonly ThemeMode[] = [
 export interface SidebarProps extends HostTreeProps {
   /** 壳层宽度（App 侧拖拽 resizer 持有）。 */
   style?: CSSProperties;
-  /** ⌘K 快速连接（命令面板）。 */
+  /** ⌘K 全局搜索（命令面板：主机 + 命令）。 */
   onQuickConnect: () => void;
   onOpenSettings: () => void;
-  onToggleNotifications: () => void;
-  notificationsOpen: boolean;
 }
 
 function ClockIcon() {
@@ -89,23 +87,22 @@ function GlobeIcon() {
   );
 }
 
-const NAV_DOCK: ReadonlyArray<{ panel: DockPanel; labelKey: string; icon: ReactElement }> = [
+const NAV_DOCK: ReadonlyArray<{ panel: ToolDockPanel; labelKey: string; icon: ReactElement }> = [
   { panel: "cron", labelKey: "nav.cron", icon: <ClockIcon /> },
   { panel: "alerts", labelKey: "nav.alerts", icon: <BellIcon /> },
   { panel: "mcp", labelKey: "nav.mcp", icon: <PlugIcon /> },
+  { panel: "notifications", labelKey: "nav.notifications", icon: <BellIcon /> },
 ];
 
 export function Sidebar({
   style,
   onQuickConnect,
   onOpenSettings,
-  onToggleNotifications,
-  notificationsOpen,
   ...tree
 }: SidebarProps) {
   const { t } = useTranslation();
-  const openDock = useWorkspaceStore((s) => s.openDock);
-  const dockPanel = useWorkspaceStore((s) => s.dockPanel);
+  const toggleDock = useWorkspaceStore((s) => s.toggleDock);
+  const dockActive = useWorkspaceStore((s) => s.dockActive);
   const unread = useNotifyStore((s) => s.unread);
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
@@ -153,10 +150,10 @@ export function Sidebar({
         <button
           type="button"
           className="btn-accent"
-          data-testid="sidebar-quick-connect"
+          data-testid="sidebar-search"
           onClick={onQuickConnect}
         >
-          <span>{t("sidebar.quickConnect")}</span>
+          <span>{t("sidebar.search")}</span>
           <kbd className="sidebar-kbd">⌘K</kbd>
         </button>
       </div>
@@ -217,27 +214,18 @@ export function Sidebar({
             key={item.panel}
             type="button"
             data-testid={`sidebar-nav-${item.panel}`}
-            data-active={dockPanel === item.panel}
-            onClick={() => openDock(item.panel)}
+            data-active={dockActive === item.panel}
+            onClick={() => toggleDock(item.panel)}
           >
             {item.icon}
             <span>{t(item.labelKey)}</span>
+            {item.panel === "notifications" && unread > 0 && (
+              <span className="sidebar-nav-badge" data-testid="sidebar-unread">
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
           </button>
         ))}
-        <button
-          type="button"
-          data-testid="sidebar-nav-notifications"
-          data-open={notificationsOpen}
-          onClick={onToggleNotifications}
-        >
-          <BellIcon />
-          <span>{t("nav.notifications")}</span>
-          {unread > 0 && (
-            <span className="sidebar-nav-badge" data-testid="sidebar-unread">
-              {unread > 99 ? "99+" : unread}
-            </span>
-          )}
-        </button>
       </nav>
       {/* 子菜单浮层（fixed 锚定行侧；选即关/点外关/Esc 关） */}
       {menu !== null && (

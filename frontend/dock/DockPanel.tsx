@@ -1,28 +1,29 @@
-// DockPanel（UI 批次一 Task 4）：右侧 dock 实体壳——T2 骨架 DockContainer 的
-// 承接者（标题 + 关闭 + 滚动内容 + 逐面板宽度）。五个工具面板实体挂载于
-// dock-body（组件本体原样迁移，仅外壳换 dock 内容形态；open/onClose 由本壳
-// 以 dock 单槽驱动）。
+// DockPanel（UI 批次一 Task 4；2026-10-09 dock 多页签改造）：右侧 dock 实体
+// 壳——顶部页签条（已开面板共存，切换不卸载不互相关闭）+ keep-alive 面板区
+// + 关闭钮。monitor/plugins 是终端右栏自管折叠侧栏，不经本壳（dockActive 为
+// 其值时 store 不接受，见 workspaceStore）。
 //
-// 【互斥语义】dock 单槽由 workspaceStore 保证（openDock 换值即替换）——本组件
-// 只读 dockPanel 渲染，不持本地开关状态。monitor/plugins 是终端右栏自管折叠
-// 侧栏（并存语义沿现状，见 workspace/types.ts 头注），不经本壳：store 接受其
-// 值但此处渲染 null，视觉零变化。
+// 【页签语义（用户裁定「根治互相覆盖」）】openDock 打开/激活、closeTab 关单
+// 页签（活动权移交右邻）、closeDock 清空全部。面板 keep-alive：打开过的页签
+// 恒渲染（open 恒 true），非活动页由 .dock-pane[hidden] 隐藏——切换不丢展开
+// 状态/表单草稿；数据面（ForwardPanel 轮询、CronPanel 打开期取数）随页签
+// 存续持续刷新。
 //
-// 【宽度裁定（本任务）】380-420px 区间逐面板设定：转发/跳板链/定时任务列
-// 表型内容 380px 够用；告警（渠道卡 + 规则表单）与 MCP（授权矩阵一行四
-// 控件）在 420px 下不折行。宽度是纯呈现，内联 style 直设（CSS 默认宽仅兜底）。
+// 【Esc】dock 活动页非空时注册 useEscClose → 关活动页（后挂载语义保证：
+// 叠在其上的对话框先收到 Esc）。
 import { useTranslation } from "react-i18next";
 import {
   DOCK_PANEL_TITLE_KEY,
-  TOOL_DOCK_PANELS,
   type ToolDockPanel,
 } from "../workspace/types";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
+import { useEscClose } from "../ui/useEscClose";
 import { ForwardPanel } from "../forward/ForwardPanel";
 import { JumpChainEditor } from "../hosts/JumpChainEditor";
 import { CronPanel } from "../cron/CronPanel";
 import { AlertSettings } from "../notify/AlertSettings";
 import { McpSettings } from "../security/McpSettings";
+import { NotificationCenter } from "../notify/NotificationCenter";
 
 /** 逐面板停靠宽度（px）。380 = 列表型下限；420 = 表单/矩阵型不折行。 */
 export const DOCK_PANEL_WIDTH_PX: Record<ToolDockPanel, number> = {
@@ -31,47 +32,91 @@ export const DOCK_PANEL_WIDTH_PX: Record<ToolDockPanel, number> = {
   cron: 380,
   alerts: 420,
   mcp: 420,
+  notifications: 380,
 };
 
 export function DockPanel() {
   const { t } = useTranslation();
-  const panel = useWorkspaceStore((s) => s.dockPanel);
-  const closeDock = useWorkspaceStore((s) => s.closeDock);
+  const tabs = useWorkspaceStore((s) => s.dockTabs);
+  const active = useWorkspaceStore((s) => s.dockActive);
+  const openDock = useWorkspaceStore((s) => s.openDock);
+  const closeTab = useWorkspaceStore((s) => s.closeTab);
 
-  // 关闭态 / 侧栏值（monitor/plugins 自管挂载，不经 dock 壳）→ 不渲染
-  if (panel === null || !TOOL_DOCK_PANELS.includes(panel as ToolDockPanel)) return null;
+  // Esc 关活动页（active=null 时不注册——dock 关闭态不劫持全局 Esc）。
+  useEscClose(active !== null, () => {
+    if (active !== null) closeTab(active);
+  });
 
-  const panelId = panel as ToolDockPanel;
-  const titleKey = DOCK_PANEL_TITLE_KEY[panelId];
+  // 关闭态（无活动页签）→ 不渲染
+  if (active === null) return null;
+
+  const width = DOCK_PANEL_WIDTH_PX[active];
   return (
     <aside
       className="dock-panel"
       data-testid="dock-container"
-      data-panel={panelId}
-      style={{ width: DOCK_PANEL_WIDTH_PX[panelId] }}
-      aria-label={t(titleKey)}
+      data-panel={active}
+      style={{ width }}
+      aria-label={t(DOCK_PANEL_TITLE_KEY[active])}
     >
       <div className="dock-head">
-        <span className="dock-title" data-testid="dock-title">
-          {t(titleKey)}
-        </span>
+        <div className="dock-tabs" role="tablist" data-testid="dock-tabs">
+          {tabs.map((p) => (
+            <button
+              key={p}
+              type="button"
+              role="tab"
+              aria-selected={p === active}
+              data-active={p === active}
+              data-testid={`dock-tab-${p}`}
+              title={t(DOCK_PANEL_TITLE_KEY[p])}
+              onClick={() => openDock(p)}
+            >
+              <span className="dock-tab-label">{t(DOCK_PANEL_TITLE_KEY[p])}</span>
+              {tabs.length > 1 && (
+                <span
+                  className="dock-tab-close"
+                  data-testid={`dock-tab-close-${p}`}
+                  role="button"
+                  aria-label={t("common.close")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(p);
+                  }}
+                >
+                  ✕
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
         <button
           className="dock-close"
           data-testid="dock-close"
           aria-label={t("common.close")}
-          onClick={closeDock}
+          onClick={() => active !== null && closeTab(active)}
         >
-          ×
+          ✕
         </button>
       </div>
-      {/* 实体挂载（T4）：单槽内仅当前面板成真；组件卸载即停各自轮询/取数
-          （ForwardPanel 2s 轮询、CronPanel 打开期取数等均随 open/unmount 收口）。 */}
+      {/* keep-alive 面板区：打开过的页签恒渲染，非活动页 CSS 隐藏——切换
+          不丢展开状态/表单草稿；open 恒 true（页签开着 = 面板开着）。 */}
       <div className="dock-body">
-        {panelId === "forwards" && <ForwardPanel open />}
-        {panelId === "jumpchains" && <JumpChainEditor open />}
-        {panelId === "cron" && <CronPanel open />}
-        {panelId === "alerts" && <AlertSettings open onClose={closeDock} />}
-        {panelId === "mcp" && <McpSettings open onClose={closeDock} />}
+        {tabs.map((p) => (
+          <div
+            key={p}
+            className="dock-pane"
+            hidden={p !== active}
+            data-testid={`dock-pane-${p}`}
+          >
+            {p === "forwards" && <ForwardPanel open />}
+            {p === "jumpchains" && <JumpChainEditor open />}
+            {p === "cron" && <CronPanel open />}
+            {p === "alerts" && <AlertSettings open onClose={() => closeTab(p)} />}
+            {p === "mcp" && <McpSettings open onClose={() => closeTab(p)} />}
+            {p === "notifications" && <NotificationCenter />}
+          </div>
+        ))}
       </div>
     </aside>
   );

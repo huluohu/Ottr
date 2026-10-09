@@ -228,25 +228,29 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
     await waitFor(() => expect(screen.getByTestId("credentials-dialog")).toBeTruthy());
   });
 
-  // 用户反馈「通知中心点击无任何响应」的回归钉：菜单动作直派链必须开/收面板。
-  it("tool.notify-center 打开通知中心；再派一次收起", async () => {
+  // 用户反馈「通知中心点击无任何响应」的回归钉：菜单动作直派链必须打开面板
+  // （2026-10-09 dock 多页签：动作 = openDock 打开/激活；再派一次保持激活——
+  // 面板已是页签，不存在「收起」，收起走页签 ✕/壳 ✕/Esc）。
+  it("tool.notify-center 打开通知中心 dock 页签；再派一次保持激活", async () => {
     listMock();
     render(<App />);
     await waitFor(() => expect(menuActionHandler).toBeTruthy());
     act(() => menuActionHandler!({ payload: "tool.notify-center" }));
     expect(screen.getByTestId("notify-panel")).toBeTruthy();
+    expect(useWorkspaceStore.getState().dockActive).toBe("notifications");
     act(() => menuActionHandler!({ payload: "tool.notify-center" }));
-    expect(screen.queryByTestId("notify-panel")).toBeNull();
+    expect(useWorkspaceStore.getState().dockActive).toBe("notifications");
+    expect(screen.getByTestId("notify-panel")).toBeTruthy();
   });
 
   it("tool.<key> 与顶栏工具下拉同源（openDock 路由）", async () => {
     listMock();
-    useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
+    useWorkspaceStore.setState({ mainView: "terminal", dockTabs: [], dockActive: null });
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
     act(() => menuActionHandler!({ payload: "tool.cron" }));
-    await waitFor(() => expect(useWorkspaceStore.getState().dockPanel).toBe("cron"));
+    await waitFor(() => expect(useWorkspaceStore.getState().dockActive).toBe("cron"));
   });
 });
 
@@ -377,7 +381,7 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
   }
 
   beforeEach(() => {
-    useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
+    useWorkspaceStore.setState({ mainView: "terminal", dockTabs: [], dockActive: null });
   });
 
   it("转发/定时任务 → openDock 单槽（后者替换前者）；dock 关闭按钮可用", async () => {
@@ -390,12 +394,16 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("forwards");
     expect(screen.getByTestId("forward-panel")).toBeTruthy(); // T4：实体在 dock 内
 
-    // 单槽互斥走真菜单路径：开 cron 替换 forwards
+    // 多页签（2026-10-09 根治互相覆盖）：开 cron 不替换 forwards——两页签共存，
+    // cron 激活、forwards 隐藏（keep-alive）
     act(() => menuActionHandler!({ payload: "tool.cron" }));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("cron");
     expect(screen.getByTestId("cron-panel")).toBeTruthy();
-    expect(screen.queryByTestId("forward-panel")).toBeNull();
+    expect(screen.getByTestId("dock-pane-forwards").hidden).toBe(true);
 
+    fireEvent.click(screen.getByTestId("dock-close")); // 壳 ✕ = 关活动页
+    expect(useWorkspaceStore.getState().dockActive).toBe("forwards"); // 活动权移交
+    expect(screen.getByTestId("forward-panel")).toBeTruthy(); // keep-alive 仍在
     fireEvent.click(screen.getByTestId("dock-close"));
     expect(screen.queryByTestId("dock-container")).toBeNull();
   });

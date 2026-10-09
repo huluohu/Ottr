@@ -6,7 +6,6 @@
 // Phase 5 T1（BL-517）：投递失败块（状态+渠道+错误）+ 手动重发按钮——失败
 // 标记经 recordDeliveryFailure 入账（账本才是 refresh 重贴的真源，直塞 payload
 // 会被 refresh 剥掉）；重发走 mock 的 channelRegistry.resendNotification。
-import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -108,7 +107,7 @@ beforeEach(() => {
   mockedInvoke.mockReset();
   resetDeliveryLedger();
   mockedResend.mockReset();
-  useWorkspaceStore.setState({ dockPanel: null });
+  useWorkspaceStore.setState({ dockTabs: [], dockActive: null });
   seedBackend([], 0);
 });
 
@@ -123,7 +122,7 @@ afterEach(() => {
 async function openPanel() {
   const before = mockedInvoke.mock.calls.filter(([c]) => c === "notify_list").length;
   cleanup();
-  render(<Harness />);
+  renderPanel();
   await waitFor(() =>
     expect(mockedInvoke.mock.calls.filter(([c]) => c === "notify_list").length).toBeGreaterThan(
       before,
@@ -132,17 +131,16 @@ async function openPanel() {
   await new Promise((r) => setTimeout(r, 0));
 }
 
-/** 带状态受控壳：close 真收（面板收起类断言需要）；open=false 渲染 null。 */
-function Harness({ initialOpen = true }: { initialOpen?: boolean }) {
-  const [open, setOpen] = useState(initialOpen);
-  return <NotificationCenter open={open} onClose={() => setOpen(false)} />;
+/** 渲染面板（2026-10-09 dock 页签形态：组件恒渲染，无 open/onClose）。 */
+function renderPanel() {
+  return render(<NotificationCenter />);
 }
 
 describe("NotificationCenter（铃铛 + 面板）", () => {
   it("未读数同步进原生菜单（menu_set_notify_count；铃铛已移除）", async () => {
     // invoke 门卫（IS_TAURI）：jsdom 伪造运行时标记放行（先例 VaultInitGate.test）。
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
-    render(<Harness />);
+    renderPanel();
     seedBackend([row(), row({ id: 2 }), row({ id: 3 })], 3);
     await waitFor(() => {
       expect(
@@ -178,8 +176,6 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
       }),
     ];
     seedBackend(items, 1);
-    render(<Harness initialOpen={false} />);
-    expect(screen.queryByTestId("notify-panel")).toBeNull();
     await openPanel();
     expect(screen.getByTestId("notify-panel")).toBeTruthy();
     expect(screen.getByTestId("notify-item-11").textContent).toContain("Transfer failed");
@@ -208,7 +204,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
   it("全部已读：unread>0 才可用，发 notify_mark_read(id=null) 并清零", async () => {
     const items = [row({ id: 1 }), row({ id: 2, read: true })];
     seedBackend(items, 1);
-    render(<Harness />);
+    renderPanel();
     await openPanel();
     const btn = screen.getByTestId("notify-mark-all") as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
@@ -226,7 +222,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
   it("清空：发 notify_clear 并清空列表；空表禁用", async () => {
     const items = [row({ id: 1 })];
     seedBackend(items, 1);
-    render(<Harness />);
+    renderPanel();
     await openPanel();
     const btn = screen.getByTestId("notify-clear") as HTMLButtonElement;
     fireEvent.click(btn);
@@ -239,7 +235,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
 
   it("按 kind 静音：勾选即写 settings 并入 muted 集；已静音的 kind 勾选态回显", async () => {
     seedBackend([], 0, ["session"]);
-    render(<Harness />);
+    renderPanel();
     await openPanel();
     const sessionBox = screen.getByTestId("notify-mute-session") as HTMLInputElement;
     expect(sessionBox.checked).toBe(true);
@@ -255,7 +251,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
   });
 
   it("空态：无通知时显示空态文案；打开面板触发 refresh 对齐真源（list+unread）", async () => {
-    render(<Harness />);
+    renderPanel();
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("notify_list", { limit: 200 }),
     );
@@ -269,26 +265,26 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
   });
 });
 
-// ui-batch2 Task 3（审计 A4 清偿）：空态从纯「暂无通知」升级为引导——
-// 「查看告警规则」按钮走既有 openDock("alerts") 动作（workspaceStore 单槽
-// dock），点击后通知面板收起（导航即收，防与右侧 dock 视觉叠压）。
+// ui-batch2 Task 3（审计 A4 清偿；2026-10-09 dock 多页签语义更新）：空态引导
+// 「查看告警规则」= openDock("alerts") 切 dock 页签——通知面板不关闭（keep-
+// alive 隐藏），导航即达不再有「收起」概念。
 describe("通知空态引导（ui2 T3，审计 A4）", () => {
-  it("空态：引导块 + 查看告警规则按钮；点击 openDock('alerts') 且面板收起", async () => {
-    render(<Harness />);
+  it("空态：引导块 + 查看告警规则按钮；点击切换 dock 至告警页签", async () => {
+    renderPanel();
     await openPanel();
-    expect(useWorkspaceStore.getState().dockPanel).toBeNull();
+    expect(useWorkspaceStore.getState().dockTabs).toEqual([]);
     expect(screen.getByTestId("notify-empty-guide")).toBeTruthy();
     // 空态判定不变：notify-empty 文案原样保留在引导块内
     expect(screen.getByTestId("notify-empty").textContent).toBe("No notifications");
 
     fireEvent.click(screen.getByTestId("notify-empty-alerts"));
-    expect(useWorkspaceStore.getState().dockPanel).toBe("alerts");
-    expect(screen.queryByTestId("notify-panel"), "导航即收起").toBeNull();
+    expect(useWorkspaceStore.getState().dockActive).toBe("alerts");
+    expect(useWorkspaceStore.getState().dockTabs).toEqual(["alerts"]);
   });
 
   it("非空列表不渲染引导块（空态判定不变）", async () => {
     seedBackend([row({ id: 31 })], 1);
-    render(<Harness />);
+    renderPanel();
     await openPanel();
     expect(screen.queryByTestId("notify-empty-guide")).toBeNull();
     expect(screen.queryByTestId("notify-empty-alerts")).toBeNull();
@@ -307,7 +303,7 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
 
   it("失败块渲染：状态标签 + 渠道名 + 错误摘要；refresh 重贴后仍在", async () => {
     await seedFailed(21);
-    render(<Harness />);
+    renderPanel();
     await openPanel();
     const block = screen.getByTestId("notify-dlv-21");
     expect(block.textContent).toContain("Delivery failed");
@@ -325,7 +321,7 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
       await clearDeliveryFailure((r as Notification).id, (f as { channel: string }).channel);
       return true;
     });
-    render(<Harness />);
+    renderPanel();
     await openPanel();
     fireEvent.click(screen.getByTestId("notify-resend-21"));
     await waitFor(() => expect(resendNotification).toHaveBeenCalledTimes(1));
@@ -343,7 +339,7 @@ describe("投递失败面（Phase 5 T1，BL-517）：失败块 + 手动重发", 
           resolve = r;
         }),
     );
-    render(<Harness />);
+    renderPanel();
     await openPanel();
     fireEvent.click(screen.getByTestId("notify-resend-22"));
     const btn = screen.getByTestId("notify-resend-22") as HTMLButtonElement;

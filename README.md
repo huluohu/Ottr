@@ -107,10 +107,52 @@
 | 平台 | 格式 |
 |---|---|
 | macOS（Apple Silicon） | `.dmg` |
+| macOS（Intel） | `.dmg` |
 | Windows | `.msi` / `.exe`（安装向导） |
 | Linux | `.deb` / `.rpm` / `.AppImage` |
 
 首次启动会引导你建立本机加密库：**钥匙链模式**（免记密码，主密钥存系统钥匙链）或**主密码模式**（无密码不可解密，适合更高安全要求）。
+
+<details>
+<summary><strong>🍎 macOS 提示「已损坏，无法打开」或连不上局域网主机？点开看解决方法</strong></summary>
+
+Ottr 目前尚未购买 Apple 开发者签名，macOS 的安全机制会对这类应用额外把关——<strong>安装包并没有损坏</strong>，按下面两步处理即可。
+
+**1️⃣ 打开时提示「已损坏，无法打开。你应该将它移到废纸篓」**
+
+打开「终端」，执行以下命令后，再正常打开 Ottr（每次更新版本后重复一次）：
+
+```bash
+xattr -cr /Applications/Ottr.app
+```
+
+**2️⃣ 连接局域网主机时提示「No route to host」**
+
+macOS 15 起要求应用获得「本地网络」授权后才能访问局域网内的设备。首次连接如果弹出「"Ottr"想要访问本地网络」，点击「允许」即可正常使用。若没有弹窗且连接失败，任选下面一种方法：
+
+- **每次从终端启动 Ottr**（通过终端启动的应用不受此限制）：
+
+  ```bash
+  /Applications/Ottr.app/Contents/MacOS/ottr &
+  ```
+
+- **一次性放行你的局域网网段**（需要输入管理员密码，执行后重启电脑生效；把 `192.168.9.0/24` 换成你的实际网段）：
+
+  ```bash
+  sudo defaults write com.apple.network.local-network AllowedWiFiLocalNetworkAddresses -array "192.168.9.0/24"
+  sudo defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "192.168.9.0/24"
+  ```
+
+  想恢复系统默认行为时，执行以下命令并再次重启：
+
+  ```bash
+  sudo defaults delete com.apple.network.local-network AllowedWiFiLocalNetworkAddresses
+  sudo defaults delete com.apple.network.local-network AllowedEthernetLocalNetworkAddresses
+  ```
+
+等 Ottr 加入正式的 Apple 开发者签名后，以上步骤将不再需要。
+
+</details>
 
 ## 🚀 快速上手
 

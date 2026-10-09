@@ -38,9 +38,9 @@ pub const CLOSE_TO_TRAY_KEY: &str = "ui.close_to_tray";
 /// 前端 `i18n.LANG_SETTING_KEY` 的 Rust 镜像（同键同源）。
 const LANG_SETTING_KEY: &str = "ui.language";
 
-/// 托盘图标（44×32 模板位图，brand/tray-template.svg 的栅格化——mac 菜单栏
-/// 模板色自动适配明暗，icon_as_template(true)；win/linux 原样黑色）。
-const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray.png");
+/// 托盘图标（2026-10-10 用户裁定：黑长条剪影无识别性 → 改彩色应用徽章
+/// 32×32 圆角水獭，三端一致；模板位图 tray.png 保留在 icons/ 备查）。
+const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/32x32.png");
 
 // ---------------------------------------------------------------------------
 // 菜单语言
@@ -1067,7 +1067,7 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     let icon = tauri::image::Image::from_bytes(TRAY_ICON_BYTES)?;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .icon_as_template(cfg!(target_os = "macos"))
+        .icon_as_template(false)
         .tooltip("Ottr")
         .menu(&tray_menu)
         .show_menu_on_left_click(false)

@@ -89,3 +89,42 @@
   border-top: 1px solid var(--border-subtle);
   padding: 6px;
 }
+
+/* 子菜单（ZCode 式）：行内展开的选项列表，勾选当前项；chevron 随展开旋转。 */
+.sidebar-chevron {
+  margin-left: auto;
+  transition: transform 140ms ease;
+  opacity: 0.6;
+}
+.sidebar-chevron.open {
+  transform: rotate(90deg);
+}
+.sidebar-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 4px 12px;
+}
+.sidebar-submenu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--fg);
+  font-size: 0.9em;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-submenu button:hover {
+  background: var(--surface-raised);
+}
+.sidebar-submenu button[data-checked="true"] {
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+.sidebar-submenu button[data-checked="true"] svg {
+  margin-left: auto;
+}

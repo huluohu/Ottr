@@ -113,16 +113,33 @@ describe("Sidebar", () => {
     expect(shell.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("主题/语言快捷项：点击循环主题与切换语言", async () => {
+  it("主题子菜单：行点击展开七选项，点选即应用（data-theme 随勾选）", async () => {
     renderSidebar();
-    // 本测试文件未钉中文词典（i18n 按 navigator 语言初始化为 en-US）——
-    // 断言用英文口径；主题切换行为另以 html data-theme 兜底断言。
-    expect(screen.getByTestId("sidebar-theme").textContent).toContain("System");
-    fireEvent.click(screen.getByTestId("sidebar-theme"));
-    // system → light（七主题循环第一步；行为断言挂 html data-theme）
-    expect(document.documentElement.dataset.theme).toBe("light");
+    const row = screen.getByTestId("sidebar-theme");
+    fireEvent.click(row);
+    const submenu = screen.getByTestId("sidebar-submenu-theme");
+    expect(submenu).toBeTruthy();
+    // 七主题选项齐全
+    for (const id of ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"]) {
+      expect(screen.getByTestId(`sidebar-theme-${id}`)).toBeTruthy();
+    }
+    // 点选 OLED → 应用 + 勾选
+    fireEvent.click(screen.getByTestId("sidebar-theme-oled"));
+    expect(document.documentElement.dataset.theme).toBe("oled");
+    // 再点行收起子菜单
+    fireEvent.click(row);
+    expect(screen.queryByTestId("sidebar-submenu-theme")).toBeNull();
+  });
+
+  it("语言子菜单：展开后中英选项，点选切换 i18n 实例语言", async () => {
+    renderSidebar();
     fireEvent.click(screen.getByTestId("sidebar-lang"));
-    // setLang 契约 = i18n 实例语言切换（本测试环境初始 en-US → 单击切 zh-CN）
+    const submenu = screen.getByTestId("sidebar-submenu-lang");
+    expect(submenu).toBeTruthy();
+    fireEvent.click(screen.getByTestId("sidebar-lang-zh-CN"));
     await waitFor(() => expect(i18n.language).toBe("zh-CN"));
+    // 再点行收起
+    fireEvent.click(screen.getByTestId("sidebar-lang"));
+    expect(screen.queryByTestId("sidebar-submenu-lang")).toBeNull();
   });
 });

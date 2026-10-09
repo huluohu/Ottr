@@ -2,7 +2,7 @@
 // ①快捷连接 ②主机区（HostTree 原样嵌入：搜索/分组树/导入/分组悬停加主机）
 // ③功能导航（定时任务/告警/MCP/通知中心）+ 底部设置。导航项点击 = 既有
 // openDock 直派（dock 单槽保留）；通知中心 = App 受控浮层开关；设置 = 对话框。
-import type { CSSProperties, ReactElement } from "react";
+import { useState, type CSSProperties, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { HostTree, type HostTreeProps } from "../hosts/HostTree";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
@@ -109,12 +109,11 @@ export function Sidebar({
   const unread = useNotifyStore((s) => s.unread);
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
-
-  // 主题快捷循环（设置页七主题同序；与设置页/菜单栏三入口同源 setMode）
-  const cycleTheme = () => {
-    const idx = THEME_CYCLE.indexOf(themeMode);
-    setMode(THEME_CYCLE[(idx + 1) % THEME_CYCLE.length]);
-  };
+  // 子菜单展开态（ZCode 式：导航行点击展开内嵌选项列表，勾选当前项；
+  // 再点行首收起，互斥只开一个）。
+  const [expanded, setExpanded] = useState<"none" | "theme" | "lang">("none");
+  const toggleExpanded = (id: "theme" | "lang") =>
+    setExpanded((cur) => (cur === id ? "none" : id));
 
   return (
     <aside className="sidebar sidebar-v2" style={style} data-testid="app-sidebar">
@@ -133,28 +132,94 @@ export function Sidebar({
         <HostTree {...tree} />
       </div>
       <nav className="sidebar-nav" aria-label={t("nav.aria")}>
+        {/* 界面主题：行点击展开内嵌子选项（勾选当前项） */}
         <button
           type="button"
           data-testid="sidebar-theme"
-          title={t("nav.themeCycle")}
-          onClick={cycleTheme}
+          data-expanded={expanded === "theme"}
+          aria-expanded={expanded === "theme"}
+          onClick={() => toggleExpanded("theme")}
         >
           <PaletteIcon />
-          <span>
-            {t("nav.theme")}: {t(`settings.themes.${themeMode}`)}
-          </span>
+          <span>{t("nav.theme")}</span>
+          <svg
+            className={`sidebar-chevron${expanded === "theme" ? " open" : ""}`}
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 3.5 10.5 8 6 12.5" />
+          </svg>
         </button>
+        {expanded === "theme" && (
+          <div className="sidebar-submenu" data-testid="sidebar-submenu-theme">
+            {THEME_CYCLE.map((id) => (
+              <button
+                key={id}
+                type="button"
+                data-testid={`sidebar-theme-${id}`}
+                data-checked={themeMode === id}
+                onClick={() => setMode(id)}
+              >
+                <span>{t(`settings.themes.${id}`)}</span>
+                {themeMode === id && (
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 8.5 6.5 12 13 4.5" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* 界面语言：中英切换（勾选当前项） */}
         <button
           type="button"
           data-testid="sidebar-lang"
-          title={t("nav.langToggle")}
-          onClick={() => setLang(lang === "zh-CN" ? "en-US" : "zh-CN")}
+          data-expanded={expanded === "lang"}
+          aria-expanded={expanded === "lang"}
+          onClick={() => toggleExpanded("lang")}
         >
           <GlobeIcon />
-          <span>
-            {t("nav.language")}: {lang === "zh-CN" ? "中文" : "English"}
-          </span>
+          <span>{t("nav.language")}</span>
+          <svg
+            className={`sidebar-chevron${expanded === "lang" ? " open" : ""}`}
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M6 3.5 10.5 8 6 12.5" />
+          </svg>
         </button>
+        {expanded === "lang" && (
+          <div className="sidebar-submenu" data-testid="sidebar-submenu-lang">
+            {(["zh-CN", "en-US"] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                data-testid={`sidebar-lang-${id}`}
+                data-checked={lang === id}
+                onClick={() => setLang(id)}
+              >
+                <span>{id === "zh-CN" ? "中文" : "English"}</span>
+                {lang === id && (
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 8.5 6.5 12 13 4.5" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         {NAV_DOCK.map((item) => (
           <button
             key={item.panel}

@@ -52,8 +52,6 @@
 - **BYOK 多服务商**：OpenAI 兼容（**OpenAI / DeepSeek / 智谱 GLM / 任意自建端点**）、Anthropic Claude、本地 Ollama——预设一键填端点，Key 加密存本机
 - **发送前脱敏**：主机名 / IP / 口令样式串自动替换为占位符；另内置 MCP 服务器，可接入 Claude Desktop 等宿主（主机级授权）
 
-![AI 诊断：真端点流式回答 + 脱敏提示](docs/screenshots/ai-diagnose.png)
-
 ### 监控 · 告警 · 运维
 
 - **免 Agent 监控**：CPU / 内存 / 磁盘 / 负载 / 网络实时曲线 + 进程浏览器，多主机总览

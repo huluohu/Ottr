@@ -63,13 +63,6 @@ beforeEach(() => {
 });
 
 describe("vaultApi（invoke 封装）", () => {
-  it("hosts.search 发送 hosts_search + camelCase 顶层参数", async () => {
-    mockedInvoke.mockResolvedValue([sampleHost]);
-    const rows = await vaultApi.hosts.search("生产");
-    expect(mockedInvoke).toHaveBeenCalledWith("hosts_search", { query: "生产" });
-    expect(rows).toEqual([sampleHost]);
-  });
-
   it("hosts.create 载荷保持 serde snake_case 形态", async () => {
     mockedInvoke.mockResolvedValue(sampleHost);
     await vaultApi.hosts.create(sampleInput);

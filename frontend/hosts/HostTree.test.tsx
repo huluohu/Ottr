@@ -146,28 +146,6 @@ describe("HostTree", () => {
     expect(screen.getByText("solo")).toBeTruthy();
   });
 
-  it("搜索防抖 200ms：未到时不出 invoke，到点发 hosts_search 并渲染结果", async () => {
-    vi.useFakeTimers();
-    renderTree();
-    const box = screen.getByRole("searchbox");
-    fireEvent.change(box, { target: { value: "web" } });
-
-    // 防抖窗口内不发请求
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(50);
-    });
-    expect(mockedInvoke).not.toHaveBeenCalledWith("hosts_search", { query: "web" });
-
-    mockedInvoke.mockResolvedValue([web]);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(200);
-    });
-    expect(mockedInvoke).toHaveBeenCalledWith("hosts_search", { query: "web" });
-    // 搜索态只显示命中项（db-01 不在结果里）——结果替换整棵树
-    await act(async () => {}); // flush 微任务让结果落地
-    expect(screen.queryByText("db-01")).toBeNull();
-  });
-
   it("双击主机行 → onOpen(host)（Task 7：开标签连接的入口；单击仍是选中）", () => {
     const onOpen = vi.fn();
     renderTree(onOpen);
@@ -240,25 +218,6 @@ describe("HostTree", () => {
     expect(screen.getByTestId("group-ungrouped")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getByTestId("group-prod-group")).toBeTruthy();
-  });
-
-  it("搜索态同样隐藏空分组（搜索命中替换整树）", async () => {
-    vi.useFakeTimers();
-    try {
-      useVaultStore.setState({ hosts: [solo], hostGroups: [group] });
-      mockedInvoke.mockResolvedValue([solo]);
-      renderTree();
-      expect(screen.getByTestId("group-prod-group")).toBeTruthy();
-      fireEvent.change(screen.getByRole("searchbox"), { target: { value: "solo" } });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(200);
-      });
-      await act(async () => {});
-      expect(screen.queryByTestId("group-prod-group")).toBeNull();
-      expect(screen.getByText("solo")).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   // BL-109 ②（Phase 5 Task 0）：同名分组前端预校验——不发 create、行内

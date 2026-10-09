@@ -115,11 +115,14 @@ function PaletteIcon({ type }: { type: "command" | "host" }) {
   );
 }
 
-/** 主机条目检索字段与权重：名称 > 地址 > 用户名 > 标签。 */
+/** 主机条目检索字段与权重：名称 > 地址 > 备注 > 用户名 > 标签。
+ *  备注（notes）2026-10-10 并入——侧栏树内搜索框移除后其「按备注找主机」
+ *  能力由全局搜索承接（用户裁定：查找统一走 ⌘K）。 */
 function hostMatch(query: string, host: Host): FuzzyResult | null {
   return fuzzyBest(query, [
     { text: host.name, weight: 1 },
     { text: host.address, weight: 0.8 },
+    { text: host.notes ?? "", weight: 0.7 },
     { text: host.username ?? "", weight: 0.6 },
     { text: host.tags.join(" "), weight: 0.5 },
   ]);

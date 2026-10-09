@@ -6,7 +6,7 @@
 //     bool ↔ boolean。Rust 侧改字段必须同步这里（Task 5 接线后两侧不符会在编译期报错）。
 //   * invoke 命令名 = Task 5 在 desktop 注册 Tauri 命令时的契约名，逐字对齐：
 //       hosts_list hosts_get hosts_create hosts_update hosts_delete
-//       hosts_list_by_group hosts_search
+//       hosts_list_by_group
 //       credentials_list credentials_get credentials_create credentials_update
 //       credentials_delete credentials_reveal
 //       host_groups_list host_groups_create host_groups_update host_groups_delete
@@ -568,8 +568,6 @@ export const vaultApi = {
     remove: (id: number) => invoke<void>("hosts_delete", { id }),
     /** groupId=null 查未分组主机。 */
     listByGroup: (groupId: number | null) => invoke<Host[]>("hosts_list_by_group", { groupId }),
-    /** 空查询返回全量；≥3 字符 FTS trigram，超短 LIKE 兜底（Rust 层分派）。 */
-    search: (query: string) => invoke<Host[]>("hosts_search", { query }),
   },
   /** ssh-config 导入（path=null → ~/.ssh/config）。报告供导入完成对话框展示。 */
   importSshConfig: (path: string | null) =>

@@ -1,12 +1,10 @@
-// HostTree（Task 5 Step 1）：分组树 + 标签过滤 + 搜索。
-// 数据纪律：常规列表走 zustand store（loading/error 收口）；搜索是低频读取，
-// 直取 vaultApi.hosts.search（Task 4 裁定：search 结果不进全局状态），
-// 防抖 200ms + 序号守卫丢弃过期响应。
-import { useEffect, useMemo, useRef, useState } from "react";
+// HostTree（Task 5 Step 1）：分组树 + 标签过滤。
+// （2026-10-10 树内搜索框移除：查找统一走侧栏顶部「搜索」⌘K 命令面板，
+// 备注/标签匹配已并入其字段权重——见 palette/CommandPalette hostMatch。）
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { vaultApi, type Host } from "../vault/api";
+import { type Host } from "../vault/api";
 import { useVaultStore } from "../vault/store";
-import { useDebouncedValue } from "./useDebouncedValue";
 
 export interface HostTreeProps {
   selectedId: number | null;
@@ -26,7 +24,6 @@ export interface HostTreeProps {
   onToggle?: (host: Host) => void;
 }
 
-const SEARCH_DEBOUNCE_MS = 200;
 
 export function HostTree({
   selectedId,
@@ -46,10 +43,6 @@ export function HostTree({
   const deleteHost = useVaultStore((s) => s.deleteHost);
   const createGroup = useVaultStore((s) => s.createGroup);
 
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
-  const [searchResults, setSearchResults] = useState<Host[] | null>(null);
-  const [searchError, setSearchError] = useState<string | null>(null);
   const [activeTags, setActiveTags] = useState<ReadonlySet<string>>(new Set());
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [grouping, setGrouping] = useState(false);
@@ -62,37 +55,14 @@ export function HostTree({
   }, [newGroupSignal]);
   const [newGroupName, setNewGroupName] = useState("");
   const [groupError, setGroupError] = useState<string | null>(null);
-  // 过期响应守卫：连输两词时只采纳最后一次发出的请求
-  const searchSeq = useRef(0);
-
-  useEffect(() => {
-    const q = debouncedQuery.trim();
-    if (!q) {
-      setSearchResults(null);
-      setSearchError(null);
-      return;
-    }
-    const seq = ++searchSeq.current;
-    vaultApi.hosts
-      .search(q)
-      .then((rows) => {
-        if (searchSeq.current === seq) {
-          setSearchResults(rows);
-          setSearchError(null);
-        }
-      })
-      .catch((e) => {
-        if (searchSeq.current === seq) setSearchError(String(e));
-      });
-  }, [debouncedQuery]);
-
-  const searching = searchResults !== null;
-  // 用户主动过滤态（搜索/标签）：空分组无意义，允许隐藏；默认浏览态必须
+  // 用户主动过滤态（标签）：空分组无意义，允许隐藏；默认浏览态必须
   // 渲染空分组——「先建组再填内容」是正常路径（BL-109 ①）。
-  const filtering = searching || activeTags.size > 0;
+  // （2026-10-10 移除树内搜索框：查找统一走侧栏顶部「搜索」⌘K，备注匹配
+  // 已并入其字段权重——见 palette/CommandPalette hostMatch。）
+  const filtering = activeTags.size > 0;
 
   const visibleByGroup = useMemo(() => {
-    const source = searching ? searchResults ?? [] : hosts;
+    const source = hosts;
     const filtered =
       activeTags.size === 0
         ? source
@@ -104,7 +74,7 @@ export function HostTree({
       byGroup.set(h.group_id, bucket);
     }
     return byGroup;
-  }, [hosts, searchResults, activeTags, searching]);
+  }, [hosts, activeTags]);
 
   const allTags = useMemo(() => {
     const tags = new Set<string>();
@@ -153,15 +123,6 @@ export function HostTree({
 
   return (
     <div className="host-tree">
-      <input
-        className="tree-search"
-        type="search"
-        value={query}
-        placeholder={t("hostTree.searchPlaceholder")}
-        aria-label={t("common.search")}
-        onChange={(e) => setQuery(e.currentTarget.value)}
-      />
-
       {/* 多选模式（批量执行选择面）：主机管理工具栏让位 */}
       {!multiSelect && (
         <div className="tree-toolbar">
@@ -217,11 +178,10 @@ export function HostTree({
         </div>
       )}
 
-      {searchError && <p className="tree-error">{searchError}</p>}
 
       {!hasVisible && (
         <p className="tree-empty" data-testid="tree-empty">
-          {searching || activeTags.size > 0 ? t("hostTree.noMatch") : t("hostTree.empty")}
+          {activeTags.size > 0 ? t("hostTree.noMatch") : t("hostTree.empty")}
         </p>
       )}
 

@@ -8,6 +8,21 @@
  * 一律用 --color-accent-border，ui-batch3 T1 键）。
  * ============================================================ */
 
+/* 浏览器基线重置（2026-10-09 用户实测「整个页面能下拉、顶部留空白」）：
+ * 全仓此前无任何 reset——UA 默认 body margin 8px + .app-shell height:100vh
+ * 使文档恒比视口高 16px，页面整体可滚、四周露白边。桌面式应用钉满视口：
+ * margin 归零 + html/body/#root 满高 + 禁页面级滚动（滚动面全部在各视图
+ * 内部：main-area / 对话框 / 终端视口等）。 */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+#root {
+  height: 100%;
+}
+
 :root {
   /* 页面级派生表面：由语义层混出（亮暗自动跟随）。
    * --fg-muted 已收编进 tokens.css 语义层（ui-batch3 T1 亮色校准：亮 68% /

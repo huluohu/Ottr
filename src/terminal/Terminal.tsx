@@ -182,12 +182,38 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     resizeSession(sessionId, term.cols, term.rows);
   }, [status, sessionId]);
 
+  // 设置页字体/字号变更（外观分节广播 ottr://terminal-settings）→ 活动终端
+  // 实时应用 + 重排版（新终端创建时同样读取）。
+  useEffect(() => {
+    const apply = () => {
+      const term = termRef.current;
+      if (!term) return;
+      const s = loadTerminalSettings();
+      if (s.fontFamily) term.options.fontFamily = s.fontFamily;
+      if (s.fontSize != null) term.options.fontSize = s.fontSize;
+      try {
+        fitRef.current?.fit();
+      } catch {
+        // 尺寸不可测（隐藏/未布局）忽略，RO 会兜
+      }
+    };
+    window.addEventListener("ottr://terminal-settings", apply);
+    return () => window.removeEventListener("ottr://terminal-settings", apply);
+  }, []);
+
   // --- 一次性装配：term 实例 + sink 注册 + 击键接线 + 尺寸观测 ---
   useEffect(() => {
     // B8：allowProposedApi 开启——ghost text 的 registerDecoration 是 xterm
     // proposed API（未开则抛 "You must set the allowProposedApi option"）；
-    // 对既有面零行为变化，只解锁装饰 API。
-    const term = new XTerm({ cursorBlink: true, fontSize: 13, allowProposedApi: true });
+    // 对既有面零行为变化，只解锁装饰 API。字体族/字号读终端设置
+    // （设置页外观分节，2026-10-09）。
+    const termSettings = loadTerminalSettings();
+    const term = new XTerm({
+      cursorBlink: true,
+      fontSize: termSettings.fontSize ?? 13,
+      fontFamily: termSettings.fontFamily ?? undefined,
+      allowProposedApi: true,
+    });
     const fit = new FitAddon();
     term.loadAddon(fit);
     // URL 检测（A8）：WebLinksAddon 默认 handler（新窗打开链接）

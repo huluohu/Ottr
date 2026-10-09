@@ -20,6 +20,7 @@ import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
+import { loadTerminalSettings, saveTerminalSettings } from "../terminal/ContextMenu";
 import { useEscClose } from "../ui/useEscClose";
 import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
 import { UpdateCheck } from "../update/UpdateCheck";
@@ -55,6 +56,10 @@ function masterPasswordCodePoints(s: string): number {
 
 const AUTOLOCK_CHOICES = [0, 1, 5, 10, 30] as const; // 分钟；0 = 关
 const CLIPBOARD_CHOICES = [0, 10, 30, 60] as const; // 秒；0 = 关
+// 终端字体族候选（2026-10-10 字体/字号项；空 = xterm 默认栈）
+const FONT_CHOICES = ["Menlo", "Monaco", "SF Mono", "JetBrains Mono", "Fira Code", "Courier New"] as const;
+// 终端字号候选（pt）
+const FONT_SIZE_CHOICES = [10, 11, 12, 13, 14, 16, 18, 20] as const;
 // theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
 const THEME_CHOICES: ThemeMode[] = ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
@@ -134,6 +139,15 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   const themeFileRef = useRef<HTMLInputElement | null>(null);
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
   const [themeImportedCount, setThemeImportedCount] = useState<number | null>(null);
+  // 终端字体族/字号（外观分节，2026-10-10；localStorage 终端设置 + 事件广播）
+  const [termFont, setTermFont] = useState<string | null>(null);
+  const [termFontSize, setTermFontSize] = useState<number | null>(null);
+
+  function applyTerminalFont(fontFamily: string | null, fontSize: number | null) {
+    saveTerminalSettings({ ...loadTerminalSettings(), fontFamily, fontSize });
+    window.dispatchEvent(new CustomEvent("ottr://terminal-settings"));
+  }
+
 
   // 每次打开：拉配置 + 挂进度事件；关闭：清向导态。
   useEffect(() => {
@@ -152,6 +166,9 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       setThemeImportedCount(null);
       setSudoConfirm(false);
       setPane("security");
+      const ts = loadTerminalSettings();
+      setTermFont(ts.fontFamily);
+      setTermFontSize(ts.fontSize ?? 13);
       return;
     }
     let disposed = false;
@@ -795,6 +812,45 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               {t("settings.terminalThemeImported", { count: themeImportedCount })}
             </p>
           )}
+          {/* 终端字体族/字号（2026-10-10 用户要求）：写终端本地设置并广播
+              ottr://terminal-settings，活动终端即时应用。 */}
+          <label className="settings-row" data-testid="terminal-font-row">
+            <span className="settings-label">{t("settings.terminalFont")}</span>
+            <select
+              data-testid="terminal-font-select"
+              value={termFont ?? ""}
+              onChange={(e) => {
+                const v = e.currentTarget.value || null;
+                setTermFont(v);
+                applyTerminalFont(v, termFontSize ?? 13);
+              }}
+            >
+              <option value="">{t("settings.terminalFontDefault")}</option>
+              {FONT_CHOICES.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="settings-row" data-testid="terminal-font-size-row">
+            <span className="settings-label">{t("settings.terminalFontSize")}</span>
+            <select
+              data-testid="terminal-font-size-select"
+              value={String(termFontSize ?? 13)}
+              onChange={(e) => {
+                const v = Number(e.currentTarget.value);
+                setTermFontSize(v);
+                applyTerminalFont(termFont, v);
+              }}
+            >
+              {FONT_SIZE_CHOICES.map((n) => (
+                <option key={n} value={n}>
+                  {t("settings.terminalFontSizePt", { n })}
+                </option>
+              ))}
+            </select>
+          </label>
         </section>
 
             {/* --- 通用：语言 + 行为开关（关窗到托盘 / shell 集成，自外观节归位）--- */}

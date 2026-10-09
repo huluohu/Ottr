@@ -70,9 +70,18 @@ export interface TerminalSettings {
   copyOnSelect: boolean;
   /** 智能补全（Task 8 B8）：默认开（简报裁定 completion.enabled 默认 true）。 */
   completionEnabled: boolean;
+  /** 终端字体族（null = xterm 默认栈；2026-10-09 设置页字体/字号项）。 */
+  fontFamily: string | null;
+  /** 终端字号（null = 13 默认）。 */
+  fontSize: number | null;
 }
 
-const DEFAULT_SETTINGS: TerminalSettings = { copyOnSelect: false, completionEnabled: true };
+const DEFAULT_SETTINGS: TerminalSettings = {
+  copyOnSelect: false,
+  completionEnabled: true,
+  fontFamily: null,
+  fontSize: null,
+};
 
 export function loadTerminalSettings(): TerminalSettings {
   try {
@@ -87,6 +96,9 @@ export function loadTerminalSettings(): TerminalSettings {
           typeof parsed.completionEnabled === "boolean"
             ? parsed.completionEnabled
             : DEFAULT_SETTINGS.completionEnabled,
+        fontFamily:
+          typeof parsed.fontFamily === "string" ? parsed.fontFamily : DEFAULT_SETTINGS.fontFamily,
+        fontSize: typeof parsed.fontSize === "number" ? parsed.fontSize : DEFAULT_SETTINGS.fontSize,
       };
     }
   } catch {

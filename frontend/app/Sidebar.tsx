@@ -115,6 +115,10 @@ export function Sidebar({
   const [menu, setMenu] = useState<null | "theme" | "lang">(null);
   const [flyoutPos, setFlyoutPos] = useState({ top: 0, left: 0 });
   const navRef = useRef<HTMLDivElement | null>(null);
+  // 浮层面板 ref：外点关闭的「内点」判定必须包含面板——面板渲染在 nav 之外
+  // （fixed 锚定），漏判会导致点选项的 mousedown 先把面板卸载、click 永远
+  // 不触发（v0.5.0 实测「选了没反应」的根因）。
+  const flyoutRef = useRef<HTMLDivElement | null>(null);
 
   const toggleMenu = (id: "theme" | "lang") => (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -127,7 +131,9 @@ export function Sidebar({
   useEffect(() => {
     if (menu === null) return;
     const onDown = (e: MouseEvent) => {
-      if (navRef.current?.contains(e.target as Node)) return; // 行/面板内点击不关
+      const target = e.target as Node;
+      if (navRef.current?.contains(target)) return; // 行内点击不关
+      if (flyoutRef.current?.contains(target)) return; // 面板内点击不关（否则 click 被卸载吞掉）
       setMenu(null);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -236,6 +242,7 @@ export function Sidebar({
       {/* 子菜单浮层（fixed 锚定行侧；选即关/点外关/Esc 关） */}
       {menu !== null && (
         <div
+          ref={flyoutRef}
           className="sidebar-flyout"
           data-testid={`sidebar-flyout-${menu}`}
           style={{ top: flyoutPos.top, left: flyoutPos.left }}

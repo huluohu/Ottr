@@ -129,6 +129,29 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("app-sidebar").textContent).toBe(treeBefore);
   });
 
+  // 回归（v0.5.0 实测「选择不生效」）：浮层渲染在 nav 之外，外点关闭监听
+  // mousedown——旧实现把面板内的 mousedown 误判为「点外」即刻卸载面板，
+  // 后续 click 永远不触发（真机事件序 = mousedown → click）。本用例按真实
+  // 事件序模拟：面板内 mousedown 不得卸载，随后 click 正常应用主题。
+  it("回归：面板内 mousedown 不卸载浮层，随后 click 正常应用（真实事件序）", () => {
+    renderSidebar();
+    fireEvent.click(screen.getByTestId("sidebar-theme"));
+    const option = screen.getByTestId("sidebar-theme-oled");
+    fireEvent.mouseDown(option); // 旧实现：面板在此被卸载 → click 落空
+    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
+    fireEvent.click(option);
+    expect(document.documentElement.dataset.theme).toBe("oled");
+    expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
+  });
+
+  it("外点（面板外元素）mousedown 仍收起浮层", () => {
+    renderSidebar();
+    fireEvent.click(screen.getByTestId("sidebar-theme"));
+    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
+  });
+
   it("语言子菜单：浮层展开中英选项，点选切换 i18n 实例语言并收起", async () => {
     renderSidebar();
     fireEvent.click(screen.getByTestId("sidebar-lang"));

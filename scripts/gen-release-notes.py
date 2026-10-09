@@ -9,6 +9,7 @@
 * 含内部标记的括注（用户反馈/实测/裁定/回归/迁移/门禁/BL-/年份等）整块剔除；
 * 提交主题里不得出现内部工具名（ZCode 等），出现即剔除该词；
 * 去重、限长 70 字符。无 feat/fix 时输出口径：稳定性与体验优化。
+* Full Changelog 链接不拼（generate_release_notes 自动附加，拼了就重复两行）。
 """
 
 import re
@@ -89,9 +90,8 @@ def main() -> int:
         lines += ["### 🐞 问题修复", *[f"- {t}" for t in fixes], ""]
     if not feats and not fixes:
         lines += ["- 稳定性与体验优化", ""]
-    if prev:
-        lines += ["**Full Changelog**: "
-                  f"https://github.com/{__import__('os').environ.get('GITHUB_REPOSITORY', 'huluohu/Ottr')}/compare/{prev}...{tag}", ""]
+    # Full Changelog 链接不在此拼——generate_release_notes 会自动附加同款
+    # 链接，自己再拼一遍就是用户截图里的两行重复。
     with open(out, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
     print(f"gen-release-notes: {out} written ({len(feats)} feat / {len(fixes)} fix)")

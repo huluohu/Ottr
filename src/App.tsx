@@ -187,11 +187,21 @@ function HomeLayout() {
     [],
   );
 
-  function exportHostsCsvFromMenu() {
-    vaultApi
-      .exportHostsCsv(null)
-      .then((path) => flashCsvStatus(path))
-      .catch((e) => flashCsvStatus(String(e)));
+  async function exportHostsCsvFromMenu() {
+    // 原生保存对话框选落盘路径（同 ImportDialog 的 plugin-dialog 动态引入
+    // 口径）；用户取消 = 静默返回；成功/失败经行内反馈条（6s）告知结果。
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const target = await save({
+        defaultPath: "ottr-hosts.csv",
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (!target) return;
+      const path = await vaultApi.exportHostsCsv(target);
+      flashCsvStatus(path);
+    } catch (e) {
+      flashCsvStatus(String(e));
+    }
   }
 
   // Task 16.5 就绪门取数（仅 Tauri）：先挂事件监听、后查 vault_init_status

@@ -4,8 +4,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// CSV 导出的原生保存框（2026-10-09 交互优化：导出前选落盘路径）。
+const saveDialog = save;
+vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
 // 原生菜单动作事件（2026-10-08 菜单栏启用批次）：捕获回调直驱分发测试。
 let menuActionHandler: ((e: { payload: string }) => void) | null = null;
 vi.mock("@tauri-apps/api/event", () => ({
@@ -222,6 +226,17 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
     await waitFor(() => expect(screen.getByTestId("credentials-dialog")).toBeTruthy());
   });
 
+  // 用户反馈「通知中心点击无任何响应」的回归钉：菜单动作直派链必须开/收面板。
+  it("tool.notify-center 打开通知中心；再派一次收起", async () => {
+    listMock();
+    render(<App />);
+    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    act(() => menuActionHandler!({ payload: "tool.notify-center" }));
+    expect(screen.getByTestId("notify-panel")).toBeTruthy();
+    act(() => menuActionHandler!({ payload: "tool.notify-center" }));
+    expect(screen.queryByTestId("notify-panel")).toBeNull();
+  });
+
   it("tool.<key> 与顶栏工具下拉同源（openDock 路由）", async () => {
     listMock();
     useWorkspaceStore.setState({ mainView: "terminal", dockPanel: null });
@@ -256,19 +271,25 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
     });
   }
 
-  it("菜单动作调 export_hosts_csv(null)，状态条显示落盘路径；6 秒后自动清除", async () => {
+  it("菜单动作先弹原生保存框，导出到所选路径并经状态条告知；6 秒后自动清除", async () => {
     vi.useFakeTimers();
     try {
       listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
+      vi.mocked(saveDialog).mockResolvedValue("/tmp/ottr/hosts-2026.csv");
       render(<App />);
       // listen 是立即 resolve 的 mock：一轮 act 即赋值 handler（此处 fake timers
       // 生效中，waitFor 的轮询定时器会被冻结——禁用 waitFor，防超时连锁）。
       await act(async () => {});
       expect(menuActionHandler).toBeTruthy();
       act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
-      // 冲刷 invoke promise 链（fake timers 不影响微任务）
+      // 冲刷动态 import + save + invoke promise 链（fake timers 不影响微任务）
       await act(async () => {});
-      expect(mockedInvoke).toHaveBeenCalledWith("export_hosts_csv", { path: null });
+      expect(saveDialog).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultPath: "ottr-hosts.csv" }),
+      );
+      expect(mockedInvoke).toHaveBeenCalledWith("export_hosts_csv", {
+        path: "/tmp/ottr/hosts-2026.csv",
+      });
       const status = screen.getByTestId("topbar-export-status");
       expect(status.textContent).toContain("/tmp/ottr/hosts-2026.csv");
 
@@ -283,8 +304,23 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
     }
   });
 
+  it("保存框取消：不发起导出、无状态条（静默返回）", async () => {
+    listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
+    vi.mocked(saveDialog).mockResolvedValue(null);
+    render(<App />);
+    await act(async () => {});
+    act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
+    await act(async () => {});
+    expect(mockedInvoke).not.toHaveBeenCalledWith(
+      "export_hosts_csv",
+      expect.anything(),
+    );
+    expect(screen.queryByTestId("topbar-export-status")).toBeNull();
+  });
+
   it("导出失败：同一状态条显示错误文本", async () => {
     listMock(() => Promise.reject(new Error("vault locked")));
+    vi.mocked(saveDialog).mockResolvedValue("/tmp/ottr/hosts-2026.csv");
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();

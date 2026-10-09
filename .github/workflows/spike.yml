@@ -139,6 +139,18 @@ jobs:
           # shellcheck disable=SC2086
           npx tauri build $TAURI_BUILD_ARGS
 
+      # 推送闸（v0.2.0 事故固化）：缺本地网络隐私声明 = macOS 15+ 用户连内网
+      # 主机必失败（静默 EHOSTUNREACH），127.0.0.1 夹具测试测不到此类问题。
+      - name: Assert macOS privacy declarations
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          plist="target/release/bundle/macos/Ottr.app/Contents/Info.plist"
+          grep -q NSLocalNetworkUsageDescription "$plist" || {
+            echo "::error::Info.plist 缺 NSLocalNetworkUsageDescription——macOS 15+ 将静默禁止局域网访问（连内网主机必失败）"
+            exit 1
+          }
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

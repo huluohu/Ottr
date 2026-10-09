@@ -171,6 +171,19 @@ jobs:
             cp -R "target/$RUST_TARGET/release/bundle/." target/release/bundle/
           fi
 
+      # 发布闸（v0.2.0 事故固化）：macOS 15+ 对无本地网络隐私声明的应用静默
+      # 禁止局域网访问——核心功能（连内网 SSH 主机）全残且测试矩阵测不到
+      # （127.0.0.1 夹具豁免该权限）。缺声明 = 构建失败，不进 Release。
+      - name: Assert macOS privacy declarations
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          plist="target/release/bundle/macos/Ottr.app/Contents/Info.plist"
+          grep -q NSLocalNetworkUsageDescription "$plist" || {
+            echo "::error::Info.plist 缺 NSLocalNetworkUsageDescription——macOS 15+ 将静默禁止局域网访问（连内网主机必失败）"
+            exit 1
+          }
+
       # 双 mac 矩阵后 updater 产物会撞名（Ottr.app.tar.gz / .sig 不含架构），
       # merge-multiple 下载时后者覆盖前者——上传前按架构改名。
       - name: Disambiguate macOS updater artifacts (per-arch)

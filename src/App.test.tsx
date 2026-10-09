@@ -4,6 +4,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { useToastStore } from "./ui/toastStore";
 import { save } from "@tauri-apps/plugin-dialog";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -262,6 +263,10 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
     menuActionHandler = null;
   });
 
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] });
+  });
+
   function listMock(exportImpl: () => Promise<string>) {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
@@ -272,7 +277,7 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
     });
   }
 
-  it("菜单动作先弹原生保存框，导出到所选路径并经状态条告知；6 秒后自动清除", async () => {
+  it("菜单动作先弹原生保存框，导出到所选路径并经 Toast 告知；6 秒后自动清除", async () => {
     vi.useFakeTimers();
     try {
       listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
@@ -291,7 +296,7 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
       expect(mockedInvoke).toHaveBeenCalledWith("export_hosts_csv", {
         path: "/tmp/ottr/hosts-2026.csv",
       });
-      const status = screen.getByTestId("topbar-export-status");
+      const status = screen.getByTestId("toast-stack");
       expect(status.textContent).toContain("/tmp/ottr/hosts-2026.csv");
 
       // advance 包 act：定时器回调的 setState 需要 act 界内冲刷（React 调度
@@ -299,13 +304,13 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
       await act(async () => {
         await vi.advanceTimersByTimeAsync(6000);
       });
-      expect(screen.queryByTestId("topbar-export-status")).toBeNull();
+      expect(screen.queryByTestId("toast-stack")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("保存框取消：不发起导出、无状态条（静默返回）", async () => {
+  it("保存框取消：不发起导出、无 Toast（静默返回）", async () => {
     listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
     vi.mocked(saveDialog).mockResolvedValue(null);
     render(<App />);
@@ -316,18 +321,18 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
       "export_hosts_csv",
       expect.anything(),
     );
-    expect(screen.queryByTestId("topbar-export-status")).toBeNull();
+    expect(screen.queryByTestId("toast-stack")).toBeNull();
   });
 
-  it("导出失败：同一状态条显示错误文本", async () => {
+  it("导出失败：同一 Toast 显示错误文本", async () => {
     listMock(() => Promise.reject(new Error("vault locked")));
     vi.mocked(saveDialog).mockResolvedValue("/tmp/ottr/hosts-2026.csv");
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
     act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
-    await waitFor(() => expect(screen.getByTestId("topbar-export-status")).toBeTruthy());
-    expect(screen.getByTestId("topbar-export-status").textContent).toContain("vault locked");
+    await waitFor(() => expect(screen.getByTestId("toast-stack")).toBeTruthy());
+    expect(screen.getByTestId("toast-stack").textContent).toContain("vault locked");
   });
 });
 

@@ -10,6 +10,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "./app/Sidebar";
+import { Toaster } from "./ui/Toaster";
+import { showToast } from "./ui/toastStore";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
 import { SyncDialog } from "./sync/SyncDialog";
@@ -145,22 +147,9 @@ function HomeLayout() {
   const [notifyOpen, setNotifyOpen] = useState(false);
   // 新建分组信号（File 菜单/汉堡 hosts.new_group → HostTree 分组态；计数即触发）
   const [newGroupSignal, setNewGroupSignal] = useState(0);
-  // theme-suite T1：工具菜单「导出主机 CSV」的行内反馈条（主区顶部）。path=null
-  // 由 Rust 侧落系统下载目录并回传路径；成功显示路径、失败显示错误文本，6 秒
-  // 自动清除。定时器句柄随卸载清理（重触发先清旧定时器，防泄漏/误清新消息）。
-  const [csvMsg, setCsvMsg] = useState<string | null>(null);
-  const csvTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (csvTimerRef.current !== null) clearTimeout(csvTimerRef.current);
-    };
-  }, []);
-
-  function flashCsvStatus(msg: string) {
-    setCsvMsg(msg);
-    if (csvTimerRef.current !== null) clearTimeout(csvTimerRef.current);
-    csvTimerRef.current = setTimeout(() => setCsvMsg(null), 6000);
-  }
+  // theme-suite T1：工具菜单「导出主机 CSV」反馈（2026-10-10 起）——
+  // 顶部行内状态条废弃（用户反馈路径直接糊在页面顶部太丑），改右下角
+  // Toast（ui/toastStore，6 秒自动消失，成功 info / 失败 error）。
 
   /** 工具动作单一来源（2026-10-08 菜单栏启用批次）：顶栏「工具」下拉与
    * macOS 原生「工具」菜单（ottr://menu-action 的 tool.<key>）同一分派——
@@ -198,9 +187,9 @@ function HomeLayout() {
       });
       if (!target) return;
       const path = await vaultApi.exportHostsCsv(target);
-      flashCsvStatus(path);
+      showToast(path);
     } catch (e) {
-      flashCsvStatus(String(e));
+      showToast(String(e), "error");
     }
   }
 
@@ -411,13 +400,6 @@ function HomeLayout() {
       {PLATFORM !== "mac" && IS_TAURI && (
         <TitleBar plat={PLATFORM} onAction={handleAction} />
       )}
-      {/* theme-suite T1：主区顶部行内状态条（复用 .tree-status 样式）——工具菜单
-          导出 CSV 的落盘路径/错误反馈，6 秒自动清除。 */}
-      {csvMsg && (
-        <p className="tree-status" data-testid="topbar-export-status" role="status">
-          {csvMsg}
-        </p>
-      )}
       <div className="app-body">
         {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树） +
             功能导航 + 设置，单列三段式；宽度仍由 resizer 持有。 */}
@@ -459,6 +441,8 @@ function HomeLayout() {
             停靠壳（单槽互斥，openDock 换值即替换）；五工具面板实体渲染其中。 */}
         <DockPanel />
       </div>
+      {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
+      <Toaster />
       {/* 通知中心浮层（2026-10-08 菜单栏启用批次）：入口=工具菜单/汉堡
           notify.center；受控渲染，点外/Esc 收起。 */}
       <NotificationCenter open={notifyOpen} onClose={() => setNotifyOpen(false)} />

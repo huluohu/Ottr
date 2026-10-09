@@ -230,6 +230,11 @@ jobs:
       contents: write
 
     steps:
+      # 清单生成步骤要跑仓库内 scripts/gen-updater-manifest.py——本 job 必须
+      # 先检出仓库（v0.3.0 二跑实测：无 checkout 时脚本路径 errno 2）。
+      - name: Check out repository
+        uses: actions/checkout@v5
+
       - name: Download packages
         uses: actions/download-artifact@v4
         with:

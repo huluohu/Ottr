@@ -135,47 +135,20 @@ open(p, 'w', encoding='utf-8').write(s.replace(needle, 'version = \"%s\"' % n, 1
 
 # ---------------------------------------------------------------- 发布说明
 gen_notes() { # $1=prev_tag  $2=head_or_tag  $3=输出文件
-  python3 - "$1" "$2" "$3" <<'PY'
-import subprocess, sys, datetime
-prev, head, out = sys.argv[1], sys.argv[2], sys.argv[3]
-rng = f"{prev}..{head}" if prev else head
-subjects = subprocess.run(["git", "log", "--format=%s", rng],
-                          capture_output=True, text=True).stdout.strip().splitlines()
-BUCKETS = [("✨ 新功能", ("feat",)), ("🐞 问题修复", ("fix",)),
-           ("🔧 优化改进", ("perf", "refactor", "ui", "style", "docs", "ci", "chore", "test", "build"))]
-rows = {k: [] for k, _ in BUCKETS}
-rows["📎 其他"] = []
-for s in subjects:
-    if s.startswith("chore(release):"):
-        continue  # 版本号对齐提交不进发布说明
-    kind, _, rest = s.partition(": ")
-    text = rest if rest else s
-    if "(" in kind and kind.endswith(")"):
-        kind = kind.split("(")[0]
-    hit = False
-    for title, prefixes in BUCKETS:
-        if kind in prefixes:
-            rows[title].append(text)
-            hit = True
-            break
-    if not hit:
-        rows["📎 其他"].append(text)
-lines = [f"Ottr {head.lstrip('v') if head.startswith('v') else head}", ""]
-for title, _ in BUCKETS + [("📎 其他", ())]:
-    if rows[title]:
-        lines += [f"## {title}"] + [f"- {t}" for t in rows[title]] + [""]
-lines += [
-    "## 📦 平台提示",
-    "- macOS：本版本未使用 Apple 开发者签名。首次打开如提示「已损坏，无法打开」，在终端执行 `xattr -cr /Applications/Ottr.app`；",
-    "  连接局域网主机如提示 No route to host 或要求本地网络授权，见 README「macOS 提示已损坏或连不上局域网主机」一节。",
-    "- Windows：安装时如遇 SmartScreen 拦截，点「更多信息 → 仍要运行」。",
-    "- Linux：AppImage 需 `chmod +x` 后运行；deb/rpm 按发行版安装。",
-    "",
-]
-open(out, "w", encoding="utf-8").write("\n".join(lines))
-PY
+  # 2026-10-10 用户裁定（第二遍）：Release 正文只写正经的功能与 bugfix，
+  # 开发过程/CI/文档/重构一概不进——统一走 gen-release-notes.py 的用户视角
+  # 清洗（feat/fix only、剥前缀、砍长解释、剔内部括注），本函数不再自建分类。
+  python3 scripts/gen-release-notes.py --range "$1..$2" "$2" "$3"
+  # 平台提示（面向用户的安装注意事项，保留）：
+  {
+    echo
+    echo "## 📦 平台提示"
+    echo "- macOS：本版本未使用 Apple 开发者签名。首次打开如提示「已损坏，无法打开」，在终端执行 \`xattr -cr /Applications/Ottr.app\`；"
+    echo "  连接局域网主机如提示 No route to host 或要求本地网络授权，见 README「macOS 提示已损坏或连不上局域网主机」一节。"
+    echo "- Windows：安装时如遇 SmartScreen 拦截，点「更多信息 → 仍要运行」。"
+    echo "- Linux：AppImage 需 \`chmod +x\` 后运行；deb/rpm 按发行版安装。"
+  } >> "$3"
 }
-
 NOTES_FILE=$(mktemp -t ottr-notes)
 
 # ---------------------------------------------------------------- 模式分派

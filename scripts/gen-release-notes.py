@@ -18,15 +18,21 @@ import sys
 from typing import Optional
 
 INTERNAL_PAREN = re.compile(r"（[^（）]*(?:用户|实测|反馈|裁定|回归|迁移|门禁|BL-|20\d\d)[^（）]*）")
-PREFIX = re.compile(r"^(feat|fix)(?:\([^)]*\))?:\s*(.+)$")
+PREFIX = re.compile(r"^(feat|fix)(\([^)]*\))?:\s*(.+)$")
 FORBIDDEN_WORDS = ("ZCode", "zcode")
+# 内部作用域黑名单：发布工具/CI/仓库自身的修复不进面向用户的更新内容
+# （2026-10-10 用户第二遍裁定后的补充：v0.5.0 实测 fix(release) 三条混入）。
+SCOPE_DENYLIST = {"release", "ci", "build", "deps", "repo", "actions", "workflow", "docs", "spike"}
 
 
 def clean_subject(subj) -> Optional[str]:
     m = PREFIX.match(subj)
     if not m:
         return None
-    text = m.group(2)
+    scope = (m.group(2) or "").strip("()")
+    if scope.lower() in SCOPE_DENYLIST:
+        return None
+    text = m.group(3)
     full = text
     for word in FORBIDDEN_WORDS:
         full = (full
@@ -59,15 +65,18 @@ def clean_subject(subj) -> Optional[str]:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 5):
         print(__doc__, file=sys.stderr)
         return 2
-    tag, out = sys.argv[1], sys.argv[2]
-    prev = subprocess.run(
-        ["git", "describe", "--tags", "--abbrev=0", f"refs/tags/{tag}^"],
-        capture_output=True, text=True,
-    ).stdout.strip()
-    rng = f"{prev}..{tag}" if prev else tag
+    if sys.argv[1] == "--range":  # release.sh 传入显式区间
+        rng, tag, out = sys.argv[2], sys.argv[3].lstrip("v").rstrip() and sys.argv[3], sys.argv[4]
+    else:
+        tag, out = sys.argv[1], sys.argv[2]
+        prev = subprocess.run(
+            ["git", "describe", "--tags", "--abbrev=0", f"refs/tags/{tag}^"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        rng = f"{prev}..{tag}" if prev else tag
     log = subprocess.run(
         ["git", "log", "--pretty=format:%s", rng],
         capture_output=True, text=True,

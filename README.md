@@ -179,9 +179,10 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 
 ```
 ├─ src/                    # 前端（React + TypeScript + zustand + i18next + xterm.js）
+│  ├─ app/ dock/ home/ titlebar/                       # 壳层侧栏 / 工具面板停靠 / 欢迎首页 / 自绘标题栏
 │  ├─ terminal/ workspace/ hosts/ credentials/ files/  # 终端 / 工作区 / 主机 / 凭据 / 文件
-│  ├─ ai/ notify/ sync/ monitor/ history/ cron/        # AI / 通知 / 同步 / 监控 / 历史 / 定时任务
-│  ├─ session/ security/ vault/ batch/ forward/        # 会话状态机 / 安全 / 库 API / 批量 / 转发
+│  ├─ ai/ notify/ sync/ monitor/ history/ cron/ update/  # AI / 通知 / 同步 / 监控 / 历史 / 定时任务 / 检查更新
+│  ├─ session/ security/ vault/ batch/ forward/ plugins/  # 会话状态机 / 安全 / 库 API / 批量 / 转发 / 插件
 │  ├─ theme/ styles/ ui/ i18n/ shortcuts/ palette/     # 主题令牌 / 分节样式 / 基础组件 / 双语 / 键位 / ⌘K
 │  └─ vault/bindings.generated.ts                      # Rust 命令 TS 绑定（tauri-specta 自动生成，漂移即测试红）
 ├─ src-tauri/              # Tauri 2 宿主 + 命令层（按域拆分：session/vault/mcp/…）
@@ -192,10 +193,12 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 │     ├─ ottr-term         # 终端文本层（ANSI/OSC133 解析、编码、asciinema）
 │     ├─ ottr-transfer     # SFTP 并行传输 / FTP
 │     ├─ ottr-monitor      # 免 Agent 监控采样
-│     └─ ottr-cron         # 定时任务引擎（五段式解析 + 调度 + 抖动原语）
+│     ├─ ottr-cron         # 定时任务引擎（五段式解析 + 调度 + 抖动原语）
+│     └─ ottr-bench        # 性能基准（传输 / PTY 吞吐）
+├─ scripts/                # 发布自动化（release.sh）+ 本地夹具（sshd/dufs）+ 更新清单生成
 ├─ brand/                  # 品牌（logo 源文件 + 手册）
 ├─ docs/screenshots/       # README 截图（docs 其余为内部开发文档，不入库）
-└─ .github/workflows/      # CI：tag → 三平台构建 + 自动发布；push → fmt + clippy + 编译冒烟
+└─ .github/workflows/      # CI：push → fmt + clippy + 三平台全量构建；tag → 双架构 macOS / Windows / Linux 构建 + 签名更新件 + latest.json 自动发布
 ```
 
 ### 开发环境

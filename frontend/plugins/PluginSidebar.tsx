@@ -62,7 +62,7 @@ export function PluginSidebar({ rustId }: { rustId: string | null }) {
             setOpen(false);
           }}
         >
-          ×
+          ✕
         </button>
       </div>
       {REGISTRY.cards.map(({ plugin, card }) => {

@@ -98,7 +98,7 @@ export function DiagnosePanel({
           aria-label={t("common.close")}
           onClick={close}
         >
-          ×
+          ✕
         </button>
       </div>
 

@@ -92,7 +92,7 @@ describe("provider 列表与 CRUD", () => {
     });
     expect(screen.getByTestId("ai-mock-badge-pm").textContent).toBe("测试用");
     // kind 摘要行显示 Mock（非「OpenAI 兼容」）
-    expect(screen.getByTestId("ai-provider-pm").textContent).toContain("Mock · mock-model");
+    expect(screen.getByTestId("ai-provider-pm").textContent).toContain("Mock（测试端点） · mock-model");
     // 真实 provider 无徽标
     expect(screen.queryByTestId("ai-mock-badge-p1")).toBeNull();
   });

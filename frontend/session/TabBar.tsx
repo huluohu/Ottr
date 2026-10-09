@@ -65,7 +65,7 @@ export function TabBar() {
               closeTab(session.id);
             }}
           >
-            ×
+            ✕
           </button>
         </div>
       ))}

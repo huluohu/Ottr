@@ -761,7 +761,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       {menu && (
         <>
           <div className="ctx-overlay" onMouseDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
-          <ContextMenuView x={menu.x} y={menu.y} items={menu.items} onAction={runMenuAction} testPrefix={sessionId} />
+          <ContextMenuView x={menu.x} y={menu.y} items={menu.items} onAction={runMenuAction} onClose={() => setMenu(null)} testPrefix={sessionId} />
         </>
       )}
       {pendingPaste !== null && (

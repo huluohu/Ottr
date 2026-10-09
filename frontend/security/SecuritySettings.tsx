@@ -334,7 +334,7 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
             aria-label={t("common.close")}
             onClick={onClose}
           >
-            ×
+            ✕
           </button>
         </div>
 

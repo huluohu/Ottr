@@ -14,6 +14,7 @@
 //
 // 会话耦合：未连接（rustId 空）显示提示；会话切换时两栏重置到各自 home。
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useEscClose } from "../ui/useEscClose";
 import { useTranslation } from "react-i18next";
 import type { Session } from "../session/SessionStore";
 import {
@@ -71,6 +72,15 @@ export function FilePanel({ session }: { session: Session }) {
   const [local, setLocal] = useState<PaneState>(emptyPane(""));
   const [focus, setFocus] = useState<Side>("remote");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  // 右键菜单 Esc 关闭（2026-10-09 断点清偿：ctx-overlay 只有点外/再右键，无键盘路径）。
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menu]);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<Side | null>(null);
@@ -618,6 +628,10 @@ function PanelDialog({
         : "",
   );
   const isDelete = dialog.kind === "delete";
+  // Esc 关闭统一交互（2026-10-09 断点清偿）：旧实现 Esc 只绑在改名 input 上，
+  // delete/chmod 对话框无 input = 无 Esc 路径。input 自身的 Escape 分支移除
+  // （避免双路径双触发，统一走本监听）。
+  useEscClose(true, onClose);
   const titleKey =
     dialog.kind === "mkdir"
       ? "files.dlg.mkdirTitle"
@@ -646,7 +660,6 @@ function PanelDialog({
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && value) onConfirm(value);
-              if (e.key === "Escape") onClose();
             }}
           />
         )}

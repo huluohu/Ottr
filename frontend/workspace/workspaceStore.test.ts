@@ -3,7 +3,7 @@
 // 触碰会话状态）/ 托盘关窗语义（store 活在模块作用域，窗口隐藏不重置）。
 import { beforeEach, describe, expect, it } from "vitest";
 import { useSessionStore, type Session } from "../session/SessionStore";
-import { DOCK_PANELS, MAIN_VIEWS, TOOL_DOCK_PANELS, type DockPanel, type MainView } from "./types";
+import { DOCK_PANELS, MAIN_VIEWS, TOOL_DOCK_PANELS, type MainView } from "./types";
 import { useWorkspaceStore } from "./workspaceStore";
 
 /** Session 测试夹具（只填必填面；store 不变量测试不触渲染字段）。 */

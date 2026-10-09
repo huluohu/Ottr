@@ -160,7 +160,7 @@ describe("ContextMenuView（菜单渲染）", () => {
   it("点击菜单项上抛动作 id；编码子菜单点开并选择", () => {
     const onAction = vi.fn();
     const items = buildContextMenu({ hasSelection: true, copyOnSelect: false, completionEnabled: false, encoding: "utf-8" }, tStub);
-    render(<ContextMenuView x={10} y={10} items={items} onAction={onAction} testPrefix="t1" />);
+    render(<ContextMenuView x={10} y={10} items={items} onAction={onAction} onClose={vi.fn()} testPrefix="t1" />);
     expect(screen.getByTestId("ctx-menu-t1")).toBeTruthy();
     fireEvent.click(screen.getByTestId("ctx-copy"));
     expect(onAction).toHaveBeenCalledWith("copy");
@@ -173,7 +173,7 @@ describe("ContextMenuView（菜单渲染）", () => {
   it("禁用项点击不上抛", () => {
     const onAction = vi.fn();
     const items = buildContextMenu({ hasSelection: false, copyOnSelect: false, completionEnabled: false, encoding: "utf-8" }, tStub);
-    render(<ContextMenuView x={0} y={0} items={items} onAction={onAction} testPrefix="t2" />);
+    render(<ContextMenuView x={0} y={0} items={items} onAction={onAction} onClose={vi.fn()} testPrefix="t2" />);
     const copy = screen.getByTestId("ctx-copy") as HTMLButtonElement;
     expect(copy.disabled).toBe(true);
     fireEvent.click(copy);

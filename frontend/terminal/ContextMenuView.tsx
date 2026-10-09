@@ -1,6 +1,7 @@
 // 右键菜单渲染（自 Terminal.tsx 拆出）：含一级子菜单（编码）。纯展示组件，
 // 动作经 onAction(id) 上抛。公共 API 经 Terminal.tsx 再导出保持原路径不变。
 import { useState } from "react";
+import { useEscClose } from "../ui/useEscClose";
 import { useTranslation } from "react-i18next";
 import type { ContextMenuItem } from "./ContextMenu";
 
@@ -10,16 +11,20 @@ export function ContextMenuView({
   y,
   items,
   onAction,
+  onClose,
   testPrefix,
 }: {
   x: number;
   y: number;
   items: ContextMenuItem[];
   onAction: (id: string) => void;
+  /** Esc 关闭（2026-10-09 断点清偿：菜单此前只有点外/再右键，无键盘路径）。 */
+  onClose: () => void;
   testPrefix: string;
 }) {
   const [openSub, setOpenSub] = useState<string | null>(null);
   const { t } = useTranslation();
+  useEscClose(true, onClose);
   return (
     <div
       className="ctx-menu"

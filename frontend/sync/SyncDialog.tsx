@@ -573,6 +573,7 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
               remoteData={remoteData}
               busy={busy}
               onApply={(resolution) => void applyConflict(resolution)}
+              onCancel={abandonAndClose}
             />
           </div>
         )}

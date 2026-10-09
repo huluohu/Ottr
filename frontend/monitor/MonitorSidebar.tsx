@@ -141,7 +141,7 @@ export function MonitorSidebar({
             setOpen(false);
           }}
         >
-          ×
+          ✕
         </button>
       </div>
       {live && win ? (

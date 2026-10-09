@@ -116,6 +116,33 @@ textarea:focus-visible {
   filter: brightness(1.08);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-border) 45%, transparent);
 }
+/* 危险动作变体（2026-10-09 基础层收编：原寄居 07-credentials-dialog.css 却被
+   8 个文件跨域使用——基础变体归位基础层）。 */
+.btn-danger {
+  background-color: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-on-danger);
+  font-weight: 600;
+}
+/* 对话框关闭钮单源（原 04/07 双定义级联互覆，实际渲染为「混血态」）：
+   07 的 1em 字号/内边距/弱化色 + 04 的 28px 方框/圆角/hover 底合并定版。 */
+.dialog-close {
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 1em;
+  line-height: 1;
+  padding: 2px 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  flex: none;
+}
+.dialog-close:hover {
+  background: var(--color-bg-raised, rgba(128, 128, 128, 0.15));
+  color: var(--color-text, inherit);
+}
 .icon-btn.danger {
   color: var(--color-danger);
 }

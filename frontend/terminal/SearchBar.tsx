@@ -62,7 +62,7 @@ export function SearchBar({ sessionId }: { sessionId: string }) {
             : t("terminal.searchNoResult")}
       </span>
       <button data-testid="search-close" aria-label={t("common.close")} onClick={close}>
-        ×
+        ✕
       </button>
     </div>
   );

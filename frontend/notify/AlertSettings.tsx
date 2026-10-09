@@ -15,6 +15,7 @@
 // * 主题/i18n 纪律：样式走 App.css 令牌段；文案全走词典键。
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { showToast } from "../ui/toastStore";
 import { vaultApi, type AlertRule, type AlertRuleKind, type ChannelKind, type Host, type NotifyChannel } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { engine } from "./rules";
@@ -240,8 +241,11 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
       const config = await vaultApi.notifyChannels.revealConfig(row.id);
       await testChannel(row.kind, config);
       setTestState({ id: row.id, ok: true, msg: t("alert.testOk") });
+      showToast(t("alert.testOk"), "info");
     } catch (e) {
-      setTestState({ id: row.id, ok: false, msg: e instanceof Error ? e.message : String(e) });
+      const msg = e instanceof Error ? e.message : String(e);
+      setTestState({ id: row.id, ok: false, msg });
+      showToast(msg, "error");
     } finally {
       setTesting(null);
     }

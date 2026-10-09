@@ -12,6 +12,7 @@
 // 不接 fit——回放窗口尺寸失配由 xterm 滚动兜底，避免为打磨引入 resize 语义）。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { showToast } from "../ui/toastStore";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { invoke } from "@tauri-apps/api/core";
 import type { RecordingData } from "../vault/api";
@@ -156,8 +157,11 @@ export function RecordingPlayer({ data, onClose, savePath }: RecordingPlayerProp
         path,
       });
       setExportMsg(written);
+      showToast(written, "info");
     } catch (e) {
-      setExportMsg(String(e));
+      const msg = String(e);
+      setExportMsg(msg);
+      showToast(msg, "error");
     }
   }
 
@@ -187,7 +191,7 @@ export function RecordingPlayer({ data, onClose, savePath }: RecordingPlayerProp
   );
 
   return (
-    <div className="palette-overlay player-overlay" data-testid="recording-player">
+    <div className="palette-overlay player-overlay" data-testid="recording-player" onMouseDown={onClose}>
       <div
         className="dialog recording-player"
         role="dialog"

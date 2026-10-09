@@ -259,7 +259,7 @@ export function AISettings({ open, onClose }: AISettingsProps) {
             aria-label={t("common.close")}
             onClick={onClose}
           >
-            ×
+            ✕
           </button>
         </div>
 
@@ -331,7 +331,7 @@ export function AISettings({ open, onClose }: AISettingsProps) {
                   {p.name}
                 </span>
                 <span className="ai-provider-meta">
-                  {p.kind === "anthropic" ? "Anthropic" : p.kind === "mock" ? "Mock" : "OpenAI 兼容"} · {p.model}
+                  {p.kind === "anthropic" ? t("ai.settings.kindAnthropic") : p.kind === "mock" ? t("ai.settings.kindMock") : t("ai.settings.kindOpenai")} · {p.model}
                 </span>
                 <span className="ai-provider-actions">
                   {idx !== 0 && (

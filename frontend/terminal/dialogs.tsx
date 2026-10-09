@@ -82,7 +82,7 @@ export function EncodingHintBar({ sessionId }: { sessionId: string }) {
         data-testid="encoding-hint-dismiss"
         onClick={() => useSessionStore.getState().dismissEncodingHint(sessionId)}
       >
-        ×
+        ✕
       </button>
     </div>
   );
@@ -112,7 +112,7 @@ export function DangerHintBar({
         aria-label={t("terminal.dangerInputDismiss")}
         onClick={onDismiss}
       >
-        ×
+        ✕
       </button>
     </div>
   );

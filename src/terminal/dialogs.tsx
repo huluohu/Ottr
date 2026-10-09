@@ -2,6 +2,7 @@
 // 粘贴确认 / 编码提示 / 危险输入提醒 / trzsz 拖放询问 + 路径引用纯函数。
 // 公共 API 经 Terminal.tsx 再导出保持原路径不变。
 import { useTranslation } from "react-i18next";
+import { useEscClose } from "../ui/useEscClose";
 import { useSessionStore, encodingName } from "../session/SessionStore";
 import { assessPaste, type DangerFinding } from "../ai/danger";
 
@@ -16,6 +17,7 @@ export function PasteConfirmDialog({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  useEscClose(true, onCancel);
   const verdict = assessPaste(text);
   const preview = text.length > 400 ? `${text.slice(0, 400)}…` : text;
   return (
@@ -131,6 +133,7 @@ export function TrzszDropDialog({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  useEscClose(true, onCancel);
   const names = paths.map((p) => p.split("/").pop() ?? p).join("、");
   return (
     <div className="overlay" role="presentation" onMouseDown={onCancel}>

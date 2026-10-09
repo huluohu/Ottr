@@ -3,6 +3,7 @@
 // （.overlay > .dialog）。
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useEscClose } from "../ui/useEscClose";
 import { CredentialList } from "./CredentialList";
 import { KeyManager } from "./KeyManager";
 import { KnownHostsManager } from "../security/KnownHostsManager";
@@ -12,6 +13,9 @@ type DialogTab = "credentials" | "keys" | "knownHosts";
 export function CredentialsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<DialogTab>("credentials");
+  // 子层（凭据表单 / 已知主机取证与删除确认）先挂载先注册，Esc 由其先消费
+  // （hook 内 stopImmediatePropagation），此处只在无子层时关整框。
+  useEscClose(true, onClose);
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={t("credentials.dialogTitle")}>

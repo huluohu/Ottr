@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
+import { useEscClose } from "../ui/useEscClose";
 import { vaultApi, type McpApprovalAsk } from "../vault/api";
 
 export const MCP_APPROVAL_EVENT = "ottr://mcp-approval";
@@ -25,6 +26,10 @@ export function visualizeCommand(raw: string): string {
 export function McpApprovalDialog() {
   const { t } = useTranslation();
   const [queue, setQueue] = useState<McpApprovalAsk[]>([]);
+  // Esc = 拒绝（与门侧超时=拒绝同口径的安全侧默认）。
+  useEscClose(queue.length > 0, () => {
+    if (queue.length > 0) void decide(false);
+  });
 
   useEffect(() => {
     let disposed = false;

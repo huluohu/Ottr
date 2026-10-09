@@ -9,6 +9,7 @@
 // 入口：凭据与密钥对话框第三页签（KeyManager 区，简报裁定 #1）。
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useEscClose } from "../ui/useEscClose";
 import {
   vaultApi,
   type KnownHost,
@@ -43,6 +44,11 @@ export function KnownHostsManager() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [probe, setProbe] = useState<ProbeState | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<KnownHost | null>(null);
+  // 取证对话框与删除确认互斥弹出，Esc 收当前层（probe 优先）。
+  useEscClose(probe != null || confirmDelete != null, () => {
+    if (probe != null) setProbe(null);
+    else setConfirmDelete(null);
+  });
 
   const refresh = useCallback(() => {
     return vaultApi.knownHosts

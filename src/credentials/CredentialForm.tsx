@@ -17,6 +17,7 @@ import {
   credentialInputFrom,
   validateCredentialDraft,
 } from "./credentialDraft";
+import { useEscClose } from "../ui/useEscClose";
 
 /** 「必填」类错误键（编辑模式留空豁免面，见 validate）。 */
 const REQUIRED_KEYS = [
@@ -33,6 +34,7 @@ export interface CredentialFormProps {
 
 export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   const { t } = useTranslation();
+  useEscClose(true, onClose);
   const createCredential = useVaultStore((s) => s.createCredential);
   const updateCredential = useVaultStore((s) => s.updateCredential);
 

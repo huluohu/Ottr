@@ -4,12 +4,18 @@
 // （仍要连接）——用户显式点击才连（Rust 侧同约定：超时=拒绝）。
 // 指纹整体展示 + 等宽字体（核对场景，不截断）。
 import { useTranslation } from "react-i18next";
+import { useEscClose } from "../ui/useEscClose";
 import { useSessionStore } from "./SessionStore";
 
 export function HostKeyDialog() {
   const { t } = useTranslation();
   const ask = useSessionStore((s) => s.hostKeyAsk);
   const decide = useSessionStore((s) => s.decideHostKey);
+  // Esc = 拒绝连接（与 Rust 侧超时=拒绝同口径；changed 强提醒下 Esc 不可能
+  // 误连——拒绝是两种形态的共同安全侧）。
+  useEscClose(ask != null, () => {
+    void decide(false);
+  });
   if (!ask) return null;
   const changed = ask.kind === "changed";
   return (

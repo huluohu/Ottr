@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi, type ImportReport } from "../vault/api";
 import { useVaultStore } from "../vault/store";
+import { useEscClose } from "../ui/useEscClose";
 
 type ImportSource = "ssh" | "xshell" | "tabby";
 
@@ -19,6 +20,7 @@ const SOURCES: { id: ImportSource; labelKey: string }[] = [
 
 export function ImportDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
+  useEscClose(true, onClose);
   const refresh = useVaultStore((s) => s.refresh);
   const [source, setSource] = useState<ImportSource>("ssh");
   const [pickedPath, setPickedPath] = useState<string | null>(null);

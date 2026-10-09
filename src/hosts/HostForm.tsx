@@ -22,6 +22,7 @@ import {
 } from "../credentials/credentialDraft";
 import { CredentialInlineForm } from "../credentials/CredentialInlineForm";
 import { Checkbox } from "../ui/Checkbox";
+import { useEscClose } from "../ui/useEscClose";
 
 export interface HostFormProps {
   /** 非空 = 编辑模式；null = 新建。 */
@@ -46,6 +47,7 @@ const CRED_NEW = "__new__";
 
 export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   const { t } = useTranslation();
+  useEscClose(true, onClose);
   const hostGroups = useVaultStore((s) => s.hostGroups);
   const credentials = useVaultStore((s) => s.credentials);
   const jumpChains = useVaultStore((s) => s.jumpChains);

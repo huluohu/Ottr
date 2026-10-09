@@ -58,7 +58,11 @@
       "amethyst": "幻紫",
       "verdant": "青野",
       "glass": "雾镜"
-    }
+    },
+    "terminalFont": "终端字体",
+    "terminalFontDefault": "系统默认",
+    "terminalFontSize": "终端字号",
+    "terminalFontSizePt": "{{n}} pt"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -1171,7 +1175,11 @@
     "alerts": "告警",
     "mcp": "MCP",
     "notifications": "通知中心",
-    "settings": "设置"
+    "settings": "设置",
+    "theme": "主题",
+    "themeCycle": "切换主题（循环七主题）",
+    "language": "语言",
+    "langToggle": "切换中英文"
   },
   "sidebar": {
     "quickConnect": "快速连接"

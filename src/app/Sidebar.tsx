@@ -8,6 +8,19 @@ import { HostTree, type HostTreeProps } from "../hosts/HostTree";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import type { DockPanel } from "../workspace/types";
 import { useNotifyStore } from "../notify/core";
+import { useTheme, type ThemeMode } from "../theme/ThemeContext";
+import { useLanguage } from "../i18n";
+
+/** 主题快捷循环顺序（与设置页七主题一致）。 */
+const THEME_CYCLE: readonly ThemeMode[] = [
+  "system",
+  "light",
+  "dark",
+  "oled",
+  "amethyst",
+  "verdant",
+  "glass",
+];
 
 export interface SidebarProps extends HostTreeProps {
   /** 壳层宽度（App 侧拖拽 resizer 持有）。 */
@@ -56,6 +69,26 @@ function GearIcon() {
   );
 }
 
+function PaletteIcon() {
+  return (
+    <svg className="sidebar-nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 1.8a6.2 6.2 0 1 0 0 12.4c1 0 1.6-.7 1.6-1.5 0-.9-.7-1.3-.7-2 0-.7.6-1.3 1.4-1.3h1.5a2.4 2.4 0 0 0 2.4-2.4C14.2 4 11.4 1.8 8 1.8Z" />
+      <circle cx="5.4" cy="6.4" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="4.6" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="10.6" cy="6.4" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg className="sidebar-nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.2" />
+      <path d="M1.8 8h12.4M8 1.8c1.8 1.7 2.8 3.9 2.8 6.2s-1 4.5-2.8 6.2C6.2 12.5 5.2 10.3 5.2 8S6.2 3.5 8 1.8Z" />
+    </svg>
+  );
+}
+
 const NAV_DOCK: ReadonlyArray<{ panel: DockPanel; labelKey: string; icon: ReactElement }> = [
   { panel: "cron", labelKey: "nav.cron", icon: <ClockIcon /> },
   { panel: "alerts", labelKey: "nav.alerts", icon: <BellIcon /> },
@@ -74,6 +107,14 @@ export function Sidebar({
   const openDock = useWorkspaceStore((s) => s.openDock);
   const dockPanel = useWorkspaceStore((s) => s.dockPanel);
   const unread = useNotifyStore((s) => s.unread);
+  const { mode: themeMode, setMode } = useTheme();
+  const { lang, setLang } = useLanguage();
+
+  // 主题快捷循环（设置页七主题同序；与设置页/菜单栏三入口同源 setMode）
+  const cycleTheme = () => {
+    const idx = THEME_CYCLE.indexOf(themeMode);
+    setMode(THEME_CYCLE[(idx + 1) % THEME_CYCLE.length]);
+  };
 
   return (
     <aside className="sidebar sidebar-v2" style={style} data-testid="app-sidebar">
@@ -92,6 +133,28 @@ export function Sidebar({
         <HostTree {...tree} />
       </div>
       <nav className="sidebar-nav" aria-label={t("nav.aria")}>
+        <button
+          type="button"
+          data-testid="sidebar-theme"
+          title={t("nav.themeCycle")}
+          onClick={cycleTheme}
+        >
+          <PaletteIcon />
+          <span>
+            {t("nav.theme")}: {t(`settings.themes.${themeMode}`)}
+          </span>
+        </button>
+        <button
+          type="button"
+          data-testid="sidebar-lang"
+          title={t("nav.langToggle")}
+          onClick={() => setLang(lang === "zh-CN" ? "en-US" : "zh-CN")}
+        >
+          <GlobeIcon />
+          <span>
+            {t("nav.language")}: {lang === "zh-CN" ? "中文" : "English"}
+          </span>
+        </button>
         {NAV_DOCK.map((item) => (
           <button
             key={item.panel}

@@ -58,7 +58,11 @@
       "amethyst": "Amethyst",
       "verdant": "Verdant",
       "glass": "Frosted Glass"
-    }
+    },
+    "terminalFont": "Terminal font",
+    "terminalFontDefault": "System default",
+    "terminalFontSize": "Terminal size",
+    "terminalFontSizePt": "{{n}} pt"
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -1172,7 +1176,11 @@
     "alerts": "Alerts",
     "mcp": "MCP",
     "notifications": "Notifications",
-    "settings": "Settings"
+    "settings": "Settings",
+    "theme": "Theme",
+    "themeCycle": "Cycle through themes",
+    "language": "Language",
+    "langToggle": "Toggle Chinese/English"
   },
   "sidebar": {
     "quickConnect": "Quick connect"

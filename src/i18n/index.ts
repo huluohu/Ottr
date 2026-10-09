@@ -97,6 +97,11 @@ export async function syncLangFromVault(): Promise<void> {
     try {
       await vaultApi.settings.set(LANG_SETTING_KEY, cached);
       localStorage.removeItem(LANG_KEY);
+      // 迁移落库后必须通知 Rust 重建菜单/托盘文案——迁移前菜单按空 ui.language
+      // 走了 En 兜底，不通知则「中文界面 + 英文菜单」直到重启（用户实测）。
+      void import("@tauri-apps/api/event")
+        .then(({ emit }) => emit("ottr://ui-language"))
+        .catch(() => {});
     } catch {
       // 迁移失败下次再试（localStorage 键保留即迁移未完成的标记）
     }

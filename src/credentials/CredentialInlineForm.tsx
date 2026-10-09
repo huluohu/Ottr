@@ -52,6 +52,17 @@ export function CredentialInlineForm({ draft, onDraftChange, error, onCancel }: 
         </select>
       </label>
 
+      <label>
+        <span>{t("credentialForm.name")}</span>
+        <input
+          type="text"
+          data-testid="cred-name"
+          value={draft.name}
+          placeholder={t("credentialForm.namePlaceholder")}
+          onChange={(e) => patch({ name: e.currentTarget.value })}
+        />
+      </label>
+
       {PASSWORD_LIKE_KINDS.includes(draft.kind) && (
         <label>
           <span>{t("credentialForm.secret")}</span>

@@ -283,6 +283,39 @@ describe("智能补全开关（Task 8 B8）", () => {
   });
 });
 
+describe("终端字体/字号设置事件（设置页 → 活动终端即时应用）", () => {
+  it("ottr://terminal-settings 事件 → options 即时更新；null 事件 → 还原默认", async () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-font", hostId: 5, rustId: "pty-font" })],
+      activeId: "tab-font",
+      trees: { "tab-font": { kind: "leaf", id: "tab-font" } },
+      activePane: { "tab-font": "tab-font" },
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-font" />
+      </ThemeProvider>,
+    );
+    const term = capturedTerms()[capturedTerms().length - 1];
+
+    // 换字体 + 大字号
+    saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: "Menlo", fontSize: 20 });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("ottr://terminal-settings"));
+    });
+    expect(term.options.fontFamily).toBe("Menlo");
+    expect(term.options.fontSize).toBe(20);
+
+    // 切回「系统默认」（null）→ 还原 xterm 缺省
+    saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: null, fontSize: null });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("ottr://terminal-settings"));
+    });
+    expect(term.options.fontFamily).toBeUndefined();
+    expect(term.options.fontSize).toBe(13);
+  });
+});
+
 describe("applyTermTheme（resolved → xterm theme 映射）", () => {
   it("light/dark 分别取 terminalThemes 对应套", () => {
     const stub = { options: {} as { theme?: (typeof terminalThemes)["light"] } };

@@ -295,15 +295,16 @@ describe("HostForm 内联凭据创建（Phase 5 T1）", () => {
     // 下拉选「＋ 新建凭据…」→ 内联子表单就地展开（不离开主机表单）
     fireEvent.change(screen.getByTestId("form-credential"), { target: { value: "__new__" } });
     expect(screen.getByTestId("form-cred-inline")).toBeTruthy();
-    // 默认密码型；密码就地填写
+    // 默认密码型；名称（0021）与密码就地填写
     expect((screen.getByTestId("cred-kind") as HTMLSelectElement).value).toBe("password");
+    fireEvent.change(screen.getByTestId("cred-name"), { target: { value: "家庭网关" } });
     fireEvent.change(screen.getByTestId("cred-secret"), { target: { value: "s3cret" } });
 
     fill("10.0.0.9", "22");
     fireEvent.click(screen.getByTestId("form-submit"));
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("credentials_create", {
-        input: { name: null, kind: "password", secret: "s3cret", key_pub: null, passphrase: null, totp_secret: null },
+        input: { name: "家庭网关", kind: "password", secret: "s3cret", key_pub: null, passphrase: null, totp_secret: null },
       }),
     );
     // 主机载荷绑定新建凭据 id

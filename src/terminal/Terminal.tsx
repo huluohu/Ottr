@@ -183,14 +183,16 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   }, [status, sessionId]);
 
   // 设置页字体/字号变更（外观分节广播 ottr://terminal-settings）→ 活动终端
-  // 实时应用 + 重排版（新终端创建时同样读取）。
+  // 实时应用 + 重排版（新终端创建时同样读取）。null = 恢复默认值——
+  // **必须无条件赋值**：xterm options 赋空/默认才回得去，按 truthiness 跳过
+  // 会让「系统默认」选项在运行中失效（切回默认不还原）。
   useEffect(() => {
     const apply = () => {
       const term = termRef.current;
       if (!term) return;
       const s = loadTerminalSettings();
-      if (s.fontFamily) term.options.fontFamily = s.fontFamily;
-      if (s.fontSize != null) term.options.fontSize = s.fontSize;
+      term.options.fontFamily = s.fontFamily ?? undefined;
+      term.options.fontSize = s.fontSize ?? 13;
       try {
         fitRef.current?.fit();
       } catch {

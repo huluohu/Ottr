@@ -230,10 +230,12 @@ jobs:
       contents: write
 
     steps:
-      # 清单生成步骤要跑仓库内 scripts/gen-updater-manifest.py——本 job 必须
-      # 先检出仓库（v0.3.0 二跑实测：无 checkout 时脚本路径 errno 2）。
+      # 清单生成 + 变更日志步骤都要仓库内数据（scripts/ 与完整 git 历史）——
+      # 必须 fetch-depth: 0（浅检出的 tag 区间 git log 不可用）。
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Download packages
         uses: actions/download-artifact@v4
@@ -249,10 +251,32 @@ jobs:
         run: |
           python3 scripts/gen-updater-manifest.py bundle "${GITHUB_REF_NAME}" bundle/latest.json
 
+      # 变更日志：上一枚 tag → 本 tag 的提交主题，逐条列出作为 Release 正文
+      # （直接 push 的工作流没有 PR，generate_release_notes 只有 changelog
+      # 链接——用户要求 Release 页必须显示本次更新内容）。分类小标题 +
+      # 跳过版本号提交本身。首个 tag（无上一枚）退化为全量日志。
+      - name: Generate changelog body
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "refs/tags/${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          RANGE="${PREV:+${PREV}..}${GITHUB_REF_NAME}"
+          {
+            echo "## 🚀 本次更新"
+            echo
+            git log --pretty=format:"- %s" "$RANGE" \
+              | grep -v "^- chore(release): " || true
+            echo
+            echo
+            PREV_TAG="${PREV:-}"
+            [ -n "$PREV_TAG" ] && echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${GITHUB_REF_NAME}"
+          } > release-body.md
+          echo "---- release-body.md ----"
+          cat release-body.md
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          body_path: release-body.md
           # upload-artifact 保留 bundle/ 下子目录结构（dmg/ macos/ msi/ …），
           # download merge-multiple 后带前缀——通配必须 ** 递归（平铺 * 会
           # 全部落空：v0.1.0 首发实测，Release 建成但零资产）。

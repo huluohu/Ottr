@@ -297,7 +297,9 @@
     "quickPaletteDesc": "Search hosts and commands anywhere",
     "selected": "Selected host",
     "openHint": "Double-click a host (or pick one in ⌘K) to open a terminal.",
-    "loadFailed": "Failed to load data: {{message}}"
+    "loadFailed": "Failed to load data: {{message}}",
+    "quickImport": "Import configuration",
+    "quickImportDesc": "Import from ssh config or third-party clients"
   },
   "terminal": {
     "connecting": "Connecting to {{host}}…",
@@ -1154,5 +1156,25 @@
     "downloading": "Downloading…",
     "downloadingOf": "Downloading… {{received}}/{{total}} KB",
     "installed": "Installed. Restart Ottr to apply."
+  },
+  "home": {
+    "tagline": "Pick a host and dive in.",
+    "recent": "Recent connections",
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    }
+  },
+  "nav": {
+    "aria": "Navigation",
+    "cron": "Scheduled tasks",
+    "alerts": "Alerts",
+    "mcp": "MCP",
+    "notifications": "Notifications",
+    "settings": "Settings"
+  },
+  "sidebar": {
+    "quickConnect": "Quick connect"
   }
 }

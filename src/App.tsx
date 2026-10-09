@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { HostTree } from "./hosts/HostTree";
+import { Sidebar } from "./app/Sidebar";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
 import { SyncDialog } from "./sync/SyncDialog";
@@ -419,17 +419,22 @@ function HomeLayout() {
         </p>
       )}
       <div className="app-body">
-        <aside className="sidebar" style={{ width: sidebarWidth }}>
-          <HostTree
+        {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树） +
+            功能导航 + 设置，单列三段式；宽度仍由 resizer 持有。 */}
+        <Sidebar
+          style={{ width: sidebarWidth }}
           newGroupSignal={newGroupSignal}
-            selectedId={selectedId}
-            onSelect={(host) => setSelectedId(host.id)}
-            onOpen={(host) => openTab(host)}
-            onEdit={(host) => setForm({ mode: "edit", host })}
-            onAdd={(groupId) => setForm({ mode: "new", groupId })}
-            onImport={() => setImportOpen(true)}
-          />
-        </aside>
+          selectedId={selectedId}
+          onSelect={(host) => setSelectedId(host.id)}
+          onOpen={(host) => openTab(host)}
+          onEdit={(host) => setForm({ mode: "edit", host })}
+          onAdd={(groupId) => setForm({ mode: "new", groupId })}
+          onImport={() => setImportOpen(true)}
+          onQuickConnect={() => setPaletteOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onToggleNotifications={() => setNotifyOpen((v) => !v)}
+          notificationsOpen={notifyOpen}
+        />
         <div
           className="sidebar-resizer"
           role="separator"

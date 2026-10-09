@@ -99,9 +99,10 @@ describe("App 主页布局（集成）", () => {
 
     render(<App />);
     expect(screen.getByTestId("main-area")).toBeTruthy();
-    // refresh 完成后主机树可见
+    // refresh 完成后主机树可见；主区 = 欢迎首页（问候 + 快捷卡）
     await waitFor(() => expect(screen.getByText("web-01")).toBeTruthy());
-    expect(screen.getByTestId("main-area").textContent).toContain("Pick a host on the left");
+    expect(screen.getByTestId("home-greeting")).toBeTruthy();
+    expect(screen.getByTestId("empty-add-host")).toBeTruthy();
 
     // 选中主机 → 主区切到已选占位
     fireEvent.click(screen.getByText("web-01"));

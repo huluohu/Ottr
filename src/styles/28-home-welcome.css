@@ -1,0 +1,70 @@
+/* --- 首页欢迎面（2026-10-10 壳层重构）：时段问候 + 品牌水印 + 快捷卡 +
+ * 最近连接。挂在 .main-placeholder 内（既有居中口径沿用）。 --- */
+
+.home-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(620px, 100%);
+}
+/* 品牌水印：大尺寸低透明度，压在问候语上方不抢戏。 */
+.home-brand {
+  width: 110px;
+  opacity: 0.16;
+  margin-bottom: -46px;
+  pointer-events: none;
+}
+.home-greeting {
+  font-size: 1.7em;
+  font-weight: 600;
+  margin: 0;
+}
+.home-tagline {
+  margin: 0;
+  color: var(--fg-muted);
+}
+/* 最近连接：紧凑行列表（名称 + 端点元数据，整行可点）。 */
+.home-recent {
+  width: 100%;
+  margin-top: 10px;
+}
+.home-recent-title {
+  margin: 0 0 6px;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+}
+.home-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.home-recent-item {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+}
+.home-recent-item:hover {
+  background: var(--surface-raised);
+  border-color: var(--color-accent-border);
+}
+.home-recent-name {
+  font-weight: 600;
+}
+.home-recent-meta {
+  margin-left: auto;
+  font-size: 0.85em;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}

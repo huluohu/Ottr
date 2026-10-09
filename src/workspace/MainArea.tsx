@@ -47,6 +47,7 @@ import { useVaultStore } from "../vault/store";
 import type { Host } from "../vault/api";
 import { platform, shortcutLabel } from "../shortcuts/registry";
 import { useWorkspaceStore } from "./workspaceStore";
+import { HomeWelcome } from "../home/HomeWelcome";
 
 interface MainAreaProps {
   /** vault refresh 失败横幅（HomeLayout 启动链持有，透传）。 */
@@ -61,6 +62,9 @@ interface MainAreaProps {
   /** 空态快捷卡「⌘K 命令面板」入口（App 注入 = setPaletteOpen(true)；缺省 =
    * 入口不渲染）。 */
   onOpenPalette?: () => void;
+  /** 空态快捷卡「导入配置」入口（App 注入 = setImportOpen(true)；缺省 =
+   * 入口不渲染）。 */
+  onOpenImport?: () => void;
 }
 
 /** 走查夹具端点（seed_vault 播种的 spike 主机；spike-sshd.sh 127.0.0.1:2222）。
@@ -78,7 +82,14 @@ export function findFixtureHost(hosts: Host[]): Host | null {
   );
 }
 
-export function MainArea({ storeError, selected, onOpenAiSettings, onAddHost, onOpenPalette }: MainAreaProps) {
+export function MainArea({
+  storeError,
+  selected,
+  onOpenAiSettings,
+  onAddHost,
+  onOpenPalette,
+  onOpenImport,
+}: MainAreaProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
@@ -152,52 +163,15 @@ export function MainArea({ storeError, selected, onOpenAiSettings, onAddHost, on
               </section>
             ) : (
               <section className="main-placeholder" data-testid="main-empty">
-                <p>{t("mainArea.placeholder")}</p>
-                {(fixtureHost || onAddHost || onOpenPalette) && (
-                  <div className="main-empty-actions" data-testid="main-empty-actions">
-                    {fixtureHost && (
-                      <button
-                        type="button"
-                        className="main-empty-card"
-                        data-testid="empty-connect-fixture"
-                        onClick={() => openTab(fixtureHost)}
-                      >
-                        <span className="main-empty-card-title">
-                          {t("mainArea.quickFixture", { name: fixtureHost.name })}
-                        </span>
-                        <span className="main-empty-card-desc">
-                          {fixtureHost.username ? `${fixtureHost.username}@` : ""}
-                          {fixtureHost.address}:{fixtureHost.port}
-                        </span>
-                      </button>
-                    )}
-                    {onAddHost && (
-                      <button
-                        type="button"
-                        className="main-empty-card"
-                        data-testid="empty-add-host"
-                        onClick={onAddHost}
-                      >
-                        <span className="main-empty-card-title">{t("mainArea.quickAddHost")}</span>
-                        <span className="main-empty-card-desc">{t("mainArea.quickAddHostDesc")}</span>
-                      </button>
-                    )}
-                    {onOpenPalette && (
-                      <button
-                        type="button"
-                        className="main-empty-card"
-                        data-testid="empty-palette-hint"
-                        onClick={onOpenPalette}
-                      >
-                        <span className="main-empty-card-title">{t("mainArea.quickPalette")}</span>
-                        <span className="main-empty-card-desc">
-                          <kbd className="main-empty-kbd">{paletteLabel}</kbd>{" "}
-                          {t("mainArea.quickPaletteDesc")}
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                )}
+                <HomeWelcome
+                  hosts={hosts}
+                  fixtureHost={fixtureHost}
+                  paletteLabel={paletteLabel}
+                  onAddHost={onAddHost}
+                  onOpenPalette={onOpenPalette}
+                  onOpenImport={onOpenImport}
+                  onConnect={openTab}
+                />
               </section>
             )}
           </>

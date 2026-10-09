@@ -296,7 +296,9 @@
     "quickPaletteDesc": "随时搜索主机与命令",
     "selected": "已选择主机",
     "openHint": "双击主机或在 ⌘K 中选择即可打开终端。",
-    "loadFailed": "数据加载失败：{{message}}"
+    "loadFailed": "数据加载失败：{{message}}",
+    "quickImport": "导入配置",
+    "quickImportDesc": "从 ssh config 或第三方客户端导入"
   },
   "terminal": {
     "connecting": "正在连接 {{host}}…",
@@ -1153,5 +1155,25 @@
     "downloading": "正在下载…",
     "downloadingOf": "正在下载… {{received}}/{{total}} KB",
     "installed": "安装完成。退出 Ottr 并重新打开即生效。"
+  },
+  "home": {
+    "tagline": "选一台主机，开始下潜。",
+    "recent": "最近连接",
+    "greeting": {
+      "morning": "早上好",
+      "afternoon": "下午好",
+      "evening": "晚上好"
+    }
+  },
+  "nav": {
+    "aria": "功能导航",
+    "cron": "定时任务",
+    "alerts": "告警",
+    "mcp": "MCP",
+    "notifications": "通知中心",
+    "settings": "设置"
+  },
+  "sidebar": {
+    "quickConnect": "快速连接"
   }
 }

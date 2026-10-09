@@ -1,0 +1,91 @@
+/* --- 应用级侧栏（2026-10-10 壳层重构）：单列宽侧栏三段式——快捷连接 /
+ * 主机区（树内滚）/ 功能导航 + 设置。导航项激活态与 dock 单槽联动。 --- */
+
+.sidebar-v2 {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ① 快捷连接：主行动作置顶。 */
+.sidebar-quick {
+  flex: none;
+  padding: 10px 10px 6px;
+  display: flex;
+  gap: 6px;
+}
+.sidebar-quick .btn-accent {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.sidebar-kbd {
+  opacity: 0.72;
+  font-size: 0.85em;
+  font-family: inherit;
+}
+
+/* ② 主机区：树独占滚动（分区导航/设置固定，树长列表不顶走导航）。 */
+.sidebar-hosts {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 10px 10px;
+}
+
+/* ③ 功能导航。 */
+.sidebar-nav {
+  flex: none;
+  border-top: 1px solid var(--border-subtle);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-nav button,
+.sidebar-foot button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--fg);
+  font-size: 0.92em;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-nav button:hover,
+.sidebar-foot button:hover {
+  background: var(--surface-raised);
+}
+.sidebar-nav button[data-active="true"],
+.sidebar-nav button[data-open="true"] {
+  background: var(--surface-raised);
+  color: var(--color-accent-text);
+  font-weight: 600;
+}
+.sidebar-nav-icon {
+  flex: none;
+}
+.sidebar-nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+  font-size: 0.75em;
+  line-height: 18px;
+  text-align: center;
+}
+.sidebar-foot {
+  flex: none;
+  border-top: 1px solid var(--border-subtle);
+  padding: 6px;
+}

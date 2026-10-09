@@ -13,7 +13,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-huluohu%2FOttr-0F172A)](https://github.com/huluohu/Ottr)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
 [![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
-[![Tests](https://img.shields.io/badge/tests-1760%2B%20green-5EEAD4)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-1790%2B%20green-5EEAD4)](#-测试)
 [![License](https://img.shields.io/badge/license-MIT-5EEAD4)](#-许可与作者)
 
 </div>
@@ -23,6 +23,8 @@
 **Ottr** 把「连上服务器敲命令」升级为「AI 懂你的终端」：命令失败自动诊断、自然语言生成命令、全局历史检索，同时守住一条硬底线——**自带 AI Key（BYOK），请求直连你选的模型服务商并经脱敏，绝不经过任何第三方服务器**；主机、凭据、历史全部存在本机加密库或你自己的云盘里，隐私可以抓包自行验证。
 
 技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住。安装包约 14 MB、运行内存约 100 MB，三端一套代码。
+
+![欢迎首页：时段问候 + 快捷卡 + 应用级侧栏](docs/screenshots/home-welcome.png)
 
 ## ✨ 功能总览
 
@@ -36,7 +38,7 @@
 ### 主机与凭据
 
 - 分组 / 标签 / 搜索 / **⌘K 模糊快速连接**；`~/.ssh/config` 导入、主机清单 CSV 导出，Tabby（JSON/YAML）、Xshell 第三方导入
-- 凭据库：密码、SSH 密钥（ed25519/ecdsa/rsa，生成/导入/部署公钥）、TOTP 两步验证，按主机绑定
+- 凭据库：密码、SSH 密钥（ed25519/ecdsa/rsa，生成/导入/部署公钥）、TOTP 两步验证，按主机绑定、**可命名**（多凭据一眼可辨），一套凭据多主机共享
 - **跳板链**：多级跳板可视化编排；**端口转发**：本地 / 动态 SOCKS / 远程，断线自动重挂
 - known_hosts **TOFU 首次信任 + 指纹巡检**，防中间人
 
@@ -76,10 +78,15 @@
 
 ### 体验细节
 
+- **应用级侧栏**：快捷连接（⌘K）/ 主机树（分组、标签、悬停即加主机）/ 功能导航
+  （定时任务、告警、MCP、通知中心带未读徽标）/ 设置，一段式布局宽度可拖拽
+- **欢迎首页**：时段问候 + 快捷卡（新建主机 / ⌘K 命令面板 / 导入配置）+ 最近连接，零会话也有归宿
 - **七套主题**：亮色 / 暗色 / 跟随系统 / 曜黑（OLED 纯黑）/ 幻紫 / 青野 / 雾镜（真透明毛玻璃），
-  终端配色逐主题跟随；支持 iTerm2 主题导入（含二进制 plist）与自定义配色
-- 中文 / English 双语（菜单栏同步切换）；**macOS 原生菜单栏承载全部功能入口**
-  （主题七选 / 工具 12 项 / 通知中心带未读数 / 新建主机与分组），Windows/Linux 自绘标题栏，三端托盘
+  侧栏「主题」子菜单一键切换，终端配色逐主题跟随；支持 iTerm2 主题导入（含二进制 plist）与自定义配色
+- **中文 / English 双语**：侧栏「语言」子菜单即点即切，原生菜单栏文案同步重建；
+  macOS 原生菜单栏承载全部功能入口，Windows/Linux 自绘标题栏，三端托盘（彩色水獭徽章）
+- **终端个性化**：字体族（Menlo / SF Mono / JetBrains Mono 等）与字号（10–20pt）设置页即选即生效
+- **应用内检查更新**：设置 → 通用 → 一键检查，发现新版侧栏提示并下载安装（更新经签名校验）
 - 凭据、告警、转发、跳板链、定时任务、MCP 均有专属面板；另有等宽字体连字、命令面板、插件系统（网络摘要 / 快捷命令）
 
 <table>
@@ -114,6 +121,8 @@
 | Linux | `.deb` / `.rpm` / `.AppImage` |
 
 首次启动会引导你建立本机加密库：**钥匙链模式**（免记密码，主密钥存系统钥匙链）或**主密码模式**（无密码不可解密，适合更高安全要求）。
+
+已内置**应用内检查更新**（设置 → 通用，经签名校验下载安装）——也可以随时回到本页下载新版本。
 
 <details>
 <summary><strong>🍎 macOS 提示「已损坏，无法打开」或连不上局域网主机？点开看解决方法</strong></summary>
@@ -158,13 +167,15 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 
 ## 🚀 快速上手
 
-1. **加主机**：左侧「新建主机」（或菜单栏「文件 → 新建主机 / 新建分组」建分组归类）、
-   「导入 ssh config」→ 双击主机行连接（首次连接展示指纹，信任后免问询）
-2. **用 AI**：设置 → AI 助手 → 新增服务商（选「智谱 GLM」「DeepSeek」「Ollama」等预设，填 Key）→ 之后命令失败会自动诊断；`⌘J` 直接用中文要命令
-3. **配告警**：菜单栏「工具 → 告警规则」→ 添加通知渠道（发测试消息验证）→ 建规则（如「根分区 > 90%」）
-4. **多设备同步**：第二台设备装好后，设置 → 同步 → 选通道（如 WebDAV 填你的网盘地址）→ 设置同步口令 → 「立即同步」
-5. **进阶**：`⌘R` 搜历史、`⌘D`/`⌘⇧D` 分屏；菜单栏「工具」还有端口转发 / 跳板链 /
-   批量执行 / 定时任务 / 同步 / 导出主机 CSV / 通知中心（未读数直接标在菜单上）
+1. **加主机**：侧栏「新建主机」（分组头悬停「＋」可直接往该分组加主机）、「导入 ssh config」→
+   双击主机行连接（首次连接展示指纹，信任后免问询）
+2. **用 AI**：设置 → AI 助手 → 新增服务商（选「智谱 GLM」「DeepSeek」「Ollama」等预设，填 Key）→
+   之后命令失败会自动诊断；`⌘J` 直接用中文要命令
+3. **配告警**：侧栏「告警」→ 添加通知渠道（发测试消息验证）→ 建规则（如「根分区 > 90%」）
+4. **多设备同步**：第二台设备装好后，设置 → 同步 → 选通道（如 WebDAV 填你的网盘地址）→
+   设置同步口令 → 「立即同步」
+5. **进阶**：`⌘R` 搜历史、`⌘D`/`⌘⇧D` 分屏；侧栏与「工具」菜单还有端口转发 / 跳板链 /
+   定时任务 / 同步 / 导出主机 CSV / 通知中心（未读数直接标在菜单与侧栏上）
 
 ## 🛠 技术栈与工程结构
 
@@ -202,8 +213,8 @@ npm run tauri dev      # 起 vite + Tauri 开发窗
 ### 测试
 
 ```bash
-npm test               # 前端 vitest（1181 用例，含真夹具端到端）
-cargo test             # Rust 工作区全部单测/集成测试（586）
+npm test               # 前端 vitest（1199 用例，含真夹具端到端）
+cargo test             # Rust 工作区全部单测/集成测试（约 590）
 cargo fmt --all --check
 cargo clippy --workspace --all-targets   # CI 同款 -D warnings 门，零告警基线
 ```
@@ -215,6 +226,8 @@ cargo clippy --workspace --all-targets   # CI 同款 -D warnings 门，零告警
 ```bash
 npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前平台）
 ```
+
+推送 `v*` 标签即触发 CI 自动构建四平台（macOS 双架构 / Windows / Linux）安装包 + 签名更新件并发布 Release。
 
 产物位于仓库根 `target/release/bundle/`。改了 `brand/icon.svg` 后用 `npx tauri icon brand/icon.svg` 重新生成全套图标。
 

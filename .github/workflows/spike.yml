@@ -56,6 +56,10 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # 失败也存缓存（2026-10-10）：红一次不至于下一轮从头冷编——
+          # 档位切换/大依赖变更后的一次性成本只付一次。
+          cache-on-failure: true
 
       # workspace clippy 会编译 desktop → tauri 依赖需要 glib/webkit2gtk
       # 系统库（同 build 矩阵的 Linux 步骤）；裸 runner 没有，v0.1.0 首跑

@@ -53,6 +53,7 @@ fn seed_source(vault: &Vault) {
     let c1 = Credentials::create(
         vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Password,
             secret: Some("SECRET-PASSWORD-42".into()),
             key_pub: None,
@@ -64,6 +65,7 @@ fn seed_source(vault: &Vault) {
     let c2 = Credentials::create(
         vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Key,
             secret: None,
             key_pub: Some("ssh-ed25519 AAAA PUBLIC-KEY".into()),
@@ -597,6 +599,7 @@ fn locked_vault_rejects_secret_bearing_export_and_any_import() {
     Credentials::create(
         &vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Password,
             secret: Some("LOCKED-SECRET".into()),
             key_pub: None,
@@ -646,6 +649,7 @@ fn credential_patch_semantics_unaffected_after_import() {
         c.id,
         &CredentialPatch {
             kind: None,
+            name: None,
             secret: None, // None = 保留现值
             key_pub: Some("ssh-ed25519 NEW".into()),
             passphrase: None,

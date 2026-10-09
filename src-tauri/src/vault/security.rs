@@ -467,6 +467,7 @@ mod tests {
         let cred = Credentials::create(
             &vault,
             &CredentialInput {
+                name: None,
                 kind: ottr_vault::CredentialKind::Password,
                 secret: Some("downgraded-secret-γ".into()),
                 key_pub: None,

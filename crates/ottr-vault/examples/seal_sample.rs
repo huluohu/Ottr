@@ -31,6 +31,7 @@ fn main() {
     let cred = Credentials::create(
         &vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Password,
             secret: Some(SECRET_SAMPLE.into()),
             key_pub: Some("ssh-ed25519 AAAA t17-sample".into()),

@@ -18,6 +18,7 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
     let a = Credentials::create(
         vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Password,
             secret: Some("s3cret-password-α".into()),
             key_pub: None,
@@ -29,6 +30,7 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
     let b = Credentials::create(
         vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Key,
             secret: Some(
                 "-----BEGIN OPENSSH PRIVATE KEY-----\nseed-b\n-----END OPENSSH PRIVATE KEY-----"
@@ -333,6 +335,7 @@ fn locked_vault_keeps_plain_metadata_usable_but_rejects_keyed_ops() {
         Credentials::create(
             &vault,
             &CredentialInput {
+                name: None,
                 kind: CredentialKind::Password,
                 secret: Some("x".into()),
                 key_pub: None,

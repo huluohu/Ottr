@@ -332,6 +332,7 @@ mod tests {
         let cred = ottr_vault::Credentials::create(
             &state.0,
             &ottr_vault::CredentialInput {
+                name: None,
                 kind: ottr_vault::CredentialKind::Key,
                 secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk\n-----END OPENSSH PRIVATE KEY-----".into()),
                 key_pub: None,

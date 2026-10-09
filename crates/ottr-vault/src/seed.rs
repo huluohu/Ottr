@@ -42,6 +42,7 @@ pub fn seed_walkthrough_vault(dir: &Path, password: &str) -> Result<SeedOutcome,
     let cred = Credentials::create(
         &vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Password,
             secret: Some("spike-pass".into()),
             key_pub: None,

@@ -292,7 +292,8 @@ fn migration_0020_is_replayable_and_old_rows_default_to_no_marker() {
     let vault = open_vault(dir.path());
     let row = Notifications::insert(&vault, &input("session", "warning", "t")).unwrap();
 
-    // 把库手工退回 0020 之前形态：剥列 + schema_version=19（模拟旧库）。
+    // 把库手工退回 0020 之前形态：剥列 + schema_version=19（模拟旧库；
+    // 0021 的 credentials.name 也在 19 之后——同口径剥掉防重放撞列）。
     {
         let conn = vault.connection();
         conn.execute(
@@ -300,6 +301,8 @@ fn migration_0020_is_replayable_and_old_rows_default_to_no_marker() {
             [],
         )
         .unwrap();
+        conn.execute("ALTER TABLE credentials DROP COLUMN name", [])
+            .unwrap();
         conn.execute("UPDATE meta SET value='19' WHERE key='schema_version'", [])
             .unwrap();
     }

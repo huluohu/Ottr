@@ -36,6 +36,7 @@ fn host_input(name: &str, notes: &str) -> HostInput {
 
 fn password_input(plain: &str) -> CredentialInput {
     CredentialInput {
+        name: None,
         kind: CredentialKind::Password,
         secret: Some(plain.into()),
         key_pub: None,
@@ -377,6 +378,7 @@ fn credential_key_kind_roundtrip_and_patch_semantics() {
     let c = Credentials::create(
         &vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Key,
             secret: Some("-----BEGIN OPENSSH PRIVATE KEY-----".into()),
             key_pub: Some("ssh-ed25519 AAA".into()),
@@ -417,6 +419,7 @@ fn credential_key_kind_roundtrip_and_patch_semantics() {
         c.id,
         &CredentialPatch {
             kind: None,
+            name: None,
             secret: None,
             key_pub: Some("ssh-ed25519 BBB".into()),
             passphrase: Some("pp2".into()),
@@ -557,8 +560,9 @@ fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
         let vault = open_vault(dir.path());
         HostGroups::create(&vault, "legacy", None, None).unwrap();
     }
-    // 模拟旧库：版本拨回 17 + 摘索引 + 摘 0020 列（拨回夹具同口径，防重放
-    // 撞「duplicate column name」）+ 直插一行同根级同名（历史缺陷产物）
+    // 模拟旧库：版本拨回 17 + 摘索引 + 摘 0020 列 + 摘 0021 凭据名称列
+    // （拨回夹具同口径，防重放撞「duplicate column name」）+ 直插一行同根级
+    // 同名（历史缺陷产物）
     let db = dir.path().join("vault.db");
     {
         let conn = rusqlite::Connection::open(&db).unwrap();
@@ -567,6 +571,7 @@ fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
              DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
              DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;
              ALTER TABLE notifications DROP COLUMN delivery_failures;
+             ALTER TABLE credentials DROP COLUMN name;
              INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
                SELECT name, parent_id, color, created_at, updated_at
                FROM host_groups WHERE name = 'legacy';",
@@ -1122,6 +1127,7 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
 
     // 0010 重建后：kind=ftp/ftps 可写入并读回（CHECK 放开），密文通道照常
     let input = CredentialInput {
+        name: None,
         kind: CredentialKind::Ftp,
         secret: Some("ftp-secret".into()),
         key_pub: None,
@@ -1138,6 +1144,7 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
     let ftps = Credentials::create(
         &vault,
         &CredentialInput {
+            name: None,
             kind: CredentialKind::Ftps,
             secret: Some("ftps-secret".into()),
             key_pub: None,
@@ -1151,6 +1158,7 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
     // kind 更新到新值面（UI 分型切换）
     let patch = CredentialPatch {
         kind: Some(CredentialKind::Ftps),
+        name: None,
         secret: None,
         key_pub: None,
         passphrase: None,
@@ -1359,16 +1367,17 @@ fn migration_0012_legacy_v11_rows_default_to_zero() {
         Hosts::create(&vault, host_input("legacy-row", "")).unwrap();
     }
     // 手工把 schema_version 拨回 11 + 摘掉 is_production 列 + 摘掉 0018 索引
-    // + 摘掉 0020 投递失败标记列
+    // + 摘掉 0020 投递失败标记列 + 摘掉 0021 凭据名称列
     // → 模拟旧库重开（版本与 DDL 同事务提交，真实旧库不会有 0018 索引；
     // 拨回夹具须同口径，否则重跑 0018 撞「index already exists」、重跑 0020
-    // 撞「duplicate column name」）。
+    // 撞「duplicate column name」、重跑 0021 撞「duplicate column name: name」）。
     let db = dir.path().join("vault.db");
     let conn = rusqlite::Connection::open(&db).unwrap();
     conn.execute_batch(
         "UPDATE meta SET value='11' WHERE key='schema_version';
          ALTER TABLE hosts DROP COLUMN is_production;
          ALTER TABLE notifications DROP COLUMN delivery_failures;
+         ALTER TABLE credentials DROP COLUMN name;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;",
     )

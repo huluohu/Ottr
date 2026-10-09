@@ -331,6 +331,8 @@ impl SecretField {
 pub struct Credential {
     pub id: i64,
     pub kind: CredentialKind,
+    /// 用户可见的明文名称/标签（0021；非敏感不加密）。NULL = 未命名。
+    pub name: Option<String>,
     pub key_pub: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
@@ -342,6 +344,8 @@ pub struct Credential {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CredentialInput {
     pub kind: CredentialKind,
+    /// 名称/标签（明文可选；空 = UI 按 kind 兜底显示）。
+    pub name: Option<String>,
     pub secret: Option<String>,
     pub key_pub: Option<String>,
     pub passphrase: Option<String>,
@@ -353,6 +357,8 @@ pub struct CredentialInput {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct CredentialPatch {
     pub kind: Option<CredentialKind>,
+    /// Some(None) = 清空名称；None = 保留现值。
+    pub name: Option<Option<String>>,
     pub secret: Option<String>,
     pub key_pub: Option<String>,
     pub passphrase: Option<String>,
@@ -369,9 +375,9 @@ impl Credentials {
         let tx = conn.unchecked_transaction()?;
         // 密文列先置 NULL：AAD 需要 row id，行落地后回填（同一事务，无中间可见态）。
         tx.execute(
-            "INSERT INTO credentials (kind, key_pub, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?3)",
-            params![input.kind.as_str(), input.key_pub, ts],
+            "INSERT INTO credentials (kind, name, key_pub, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)",
+            params![input.kind.as_str(), input.name, input.key_pub, ts],
         )?;
         let id = tx.last_insert_rowid();
         seal_fields(
@@ -386,6 +392,7 @@ impl Credentials {
         Ok(Credential {
             id,
             kind: input.kind,
+            name: input.name.clone(),
             key_pub: input.key_pub.clone(),
             created_at: ts,
             updated_at: ts,
@@ -397,11 +404,16 @@ impl Credentials {
         let ts = now_ts();
         let conn = vault.connection();
         let tx = conn.unchecked_transaction()?;
-        let (existing_kind, existing_key_pub, created_at): (String, Option<String>, i64) = tx
+        let (existing_kind, existing_name, existing_key_pub, created_at): (
+            String,
+            Option<String>,
+            Option<String>,
+            i64,
+        ) = tx
             .query_row(
-                "SELECT kind, key_pub, created_at FROM credentials WHERE id = ?1",
+                "SELECT kind, name, key_pub, created_at FROM credentials WHERE id = ?1",
                 [id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()?
             .ok_or_else(|| VaultError::NotFound(format!("credential id={id}")))?;
@@ -415,6 +427,12 @@ impl Credentials {
             }
             None => existing_kind.parse()?,
         };
+        if let Some(name) = &patch.name {
+            tx.execute(
+                "UPDATE credentials SET name = ?1 WHERE id = ?2",
+                params![name, id],
+            )?;
+        }
         if let Some(key_pub) = &patch.key_pub {
             tx.execute(
                 "UPDATE credentials SET key_pub = ?1 WHERE id = ?2",
@@ -437,6 +455,7 @@ impl Credentials {
         Ok(Credential {
             id,
             kind,
+            name: patch.name.clone().unwrap_or(existing_name),
             key_pub: patch.key_pub.clone().or(existing_key_pub),
             created_at,
             updated_at: ts,
@@ -529,6 +548,7 @@ fn row_to_credential(row: &Row) -> rusqlite::Result<Credential> {
         kind: kind
             .parse()
             .map_err(|e: VaultError| conv_failure(row, "kind", e))?,
+        name: row.get("name")?,
         key_pub: row.get("key_pub")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,

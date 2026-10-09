@@ -179,21 +179,6 @@ npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前
 - **`release.yml`**：推送 `v*` 标签 → 校验版本一致性 → 三平台矩阵构建（Linux 上带测试夹具跑全量前端测试）→ 自动发布 GitHub Release
 - **`spike.yml`**：推送 main → `cargo fmt --check` + `cargo clippy -D warnings` + 三平台编译冒烟
 
-### 已知开发环境坑（macOS Apple Silicon）
-
-若 `npm run tauri dev` 链接期报 `unable to load libxcrun ... need 'x86_64'`：是 Node 跑在 Rosetta 下（`node -p process.arch` 显示 `x64`），npm 装了 x86_64 的 Tauri CLI 原生二进制。换 arm64 Node 并干净重装依赖：
-
-```bash
-nvm install 22 && nvm use 22 && node -p process.arch   # 应输出 arm64
-rm -rf node_modules && npm install
-```
-
-同理 `cargo` / `npx tauri build` 报 `libxcrun ... missing compatible architecture`：是走了 x86_64 的 cargo（如 `/usr/local/bin/cargo`）。把原生 cargo 前置即可：
-
-```bash
-PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/bin:$PATH" npx tauri build
-```
-
 ## 📄 许可与作者
 
 **Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以 [MIT](LICENSE-MIT) 协议开源——

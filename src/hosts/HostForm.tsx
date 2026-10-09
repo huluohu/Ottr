@@ -285,7 +285,7 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
                 <option value="">{t("hostForm.credentialNone")}</option>
                 {credentials.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {t("hostForm.credentialLabel", { id: c.id, kind: c.kind })}
+                    {c.name?.trim() || t("hostForm.credentialLabel", { id: c.id, kind: c.kind })}
                   </option>
                 ))}
                 {/* Phase 5 T1：选中即内联展开凭据子表单，保存主机时一并创建并绑定 */}

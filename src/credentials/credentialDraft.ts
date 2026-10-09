@@ -14,6 +14,8 @@ export const PASSWORD_LIKE_KINDS: CredentialKind[] = ["password", "ftp", "ftps"]
 
 /** 内联/对话框共用的「新建凭据」草稿值（明文只在内存，提交才 seal 落库）。 */
 export interface CredentialDraft {
+  /** 名称/标签（可选，明文非敏感；0021）。 */
+  name: string;
   kind: CredentialKind;
   secret: string;
   keyPub: string;
@@ -66,6 +68,7 @@ export function validateCredentialDraft(draft: CredentialDraft): string | null {
 export function credentialInputFrom(draft: CredentialDraft): CredentialInput {
   return {
     kind: draft.kind,
+    name: draft.name.trim() === "" ? null : draft.name.trim(),
     secret: draft.secret === "" ? null : draft.secret,
     key_pub: draft.keyPub.trim() === "" ? null : draft.keyPub.trim(),
     passphrase: draft.passphrase === "" ? null : draft.passphrase,
@@ -75,5 +78,5 @@ export function credentialInputFrom(draft: CredentialDraft): CredentialInput {
 
 /** 空草稿（内联展开的初始值：默认密码型）。 */
 export function emptyCredentialDraft(): CredentialDraft {
-  return { kind: "password", secret: "", keyPub: "", passphrase: "", totpSecret: "" };
+  return { name: "", kind: "password", secret: "", keyPub: "", passphrase: "", totpSecret: "" };
 }

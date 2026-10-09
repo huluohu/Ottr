@@ -35,6 +35,7 @@ const sampleHost: Host = {
 const sampleCredential: Credential = {
   id: 7,
   kind: "password",
+  name: null,
   key_pub: null,
   created_at: 1,
   updated_at: 2,

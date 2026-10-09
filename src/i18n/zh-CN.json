@@ -242,7 +242,9 @@
     "errTotpRequired": "TOTP Secret 不能为空",
     "errTotpBase32": "TOTP Secret 需为 base32 字符（A-Z、2-7，可含 = 填充）",
     "saveFailed": "保存失败：{{message}}",
-    "save": "保存凭据"
+    "save": "保存凭据",
+    "name": "名称（可选）",
+    "namePlaceholder": "如：生产网关密钥"
   },
   "keyManager": {
     "generateTitle": "生成密钥",

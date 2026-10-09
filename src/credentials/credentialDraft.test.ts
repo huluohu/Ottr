@@ -68,9 +68,9 @@ describe("credentialInputFrom（trim/null 语义）", () => {
       credentialInputFrom(
         draft({ kind: "key", secret: "  x  ", keyPub: "  ssh-ed25519 AAAA ", passphrase: " pp ", totpSecret: "" }),
       ),
-    ).toEqual({ kind: "key", secret: "  x  ", key_pub: "ssh-ed25519 AAAA", passphrase: " pp ", totp_secret: null });
+    ).toEqual({ kind: "key", name: null, secret: "  x  ", key_pub: "ssh-ed25519 AAAA", passphrase: " pp ", totp_secret: null });
     expect(
       credentialInputFrom(draft({ kind: "password", secret: " p " })),
-    ).toEqual({ kind: "password", secret: " p ", key_pub: null, passphrase: null, totp_secret: null });
+    ).toEqual({ kind: "password", name: null, secret: " p ", key_pub: null, passphrase: null, totp_secret: null });
   });
 });

@@ -111,6 +111,8 @@ export interface HostInput {
 export interface Credential {
   id: number;
   kind: CredentialKind;
+  /** 用户可见名称/标签（0021；未命名 = null，UI 按 kind 兜底）。 */
+  name: string | null;
   key_pub: string | null;
   created_at: number;
   updated_at: number;
@@ -119,6 +121,8 @@ export interface Credential {
 /** Rust `entities::CredentialInput`：secret/passphrase/totp_secret 为明文，存储层 seal。 */
 export interface CredentialInput {
   kind: CredentialKind;
+  /** 名称/标签（可选，明文非敏感）。 */
+  name?: string | null;
   secret: string | null;
   key_pub: string | null;
   passphrase: string | null;
@@ -128,6 +132,8 @@ export interface CredentialInput {
 /** Rust `entities::CredentialPatch`：null = 保留现值（未重输的密钥不重密封）。 */
 export interface CredentialPatch {
   kind: CredentialKind | null;
+  /** 名称/标签：null = 保留现值（同密钥字段口径）。 */
+  name: string | null;
   secret: string | null;
   key_pub: string | null;
   passphrase: string | null;

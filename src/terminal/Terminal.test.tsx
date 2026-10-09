@@ -104,7 +104,7 @@ afterEach(() => {
   resetTerminalThemeStoreForTest();
   useSessionStore.setState({ sessions: [], activeId: null, trees: {}, activePane: {}, searchSessionId: null });
   localStorage.clear();
-  saveTerminalSettings({ copyOnSelect: false, completionEnabled: true });
+  saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: null, fontSize: null });
 });
 
 describe("PasteConfirmDialog（粘贴确认弹层）", () => {
@@ -206,7 +206,7 @@ describe("SessionTerminal 右键唤起菜单（集成）", () => {
 
   it("设置读写：copyOnSelect 开关持久化", () => {
     expect(loadTerminalSettings().copyOnSelect).toBe(false);
-    saveTerminalSettings({ copyOnSelect: true, completionEnabled: true });
+    saveTerminalSettings({ copyOnSelect: true, completionEnabled: true, fontFamily: null, fontSize: null });
     expect(loadTerminalSettings().copyOnSelect).toBe(true);
   });
 });
@@ -236,7 +236,7 @@ describe("智能补全开关（Task 8 B8）", () => {
     expect(loaded.copyOnSelect).toBe(true);
     expect(loaded.completionEnabled).toBe(true);
     // 关闭后持久化
-    saveTerminalSettings({ copyOnSelect: true, completionEnabled: false });
+    saveTerminalSettings({ copyOnSelect: true, completionEnabled: false, fontFamily: null, fontSize: null });
     expect(loadTerminalSettings().completionEnabled).toBe(false);
   });
 

@@ -303,7 +303,7 @@ describe("HostForm 内联凭据创建（Phase 5 T1）", () => {
     fireEvent.click(screen.getByTestId("form-submit"));
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("credentials_create", {
-        input: { kind: "password", secret: "s3cret", key_pub: null, passphrase: null, totp_secret: null },
+        input: { name: null, kind: "password", secret: "s3cret", key_pub: null, passphrase: null, totp_secret: null },
       }),
     );
     // 主机载荷绑定新建凭据 id

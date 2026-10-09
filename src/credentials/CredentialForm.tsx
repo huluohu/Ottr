@@ -39,6 +39,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   const updateCredential = useVaultStore((s) => s.updateCredential);
 
   const [kind, setKind] = useState<CredentialKind>(credential?.kind ?? "password");
+  const [name, setName] = useState(credential?.name ?? "");
   const [secret, setSecret] = useState("");
   const [keyPub, setKeyPub] = useState(credential?.key_pub ?? "");
   const [passphrase, setPassphrase] = useState("");
@@ -60,7 +61,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   }
 
   function validate(): boolean {
-    const errKey = validateCredentialDraft({ kind, secret, keyPub, passphrase, totpSecret });
+    const errKey = validateCredentialDraft({ name: name.trim(), kind, secret, keyPub, passphrase, totpSecret });
     if (errKey == null) {
       setError(null);
       return true;
@@ -92,6 +93,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
         if (isCrossFamilyEdit()) {
           patch = {
             kind,
+            name: name.trim() === "" ? null : name.trim(),
             secret: PASSWORD_LIKE_KINDS.includes(kind) || kind === "key" ? secret : "",
             key_pub: kind === "key" ? keyPub.trim() : "",
             passphrase: kind === "key" ? passphrase : "",
@@ -100,6 +102,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
         } else {
           patch = {
             kind: kind === credential.kind ? null : kind,
+            name: name.trim() === "" ? null : name.trim(),
             secret: secret === "" ? null : secret,
             key_pub: keyPub.trim() === "" ? null : keyPub.trim(),
             passphrase: passphrase === "" ? null : passphrase,
@@ -108,7 +111,7 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
         }
         await updateCredential(credential.id, patch);
       } else {
-        await createCredential(credentialInputFrom({ kind, secret, keyPub, passphrase, totpSecret }));
+        await createCredential(credentialInputFrom({ name: name.trim(), kind, secret, keyPub, passphrase, totpSecret }));
       }
       onClose();
     } catch (err) {
@@ -146,6 +149,17 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
               </option>
             ))}
           </select>
+        </label>
+
+        <label>
+          <span>{t("credentialForm.name")}</span>
+          <input
+            type="text"
+            data-testid="credential-name"
+            value={name}
+            placeholder={t("credentialForm.namePlaceholder")}
+            onChange={(e) => setName(e.currentTarget.value)}
+          />
         </label>
 
         {PASSWORD_LIKE_KINDS.includes(kind) && (

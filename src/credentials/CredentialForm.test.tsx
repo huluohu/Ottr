@@ -17,6 +17,7 @@ const mockedInvoke = invoke as unknown as Mock;
 const existing: Credential = {
   id: 7,
   kind: "password",
+  name: null,
   key_pub: null,
   created_at: 1,
   updated_at: 1,
@@ -130,7 +131,7 @@ describe("CredentialForm", () => {
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
         id: 7,
-        patch: { kind: null, secret: null, key_pub: null, passphrase: null, totp_secret: null },
+        patch: { kind: null, name: null, secret: null, key_pub: null, passphrase: null, totp_secret: null },
       }),
     );
   });
@@ -173,7 +174,7 @@ describe("CredentialForm", () => {
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
         id: 7,
-        patch: { kind: "password", secret: "new-pass", key_pub: "", passphrase: "", totp_secret: "" },
+        patch: { kind: "password", name: null, secret: "new-pass", key_pub: "", passphrase: "", totp_secret: "" },
       }),
     );
   });
@@ -209,7 +210,7 @@ describe("CredentialForm", () => {
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
         id: 7,
-        patch: { kind: "totp", secret: "", key_pub: "", passphrase: "", totp_secret: "JBSWY3DPEHPK3PXP" },
+        patch: { kind: "totp", name: null, secret: "", key_pub: "", passphrase: "", totp_secret: "JBSWY3DPEHPK3PXP" },
       }),
     );
   });
@@ -226,7 +227,7 @@ describe("CredentialForm", () => {
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
         id: 7,
-        patch: { kind: "ftp", secret: null, key_pub: null, passphrase: null, totp_secret: null },
+        patch: { kind: "ftp", name: null, secret: null, key_pub: null, passphrase: null, totp_secret: null },
       }),
     );
   });

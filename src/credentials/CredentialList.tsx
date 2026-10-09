@@ -74,7 +74,10 @@ export function CredentialList() {
             return (
               <li key={c.id} className="cred-item" data-testid={`cred-item-${c.id}`}>
                 <span className={`cred-kind cred-kind-${c.kind}`}>{t(`credentials.kind_${c.kind}`)}</span>
-                <span className="cred-title">{t("credentials.itemTitle", { id: c.id })}</span>
+                {/* 名称优先（0021）：未命名回落「凭据 #id」 */}
+                <span className="cred-title">
+                  {c.name?.trim() || t("credentials.itemTitle", { id: c.id })}
+                </span>
                 {pubSnippet && (
                   <code className="cred-pub" title={t("credentials.fingerprintTitle", { fp: pubSnippet })}>
                     #{pubSnippet}

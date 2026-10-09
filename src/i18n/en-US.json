@@ -243,7 +243,9 @@
     "errTotpRequired": "TOTP secret is required",
     "errTotpBase32": "TOTP secret must be base32 (A-Z, 2-7, optional = padding)",
     "saveFailed": "Save failed: {{message}}",
-    "save": "Save credential"
+    "save": "Save credential",
+    "name": "Name (optional)",
+    "namePlaceholder": "e.g. prod gateway key"
   },
   "keyManager": {
     "generateTitle": "Generate key",

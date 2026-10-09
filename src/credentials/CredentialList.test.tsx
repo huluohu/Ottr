@@ -15,7 +15,7 @@ import type { Credential, Host } from "../vault/api";
 const mockedInvoke = invoke as unknown as Mock;
 
 function cred(id: number, kind: Credential["kind"], keyPub: string | null = null): Credential {
-  return { id, kind, key_pub: keyPub, created_at: 1, updated_at: 1 };
+  return { id, kind, name: null, key_pub: keyPub, created_at: 1, updated_at: 1 };
 }
 
 function host(id: number, credentialId: number | null): Host {

@@ -11,9 +11,12 @@ members = ["desktop", "crates/ottr-ssh", "crates/ottr-transfer", "crates/ottr-te
 # Moved here from desktop/Cargo.toml: cargo only honors profiles defined in the
 # workspace root. Values unchanged from the create-tauri-app template.
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+# 编译速度取舍（2026-10-09，用户要求加速单平台构建）：create-tauri-app 模板默认的
+# codegen-units=1 + fat lto 是「运行时极限/编译最慢」档——实测占单平台构建 6 分钟/共 7.5 分钟，
+# 对 I/O 密集的 SSH 客户端运行时收益 <1%。改 thin LTO + 默认并行代码生成（16 CGU）：
+# 发布编译约减半，二进制略增（体积数字以 v0.5.1 起实测为准，回填 README）。
 [profile.release]
-codegen-units = 1
-lto = true
+lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true

@@ -26,6 +26,7 @@
     "sectionMcp": "MCP",
     "panelError": "This settings panel failed to load; other sections are unaffected. Close and reopen settings to retry.",
     "sectionGeneral": "General",
+    "softwareUpdate": "Software updates",
     "sectionLanguage": "Language",
     "theme": "Theme",
     "themeLight": "Light",
@@ -1141,5 +1142,16 @@
       "cron_jobs": "Cron jobs",
       "settings": "Settings"
     }
+  },
+  "update": {
+    "currentVersion": "Current version",
+    "check": "Check for updates",
+    "checking": "Checking…",
+    "upToDate": "You're up to date.",
+    "available": "New version v{{version}} available",
+    "downloadInstall": "Download & install",
+    "downloading": "Downloading…",
+    "downloadingOf": "Downloading… {{received}}/{{total}} KB",
+    "installed": "Installed. Restart Ottr to apply."
   }
 }

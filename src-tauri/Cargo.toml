@@ -77,6 +77,9 @@ sha2 = { workspace = true }
 # russh 仅存于 [dev-dependencies]——进程内 mock sshd（russh::server::Handler）
 # 与真夹具集成测试直用。
 tauri-plugin-notification = "2"
+# 应用内检查更新（2026-10-09）：endpoints/pubkey 在 tauri.conf.json plugins.updater，
+# JS 侧 @tauri-apps/plugin-updater 的 check/downloadAndInstall 走本插件。
+tauri-plugin-updater = "2"
 # Phase 2 Task 4（B10 下半）：trzsz 传输的文件/目录选择（chooseSendFiles /
 # chooseSaveDirectory 走原生对话框；JS 侧 @tauri-apps/plugin-dialog）。
 tauri-plugin-dialog = "2"

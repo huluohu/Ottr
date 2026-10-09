@@ -22,6 +22,7 @@ import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
 import { useEscClose } from "../ui/useEscClose";
 import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
+import { UpdateCheck } from "../update/UpdateCheck";
 import { useVaultLockStore } from "./VaultLockStore";
 import { SyncSettings } from "../sync/SyncSettings";
 import { AlertSettings } from "../notify/AlertSettings";
@@ -847,6 +848,11 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
                 />
               </label>
               <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
+              {/* 应用内检查更新（2026-10-09）：latest.json 更新源 + 签名校验下载安装 */}
+              <div className="settings-row">
+                <span className="settings-label">{t("settings.softwareUpdate")}</span>
+              </div>
+              <UpdateCheck />
             </section>
           </div>
         </div>

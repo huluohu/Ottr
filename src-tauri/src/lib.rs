@@ -82,6 +82,9 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         // Phase 2 Task 4（B10 下半）：trzsz 传输文件/目录选择（原生对话框）。
         .plugin(tauri_plugin_dialog::init())
+        // 应用内检查更新（2026-10-09）：endpoints/pubkey 在 tauri.conf.json
+        // plugins.updater；设置页通用面板经 JS 插件 check/downloadAndInstall。
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         // T11（A7）：自动锁定计时状态（失焦起 N 分钟计时，重聚焦作废；
         // Arc 共享给窗口事件闭包与 spawn 的计时任务）。

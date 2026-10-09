@@ -153,7 +153,7 @@ NOTES_FILE=$(mktemp -t ottr-notes)
 
 # ---------------------------------------------------------------- 模式分派
 if [ "$MODE" = "notes" ]; then
-  step "生成发布说明（$PREV_TAG..$TAG）"
+  step "生成发布说明（${PREV_TAG}..${TAG}）"
   gen_notes "$PREV_TAG" "$TAG" "$NOTES_FILE"
   cat "$NOTES_FILE"
   echo

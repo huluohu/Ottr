@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- macOS 15+ 本地网络隐私：无此声明 = 静默禁止访问局域网（connect 报
+	     EHOSTUNREACH "No route to host"），且不弹授权窗（v0.2.0 实测）。
+	     Tauri 构建时把本文件合并进生成的 Info.plist（schema 注明自动查找
+	     配置同目录的 Info.plist）。 -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Ottr 需要访问本地网络，才能连接你的 SSH 主机（含局域网 IP）。</string>
+</dict>
+</plist>

@@ -60,7 +60,7 @@ import { terminalThemes } from "../theme/terminal-themes";
 import { findGalleryTheme } from "../theme/gallery";
 import { resetTerminalThemeStoreForTest, useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { applyTermTheme, ContextMenuView, PasteConfirmDialog, SessionTerminal, TerminalArea } from "./Terminal";
-import { buildContextMenu, loadTerminalSettings, saveTerminalSettings } from "./ContextMenu";
+import { buildContextMenu, DEFAULT_TERMINAL_FONT_FAMILY, loadTerminalSettings, saveTerminalSettings } from "./ContextMenu";
 import { completionHistory } from "../history/cache";
 import { useSessionStore, type Session } from "../session/SessionStore";
 import { Terminal as XTermClass } from "@xterm/xterm";
@@ -306,12 +306,12 @@ describe("终端字体/字号设置事件（设置页 → 活动终端即时应�
     expect(term.options.fontFamily).toBe("Menlo");
     expect(term.options.fontSize).toBe(20);
 
-    // 切回「系统默认」（null）→ 还原 xterm 缺省
+    // 切回「系统默认」（null）→ 还原默认字体栈（SF Mono 现代栈，非 xterm 缺省 Courier New）
     saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: null, fontSize: null });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("ottr://terminal-settings"));
     });
-    expect(term.options.fontFamily).toBeUndefined();
+    expect(term.options.fontFamily).toBe(DEFAULT_TERMINAL_FONT_FAMILY);
     expect(term.options.fontSize).toBe(13);
   });
 });

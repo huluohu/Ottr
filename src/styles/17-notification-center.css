@@ -26,9 +26,9 @@
   text-align: center;
 }
 .notify-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+  /* 定位交由 .notify-panel-floating（fixed，右上）——此处曾遗留铃铛时代的
+   * absolute + top:calc(100%+6px) 锚定，级联覆盖 fixed 后面板被压到视口外
+   * 底部（用户实测「通知中心点击无响应」根因），已删。 */
   width: 340px;
   max-width: 90vw;
   background: var(--surface-overlay);

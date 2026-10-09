@@ -165,8 +165,15 @@ jobs:
         run: |
           if [ "${{ matrix.os }}" = "macos-13" ]; then arch=x86_64; else arch=aarch64; fi
           dir=target/release/bundle/macos
-          [ -f "$dir/Ottr.app.tar.gz" ] && mv "$dir/Ottr.app.tar.gz" "$dir/Ottr_${arch}.app.tar.gz"
-          [ -f "$dir/Ottr.app.tar.gz.sig" ] && mv "$dir/Ottr.app.tar.gz.sig" "$dir/Ottr_${arch}.app.tar.gz.sig"
+          # 未签名时更新器产物不存在（Secrets 已删走普通包路径）——缺文件是
+          # 正常态，不能让 [ -f ] 的非零退出码fail掉整个步骤（v0.2.0 首跑
+          # 实测：&& 链尾的 -f 失败 = 步骤 exit 1）。
+          if [ -f "$dir/Ottr.app.tar.gz" ]; then
+            mv "$dir/Ottr.app.tar.gz" "$dir/Ottr_${arch}.app.tar.gz"
+          fi
+          if [ -f "$dir/Ottr.app.tar.gz.sig" ]; then
+            mv "$dir/Ottr.app.tar.gz.sig" "$dir/Ottr_${arch}.app.tar.gz.sig"
+          fi
 
       - name: Upload packages
         uses: actions/upload-artifact@v4

@@ -7,9 +7,10 @@
 # 相对 T16 旧版的关键差异（旧版从未真跑过——仓库彼时无 remote）：
 # - updater 签名条件化：配置了 TAURI_SIGNING_PRIVATE_KEY Secret 才叠加
 #   tauri.updater.conf.json overlay 签 updater 产物；未配置则出普通安装包。
-#   旧版强制签名——Secrets 缺失时打包阶段必红；且 updater endpoint 仍是占位
-#   （releases.ottr.invalid），签名产物暂非发布必需（真启用 updater 时把
-#   Secret 配上即自动恢复签名产物，本文件无需再改）。
+#   旧版强制签名——Secrets 缺失时打包阶段必红。2026-10-09 updater 真启用：
+#   公钥已进 tauri.conf.json、endpoints 指向本 Release 的 latest.json
+#   （下方 Generate updater manifest 步骤按签名产物有无自动产出）——
+#   Secret 配上即自动恢复签名产物 + 清单，本文件无需再改。
 # - Linux 构建任务起全套测试夹具（scripts/spike-sshd.sh + spike-dufs.sh：
 #   2222/15773 两容器，密钥 known_hosts 现场生成）跑全量前端测试——含
 #   trzsz/WebDAV/双设备同步的真夹具端到端，夹具不可达即红不 skip；
@@ -223,6 +224,13 @@ jobs:
           path: bundle
           merge-multiple: true
 
+      # 更新器清单（latest.json）：仅签名产物存在时产出（脚本纪律），挂到
+      # Release 资产里，endpoints 的 releases/latest/download/latest.json
+      # 即指向它。私钥 Secret 未配置的发布自然跳过。
+      - name: Generate updater manifest (latest.json)
+        run: |
+          python3 scripts/gen-updater-manifest.py bundle "${GITHUB_REF_NAME}" bundle/latest.json
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -240,3 +248,4 @@ jobs:
             bundle/**/*.deb
             bundle/**/*.rpm
             bundle/**/*.AppImage
+            bundle/latest.json

@@ -72,7 +72,11 @@ jobs:
           - name: macOS (Apple Silicon)
             os: macos-14
           - name: macOS (Intel)
-            os: macos-13
+            os: macos-14
+            # macos-13（Intel 金属机型）已被 GitHub 淘汰，job 永远等不到
+            # runner（v0.2.0 首跑实测卡 30 分钟）——Intel 包改在 Apple
+            # Silicon runner 上交叉编译（本地 x86_64 目标交叉 check 已验）。
+            rust_target: x86_64-apple-darwin
           - name: Windows
             os: windows-2022
           - name: Linux
@@ -90,6 +94,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -152,10 +158,17 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUST_TARGET: ${{ matrix.rust_target }}
         run: |
           # TAURI_BUILD_ARGS 有意按空白分词（空 = 无参数；加引号会传空串当参数）
           # shellcheck disable=SC2086
-          npx tauri build $TAURI_BUILD_ARGS
+          npx tauri build $TAURI_BUILD_ARGS ${RUST_TARGET:+--target "$RUST_TARGET"}
+          # 交叉构建的 bundle 落在 target/<triple>/ 下——归位到标准路径供
+          # 统一上传通配（原生构建无此目录，跳过）。
+          if [ -n "$RUST_TARGET" ]; then
+            mkdir -p target/release/bundle
+            cp -R "target/$RUST_TARGET/release/bundle/." target/release/bundle/
+          fi
 
       # 双 mac 矩阵后 updater 产物会撞名（Ottr.app.tar.gz / .sig 不含架构），
       # merge-multiple 下载时后者覆盖前者——上传前按架构改名。
@@ -163,7 +176,7 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" = "macos-13" ]; then arch=x86_64; else arch=aarch64; fi
+          if [ -n "${{ matrix.rust_target }}" ]; then arch=x86_64; else arch=aarch64; fi
           dir=target/release/bundle/macos
           # 未签名时更新器产物不存在（Secrets 已删走普通包路径）——缺文件是
           # 正常态，不能让 [ -f ] 的非零退出码fail掉整个步骤（v0.2.0 首跑

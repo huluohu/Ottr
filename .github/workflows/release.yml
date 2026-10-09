@@ -251,24 +251,13 @@ jobs:
         run: |
           python3 scripts/gen-updater-manifest.py bundle "${GITHUB_REF_NAME}" bundle/latest.json
 
-      # 变更日志：上一枚 tag → 本 tag 的提交主题，逐条列出作为 Release 正文
-      # （直接 push 的工作流没有 PR，generate_release_notes 只有 changelog
-      # 链接——用户要求 Release 页必须显示本次更新内容）。分类小标题 +
-      # 跳过版本号提交本身。首个 tag（无上一枚）退化为全量日志。
+      # 变更日志：面向用户的更新内容（2026-10-10 用户裁定：只写正经的功能与
+      # 修复，不写开发过程）——gen-release-notes.py 只收录 feat/fix，剥离
+      # 前缀/长解释/内部括注，按 ✨ 新功能 / 🐞 问题修复 分节。generate_release_
+      # notes 仍开启（叠加 changelog 链接）。
       - name: Generate changelog body
         run: |
-          PREV=$(git describe --tags --abbrev=0 "refs/tags/${GITHUB_REF_NAME}^" 2>/dev/null || true)
-          RANGE="${PREV:+${PREV}..}${GITHUB_REF_NAME}"
-          {
-            echo "## 🚀 本次更新"
-            echo
-            git log --pretty=format:"- %s" "$RANGE" \
-              | grep -v "^- chore(release): " || true
-            echo
-            echo
-            PREV_TAG="${PREV:-}"
-            [ -n "$PREV_TAG" ] && echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${GITHUB_REF_NAME}"
-          } > release-body.md
+          python3 scripts/gen-release-notes.py "${GITHUB_REF_NAME}" release-body.md
           echo "---- release-body.md ----"
           cat release-body.md
 

@@ -171,7 +171,10 @@
   user-select: none;
 }
 .file-row[data-selected="true"] {
-  background: var(--surface-raised);
+  /* 选中态 = accent 染色 + 左缘指示条（surface-raised 在 OLED 纯黑上几乎
+   * 不可见，用户实测；accent 染色天然随七主题适配） */
+  background: color-mix(in srgb, var(--color-accent) 24%, var(--color-bg));
+  box-shadow: inset 2px 0 0 var(--color-accent-border);
 }
 .file-row:hover {
   background: color-mix(in srgb, var(--surface-raised) 60%, transparent);

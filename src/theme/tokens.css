@@ -108,6 +108,10 @@
   --color-on-danger: var(--ottr-ink-900);
   --color-on-accent: var(--ottr-ink-900);
   --color-surface: #0d0f12; /* 简报钉死：纯黑上的控件面（非 color-mix，防纯黑露灰） */
+  /* 交互面（hover/选中底/浮层）在纯黑上必须可辨：默认派生 fg6%≈#0d0d0e 与
+   * 纯黑底几乎不可分（用户实测文件选中行看不出来），OLED 档单独提亮。 */
+  --surface-raised: #16191e;
+  --surface-overlay: #1d2127;
   --color-accent-border: var(--color-accent); /* vs 四面 14.20/13.05/12.11/12.97 */
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 6.14/5.65/5.24/5.61 */
 }

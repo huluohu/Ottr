@@ -65,6 +65,7 @@ import { GhostController } from "./completion";
 import { completionHistory } from "../history/cache";
 import {
   buildContextMenu,
+  DEFAULT_TERMINAL_FONT_FAMILY,
   loadTerminalSettings,
   saveTerminalSettings,
   type ContextMenuItem,
@@ -191,7 +192,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       const term = termRef.current;
       if (!term) return;
       const s = loadTerminalSettings();
-      term.options.fontFamily = s.fontFamily ?? undefined;
+      term.options.fontFamily = s.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY;
       term.options.fontSize = s.fontSize ?? 13;
       try {
         fitRef.current?.fit();
@@ -213,7 +214,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const term = new XTerm({
       cursorBlink: true,
       fontSize: termSettings.fontSize ?? 13,
-      fontFamily: termSettings.fontFamily ?? undefined,
+      fontFamily: termSettings.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY,
       allowProposedApi: true,
     });
     const fit = new FitAddon();

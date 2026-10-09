@@ -66,6 +66,12 @@ export function buildContextMenu(ctx: MenuContext, t: TFunction): ContextMenuIte
 
 const SETTINGS_KEY = "ottr.settings.terminal";
 
+/** 终端默认字体栈（用户未选字体时使用；2026-10-10 用户反馈 xterm 缺省
+ * Courier New 太丑）：macOS 落 SF Mono / ui-monospace，Win 落 Consolas，
+ * Linux 落 Cascadia/JetBrains/Liberation，末位兜底泛 monospace。 */
+export const DEFAULT_TERMINAL_FONT_FAMILY =
+  'ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", "Courier New", monospace';
+
 export interface TerminalSettings {
   copyOnSelect: boolean;
   /** 智能补全（Task 8 B8）：默认开（简报裁定 completion.enabled 默认 true）。 */

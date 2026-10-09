@@ -116,7 +116,9 @@
  * 非活动标签/已回收 pane：data-active=false → 隐藏但常驻（xterm 缓冲不丢） */
 .term-pane {
   position: absolute;
-  padding: 2px;
+  /* 内边距 = 文字与窗框的呼吸空隙（2026-10-09 用户反馈文字贴边）；fit 随
+     内容盒自适应，行列数略减属预期。 */
+  padding: 8px 12px;
   visibility: hidden;
   overflow: hidden;
 }
@@ -127,16 +129,9 @@
   outline: 1px solid color-mix(in srgb, var(--color-accent-border) 85%, transparent);
   outline-offset: -1px;
 }
-/* 生产环境主机 pane（B11）：常驻红框（聚焦红实线、非聚焦红半透明——所有
-   会话 DOM 常驻，切标签也保持可见的防呆信号） */
-.term-pane[data-production="true"] {
-  outline: 2px solid color-mix(in srgb, var(--color-danger) 55%, transparent);
-  outline-offset: -2px;
-}
-.term-pane[data-production="true"][data-focused="true"] {
-  outline: 2px solid var(--color-danger);
-  outline-offset: -2px;
-}
+/* 生产环境标识（B11）：常驻红框已按用户裁定移除（2026-10-09「太违和」）——
+ * 生产标识保留在标签页 PROD 徽标；data-production 属性仍输出（测试钉住），
+ * 后续如需视觉信号应走徽标/标题栏而非窗框。 */
 .session-term {
   width: 100%;
   height: 100%;

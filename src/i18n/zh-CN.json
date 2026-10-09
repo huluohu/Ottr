@@ -117,6 +117,7 @@
     "groupDuplicate": "同名分组已存在",
     "groupCreateFailed": "创建失败：{{message}}",
     "ungrouped": "未分组",
+    "addToGroup": "添加主机到该分组",
     "tagsFilter": "标签",
     "allTags": "全部",
     "empty": "还没有主机。点击「新建主机」，或导入 ~/.ssh/config。",

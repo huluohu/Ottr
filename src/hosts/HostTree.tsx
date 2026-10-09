@@ -232,7 +232,7 @@ export function HostTree({
         if (filtering && groupHosts.length === 0) return null;
         return (
           <section key={group.id} className="tree-group" data-testid={`group-${group.name}`}>
-            <GroupHead name={group.name} />
+            <GroupHead name={group.name} onAdd={() => onAdd(group.id)} />
             <HostItems
               hosts={groupHosts}
               selectedId={selectedId}
@@ -405,24 +405,45 @@ function HostItems({
   );
 }
 
-/** 分组头（区块锚点）：文件夹描边图标 + 分组名，弱化色不抢行内容的戏。 */
-function GroupHead({ name }: { name: string }) {
+/** 分组头（区块锚点）：文件夹描边图标 + 分组名，弱化色不抢行内容的戏；
+ * onAdd 给出时渲染悬停显现的「＋添加主机」（2026-10-09 用户要求：分组下
+ * 直接加主机，分组自动预填）。按钮是 h3 的兄弟节点——heading 可访问名
+ * 保持纯组名（getByRole("heading", { name }) 测试口径）。 */
+function GroupHead({ name, onAdd }: { name: string; onAdd?: () => void }) {
+  const { t } = useTranslation();
   return (
-    <h3 className="tree-group-head">
-      <svg
-        className="tree-group-icon"
-        width="14"
-        height="14"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M1.75 4.4c0-.63.5-1.15 1.13-1.15h3.05c.32 0 .63.14.85.38l1 1.1h5.34c.63 0 1.13.51 1.13 1.14v5.73c0 .63-.5 1.15-1.13 1.15H2.88c-.63 0-1.13-.52-1.13-1.15V4.4Z" />
-      </svg>
-      <span>{name}</span>
-    </h3>
+    <div className="tree-group-head">
+      <h3 className="tree-group-title">
+        <svg
+          className="tree-group-icon"
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M1.75 4.4c0-.63.5-1.15 1.13-1.15h3.05c.32 0 .63.14.85.38l1 1.1h5.34c.63 0 1.13.51 1.13 1.14v5.73c0 .63-.5 1.15-1.13 1.15H2.88c-.63 0-1.13-.52-1.13-1.15V4.4Z" />
+        </svg>
+        <span>{name}</span>
+      </h3>
+      {onAdd && (
+        <button
+          type="button"
+          className="tree-group-add icon-btn"
+          data-testid={`group-add-${name}`}
+          title={t("hostTree.addToGroup")}
+          aria-label={t("hostTree.addToGroup")}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAdd();
+          }}
+        >
+          ＋
+        </button>
+      )}
+    </div>
   );
 }

@@ -51,8 +51,28 @@
   font-weight: 500;
   color: var(--fg-muted);
 }
+.tree-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
 .tree-group-icon {
   flex: none;
+}
+/* 分组头「＋添加主机」：悬停/键盘聚焦显现（同主机行操作按钮口径）；
+ * margin-left:auto 推到行尾，不挤分组名。 */
+.tree-group-add {
+  margin-left: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.tree-group-head:hover .tree-group-add,
+.tree-group-add:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 .tree-hosts {
   list-style: none;

@@ -117,6 +117,7 @@
     "groupDuplicate": "A group with this name already exists",
     "groupCreateFailed": "Create failed: {{message}}",
     "ungrouped": "Ungrouped",
+    "addToGroup": "Add host to this group",
     "tagsFilter": "Tags",
     "allTags": "All",
     "empty": "No hosts yet. Click \"New Host\", or import ~/.ssh/config.",

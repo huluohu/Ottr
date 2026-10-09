@@ -20,8 +20,12 @@ import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
+import { useEscClose } from "../ui/useEscClose";
+import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
 import { useVaultLockStore } from "./VaultLockStore";
 import { SyncSettings } from "../sync/SyncSettings";
+import { AlertSettings } from "../notify/AlertSettings";
+import { McpSettings } from "./McpSettings";
 
 export interface SecuritySettingsProps {
   open: boolean;
@@ -58,10 +62,12 @@ const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 // 行为开关混进外观节）。未激活面板 hidden 隐藏但**保持挂载**——控件状态、
 // 升级/降级向导进度与既有测试断言都不因切换丢面；DOM 顺序 = 导航顺序
 // （Tab 序一致）。面板内滚动替代整窗滚动（样式见 16-lock-security.css）。
-type SettingsPane = "security" | "sync" | "appearance" | "general";
+type SettingsPane = "security" | "sync" | "alerts" | "mcp" | "appearance" | "general";
 const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
   { id: "security", labelKey: "settings.sectionSecurity" },
   { id: "sync", labelKey: "settings.sectionSync" },
+  { id: "alerts", labelKey: "settings.sectionAlerts" },
+  { id: "mcp", labelKey: "settings.sectionMcp" },
   { id: "appearance", labelKey: "settings.sectionAppearance" },
   { id: "general", labelKey: "settings.sectionGeneral" },
 ];
@@ -115,20 +121,14 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   // 分区导航当前面板（默认安全——对话框的历史主区）。
   const [pane, setPane] = useState<SettingsPane>("security");
   // 关闭交互统一（2026-10-08）：Esc = 右上 X 等价；sudo 确认子层打开时先收
-  // 子层（Esc 逐层退出，不跨层关闭整个面板）。
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (sudoConfirm) {
-        setSudoConfirm(false);
-        return;
-      }
-      onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose, sudoConfirm]);
+  // 子层（Esc 逐层退出，不跨层关闭整个面板）——consumeSubLayer 口径。
+  useEscClose(open, onClose, () => {
+    if (sudoConfirm) {
+      setSudoConfirm(false);
+      return true;
+    }
+    return false;
+  });
   // B2 主题生态（Phase 2 Task 9）：配色导入的本地反馈面（选择/清单在全局 store）。
   const themeFileRef = useRef<HTMLInputElement | null>(null);
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
@@ -482,7 +482,7 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
                   onChange={(e) => setConfirm(e.currentTarget.value)}
                 />
               </label>
-              <p className="settings-hint">{t("security.wizard.intro")}</p>
+              <p className="settings-hint">{t("security.wizard.intro", { min: MIN_MASTER_PASSWORD })}</p>
               {wizardError && (
                 <p className="form-error" data-testid="wizard-error">
                   {wizardError}
@@ -661,6 +661,30 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               data-testid="sync-pane"
             >
               <SyncSettings onOpenSync={() => onOpenSyncDialog?.()} />
+            </div>
+
+            {/* --- 告警（B9 通知渠道 + 告警规则；自工具 dock 双入口归位设置）--- */}
+            <div
+              role="tabpanel"
+              aria-label={t("settings.sectionAlerts")}
+              hidden={pane !== "alerts"}
+              data-testid="alerts-pane"
+            >
+              <PaneErrorBoundary label="alerts" fallbackText={t("settings.panelError")}>
+                <AlertSettings open onClose={() => {}} />
+              </PaneErrorBoundary>
+            </div>
+
+            {/* --- MCP（宿主接入配置；同上双入口）--- */}
+            <div
+              role="tabpanel"
+              aria-label={t("settings.sectionMcp")}
+              hidden={pane !== "mcp"}
+              data-testid="mcp-pane"
+            >
+              <PaneErrorBoundary label="mcp" fallbackText={t("settings.panelError")}>
+                <McpSettings open onClose={() => {}} />
+              </PaneErrorBoundary>
             </div>
 
             {/* --- 外观（T2 键面沿用；persist 已迁 vault settings）--- */}

@@ -22,6 +22,9 @@
   "settings": {
     "title": "设置",
     "sectionAppearance": "外观",
+    "sectionAlerts": "告警",
+    "sectionMcp": "MCP",
+    "panelError": "该设置面板加载失败，其余分区不受影响；可关闭设置后重试。",
     "sectionGeneral": "通用",
     "sectionLanguage": "语言",
     "theme": "主题",

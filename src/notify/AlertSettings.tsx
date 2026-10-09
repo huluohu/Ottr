@@ -115,12 +115,12 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
     }
     void (async () => {
       try {
-        setChannels(await vaultApi.notifyChannels.list());
+        setChannels((await vaultApi.notifyChannels.list()) ?? []);
       } catch {
         // 非 Tauri / 锁定：空列表（改动时报错）
       }
       try {
-        setRules(await vaultApi.alertRules.list());
+        setRules((await vaultApi.alertRules.list()) ?? []);
       } catch {
         // 同上
       }
@@ -130,12 +130,12 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
   if (!open) return null;
 
   async function reloadChannels(): Promise<void> {
-    setChannels(await vaultApi.notifyChannels.list());
+    setChannels((await vaultApi.notifyChannels.list()) ?? []);
     await remountChannels();
   }
 
   async function reloadRules(): Promise<void> {
-    setRules(await vaultApi.alertRules.list());
+    setRules((await vaultApi.alertRules.list()) ?? []);
     await engine.reload();
   }
 

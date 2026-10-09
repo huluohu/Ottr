@@ -22,6 +22,9 @@
   "settings": {
     "title": "Settings",
     "sectionAppearance": "Appearance",
+    "sectionAlerts": "Alerts",
+    "sectionMcp": "MCP",
+    "panelError": "This settings panel failed to load; other sections are unaffected. Close and reopen settings to retry.",
     "sectionGeneral": "General",
     "sectionLanguage": "Language",
     "theme": "Theme",

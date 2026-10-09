@@ -62,6 +62,10 @@ command -v python3 >/dev/null || die "python3 不可用"
 cd "$(git rev-parse --show-toplevel)"
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 
+# 可选环境变量默认值（set -u 下引用前必须已定义；v0.5.0 首跑实测踩坑）
+GATE_TIMEOUT="${GATE_TIMEOUT:-1800}"
+RELEASE_TIMEOUT="${RELEASE_TIMEOUT:-2700}"
+
 if [ "$MODE" = "notes" ]; then
   [ -n "$VERSION" ] || { usage; exit 2; }
   TAG="$VERSION"
@@ -98,7 +102,10 @@ bump_versions() {
   local old new f
   old=$(python3 -c "import json;print(json.load(open('desktop/tauri.conf.json'))['version'])")
   new="$VERSION"
-  [ "$old" != "$new" ] || die "tauri.conf.json 已是 $new——确认版本号是否要变更"
+  if [ "$old" = "$new" ]; then
+    echo "  版本号已是 $new（断点重跑），跳过对齐"
+    return 0
+  fi
   for f in desktop/tauri.conf.json package.json; do
     python3 -c "
 import sys
@@ -198,7 +205,11 @@ fi
 
 step "提交版本号并推送 main"
 git add desktop/tauri.conf.json package.json desktop/Cargo.toml package-lock.json Cargo.lock
-git commit -m "chore(release): v$VERSION 版本号三处对齐（tauri.conf/package.json/Cargo.toml）+ 锁文件同步"
+if git diff --cached --quiet; then
+  echo "  版本号无变化，跳过提交（断点重跑）"
+else
+  git commit -m "chore(release): v$VERSION 版本号三处对齐（tauri.conf/package.json/Cargo.toml）+ 锁文件同步"
+fi
 git push origin main
 SHA=$(git rev-parse HEAD)
 

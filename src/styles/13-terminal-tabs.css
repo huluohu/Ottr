@@ -146,6 +146,22 @@
   height: 100%;
 }
 
+/* 终端视口滚动条主题化（2026-10-09 用户反馈右侧双条之一）：原生白条与
+   插件侧栏竖条并排像两条滚动条——收窄为半透明圆角细条。 */
+.session-term .xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+.session-term .xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.session-term .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-fg) 22%, transparent);
+  border-radius: 999px;
+}
+.session-term .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-fg) 38%, transparent);
+}
+
 /* 编码检测提示条（Task 9，A9）：detect_hint 命中后浮于终端顶部，不挤布局。
  * 颜色只引用 --color-* / --border-* / --surface-* / --fg-* 语义层（主题纪律；
  * 注：星号后补空格——块注释内出现星号斜杠会提前终结注释，曾炸掉生产构建）。 */

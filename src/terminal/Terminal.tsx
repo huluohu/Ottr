@@ -132,6 +132,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const termCustom = useTerminalThemeStore((s) => s.custom);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<XTerm | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
   const trzszRef = useRef<TrzszController | null>(null);
   const ghostRef = useRef<GhostController | null>(null);
   const prevStatus = useRef<string | null>(null);
@@ -192,6 +193,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // URL 检测（A8）：WebLinksAddon 默认 handler（新窗打开链接）
     term.loadAddon(new WebLinksAddon());
     termRef.current = term;
+    fitRef.current = fit;
     const search = new SearchController(term);
     if (hostRef.current) {
       try {
@@ -437,22 +439,52 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     });
 
     // 可见尺寸变化 → fit（切标签/拖分隔条/窗口缩放）。0 尺寸（隐藏）跳过。
-    const ro = new ResizeObserver(() => {
+    let degenerateTries = 0;
+    let observed = false;
+    const ro = new ResizeObserver(() => refitNow());
+    const ensureObserved = () => {
+      if (!observed && hostRef.current) {
+        ro.observe(hostRef.current);
+        observed = true;
+      }
+    };
+    const refitNow = () => {
       const el = hostRef.current;
       if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+      ensureObserved();
       try {
         fit.fit();
       } catch {
-        // xterm 对退化尺寸抛错可忽略
+        return; // 退化尺寸抛错：留待延迟/焦点重测
       }
       trzsz.setTerminalColumns(term.cols); // 进度条按列宽重绘
       // 缺陷 34：fit 后把真实尺寸下发给 PTY（2×1 退化 attach 尺寸的修复面；
       // 同尺寸去重在 SessionStore.resizeSession 内）。
       resizeSession(sessionId, term.cols, term.rows);
-    });
-    if (hostRef.current) ro.observe(hostRef.current);
+      // 退化尺寸（<4 列）而容器其实有宽度 → 布局/字体未稳，rAF 重测（≤8 次）：
+      // 会话恢复后首测 1 列竖排（用户实测）即此类一次性退化且 RO 此后不再触发。
+      if (term.cols < 4 && el.clientWidth > 40 && degenerateTries < 8) {
+        degenerateTries += 1;
+        requestAnimationFrame(() => refitNow());
+      }
+    };
+    ensureObserved();
+
+    // 布局迟到兜底（2026-10-09 用户实测：会话恢复后终端列宽塌成 1 列竖排）：
+    // 首测退化（容器尚无宽度/字体未量完）后 RO 可能因容器尺寸不再变化而
+    // 永不再触发——挂焦点/可见性/延迟重测，直到拿到非退化尺寸。
+    const late = [250, 900, 2000].map((ms) => setTimeout(refitNow, ms));
+    const onWinFocus = () => refitNow();
+    const onVis = () => {
+      if (document.visibilityState === "visible") refitNow();
+    };
+    window.addEventListener("focus", onWinFocus);
+    document.addEventListener("visibilitychange", onVis);
 
     return () => {
+      late.forEach((t) => clearTimeout(t));
+      window.removeEventListener("focus", onWinFocus);
+      document.removeEventListener("visibilitychange", onVis);
       ro.disconnect();
       onSelectionChange.dispose();
       onData.dispose();

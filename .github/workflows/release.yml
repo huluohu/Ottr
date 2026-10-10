@@ -65,23 +65,30 @@ jobs:
     name: Build ${{ matrix.name }}
     needs: verify
     if: ${{ !cancelled() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
-    runs-on: ${{ matrix.os }}
+    # Linux 腿走 org 自托管共享 runner（workspace 持久化，target 常驻），
+    # mac/win 保持 GitHub 托管；timeout 防 runner 离线时 job 无限排队。
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS (Apple Silicon)
             os: macos-14
+            runner: macos-14
           - name: macOS (Intel)
             os: macos-14
             # macos-13（Intel 金属机型）已被 GitHub 淘汰，job 永远等不到
             # runner（v0.2.0 首跑实测卡 30 分钟）——Intel 包改在 Apple
             # Silicon runner 上交叉编译（本地 x86_64 目标交叉 check 已验）。
             rust_target: x86_64-apple-darwin
+            runner: macos-14
           - name: Windows
             os: windows-2022
+            runner: windows-2022
           - name: Linux
             os: ubuntu-24.04
+            runner: [self-hosted, Linux, X64]
 
     steps:
       - name: Check out repository

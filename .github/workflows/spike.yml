@@ -29,7 +29,10 @@ jobs:
   # Task 0（Phase 2）fmt 门：rustfmt.toml 政策生效，`cargo fmt --all --check`
   # 失败即红（终审 BL-003：格式漂移不进主干）。与 build 解耦，秒级失败。
   fmt:
-    runs-on: ubuntu-latest
+    # 自托管共享 runner（lhe-ai org，ubuntu-x86-01/02）；workspace 持久化 =
+    # target 目录常驻，省 rust-cache 冷恢复。离线时靠 timeout-minutes 兜底。
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -45,7 +48,8 @@ jobs:
   # `-D warnings` 失败即红。与 fmt 同级解耦（不进三端构建矩阵——
   # lint 单平台跑一次即可，警告平台差异此前未观测到）。
   clippy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
@@ -80,7 +84,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest, ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
+    # Linux 腿走自托管（表达式按矩阵分流），mac/win 保持 GitHub 托管
+    runs-on: ${{ matrix.os == 'ubuntu-24.04' && fromJSON('["self-hosted", "Linux", "X64"]') || matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 

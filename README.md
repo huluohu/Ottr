@@ -10,7 +10,7 @@
 
 **开源 · 免费 · 三端（macOS / Windows / Linux）· 数据主权 100% 归你**
 
-[![GitHub](https://img.shields.io/badge/GitHub-huluohu%2FOttr-0F172A)](https://github.com/huluohu/Ottr)
+[![GitHub](https://img.shields.io/badge/GitHub-lhe--ai%2FOttr-0F172A)](https://github.com/lhe-ai/Ottr)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
 [![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
 [![Tests](https://img.shields.io/badge/tests-1790%2B%20green-5EEAD4)](#-测试)
@@ -109,7 +109,7 @@
 
 ## 📦 下载与安装
 
-前往 [**Releases**](https://github.com/huluohu/Ottr/releases) 下载对应平台安装包（推送版本标签后由 CI 自动构建发布）：
+前往 [**Releases**](https://github.com/lhe-ai/Ottr/releases) 下载对应平台安装包（推送版本标签后由 CI 自动构建发布）：
 
 | 平台 | 格式 |
 |---|---|
@@ -240,7 +240,7 @@ npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前
 ## 📄 许可与作者
 
 **Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以 [MIT](LICENSE-MIT) 协议开源——
-欢迎 Issue 反馈与 PR；主仓库：[github.com/huluohu/Ottr](https://github.com/huluohu/Ottr)。
+欢迎 Issue 反馈与 PR；主仓库：[github.com/lhe-ai/Ottr](https://github.com/lhe-ai/Ottr)。
 
 <div align="center">
 

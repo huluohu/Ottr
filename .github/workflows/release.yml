@@ -105,11 +105,6 @@ jobs:
           # 档位切换/大依赖变更后的一次性成本只付一次。
           cache-on-failure: true
 
-      # 对象级编译缓存（2026-10-10 第二杠杆）：rust-cache 的 target 目录方案在
-      # 「双工作流隔离 + 频繁小改动」下命中不可靠（v0.5.3 暖门实测 9m59s）——
-      # sccache 按内容哈希缓存目标文件，跨 run 稳定命中。两套并存互补。
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Install Linux system dependencies
         if: matrix.name == 'Linux'
@@ -170,8 +165,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           RUST_TARGET: ${{ matrix.rust_target }}
-          RUSTC_WRAPPER: sccache
-          SCCACHE_GHA_ENABLED: "true"
         run: |
           # TAURI_BUILD_ARGS 有意按空白分词（空 = 无参数；加引号会传空串当参数）
           # shellcheck disable=SC2086

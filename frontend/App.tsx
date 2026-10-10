@@ -12,6 +12,8 @@ import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "./app/Sidebar";
 import { Toaster } from "./ui/Toaster";
 import { showToast } from "./ui/toastStore";
+import { useUpdateStore } from "./update/updateStore";
+import { useTranslation } from "react-i18next";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
 import { SyncDialog } from "./sync/SyncDialog";
@@ -117,6 +119,12 @@ function HomeLayout() {
   // Phase 2 B1（Task 6）：⌘J NL→命令输入条（registry ai.nl2cmd；全局直呼，
   // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
   const [nlOpen, setNlOpen] = useState(false);
+  // 检查更新（四端入口）：就地检查 + toast 反馈，不打开设置页（用户裁定）。
+  const updatePhase = useUpdateStore((s) => s.phase);
+  const updateCheckFn = useUpdateStore((s) => s.checkForUpdate);
+  const updateInstallFn = useUpdateStore((s) => s.downloadAndInstall);
+  const updateLoadCurrent = useUpdateStore((s) => s.loadCurrent);
+  const { t: tUpdate } = useTranslation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 托盘状态行会话计数同步（menu_set_tray_status；非 Tauri 环境 no-op）。
   const sessionCount = useSessionStore((s) => s.sessions.length);
@@ -124,6 +132,9 @@ function HomeLayout() {
     if (!IS_TAURI) return;
     invoke("menu_set_tray_status", { count: sessionCount }).catch(() => {});
   }, [sessionCount]);
+  useEffect(() => {
+    updateLoadCurrent();
+  }, [updateLoadCurrent]);
   // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认安全区。
   const [settingsPane, setSettingsPane] = useState<null | import("./security/SecuritySettings").SettingsPane>(null);
   const openSettingsToPane = (pane: "ai" | "about") => {
@@ -308,9 +319,34 @@ function HomeLayout() {
           setSettingsPane(null);
           setSettingsOpen(true);
           break;
-        case "update.check":
-          openAboutUpdate();
+        case "update.check": {
+          if (updatePhase.kind === "checking" || updatePhase.kind === "downloading") break;
+          void updateCheckFn();
+          showToast(tUpdate("update.checking"), "info");
+          const unsubPhase = useUpdateStore.subscribe((st) => {
+            const k = st.phase.kind;
+            if (k === "uptodate") {
+              showToast(tUpdate("update.upToDate"), "info");
+              unsubPhase();
+            } else if (k === "available") {
+              showToast(
+                tUpdate("update.available", { version: st.phase.version }),
+                "info",
+              );
+              showToast(tUpdate("update.downloading"), "info");
+              void updateInstallFn();
+            } else if (k === "downloading") {
+              unsubPhase(); // 下载中的进度不再逐条 toast（安静下载）
+            } else if (k === "installed") {
+              showToast(tUpdate("update.installed"), "info");
+              unsubPhase();
+            } else if (k === "error") {
+              showToast(st.phase.message, "error");
+              unsubPhase();
+            }
+          });
           break;
+        }
         case "theme.toggle":
           setMode(themeMode === "light" ? "dark" : themeMode === "dark" ? "system" : "light");
           break;

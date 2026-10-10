@@ -195,6 +195,16 @@ describe("键盘导航", () => {
     expect(props.onAction).toHaveBeenCalledWith("settings.open");
   });
 
+  it("Esc 焦点不在输入框也能关（全局栈）：焦点在列表项上按 Esc", () => {
+    const { props } = renderPalette();
+    // 模拟焦点漂移：焦点在列表项按钮上（不经输入框）
+    const firstItem = document.querySelector<HTMLButtonElement>(".palette-item");
+    firstItem?.focus();
+    expect(document.activeElement).toBe(firstItem);
+    fireEvent.keyDown(firstItem!, { key: "Escape" });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("Escape / 点击遮罩关闭", () => {
     const { props } = renderPalette();
     fireEvent.keyDown(screen.getByTestId("palette-input"), { key: "Escape" });

@@ -11,6 +11,7 @@
 //   aborted → 已取消。重试 = 原输入再发（input 不因提交清空）。
 import { useEffect, useRef } from "react";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
+import { useEscClose } from "../ui/useEscClose";
 import { useTranslation } from "react-i18next";
 import { useSessionStore } from "../session/SessionStore";
 import { lastCwd } from "../terminal/CwdTracker";
@@ -69,6 +70,8 @@ export function NLCommandPanel({
 
   // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
   const mount = useDelayedUnmount(open);
+  // Esc 关闭走全局栈（语义 = handleClose：在途请求 abort + 清场 + 关）。
+  useEscClose(open, handleClose);
   if (!mount.shouldRender) return null;
   const running = status === "running";
   const canRun = input.trim() !== "" && !running;
@@ -80,11 +83,6 @@ export function NLCommandPanel({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      handleClose();
-      return;
-    }
     if (e.key === "Enter") {
       e.preventDefault();
       if (canRun) void submit();

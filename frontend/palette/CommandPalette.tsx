@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Host } from "../vault/api";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
+import { useEscClose } from "../ui/useEscClose";
 import {
   ACTIONS,
   shortcutLabel,
@@ -313,6 +314,9 @@ export function CommandPalette({
 
   // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
   const mount = useDelayedUnmount(open);
+  // Esc 关闭走全局栈（useEscClose）：焦点不在输入框（Tab 到列表项/点面板空白）
+  // 也能关，且嵌套时只关栈顶（后开的先关）——不再挂在 input 的 onKeyDown 上。
+  useEscClose(open, onClose);
   if (!mount.shouldRender) return null;
 
   function runItem(item: PaletteItem | undefined) {
@@ -322,11 +326,6 @@ export function CommandPalette({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
-    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (flat.length > 0) setActiveIndex((i) => (i + 1) % flat.length);

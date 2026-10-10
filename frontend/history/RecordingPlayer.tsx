@@ -18,6 +18,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { RecordingData } from "../vault/api";
 import { redact, type RedactRule } from "../ai/redact";
 import { PlaybackController, PLAYBACK_SPEEDS, formatPlaybackTime } from "./playback";
+import { useEscClose } from "../ui/useEscClose";
 
 /** 驱动节拍（ms）——20fps 对终端回放足够顺滑，interval 开销可忽略。 */
 const TICK_MS = 50;
@@ -172,18 +173,9 @@ export function RecordingPlayer({ data, onClose, savePath }: RecordingPlayerProp
     return () => window.clearTimeout(timer);
   }, [rawConfirm]);
 
-  // Esc 关闭回放（capture 阶段拦截 + stopPropagation——回放器叠在 ⌘R 面板
-  // dialog 内部，不拦冒泡会把「先关回放」变成「直接关面板」）。
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  // Esc 关闭回放：走全局 Esc 栈（回放器后于 ⌘R 面板入栈 = 栈顶）——
+  // 「先关回放、面板仍在」由栈序保证，不再需要 capture 硬拦冒泡。
+  useEscClose(true, onClose);
 
   const created = useMemo(
     () => new Date(entry.created_at * 1000).toLocaleString(),

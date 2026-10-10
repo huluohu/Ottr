@@ -19,6 +19,7 @@
 // 200ms，同 HostTree 搜索惯例）；无虚拟滚动刻意为之（T5 台账：条目量级不需要）。
 import { useEffect, useRef, useState } from "react";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
+import { useEscClose } from "../ui/useEscClose";
 import { useTranslation } from "react-i18next";
 import type { Host, HistoryEntry, SummaryEntry } from "../vault/api";
 import { vaultApi } from "../vault/api";
@@ -153,6 +154,8 @@ export function HistorySearch({
 
   // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
   const mount = useDelayedUnmount(open);
+  // Esc 关闭走全局栈：焦点在任何位置（输入框/列表项/面板空白）都能关。
+  useEscClose(open, onClose);
   if (!mount.shouldRender) return null;
 
   const hostName = (id: number): string =>
@@ -165,11 +168,6 @@ export function HistorySearch({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-      return;
-    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (results.length > 0) setActiveIndex((i) => (i + 1) % results.length);

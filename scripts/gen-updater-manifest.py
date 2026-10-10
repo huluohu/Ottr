@@ -35,7 +35,7 @@ def main() -> int:
         print(__doc__, file=sys.stderr)
         return 2
     bundle, tag, out = (pathlib.Path(sys.argv[1]), sys.argv[2], pathlib.Path(sys.argv[3]))
-    repo = os.environ.get("GITHUB_REPOSITORY", "lhe-ai/Ottr")
+    repo = os.environ.get("GITHUB_REPOSITORY", "huluohu/Ottr")
     base = f"https://github.com/{repo}/releases/download/{tag}"
 
     platforms = {}

@@ -39,7 +39,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/lhe-ai/Ottr/releases/latest/download/latest.json"
+        "https://github.com/huluohu/Ottr/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFBMTkzQzkyRTM2OTM4NzAKUldSd09HbmprandacWlTaStqSkJidUpiT0RTNTkzNVdFMzIzaC9wUVlQS1pwWXBodGU0LzFjM1kK"
     }

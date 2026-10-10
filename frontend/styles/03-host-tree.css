@@ -233,3 +233,18 @@
   word-break: break-all;
 }
 
+
+/* 新建分组取消钮（2026-10-10 用户裁定：输入不得杵着关不掉——Esc/✕ 皆可取消）。 */
+.tree-new-group-cancel {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 0.9em;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.tree-new-group-cancel:hover {
+  color: var(--color-danger);
+}

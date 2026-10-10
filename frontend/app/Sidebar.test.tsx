@@ -30,6 +30,7 @@ function shellProps(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
     style: undefined,
     onQuickConnect: vi.fn(),
     onOpenCredentials: vi.fn(),
+    onNewGroup: vi.fn(),
     onOpenSettings: vi.fn(),
     ...overrides,
   };
@@ -70,7 +71,8 @@ describe("Sidebar", () => {
   it("三段式渲染：搜索/主机区（新建主机入口）/导航/设置", () => {
     renderSidebar();
     expect(screen.getByTestId("sidebar-search")).toBeTruthy();
-    expect(screen.getByTestId("add-host")).toBeTruthy(); // 主机区 = HostTree 原样嵌入
+    expect(screen.getByTestId("sidebar-add-host")).toBeTruthy(); // 主机区 = HostTree 原样嵌入
+    expect(screen.getByTestId("sidebar-add-group")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-cron")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-alerts")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-mcp")).toBeTruthy();

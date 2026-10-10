@@ -10,22 +10,32 @@
 
 /* ① 快捷连接：主行动作置顶。 */
 .sidebar-quick {
-  flex: none;
-  padding: 10px 10px 6px;
   display: flex;
   gap: 6px;
+  align-items: stretch;
 }
-.sidebar-quick .btn-accent {
+.sidebar-quick .sidebar-search {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  min-width: 0;
 }
-.sidebar-kbd {
-  opacity: 0.72;
-  font-size: 0.85em;
-  font-family: inherit;
+.sidebar-quick-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 0.82em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sidebar-quick-btn:hover {
+  color: var(--color-fg);
+  border-color: var(--color-accent-border);
+  background: var(--surface-raised);
 }
 
 /* ② 主机区：树独占滚动（分区导航/设置固定，树长列表不顶走导航）。 */

@@ -29,6 +29,8 @@ export interface SidebarProps extends HostTreeProps {
   onQuickConnect: () => void;
   /** 凭据管理（对话框：凭据/密钥/known_hosts 三页签）。 */
   onOpenCredentials: () => void;
+  /** 新建分组：HostTree 分组输入展开（信号递增链）。 */
+  onNewGroup: () => void;
   onOpenSettings: () => void;
 }
 
@@ -108,7 +110,9 @@ export function Sidebar({
   style,
   onQuickConnect,
   onOpenCredentials,
+  onNewGroup,
   onOpenSettings,
+  onAdd,
   ...tree
 }: SidebarProps) {
   const { t } = useTranslation();
@@ -160,16 +164,38 @@ export function Sidebar({
       <div className="sidebar-quick">
         <button
           type="button"
-          className="btn-accent"
+          className="btn-accent sidebar-search"
           data-testid="sidebar-search"
           onClick={onQuickConnect}
         >
           <span>{t("sidebar.search")}</span>
           <kbd className="sidebar-kbd">⌘K</kbd>
         </button>
+        {/* 新建主机/新建分组并入搜索行（2026-10-10 用户裁定）；分组点击展开
+            树内 inline 输入（可 Esc/✕ 取消），主机打开表单。 */}
+        <button
+          type="button"
+          className="sidebar-quick-btn"
+          data-testid="sidebar-add-host"
+          title={t("hostTree.addHost")}
+          aria-label={t("hostTree.addHost")}
+          onClick={() => onAdd?.(null)}
+        >
+          +<span className="sidebar-quick-txt">主机</span>
+        </button>
+        <button
+          type="button"
+          className="sidebar-quick-btn"
+          data-testid="sidebar-add-group"
+          title={t("hostTree.addGroup")}
+          aria-label={t("hostTree.addGroup")}
+          onClick={onNewGroup}
+        >
+          +<span className="sidebar-quick-txt">分组</span>
+        </button>
       </div>
       <div className="sidebar-hosts">
-        <HostTree {...tree} />
+        <HostTree {...tree} onAdd={onAdd} />
       </div>
       <nav className="sidebar-nav" ref={navRef} aria-label={t("nav.aria")}>
         {/* 界面主题：行点击弹出浮动选项面板（勾选当前项） */}

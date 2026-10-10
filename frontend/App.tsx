@@ -474,6 +474,7 @@ function HomeLayout() {
           onAdd={(groupId) => setForm({ mode: "new", groupId })}
           onQuickConnect={() => setPaletteOpen(true)}
           onOpenCredentials={() => setCredentialsOpen(true)}
+          onNewGroup={() => setNewGroupSignal((n) => n + 1)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
         <div

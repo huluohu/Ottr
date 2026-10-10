@@ -94,6 +94,12 @@ export function HostTree({
     void deleteHost(id).catch(() => {});
   }
 
+  function cancelGrouping() {
+    setGrouping(false);
+    setNewGroupName("");
+    setGroupError(null);
+  }
+
   async function submitNewGroup() {
     const name = newGroupName.trim();
     if (!name) return;
@@ -121,20 +127,8 @@ export function HostTree({
 
   return (
     <div className="host-tree">
-      {/* 多选模式（批量执行选择面）：主机管理工具栏让位 */}
-      {!multiSelect && (
-        <div className="tree-toolbar">
-          <button className="btn-accent" data-testid="add-host" onClick={() => onAdd(null)}>
-            {t("hostTree.addHost")}
-          </button>
-          <button data-testid="add-group" onClick={() => {
-            setGroupError(null);
-            setGrouping((v) => !v);
-          }}>
-            {t("hostTree.addGroup")}
-          </button>
-        </div>
-      )}
+      {/* 新建主机/新建分组上移侧栏快捷行（2026-10-10 用户裁定）：工具栏整体
+          移除；多选模式本就让位，无其他工具项。 */}
 
       {grouping && (
         <div className="tree-new-group">
@@ -148,10 +142,20 @@ export function HostTree({
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") void submitNewGroup();
+              if (e.key === "Escape") cancelGrouping();
             }}
             autoFocus
           />
           <button onClick={() => void submitNewGroup()}>{t("common.ok")}</button>
+          {/* 取消（2026-10-10 用户裁定：分组输入不得杵着关不掉）：Esc / ✕ 皆可 */}
+          <button
+            className="tree-new-group-cancel"
+            data-testid="cancel-group"
+            aria-label={t("common.cancel")}
+            onClick={cancelGrouping}
+          >
+            ✕
+          </button>
           {groupError && (
             <p className="tree-error" data-testid="group-name-error" role="alert">
               {groupError}

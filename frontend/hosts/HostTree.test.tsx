@@ -54,7 +54,7 @@ function seedStore() {
   useVaultStore.setState({ hosts: [web, db, solo], hostGroups: [group], loading: false, error: null });
 }
 
-function renderTree(onOpen: (host: Host) => void = vi.fn()) {
+function renderTree(onOpen: (host: Host) => void = vi.fn(), newGroupSignal = 0) {
   return render(
     <HostTree
       selectedId={null}
@@ -62,6 +62,7 @@ function renderTree(onOpen: (host: Host) => void = vi.fn()) {
       onOpen={onOpen}
       onEdit={vi.fn()}
       onAdd={vi.fn()}
+      newGroupSignal={newGroupSignal}
     />,
   );
 }
@@ -174,7 +175,7 @@ describe("HostTree", () => {
     );
   });
 
-  it("新建分组：输入名称确认后发 host_groups_create", async () => {
+  it("新建分组：分组信号展开输入，输入名称确认后发 host_groups_create", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "host_groups_create") {
         return Promise.resolve({ ...group, id: 9, name: "staging" });
@@ -184,8 +185,7 @@ describe("HostTree", () => {
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
-    renderTree();
-    fireEvent.click(screen.getByTestId("add-group"));
+    renderTree(vi.fn(), 1);
     fireEvent.change(screen.getByLabelText("New Group"), { target: { value: "staging" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await waitFor(() =>
@@ -228,8 +228,7 @@ describe("HostTree", () => {
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
-    renderTree();
-    fireEvent.click(screen.getByTestId("add-group"));
+    renderTree(vi.fn(), 1);
     fireEvent.change(screen.getByLabelText("New Group"), { target: { value: "prod-group" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await act(async () => {});
@@ -250,8 +249,7 @@ describe("HostTree", () => {
       }
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
-    renderTree();
-    fireEvent.click(screen.getByTestId("add-group"));
+    renderTree(vi.fn(), 1);
     fireEvent.change(screen.getByLabelText("New Group"), { target: { value: "fresh-name" } });
     fireEvent.click(screen.getByRole("button", { name: "OK" }));
     await waitFor(() =>

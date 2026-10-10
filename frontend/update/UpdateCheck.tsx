@@ -27,6 +27,14 @@ export function UpdateCheck() {
       .catch(() => setCurrent(null)); // 非 Tauri 环境：仅隐藏版本号
   }, []);
 
+  // 四端入口（mac 菜单/汉堡/⌘K/托盘 的「检查更新」）经 ottr:update-check
+  // 事件触发本面板的就地检查——复用同一 UX（进度/安装/重启提示）。
+  useEffect(() => {
+    const onEvt = () => void checkForUpdate();
+    window.addEventListener("ottr:update-check", onEvt);
+    return () => window.removeEventListener("ottr:update-check", onEvt);
+  });
+
   async function checkForUpdate() {
     setPhase({ kind: "checking" });
     try {

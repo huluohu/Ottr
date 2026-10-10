@@ -23,6 +23,7 @@ import {
   type ActionId,
   type Platform,
 } from "../shortcuts/registry";
+import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
 import { fuzzyBest, highlightRanges, type FuzzyResult } from "./fuzzy";
 
 export interface CommandPaletteProps {
@@ -31,7 +32,7 @@ export interface CommandPaletteProps {
   /** 主机数据源（vault store 全量；空库 = 仅命令区）。 */
   hosts: Host[];
   onConnect: (host: Host) => void;
-  onAction: (action: ActionId) => void;
+  onAction: (action: string) => void;
   /** 平台（键位提示口径）；默认自动检测，测试注入。 */
   plat?: Platform;
   /** 命令表；默认 registry ACTIONS（测试可注入缩表）。 */
@@ -46,7 +47,7 @@ interface PaletteItem {
   subtitle?: string;
   hint?: string | null;
   match: FuzzyResult | null; // 主字段命中（高亮）；次字段命中时为 null（不高亮主字段）
-  action?: ActionId;
+  action?: string;
   host?: Host;
   score: number;
 }
@@ -188,6 +189,18 @@ export function CommandPalette({
           });
         }
       }
+      // 工具组（2026-10-10 IA 重构）：dock 面板/视图/对话框命令统一入面板
+      for (const f of FEATURE_COMMANDS) {
+        cmds.push({
+          key: `tool-${f.id}`,
+          kind: "command",
+          label: t(f.labelKey),
+          hint: null,
+          match: null,
+          action: f.id,
+          score: 0,
+        });
+      }
     } else {
       for (const def of actions) {
         const label = t(def.labelKey);
@@ -205,6 +218,21 @@ export function CommandPalette({
             hint: shortcutLabel(def.id, plat),
             match: primary,
             action: def.id,
+            score: m.score,
+          });
+        }
+      }
+      for (const f of FEATURE_COMMANDS) {
+        const label = t(f.labelKey);
+        const m = fuzzyBest(q, [{ text: label, weight: 1 }]);
+        if (m) {
+          cmds.push({
+            key: `tool-${f.id}`,
+            kind: "command",
+            label,
+            hint: null,
+            match: m,
+            action: f.id,
             score: m.score,
           });
         }
@@ -247,10 +275,19 @@ export function CommandPalette({
     if (q.length === 0) {
       let cursor = 0;
       for (const g of COMMAND_GROUPS) {
-        const inGroup = cmds.filter((c) => c.action !== undefined && groupOf(c.action) === g.id);
+        const inGroup = cmds.filter(
+          (c) => c.action !== undefined && groupOf(c.action as ActionId) === g.id && !c.key.startsWith("tool-"),
+        );
         if (inGroup.length === 0) continue;
         rows.push({ kind: "section", key: `grp-${g.id}`, label: t(`palette.group_${g.id}`) });
         for (const item of inGroup) {
+          rows.push({ kind: "item", key: item.key, item, flat: cursor++ });
+        }
+      }
+      const tools = cmds.filter((c) => c.key.startsWith("tool-"));
+      if (tools.length > 0) {
+        rows.push({ kind: "section", key: "grp-tools", label: t("palette.group_tools") });
+        for (const item of tools) {
           rows.push({ kind: "item", key: item.key, item, flat: cursor++ });
         }
       }

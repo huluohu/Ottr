@@ -22,12 +22,13 @@ import {
   type ActionId,
   type Platform,
 } from "../shortcuts/registry";
+import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
 
 export interface TitleBarProps {
   /** 平台（键位提示口径）；测试注入。 */
   plat?: Platform;
   /** 动作分派（收口到 App.handleAction）。 */
-  onAction: (action: ActionId) => void;
+  onAction: (action: string) => void;
   /** 命令表；默认 registry ACTIONS（测试可注入缩表）。 */
   actions?: readonly ActionDef[];
   /** 窗口控制面；默认 Tauri getCurrentWindow()（测试注入 stub）。 */
@@ -65,7 +66,7 @@ export function TitleBar({ plat = "win", onAction, actions = ACTIONS, win }: Tit
   const controls = win ?? defaultControls();
   const shortcutHint = (id: ActionId) => shortcutLabel(id, plat);
 
-  function runAction(action: ActionId) {
+  function runAction(action: string) {
     setMenuOpen(false);
     onAction(action);
   }
@@ -119,6 +120,21 @@ export function TitleBar({ plat = "win", onAction, actions = ACTIONS, win }: Tit
             >
               <span>{t(def.labelKey)}</span>
               {shortcutHint(def.id) && <kbd>{shortcutHint(def.id)}</kbd>}
+            </button>
+          ))}
+          {/* 工具组（2026-10-10 IA 重构）：dock 面板/视图/对话框/系统命令与
+              mac 工具菜单同源（toolsRegistry FEATURE_COMMANDS）。 */}
+          {FEATURE_COMMANDS.length > 0 && (
+            <div className="titlebar-menu-sep" role="separator" />
+          )}
+          {FEATURE_COMMANDS.map((f) => (
+            <button
+              key={f.id}
+              role="menuitem"
+              className="titlebar-menu-item"
+              onClick={() => runAction(f.id)}
+            >
+              <span>{t(f.labelKey)}</span>
             </button>
           ))}
         </div>

@@ -12,6 +12,7 @@ import {
 } from "vitest";
 import i18n from "../i18n";
 import { ACTIONS, type ActionDef, type ActionId } from "../shortcuts/registry";
+import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
 import { TitleBar } from "./TitleBar";
 
 beforeAll(async () => {
@@ -62,7 +63,7 @@ describe("TitleBar（win/linux 自绘标题栏）", () => {
     const { props } = renderBar();
     fireEvent.click(screen.getByTestId("titlebar-menu-btn"));
     const menu = screen.getByTestId("titlebar-menu");
-    expect(menu.querySelectorAll(".titlebar-menu-item").length).toBe(ACTIONS.length);
+    expect(menu.querySelectorAll(".titlebar-menu-item").length).toBe(ACTIONS.length + FEATURE_COMMANDS.length);
     expect(screen.getByText("Ctrl+K")).toBeTruthy();
     expect(screen.getByText("Ctrl+,")).toBeTruthy();
 

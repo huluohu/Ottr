@@ -29,6 +29,7 @@ function shellProps(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
   return {
     style: undefined,
     onQuickConnect: vi.fn(),
+    onOpenCredentials: vi.fn(),
     onOpenSettings: vi.fn(),
     ...overrides,
   };

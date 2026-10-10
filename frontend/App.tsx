@@ -26,7 +26,6 @@ import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { HostKeyDialog } from "./session/HostKeyDialog";
-import { AISettings } from "./ai/AISettings";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
 import { setAiSettingsOpener } from "./ai/aiStore";
 import { onSessionEnded } from "./ai/summary";
@@ -119,10 +118,15 @@ function HomeLayout() {
   // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
   const [nlOpen, setNlOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认安全区。
+  const [settingsPane, setSettingsPane] = useState<null | import("./security/SecuritySettings").SettingsPane>(null);
+  const openSettingsToPane = (pane: "ai" | "about") => {
+    setSettingsPane(pane);
+    setSettingsOpen(true);
+  };
   // Phase 5 Task 4：同步对话框（设置页「立即同步」+ 顶栏工具菜单两个入口）。
   const [syncOpen, setSyncOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
-  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   // 【UI 批次一 Task 2】原面板开关 setState（alertSettings/forwards/jumpChains/
   // overview/procs/batch/cron/mcp/filesOpen）已收口进 workspaceStore——主区视图
   // 走 MainArea 路由，工具面板走 dock/DockPanel；T3/T4 迁实体。
@@ -158,7 +162,6 @@ function HomeLayout() {
         case "credentials": setCredentialsOpen(true); break;
         case "alerts": openDock("alerts"); break;
         case "mcp": openDock("mcp"); break;
-        case "ai": setAiSettingsOpen(true); break;
         case "forwards": openDock("forwards"); break;
         case "jump-chains": openDock("jumpchains"); break;
         case "overview": openMainView("overview"); break;
@@ -241,7 +244,9 @@ function HomeLayout() {
 
   // T13：设置页路由钩子注入（aiStore 错误面「去设置」按钮 → 打开 AI 设置）
   useEffect(() => {
-    setAiSettingsOpener(() => setAiSettingsOpen(true));
+    // AI 设置入口（诊断面板「去设置」）：设置对话框落「AI」分区（2026-10-10
+    // AI 设置并入设置页，独立对话框退役）。
+    setAiSettingsOpener(() => setSettingsPane("ai"));
     return () => setAiSettingsOpener(null);
   }, []);
 
@@ -255,7 +260,7 @@ function HomeLayout() {
   // A12 动作收口：面板 / 全局快捷键 / （Task 14 后续提交）原生菜单事件、
   // 汉堡菜单——一处 action 多入口，全部汇到 handleAction。
   const handleAction = useCallback(
-    (action: ActionId) => {
+    (action: string) => {
       switch (action) {
         case "palette.toggle":
           setPaletteOpen((v) => !v);
@@ -281,7 +286,15 @@ function HomeLayout() {
           openDock("notifications");
           break;
         case "settings.open":
+          setSettingsPane(null);
           setSettingsOpen(true);
+          break;
+        case "update.check":
+          // 打开「关于」分区并触发一次检查（复用 UpdateCheck 全 UX：
+          // 进度/安装/重启提示——不另造反馈面）。
+          setSettingsPane("about");
+          setSettingsOpen(true);
+          window.dispatchEvent(new CustomEvent("ottr:update-check"));
           break;
         case "theme.toggle":
           setMode(themeMode === "light" ? "dark" : themeMode === "dark" ? "system" : "light");
@@ -410,6 +423,7 @@ function HomeLayout() {
           onAdd={(groupId) => setForm({ mode: "new", groupId })}
           onImport={() => setImportOpen(true)}
           onQuickConnect={() => setPaletteOpen(true)}
+          onOpenCredentials={() => setCredentialsOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
         <div
@@ -428,7 +442,7 @@ function HomeLayout() {
         <MainArea
           storeError={storeError}
           selected={selected}
-          onOpenAiSettings={() => setAiSettingsOpen(true)}
+          onOpenAiSettings={() => openSettingsToPane("ai")}
           onAddHost={() => setForm({ mode: "new", groupId: null })}
           onOpenPalette={() => setPaletteOpen(true)}
         />
@@ -450,12 +464,12 @@ function HomeLayout() {
       {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
       <SecuritySettings
         open={settingsOpen}
+        initialPane={settingsPane}
         onClose={() => setSettingsOpen(false)}
         onOpenSyncDialog={() => setSyncOpen(true)}
       />
       {/* Phase 5 Task 4：同步流程对话框（在设置对话框之后渲染 = 叠于其上）。 */}
       <SyncDialog open={syncOpen} onClose={() => setSyncOpen(false)} />
-      <AISettings open={aiSettingsOpen} onClose={() => setAiSettingsOpen(false)} />
       {/* 【UI 批次一 Task 2】原对话框面板（AlertSettings/ForwardPanel/
           JumpChainEditor/OverviewPage/BatchPanel/CronPanel/McpSettings）已停挂——
           实体 T4 迁入右侧 dock（alerts/forwards/jumpchains/cron/mcp）、T3 迁入
@@ -506,7 +520,7 @@ function HomeLayout() {
       <NLCommandPanel
         open={nlOpen}
         onClose={() => setNlOpen(false)}
-        onOpenSettings={() => setAiSettingsOpen(true)}
+        onOpenSettings={() => openSettingsToPane("ai")}
       />
     </div>
   );

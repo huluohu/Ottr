@@ -26,12 +26,17 @@ import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
 import { UpdateCheck } from "../update/UpdateCheck";
 import { useVaultLockStore } from "./VaultLockStore";
 import { SyncSettings } from "../sync/SyncSettings";
+import { AISettings } from "../ai/AISettings";
+import { getVersion } from "@tauri-apps/api/app";
 import { AlertSettings } from "../notify/AlertSettings";
 import { McpSettings } from "./McpSettings";
 
 export interface SecuritySettingsProps {
   open: boolean;
   onClose: () => void;
+  /** 外部定向打开（AI 设置跳转/检查更新入口）：本次打开落地的分区；
+   * null = 默认安全区。仅在本轮 open=true 时消费。 */
+  initialPane?: SettingsPane | null;
   /** 同步区「立即同步」入口（App 根部挂 SyncDialog，Task 4）。 */
   onOpenSyncDialog?: () => void;
 }
@@ -68,7 +73,15 @@ const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 // 行为开关混进外观节）。未激活面板 hidden 隐藏但**保持挂载**——控件状态、
 // 升级/降级向导进度与既有测试断言都不因切换丢面；DOM 顺序 = 导航顺序
 // （Tab 序一致）。面板内滚动替代整窗滚动（样式见 16-lock-security.css）。
-type SettingsPane = "security" | "sync" | "alerts" | "mcp" | "appearance" | "general";
+export type SettingsPane =
+  | "security"
+  | "sync"
+  | "alerts"
+  | "mcp"
+  | "appearance"
+  | "general"
+  | "ai"
+  | "about";
 const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
   { id: "security", labelKey: "settings.sectionSecurity" },
   { id: "sync", labelKey: "settings.sectionSync" },
@@ -76,6 +89,8 @@ const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
   { id: "mcp", labelKey: "settings.sectionMcp" },
   { id: "appearance", labelKey: "settings.sectionAppearance" },
   { id: "general", labelKey: "settings.sectionGeneral" },
+  { id: "ai", labelKey: "settings.sectionAi" },
+  { id: "about", labelKey: "settings.sectionAbout" },
 ];
 // B9 指纹巡检间隔（秒）：1h / 6h / 24h（默认）/ 7d（Rust 校验 60-604800）
 const HOSTKEY_AUDIT_CHOICES = [3_600, 21_600, 86_400, 604_800] as const;
@@ -85,7 +100,12 @@ const SETTING_HOSTKEY_AUDIT_INTERVAL = "security.hostkey_audit_interval_secs";
 
 type WizardStep = "password" | "progress" | "done";
 
-export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySettingsProps) {
+export function SecuritySettings({
+  open,
+  onClose,
+  initialPane = null,
+  onOpenSyncDialog,
+}: SecuritySettingsProps) {
   const { t } = useTranslation();
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
@@ -126,6 +146,14 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
   const [sudoConfirm, setSudoConfirm] = useState(false);
   // 分区导航当前面板（默认安全——对话框的历史主区）。
   const [pane, setPane] = useState<SettingsPane>("security");
+  // 关于分区版本号（getVersion；非 Tauri 隐藏行）
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(null));
+  }, [open]);
   // 关闭交互统一（2026-10-08）：Esc = 右上 X 等价；sudo 确认子层打开时先收
   // 子层（Esc 逐层退出，不跨层关闭整个面板）——consumeSubLayer 口径。
   useEscClose(open, onClose, () => {
@@ -219,7 +247,7 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
       disposed = true;
       unlisten?.();
     };
-  }, [open]);
+  }, [open, initialPane]);
 
   if (!open) return null;
 
@@ -904,7 +932,53 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
                 />
               </label>
               <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
-              {/* 应用内检查更新（2026-10-09）：latest.json 更新源 + 签名校验下载安装 */}
+            </section>
+
+            {/* --- AI（2026-10-10 第 6 分区）：服务商管理自独立对话框并入；
+                embedded 形态无浮层壳，设置壳提供标题与滚动 --- */}
+            <section
+              role="tabpanel"
+              aria-label={t("settings.sectionAi")}
+              hidden={pane !== "ai"}
+              data-testid="ai-pane"
+            >
+              <h3>{t("settings.sectionAi")}</h3>
+              <AISettings open embedded />
+            </section>
+
+            {/* --- 关于（2026-10-10 第 7 分区）：关于信息卡 + 检查更新（自通用迁入，
+                四端入口 mac 菜单/汉堡/⌘K/托盘 经 ottr:update-check 事件触发本面板）--- */}
+            <section
+              role="tabpanel"
+              aria-label={t("settings.sectionAbout")}
+              hidden={pane !== "about"}
+              data-testid="about-section"
+            >
+              <h3>{t("settings.sectionAbout")}</h3>
+              <div className="settings-row">
+                <span className="settings-label">{t("settings.aboutProduct")}</span>
+                <span>Ottr</span>
+              </div>
+              {appVersion !== null && (
+                <div className="settings-row">
+                  <span className="settings-label">{t("settings.aboutVersion")}</span>
+                  <span data-testid="about-version">{appVersion}</span>
+                </div>
+              )}
+              <div className="settings-row">
+                <span className="settings-label">{t("settings.aboutAuthor")}</span>
+                <span>@huluohu</span>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">{t("settings.aboutRepo")}</span>
+                <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
+                  github.com/huluohu/Ottr
+                </a>
+              </div>
+              <div className="settings-row">
+                <span className="settings-label">{t("settings.aboutLicense")}</span>
+                <span>MIT</span>
+              </div>
               <div className="settings-row">
                 <span className="settings-label">{t("settings.softwareUpdate")}</span>
               </div>

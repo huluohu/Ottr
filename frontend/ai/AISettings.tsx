@@ -25,7 +25,12 @@ import {
 
 export interface AISettingsProps {
   open: boolean;
-  onClose: () => void;
+  /** 对话框形态的关闭回调；嵌入形态（embedded）可不传——内部 Esc 等关闭
+   * 路径一律空安全调用。 */
+  onClose?: () => void;
+  /** 嵌入形态（2026-10-10 设置分区「AI」）：true = 无浮层壳/头部/关闭钮，
+   *  仅渲染内容体（由宿主容器提供滚动与标题）。 */
+  embedded?: boolean;
 }
 
 const MAX_TOKENS_LIMIT = 8192; // Rust AI_MAX_TOKENS_LIMIT 同口径（写入侧校验）
@@ -68,7 +73,7 @@ const PRESET_DEFAULT_MODELS: Record<string, string> = {
   zhipu: "glm-4-flash",
 };
 
-export function AISettings({ open, onClose }: AISettingsProps) {
+export function AISettings({ open, onClose, embedded = false }: AISettingsProps) {
   const { t } = useTranslation();
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [redaction, setRedaction] = useState<RedactionConfig>({ hostname: true, custom: [] });
@@ -87,7 +92,7 @@ export function AISettings({ open, onClose }: AISettingsProps) {
         setDraft(null);
         return;
       }
-      onClose();
+      onClose?.();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -247,21 +252,8 @@ export function AISettings({ open, onClose }: AISettingsProps) {
     }
   }
 
-  return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("ai.title")} data-testid="ai-settings">
-      <div className="dialog settings-dialog ai-settings-dialog">
-        <div className="dialog-head">
-          <h2>{t("ai.settings.title")}</h2>
-          <button
-            type="button"
-            className="dialog-close"
-            data-testid="ai-settings-dialog-close"
-            aria-label={t("common.close")}
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </div>
+  const body = (
+    <>
 
         {/* --- 通用 --- */}
         <section aria-label={t("ai.settings.general")} data-testid="ai-general-section">
@@ -516,6 +508,30 @@ export function AISettings({ open, onClose }: AISettingsProps) {
             {formError}
           </p>
         )}
+    </>
+  );
+
+  // 嵌入形态（设置分区「AI」）：无浮层壳/头部/关闭钮——宿主容器提供标题与滚动。
+  if (embedded) {
+    return <div className="ai-settings-embed">{body}</div>;
+  }
+
+  return (
+    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("ai.title")} data-testid="ai-settings">
+      <div className="dialog settings-dialog ai-settings-dialog">
+        <div className="dialog-head">
+          <h2>{t("ai.settings.title")}</h2>
+          <button
+            type="button"
+            className="dialog-close"
+            data-testid="ai-settings-dialog-close"
+            aria-label={t("common.close")}
+            onClick={() => onClose?.()}
+          >
+            ✕
+          </button>
+        </div>
+        {body}
       </div>
     </div>
   );

@@ -27,6 +27,8 @@ export interface SidebarProps extends HostTreeProps {
   style?: CSSProperties;
   /** ⌘K 全局搜索（命令面板：主机 + 命令）。 */
   onQuickConnect: () => void;
+  /** 凭据管理（对话框：凭据/密钥/known_hosts 三页签）。 */
+  onOpenCredentials: () => void;
   onOpenSettings: () => void;
 }
 
@@ -87,6 +89,14 @@ function GlobeIcon() {
   );
 }
 
+function KeyIcon() {
+  return (
+    <svg className="sidebar-nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <circle cx="10.5" cy="5.5" r="3.2" />
+      <path d="M8.2 7.8 3 13v1.4h2.6v-1.6h1.6v-1.6h1.5l1.2-1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 const NAV_DOCK: ReadonlyArray<{ panel: ToolDockPanel; labelKey: string; icon: ReactElement }> = [
   { panel: "cron", labelKey: "nav.cron", icon: <ClockIcon /> },
   { panel: "alerts", labelKey: "nav.alerts", icon: <BellIcon /> },
@@ -97,6 +107,7 @@ const NAV_DOCK: ReadonlyArray<{ panel: ToolDockPanel; labelKey: string; icon: Re
 export function Sidebar({
   style,
   onQuickConnect,
+  onOpenCredentials,
   onOpenSettings,
   ...tree
 }: SidebarProps) {
@@ -226,6 +237,14 @@ export function Sidebar({
             )}
           </button>
         ))}
+        <button
+          type="button"
+          data-testid="sidebar-nav-credentials"
+          onClick={onOpenCredentials}
+        >
+          <KeyIcon />
+          <span>{t("nav.credentials")}</span>
+        </button>
       </nav>
       {/* 子菜单浮层（fixed 锚定行侧；选即关/点外关/Esc 关） */}
       {menu !== null && (

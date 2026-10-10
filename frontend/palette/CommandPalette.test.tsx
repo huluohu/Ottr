@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import i18n from "../i18n";
 import { CommandPalette } from "./CommandPalette";
 import { ACTIONS, type ActionDef, type ActionId } from "../shortcuts/registry";
+import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
 import type { Host } from "../vault/api";
 
 const web: Host = {
@@ -62,7 +63,7 @@ describe("渲染（空查询）", () => {
     expect(screen.queryByTestId("command-palette")).toBeNull();
   });
 
-  it("命令区（registry 全表；B1 起 11 项）+ 主机区，键位提示为 Ctrl 系", () => {
+  it("命令区（registry 全表 + 工具组 10 项）+ 主机区，键位提示为 Ctrl 系", () => {
     const { items } = renderPalette();
     expect(screen.getByText("命令面板")).toBeTruthy();
     expect(screen.getByText("新建主机")).toBeTruthy();
@@ -76,7 +77,7 @@ describe("渲染（空查询）", () => {
     // Phase 2 B1（Task 6）：⌘K 面板的「NL 命令」条目（registry ai.nl2cmd）
     expect(screen.getByText("NL 命令")).toBeTruthy();
     expect(screen.getByText("Ctrl+J")).toBeTruthy();
-    expect(items().length).toBe(ACTIONS.length + 2);
+    expect(items().length).toBe(ACTIONS.length + FEATURE_COMMANDS.length + 2);
   });
 
   it("空主机库只剩命令区，不渲染主机区头", () => {
@@ -113,7 +114,7 @@ describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", ()
     renderPalette();
     const icons = document.querySelectorAll<SVGElement>(".palette-icon");
     // 11 命令 + 2 主机 = 13 个图标
-    expect(icons.length).toBe(ACTIONS.length + 2);
+    expect(icons.length).toBe(ACTIONS.length + FEATURE_COMMANDS.length + 2);
     const cmdIcon = icons[0];
     expect(cmdIcon.getAttribute("data-icon")).toBe("command");
     const hostIcon = Array.from(icons).find((el) => el.getAttribute("data-icon") === "host");
@@ -165,7 +166,7 @@ describe("键盘导航", () => {
     fireEvent.keyDown(input, { key: "ArrowUp" });
     expect(activeIndex()).toBe(0);
     fireEvent.keyDown(input, { key: "ArrowUp" });
-    expect(activeIndex()).toBe(ACTIONS.length - 1); // 循环到末尾
+    expect(activeIndex()).toBe(ACTIONS.length + FEATURE_COMMANDS.length - 1); // 循环到末尾
   });
 
   it("Enter 执行第 0 项命令（hosts.new——分组后连接组居首）", () => {

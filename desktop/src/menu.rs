@@ -339,7 +339,7 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Export Hosts CSV…"
             }
         }
-        "tool_update_check" => {
+        "update_check" => {
             if zh {
                 "检查更新…"
             } else {
@@ -411,7 +411,7 @@ pub const THEME_IDS: [&str; 7] = [
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
-pub const TOOL_KEYS: [&str; 13] = [
+pub const TOOL_KEYS: [&str; 12] = [
     "cron",
     "alerts",
     "mcp",
@@ -424,7 +424,6 @@ pub const TOOL_KEYS: [&str; 13] = [
     "ai",
     "sync",
     "export-hosts-csv",
-    "update.check",
 ];
 
 /// 应用菜单树（HIG：应用/文件/编辑/视图/窗口/帮助）。
@@ -437,6 +436,11 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
             label: text(lang, "app"),
             items: vec![
                 MenuNode::Predef(Predef::About),
+                MenuNode::Item {
+                    id: "update.check",
+                    label: text(lang, "update_check"),
+                    accelerator: None,
+                },
                 MenuNode::Sep,
                 MenuNode::Item {
                     id: "settings.open",
@@ -604,7 +608,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     label: text(lang, "tool_batch"),
                     accelerator: None,
                 },
-                MenuNode::Sep,
                 MenuNode::Item {
                     id: "tool.ai",
                     label: text(lang, "tool_ai"),
@@ -618,12 +621,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.export-hosts-csv",
                     label: text(lang, "tool_export_csv"),
-                    accelerator: None,
-                },
-                MenuNode::Sep,
-                MenuNode::Item {
-                    id: "tool.update.check",
-                    label: text(lang, "tool_update_check"),
                     accelerator: None,
                 },
             ],
@@ -715,7 +712,7 @@ pub fn tray_tree(lang: Lang, session_count: u64) -> Vec<MenuNode> {
         MenuNode::Sep,
         MenuNode::Item {
             id: "update.check",
-            label: text(lang, "tool_update_check"),
+            label: text(lang, "update_check"),
             accelerator: None,
         },
         MenuNode::Item {

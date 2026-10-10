@@ -5,7 +5,7 @@
    minmax(280px,1fr)，宽屏充盈多列）。 */
 .overview-empty {
   color: var(--fg-muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 .overview-grid {
   display: grid;
@@ -18,7 +18,7 @@
   gap: 8px;
   padding: 10px 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   cursor: pointer;
   text-align: left;
@@ -57,7 +57,7 @@
 }
 .overview-host {
   font-weight: 600;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -66,7 +66,7 @@
 }
 .overview-addr {
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   opacity: 0.7;
   max-width: 45%;
   overflow: hidden;
@@ -82,7 +82,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
 }
 .overview-metric-label {
   flex: none;
@@ -92,7 +92,7 @@
 .overview-bar {
   flex: 1;
   height: 5px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-fg) 15%, transparent);
   overflow: hidden;
 }
@@ -113,7 +113,7 @@
 .overview-state {
   margin: 0;
   color: var(--fg-muted);
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
 }
 .overview-card-actions {
   display: flex;
@@ -121,7 +121,7 @@
   gap: 6px;
 }
 .overview-card-actions button {
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   padding: 3px 9px;
 }
 .overview-card-actions button:disabled {
@@ -147,10 +147,10 @@
 }
 .proc-title {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 .proc-count {
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -160,7 +160,7 @@
 .proc-state {
   margin: auto;
   color: var(--fg-muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 .proc-table-holder {
   flex: 1;
@@ -170,7 +170,7 @@
 .proc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 .proc-table th {
   position: sticky;
@@ -203,7 +203,7 @@
   text-overflow: ellipsis;
 }
 .proc-kill-btn {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   padding: 2px 8px;
 }
 .proc-kill-btn:hover {
@@ -218,12 +218,12 @@
   margin-top: 8px;
   padding: 10px 12px;
   border: 1px solid var(--color-danger);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
 .proc-confirm p {
   margin: 0;
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
 }
 .proc-confirm-actions {
   display: flex;
@@ -241,7 +241,7 @@
 .alert-rule-channels,
 .wizard-step fieldset {
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   margin: 0 0 8px;
   padding: 6px 8px;
   display: flex;
@@ -250,7 +250,7 @@
 }
 .alert-rule-form legend,
 .alert-rule-form fieldset legend {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   opacity: 0.75;
   padding: 0 4px;
 }
@@ -276,7 +276,7 @@
 }
 .batch-col-hosts {
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 8px;
   /* 主区视图内：树列自限高自滚（视口去头部落到双栏区，原 46vh 是对话框口径） */
   max-height: calc(100vh - 260px);
@@ -289,10 +289,10 @@
 .batch-vars-wrap h3,
 .batch-results h3 {
   margin: 4px 0 8px;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 .batch-hint {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   opacity: 0.75;
   margin: 8px 0 0;
 }
@@ -303,7 +303,7 @@
   margin-bottom: 10px;
 }
 .batch-form-row label {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   opacity: 0.8;
 }
 .batch-form-row textarea,
@@ -317,7 +317,7 @@
   height: 14px;
   flex: none;
   border: 1.5px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: inline-block;
 }
 .tree-host[data-checked="true"] .host-check {
@@ -330,7 +330,7 @@
 .batch-vars {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
 }
 .batch-vars th,
 .batch-vars td {
@@ -344,14 +344,14 @@
 }
 .batch-nc {
   margin-left: 6px;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   color: var(--color-warning);
 }
 .batch-params {
   display: flex;
   gap: 16px;
   margin: 8px 0;
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
 }
 .batch-params label {
   display: flex;
@@ -368,7 +368,7 @@
   flex-wrap: wrap;
 }
 .batch-finding {
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   color: var(--color-warning);
 }
 .batch-exec.armed {
@@ -378,27 +378,27 @@
 }
 .batch-progress,
 .batch-summary {
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
   margin: 8px 0 0;
 }
 .batch-results {
   margin-top: 0;
 }
 .batch-diff-head {
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
   margin: 4px 0;
   color: var(--color-success);
 }
 .batch-group summary {
   cursor: pointer;
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
   color: var(--color-success);
 }
 .batch-group-output {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   background: var(--color-surface);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 8px;
   overflow: auto;
   max-height: 200px;
@@ -407,7 +407,7 @@
 .batch-results-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
 }
 .batch-results-table th,
 .batch-results-table td {
@@ -436,12 +436,12 @@
 }
 .batch-outlier {
   margin-left: 6px;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   color: var(--color-warning);
 }
 .batch-err {
   display: block;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   color: var(--color-danger);
   max-width: 260px;
   overflow: hidden;
@@ -451,13 +451,13 @@
 .batch-output summary {
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 .batch-output pre {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   background: var(--color-surface);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 8px;
   overflow: auto;
   max-height: 220px;
@@ -472,7 +472,7 @@
 }
 .batch-truncated {
   opacity: 0.65;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
 }
 .batch-stderr {
   color: var(--color-warning);

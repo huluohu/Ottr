@@ -11,7 +11,7 @@ export function Toaster() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`toast toast-${toast.kind}`}
+          className={`toast toast-${toast.kind}${toast.closing ? " closing" : ""}`}
           data-testid={`toast-${toast.id}`}
           onClick={() => useToastStore.getState().dismiss(toast.id)}
         >
@@ -27,6 +27,8 @@ export function Toaster() {
           >
             ✕
           </button>
+          {/* 剩余时间进度（评审 P1-9）：scaleX 合成器动画，时长与 store TTL 同源。 */}
+          <span className="toast-ttl" aria-hidden="true" />
         </div>
       ))}
     </div>

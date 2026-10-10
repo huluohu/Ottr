@@ -9,9 +9,9 @@
   border: 1px solid var(--border-subtle);
   background: transparent;
   color: inherit;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 3px 10px;
-  font-size: 0.85em;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 .import-sources button[data-active="true"] {
@@ -28,8 +28,8 @@
   min-width: 0;
 }
 .import-path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8em;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -47,8 +47,8 @@
 .report-errors {
   margin: 4px 0 0;
   padding-left: 20px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   color: var(--color-danger);
   max-height: 30vh;
   overflow-y: auto;

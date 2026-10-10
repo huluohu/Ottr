@@ -38,7 +38,7 @@
 .monitor-close {
   border: none;
   background: none;
-  font-size: 16px;
+  font-size: var(--text-md);
   cursor: pointer;
   line-height: 1;
   color: var(--color-fg);
@@ -55,17 +55,17 @@
   margin-bottom: 2px;
 }
 .monitor-metric-label {
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
   flex: 1;
 }
 .monitor-metric-value {
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
 .monitor-state {
   color: var(--fg-muted);
-  font-size: 0.84em;
+  font-size: var(--text-sm);
   margin: 4px 0;
 }
 

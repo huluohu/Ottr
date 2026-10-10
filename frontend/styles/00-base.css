@@ -26,26 +26,29 @@ body {
 :root {
   /* 页面级派生表面：由语义层混出（亮暗自动跟随）。
    * --fg-muted 已收编进 tokens.css 语义层（ui-batch3 T1 亮色校准：亮 68% /
-   * 暗 60%，暗色视觉零变化），此处不再定义。 */
+   * 暗 60%，暗色视觉零变化），此处不再定义。
+   * --scrim 已升格 tokens.css 语义层按主题显式给值（评审 P0-2：暗色下
+   * color-mix(fg) 成白雾提亮，改黑基压暗）。 */
   --border-subtle: color-mix(in srgb, var(--color-fg) 14%, transparent);
   --surface-raised: color-mix(in srgb, var(--color-fg) 6%, var(--color-bg));
   --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, var(--color-bg));
-  --scrim: color-mix(in srgb, var(--color-fg) 45%, transparent);
 }
 
-/* theme-suite T3（Glass 可读性兜底）：真透明主题下弹窗/scrim 若沿用半透明
- * 派生面，内容会与桌面混叠不可读——glass 块把派生面提到近实底（对话框/scrim
- * 高不透明；非玻璃面仍带 alpha 透出 vibrancy 模糊）。覆写与 :root 同特异性、
- * 后置生效；合成参考见 tokens.css glass 块注释。 */
+/* theme-suite T3（Glass 可读性兜底）：真透明主题下弹窗/派生面若沿用半透明
+ * 派生面，内容会与桌面混叠不可读——glass 块把派生面提到近实底（对话框高
+ * 不透明；非玻璃面仍带 alpha 透出 vibrancy 模糊）。Glass 的 --scrim 同理
+ * 在 tokens.css glass 块覆盖。覆写与 :root 同特异性、后置生效。 */
 [data-theme="glass"] {
   --surface-raised: color-mix(in srgb, var(--color-fg) 6%, rgba(18, 13, 32, 0.97));
   --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, rgba(18, 13, 32, 0.97));
-  --scrim: color-mix(in srgb, #050308 72%, transparent);
 }
 
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
+  /* 系统字体栈（评审 P2-17）：原 Inter 首位但从未打包（实际落 Avenir/Helvetica），
+   * 系统栈自带光学校正与 CJK 邻接；字阶基准 16px 保持（rem 锚点），
+   * 正文默认 14px 由 body 显式声明（下方）。 */
+  font-family: var(--font-ui);
+  font-size: 16px; /* rem 基准锚点，必须为字面（tokens 的 --text-* 以 rem 定义） */
   line-height: 24px;
   font-weight: 400;
 
@@ -60,6 +63,34 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* 正文默认 14px（评审 P2-18 字阶）：继承体（对话框正文/设置行等未显式设
+ * 字号处）从 16px 收到 14px，与列表/表单的显式 0.85~0.9em 实效看齐；
+ * rem 基准仍在 html 的 16px，token 不受影响。行高改相对值（随字号缩放）。 */
+body {
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+/* 主题切换防闪跳（评审 P1-13）：明暗翻转时大面积表面颜色渐变（Apple：
+ * abrupt brightness jumps 应避免）；仅颜色属性，无 transform，一次性成本。
+ * .dock-panel 的 transition 在 26 号文件与宽度过渡合并声明，此处不列。
+ * （对话框/面板各写独立规则——选择器列表会把对话框类名带逗号的前缀子串
+ * 提前引入源文本，干扰 dialogScroll.test 的规则定位。） */
+body,
+.sidebar,
+.main-area {
+  transition: background-color var(--dur) ease, color var(--dur) ease;
+}
+.overlay > .dialog {
+  transition: background-color var(--dur) ease, color var(--dur) ease;
+}
+.overlay > .host-form {
+  transition: background-color var(--dur) ease, color var(--dur) ease;
+}
+.palette-overlay > .palette {
+  transition: background-color var(--dur) ease, color var(--dur) ease;
+}
+
 /* 控件底色（T1 挂账 M-1 清偿，Task 8）：字面值升格为 tokens 的 --color-surface，
  * 亮暗跟随语义层；组件层不再出现任何颜色字面值。 */
 :root {
@@ -71,7 +102,7 @@ input,
 button,
 select,
 textarea {
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
   padding: 0.4em 0.8em;
   font-size: 1em;
@@ -83,7 +114,12 @@ textarea {
 
 button {
   cursor: pointer;
-  transition: border-color 0.15s;
+  /* hover/按压全属性过渡（评审 P1-11/P1-7）：原只过渡 border-color，底色瞬变。 */
+  transition:
+    border-color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    transform var(--dur-fast) ease-out;
 }
 button:hover {
   border-color: var(--color-accent-border);
@@ -91,6 +127,22 @@ button:hover {
 button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+/* 按压态（评审 P1-7，全仓原为零）：反馈发生在按下而非松开（Apple：respond
+ * on pointer-down）。行级元素（主机行/面板项/快捷卡）降档为 0.995 + 底色
+ * 加深，避免整行缩放的位移感；弱动效偏好下去形变留底色（见文件尾）。 */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.host-row:active,
+.palette-item:active,
+.main-empty-card:active,
+.home-recent-item:active,
+.sidebar-nav button:active,
+.sidebar-quick-btn:active,
+.view-switch button:active {
+  transform: scale(0.995);
+  background-color: var(--surface-overlay);
 }
 button[data-active="true"] {
   border-color: var(--color-accent-border);
@@ -135,15 +187,34 @@ textarea:focus-visible {
   padding: 2px 6px;
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   flex: none;
 }
 .dialog-close:hover {
-  background: var(--color-bg-raised, rgba(128, 128, 128, 0.15));
-  color: var(--color-text, inherit);
+  background: var(--surface-raised);
+  color: var(--color-fg);
 }
 .icon-btn.danger {
   color: var(--color-danger);
 }
 
+
+/* 弱动效偏好全局兜底（评审 P1-12；原全仓仅 26 号文件两处局部豁免）：
+ * prefers-reduced-motion 下所有动画/过渡趋零——形变类反馈退化为瞬时状态
+ * 切换，颜色/透明度等理解性反馈保留（即时切换，不移除）。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+/* 弱透明度偏好（评审 P1-12）：遮罩改近实底面板色，不透出下层内容。 */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --scrim: color-mix(in srgb, var(--color-bg) 94%, transparent);
+  }
+}

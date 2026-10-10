@@ -1,6 +1,7 @@
 // TransferQueue（Task 10，A5）：传输队列渲染。活动条目进度条 + 取消；
 // 失败/取消条目重试（journal 续传）；收尾条目可清除。纯渲染 + store 动作，
 // 状态机逻辑在 TransferStore（独立 vitest）。
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { fileNameOf, formatBytes } from "./api";
 import { sortQueueItems, useTransferStore, type TransferItem } from "./TransferStore";
@@ -57,7 +58,10 @@ export function TransferQueue() {
               aria-valuemax={100}
               aria-valuenow={pct}
             >
-              <div className="queue-bar-fill" style={{ width: `${pct}%` }} />
+              <div
+                className="queue-bar-fill"
+                style={{ "--progress": String(pct / 100) } as CSSProperties}
+              />
             </div>
             <span className="queue-meta">
               {formatBytes(item.transferred)}/{formatBytes(item.total)}

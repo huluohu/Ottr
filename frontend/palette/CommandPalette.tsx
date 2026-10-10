@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Host } from "../vault/api";
+import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import {
   ACTIONS,
   shortcutLabel,
@@ -310,7 +311,9 @@ export function CommandPalette({
     }
   }, [activeIndex, flat.length]);
 
-  if (!open) return null;
+  // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
+  const mount = useDelayedUnmount(open);
+  if (!mount.shouldRender) return null;
 
   function runItem(item: PaletteItem | undefined) {
     if (!item) return;
@@ -371,7 +374,11 @@ export function CommandPalette({
   }
 
   return (
-    <div className="palette-overlay" onMouseDown={onClose} data-testid="command-palette">
+    <div
+      className={`palette-overlay${mount.closing ? " closing" : ""}`}
+      onMouseDown={onClose}
+      data-testid="command-palette"
+    >
       <div
         className="palette"
         role="dialog"
@@ -394,7 +401,9 @@ export function CommandPalette({
         />
         <ul className="palette-list" ref={listRef}>
           {flat.length === 0 && <li className="palette-empty">{t("palette.empty")}</li>}
-          {commandItems.length > 0 && (
+          {/* 浏览态（rows 模型）下「命令」总头与组节头相邻会出现空总头——
+              组节头已承载结构，总头仅在过滤态扁平列表时渲染（评审 P0-4）。 */}
+          {commandItems.length > 0 && commandRows.length === 0 && (
             <li className="palette-section" aria-hidden="true">
               {t("palette.commands")}
             </li>

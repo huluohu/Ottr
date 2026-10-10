@@ -16,7 +16,7 @@ import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import { useVaultLockStore } from "./VaultLockStore";
 
-export function LockScreen() {
+export function LockScreen({ closing }: { closing?: boolean }) {
   const { t } = useTranslation();
   const unlock = useVaultLockStore((s) => s.unlock);
   const storeError = useVaultLockStore((s) => s.error);
@@ -64,7 +64,13 @@ export function LockScreen() {
   const wrongPassword = storeError?.includes("master password is incorrect") ?? false;
 
   return (
-    <div className="overlay lock-screen" data-testid="lock-screen" role="dialog" aria-modal="true" aria-label={t("security.lockScreen.title")}>
+    <div
+      className={`overlay lock-screen${closing ? " closing" : ""}`}
+      data-testid="lock-screen"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("security.lockScreen.title")}
+    >
       <form className="dialog lock-card" onSubmit={handleSubmit} noValidate>
         <h2>{t("security.lockScreen.title")}</h2>
         <p className="dialog-intro">{t("security.lockScreen.hint")}</p>

@@ -5,6 +5,7 @@
 // 指纹整体展示 + 等宽字体（核对场景，不截断）。
 import { useTranslation } from "react-i18next";
 import { useEscClose } from "../ui/useEscClose";
+import { useDelayedValue } from "../ui/useDelayedUnmount";
 import { useSessionStore } from "./SessionStore";
 
 export function HostKeyDialog() {
@@ -16,31 +17,34 @@ export function HostKeyDialog() {
   useEscClose(ask != null, () => {
     void decide(false);
   });
-  if (!ask) return null;
-  const changed = ask.kind === "changed";
+  // 退场动画窗（评审 P1-8）：ask 清空后保留挂载播镜像动画，再真卸载。
+  const view = useDelayedValue(ask);
+  if (!view.value) return null;
+  const ask0 = view.value;
+  const changed = ask0.kind === "changed";
   return (
-    <div className="overlay" data-testid="host-key-dialog">
+    <div className={`overlay${view.closing ? " closing" : ""}`} data-testid="host-key-dialog">
       <div className="dialog host-key" role="alertdialog" aria-modal="true">
         <h2 className={changed ? "host-key-changed-title" : undefined}>
           {changed ? t("hostKey.changedTitle") : t("hostKey.firstTitle")}
         </h2>
         {/* 跳板链逐跳问询（Phase 2 Task 2）：带「第 N 跳」标识（hop 0 起计，
             展示用 1 起的人类序号——与断点定位文案同源语义）。 */}
-        {ask.hop != null && (
+        {ask0.hop != null && (
           <p className="host-key-hop" data-testid="host-key-hop">
-            {t("hostKey.hopLabel", { hop: ask.hop + 1 })}
+            {t("hostKey.hopLabel", { hop: ask0.hop + 1 })}
           </p>
         )}
         <p className="dialog-intro">
-          {ask.kind === "pending"
-            ? t("hostKey.pendingIntro", { host: ask.host_name })
+          {ask0.kind === "pending"
+            ? t("hostKey.pendingIntro", { host: ask0.host_name })
             : changed
-              ? t("hostKey.changedIntro", { host: ask.host_name })
-              : t("hostKey.firstIntro", { host: ask.host_name })}
+              ? t("hostKey.changedIntro", { host: ask0.host_name })
+              : t("hostKey.firstIntro", { host: ask0.host_name })}
         </p>
         <p className="host-key-fp">
           <span className="host-key-fp-label">{t("hostKey.fingerprint")}</span>
-          <code data-testid="host-key-fingerprint">{ask.fingerprint}</code>
+          <code data-testid="host-key-fingerprint">{ask0.fingerprint}</code>
         </p>
         {changed && <p className="host-key-warning">{t("hostKey.changedWarning")}</p>}
         <div className="form-actions">

@@ -17,10 +17,10 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-danger);
   color: var(--color-on-danger);
-  font-size: 0.68em;
+  font-size: var(--text-2xs);
   font-weight: 700;
   line-height: 16px;
   text-align: center;
@@ -45,7 +45,7 @@
   gap: 8px;
 }
 .notify-actions button {
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   box-shadow: none;
 }
 .notify-list {
@@ -67,8 +67,8 @@
   text-align: left;
   box-shadow: none;
   padding: 6px 8px;
-  border-radius: 8px;
-  font-size: 0.88em;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base);
   font-weight: 400;
 }
 .notify-item:hover {
@@ -81,7 +81,7 @@
   flex: none;
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-accent-border);
 }
 /* severity 语义配色（令牌纪律：不引字面色） */
@@ -108,7 +108,7 @@
 }
 .notify-item-body {
   color: var(--fg-muted);
-  font-size: 0.92em;
+  font-size: var(--text-base);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -116,11 +116,11 @@
 .notify-item-time {
   flex: none;
   color: var(--fg-muted);
-  font-size: 0.78em;
+  font-size: var(--text-xs);
 }
 .notify-empty {
   color: var(--fg-muted);
-  font-size: 0.88em;
+  font-size: var(--text-base);
   text-align: center;
   margin: 12px 0;
 }
@@ -135,11 +135,11 @@
 .notify-empty-hint {
   margin: 0;
   color: var(--fg-muted);
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   text-align: center;
 }
 .notify-empty-guide button {
-  font-size: 12px;
+  font-size: var(--text-xs);
   padding: 4px 12px;
 }
 /* 投递失败面（Phase 5 T1，BL-517）：条目下方失败行——状态标签 + 渠道名 +
@@ -156,7 +156,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 0.78em;
+  font-size: var(--text-xs);
 }
 .notify-dlv-status {
   flex: none;
@@ -177,7 +177,7 @@
 }
 .notify-dlv-resend {
   flex: none;
-  font-size: 0.9em;
+  font-size: var(--text-base);
   box-shadow: none;
   padding: 2px 8px;
 }
@@ -193,19 +193,19 @@
 }
 .notify-mute-label {
   grid-column: 1 / -1;
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 .notify-mute-row {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.84em;
+  font-size: var(--text-sm);
 }
 .notify-mute-hint {
   grid-column: 1 / -1;
   margin: 2px 0 0;
-  font-size: 0.76em;
+  font-size: var(--text-xs);
   color: var(--fg-muted);
 }
 

@@ -8,12 +8,12 @@
 }
 .kh-toolbar h3 {
   margin: 0;
-  font-size: 0.95em;
+  font-size: var(--text-md);
 }
 .kh-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8em;
+  font-size: var(--text-sm);
 }
 .kh-table th,
 .kh-table td {
@@ -28,7 +28,7 @@
 }
 .kh-fp {
   word-break: break-all;
-  font-size: 0.92em;
+  font-size: var(--text-base);
 }
 .kh-ts {
   color: var(--fg-muted);
@@ -37,8 +37,8 @@
 .kh-badge {
   display: inline-block;
   padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 0.9em;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-base);
   border: 1px solid var(--border-subtle);
 }
 .kh-badge-ok {
@@ -82,7 +82,7 @@
 }
 .kh-seen code {
   word-break: break-all;
-  font-size: 0.85em;
+  font-size: var(--text-sm);
 }
 .kh-probe-dialog,
 .kh-delete-dialog {

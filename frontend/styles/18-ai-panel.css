@@ -27,7 +27,7 @@
   font-weight: 600;
 }
 .ai-panel-meta {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   opacity: 0.7;
   flex: 1;
   overflow: hidden;
@@ -37,22 +37,22 @@
 .ai-panel-close {
   border: none;
   background: none;
-  font-size: 1rem;
+  font-size: var(--text-md);
   cursor: pointer;
   line-height: 1;
 }
 .ai-request {
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 6px 8px;
 }
 .ai-exit-code {
   display: inline-block;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: var(--color-danger);
   border: 1px solid var(--color-danger);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
   margin-bottom: 4px;
 }
@@ -60,7 +60,7 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 .ai-status-row {
   display: flex;
@@ -68,23 +68,23 @@
   gap: 8px;
 }
 .ai-redactions {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   opacity: 0.75;
 }
 .ai-stop {
   margin-left: auto;
 }
 .ai-aborted {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   opacity: 0.7;
 }
 .ai-thinking {
   opacity: 0.7;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 .ai-error {
   border: 1px solid var(--color-danger);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -93,7 +93,7 @@
 }
 .ai-error p {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   word-break: break-all;
 }
 .ai-answer {
@@ -105,12 +105,12 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   line-height: 1.55;
 }
 .ai-codeblock {
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .ai-codeblock[data-level="red"] {
@@ -128,9 +128,9 @@
   flex-wrap: wrap;
 }
 .ai-level {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
 }
 .ai-level-green {
@@ -146,7 +146,7 @@
   border: 1px solid var(--color-danger);
 }
 .ai-code-findings {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   opacity: 0.8;
   display: inline-flex;
   gap: 6px;
@@ -154,7 +154,7 @@
 }
 .ai-insert-btn {
   margin-left: auto;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 .ai-insert-btn.armed {
   background: var(--color-danger);
@@ -168,7 +168,7 @@
   margin: 0;
   padding: 8px;
   overflow-x: auto;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 /* AI 设置对话框 */
@@ -188,7 +188,7 @@
 }
 .ai-provider-row {
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 6px 8px;
   display: flex;
   flex-direction: column;
@@ -201,22 +201,22 @@
   gap: 6px;
 }
 .ai-default-badge {
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   background: var(--color-accent);
   color: var(--color-on-accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
 }
 /* Mock provider「测试用」徽标（批次三 T3，审计 16）：与默认徽标同形，警示色相 */
 .ai-mock-badge {
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   border: 1px solid var(--color-warning);
   color: var(--color-warning);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 0 6px;
 }
 .ai-provider-meta {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   opacity: 0.75;
 }
 .ai-provider-actions {
@@ -234,14 +234,14 @@
   margin-bottom: 4px;
 }
 .ai-preset {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   padding: 1px 8px;
 }
 .ai-rule-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 .ai-rule-pattern {
   flex: 1;
@@ -265,7 +265,7 @@
    error=danger/off=surface 灰）。 */
 .forward-empty {
   opacity: 0.7;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   padding: 12px 2px;
 }
 .forward-list {
@@ -282,7 +282,7 @@
   gap: 10px;
   padding: 8px 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
 .forward-light {
@@ -314,7 +314,7 @@
 }
 .forward-endpoint {
   font-family: var(--font-mono);
-  font-size: 0.78125rem;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -323,7 +323,7 @@
   opacity: 0.6;
 }
 .forward-meta {
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   opacity: 0.72;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -339,7 +339,7 @@
   flex: none;
 }
 .forward-actions button {
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   padding: 3px 9px;
 }
 /* CronPanel 展开历史（Phase 4 走查 OBS-1 修复）：.forward-row 是横排 flex，
@@ -362,7 +362,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   white-space: nowrap;
 }
 .forward-form {
@@ -375,7 +375,7 @@
 }
 .forward-form h3 {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 .forward-form-flags {
   display: flex;
@@ -387,7 +387,7 @@
    容器样式随对话框形态消亡——滚动与宽度由 dock 壳接管。 */
 .jump-empty {
   opacity: 0.7;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   padding: 12px 2px;
 }
 .jump-list {
@@ -404,7 +404,7 @@
   gap: 10px;
   padding: 8px 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
 .jump-main {
@@ -415,12 +415,12 @@
   gap: 2px;
 }
 .jump-name {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 .jump-hops {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   opacity: 0.8;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -433,7 +433,7 @@
   flex: none;
 }
 .jump-actions button {
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   padding: 3px 9px;
 }
 .jump-form {
@@ -446,13 +446,13 @@
 }
 .jump-form h3 {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 .jump-hops-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   opacity: 0.85;
 }
 .jump-hop-list {
@@ -469,7 +469,7 @@
   gap: 8px;
   padding: 4px 8px;
   border: 1px dashed var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--color-surface);
 }
 .jump-hop-row[data-over="true"] {
@@ -481,7 +481,7 @@
   width: 18px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 0.71875rem;
+  font-size: var(--text-2xs);
   opacity: 0.7;
 }
 .jump-hop-row select {
@@ -494,7 +494,7 @@
   flex: none;
 }
 .jump-hop-actions button {
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   padding: 2px 7px;
 }
 .jump-test-row {
@@ -504,10 +504,10 @@
   flex-wrap: wrap;
 }
 .jump-test-row button {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 .jump-test-result {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 .jump-test-result[data-ok="true"] {
   color: var(--color-success);
@@ -517,7 +517,7 @@
 }
 .host-key-hop {
   margin: 0 0 4px;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   opacity: 0.85;
 }

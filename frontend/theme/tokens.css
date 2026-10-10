@@ -19,8 +19,9 @@
   --ottr-water-900: #0b2b33; /* Deep Water（暗色主题背景基调） */
 
   /* --- 结构令牌（2026-10-10 UI 重构一期：主题无关刻度层，:root 单源） ------ *
-   * 间距 4px 基；圆角四档；阴影单源；字阶 em 基；动效统一；z 刻度 = 现状层级
-   * 原位归档（只命名不改值，层叠关系零变化）。UI 层一律引用本层，不再写字面值。 */
+   * 间距 4px 基；圆角四档 + 浮层档；阴影三级；字阶 rem 七档；动效统一；
+   * z 刻度覆盖全部浮层（含原终端页签局部小栈 99/100/101 → --z-ctx*）。
+   * UI 层一律引用本层，不再写字面值（css-discipline.test.ts 静态守卫）。 */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -29,25 +30,61 @@
   --space-6: 24px;
   --space-7: 32px;
   --space-8: 40px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
+  /* 圆角（2026-10-10 评审 P2-16 归并）：原 7 档字面值（2/3/4/5/6/8/9/10/12）
+   * 收敛四档 + 浮层档——sm 控件内构（勾选槽/滚动条/进度槽），md 按钮/输入框/
+   * 主机行，lg 卡片/面板/toast，xl 模态与 ⌘K 浮层（层级越高圆角越大）。 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: 10px;
+  --radius-xl: 12px;
   --radius-pill: 999px;
-  --font-size-xs: 0.78em;
-  --font-size-sm: 0.88em;
-  --font-size-base: 1em;
-  /* 等宽栈单源（原 9 处 var(--font-mono, ui-monospace, monospace) fallback 转正） */
-  --font-mono: ui-monospace, monospace;
-  --dur-fast: 120ms;
-  --dur: 160ms;
+  /* 字阶（2026-10-10 评审 P2-18）：rem 单源——em 字号会跨层复合（.85em 内嵌
+   * .9em = 0.765 实效），34 种字面值收敛七档；:root 保持 16px 作 rem 基准，
+   * 正文默认 14px 由 body 显式声明。行高随档位在消费处就近取 1.2~1.5。 */
+  --text-2xs: 0.6875rem; /* 11px：kbd、徽标、时间戳 */
+  --text-xs: 0.75rem;    /* 12px：辅助文案、区段标题 */
+  --text-sm: 0.8125rem;  /* 13px：列表次行、表单提示 */
+  --text-base: 0.875rem; /* 14px：正文默认（body 声明） */
+  --text-md: 1rem;       /* 16px：区块标题 */
+  --text-lg: 1.25rem;    /* 20px：页标题 */
+  --text-xl: 1.5rem;     /* 24px：欢迎语 */
+  /* 字体栈（评审 P2-17）：Inter 从未打包（实际落到 Avenir），改系统栈——
+   * 自带光学校正且补齐 CJK 回退；等宽栈归一单源（原 9 处字面值两套并存）。 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Code", monospace;
+  /* 动效（评审 P1-6）：全部 transition/animation 的时长与缓动只允许引用本组
+   * （css-discipline.test.ts 黑名单守卫）。退场用入场镜像曲线、时长约 3/4
+   * （Apple：可逆过渡往返路径一致）；全点击交互、无动量来源，故不设 bounce。 */
+  --dur-fast: 100ms;  /* 按压、hover 微反馈 */
+  --dur: 160ms;       /* 默认：浮层入场、颜色过渡 */
+  --dur-slow: 240ms;  /* 大面积面板：dock 展开、NL 条展开 */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  /* z 刻度 = 现状值原位归档（层级关系零变化；局部小栈如终端页签 99/100/101 不入刻度） */
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --toast-ttl: 6s; /* 与 ui/toastStore.ts TOAST_TTL_MS 同源（进度条时长） */
+  /* 阴影三级（评审 P0-1/P2-15）：黑基不随主题前景翻转（原 --shadow-overlay
+   * 未定义、三套字面值并存——全部浮层投影静默失效）。层级越高越深越大；
+   * --shadow-glow 仅供 accent 光圈（页签激活态），非高程语义。 */
+  --shadow-1: 0 1px 3px rgba(15, 23, 42, 0.12);
+  --shadow-2: 0 4px 16px rgba(15, 23, 42, 0.16);
+  --shadow-3: 0 12px 32px rgba(15, 23, 42, 0.22);
+  --shadow-glow: 0 2px 8px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  /* z 刻度 = 现状层级归档 + 右键菜单小栈入刻度（99/100/101 → ctx 三级，
+   * 仍在 notify 之上、toast 之下，内部次序不变） */
   --z-overlay: 50;   /* 全部 .overlay 对话框/命令面板/历史搜索 */
   --z-topbar: 60;    /* 顶栏下拉、标题栏菜单、录制指示 */
   --z-notify: 90;    /* 通知中心面板 */
+  --z-ctx: 95;       /* 右键菜单透明命中层 */
+  --z-ctx-menu: 96;  /* 右键菜单本体 */
+  --z-ctx-sub: 97;   /* 右键子菜单 */
   --z-toast: 150;    /* toast 堆叠 */
   --z-lock: 200;     /* 锁屏 / vault 初始化门 */
   --z-flyout: 300;   /* 侧栏主题/语言 flyout */
+
+  /* --- 遮罩（评审 P0-2）：黑基压暗，不再从前景色混出（暗色前景是奶油色，
+   * 原 color-mix(fg 45%) 在暗色下成「白雾提亮」）。各主题显式给出；Glass 的
+   * 近实底遮罩在下方 glass 块覆盖。 */
+  --scrim: rgba(15, 23, 42, 0.32);
 
   /* --- 语义层 · 亮色（默认；ThemeContext 挂 data-theme 后同样命中） --- */
   color-scheme: light;
@@ -113,6 +150,7 @@
   /* 暗色校准沿用值（暗色已达标不动；键面随 T1 语义层收编补齐） */
   --color-accent-border: var(--color-accent); /* teal-300，vs bg/raised/overlay 10.09/8.68/7.72 */
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 原值原式，视觉零变化 */
+  --scrim: rgba(0, 0, 0, 0.5);
 }
 
 /* ============================================================
@@ -145,6 +183,7 @@
   --surface-overlay: #1d2127;
   --color-accent-border: var(--color-accent); /* vs 四面 14.20/13.05/12.11/12.97 */
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 6.14/5.65/5.24/5.61 */
+  --scrim: rgba(0, 0, 0, 0.6); /* 纯黑底上遮罩再深一档才可辨 */
 }
 
 /* --- 幻紫 Amethyst（紫调暗底，磨砂层叠）--- */
@@ -168,6 +207,7 @@
   --color-surface: rgba(233, 228, 249, 0.08);
   --color-accent-border: var(--color-accent); /* vs 四面 6.72/5.90/5.34/5.62 */
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 5.90/5.18/4.68/4.93 */
+  --scrim: rgba(0, 0, 0, 0.5);
 }
 
 /* --- 青野 Verdant（鼠尾草亮底）--- */
@@ -191,6 +231,7 @@
   /* accent 作指示边框 vs 四面 4.20/3.77/3.49/4.54 全 ≥3（实底填充仍用 accent 本值） */
   --color-accent-border: var(--color-accent);
   --fg-muted: color-mix(in srgb, var(--color-fg) 72%, transparent); /* 5.72/5.13/4.75/6.19（68% on overlay 4.20 不够，+4） */
+  --scrim: rgba(28, 43, 34, 0.32); /* 墨绿基，同亮色口径 */
 }
 
 /* --- 雾镜 Glass（theme-suite T3，resolved=dark）-------------------------
@@ -218,6 +259,7 @@
   --color-surface: rgba(233, 228, 249, 0.10); /* fg 10% 叠 bg，合成 ≈#292538 */
   --color-accent-border: var(--color-accent); /* vs 四面 6.86/6.04/5.45/5.45 */
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent); /* 5.97/5.26/4.74/4.74 */
+  --scrim: color-mix(in srgb, #050308 72%, transparent); /* 真透明主题：遮罩近实底防混叠 */
 }
 
 /* Linux 兜底（theme-suite T3）：无系统模糊面时玻璃面几乎全透不可读——bg alpha

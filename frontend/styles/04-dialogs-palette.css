@@ -28,12 +28,12 @@
 .host-form {
   background: var(--surface-overlay);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   padding: 20px;
   width: min(640px, 100%);
   max-height: 86vh;
   overflow-y: auto;
-  box-shadow: var(--shadow-overlay);
+  box-shadow: var(--shadow-3);
 }
 /* 矮窗滚动 affordance（BL-526 / T5 披露清偿）：max-height+内滚自 P1 既有，
    但 macOS overlay 滚动条**静止期不可见**——600px 级矮窗下内容截断毫无可滚
@@ -48,25 +48,25 @@
 .dialog::-webkit-scrollbar-thumb,
 .host-form::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 .dialog h2,
 .host-form h2 {
   margin-top: 0;
-  font-size: 1.1em;
+  font-size: var(--text-md);
 }
 .dialog-intro {
   color: var(--fg-muted);
-  font-size: 0.9em;
+  font-size: var(--text-base);
 }
 .host-form label {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-bottom: 12px;
-  font-size: 0.9em;
+  font-size: var(--text-base);
 }
 .host-form label > span {
   color: var(--fg-muted);

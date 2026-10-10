@@ -11,6 +11,9 @@
   border-left: 1px solid var(--border-subtle);
   background: var(--color-surface);
   overflow: hidden;
+  /* 宽度过渡（评审 P1-10）：展开/收起由 keyframes 驱动（见文件尾动效区），
+   * 此处合并主题切换的颜色过渡（00-base 容器规则刻意不列本元素防覆盖）。 */
+  transition: background-color var(--dur) ease, border-color var(--dur) ease;
 }
 .dock-head {
   flex: none;
@@ -27,7 +30,7 @@
 .dock-close {
   border: none;
   background: none;
-  font-size: 16px;
+  font-size: var(--text-md);
   cursor: pointer;
   line-height: 1;
   color: var(--color-fg);
@@ -87,7 +90,7 @@
   flex: 1;
 }
 .main-view-head button {
-  font-size: 0.8em;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
   box-shadow: none;
 }
@@ -103,14 +106,21 @@
   padding: 10px 14px 14px;
 }
 
-/* 克制动效（2026-10-10 三期；令牌驱动 + reduced-motion 尊重）：
-   页签切换淡入、对话框轻缩放入场——有反馈、不抢戏。 */
+/* 克制动效（评审 P1-8/P1-10/P1-14；令牌驱动 + 00-base 全局 reduced-motion 兜底）：
+ * 1) 页签/主视图切换淡入；2) 浮层体系入退场——入场 dialog-in/palette-in，
+ *    退场 .closing 镜像（useDelayedUnmount 挂类），scrim 同步淡入淡出
+ *    （进从哪入、退回哪去）；3) dock 壳宽度展开/收起（keep-alive 语义不变，
+ *    只是壳的出现在的可感知）。退场动画 fill-mode: forwards 停在透明帧，
+ *    等待 hook 计时卸载，尾帧不闪回。 */
 @keyframes pane-fade-in {
   from {
     opacity: 0;
   }
 }
-.dock-pane:not([hidden]) {
+.dock-pane:not([hidden]),
+.file-panel,
+.proc-panel,
+.main-view {
   animation: pane-fade-in var(--dur) var(--ease-out);
 }
 @keyframes dialog-in {
@@ -119,12 +129,74 @@
     transform: scale(0.985);
   }
 }
-.overlay > .dialog {
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes scrim-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+}
+@keyframes palette-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+}
+@keyframes dock-in {
+  from {
+    width: 0;
+    opacity: 0;
+  }
+}
+@keyframes dock-out {
+  to {
+    width: 0;
+    opacity: 0;
+  }
+}
+.overlay > .dialog,
+.overlay > .host-form {
   animation: dialog-in var(--dur) var(--ease-out);
 }
-@media (prefers-reduced-motion: reduce) {
-  .dock-pane:not([hidden]),
-  .overlay > .dialog {
-    animation: none;
-  }
+.palette-overlay > .palette {
+  animation: palette-in var(--dur) var(--ease-out);
+}
+.overlay,
+.palette-overlay {
+  animation: scrim-in var(--dur) ease-out;
+}
+/* 退场：.closing 由 useDelayedUnmount 在关闭期挂上（此时元素仍挂载）。 */
+.overlay.closing,
+.palette-overlay.closing {
+  animation: scrim-out var(--dur-fast) var(--ease-in) forwards;
+}
+.overlay.closing > .dialog,
+.overlay.closing > .host-form {
+  animation: dialog-out var(--dur-fast) var(--ease-in) forwards;
+}
+.palette-overlay.closing > .palette {
+  animation: palette-out var(--dur-fast) var(--ease-in) forwards;
+}
+/* dock 壳：展开/收起宽度过渡（closing 态由 DockPanel 的
+   useDelayedUnmount(active !== null, 280) 驱动）。 */
+.dock-panel {
+  animation: dock-in var(--dur-slow) var(--ease-out);
+}
+.dock-panel.closing {
+  animation: dock-out var(--dur-slow) var(--ease-in) forwards;
 }

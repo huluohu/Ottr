@@ -18,7 +18,7 @@ const SOURCES: { id: ImportSource; labelKey: string }[] = [
   { id: "tabby", labelKey: "importDialog.sourceTabby" },
 ];
 
-export function ImportDialog({ onClose }: { onClose: () => void }) {
+export function ImportDialog({ onClose, closing }: { onClose: () => void; closing?: boolean }) {
   const { t } = useTranslation();
   useEscClose(true, onClose);
   const refresh = useVaultStore((s) => s.refresh);
@@ -89,7 +89,12 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         : t("importDialog.tabbyIntro");
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("importDialog.title")}>
+    <div
+      className={`overlay${closing ? " closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("importDialog.title")}
+    >
       <div className="dialog import-dialog" data-testid="import-dialog">
         <h2>{t("importDialog.title")}</h2>
 

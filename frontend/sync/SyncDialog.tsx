@@ -33,6 +33,7 @@
 //   2) 检查超时（体验收敛）：channelReady/passphrase/status 统一 10s 上限，
 //      超时转 error 面（重试 + 关闭恢复可用），对话框不再永久转圈。
 import { useEffect, useRef, useState } from "react";
+import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { useTranslation } from "react-i18next";
 import { EnvelopeError } from "./envelope";
 import {
@@ -408,7 +409,9 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
     });
   }
 
-  if (!open) return null;
+  // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
+  const mount = useDelayedUnmount(open);
+  if (!mount.shouldRender) return null;
 
   const busy = phase === "running" || phase === "checking";
 

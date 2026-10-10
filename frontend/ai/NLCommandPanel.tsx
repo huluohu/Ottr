@@ -10,6 +10,7 @@
 //   empty（sanitize 不可用，如 stop 截在围栏头）→ 说明 + 重试；
 //   aborted → 已取消。重试 = 原输入再发（input 不因提交清空）。
 import { useEffect, useRef } from "react";
+import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { useTranslation } from "react-i18next";
 import { useSessionStore } from "../session/SessionStore";
 import { lastCwd } from "../terminal/CwdTracker";
@@ -66,7 +67,9 @@ export function NLCommandPanel({
     if (open) queueMicrotask(() => inputRef.current?.focus());
   }, [open]);
 
-  if (!open) return null;
+  // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
+  const mount = useDelayedUnmount(open);
+  if (!mount.shouldRender) return null;
   const running = status === "running";
   const canRun = input.trim() !== "" && !running;
 
@@ -89,7 +92,11 @@ export function NLCommandPanel({
   }
 
   return (
-    <div className="palette-overlay nl2cmd-overlay" onMouseDown={handleClose} data-testid="nl2cmd-panel">
+    <div
+      className={`palette-overlay nl2cmd-overlay${mount.closing ? " closing" : ""}`}
+      onMouseDown={handleClose}
+      data-testid="nl2cmd-panel"
+    >
       <div
         className="palette nl2cmd"
         role="dialog"

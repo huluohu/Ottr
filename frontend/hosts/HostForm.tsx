@@ -45,7 +45,7 @@ const DEFAULT_PORTS: Record<HostProtocol, number> = { ssh: 22, ftp: 21, ftps: 99
 /** 凭据下拉的「＋ 新建凭据…」哨兵值（真实选项值是凭据 id 数字串 / ""）。 */
 const CRED_NEW = "__new__";
 
-export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
+export function HostForm({ host, defaultGroupId, onClose, closing }: HostFormProps & { closing?: boolean }) {
   const { t } = useTranslation();
   useEscClose(true, onClose);
   const hostGroups = useVaultStore((s) => s.hostGroups);
@@ -177,7 +177,12 @@ export function HostForm({ host, defaultGroupId, onClose }: HostFormProps) {
   }
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={host ? t("hostForm.editTitle") : t("hostForm.newTitle")}>
+    <div
+      className={`overlay${closing ? " closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={host ? t("hostForm.editTitle") : t("hostForm.newTitle")}
+    >
       <form className="host-form" onSubmit={(e) => void handleSubmit(e)} noValidate>
         <h2>{host ? t("hostForm.editTitle") : t("hostForm.newTitle")}</h2>
 

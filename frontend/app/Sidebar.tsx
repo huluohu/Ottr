@@ -164,7 +164,7 @@ export function Sidebar({
       <div className="sidebar-quick">
         <button
           type="button"
-          className="btn-accent sidebar-search"
+          className="sidebar-search"
           data-testid="sidebar-search"
           onClick={onQuickConnect}
         >

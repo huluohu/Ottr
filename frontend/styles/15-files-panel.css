@@ -19,7 +19,7 @@
   padding: 0 8px 0 8px;
 }
 .view-switch button {
-  font-size: 0.75em;
+  font-size: var(--text-xs);
   padding: 0.15em 0.6em;
   color: var(--fg-muted);
   box-shadow: none;
@@ -87,7 +87,7 @@
   background: var(--surface-raised);
 }
 .file-toolbar button {
-  font-size: 0.75em;
+  font-size: var(--text-xs);
   padding: 0.15em 0.55em;
   color: var(--fg-muted);
 }
@@ -96,11 +96,11 @@
 }
 .file-toolbar-hint {
   margin-left: auto;
-  font-size: 0.72em;
+  font-size: var(--text-2xs);
   color: var(--fg-muted);
 }
 .file-notice {
-  font-size: 0.75em;
+  font-size: var(--text-xs);
   color: var(--color-accent-text);
   white-space: nowrap;
   overflow: hidden;
@@ -129,7 +129,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  font-size: 0.82em;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--fg-muted);
   border-bottom: 1px solid var(--border-subtle);
@@ -141,7 +141,7 @@
 .file-pane-dot {
   width: 7px;
   height: 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--border-subtle);
 }
 .file-pane[data-focused="true"] .file-pane-dot {
@@ -164,11 +164,11 @@
 .file-pane-path input {
   flex: 1;
   min-width: 0;
-  font-size: 0.8em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
 }
 .file-pane-path button {
-  font-size: 0.75em;
+  font-size: var(--text-xs);
   padding: 0.1em 0.45em;
   color: var(--fg-muted);
 }
@@ -180,7 +180,7 @@
 }
 .file-status {
   padding: 8px 10px;
-  font-size: 0.8em;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 .file-status.file-error {
@@ -192,7 +192,7 @@
   align-items: baseline;
   gap: 8px;
   padding: 2px 10px;
-  font-size: 0.8em;
+  font-size: var(--text-sm);
   user-select: none;
 }
 .file-row[data-selected="true"] {
@@ -219,12 +219,12 @@
 .file-meta {
   flex: none;
   color: var(--fg-muted);
-  font-size: 0.9em;
+  font-size: var(--text-base);
   font-variant-numeric: tabular-nums;
 }
 .file-mode {
   width: 9ch;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .file-mtime {
   width: 11ch;
@@ -241,7 +241,7 @@
   padding: 2px 0;
 }
 .file-queue-title {
-  font-size: 0.72em;
+  font-size: var(--text-2xs);
   color: var(--fg-muted);
   padding: 2px 10px;
 }
@@ -250,7 +250,7 @@
   align-items: center;
   gap: 8px;
   padding: 3px 10px;
-  font-size: 0.78em;
+  font-size: var(--text-xs);
 }
 .queue-kind {
   flex: none;
@@ -266,14 +266,18 @@
 .queue-bar {
   flex: 1;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--fg-muted) 25%, transparent);
   overflow: hidden;
 }
 .queue-bar-fill {
   height: 100%;
+  width: 100%;
   background: var(--color-accent-border);
-  transition: width 0.15s linear;
+  transform-origin: left;
+  /* scaleX 合成器动画（评审 P3-24）：width 每帧触发布局，transform 零布局成本；
+   * 进度由组件内联 style 的 scaleX 值驱动。 */
+  transform: scaleX(var(--progress, 0));
 }
 .queue-meta {
   flex: none;
@@ -294,7 +298,7 @@
 }
 .queue-act {
   flex: none;
-  font-size: 0.9em;
+  font-size: var(--text-base);
   padding: 0.05em 0.4em;
   color: var(--fg-muted);
 }
@@ -306,7 +310,7 @@
 .file-dialog input {
   width: 100%;
   box-sizing: border-box;
-  font-size: 0.95em;
+  font-size: var(--text-md);
   margin-bottom: 4px;
 }
 .queue-error {
@@ -316,6 +320,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.92em;
+  font-size: var(--text-base);
 }
 

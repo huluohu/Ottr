@@ -112,7 +112,8 @@ describe("App 主页布局（集成）", () => {
     // Ctrl+K 呼出命令面板（A12：命令 + 主机双区）
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     await waitFor(() => expect(screen.getByTestId("command-palette")).toBeTruthy());
-    expect(screen.getByText("Commands")).toBeTruthy();
+    // 浏览态无扁平 Commands 总头（评审 P0-4：组节头承载结构），主机区头仍在
+    expect(screen.getByText("Hosts")).toBeTruthy();
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(screen.queryByTestId("command-palette")).toBeNull();
   });

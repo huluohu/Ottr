@@ -3,7 +3,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  font-size: 0.9em;
+  font-size: var(--text-base);
 }
 .tree-search {
   width: 100%;
@@ -15,7 +15,7 @@
   gap: 6px;
 }
 .tree-toolbar button {
-  font-size: 0.85em;
+  font-size: var(--text-sm);
   padding: 0.3em 0.6em;
 }
 .tree-new-group {
@@ -25,7 +25,7 @@
 .tree-new-group input {
   flex: 1;
   min-width: 0;
-  font-size: 0.85em;
+  font-size: var(--text-sm);
 }
 .tree-tags {
   display: flex;
@@ -33,9 +33,9 @@
   gap: 4px;
 }
 .tree-tags button {
-  font-size: 0.75em;
+  font-size: var(--text-xs);
   padding: 0.15em 0.5em;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 /* 分组头 = 区块锚点：文件夹描边图标 + 分组名，弱化色、不变形大写；
    margin 与 .host-tree 的 gap 叠加出组间明显留白（第一组同样隔开工具区）。 */
@@ -47,7 +47,7 @@
   align-items: center;
   gap: 6px;
   margin: 0 0 4px;
-  font-size: 0.9em;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--fg-muted);
 }
@@ -67,7 +67,7 @@
   margin-left: auto;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity var(--dur-fast) ease;
 }
 .tree-group-head:hover .tree-group-add,
 .tree-group-add:focus-visible {
@@ -100,7 +100,7 @@
   border: none;
   background: none;
   padding: 7px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 .tree-host:hover .host-row,
 .tree-host:focus-within .host-row {
@@ -126,8 +126,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.8em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
   color: var(--fg-muted);
 }
 /* 命令面板原貌锚定：旧全局 .host-name/.host-subtitle 规则收窄进树后，
@@ -137,8 +137,8 @@
   font-weight: 600;
 }
 .palette-item .host-subtitle {
-  font-size: 0.8em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -151,11 +151,11 @@
   gap: 3px;
 }
 .host-tag {
-  font-size: 0.68em;
+  font-size: var(--text-2xs);
   line-height: 1.6;
   padding: 0 0.45em;
   border: 1px solid var(--border-subtle);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--fg-muted);
 }
 /* 选中态：accent 实底填充（替换旧描边），选中行文字/标签换 on-accent 保持可读 */
@@ -182,7 +182,7 @@
   gap: 2px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity var(--dur-fast) ease;
 }
 .tree-host:hover .host-actions,
 .tree-host:focus-within .host-actions,
@@ -193,7 +193,7 @@
 }
 .tree-host .icon-btn {
   flex: none;
-  font-size: 0.8em;
+  font-size: var(--text-sm);
   padding: 0.1em 0.35em;
   background: none;
   border: none;
@@ -207,14 +207,14 @@
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface-overlay);
-  box-shadow: 0 4px 16px var(--scrim);
+  box-shadow: var(--shadow-2);
   white-space: nowrap;
   z-index: 2;
 }
 .confirm-hint {
-  font-size: 0.7em;
+  font-size: var(--text-2xs);
   color: var(--color-warning);
   white-space: nowrap;
 }
@@ -222,7 +222,7 @@
 .tree-error,
 .tree-status {
   margin: 4px 0;
-  font-size: 0.85em;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 .tree-error {
@@ -241,7 +241,7 @@
   background: none;
   color: var(--fg-muted);
   cursor: pointer;
-  font-size: 0.9em;
+  font-size: var(--text-base);
   line-height: 1;
   padding: 2px 4px;
 }

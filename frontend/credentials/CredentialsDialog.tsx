@@ -10,7 +10,7 @@ import { KnownHostsManager } from "../security/KnownHostsManager";
 
 type DialogTab = "credentials" | "keys" | "knownHosts";
 
-export function CredentialsDialog({ onClose }: { onClose: () => void }) {
+export function CredentialsDialog({ onClose, closing }: { onClose: () => void; closing?: boolean }) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<DialogTab>("credentials");
   // 子层（凭据表单 / 已知主机取证与删除确认）先挂载先注册，Esc 由其先消费
@@ -18,7 +18,12 @@ export function CredentialsDialog({ onClose }: { onClose: () => void }) {
   useEscClose(true, onClose);
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("credentials.dialogTitle")}>
+    <div
+      className={`overlay${closing ? " closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("credentials.dialogTitle")}
+    >
       <div className="dialog credentials-dialog" data-testid="credentials-dialog">
         <div className="dialog-head">
           <h2>{t("credentials.dialogTitle")}</h2>

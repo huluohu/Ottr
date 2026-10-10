@@ -12,10 +12,12 @@
 //
 // 【Esc】dock 活动页非空时注册 useEscClose → 关活动页（后挂载语义保证：
 // 叠在其上的对话框先收到 Esc）。
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DOCK_PANEL_TITLE_KEY } from "../workspace/types";
+import { DOCK_PANEL_TITLE_KEY, type ToolDockPanel } from "../workspace/types";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { useEscClose } from "../ui/useEscClose";
+import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { ForwardPanel } from "../forward/ForwardPanel";
 import { JumpChainEditor } from "../hosts/JumpChainEditor";
 import { CronPanel } from "../cron/CronPanel";
@@ -34,19 +36,28 @@ export function DockPanel() {
     if (active !== null) closeTab(active);
   });
 
-  // 关闭态（无活动页签）→ 不渲染
-  if (active === null) return null;
+  // 展开动画窗（评审 P1-10）：关闭期保留挂载播 dock-out（宽度收拢 + 淡出，
+  // --dur-slow 240ms → 卸载延时 280ms），标题用最后活动页避免关尾闪空。
+  const mount = useDelayedUnmount(active !== null, 280);
+  const [lastActive, setLastActive] = useState<ToolDockPanel | null>(active);
+  useEffect(() => {
+    if (active !== null) setLastActive(active);
+  }, [active]);
+
+  // 关闭动画播完（无活动页签）→ 不渲染
+  if (!mount.shouldRender || lastActive === null) return null;
+  const titlePanel = active ?? lastActive;
 
   return (
     <aside
-      className="dock-panel"
+      className={`dock-panel${mount.closing ? " closing" : ""}`}
       data-testid="dock-container"
-      data-panel={active}
-      aria-label={t(DOCK_PANEL_TITLE_KEY[active])}
+      data-panel={titlePanel}
+      aria-label={t(DOCK_PANEL_TITLE_KEY[titlePanel])}
     >
       <div className="dock-head">
         <span className="dock-title" data-testid="dock-title">
-          {t(DOCK_PANEL_TITLE_KEY[active])}
+          {t(DOCK_PANEL_TITLE_KEY[titlePanel])}
         </span>
         {/* 关闭唯一入口 = 壳 ✕（关当前面板，keep-alive 状态保留；切换 = 侧栏工具行） */}
         <button
@@ -59,13 +70,14 @@ export function DockPanel() {
         </button>
       </div>
       {/* keep-alive 面板区：打开过的页签恒渲染，非活动页 CSS 隐藏——切换
-          不丢展开状态/表单草稿；open 恒 true（页签开着 = 面板开着）。 */}
+          不丢展开状态/表单草稿；open 恒 true（页签开着 = 面板开着）。收尾期
+          （active=null）仍渲染最后内容，随壳一起淡出。 */}
       <div className="dock-body">
         {tabs.map((p) => (
           <div
             key={p}
             className="dock-pane"
-            hidden={p !== active}
+            hidden={p !== (active ?? lastActive)}
             data-testid={`dock-pane-${p}`}
           >
             {p === "forwards" && <ForwardPanel open />}

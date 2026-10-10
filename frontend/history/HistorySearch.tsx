@@ -18,6 +18,7 @@
 // 历史页签）、Esc 关闭、点击遮罩关闭；搜索走 vaultApi.history.search（防抖
 // 200ms，同 HostTree 搜索惯例）；无虚拟滚动刻意为之（T5 台账：条目量级不需要）。
 import { useEffect, useRef, useState } from "react";
+import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { useTranslation } from "react-i18next";
 import type { Host, HistoryEntry, SummaryEntry } from "../vault/api";
 import { vaultApi } from "../vault/api";
@@ -150,7 +151,9 @@ export function HistorySearch({
     setActiveIndex((i) => Math.min(i, Math.max(0, results.length - 1)));
   }, [results.length]);
 
-  if (!open) return null;
+  // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
+  const mount = useDelayedUnmount(open);
+  if (!mount.shouldRender) return null;
 
   const hostName = (id: number): string =>
     hosts.find((h) => h.id === id)?.name ?? t("history.unknownHost");
@@ -180,7 +183,11 @@ export function HistorySearch({
   }
 
   return (
-    <div className="palette-overlay" onMouseDown={onClose} data-testid="history-search">
+    <div
+      className={`palette-overlay${mount.closing ? " closing" : ""}`}
+      onMouseDown={onClose}
+      data-testid="history-search"
+    >
       <div
         className="palette history"
         role="dialog"

@@ -72,7 +72,9 @@ describe("渲染（空查询）", () => {
     expect(screen.getByText("deploy@10.0.0.1:22")).toBeTruthy();
     expect(screen.getByText("Ctrl+K")).toBeTruthy();
     expect(screen.getByText("Ctrl+,")).toBeTruthy();
-    expect(screen.getByText("命令")).toBeTruthy();
+    // 浏览态无扁平「命令」总头（评审 P0-4：总头下无直属条目即空组头）——
+    // 组节头（连接与会话等）承载结构；主机区头仍在。
+    expect(screen.queryByText("命令")).toBeNull();
     expect(screen.getByText("主机")).toBeTruthy();
     // Phase 2 B1（Task 6）：⌘K 面板的「NL 命令」条目（registry ai.nl2cmd）
     expect(screen.getByText("NL 命令")).toBeTruthy();
@@ -80,9 +82,9 @@ describe("渲染（空查询）", () => {
     expect(items().length).toBe(ACTIONS.length + FEATURE_COMMANDS.length + 2);
   });
 
-  it("空主机库只剩命令区，不渲染主机区头", () => {
+  it("空主机库只剩命令区（组节头承载），不渲染主机区头", () => {
     renderPalette({ hosts: [] });
-    expect(screen.getByText("命令")).toBeTruthy();
+    expect(screen.getByText("连接与会话")).toBeTruthy();
     expect(screen.queryByText("主机")).toBeNull();
   });
 });

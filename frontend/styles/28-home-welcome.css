@@ -2,15 +2,17 @@
  * 最近连接。挂在 .main-placeholder 内（既有居中口径沿用）。 --- */
 
 /* .home-welcome 容器类已死（组件改 Fragment 后无引用，2026-10-10 清理）。 */
-/* 品牌水印：大尺寸低透明度，压在问候语上方不抢戏。 */
+/* 品牌标：正常文档流上图下文（评审 P0-3——原 -46px 负边距把标题压进图标
+ * 卡片视觉中心，「水印」读成「文字压图」；素材是带卡片底的图标而非线稿，
+ * 不具备水印条件，放弃叠压）。 */
 .home-brand {
-  width: 110px;
-  opacity: 0.16;
-  margin-bottom: -46px;
+  width: 88px;
+  opacity: 1;
+  margin-bottom: var(--space-4);
   pointer-events: none;
 }
 .home-greeting {
-  font-size: 1.7em;
+  font-size: var(--text-xl);
   font-weight: 600;
   margin: 0;
 }
@@ -25,7 +27,7 @@
 }
 .home-recent-title {
   margin: 0 0 6px;
-  font-size: 0.85em;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
 }
 .home-recent-list {
@@ -43,9 +45,9 @@
   gap: 10px;
   padding: 7px 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: none;
-  color: var(--fg);
+  color: var(--color-fg);
   cursor: pointer;
   text-align: left;
 }
@@ -58,7 +60,7 @@
 }
 .home-recent-meta {
   margin-left: auto;
-  font-size: 0.85em;
+  font-size: var(--text-sm);
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }

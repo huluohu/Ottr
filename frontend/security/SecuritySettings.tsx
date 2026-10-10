@@ -30,6 +30,7 @@ import { AISettings } from "../ai/AISettings";
 import { getVersion } from "@tauri-apps/api/app";
 import { AlertSettings } from "../notify/AlertSettings";
 import { McpSettings } from "./McpSettings";
+import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 
 export interface SecuritySettingsProps {
   open: boolean;
@@ -249,7 +250,9 @@ export function SecuritySettings({
     };
   }, [open, initialPane]);
 
-  if (!open) return null;
+  // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
+  const mount = useDelayedUnmount(open);
+  if (!mount.shouldRender) return null;
 
   function validate(): string | null {
     // 码点口径（BL-202）：见 MIN_MASTER_PASSWORD 文档——`.length` 是 UTF-16
@@ -351,7 +354,13 @@ export function SecuritySettings({
   const isPasswordMode = lockMode === "password";
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("settings.title")} data-testid="security-settings">
+    <div
+      className={`overlay${mount.closing ? " closing" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("settings.title")}
+      data-testid="security-settings"
+    >
       <div className="dialog settings-dialog">
         <div className="dialog-head">
           <h2>{t("settings.title")}</h2>

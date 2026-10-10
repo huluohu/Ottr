@@ -1,5 +1,8 @@
 /* --- 应用内 Toast（2026-10-10 交互统一）：右下角堆叠卡片，6 秒自动消失，
- * 点击整条/✕ 均可关闭。z 层高于对话框（50/90）与通知浮层（60），低于锁屏（200）。 --- */
+ * 点击整条/✕ 均可关闭。z 层高于对话框（50/90）与通知浮层（60），低于锁屏（200）。
+ * 动效（评审 P1-9）：入场 translateY+淡入、退场 .closing 镜像（toastStore
+ * 两段式 dismiss 驱动）、底部剩余时间进度条（scaleX 合成器动画，时长与
+ * store TTL 同源 --toast-ttl）。 --- */
 
 .toast-stack {
   position: fixed;
@@ -12,17 +15,56 @@
   max-width: min(420px, 80vw);
 }
 .toast {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 9px 12px;
+  padding: 9px 12px 11px;
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface-overlay);
-  box-shadow: var(--shadow-overlay);
-  color: var(--fg);
-  font-size: 0.9em;
+  box-shadow: var(--shadow-3);
+  color: var(--color-fg);
+  font-size: var(--text-sm);
   cursor: pointer;
+  overflow: hidden;
+  animation: toast-in var(--dur) var(--ease-out);
+}
+.toast.closing {
+  animation: toast-out var(--dur-fast) var(--ease-in) forwards;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.toast-ttl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--color-fg) 22%, transparent);
+  transform-origin: left;
+  animation: toast-ttl-bar var(--toast-ttl) linear forwards;
+}
+.toast-error .toast-ttl {
+  background: color-mix(in srgb, var(--color-danger) 55%, transparent);
+}
+@keyframes toast-ttl-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 .toast-message {
   flex: 1;
@@ -43,5 +85,5 @@
   padding: 0;
 }
 .toast-close:hover {
-  color: var(--fg);
+  color: var(--color-fg);
 }

@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "./app/Sidebar";
 import { Toaster } from "./ui/Toaster";
+import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
 import { showToast } from "./ui/toastStore";
 import { useUpdateStore } from "./update/updateStore";
 import { useTranslation } from "react-i18next";
@@ -95,7 +96,6 @@ function clampSidebarWidth(w: number): number {
 
 function HomeLayout() {
   // T11（A7）：安全底座——锁定遮罩盖全屏（password 模式）；设置入口在应用菜单（⌘,）。
-  const lockPhase = useVaultLockStore((s) => s.phase);
   const hosts = useVaultStore((s) => s.hosts);
   const storeError = useVaultStore((s) => s.error);
   // 会话面（Task 7）：HostTree 双击/面板连接开标签。标签条 + 终端主区的
@@ -110,9 +110,16 @@ function HomeLayout() {
   const { lang } = useLanguage();
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const lockPhase = useVaultLockStore((s) => s.phase);
+  const lockView = useDelayedUnmount(lockPhase === "locked");
   const [form, setForm] = useState<FormState>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [credentialsOpen, setCredentialsOpen] = useState(false);
+  // 浮层退场动画窗（评审 P1-8）：关闭期保留挂载并下发 closing，CSS 播完镜像
+  // 动画再由 hook 真卸载（时长 ≥ --dur-fast 100ms）。
+  const formView = useDelayedValue(form);
+  const importView = useDelayedUnmount(importOpen);
+  const credentialsView = useDelayedUnmount(credentialsOpen);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // T15：⌘R 历史搜索面板（registry history.search；终端内放行 PTY 见 registry）
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -432,6 +439,7 @@ function HomeLayout() {
   function startResize(e: React.PointerEvent) {
     e.preventDefault();
     resizing.current = true;
+    document.body.dataset.resizing = "true";
     const startX = e.clientX;
     const startWidth = sidebarWidth;
     const onMove = (ev: PointerEvent) => {
@@ -439,6 +447,7 @@ function HomeLayout() {
     };
     const onUp = (ev: PointerEvent) => {
       resizing.current = false;
+      delete document.body.dataset.resizing;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       const finalWidth = clampSidebarWidth(startWidth + ev.clientX - startX);
@@ -505,15 +514,20 @@ function HomeLayout() {
       {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
       <Toaster />
 
-      {form && (
+      {formView.value && (
         <HostForm
-          host={form.mode === "edit" ? form.host : null}
-          defaultGroupId={form.mode === "new" ? form.groupId : null}
+          closing={formView.closing}
+          host={formView.value.mode === "edit" ? formView.value.host : null}
+          defaultGroupId={formView.value.mode === "new" ? formView.value.groupId : null}
           onClose={() => setForm(null)}
         />
       )}
-      {importOpen && <ImportDialog onClose={() => setImportOpen(false)} />}
-      {credentialsOpen && <CredentialsDialog onClose={() => setCredentialsOpen(false)} />}
+      {importView.shouldRender && (
+        <ImportDialog closing={importView.closing} onClose={() => setImportOpen(false)} />
+      )}
+      {credentialsView.shouldRender && (
+        <CredentialsDialog closing={credentialsView.closing} onClose={() => setCredentialsOpen(false)} />
+      )}
       <SecuritySettings
         open={settingsOpen}
         initialPane={settingsPane}
@@ -533,7 +547,7 @@ function HomeLayout() {
           动作经 handleAction 分派；连主机即开标签。 */}
       <HostKeyDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
-      {lockPhase === "locked" && <LockScreen />}
+      {lockView.shouldRender && <LockScreen closing={lockView.closing} />}
       {/* Task 16.5 vault 初始化门遮罩（BL-208 F3 迁入 security/VaultInitGateOverlay：
           loading/failed 两态；failed = alertdialog 语义 + 退出按钮即聚焦（键盘可达），
           z 序在锁屏之上——初始化未完成时锁屏状态机尚未启动，两者互斥）。 */}

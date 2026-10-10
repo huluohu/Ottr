@@ -1,7 +1,7 @@
 /* --- 同步（Phase 5 Task 4）：冲突裁定行 / 双侧对照 / 覆盖预告 / 范围勾选 --- */
 .sync-conflict-row {
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 10px 12px;
   margin: 8px 0;
   display: flex;
@@ -9,7 +9,7 @@
   gap: 6px;
 }
 .sync-conflict-row legend {
-  font-size: 0.9em;
+  font-size: var(--text-base);
   font-weight: 600;
   padding: 0 4px;
 }
@@ -23,20 +23,20 @@
 }
 .sync-conflict-sides h4 {
   margin: 0 0 4px;
-  font-size: 0.85em;
+  font-size: var(--text-sm);
   opacity: 0.7;
 }
 .sync-entries {
   margin: 2px 0 6px;
   padding-left: 18px;
-  font-size: 0.86em;
+  font-size: var(--text-sm);
   max-height: 132px;
   overflow: auto;
   word-break: break-all;
 }
 .sync-overwrite-disclosure {
   border: 1px solid color-mix(in srgb, var(--color-danger, #c0392b) 45%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   padding: 8px 10px;
   background: color-mix(in srgb, var(--color-danger, #c0392b) 8%, transparent);
 }

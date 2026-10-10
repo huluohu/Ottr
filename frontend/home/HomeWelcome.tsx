@@ -84,11 +84,11 @@ export function HomeWelcome({
               data-testid="empty-palette-hint"
               onClick={onOpenPalette}
             >
-              <span className="main-empty-card-title">{t("mainArea.quickPalette")}</span>
-              <span className="main-empty-card-desc">
-                <kbd className="main-empty-kbd">{paletteLabel ?? "⌘K"}</kbd>{" "}
-                {t("mainArea.quickPaletteDesc")}
+              <span className="main-empty-card-title">
+                {t("mainArea.quickPalette")}
+                <kbd className="main-empty-kbd">{paletteLabel ?? "⌘K"}</kbd>
               </span>
+              <span className="main-empty-card-desc">{t("mainArea.quickPaletteDesc")}</span>
             </button>
           )}
           {onOpenImport && (

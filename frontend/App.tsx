@@ -122,7 +122,6 @@ function HomeLayout() {
   // 检查更新（四端入口）：就地检查 + toast 反馈，不打开设置页（用户裁定）。
   const updatePhase = useUpdateStore((s) => s.phase);
   const updateCheckFn = useUpdateStore((s) => s.checkForUpdate);
-  const updateInstallFn = useUpdateStore((s) => s.downloadAndInstall);
   const updateLoadCurrent = useUpdateStore((s) => s.loadCurrent);
   const { t: tUpdate } = useTranslation();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -329,12 +328,14 @@ function HomeLayout() {
               showToast(tUpdate("update.upToDate"), "info");
               unsubPhase();
             } else if (k === "available") {
+              // 用户裁定（2026-10-10）：检测到新版只提示+指引，下载安装须用户
+              // 到 设置 → 关于 明确点「下载并安装」——绝不自动一条龙。
               showToast(
                 tUpdate("update.available", { version: st.phase.version }),
                 "info",
               );
-              showToast(tUpdate("update.downloading"), "info");
-              void updateInstallFn();
+              showToast(tUpdate("update.goToSettings"), "info");
+              unsubPhase();
             } else if (k === "downloading") {
               unsubPhase(); // 下载中的进度不再逐条 toast（安静下载）
             } else if (k === "installed") {

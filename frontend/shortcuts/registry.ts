@@ -38,6 +38,7 @@ export type ActionId =
   | "ai.nl2cmd"
   | "vault.lock"
   | "hosts.new_group"
+  | "hosts.import"
   | "notify.center"
   | "app.quit";
 
@@ -141,6 +142,8 @@ export const ACTIONS: readonly ActionDef[] = [
   // 新建分组（2026-10-08 菜单栏启用批次）：File 菜单/汉堡可及（无快捷键——
   // ⌘G 是浏览器查找下一语义，不抢占）；App 直派 HostTree 分组态。
   { id: "hosts.new_group", labelKey: "hostTree.addGroup" },
+  // 导入主机配置（2026-10-10 IA：自侧栏工具区移除，安家 文件菜单/⌘K/欢迎页卡）
+  { id: "hosts.import", labelKey: "importDialog.title" },
   // 通知中心（工具族）：mac 原生工具菜单 + win/linux 汉堡同源入口。
   { id: "notify.center", labelKey: "notify.centerTitle" },
   { id: "app.quit", labelKey: "palette.quit" },

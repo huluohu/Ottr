@@ -16,7 +16,6 @@ export interface HostTreeProps {
   onOpen: (host: Host) => void;
   onEdit: (host: Host) => void;
   onAdd: (groupId: number | null) => void;
-  onImport: () => void;
   /** 多选模式（Phase 3 Task 4，B6 批量执行）：行点击 = 切换勾选；双击打开/
       编辑/删除/主机管理工具栏全部让位（批量选择面不混管理动作）。 */
   multiSelect?: boolean;
@@ -31,7 +30,6 @@ export function HostTree({
   onOpen,
   onEdit,
   onAdd,
-  onImport,
   multiSelect = false,
   selectedIds,
   onToggle,
@@ -134,9 +132,6 @@ export function HostTree({
             setGrouping((v) => !v);
           }}>
             {t("hostTree.addGroup")}
-          </button>
-          <button data-testid="import-ssh-config" onClick={onImport}>
-            {t("hostTree.importSshConfig")}
           </button>
         </div>
       )}

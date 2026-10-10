@@ -62,7 +62,6 @@ function renderTree(onOpen: (host: Host) => void = vi.fn()) {
       onOpen={onOpen}
       onEdit={vi.fn()}
       onAdd={vi.fn()}
-      onImport={vi.fn()}
     />,
   );
 }

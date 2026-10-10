@@ -136,11 +136,10 @@
     "editAria": "Edit host {{name}}",
     "deleteAria": "Delete host {{name}}",
     "confirmDelete": "Click again to confirm",
-    "importSshConfig": "Import ssh config",
     "exportCsv": "Export CSV"
   },
   "importDialog": {
-    "title": "Import ~/.ssh/config",
+    "title": "Import Host Configuration",
     "intro": "Parse an ssh config and import hosts: wildcard patterns are skipped, entries matching an existing host by address/port/user are deduplicated.",
     "running": "Parsing and importing…",
     "start": "Start import",

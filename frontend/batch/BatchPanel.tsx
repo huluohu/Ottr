@@ -255,7 +255,6 @@ export function BatchPanel({ onClose }: BatchPanelProps) {
               onOpen={() => {}}
               onEdit={() => {}}
               onAdd={() => {}}
-              onImport={() => {}}
               multiSelect
               selectedIds={selectedIds}
               onToggle={toggleHost}

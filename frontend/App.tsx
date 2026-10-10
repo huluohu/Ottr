@@ -301,6 +301,9 @@ function HomeLayout() {
         case "notify.center":
           openDock("notifications");
           break;
+        case "hosts.import":
+          setImportOpen(true);
+          break;
         case "settings.open":
           setSettingsPane(null);
           setSettingsOpen(true);
@@ -433,7 +436,6 @@ function HomeLayout() {
           onOpen={(host) => openTab(host)}
           onEdit={(host) => setForm({ mode: "edit", host })}
           onAdd={(groupId) => setForm({ mode: "new", groupId })}
-          onImport={() => setImportOpen(true)}
           onQuickConnect={() => setPaletteOpen(true)}
           onOpenCredentials={() => setCredentialsOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}

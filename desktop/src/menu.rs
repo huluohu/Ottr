@@ -339,6 +339,13 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Export Hosts CSV…"
             }
         }
+        "tool_update_check" => {
+            if zh {
+                "检查更新…"
+            } else {
+                "Check for Updates…"
+            }
+        }
         "tray_quit" => {
             if zh {
                 "退出 Ottr"
@@ -404,19 +411,20 @@ pub const THEME_IDS: [&str; 7] = [
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
-pub const TOOL_KEYS: [&str; 12] = [
-    "notify-center",
-    "credentials",
+pub const TOOL_KEYS: [&str; 13] = [
+    "cron",
     "alerts",
     "mcp",
-    "ai",
+    "notify-center",
     "forwards",
     "jump-chains",
+    "credentials",
     "overview",
     "batch",
-    "cron",
+    "ai",
     "sync",
     "export-hosts-csv",
+    "update.check",
 ];
 
 /// 应用菜单树（HIG：应用/文件/编辑/视图/窗口/帮助）。
@@ -547,15 +555,12 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
         // 视图与窗口之间。
         MenuNode::Sub {
             label: text(lang, "tools"),
+            // 2026-10-10 安家表分组（面板/主机/系统 + 检查更新）；id 仍 = tool.<key>
+            // 与 update.check（Frontend 分派 → App 打开设置关于分区并触发检查）。
             items: vec![
                 MenuNode::Item {
-                    id: "tool.notify-center",
-                    label: text(lang, "tool_notify_center"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.credentials",
-                    label: text(lang, "tool_credentials"),
+                    id: "tool.cron",
+                    label: text(lang, "tool_cron"),
                     accelerator: None,
                 },
                 MenuNode::Item {
@@ -569,8 +574,8 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     accelerator: None,
                 },
                 MenuNode::Item {
-                    id: "tool.ai",
-                    label: text(lang, "tool_ai"),
+                    id: "tool.notify-center",
+                    label: text(lang, "tool_notify_center"),
                     accelerator: None,
                 },
                 MenuNode::Item {
@@ -583,6 +588,12 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     label: text(lang, "tool_jump_chains"),
                     accelerator: None,
                 },
+                MenuNode::Sep,
+                MenuNode::Item {
+                    id: "tool.credentials",
+                    label: text(lang, "tool_credentials"),
+                    accelerator: None,
+                },
                 MenuNode::Item {
                     id: "tool.overview",
                     label: text(lang, "tool_overview"),
@@ -593,9 +604,10 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     label: text(lang, "tool_batch"),
                     accelerator: None,
                 },
+                MenuNode::Sep,
                 MenuNode::Item {
-                    id: "tool.cron",
-                    label: text(lang, "tool_cron"),
+                    id: "tool.ai",
+                    label: text(lang, "tool_ai"),
                     accelerator: None,
                 },
                 MenuNode::Item {
@@ -606,6 +618,12 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.export-hosts-csv",
                     label: text(lang, "tool_export_csv"),
+                    accelerator: None,
+                },
+                MenuNode::Sep,
+                MenuNode::Item {
+                    id: "tool.update.check",
+                    label: text(lang, "tool_update_check"),
                     accelerator: None,
                 },
             ],
@@ -1343,9 +1361,9 @@ mod tests {
             .expect("工具 submenu（zh）");
         let ids: Vec<String> = tools
             .iter()
-            .map(|n| match n {
-                MenuNode::Item { id, .. } => (*id).to_string(),
-                _ => panic!("tools submenu only contains items"),
+            .filter_map(|n| match n {
+                MenuNode::Item { id, .. } => Some((*id).to_string()),
+                _ => None, // 2026-10-10 分组分隔线（Sep）合法存在
             })
             .collect();
         let expected: Vec<String> = TOOL_KEYS.iter().map(|k| format!("tool.{k}")).collect();

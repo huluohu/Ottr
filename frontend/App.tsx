@@ -155,9 +155,19 @@ function HomeLayout() {
   /** 工具动作单一来源（2026-10-08 菜单栏启用批次）：顶栏「工具」下拉与
    * macOS 原生「工具」菜单（ottr://menu-action 的 tool.<key>）同一分派——
    * 两入口永不分叉（用户口径：同类功能在两处必须同步）。 */
+  // 检查更新统一入口：打开设置「关于」分区 + 触发一次就地检查（复用
+  // UpdateCheck 全 UX：进度/安装/重启提示——不另造反馈面）。四端入口
+  // （palette/汉堡/mac 菜单/托盘）与设置关于分区共用。
+  const openAboutUpdate = useCallback(() => {
+    setSettingsPane("about");
+    setSettingsOpen(true);
+    window.dispatchEvent(new CustomEvent("ottr:update-check"));
+  }, []);
+
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
+        case "update.check": openAboutUpdate(); break;
         case "notify-center": openDock("notifications"); break;
         case "credentials": setCredentialsOpen(true); break;
         case "alerts": openDock("alerts"); break;
@@ -290,11 +300,7 @@ function HomeLayout() {
           setSettingsOpen(true);
           break;
         case "update.check":
-          // 打开「关于」分区并触发一次检查（复用 UpdateCheck 全 UX：
-          // 进度/安装/重启提示——不另造反馈面）。
-          setSettingsPane("about");
-          setSettingsOpen(true);
-          window.dispatchEvent(new CustomEvent("ottr:update-check"));
+          openAboutUpdate();
           break;
         case "theme.toggle":
           setMode(themeMode === "light" ? "dark" : themeMode === "dark" ? "system" : "light");

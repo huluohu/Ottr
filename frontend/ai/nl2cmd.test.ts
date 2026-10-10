@@ -85,12 +85,12 @@ beforeEach(async () => {
 });
 
 describe("buildNl2cmdPrompt（装配）", () => {
-  it("system = i18n 模板；user = 输入原文；stop 钉单行", () => {
+  it("system = i18n 模板；user = 输入原文；不以 stop 截断多行", () => {
     const p = buildNl2cmdPrompt("找出最大的文件");
     expect(p.system).toContain("命令生成器");
     expect(p.system).toContain("一行");
     expect(p.user).toBe("找出最大的文件");
-    expect(p.stop).toEqual(["\n"]);
+    expect(p.stop).toEqual([]);
   });
 
   it("cwd 有值才带目录锚点段；null 不提目录", () => {
@@ -101,23 +101,7 @@ describe("buildNl2cmdPrompt（装配）", () => {
     expect(noCwd.user).toBe("解压 backup.tar.gz");
   });
 
-  it("智谱端点不送 stop（端点 stop 语义差异：首 token 即命中 → 恒空回复）", () => {
-    // G6 真端点实证：智谱 glm-4-flash 对 stop:["\n"] 稳定返回空 content
-    //（finish=stop，首 token 即命中；curl 直发三连证），同 prompt 去 stop 产
-    // 'df -h'。装配层按端点豁免，客户端首行兜底（sanitizeNlCommand）照旧。
-    const zhipu = buildNl2cmdPrompt("查看磁盘占用", {
-      baseURL: "https://open.bigmodel.cn/api/paas/v4",
-    });
-    expect(zhipu.stop).toEqual([]);
-    const other = buildNl2cmdPrompt("查看磁盘占用", {
-      baseURL: "https://api.deepseek.com",
-    });
-    expect(other.stop).toEqual(["\n"]);
-    const deepseekV1 = buildNl2cmdPrompt("查看磁盘占用", {
-      baseURL: "https://open.bigmodel.cn.evil.example/api/paas/v4",
-    });
-    expect(deepseekV1.stop).toEqual(["\n"]);
-  });
+
 });
 
 describe("sanitizeNlCommand（端点差异兜底）", () => {
@@ -126,12 +110,12 @@ describe("sanitizeNlCommand（端点差异兜底）", () => {
     expect(sanitizeNlCommand("  ls -la --color  ")).toBe("ls -la --color");
   });
 
-  it("围栏包裹（stop 失效的端点）：取内层首行；未闭合围栏也取", () => {
+  it("围栏包裹（未遵循提示的端点）：取内层；未闭合围栏也取", () => {
     expect(sanitizeNlCommand("```bash\ndocker ps -a\n```")).toBe("docker ps -a");
     expect(sanitizeNlCommand("```sh\nls\n")).toBe("ls");
   });
 
-  it("被 stop 截在围栏头：判不可用（内容永远没到，不把语言标签当命令）", () => {
+  it("仅有围栏头：判不可用，不把语言标签当命令", () => {
     expect(sanitizeNlCommand("```bash")).toBe("");
     expect(sanitizeNlCommand("```")).toBe("");
   });
@@ -145,8 +129,8 @@ describe("sanitizeNlCommand（端点差异兜底）", () => {
     expect(sanitizeNlCommand("# df -h")).toBe("# df -h");
   });
 
-  it("恒取首行 + 空串", () => {
-    expect(sanitizeNlCommand("cmd1\ncmd2")).toBe("cmd1");
+  it("保留多行原文 + 空串", () => {
+    expect(sanitizeNlCommand("cmd1\ncmd2")).toBe("cmd1\ncmd2");
     expect(sanitizeNlCommand("")).toBe("");
     expect(sanitizeNlCommand("   ")).toBe("");
   });
@@ -166,7 +150,7 @@ describe("nlStore 运行链（Mock provider）", () => {
     expect(st.level).toBe("green");
     const sent = createdProviders[0].requests[0];
     expect(sent.system).toContain("命令生成器");
-    expect(sent.stop).toEqual(["\n"]);
+    expect(sent.stop).toEqual([]);
     expect(sent.maxTokens).toBe(777);
     // 输入原样进 user 消息（裁定：意图描述无既成敏感面，不脱敏）
     expect(sent.messages[0].content).toContain("password=hunter2");
@@ -379,4 +363,24 @@ describe("rounds（生成结果保留，批次三 T2 审计 ⌘J 22）", () => {
     expect(rounds[0].input).toBe("新一轮");
     expect(rounds[1].input).toBe("旧轮 9"); // 最旧（旧轮 0）被挤出
   });
+});
+
+it.each(["\n", "\r\n", "\r", "\t", "\x1b", "\x7f", "\x85"])("NL preserves unsafe characters for insertion guard: %j", async (separator) => {
+  const code = `echo one${separator}echo two`;
+  expect(sanitizeNlCommand(code)).toBe(code);
+  mockBackend();
+  script = [code];
+  useNlStore.getState().setInput("list files");
+  await useNlStore.getState().submit();
+  expect(useNlStore.getState().command).toBe(code);
+  expect(useNlStore.getState().rounds[0].command).toBe(code);
+});
+
+it.each(["\n", "\r\n"])("fenced NL preserves all command lines: %j", (eol) => {
+  const code = `cat <<EOF${eol}hello${eol}EOF`;
+  expect(sanitizeNlCommand(`\`\`\`sh${eol}${code}${eol}\`\`\``)).toBe(code);
+});
+
+it.each(["\r", "\t", "\x1b", "\x7f", "\x85"])("NL does not trim controls from command edges: %j", (control) => {
+  expect(sanitizeNlCommand(`${control}echo ok${control}`)).toBe(`${control}echo ok${control}`);
 });

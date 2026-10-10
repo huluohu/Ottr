@@ -11,7 +11,14 @@ import { classify, type TrafficLight } from "./danger";
 /** 插入终端的写入面（测试注入点；生产 = write_session 直写 PTY）。 */
 export type TerminalInserter = (rustId: string, text: string) => Promise<void>;
 
-export function defaultInserter(rustId: string, text: string): Promise<void> {
+// Reject terminal input controls independently of danger classification. Never flatten
+// multiline shell syntax or rely on bracketed-paste support in the remote program.
+export function canInsertCommand(text: string): boolean {
+  return text.trim() !== "" && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(text);
+}
+
+export async function defaultInserter(rustId: string, text: string): Promise<void> {
+  if (!canInsertCommand(text)) throw new Error("Unsafe terminal insertion");
   return invoke("write_session", { id: rustId, bytes: Array.from(new TextEncoder().encode(text)) });
 }
 
@@ -23,29 +30,43 @@ function levelKey(level: TrafficLight): string {
 /** 单条命令行（含 danger 分档与分级确认状态机）：
  * green 一键直插；yellow 第一击只切确认文案；red 两击（第二次红字 armed）。
  * 点别处不复位（面板内短路径，简单为上——T13 语义原样）。 */
-export function CodeBlockRow({
+export function CodeBlockRow(props: {
+  code: string;
+  rustId: string | null;
+  inserter: TerminalInserter;
+  disabled?: boolean;
+}) {
+  // A confirmation belongs to exactly this text and destination, including streaming
+  // updates and focus changes. Remount also isolates in-flight completion callbacks.
+  return <InsertRow key={JSON.stringify([props.code, props.rustId, props.disabled])} {...props} />;
+}
+
+function InsertRow({
   code,
   rustId,
   inserter,
+  disabled = false,
 }: {
   code: string;
   rustId: string | null;
   inserter: TerminalInserter;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
+  const insertable = canInsertCommand(code);
   const verdict = useMemo(() => classify(code), [code]);
   // 确认状态机：null（未进入）→ "confirm"（yellow 一发/red 第一发）→ red 的 armed
   const [stage, setStage] = useState<"idle" | "confirm" | "armed" | "inserted" | "failed">("idle");
 
   function proceed() {
-    if (!rustId) return;
+    if (!rustId || !insertable || disabled) return;
     void inserter(rustId, code)
       .then(() => setStage("inserted"))
       .catch(() => setStage("failed"));
   }
 
   function onClick() {
-    if (!rustId || stage === "inserted") return;
+    if (!rustId || !insertable || disabled || stage === "inserted") return;
     if (verdict.level === "green") {
       proceed();
       return;
@@ -96,12 +117,17 @@ export function CodeBlockRow({
           className={`ai-insert-btn${stage === "armed" ? " armed" : ""}`}
           data-testid="ai-insert"
           data-stage={stage}
-          disabled={!rustId || stage === "inserted"}
+          disabled={!rustId || !insertable || disabled || stage === "inserted"}
           onClick={onClick}
         >
           {label}
         </button>
       </div>
+      {(!insertable || disabled) && (
+        <p className="settings-hint" data-testid="ai-insert-blocked" role="status">
+          {t(!insertable ? "ai.insertBlocked" : "ai.insertIncomplete")}
+        </p>
+      )}
       <pre className="ai-codeblock-code" data-testid="ai-code-text">
         <code>{code}</code>
       </pre>

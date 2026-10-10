@@ -6,7 +6,7 @@
 //   代码块行组件已抽为公共 InsertRow（Phase 2 B1：⌘J NL 命令条共用同一
 //   危险确认状态机——安全面单一来源）；
 // * 脱敏口径（fix 1/5 M-1 定案）：面板命令区显示**原文**（本地行为，明文不出
-//   本机）；发送给模型的请求体**已脱敏**（aiStore.run 内 redact 后才装配
+//   本机）；发送给模型的请求体**按规则脱敏，可能漏报**（aiStore.run 内 redact 后才装配
 //   messages——见 aiStore 步骤 3），面板以「已脱敏 N 处」标注外发侧命中；
 // * 错误面：noProvider/noKey → 「去设置」按钮（App 注入 openSettings）；
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
@@ -24,17 +24,18 @@ export function extractCodeBlocks(answer: string): AnswerCodeBlock[] {
   const re = /```[^\n]*\n([\s\S]*?)(?:```|$)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(answer)) !== null) {
-    const code = m[1].replace(/\n$/, "");
+    const code = m[1].replace(/\r?\n$/, "");
     if (code.trim() !== "") blocks.push({ code });
   }
   return blocks;
 }
 
 /** 回复渲染：按围栏代码块切分（流式过程中未闭合的尾部代码块也即时呈现）。 */
-export function AnswerView({ answer, rustId, inserter }: {
+export function AnswerView({ answer, rustId, inserter, disabled = false }: {
   answer: string;
   rustId: string | null;
   inserter: TerminalInserter;
+  disabled?: boolean;
 }) {
   const parts: { kind: "text" | "code"; content: string }[] = [];
   const re = /```[^\n]*\n([\s\S]*?)(?:```|$)/g;
@@ -42,7 +43,7 @@ export function AnswerView({ answer, rustId, inserter }: {
   let m: RegExpExecArray | null;
   while ((m = re.exec(answer)) !== null) {
     if (m.index > last) parts.push({ kind: "text", content: answer.slice(last, m.index) });
-    parts.push({ kind: "code", content: m[1].replace(/\n$/, "") });
+    parts.push({ kind: "code", content: m[1].replace(/\r?\n$/, "") });
     last = m.index + m[0].length;
   }
   if (last < answer.length) parts.push({ kind: "text", content: answer.slice(last) });
@@ -53,7 +54,7 @@ export function AnswerView({ answer, rustId, inserter }: {
         p.kind === "text" ? (
           <p key={i} className="ai-answer-text">{p.content}</p>
         ) : (
-          <CodeBlockRow key={i} code={p.content} rustId={rustId} inserter={inserter} />
+          <CodeBlockRow key={i} code={p.content} rustId={rustId} inserter={inserter} disabled={disabled} />
         ),
       )}
     </div>
@@ -160,7 +161,7 @@ export function DiagnosePanel({
         </p>
       )}
 
-      <AnswerView answer={answer} rustId={request.kind === "diagnose" ? request.rustId : null} inserter={inserter} />
+      <AnswerView disabled={status !== "done"} answer={answer} rustId={request.kind === "diagnose" ? request.rustId : null} inserter={inserter} />
     </aside>
   );
 }

@@ -287,3 +287,18 @@ describe("往轮回看（批次三 T2，审计 ⌘J 22「生成结果无历史�
     expect(screen.getByTestId("nl2cmd-stream")).toBeTruthy();
   });
 });
+
+it.each(["\n", "\r\n", "\r", "\t", "\x1b", "\x7f"])("NL current and history rows block control %j", (separator) => {
+  const command = `echo one${separator}echo two`;
+  const inserter = vi.fn();
+  useNlStore.setState({ status: "done", command, rounds: [
+    { input: "current", command, level: "green", ts: 2 },
+    { input: "previous", command, level: "green", ts: 1 },
+  ] });
+  renderPanel({ inserter });
+  for (const button of screen.getAllByTestId("ai-insert")) {
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+  }
+  expect(inserter).not.toHaveBeenCalled();
+});

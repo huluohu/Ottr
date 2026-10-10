@@ -2,17 +2,9 @@
 // danger 红黄绿分级 → 三档确认插终端（复用 T13 DiagnosePanel 的 InsertRow）。
 //
 // 裁定（对齐 task-6 简报）：
-// * 输入（用户正在敲的自然语言）**不过 redact**——意图描述没有既成敏感面
-//   （与诊断链路的「命令/输出已落盘」不同面），脱敏反而破坏语义（占位符进
-//   prompt 会诱导模型照抄）；防线放在**出口**：生成的命令必须过 classify，
-//   插终端走三档确认（red 二击红字），与 T13 同一状态机。
-// * 只输出一条命令 = 三层防线：
-//     1. system prompt 约束（单行、无解释、无围栏、无 $ 前缀，i18n 模板）；
-//     2. stop 序列 ["\n"]——兼容端点（OpenAI `stop` / Anthropic `stop_sequences`）
-//        在**端点侧**把输出钉在第一行；
-//     3. sanitizeNlCommand 客户端兜底——不服从的端点（免费兼容端点爱加围栏/
-//        解释）如实处理：围栏取内层、$ 前缀剥离、被 stop 截在围栏头的输出
-//        判不可用（内容在第二行、永远收不到），不假装 stop 恒生效。
+// * 用户输入与 cwd 原样发往所选端点，不做脱敏；可能包含敏感信息。
+// * prompt 仅是生成提示；客户端保留多行与控制字符，公共 InsertRow
+//   在写 PTY 前拒绝它们。danger 分级不是脱敏或防自动执行的安全边界。
 // * 上下文可带当前目录（OSC7 cwd，CwdTracker 活值）——「在这里解压」这类
 //   相对意图的目录锚点；无上报（shell 无集成）= null，prompt 不提目录。
 // * ai.enabled 总开关**不管**本面板：⌘J 是显式用户动作，与右键「解释」同口径
@@ -36,24 +28,10 @@ export interface Nl2cmdPrompt {
   stop: string[];
 }
 
-/** 智谱 open 端点判定（hostname 精确匹配，防子域伪造如 open.bigmodel.cn.evil.example）。
- * stop 豁免依据：G6 真端点实证——智谱对 stop:["\n"] 的语义是首 token 即命中，
- * glm-4-flash 稳定返回空 content（finish=stop；curl 直发三连证），同 prompt
- * 去 stop 产干净单行命令。空数组 = provider 实现自然省略该字段
- * （openai.ts/anthropic.ts 均按 req.stop?.length 条件展开）。 */
-function isZhipuEndpoint(baseURL?: string | null): boolean {
-  if (!baseURL) return false;
-  try {
-    return new URL(baseURL).hostname === "open.bigmodel.cn";
-  } catch {
-    return false;
-  }
-}
-
 /** 装配 system/用户消息/stop（i18n 模板；cwd 有值才带目录锚点段）。 */
 export function buildNl2cmdPrompt(
   input: string,
-  opts: { cwd?: string | null; baseURL?: string | null } = {},
+  opts: { cwd?: string | null } = {},
 ): Nl2cmdPrompt {
   const cwdLine = opts.cwd
     ? `${i18n.t("ai.nl2cmd.cwd")}: ${opts.cwd}\n\n`
@@ -61,36 +39,26 @@ export function buildNl2cmdPrompt(
   return {
     system: i18n.t("ai.nl2cmd.prompt"),
     user: `${cwdLine}${input}`,
-    stop: isZhipuEndpoint(opts.baseURL) ? [] : ["\n"],
+    // Do not truncate at a newline: a prefix can change multiline shell semantics.
+    stop: [],
   };
 }
 
-/**
- * 生成结果 → 单条命令（客户端兜底层；stop 序列失效的端点差异如实处理）：
- *   * 完整/未闭合围栏 → 取内层首行（模型无视「不要围栏」仍能取到命令）；
- *   * 被 stop 截在围栏头（"```bash"）→ 判不可用（""）——内容在下一行、
- *     永远收不到，宁可空错误重试也不把语言标签当命令；
- *   * 整行反引号内联代码（`cmd`）→ 取内层（话痨模型的常见包裹形态）；
- *   * "$ " 提示符前缀剥离（# 刻意不剥——注释转命令是语义反转）；
- *   * 恒取首行 + trim（stop 生效时本来就是单行，防御非单行漏网）。
- */
+/** Remove presentation wrappers only. Preserve multiline/control content so the
+ * shared insertion guard can reject it without silently changing shell semantics. */
 export function sanitizeNlCommand(raw: string): string {
-  let text = raw.trim();
+  let text = raw.replace(/^ +| +$/g, "");
   if (text === "") return "";
-  const fence = /```[^\n]*\n([^\n]*)/.exec(text);
+  const fence = /^```[^\r\n]*\r?\n([\s\S]*?)(?:``` *$|$)/.exec(text);
   if (fence) {
-    const inner = fence[1].trim();
-    if (inner !== "") text = inner;
+    text = fence[1].replace(/\r?\n$/, "");
   } else if (/^`{3,}/.test(text)) {
-    // 围栏头被 stop 序列截断（无换行可取）：内容永远没到，判不可用
     return "";
   }
   const inline = /^`([^`]+)`$/.exec(text);
   if (inline) text = inline[1];
-  // 只剥 "$ " 提示符前缀——刻意不剥 "#"：把注释行转成可执行命令是语义反转，
-  // 保守侧宁可让用户看到原样文本。
-  text = text.replace(/^\$\s+/, "");
-  return text.split("\n")[0].trim();
+  // Only literal spaces: \s would silently swallow control characters.
+  return text.replace(/^\$ +/, "").replace(/^ +| +$/g, "");
 }
 
 // --- 运行链 store（面板开关在 App state，与 palette/history 同惯例） ----------
@@ -232,9 +200,8 @@ export const useNlStore = create<NlStore>((set, get) => ({
       return;
     }
 
-    // --- 3. 装配 + 流式（输入不过 redact，见文件头裁定；baseURL 供端点
-    // stop 语义豁免——智谱见 isZhipuEndpoint）---
-    const prompt = buildNl2cmdPrompt(input, { cwd: get().cwd, baseURL: meta.baseURL });
+    // --- 3. 输入与 cwd 不脱敏；生成结果不在服务端截断 ---
+    const prompt = buildNl2cmdPrompt(input, { cwd: get().cwd });
     const messages: ChatMessage[] = [{ role: "user", content: prompt.user }];
     const ac = new AbortController();
     controller = ac;

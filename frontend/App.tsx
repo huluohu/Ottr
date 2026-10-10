@@ -118,6 +118,12 @@ function HomeLayout() {
   // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
   const [nlOpen, setNlOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 托盘状态行会话计数同步（menu_set_tray_status；非 Tauri 环境 no-op）。
+  const sessionCount = useSessionStore((s) => s.sessions.length);
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    invoke("menu_set_tray_status", { count: sessionCount }).catch(() => {});
+  }, [sessionCount]);
   // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认安全区。
   const [settingsPane, setSettingsPane] = useState<null | import("./security/SecuritySettings").SettingsPane>(null);
   const openSettingsToPane = (pane: "ai" | "about") => {

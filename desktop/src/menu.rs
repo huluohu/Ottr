@@ -658,9 +658,33 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
     ]
 }
 
-/// 托盘右键菜单树（三端一致；简报定值：显示主窗 / 断开全部 / 退出）。
-pub fn tray_tree(lang: Lang) -> Vec<MenuNode> {
+/// 托盘状态行会话计数（menu_set_tray_status 写入；托盘/语言重建时读取）。
+#[derive(Default)]
+pub struct TrayStatusState(pub std::sync::Mutex<u64>);
+
+/// 托盘右键菜单树（三端一致；2026-10-10 产品级升级：禁用状态行 + 快捷组 +
+/// 面板组 + 系统组 + 退出。状态行会话计数由 menu_set_tray_status 动态刷新，
+/// 构建期取启动值（0）。
+pub fn tray_tree(lang: Lang, session_count: u64) -> Vec<MenuNode> {
+    let status = if session_count == 0 {
+        match lang {
+            Lang::Zh => "无活动会话".to_string(),
+            Lang::En => "No active sessions".to_string(),
+        }
+    } else {
+        match lang {
+            Lang::Zh => format!("{session_count} 个会话在线"),
+            Lang::En => format!("{session_count} active session(s)"),
+        }
+    };
     vec![
+        MenuNode::Item {
+            id: "tray.status",
+            // 动态串固定为 'static（MenuNode label 为 'static；托盘重建频次极低，
+            // 每次泄漏 ~30B 可忽略——muda 动态菜单通行做法）。
+            label: Box::leak(status.into_boxed_str()),
+            accelerator: None,
+        },
         MenuNode::Item {
             id: "tray.show",
             label: text(lang, "tray_show"),
@@ -668,8 +692,35 @@ pub fn tray_tree(lang: Lang) -> Vec<MenuNode> {
         },
         MenuNode::Sep,
         MenuNode::Item {
+            id: "hosts.new",
+            label: text(lang, "new_host"),
+            accelerator: None,
+        },
+        MenuNode::Item {
+            id: "palette.toggle",
+            label: text(lang, "palette"),
+            accelerator: None,
+        },
+        MenuNode::Sep,
+        MenuNode::Item {
+            id: "notify.center",
+            label: text(lang, "tool_notify_center"),
+            accelerator: None,
+        },
+        MenuNode::Item {
             id: "tray.disconnect_all",
             label: text(lang, "tray_disconnect_all"),
+            accelerator: None,
+        },
+        MenuNode::Sep,
+        MenuNode::Item {
+            id: "update.check",
+            label: text(lang, "tool_update_check"),
+            accelerator: None,
+        },
+        MenuNode::Item {
+            id: "settings.open",
+            label: text(lang, "settings"),
             accelerator: None,
         },
         MenuNode::Sep,
@@ -715,6 +766,7 @@ pub fn dispatch_of(id: &str) -> Option<Dispatch> {
         "settings.open" | "hosts.new" | "hosts.new_group" | "session.splitRight"
         | "session.splitDown" | "palette.toggle" => Some(Dispatch::Frontend),
         "help.github" => Some(Dispatch::OpenGitHub),
+        "update.check" | "tray.status" | "notify.center" => Some(Dispatch::Frontend),
         "app.quit" | "tray.quit" => Some(Dispatch::Quit),
         "view.zoom_in" => Some(Dispatch::ZoomIn),
         "view.zoom_out" => Some(Dispatch::ZoomOut),
@@ -1035,6 +1087,16 @@ fn register_notify_item(app: &AppHandle<Wry>, tree: &[MenuNode]) {
     }
 }
 
+/// 托盘状态行会话计数同步（前端 sessions.length 变化即调；写状态+重建托盘）。
+#[tauri::command]
+pub fn menu_set_tray_status(count: u64, app: AppHandle) {
+    {
+        let state = app.state::<TrayStatusState>();
+        *state.0.lock().unwrap() = count;
+    }
+    rebuild_menus(&app);
+}
+
 /// 前端未读数同步命令（useNotifyStore unread 变化即调；幂等）。
 /// 文案 = 菜单树词条 + 计数后缀（0 = 素文案）。win/linux 无原生菜单 → no-op。
 #[tauri::command]
@@ -1068,6 +1130,7 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     // vault-ready 后 on_vault_ready 重建纠偏。
     app.manage(ThemeMenuState::default());
     app.manage(NotifyMenuState::default());
+    app.manage(TrayStatusState::default());
     #[cfg(target_os = "macos")]
     {
         let lang = menu_lang(app);
@@ -1081,7 +1144,7 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
 
     // 托盘（三端）：模板图标 + 右键菜单 + 左键切换主窗。
     let lang = menu_lang(app);
-    let tray_menu = build_menu(app, &tray_tree(lang))?;
+    let tray_menu = build_menu(app, &tray_tree(lang, 0))?;
     let icon = tauri::image::Image::from_bytes(TRAY_ICON_BYTES)?;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
@@ -1096,6 +1159,13 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
                 eprintln!("[tray] disconnect all: {n} session(s)");
             }
             Some(Dispatch::Quit) => app.exit(0),
+            // Frontend 族（新建主机/搜索/面板/检查更新/设置）：与 app 菜单同一
+            // 分派（ottr://menu-action → App handleAction），托盘即第五入口。
+            Some(Dispatch::Frontend) => {
+                if let Err(e) = app.emit(MENU_ACTION_EVENT, event.id().as_ref()) {
+                    eprintln!("[tray] emit {MENU_ACTION_EVENT} failed: {e}");
+                }
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -1139,7 +1209,8 @@ fn rebuild_menus(handle: &AppHandle<Wry>) {
         Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
     }
     if let Some(tray) = handle.tray_by_id(TRAY_ID) {
-        match build_menu(handle, &tray_tree(lang)) {
+        let n = *handle.state::<TrayStatusState>().0.lock().unwrap();
+        match build_menu(handle, &tray_tree(lang, n)) {
             Ok(menu) => {
                 if let Err(e) = tray.set_menu(Some(menu)) {
                     eprintln!("[tray] set_menu failed: {e}");
@@ -1252,7 +1323,10 @@ mod tests {
 
     #[test]
     fn every_item_id_has_dispatch_and_ids_unique() {
-        for (name, tree) in [("app", menu_tree(Lang::En)), ("tray", tray_tree(Lang::Zh))] {
+        for (name, tree) in [
+            ("app", menu_tree(Lang::En)),
+            ("tray", tray_tree(Lang::Zh, 2)),
+        ] {
             let ids = item_ids(&tree);
             let mut sorted = ids.clone();
             sorted.sort_unstable();
@@ -1293,7 +1367,7 @@ mod tests {
     #[test]
     fn bilingual_labels_nonempty() {
         for lang in [Lang::Zh, Lang::En] {
-            for tree in [menu_tree(lang), tray_tree(lang)] {
+            for tree in [menu_tree(lang), tray_tree(lang, 0)] {
                 for node in &tree {
                     match node {
                         MenuNode::Sub { label, .. } => assert!(!label.is_empty()),
@@ -1371,9 +1445,22 @@ mod tests {
     }
 
     #[test]
-    fn tray_menu_is_show_disconnect_quit() {
-        let ids = item_ids(&tray_tree(Lang::Zh));
-        assert_eq!(ids, vec!["tray.show", "tray.disconnect_all", "tray.quit"]);
+    fn tray_menu_grouped_layout() {
+        let ids = item_ids(&tray_tree(Lang::Zh, 2));
+        assert_eq!(
+            ids,
+            vec![
+                "tray.status",
+                "tray.show",
+                "hosts.new",
+                "palette.toggle",
+                "notify.center",
+                "tray.disconnect_all",
+                "update.check",
+                "settings.open",
+                "tray.quit",
+            ]
+        );
     }
 
     #[test]

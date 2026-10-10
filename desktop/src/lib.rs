@@ -227,6 +227,7 @@ pub fn run() {
             commands::session::quit_app,
             menu::menu_set_theme,
             menu::menu_set_notify_count,
+            menu::menu_set_tray_status,
             commands::session::session_disconnect_all,
             commands::session::session_stats,
             commands::session::session_tail,

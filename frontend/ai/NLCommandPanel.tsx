@@ -2,7 +2,7 @@
 // * 交互骨架复用 palette/history 的 overlay 范式（Esc 关、点遮罩关、开时聚焦），
 //   锚定改为**底部**（输入条语义：视线不离开终端下沿）；
 // * 运行链在 useNlStore（nl2cmd.ts）：流式原文等宽渲染（生成中的命令成形过程
-//   可见）→ done 后 sanitize 出单条命令 → 复用公共 InsertRow 渲染 danger 徽标
+//   可见）→ done 后只去展示包裹，保留多行供安全检查 → 复用公共 InsertRow 渲染 danger 徽标
 //   + 三档确认插终端（与诊断面板同一状态机——安全面单一来源）；
 // * 插入目标 = 当前聚焦 pane（SessionStore activePane 解析，与
 //   insertToFocusedPane 同口径）：无连接终端 → 插入按钮禁用（不静默失败）；
@@ -140,7 +140,7 @@ export function NLCommandPanel({
           </pre>
         )}
 
-        {/* done：sanitize 后的单条命令——danger 徽标 + 三档确认插终端（公共 InsertRow） */}
+        {/* done：去展示包裹后的命令（多行/控制字符由公共插入入口拒绝）——danger 徽标 + 三档确认插终端（公共 InsertRow） */}
         {status === "done" && command !== null && (
           <div className="nl2cmd-result">
             <CodeBlockRow code={command} rustId={rustId} inserter={inserter} />

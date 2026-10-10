@@ -162,3 +162,28 @@ describe("插终端三档确认状态机", () => {
     expect(screen.getByTestId("ai-code-level").textContent).toBe("危险");
   });
 });
+
+it.each(["\n", "\r\n", "\r", "\t", "\x1b", "\x7f"])("diagnosis refuses embedded control %j", (separator) => {
+  const inserter = vi.fn();
+  reset(REQ, { status: "done", answer: `\`\`\`bash\necho one${separator}echo two\n\`\`\`` });
+  render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+  expect((screen.getByTestId("ai-insert") as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByTestId("ai-insert"));
+  expect(inserter).not.toHaveBeenCalled();
+});
+
+it("does not insert a partial streamed diagnosis", () => {
+  reset(REQ, { status: "running", answer: "```bash\nsudo reboot" });
+  render(<DiagnosePanel onOpenSettings={() => {}} />);
+  expect((screen.getByTestId("ai-insert") as HTMLButtonElement).disabled).toBe(true);
+});
+
+it("CRLF fenced single-line commands remain usable without sending Enter", async () => {
+  const inserter = vi.fn().mockResolvedValue(undefined);
+  const answer = "```sh\r\necho ok\r\n```";
+  expect(extractCodeBlocks(answer)).toEqual([{ code: "echo ok" }]);
+  reset(REQ, { status: "done", answer });
+  render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+  fireEvent.click(screen.getByTestId("ai-insert"));
+  await vi.waitFor(() => expect(inserter).toHaveBeenCalledWith("pty-9", "echo ok"));
+});

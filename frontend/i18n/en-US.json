@@ -550,7 +550,10 @@
       "dismissAria": "Remove record {{name}}",
       "errorText": "Error: {{message}}"
     },
-    "ftpNoEdit": "Remote edit is not available for FTP sessions"
+    "ftpNoEdit": "Remote edit is not available for FTP sessions",
+    "menu.upload": "Upload to remote ({{name}})",
+    "menu.downloadToLocal": "Download to local folder",
+    "downloadToLocal": "Downloaded to local folder: {{name}}"
   },
   "forward": {
     "title": "Port forwards",

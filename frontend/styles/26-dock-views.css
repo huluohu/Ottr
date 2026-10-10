@@ -134,3 +134,29 @@
 .term-main-row > .main-view {
   padding: 10px 14px 14px;
 }
+
+/* 克制动效（2026-10-10 三期；令牌驱动 + reduced-motion 尊重）：
+   页签切换淡入、对话框轻缩放入场——有反馈、不抢戏。 */
+@keyframes pane-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.dock-pane:not([hidden]) {
+  animation: pane-fade-in var(--dur) var(--ease-out);
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+.overlay > .dialog {
+  animation: dialog-in var(--dur) var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock-pane:not([hidden]),
+  .overlay > .dialog {
+    animation: none;
+  }
+}

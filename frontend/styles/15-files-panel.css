@@ -122,6 +122,31 @@
 .file-pane[data-side="local"] {
   border-right: 1px solid var(--border-subtle);
 }
+/* pane 标题条（2026-10-10 双栏重设计）：显性 本地/远端 标记 + 焦点色点。 */
+.file-pane-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+.file-pane[data-focused="true"] .file-pane-title {
+  color: var(--color-fg);
+}
+.file-pane-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+}
+.file-pane[data-focused="true"] .file-pane-dot {
+  background: var(--color-accent-border);
+}
 .file-pane[data-focused="true"] .file-pane-path {
   background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }

@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import type { Session } from "../session/SessionStore";
 import {
   fileNameOf,
+  joinLocalPath,
   formatBytes,
   formatMode,
   joinRemote,
@@ -84,6 +85,8 @@ export function FilePanel({ session }: { session: Session }) {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<Side | null>(null);
+  // 内部拖拽源侧（行 dragstart 记录；drop 消费后清空）。
+  const [dragSide, setDragSide] = useState<Side | null>(null);
   /** 本会话在编辑中的远端路径（RemoteEditManager 订阅同步）。 */
   const [editing, setEditing] = useState<string[]>([]);
   /** 冲突待裁定的远端路径（非空 = 「远端已变更，覆盖？」对话框开着）。 */
@@ -391,14 +394,57 @@ export function FilePanel({ session }: { session: Session }) {
                           },
                     ]
                   : []),
-                {
-                  label: t("files.menu.download", { name: selectedEntry.name }),
-                  action: () => openEntry("remote", selectedEntry),
-                },
+                ...(selectedEntry && !selectedEntry.is_dir
+                  ? [
+                      {
+                        label: t("files.menu.downloadToLocal", { name: selectedEntry.name }),
+                        action: () => {
+                          if (!rustId) return;
+                          void startDownload(
+                            rustId,
+                            joinRemote(remote.path, selectedEntry.name),
+                            joinLocalPath(local.path, selectedEntry.name),
+                          )
+                            .then(() =>
+                              showNotice(
+                                t("files.downloadToLocal", { name: selectedEntry.name }),
+                              ),
+                            )
+                            .catch((err) =>
+                              showNotice(
+                                t("files.downloadFailed", { message: String(err) }),
+                              ),
+                            );
+                        },
+                      },
+                      {
+                        label: t("files.menu.download", { name: selectedEntry.name }),
+                        action: () => openEntry("remote", selectedEntry),
+                      },
+                    ]
+                  : []),
               ]
             : []),
         ]
-      : [{ label: t("files.menu.refresh"), action: () => loadLocal(local.path) }];
+      : [
+          { label: t("files.menu.refresh"), action: () => loadLocal(local.path) },
+          ...(selectedEntry && !selectedEntry.is_dir && rustId
+            ? [
+                {
+                  label: t("files.menu.upload", { name: selectedEntry.name }),
+                  action: () => {
+                    void startUpload(
+                      rustId,
+                      joinLocalPath(local.path, selectedEntry.name),
+                      remote.path,
+                    ).catch((e) =>
+                      showNotice(t("files.uploadFailed", { message: String(e) })),
+                    );
+                  },
+                },
+              ]
+            : []),
+        ];
 
   if (!rustId) {
     return (
@@ -415,11 +461,67 @@ export function FilePanel({ session }: { session: Session }) {
       className="file-pane"
       data-side={side}
       data-focused={focus === side}
-      data-droptarget={dropTarget === side && side === "remote"}
+      data-droptarget={dropTarget === side || (dragSide !== null && dragSide !== side)}
       data-file-drop={side}
       aria-label={side === "local" ? t("files.localPane") : t("files.remotePane")}
       onPointerDown={() => setFocus(side)}
+      onDragOver={(ev) => {
+        // 内部拖拽（跨面板传输）：非来源侧才可放置。types 含自有标记即内部拖拽。
+        if (
+          dragSide !== null &&
+          dragSide !== side &&
+          Array.from(ev.dataTransfer.types).includes("application/x-ottr-file")
+        ) {
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDrop={(ev) => {
+        if (dragSide === null || dragSide === side) return;
+        const raw = ev.dataTransfer.getData("application/x-ottr-file");
+        if (!raw) return;
+        ev.preventDefault();
+        let parsed: { side: Side; name: string; isDir: boolean };
+        try {
+          parsed = JSON.parse(raw) as { side: Side; name: string; isDir: boolean };
+        } catch {
+          return;
+        }
+        if (parsed.isDir) {
+          showNotice(t("files.dropDirsSkipped", { count: 1 }));
+          return;
+        }
+        if (parsed.side === "local" && side === "remote" && rustId) {
+          // 本地 → 远端：上传到远端当前目录
+          void startUpload(
+            rustId,
+            joinLocalPath(local.path, parsed.name),
+            remote.path,
+          ).catch((e) => showNotice(t("files.uploadFailed", { message: String(e) })));
+        } else if (parsed.side === "remote" && side === "local" && rustId) {
+          // 远端 → 本地：下载到本地当前目录（对侧工作流闭环；非 Downloads）
+          void startDownload(
+            rustId,
+            joinRemote(remote.path, parsed.name),
+            joinLocalPath(local.path, parsed.name),
+          )
+            .then(() => showNotice(t("files.downloadToLocal", { name: parsed.name })))
+            .catch((err) =>
+              showNotice(t("files.downloadFailed", { message: String(err) })),
+            );
+        }
+      }}
     >
+      {/* pane 标题条（2026-10-10 双栏重设计）：显性 本地/远端 标记——纯路径
+          行无法分辨两侧（用户实测混淆）；焦点侧经 data-focused 高亮。 */}
+      <div className="file-pane-title" data-testid={`file-title-${side}`}>
+        <span className="file-pane-dot" aria-hidden="true" />
+        <span className="file-pane-name">
+          {side === "local"
+            ? t("files.localPane")
+            : `${t("files.remotePane")} · ${session.hostName}`}
+        </span>
+      </div>
       <div className="file-pane-path">
         <button
           className="file-up"
@@ -465,6 +567,17 @@ export function FilePanel({ session }: { session: Session }) {
               aria-selected={state.selected === e.name}
               className="file-row"
               data-selected={state.selected === e.name}
+              draggable={true}
+              onDragStart={(ev) => {
+                // 内部拖拽传输源标记（HTML5 dataTransfer；跨面板 drop 消费）。
+                ev.dataTransfer.setData(
+                  "application/x-ottr-file",
+                  JSON.stringify({ side, name: e.name, isDir: e.is_dir }),
+                );
+                ev.dataTransfer.effectAllowed = "copy";
+                setDragSide(side);
+              }}
+              onDragEnd={() => setDragSide(null)}
               onClick={() =>
                 side === "local"
                   ? setLocal((p) => ({ ...p, selected: e.name }))

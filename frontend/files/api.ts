@@ -82,6 +82,11 @@ export function transferCancel(transferId: string): Promise<void> {
 // --- 纯函数（可测面） ---------------------------------------------------------
 
 /** 路径取文件名（两端通用；末尾 `/` 容忍）。 */
+/** 本地路径拼接（与 parentOf 同一 "/" 口径；Windows 混合分隔符 Rust fs 容忍）。 */
+export function joinLocalPath(dir: string, name: string): string {
+  return `${dir.replace(/\/+$/, "")}/${name}`;
+}
+
 export function fileNameOf(p: string): string {
   const parts = p.replace(/\/+$/, "").split("/");
   return parts[parts.length - 1] || p;

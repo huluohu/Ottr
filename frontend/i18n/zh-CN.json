@@ -549,7 +549,10 @@
       "dismissAria": "移除记录 {{name}}",
       "errorText": "错误：{{message}}"
     },
-    "ftpNoEdit": "FTP 会话不支持远端编辑"
+    "ftpNoEdit": "FTP 会话不支持远端编辑",
+    "menu.upload": "上传到远程（{{name}}）",
+    "menu.downloadToLocal": "下载到本地当前目录",
+    "downloadToLocal": "已下载到本地当前目录：{{name}}"
   },
   "forward": {
     "title": "端口转发",

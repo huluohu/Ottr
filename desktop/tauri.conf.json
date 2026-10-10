@@ -15,6 +15,8 @@
       {
         "title": "Ottr",
         "width": 800,
+      "minWidth": 720,
+      "minHeight": 480,
         "height": 600,
         "transparent": true
       }

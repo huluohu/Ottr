@@ -12,10 +12,7 @@
 // 【Esc】dock 活动页非空时注册 useEscClose → 关活动页（后挂载语义保证：
 // 叠在其上的对话框先收到 Esc）。
 import { useTranslation } from "react-i18next";
-import {
-  DOCK_PANEL_TITLE_KEY,
-  type ToolDockPanel,
-} from "../workspace/types";
+import { DOCK_PANEL_TITLE_KEY } from "../workspace/types";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { useEscClose } from "../ui/useEscClose";
 import { ForwardPanel } from "../forward/ForwardPanel";
@@ -24,16 +21,6 @@ import { CronPanel } from "../cron/CronPanel";
 import { AlertSettings } from "../notify/AlertSettings";
 import { McpSettings } from "../security/McpSettings";
 import { NotificationCenter } from "../notify/NotificationCenter";
-
-/** 逐面板停靠宽度（px）。380 = 列表型下限；420 = 表单/矩阵型不折行。 */
-export const DOCK_PANEL_WIDTH_PX: Record<ToolDockPanel, number> = {
-  forwards: 380,
-  jumpchains: 380,
-  cron: 380,
-  alerts: 420,
-  mcp: 420,
-  notifications: 380,
-};
 
 export function DockPanel() {
   const { t } = useTranslation();
@@ -50,13 +37,11 @@ export function DockPanel() {
   // 关闭态（无活动页签）→ 不渲染
   if (active === null) return null;
 
-  const width = DOCK_PANEL_WIDTH_PX[active];
   return (
     <aside
       className="dock-panel"
       data-testid="dock-container"
       data-panel={active}
-      style={{ width }}
       aria-label={t(DOCK_PANEL_TITLE_KEY[active])}
     >
       <div className="dock-head">
@@ -72,24 +57,11 @@ export function DockPanel() {
               title={t(DOCK_PANEL_TITLE_KEY[p])}
               onClick={() => openDock(p)}
             >
-              <span className="dock-tab-label">{t(DOCK_PANEL_TITLE_KEY[p])}</span>
-              {tabs.length > 1 && (
-                <span
-                  className="dock-tab-close"
-                  data-testid={`dock-tab-close-${p}`}
-                  role="button"
-                  aria-label={t("common.close")}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(p);
-                  }}
-                >
-                  ✕
-                </span>
-              )}
+              {t(DOCK_PANEL_TITLE_KEY[p])}
             </button>
           ))}
         </div>
+        {/* 关闭唯一入口 = 壳 ✕（关当前页签）；页签切换 keep-alive 不丢状态 */}
         <button
           className="dock-close"
           data-testid="dock-close"
@@ -112,8 +84,8 @@ export function DockPanel() {
             {p === "forwards" && <ForwardPanel open />}
             {p === "jumpchains" && <JumpChainEditor open />}
             {p === "cron" && <CronPanel open />}
-            {p === "alerts" && <AlertSettings open onClose={() => closeTab(p)} />}
-            {p === "mcp" && <McpSettings open onClose={() => closeTab(p)} />}
+            {p === "alerts" && <AlertSettings open />}
+            {p === "mcp" && <McpSettings open />}
             {p === "notifications" && <NotificationCenter />}
           </div>
         ))}

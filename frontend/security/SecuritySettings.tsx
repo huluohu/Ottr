@@ -689,7 +689,7 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               data-testid="alerts-pane"
             >
               <PaneErrorBoundary label="alerts" fallbackText={t("settings.panelError")}>
-                <AlertSettings open onClose={() => {}} />
+                <AlertSettings open />
               </PaneErrorBoundary>
             </div>
 
@@ -701,7 +701,7 @@ export function SecuritySettings({ open, onClose, onOpenSyncDialog }: SecuritySe
               data-testid="mcp-pane"
             >
               <PaneErrorBoundary label="mcp" fallbackText={t("settings.panelError")}>
-                <McpSettings open onClose={() => {}} />
+                <McpSettings open />
               </PaneErrorBoundary>
             </div>
 

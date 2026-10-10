@@ -25,20 +25,17 @@
   line-height: 16px;
   text-align: center;
 }
+/* 2026-10-10 四面板统一：通知中心为 dock 原生面板——浮层时代的宽度/边框/
+   圆角/阴影/z-index 全部清除；flex 填充 dock 页签内容区（列表区独立滚动）。 */
 .notify-panel {
-  /* 定位交由 .notify-panel-floating（fixed，右上）——此处曾遗留铃铛时代的
-   * absolute + top:calc(100%+6px) 锚定，级联覆盖 fixed 后面板被压到视口外
-   * 底部（用户实测「通知中心点击无响应」根因），已删。 */
-  width: 340px;
-  max-width: 90vw;
-  background: var(--surface-overlay);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  box-shadow: 0 12px 40px var(--scrim);
-  padding: 10px;
-  z-index: 60;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
 }
 .notify-panel-head {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   margin-bottom: 6px;
@@ -55,7 +52,8 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 300px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -184,18 +182,19 @@
   padding: 2px 8px;
 }
 .notify-mute {
+  flex: none;
   border-top: 1px solid var(--border-subtle);
   margin-top: 8px;
   padding-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px 12px;
   align-items: center;
-  gap: 4px 12px;
 }
 .notify-mute-label {
+  grid-column: 1 / -1;
   font-size: 0.82em;
   color: var(--fg-muted);
-  flex-basis: 100%;
 }
 .notify-mute-row {
   display: inline-flex;
@@ -204,7 +203,7 @@
   font-size: 0.84em;
 }
 .notify-mute-hint {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
   margin: 2px 0 0;
   font-size: 0.76em;
   color: var(--fg-muted);

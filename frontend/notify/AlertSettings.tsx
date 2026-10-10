@@ -31,7 +31,6 @@ import {
 
 export interface AlertSettingsProps {
   open: boolean;
-  onClose: () => void;
 }
 
 const CHANNEL_KINDS: ChannelKind[] = [
@@ -92,7 +91,7 @@ function paramOf(params: Record<string, string>, key: string): string {
   return params[key] ?? "";
 }
 
-export function AlertSettings({ open, onClose }: AlertSettingsProps) {
+export function AlertSettings({ open }: AlertSettingsProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
 
@@ -679,11 +678,6 @@ export function AlertSettings({ open, onClose }: AlertSettingsProps) {
           {formError}
         </p>
       )}
-      <div className="form-actions">
-        <button type="button" className="btn-accent" data-testid="alert-settings-close" onClick={onClose}>
-          {t("common.close")}
-        </button>
-      </div>
     </div>
   );
 }

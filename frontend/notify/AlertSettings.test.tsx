@@ -107,9 +107,9 @@ beforeEach(() => {
 
 describe("AlertSettings 渠道区", () => {
   it("open=false 不渲染；open=true 拉渠道与规则列表", async () => {
-    const { rerender } = render(<AlertSettings open={false} onClose={() => {}} />);
+    const { rerender } = render(<AlertSettings open={false} />);
     expect(screen.queryByTestId("alert-settings")).toBeNull();
-    rerender(<AlertSettings open={true} onClose={() => {}} />);
+    rerender(<AlertSettings open={true} />);
     await waitFor(() => expect(screen.getByTestId("alert-channel-3")).toBeDefined());
     expect(mockedInvoke).toHaveBeenCalledWith("nc_list");
     expect(mockedInvoke).toHaveBeenCalledWith("ar_list"); // 挂载即拉两区数据
@@ -118,7 +118,7 @@ describe("AlertSettings 渠道区", () => {
   });
 
   it("添加渠道：选类型→填字段→保存（nc_create 载荷=字段面）+ 重挂载", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     fireEvent.click(await screen.findByTestId("alert-add-channel"));
     fireEvent.change(screen.getByTestId("alert-channel-kind"), { target: { value: "telegram" } });
     fireEvent.change(screen.getByTestId("alert-field-bot_token"), { target: { value: "TOK" } });
@@ -136,7 +136,7 @@ describe("AlertSettings 渠道区", () => {
   });
 
   it("必填校验：缺字段保存报错且不落库", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     fireEvent.click(await screen.findByTestId("alert-add-channel"));
     fireEvent.change(screen.getByTestId("alert-channel-kind"), { target: { value: "telegram" } });
     fireEvent.click(screen.getByTestId("alert-channel-save"));
@@ -145,7 +145,7 @@ describe("AlertSettings 渠道区", () => {
   });
 
   it("编辑渠道：secret 不回显、留空保存 = 保留原值；非 secret 字段可改", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     fireEvent.click(await screen.findByTestId("alert-channel-edit-3"));
     await waitFor(() => {
       const token = screen.getByTestId("alert-field-bot_token") as HTMLInputElement;
@@ -163,7 +163,7 @@ describe("AlertSettings 渠道区", () => {
   });
 
   it("发送测试：真发成功 ✓ / 失败 ✗（错误原文上屏）", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     vi.mocked(testChannel).mockResolvedValueOnce(undefined);
     fireEvent.click(await screen.findByTestId("alert-channel-test-3"));
     const okRow = await screen.findByTestId("alert-channel-result-3");
@@ -179,7 +179,7 @@ describe("AlertSettings 渠道区", () => {
   });
 
   it("删除渠道：nc_delete + 重挂载", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     fireEvent.click(await screen.findByTestId("alert-channel-delete-3"));
     await waitFor(() => expect(remountChannels).toHaveBeenCalled());
     expect(mockedInvoke).toHaveBeenCalledWith("nc_delete", { id: 3 });
@@ -189,7 +189,7 @@ describe("AlertSettings 渠道区", () => {
 // T4 分区化：本组用例先切到规则分区（showRulesSection）再操作。
 describe("AlertSettings 规则区", () => {
   it("添加规则：主机/类型/参数/渠道多选→保存（ar_create）+ 引擎 reload", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
@@ -210,7 +210,7 @@ describe("AlertSettings 规则区", () => {
   });
 
   it("主机必选：不选保存报错", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.click(screen.getByTestId("alert-rule-save"));
@@ -219,7 +219,7 @@ describe("AlertSettings 规则区", () => {
   });
 
   it("静音窗与 rate_limit 透传（空静音窗 → null）", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
@@ -232,7 +232,7 @@ describe("AlertSettings 规则区", () => {
   });
 
   it("删除规则：ar_delete + 引擎 reload", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-rule-delete-9"));
     await waitFor(() => expect(engine.reload).toHaveBeenCalled());
@@ -240,7 +240,7 @@ describe("AlertSettings 规则区", () => {
   });
 
   it("log 规则（Phase 4 T2 解禁）：类型可选 + 路径/关键字/间隔表单 → ar_create 载荷", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
@@ -264,7 +264,7 @@ describe("AlertSettings 规则区", () => {
   });
 
   it("log 规则校验：非法正则/越白名单路径报错不落库；间隔下限收敛 5", async () => {
-    render(<AlertSettings open={true} onClose={() => {}} />);
+    render(<AlertSettings open={true} />);
     showRulesSection();
     fireEvent.click(await screen.findByTestId("alert-add-rule"));
     fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "1" } });
@@ -293,12 +293,4 @@ describe("AlertSettings 规则区", () => {
   });
 });
 
-describe("AlertSettings 收尾", () => {
-  it("关闭回调", async () => {
-    const onClose = vi.fn();
-    render(<AlertSettings open={true} onClose={onClose} />);
-    fireEvent.click(await screen.findByTestId("alert-settings-close"));
-    expect(onClose).toHaveBeenCalled();
-    cleanup();
-  });
-});
+

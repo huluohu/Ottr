@@ -8,7 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import "../i18n";
-import { DOCK_PANEL_WIDTH_PX, DockPanel } from "./DockPanel";
+import { DockPanel } from "./DockPanel";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -60,7 +60,6 @@ describe("DockPanel：右侧 dock 多页签壳", () => {
     expect(dock.getAttribute("data-panel")).toBe("forwards");
     expect(screen.getByTestId("dock-tabs")).toBeTruthy();
     expect(screen.getByTestId("dock-close")).toBeTruthy();
-    expect(dock.getAttribute("style")).toContain("380px");
   });
 
   it("六实体面板真挂载：openDock 即见实体内容", () => {
@@ -79,20 +78,6 @@ describe("DockPanel：右侧 dock 多页签壳", () => {
     }
   });
 
-  it("宽度表：列表型/通知 380，告警与 MCP 420（内容宽度裁定逐面板落位）", () => {
-    expect(DOCK_PANEL_WIDTH_PX).toEqual({
-      forwards: 380,
-      jumpchains: 380,
-      cron: 380,
-      alerts: 420,
-      mcp: 420,
-      notifications: 380,
-    });
-    useWorkspaceStore.getState().openDock("alerts");
-    render(<DockPanel />);
-    expect(screen.getByTestId("dock-container").getAttribute("style")).toContain("420px");
-  });
-
   it("多页签共存：两个面板同时挂载，非活动页隐藏、活动页可见（根治互相覆盖）", () => {
     useWorkspaceStore.getState().openDock("forwards");
     useWorkspaceStore.getState().openDock("cron");
@@ -107,14 +92,12 @@ describe("DockPanel：右侧 dock 多页签壳", () => {
     expect(screen.getByTestId("dock-tab-forwards").getAttribute("data-active")).toBe("false");
   });
 
-  it("点页签切换激活（不卸载不重挂），容器宽度跟随活动面板", () => {
+  it("点页签切换激活（不卸载不重挂），隐藏切换即时生效", () => {
     useWorkspaceStore.getState().openDock("forwards");
     useWorkspaceStore.getState().openDock("alerts");
     render(<DockPanel />);
-    expect(screen.getByTestId("dock-container").getAttribute("style")).toContain("420px");
     fireEvent.click(screen.getByTestId("dock-tab-forwards"));
     expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("forwards");
-    expect(screen.getByTestId("dock-container").getAttribute("style")).toContain("380px");
     expect(screen.getByTestId("dock-pane-forwards").hidden).toBe(false);
     expect(screen.getByTestId("dock-pane-alerts").hidden).toBe(true);
   });
@@ -134,18 +117,17 @@ describe("DockPanel：右侧 dock 多页签壳", () => {
     expect(screen.queryByTestId("dock-container")).toBeNull();
   });
 
-  it("壳级 ✕ 关活动页签；页签内 ✕ 关对应页签（多页签时才显示）", () => {
+  it("壳级 ✕ 是唯一关闭入口（关活动页签，页签无内嵌 ✕）", () => {
     useWorkspaceStore.getState().openDock("forwards");
     useWorkspaceStore.getState().openDock("cron");
-    render(<DockPanel />);
-    // 单页签时无页签内 ✕（tabs.length===1）——先验 absent，多页签后出现
     useWorkspaceStore.getState().openDock("alerts");
-    expect(screen.getByTestId("dock-tab-close-forwards")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("dock-tab-close-forwards"));
-    expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron", "alerts"]);
-    // 壳级 ✕ 关活动页（alerts）
-    fireEvent.click(screen.getByTestId("dock-close"));
-    expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron"]);
+    render(<DockPanel />);
+    expect(screen.queryByTestId("dock-tab-close-forwards")).toBeNull();
+    fireEvent.click(screen.getByTestId("dock-close")); // 壳 ✕ 关活动页（alerts）
+    expect(useWorkspaceStore.getState().dockTabs).toEqual(["forwards", "cron"]);
     expect(useWorkspaceStore.getState().dockActive).toBe("cron");
+    fireEvent.click(screen.getByTestId("dock-close"));
+    expect(useWorkspaceStore.getState().dockTabs).toEqual(["forwards"]);
+    expect(useWorkspaceStore.getState().dockActive).toBe("forwards");
   });
 });

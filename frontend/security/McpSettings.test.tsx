@@ -108,7 +108,7 @@ function seedInvoke({
 }
 
 function renderSettings() {
-  return render(<McpSettings open onClose={() => {}} />);
+  return render(<McpSettings open />);
 }
 
 beforeEach(() => {

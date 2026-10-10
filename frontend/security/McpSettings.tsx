@@ -22,13 +22,12 @@ import { Checkbox } from "../ui/Checkbox";
 
 export interface McpSettingsProps {
   open: boolean;
-  onClose: () => void;
 }
 
 /** read_file 白名单输入框的未保存草稿（grant id → 原文；失焦/回车保存）。 */
 type PathsDraft = Record<number, string>;
 
-export function McpSettings({ open, onClose }: McpSettingsProps) {
+export function McpSettings({ open }: McpSettingsProps) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<McpStatus | null>(null);
   const [grants, setGrants] = useState<McpGrant[]>([]);
@@ -258,11 +257,6 @@ export function McpSettings({ open, onClose }: McpSettingsProps) {
           </p>
         )}
 
-        <div className="form-actions">
-          <button type="button" className="btn-accent" data-testid="mcp-close" onClick={onClose}>
-            {t("common.close")}
-          </button>
-        </div>
     </div>
   );
 }

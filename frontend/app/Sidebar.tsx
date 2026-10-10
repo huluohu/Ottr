@@ -34,6 +34,32 @@ export interface SidebarProps extends HostTreeProps {
   onOpenSettings: () => void;
 }
 
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.4" />
+      <path d="m10.4 10.4 3 3" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  );
+}
+
+function FolderPlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 4.5c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.6h5c.8 0 1.5.7 1.5 1.5v5.4c0 .8-.7 1.5-1.5 1.5h-9C2.7 13 2 12.3 2 11.5v-7Z" />
+      <path d="M8 7.2v3.2M6.4 8.8h3.2" />
+    </svg>
+  );
+}
+
 function ClockIcon() {
   return (
     <svg className="sidebar-nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
@@ -161,6 +187,7 @@ export function Sidebar({
 
   return (
     <aside className="sidebar sidebar-v2" style={style} data-testid="app-sidebar">
+      {/* 搜索 = 标准输入框形（放大镜 + ⌘K 右嵌）；点击呼出 ⌘K 面板。 */}
       <div className="sidebar-quick">
         <button
           type="button"
@@ -168,30 +195,34 @@ export function Sidebar({
           data-testid="sidebar-search"
           onClick={onQuickConnect}
         >
-          <span>{t("sidebar.search")}</span>
+          <SearchIcon />
+          <span className="sidebar-search-text">{t("sidebar.search")}</span>
           <kbd className="sidebar-kbd">⌘K</kbd>
         </button>
-        {/* 新建主机/新建分组并入搜索行（2026-10-10 用户裁定）；分组点击展开
-            树内 inline 输入（可 Esc/✕ 取消），主机打开表单。 */}
+      </div>
+      {/* 主机区头部：区段标签 + 安静图标钮（新建入口，2026-10-10 深夜布局
+          裁定——描边盒三连改区段头图标；分组点击展开树内 inline 输入）。 */}
+      <div className="sidebar-section-head">
+        <span className="sidebar-section-title">{t("hostTree.sectionTitle")}</span>
         <button
           type="button"
-          className="sidebar-quick-btn"
+          className="sidebar-section-btn"
           data-testid="sidebar-add-host"
           title={t("hostTree.addHost")}
           aria-label={t("hostTree.addHost")}
           onClick={() => onAdd?.(null)}
         >
-          +<span className="sidebar-quick-txt">主机</span>
+          <PlusIcon />
         </button>
         <button
           type="button"
-          className="sidebar-quick-btn"
+          className="sidebar-section-btn"
           data-testid="sidebar-add-group"
           title={t("hostTree.addGroup")}
           aria-label={t("hostTree.addGroup")}
           onClick={onNewGroup}
         >
-          +<span className="sidebar-quick-txt">分组</span>
+          <FolderPlusIcon />
         </button>
       </div>
       <div className="sidebar-hosts">

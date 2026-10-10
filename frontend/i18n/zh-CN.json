@@ -121,6 +121,7 @@
     "productionHint": "终端边框标红、页签带 PROD 徽标；输入危险命令时给行内提醒。"
   },
   "hostTree": {
+    "sectionTitle": "主机",
     "addHost": "新建主机",
     "addGroup": "新建分组",
     "groupNamePlaceholder": "分组名称",

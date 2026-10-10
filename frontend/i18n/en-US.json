@@ -121,6 +121,7 @@
     "productionHint": "Marks the terminal border red and the tab with a PROD badge; dangerous input gets an inline reminder."
   },
   "hostTree": {
+    "sectionTitle": "Hosts",
     "addHost": "New Host",
     "addGroup": "New Group",
     "groupNamePlaceholder": "Group name",

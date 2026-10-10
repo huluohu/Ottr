@@ -113,7 +113,9 @@ describe("App 主页布局（集成）", () => {
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     await waitFor(() => expect(screen.getByTestId("command-palette")).toBeTruthy());
     // 浏览态无扁平 Commands 总头（评审 P0-4：组节头承载结构），主机区头仍在
-    expect(screen.getByText("Hosts")).toBeTruthy();
+    // （范围内查询：侧栏新增「Hosts」区段标题，全局 getByText 会双命中）
+    const paletteEl = screen.getByTestId("command-palette");
+    expect(paletteEl.textContent).toContain("Hosts");
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(screen.queryByTestId("command-palette")).toBeNull();
   });

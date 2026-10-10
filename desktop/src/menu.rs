@@ -729,6 +729,23 @@ pub fn tray_tree(lang: Lang, session_count: u64) -> Vec<MenuNode> {
     ]
 }
 
+/// Dock 右键菜单树：与托盘同源，去掉状态行（Dock 菜单为静态缓存，会话
+/// 计数会陈旧；实时状态看托盘）。2026-10-10「Dock 右键没反应」的落地实现。
+pub fn dock_tree(lang: Lang) -> Vec<MenuNode> {
+    tray_tree(lang, 0)
+        .into_iter()
+        .filter(|n| {
+            !matches!(
+                n,
+                MenuNode::Item {
+                    id: "tray.status",
+                    ..
+                }
+            )
+        })
+        .collect()
+}
+
 /// 菜单动作分类（纯函数，测试钉住「树里每个 Item id 都有分派」）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Dispatch {
@@ -1177,6 +1194,24 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
         })
         .build(app)?;
 
+    // Dock 右键菜单（仅 macOS）：与托盘同源树；动作分派同一匹配表。
+    #[cfg(target_os = "macos")]
+    {
+        let handle = app.clone();
+        let handler: crate::dock_menu::DockAction =
+            std::sync::Arc::new(move |id| match dispatch_of(id) {
+                Some(Dispatch::TrayShow) => show_main_window(&handle),
+                Some(Dispatch::Quit) => handle.exit(0),
+                Some(Dispatch::Frontend) => {
+                    if let Err(e) = handle.emit(MENU_ACTION_EVENT, id) {
+                        eprintln!("[dock] emit {MENU_ACTION_EVENT} failed: {e}");
+                    }
+                }
+                _ => {}
+            });
+        crate::dock_menu::install(dock_tree(menu_lang(app)), handler);
+    }
+
     // 语言切换 → 重建 app 菜单（mac）与托盘菜单文案（前端 setLang 发事件）。
     let handle = app.clone();
     app.listen(UI_LANG_EVENT, move |_| rebuild_menus(&handle));
@@ -1205,6 +1240,8 @@ fn rebuild_menus(handle: &AppHandle<Wry>) {
         }
         Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
     }
+    #[cfg(target_os = "macos")]
+    crate::dock_menu::rebuild(handle, dock_tree(lang));
     if let Some(tray) = handle.tray_by_id(TRAY_ID) {
         let n = *handle.state::<TrayStatusState>().0.lock().unwrap();
         match build_menu(handle, &tray_tree(lang, n)) {
@@ -1285,6 +1322,36 @@ mod tests {
 
     /// 与前端 registry（frontend/shortcuts/registry.ts MIRRORED 测试）互为镜像：
     /// 改键位必须两侧同步（TS 侧断言 ⌘K/Ctrl+K 展示，本侧钉 accelerator 字面量）。
+    #[test]
+    fn dock_tree_excludes_status_and_all_items_dispatchable() {
+        let tree = dock_tree(Lang::Zh);
+        // 状态行不进 Dock 菜单（静态缓存会陈旧）
+        assert!(tree.iter().all(|n| !matches!(
+            n,
+            MenuNode::Item {
+                id: "tray.status",
+                ..
+            }
+        )));
+        // 其余每个 Item id 都有分派（与托盘同一匹配表）
+        for node in &tree {
+            if let MenuNode::Item { id, .. } = node {
+                assert!(dispatch_of(id).is_some(), "dock_tree id 无分派: {id}");
+            }
+        }
+        // 分隔符之外至少含核心入口：显示主窗/新建主机/退出
+        let ids: Vec<&str> = tree
+            .iter()
+            .filter_map(|n| match n {
+                MenuNode::Item { id, .. } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert!(ids.contains(&"tray.show"));
+        assert!(ids.contains(&"hosts.new"));
+        assert!(ids.contains(&"tray.quit"));
+    }
+
     #[test]
     fn menu_tree_accelerators_match_frontend_registry() {
         let tree = menu_tree(Lang::En);

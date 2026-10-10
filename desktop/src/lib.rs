@@ -13,6 +13,8 @@
 // + send 失败显式计数（send_failed_bytes/send_failed_frames/failed —— M-2 失败策略，
 // flush_batch 文档）经 `session_stats` 可读；`OTTR_BATCH_DEBUG=1` 时逐批打 debug 日志。
 mod commands;
+#[cfg(target_os = "macos")]
+mod dock_menu;
 pub mod hostkey_audit;
 pub mod importers;
 pub mod keys;

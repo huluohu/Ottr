@@ -37,6 +37,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
 ottr-ssh = { path = "../crates/ottr-ssh" }
 # Task 9（A9）：转发路径解码（合批后、IPC 前）——ottr-term 流式会话解码器
 ottr-term = { path = "../crates/ottr-term" }
@@ -115,6 +116,11 @@ serde_yaml = "0.9"
 window-vibrancy = "0.8"
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
+# macOS Dock 右键菜单（2026-10-10：Tauri 2 无官方 API，dock_menu.rs 运行时挂
+# applicationDockMenu:；版本对齐 tauri 传递的 objc2 0.6 / app-kit 0.3 防双版本）
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSMenu", "NSMenuItem"] }
+objc2-foundation = { version = "0.3", features = ["NSString"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }

@@ -27,7 +27,7 @@
   font-weight: 600;
 }
 .ai-panel-meta {
-  font-size: 11px;
+  font-size: 0.6875rem;
   opacity: 0.7;
   flex: 1;
   overflow: hidden;
@@ -37,7 +37,7 @@
 .ai-panel-close {
   border: none;
   background: none;
-  font-size: 16px;
+  font-size: 1rem;
   cursor: pointer;
   line-height: 1;
 }
@@ -48,7 +48,7 @@
 }
 .ai-exit-code {
   display: inline-block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   color: var(--color-danger);
   border: 1px solid var(--color-danger);
@@ -60,7 +60,7 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .ai-status-row {
   display: flex;
@@ -68,19 +68,19 @@
   gap: 8px;
 }
 .ai-redactions {
-  font-size: 11px;
+  font-size: 0.6875rem;
   opacity: 0.75;
 }
 .ai-stop {
   margin-left: auto;
 }
 .ai-aborted {
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.7;
 }
 .ai-thinking {
   opacity: 0.7;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .ai-error {
   border: 1px solid var(--color-danger);
@@ -93,7 +93,7 @@
 }
 .ai-error p {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   word-break: break-all;
 }
 .ai-answer {
@@ -105,7 +105,7 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.55;
 }
 .ai-codeblock {
@@ -128,7 +128,7 @@
   flex-wrap: wrap;
 }
 .ai-level {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   border-radius: 4px;
   padding: 0 6px;
@@ -146,7 +146,7 @@
   border: 1px solid var(--color-danger);
 }
 .ai-code-findings {
-  font-size: 11px;
+  font-size: 0.6875rem;
   opacity: 0.8;
   display: inline-flex;
   gap: 6px;
@@ -154,7 +154,7 @@
 }
 .ai-insert-btn {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .ai-insert-btn.armed {
   background: var(--color-danger);
@@ -168,7 +168,7 @@
   margin: 0;
   padding: 8px;
   overflow-x: auto;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 /* AI 设置对话框 */
@@ -201,7 +201,7 @@
   gap: 6px;
 }
 .ai-default-badge {
-  font-size: 10px;
+  font-size: 0.625rem;
   background: var(--color-accent);
   color: var(--color-on-accent);
   border-radius: 4px;
@@ -209,14 +209,14 @@
 }
 /* Mock provider「测试用」徽标（批次三 T3，审计 16）：与默认徽标同形，警示色相 */
 .ai-mock-badge {
-  font-size: 10px;
+  font-size: 0.625rem;
   border: 1px solid var(--color-warning);
   color: var(--color-warning);
   border-radius: 4px;
   padding: 0 6px;
 }
 .ai-provider-meta {
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.75;
 }
 .ai-provider-actions {
@@ -234,14 +234,14 @@
   margin-bottom: 4px;
 }
 .ai-preset {
-  font-size: 11px;
+  font-size: 0.6875rem;
   padding: 1px 8px;
 }
 .ai-rule-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .ai-rule-pattern {
   flex: 1;
@@ -265,7 +265,7 @@
    error=danger/off=surface 灰）。 */
 .forward-empty {
   opacity: 0.7;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 12px 2px;
 }
 .forward-list {
@@ -291,7 +291,7 @@
   border-radius: 50%;
   flex: none;
   background: var(--color-surface);
-  border: 1px solid rgba(128, 128, 128, 0.4);
+  border: 1px solid color-mix(in srgb, var(--color-fg) 35%, transparent);
 }
 .forward-light[data-state="active"] {
   background: var(--color-success);
@@ -313,8 +313,8 @@
   gap: 2px;
 }
 .forward-endpoint {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 0.78125rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -323,7 +323,7 @@
   opacity: 0.6;
 }
 .forward-meta {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   opacity: 0.72;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -339,7 +339,7 @@
   flex: none;
 }
 .forward-actions button {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   padding: 3px 9px;
 }
 /* CronPanel 展开历史（Phase 4 走查 OBS-1 修复）：.forward-row 是横排 flex，
@@ -362,7 +362,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   white-space: nowrap;
 }
 .forward-form {
@@ -375,7 +375,7 @@
 }
 .forward-form h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .forward-form-flags {
   display: flex;
@@ -387,7 +387,7 @@
    容器样式随对话框形态消亡——滚动与宽度由 dock 壳接管。 */
 .jump-empty {
   opacity: 0.7;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 12px 2px;
 }
 .jump-list {
@@ -415,12 +415,12 @@
   gap: 2px;
 }
 .jump-name {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 .jump-hops {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   opacity: 0.8;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -433,7 +433,7 @@
   flex: none;
 }
 .jump-actions button {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   padding: 3px 9px;
 }
 .jump-form {
@@ -446,13 +446,13 @@
 }
 .jump-form h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .jump-hops-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.85;
 }
 .jump-hop-list {
@@ -480,8 +480,8 @@
   flex: none;
   width: 18px;
   text-align: center;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11.5px;
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
   opacity: 0.7;
 }
 .jump-hop-row select {
@@ -494,7 +494,7 @@
   flex: none;
 }
 .jump-hop-actions button {
-  font-size: 11px;
+  font-size: 0.6875rem;
   padding: 2px 7px;
 }
 .jump-test-row {
@@ -504,10 +504,10 @@
   flex-wrap: wrap;
 }
 .jump-test-row button {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .jump-test-result {
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .jump-test-result[data-ok="true"] {
   color: var(--color-success);
@@ -517,7 +517,7 @@
 }
 .host-key-hop {
   margin: 0 0 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   opacity: 0.85;
 }

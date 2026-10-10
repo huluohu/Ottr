@@ -18,6 +18,37 @@
   --ottr-ink-900: #0f172a; /* 墨色（五官、正文标题） */
   --ottr-water-900: #0b2b33; /* Deep Water（暗色主题背景基调） */
 
+  /* --- 结构令牌（2026-10-10 UI 重构一期：主题无关刻度层，:root 单源） ------ *
+   * 间距 4px 基；圆角四档；阴影单源；字阶 em 基；动效统一；z 刻度 = 现状层级
+   * 原位归档（只命名不改值，层叠关系零变化）。UI 层一律引用本层，不再写字面值。 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+  --font-size-xs: 0.78em;
+  --font-size-sm: 0.88em;
+  --font-size-base: 1em;
+  /* 等宽栈单源（原 9 处 var(--font-mono, ui-monospace, monospace) fallback 转正） */
+  --font-mono: ui-monospace, monospace;
+  --dur-fast: 120ms;
+  --dur: 160ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* z 刻度 = 现状值原位归档（层级关系零变化；局部小栈如终端页签 99/100/101 不入刻度） */
+  --z-overlay: 50;   /* 全部 .overlay 对话框/命令面板/历史搜索 */
+  --z-topbar: 60;    /* 顶栏下拉、标题栏菜单、录制指示 */
+  --z-notify: 90;    /* 通知中心面板 */
+  --z-toast: 150;    /* toast 堆叠 */
+  --z-lock: 200;     /* 锁屏 / vault 初始化门 */
+  --z-flyout: 300;   /* 侧栏主题/语言 flyout */
+
   /* --- 语义层 · 亮色（默认；ThemeContext 挂 data-theme 后同样命中） --- */
   color-scheme: light;
   --color-bg: #faf7f1; /* cream 派生的暖纸白 */

@@ -22,6 +22,7 @@ import { readDeliveryFailures, useNotifyStore, type DeliveryFailure, type Notify
 import { resendNotification } from "./channelRegistry";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { Checkbox } from "../ui/Checkbox";
+import { EmptyState } from "../ui/EmptyState";
 
 // Phase 3 Task 3（B5）：告警事件独立静音位（规则引擎事件走 kind="alert"）。
 // Phase 3 Task 6（B9）：指纹巡检 changed 告警独立静音位（kind="security"）。
@@ -150,18 +151,17 @@ export function NotificationCenter() {
           </div>
 
           {items.length === 0 ? (
-            <div className="notify-empty-guide" data-testid="notify-empty-guide">
-              <p className="notify-empty" data-testid="notify-empty">
-                {t("notify.empty")}
-              </p>
-              <p className="notify-empty-hint">{t("notify.emptyHint")}</p>
-              <button
-                type="button"
-                data-testid="notify-empty-alerts"
-                onClick={() => openDock("alerts")}
-              >
-                {t("notify.emptyAlertsCta")}
-              </button>
+            <div data-testid="notify-empty-guide">
+              <EmptyState
+                title={t("notify.empty")}
+                hint={t("notify.emptyHint")}
+                action={{
+                  label: t("notify.emptyAlertsCta"),
+                  onClick: () => openDock("alerts"),
+                  testid: "notify-empty-alerts",
+                }}
+                testid="notify-empty"
+              />
             </div>
           ) : (
             <ul className="notify-list">

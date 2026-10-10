@@ -40,13 +40,13 @@
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 60;
+  z-index: var(--z-topbar);
   min-width: 240px;
   padding: 6px;
   background: var(--surface-overlay);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  box-shadow: 0 12px 40px var(--scrim);
+  box-shadow: var(--shadow-overlay);
 }
 .titlebar-menu-item {
   width: 100%;

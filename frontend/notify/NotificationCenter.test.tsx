@@ -230,7 +230,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
     expect(useNotifyStore.getState().items).toHaveLength(0);
     expect(useNotifyStore.getState().unread).toBe(0);
     expect((screen.getByTestId("notify-clear") as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId("notify-empty").textContent).toBe("No notifications");
+    expect(screen.getByTestId("notify-empty").textContent).toContain("No notifications");
   });
 
   it("按 kind 静音：勾选即写 settings 并入 muted 集；已静音的 kind 勾选态回显", async () => {
@@ -256,7 +256,7 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
       expect(mockedInvoke).toHaveBeenCalledWith("notify_list", { limit: 200 }),
     );
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("notify_unread_count"));
-    expect(screen.getByTestId("notify-empty").textContent).toBe("No notifications");
+    expect(screen.getByTestId("notify-empty").textContent).toContain("No notifications");
 
     // 后端出现新行：重开面板（关→开）对齐真源
     seedBackend([row({ id: 9 })], 1);
@@ -275,7 +275,7 @@ describe("通知空态引导（ui2 T3，审计 A4）", () => {
     expect(useWorkspaceStore.getState().dockTabs).toEqual([]);
     expect(screen.getByTestId("notify-empty-guide")).toBeTruthy();
     // 空态判定不变：notify-empty 文案原样保留在引导块内
-    expect(screen.getByTestId("notify-empty").textContent).toBe("No notifications");
+    expect(screen.getByTestId("notify-empty").textContent).toContain("No notifications");
 
     fireEvent.click(screen.getByTestId("notify-empty-alerts"));
     expect(useWorkspaceStore.getState().dockActive).toBe("alerts");

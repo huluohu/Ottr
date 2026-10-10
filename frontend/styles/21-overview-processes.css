@@ -5,7 +5,7 @@
    minmax(280px,1fr)，宽屏充盈多列）。 */
 .overview-empty {
   color: var(--fg-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .overview-grid {
   display: grid;
@@ -41,7 +41,7 @@
   border-radius: 50%;
   flex: none;
   background: var(--color-surface);
-  border: 1px solid rgba(128, 128, 128, 0.4);
+  border: 1px solid color-mix(in srgb, var(--color-fg) 35%, transparent);
 }
 .overview-light[data-state="live"] {
   background: var(--color-success);
@@ -57,7 +57,7 @@
 }
 .overview-host {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 0.8125rem;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -65,8 +65,8 @@
   white-space: nowrap;
 }
 .overview-addr {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
   opacity: 0.7;
   max-width: 45%;
   overflow: hidden;
@@ -82,7 +82,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11.5px;
+  font-size: 0.71875rem;
 }
 .overview-metric-label {
   flex: none;
@@ -93,7 +93,7 @@
   flex: 1;
   height: 5px;
   border-radius: 3px;
-  background: rgba(128, 128, 128, 0.18);
+  background: color-mix(in srgb, var(--color-fg) 15%, transparent);
   overflow: hidden;
 }
 .overview-bar-fill {
@@ -113,7 +113,7 @@
 .overview-state {
   margin: 0;
   color: var(--fg-muted);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
 }
 .overview-card-actions {
   display: flex;
@@ -121,7 +121,7 @@
   gap: 6px;
 }
 .overview-card-actions button {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   padding: 3px 9px;
 }
 .overview-card-actions button:disabled {
@@ -147,10 +147,10 @@
 }
 .proc-title {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .proc-count {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -160,7 +160,7 @@
 .proc-state {
   margin: auto;
   color: var(--fg-muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .proc-table-holder {
   flex: 1;
@@ -170,7 +170,7 @@
 .proc-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .proc-table th {
   position: sticky;
@@ -192,18 +192,18 @@
 }
 .proc-table td {
   padding: 3px 8px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+  border-bottom: 1px solid var(--border-subtle);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .proc-comm {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   max-width: 340px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .proc-kill-btn {
-  font-size: 11px;
+  font-size: 0.6875rem;
   padding: 2px 8px;
 }
 .proc-kill-btn:hover {
@@ -223,7 +223,7 @@
 }
 .proc-confirm p {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 .proc-confirm-actions {
   display: flex;
@@ -250,7 +250,7 @@
 }
 .alert-rule-form legend,
 .alert-rule-form fieldset legend {
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.75;
   padding: 0 4px;
 }
@@ -289,10 +289,10 @@
 .batch-vars-wrap h3,
 .batch-results h3 {
   margin: 4px 0 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .batch-hint {
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.75;
   margin: 8px 0 0;
 }
@@ -303,12 +303,12 @@
   margin-bottom: 10px;
 }
 .batch-form-row label {
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.8;
 }
 .batch-form-row textarea,
 .batch-form-row select {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
 }
 /* 多选勾选面（HostTree 行点击即切换）：行制式与单选一致（单行、同高），
    勾选框语义不变——选中 = accent 实底方框 + 行微亮。 */
@@ -330,7 +330,7 @@
 .batch-vars {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 .batch-vars th,
 .batch-vars td {
@@ -344,14 +344,14 @@
 }
 .batch-nc {
   margin-left: 6px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--color-warning);
 }
 .batch-params {
   display: flex;
   gap: 16px;
   margin: 8px 0;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 .batch-params label {
   display: flex;
@@ -368,7 +368,7 @@
   flex-wrap: wrap;
 }
 .batch-finding {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   color: var(--color-warning);
 }
 .batch-exec.armed {
@@ -378,25 +378,25 @@
 }
 .batch-progress,
 .batch-summary {
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   margin: 8px 0 0;
 }
 .batch-results {
   margin-top: 0;
 }
 .batch-diff-head {
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   margin: 4px 0;
   color: var(--color-success);
 }
 .batch-group summary {
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--color-success);
 }
 .batch-group-output {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   background: var(--color-surface);
   border-radius: 6px;
   padding: 8px;
@@ -407,7 +407,7 @@
 .batch-results-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 .batch-results-table th,
 .batch-results-table td {
@@ -436,12 +436,12 @@
 }
 .batch-outlier {
   margin-left: 6px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--color-warning);
 }
 .batch-err {
   display: block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--color-danger);
   max-width: 260px;
   overflow: hidden;
@@ -450,12 +450,12 @@
 }
 .batch-output summary {
   cursor: pointer;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
 }
 .batch-output pre {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   background: var(--color-surface);
   border-radius: 6px;
   padding: 8px;
@@ -472,7 +472,7 @@
 }
 .batch-truncated {
   opacity: 0.65;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .batch-stderr {
   color: var(--color-warning);

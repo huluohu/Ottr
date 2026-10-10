@@ -49,7 +49,7 @@
 
 /* 回放器对话框 */
 .player-overlay {
-  z-index: 60;
+  z-index: var(--z-topbar);
 }
 .recording-player {
   width: min(860px, 92vw);

@@ -2,7 +2,7 @@
 
 /* 锁定遮罩盖一切（对话框 z-index 50/99/100/101 之上）；卡片窄栏居中。 */
 .lock-screen {
-  z-index: 200;
+  z-index: var(--z-lock);
   align-items: center;
 }
 .lock-card {

@@ -1,13 +1,7 @@
 /* --- 首页欢迎面（2026-10-10 壳层重构）：时段问候 + 品牌水印 + 快捷卡 +
  * 最近连接。挂在 .main-placeholder 内（既有居中口径沿用）。 --- */
 
-.home-welcome {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: min(620px, 100%);
-}
+/* .home-welcome 容器类已死（组件改 Fragment 后无引用，2026-10-10 清理）。 */
 /* 品牌水印：大尺寸低透明度，压在问候语上方不抢戏。 */
 .home-brand {
   width: 110px;

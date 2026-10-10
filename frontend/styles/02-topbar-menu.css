@@ -25,9 +25,9 @@
   background: var(--surface-overlay);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  box-shadow: 0 12px 40px var(--scrim);
+  box-shadow: var(--shadow-overlay);
   padding: 4px;
-  z-index: 60;
+  z-index: var(--z-topbar);
 }
 .topbar-menu-list button {
   border: none;

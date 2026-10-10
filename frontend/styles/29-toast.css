@@ -5,7 +5,7 @@
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 150;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -19,7 +19,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   background: var(--surface-overlay);
-  box-shadow: 0 12px 40px var(--scrim);
+  box-shadow: var(--shadow-overlay);
   color: var(--fg);
   font-size: 0.9em;
   cursor: pointer;

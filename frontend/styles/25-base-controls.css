@@ -110,7 +110,7 @@
   font-size: 0.8em;
   padding: 0.25em 0.7em;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: inherit;
   box-shadow: none;
@@ -149,7 +149,7 @@
   display: flex;
   gap: 3px;
   height: 22px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   border: 1px solid var(--border-subtle);
 }
@@ -200,3 +200,61 @@
 .tp-glass .tp-fg { background: #e6edf3; }
 .tp-glass .tp-accent { background: #93c5fd; }
 
+
+/* --- 原语层补遗（2026-10-10 UI 重构一期）-------------------------------- */
+/* 中性次钮：表单/面板的取消与次要动作统一基（此前 254 钮仅 56 个有变体）。 */
+.btn {
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-subtle);
+  color: var(--color-fg);
+}
+.btn:hover {
+  background: var(--surface-raised);
+}
+/* 幽灵钮：无框无底，hover 才显形（工具行/头部动作）。 */
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+}
+.btn-ghost:hover {
+  color: var(--color-fg);
+  background: var(--surface-raised);
+}
+/* 图标按钮基（IconButton 组件配套）：方形命中区 + 关闭钮 hover 底。 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--fg-muted);
+  line-height: 1;
+}
+.icon-btn:hover {
+  color: var(--color-fg);
+  background: var(--surface-raised);
+}
+.icon-btn-danger:hover {
+  color: var(--color-on-danger);
+  background: var(--color-danger);
+}
+/* 空态单源（EmptyState 组件配套）：标题/说明/动作三段居中。 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-4) 0;
+  text-align: center;
+}
+.empty-state-title {
+  margin: 0;
+  color: var(--fg-muted);
+}
+.empty-state-hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--fg-muted);
+}

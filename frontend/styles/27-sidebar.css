@@ -94,13 +94,13 @@
  * 选即关（原生菜单语义），点外/Esc 同收。z 层高于 dock(150)/toast(150)。 */
 .sidebar-flyout {
   position: fixed;
-  z-index: 300;
+  z-index: var(--z-flyout);
   min-width: 170px;
   padding: 4px;
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   background: var(--surface-overlay);
-  box-shadow: 0 12px 40px var(--scrim);
+  box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -111,7 +111,7 @@
   gap: 8px;
   padding: 7px 10px;
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--fg);
   font-size: 0.9em;

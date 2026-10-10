@@ -1,7 +1,8 @@
-// DockPanel（UI 批次一 Task 4；2026-10-09 dock 多页签改造）：右侧 dock 实体
-// 壳——顶部页签条（已开面板共存，切换不卸载不互相关闭）+ keep-alive 面板区
-// + 关闭钮。monitor/plugins 是终端右栏自管折叠侧栏，不经本壳（dockActive 为
-// 其值时 store 不接受，见 workspaceStore）。
+// DockPanel（UI 批次一 Task 4；2026-10-10 交互收敛）：右侧 dock 实体壳——
+// 无自体导航（页签条已移除）：当前面板标题 + 关闭钮 + keep-alive 面板区。
+// **切换唯一入口 = 侧栏工具行**（toggleDock：点行开/激活、再点收起、激活
+// 高亮）——双切换器（页签条+侧栏）交互混乱，用户裁定只留侧栏一轨。
+// monitor/plugins 是终端右栏自管折叠侧栏，不经本壳。
 //
 // 【页签语义（用户裁定「根治互相覆盖」）】openDock 打开/激活、closeTab 关单
 // 页签（活动权移交右邻）、closeDock 清空全部。面板 keep-alive：打开过的页签
@@ -26,7 +27,6 @@ export function DockPanel() {
   const { t } = useTranslation();
   const tabs = useWorkspaceStore((s) => s.dockTabs);
   const active = useWorkspaceStore((s) => s.dockActive);
-  const openDock = useWorkspaceStore((s) => s.openDock);
   const closeTab = useWorkspaceStore((s) => s.closeTab);
 
   // Esc 关活动页（active=null 时不注册——dock 关闭态不劫持全局 Esc）。
@@ -45,23 +45,10 @@ export function DockPanel() {
       aria-label={t(DOCK_PANEL_TITLE_KEY[active])}
     >
       <div className="dock-head">
-        <div className="dock-tabs" role="tablist" data-testid="dock-tabs">
-          {tabs.map((p) => (
-            <button
-              key={p}
-              type="button"
-              role="tab"
-              aria-selected={p === active}
-              data-active={p === active}
-              data-testid={`dock-tab-${p}`}
-              title={t(DOCK_PANEL_TITLE_KEY[p])}
-              onClick={() => openDock(p)}
-            >
-              {t(DOCK_PANEL_TITLE_KEY[p])}
-            </button>
-          ))}
-        </div>
-        {/* 关闭唯一入口 = 壳 ✕（关当前页签）；页签切换 keep-alive 不丢状态 */}
+        <span className="dock-title" data-testid="dock-title">
+          {t(DOCK_PANEL_TITLE_KEY[active])}
+        </span>
+        {/* 关闭唯一入口 = 壳 ✕（关当前面板，keep-alive 状态保留；切换 = 侧栏工具行） */}
         <button
           className="dock-close"
           data-testid="dock-close"

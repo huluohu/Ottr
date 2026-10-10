@@ -16,50 +16,18 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
+  gap: 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-subtle);
 }
-/* 页签条（产品级规范）：单行铁律（nowrap + 条内横向滚动，永不换行压缩文字）、
-   激活态 accent 下边线（编辑器页签范式）；页签无内嵌 ✕——关闭唯一入口 = 壳 ✕。 */
-.dock-tabs {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.dock-tabs::-webkit-scrollbar {
-  display: none;
-}
-.dock-tab {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  padding: 9px 10px 7px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
-  font-size: 0.88em;
-  color: var(--fg-muted);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.dock-tab:hover {
-  color: var(--color-fg);
-}
-.dock-tab[data-active="true"] {
-  color: var(--color-fg);
-  border-bottom-color: var(--color-accent-border);
+.dock-title {
   font-weight: 600;
+  flex: 1;
 }
 .dock-close {
   border: none;
   background: none;
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
   line-height: 1;
   color: var(--color-fg);

@@ -991,6 +991,22 @@ fn apply_zoom<R: Runtime>(app: &AppHandle<R>, delta: Option<f64>) {
     }
 }
 
+/// 托盘/Dock 菜单动作处理器：与 on_app_menu_event 同一匹配表
+/// （显示主窗/退出为 Rust 专属动作，其余转前端 handleAction）。
+pub(crate) fn tray_menu_action(app: &AppHandle<Wry>) -> crate::dock_menu::DockAction {
+    let handle = app.clone();
+    std::sync::Arc::new(move |id| match dispatch_of(id) {
+        Some(Dispatch::TrayShow) => show_main_window(&handle),
+        Some(Dispatch::Quit) => handle.exit(0),
+        Some(Dispatch::Frontend) => {
+            if let Err(e) = handle.emit(MENU_ACTION_EVENT, id) {
+                eprintln!("[tray] emit {MENU_ACTION_EVENT} failed: {e}");
+            }
+        }
+        _ => {}
+    })
+}
+
 fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -1182,33 +1198,37 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             }
             _ => {}
         })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
+        .on_tray_icon_event(|tray, event| match event {
+            // 右键 = 原生 NSMenu 弹窗（muda 0.20 的 setMenu+performClick
+            // 路径在本机 macOS 27 静默失效，见 dock_menu.rs popup_tray_menu）；
+            // 弹出位置 = 当前光标位置（popup_tray_menu 内读
+            // NSEvent::mouseLocation——状态栏图标可能被重排/折叠，
+            // 事件坐标不可信，光标必然在图标上）。
+            TrayIconEvent::Click {
+                button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
+                ..
+            } => {
+                let app = tray.app_handle();
+                crate::dock_menu::popup_tray_menu(
+                    app,
+                    dock_tree(menu_lang(app)),
+                    tray_menu_action(app),
+                );
+            }
+            TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
-            } = event
-            {
-                toggle_main_window(tray.app_handle());
-            }
+            } => toggle_main_window(tray.app_handle()),
+            _ => {}
         })
         .build(app)?;
 
     // Dock 右键菜单（仅 macOS）：与托盘同源树；动作分派同一匹配表。
     #[cfg(target_os = "macos")]
     {
-        let handle = app.clone();
-        let handler: crate::dock_menu::DockAction =
-            std::sync::Arc::new(move |id| match dispatch_of(id) {
-                Some(Dispatch::TrayShow) => show_main_window(&handle),
-                Some(Dispatch::Quit) => handle.exit(0),
-                Some(Dispatch::Frontend) => {
-                    if let Err(e) = handle.emit(MENU_ACTION_EVENT, id) {
-                        eprintln!("[dock] emit {MENU_ACTION_EVENT} failed: {e}");
-                    }
-                }
-                _ => {}
-            });
+        let handler = tray_menu_action(app);
         crate::dock_menu::install(dock_tree(menu_lang(app)), handler);
     }
 

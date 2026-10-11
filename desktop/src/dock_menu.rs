@@ -16,7 +16,7 @@ use std::sync::{Arc, OnceLock};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, NSObject, Sel};
 use objc2::{ClassType, MainThreadMarker, MainThreadOnly, msg_send, sel};
-use objc2_app_kit::{NSApplication, NSMenu, NSMenuItem};
+use objc2_app_kit::{NSApplication, NSEvent, NSMenu, NSMenuItem};
 use objc2_foundation::NSString;
 use tauri::{AppHandle, Wry};
 
@@ -60,6 +60,26 @@ unsafe impl Sync for DockTarget {}
 /// Message 类型 → 基类不透明引用（objc2 无自动强转，手写零成本转换）。
 fn as_any<T: objc2::Message>(obj: &T) -> &AnyObject {
     unsafe { &*(obj as *const T as *const AnyObject) }
+}
+
+/// 托盘右键原生弹窗（2026-10-11）：muda 0.20 收到右键事件后的
+/// setMenu+performClick 弹出路径在本机 macOS 27 上静默失效（事件到达、
+/// 菜单不弹）——绕开它，直接用同一菜单树构建 NSMenu 并在事件坐标处弹出。
+/// 无位置参数：弹出时读 NSEvent::mouseLocation（全局点坐标、左下原点）。
+/// 用户右键瞬间光标必然在图标上——不依赖事件坐标（状态栏图标可能被
+/// Ice 类工具重排、或折叠进 «，事件坐标与视觉位置不可信）。
+pub fn popup_tray_menu(handle: &AppHandle<Wry>, tree: Vec<MenuNode>, handler: DockAction) {
+    let _ = HANDLER.set(handler);
+    let _ = handle.run_on_main_thread(move || {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let _target: Retained<DockTarget> = unsafe { msg_send![DockTarget::class(), new] };
+        let menu = build(&tree, mtm);
+        // mouseLocation = 全局点坐标（左下原点），与 popup 坐标系一致，零换算。
+        let mouse = NSEvent::mouseLocation();
+        menu.popUpMenuPositioningItem_atLocation_inView(None, mouse, None);
+    });
 }
 
 /// 构建 NSMenu（主线程）。

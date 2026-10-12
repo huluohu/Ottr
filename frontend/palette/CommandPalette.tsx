@@ -304,28 +304,11 @@ export function CommandPalette({
     setActiveIndex((i) => Math.min(i, Math.max(0, flat.length - 1)));
   }, [flat.length]);
 
-  // 键盘导航时把活动项滚进可视区（jsdom 无 scrollIntoView，探测后调用）。
-  useEffect(() => {
-    const el = listRef.current?.querySelector('[data-active="true"]');
-    if (el && typeof el.scrollIntoView === "function") {
-      el.scrollIntoView({ block: "nearest" });
-    }
-  }, [activeIndex, flat.length]);
-
-  // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
-  const mount = useDelayedUnmount(open);
-  // Esc 关闭走全局栈（useEscClose）：焦点不在输入框（Tab 到列表项/点面板空白）
-  // 也能关，且嵌套时只关栈顶（后开的先关）——不再挂在 input 的 onKeyDown 上。
-  useEscClose(open, onClose);
-  if (!mount.shouldRender) return null;
-
-  function runItem(item: PaletteItem | undefined) {
-    if (!item) return;
-    if (item.kind === "command" && item.action) onAction(item.action);
-    else if (item.kind === "host" && item.host) onConnect(item.host);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
+  // 键盘导航（document 级，2026-10-12）：上下移动/Enter 选中**不依赖输入框
+  // 焦点**——焦点落在条目按钮、遮罩或任何位置都能操作；输入框内的输入不
+  // 受影响（方向键不产字符，Enter 由这里 preventDefault 防换行）。
+  const navHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  navHandlerRef.current = (e: KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (flat.length > 0) setActiveIndex((i) => (i + 1) % flat.length);
@@ -336,6 +319,37 @@ export function CommandPalette({
       e.preventDefault();
       runItem(flat[activeIndex]);
     }
+  };
+
+  // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
+  const mount = useDelayedUnmount(open);
+  // Esc 关闭走全局栈（useEscClose）：焦点不在输入框（Tab 到列表项/点面板空白）
+  // 也能关，且嵌套时只关栈顶（后开的先关）——不再挂在 input 的 onKeyDown 上。
+  useEscClose(open, onClose);
+  if (!mount.shouldRender) return null;
+
+  // 键盘导航（document 级，评审 2026-10-12）：上下移动/Enter 选中**不依赖
+  // 输入框焦点**——焦点落在条目按钮、遮罩或任何位置都能操作；输入框内的
+  // 输入不受影响（方向键不产字符，Enter 由这里 preventDefault 防换行）。
+  // handler 走 ref（每次渲染刷新闭包），监听器随挂载注册一次即可。
+  useEffect(() => {
+    if (!mount.shouldRender) return;
+    const h = (e: KeyboardEvent) => navHandlerRef.current(e);
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [mount.shouldRender]);
+
+  useEffect(() => {
+    const el = listRef.current?.querySelector('[data-active="true"]');
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeIndex, flat.length]);
+
+  function runItem(item: PaletteItem | undefined) {
+    if (!item) return;
+    if (item.kind === "command" && item.action) onAction(item.action);
+    else if (item.kind === "host" && item.host) onConnect(item.host);
   }
 
   function renderItem(item: PaletteItem, idx: number) {
@@ -396,7 +410,6 @@ export function CommandPalette({
             setQuery(e.currentTarget.value);
             setActiveIndex(0);
           }}
-          onKeyDown={handleKeyDown}
         />
         <ul className="palette-list" ref={listRef}>
           {flat.length === 0 && <li className="palette-empty">{t("palette.empty")}</li>}

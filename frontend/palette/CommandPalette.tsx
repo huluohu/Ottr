@@ -326,12 +326,12 @@ export function CommandPalette({
   // Esc 关闭走全局栈（useEscClose）：焦点不在输入框（Tab 到列表项/点面板空白）
   // 也能关，且嵌套时只关栈顶（后开的先关）——不再挂在 input 的 onKeyDown 上。
   useEscClose(open, onClose);
-  if (!mount.shouldRender) return null;
 
   // 键盘导航（document 级，评审 2026-10-12）：上下移动/Enter 选中**不依赖
   // 输入框焦点**——焦点落在条目按钮、遮罩或任何位置都能操作；输入框内的
   // 输入不受影响（方向键不产字符，Enter 由这里 preventDefault 防换行）。
-  // handler 走 ref（每次渲染刷新闭包），监听器随挂载注册一次即可。
+  // handler 走 ref（每次渲染刷新闭包）。effect 必须挂在早退之前（hooks
+  // 顺序恒定），shouldRender 守卫在内部。
   useEffect(() => {
     if (!mount.shouldRender) return;
     const h = (e: KeyboardEvent) => navHandlerRef.current(e);
@@ -345,6 +345,8 @@ export function CommandPalette({
       el.scrollIntoView({ block: "nearest" });
     }
   }, [activeIndex, flat.length]);
+
+  if (!mount.shouldRender) return null;
 
   function runItem(item: PaletteItem | undefined) {
     if (!item) return;

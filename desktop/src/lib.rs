@@ -458,11 +458,26 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // App 退出清理（Phase 2 Task 3）：编辑临时目录随进程收尾。
-            // RunEvent::Exit 对 quit_app / 菜单退出 / 正常退出路径统一触发；
-            // 异常死亡的漏网残留由 24h 惰性清扫兜底（remote_edit 模块文档）。
-            if let tauri::RunEvent::Exit = event {
-                commands::remote_edit::close_all_edits(&app.state::<AppState>().edits);
+            match event {
+                // App 退出清理（Phase 2 Task 3）：编辑临时目录随进程收尾。
+                // RunEvent::Exit 对 quit_app / 菜单退出 / 正常退出路径统一触发；
+                // 异常死亡的漏网残留由 24h 惰性清扫兜底（remote_edit 模块文档）。
+                tauri::RunEvent::Exit => {
+                    commands::remote_edit::close_all_edits(&app.state::<AppState>().edits);
+                }
+                // macOS 点 Dock 图标（applicationShouldHandleReopen）：主窗被隐藏
+                // （关窗到托盘默认开 / 托盘左键切隐藏）时 has_visible_windows=false，
+                // tao 原样返回 false，AppKit 不做任何恢复动作——不处理就是用户报告
+                // 的「Dock 图标点了没反应」（2026-10-12）。true（窗口可见/最小化）
+                // 交给 AppKit 激活/还原，不插手。
+                tauri::RunEvent::Reopen {
+                    has_visible_windows: false,
+                    ..
+                } => {
+                    eprintln!("[menu] Reopen(has_visible_windows=false) → show main window");
+                    menu::show_main_window(app);
+                }
+                _ => {}
             }
         });
 }

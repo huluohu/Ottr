@@ -1021,7 +1021,10 @@ pub(crate) fn tray_menu_action(app: &AppHandle<Wry>) -> crate::dock_menu::DockAc
     })
 }
 
-fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
+/// 主窗恢复原语：show + unminimize + set_focus。所有「把主窗带回来」的入口
+/// （托盘左键切换、托盘/Dock 菜单显示项、macOS Dock 图标点击 RunEvent::Reopen）
+/// 共用这一个实现，保证恢复行为一致。
+pub(crate) fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();

@@ -203,10 +203,10 @@ function HomeLayout() {
         case "cron": openDock("cron"); break;
         case "sync": setSyncOpen(true); break;
         case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
-        // mac 工具菜单「AI 命令条」（tool.ai → "ai"）：此前无 case，点击静默
-        // 无反应（2026-10-12 跨平台审计）。打开语义（非切换）：菜单是入口，
-        // 重复点击预期是「打开/聚焦」而非关掉；nlBegin 清场与 ai.nl2cmd 同源。
-        case "ai": nlBegin(); setNlOpen(true); break;
+        // mac 工具菜单「AI 设置」（tool_ai 文案即「AI 设置」，menu.rs）：落设置
+        // 页 AI 分区——与诊断面板「去设置」（aiSettingsOpener）同一落地。
+        // 2026-10-10 AI 设置并入设置页后，这里不该再是命令条。
+        case "ai": setSettingsPane("ai"); setSettingsOpen(true); break;
       }
     },
     // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定）+
@@ -559,7 +559,14 @@ function HomeLayout() {
         onOpenSyncDialog={() => setSyncOpen(true)}
       />
       {/* Phase 5 Task 4：同步流程对话框（在设置对话框之后渲染 = 叠于其上）。 */}
-      <SyncDialog open={syncOpen} onClose={() => setSyncOpen(false)} />
+      <SyncDialog
+        open={syncOpen}
+        onClose={() => setSyncOpen(false)}
+        onOpenSettings={() => {
+          setSettingsPane("sync");
+          setSettingsOpen(true);
+        }}
+      />
       {/* 【UI 批次一 Task 2】原对话框面板（AlertSettings/ForwardPanel/
           JumpChainEditor/OverviewPage/BatchPanel/CronPanel/McpSettings）已停挂——
           实体 T4 迁入右侧 dock（alerts/forwards/jumpchains/cron/mcp）、T3 迁入

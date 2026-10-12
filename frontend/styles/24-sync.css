@@ -50,3 +50,9 @@
   margin: 3px 0;
 }
 
+
+/* 无通道态紧凑壳（2026-10-12 用户反馈：一行提示撑满 720×620 设置壳）：
+   回到 .dialog 内容自适应，仅收窄；「去设置」主按钮见 SyncDialog nochannel。 */
+.dialog.sync-compact {
+  width: min(420px, 100%);
+}

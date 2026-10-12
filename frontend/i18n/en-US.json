@@ -1157,7 +1157,8 @@
       "checkTimeout": "Check timed out: the keychain or sync channel did not respond. Retry, or close and try again later.",
       "retry": "Retry",
       "close": "Close",
-      "refreshFailed": "Cloud data was applied, but refreshing the interface failed"
+      "refreshFailed": "Cloud data was applied, but refreshing the interface failed",
+      "goSettings": "Open Settings"
     },
     "category": {
       "host_groups": "Groups",

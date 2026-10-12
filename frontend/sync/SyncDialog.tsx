@@ -168,11 +168,15 @@ interface DoneInfo {
 export interface SyncDialogProps {
   open: boolean;
   onClose: () => void;
+  /** 无通道态「去设置」：关本框 + 落设置页同步分区（App 注入路由；缺省不
+   * 渲染该按钮）。2026-10-12 用户反馈：无通道态原本撑满 720×620 设置壳，
+   * 一行字配一个大空框——改紧凑壳 + 主按钮直达配置。 */
+  onOpenSettings?: () => void;
   /** 测试注入；省缺 = 生产接线（设置驱动）。 */
   model?: SyncDialogModel;
 }
 
-export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
+export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogProps) {
   const { t } = useTranslation();
   const [m, setM] = useState<SyncDialogModel | null>(null);
   const [phase, setPhase] = useState<Phase>("checking");
@@ -417,7 +421,12 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={t("sync.dialog.title")} data-testid="sync-dialog">
-      <div className="dialog settings-dialog" aria-busy={busy}>
+      {/* 无通道态 = 一行提示 + 去设置：紧凑壳（sync-compact）；其余态沿用
+          设置壳尺寸（720×620，内容多为表单/清单，需要稳定大面）。 */}
+      <div
+        className={phase === "nochannel" ? "dialog sync-compact" : "dialog settings-dialog"}
+        aria-busy={busy}
+      >
         <h2>{t("sync.dialog.title")}</h2>
 
         {phase === "checking" && (
@@ -427,9 +436,22 @@ export function SyncDialog({ open, onClose, model }: SyncDialogProps) {
         )}
 
         {phase === "nochannel" && (
-          <p className="dialog-intro" data-testid="sync-nochannel">
-            {t("sync.dialog.noChannel")}
-          </p>
+          <div data-testid="sync-nochannel">
+            <p className="dialog-intro">{t("sync.dialog.noChannel")}</p>
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn-accent"
+                data-testid="sync-nochannel-go-settings"
+                onClick={() => {
+                  onClose();
+                  onOpenSettings?.();
+                }}
+              >
+                {t("sync.dialog.goSettings")}
+              </button>
+            </div>
+          </div>
         )}
 
         {phase === "askpass" && (

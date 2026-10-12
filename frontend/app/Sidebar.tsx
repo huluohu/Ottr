@@ -166,19 +166,22 @@ export function Sidebar({
   // 子列表（底部锚定不变）；选即关/点外关/Esc 关。外点判定的「内点」必须
   // 包含按钮与弹层——弹层渲染在按钮之外，漏判会点选项的 mousedown 先卸载
   // 面板、click 永不触发（v0.5.0 教训）。
-  const [menu, setMenu] = useState<null | "main" | "theme" | "lang">(null);
+  const [menu, setMenu] = useState<null | "main">(null);
+  const [sub, setSub] = useState<null | "theme" | "lang">(null);
   const [flyoutPos, setFlyoutPos] = useState({ bottom: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement | null>(null);
   // 浮层面板 ref：外点关闭的「内点」判定必须包含面板——面板渲染在 nav 之外
   // （fixed 锚定），漏判会导致点选项的 mousedown 先把面板卸载、click 永远
   // 不触发（v0.5.0 实测「选了没反应」的根因）。
   const flyoutRef = useRef<HTMLDivElement | null>(null);
+  const subFlyoutRef = useRef<HTMLDivElement | null>(null);
 
   const openQuickMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     // 底部锚定向上弹出：bottom = 视口高 - 按钮顶 - 间距（弹层高度无关，
     // 永远贴按钮上方）。
     setFlyoutPos({ bottom: window.innerHeight - rect.top + 6, left: rect.left });
+    setSub(null);
     setMenu((cur) => (cur === "main" ? null : "main"));
   };
 
@@ -187,11 +190,16 @@ export function Sidebar({
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node;
       if (btnRef.current?.contains(target)) return; // 按钮点击不关（交给 onClick 翻转）
-      if (flyoutRef.current?.contains(target)) return; // 面板内点击不关（否则 click 被卸载吞掉）
+      if (flyoutRef.current?.contains(target)) return; // 主面板内点击不关（交给行 onClick）
+      if (subFlyoutRef.current?.contains(target)) return; // 子面板内点击不关
       setMenu(null);
+      setSub(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(null);
+      if (e.key === "Escape") {
+        setMenu(null);
+        setSub(null);
+      }
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -258,75 +266,115 @@ export function Sidebar({
           <span>{t("nav.quickMenu")}</span>
         </button>
       </div>
-      {menu !== null && (
+      {menu === "main" && (
         <div
           ref={flyoutRef}
           className="sidebar-flyout"
-          data-testid={`sidebar-flyout-${menu}`}
+          data-testid="sidebar-flyout-main"
           style={{ bottom: flyoutPos.bottom, left: flyoutPos.left }}
         >
-          {menu === "main" && (
-            <>
-              {NAV_DOCK.map((item) => (
-                <button
-                  key={item.panel}
-                  type="button"
-                  data-testid={`sidebar-nav-${item.panel}`}
-                  data-active={dockActive === item.panel}
-                  onClick={() => {
-                    toggleDock(item.panel);
-                    setMenu(null);
-                  }}
-                >
-                  {item.icon}
-                  <span>{t(item.labelKey)}</span>
-                  {item.panel === "notifications" && unread > 0 && (
-                    <span className="sidebar-nav-badge" data-testid="sidebar-unread">
-                      {unread > 99 ? "99+" : unread}
-                    </span>
-                  )}
-                </button>
-              ))}
-              <button
-                type="button"
-                data-testid="sidebar-nav-credentials"
-                onClick={() => {
-                  setMenu(null);
-                  onOpenCredentials();
-                }}
-              >
-                <KeyIcon />
-                <span>{t("nav.credentials")}</span>
-              </button>
-              <div className="sidebar-flyout-sep" />
-              <button type="button" data-testid="sidebar-theme" onClick={() => setMenu("theme")}>
-                <PaletteIcon />
-                <span>{t("nav.theme")}</span>
-                <svg className="sidebar-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-                  <path d="M6 3.5 10.5 8 6 12.5" />
-                </svg>
-              </button>
-              <button type="button" data-testid="sidebar-lang" onClick={() => setMenu("lang")}>
-                <GlobeIcon />
-                <span>{t("nav.language")}</span>
-                <svg className="sidebar-chevron" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
-                  <path d="M6 3.5 10.5 8 6 12.5" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                data-testid="sidebar-nav-settings"
-                onClick={() => {
-                  setMenu(null);
-                  onOpenSettings();
-                }}
-              >
-                <GearIcon />
-                <span>{t("nav.settings")}</span>
-              </button>
-            </>
-          )}
-          {menu === "theme" &&
+          {NAV_DOCK.map((item) => (
+            <button
+              key={item.panel}
+              type="button"
+              data-testid={`sidebar-nav-${item.panel}`}
+              data-active={dockActive === item.panel}
+              onClick={() => {
+                toggleDock(item.panel);
+                setMenu(null);
+                setSub(null);
+              }}
+            >
+              {item.icon}
+              <span>{t(item.labelKey)}</span>
+              {item.panel === "notifications" && unread > 0 && (
+                <span className="sidebar-nav-badge" data-testid="sidebar-unread">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </button>
+          ))}
+          <button
+            type="button"
+            data-testid="sidebar-nav-credentials"
+            onClick={() => {
+              setMenu(null);
+              setSub(null);
+              onOpenCredentials();
+            }}
+          >
+            <KeyIcon />
+            <span>{t("nav.credentials")}</span>
+          </button>
+          <div className="sidebar-flyout-sep" />
+          <button
+            type="button"
+            data-testid="sidebar-theme"
+            data-expanded={sub === "theme"}
+            onClick={() => setSub((cur) => (cur === "theme" ? null : "theme"))}
+          >
+            <PaletteIcon />
+            <span>{t("nav.theme")}</span>
+            <svg
+              className={`sidebar-chevron${sub === "theme" ? " open" : ""}`}
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 3.5 10.5 8 6 12.5" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            data-testid="sidebar-lang"
+            data-expanded={sub === "lang"}
+            onClick={() => setSub((cur) => (cur === "lang" ? null : "lang"))}
+          >
+            <GlobeIcon />
+            <span>{t("nav.language")}</span>
+            <svg
+              className={`sidebar-chevron${sub === "lang" ? " open" : ""}`}
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 3.5 10.5 8 6 12.5" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            data-testid="sidebar-nav-settings"
+            onClick={() => {
+              setMenu(null);
+              setSub(null);
+              onOpenSettings();
+            }}
+          >
+            <GearIcon />
+            <span>{t("nav.settings")}</span>
+          </button>
+        </div>
+      )}
+      {/* 子面板（主题/语言选项）：锚定主弹层右侧并排弹出——主菜单保持可见
+          （2026-10-12 用户反馈：子列表不应替换主菜单）。选即全关。 */}
+      {menu === "main" && sub !== null && (
+        <div
+          ref={subFlyoutRef}
+          className="sidebar-flyout"
+          data-testid={`sidebar-flyout-${sub}`}
+          style={{ bottom: flyoutPos.bottom, left: flyoutPos.left + 208 }}
+        >
+          {sub === "theme" &&
             THEME_CYCLE.map((id) => (
               <button
                 key={id}
@@ -336,6 +384,7 @@ export function Sidebar({
                 onClick={() => {
                   setMode(id);
                   setMenu(null);
+                  setSub(null);
                 }}
               >
                 <span>{t(`settings.themes.${id}`)}</span>
@@ -346,7 +395,7 @@ export function Sidebar({
                 )}
               </button>
             ))}
-          {menu === "lang" &&
+          {sub === "lang" &&
             (["zh-CN", "en-US"] as const).map((id) => (
               <button
                 key={id}
@@ -356,6 +405,7 @@ export function Sidebar({
                 onClick={() => {
                   setLang(id);
                   setMenu(null);
+                  setSub(null);
                 }}
               >
                 <span>{id === "zh-CN" ? "中文" : "English"}</span>

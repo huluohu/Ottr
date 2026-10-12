@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
+import { showToast } from "../ui/toastStore";
 
 export interface RecordToggleProps {
   /** 当前 Rust 会话 id（null = 无活动连接 → 禁用）。 */
@@ -45,8 +46,13 @@ export function RecordToggle({ rustId, hostId }: RecordToggleProps) {
     setBusy(true);
     try {
       if (recording) {
-        await invoke("recording_stop", { rustId });
+        const stop = (await invoke("recording_stop", { rustId })) as {
+          saved_path?: string | null;
+        };
         recordingIds.delete(rustId);
+        if (stop.saved_path) {
+          showToast(`已保存录制：${stop.saved_path}`);
+        }
       } else {
         await invoke("recording_start", { rustId, hostId });
         recordingIds.add(rustId);

@@ -85,6 +85,8 @@ pub const CLIPBOARD_MAX_SECS: u64 = 3600;
 
 /// shell 集成自动注入开关（Task 15 fix 1/5，⌘R 历史入库的数据源）。
 pub const SETTING_SHELL_INTEGRATION: &str = "shell.integration";
+/// 录制默认保存目录（空/未设置 = 下载目录 Ottr 录制 兜底；2026-10-12 用户需求）。
+pub const SETTING_RECORDING_SAVE_DIR: &str = "recording.saveDir";
 pub const SETTING_AUTOLOCK: &str = "security.autolock_minutes";
 pub const SETTING_CLIPBOARD: &str = "security.clipboard_clear_secs";
 /// 监控采样间隔（Phase 3 Task 1，B4）：默认 5s（简报定值），上限 1h；下限 1s。
@@ -149,6 +151,14 @@ pub fn validate_known_setting(
             Ok(())
         }
         SETTING_SHELL_INTEGRATION => bool_value(key, value),
+        // 录制默认保存目录（字符串路径；空串 = 恢复默认；上限 1024 防误粘）
+        SETTING_RECORDING_SAVE_DIR => match value {
+            serde_json::Value::String(s) if s.trim().len() <= 1024 => Ok(()),
+            serde_json::Value::String(_) => {
+                Err(format!("{SETTING_RECORDING_SAVE_DIR} path exceeds 1024 chars"))
+            }
+            _ => Err(format!("{SETTING_RECORDING_SAVE_DIR} expects a string")),
+        },
         // B9（Phase 3 Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关
         SETTING_HOSTKEY_AUDIT => bool_value(key, value),
         SETTING_HOSTKEY_AUDIT_INTERVAL => {

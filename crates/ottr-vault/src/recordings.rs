@@ -32,6 +32,7 @@ fn now_ts() -> i64 {
 
 /// 录制行（serde 面与 `frontend/vault/api.ts` 的 `RecordingEntry` 同构，snake_case）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct RecordingEntry {
     pub id: i64,
     pub host_id: i64,

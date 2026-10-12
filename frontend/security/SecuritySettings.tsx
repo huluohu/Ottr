@@ -140,6 +140,21 @@ export function SecuritySettings({
   const [closeToTray, setCloseToTray] = useState<boolean | null>(null);
   // Task 15 fix 1/5：shell 集成自动注入开关（⌘R 历史入库/报错即诊的数据源）。
   const [shellIntegration, setShellIntegration] = useState<boolean | null>(null);
+  // 录制默认保存目录（空串 = 未设置走兜底；2026-10-12 用户需求）。
+  const [recordingSaveDir, setRecordingSaveDir] = useState<string>("");
+
+  async function pickRecordingDir() {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({ directory: true, title: t("settings.recordingDirPick") });
+      if (typeof picked === "string") {
+        setRecordingSaveDir(picked);
+        await vaultApi.settings.set("recording.saveDir", picked);
+      }
+    } catch (err) {
+      setWizardError(String(err));
+    }
+  }
   // B9（Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关（默认关；开启须确认框）。
   const [hostkeyAudit, setHostkeyAudit] = useState<boolean | null>(null);
   const [hostkeyAuditInterval, setHostkeyAuditInterval] = useState<number | null>(null);
@@ -218,6 +233,9 @@ export function SecuritySettings({
           setClipboard(c ?? 30);
           setCloseToTray(tray !== 0); // 未设置/非 0 = 开（Rust 侧同口径）
           setShellIntegration(shell !== false); // 未设置 = 开（Rust 侧缺省开同口径）
+          setRecordingSaveDir(
+            (await vaultApi.settings.get<string>("recording.saveDir")) ?? "",
+          );
           setHostkeyAudit(audit === true); // B9：默认关
           setHostkeyAuditInterval(auditInterval ?? 86_400);
           setSudoAutofill(sudo === true); // B9：默认关
@@ -941,6 +959,34 @@ export function SecuritySettings({
                 />
               </label>
               <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
+              {/* 录制默认保存目录（2026-10-12 用户需求）：停录时 .cast 副本落盘位置；
+                  空 = 下载目录/Ottr 录制 兜底。目录选择走 plugin-dialog。 */}
+              <div className="settings-row" data-testid="recording-save-dir-row">
+                <span className="settings-label">{t("settings.recordingSaveDir")}</span>
+                <span className="settings-hint" data-testid="recording-save-dir-value">
+                  {recordingSaveDir || t("settings.recordingSaveDirDefault")}
+                </span>
+                <button
+                  type="button"
+                  data-testid="recording-save-dir-pick"
+                  onClick={() => void pickRecordingDir()}
+                >
+                  {t("settings.recordingDirPick")}
+                </button>
+                {recordingSaveDir && (
+                  <button
+                    type="button"
+                    data-testid="recording-save-dir-reset"
+                    onClick={() => {
+                      setRecordingSaveDir("");
+                      void vaultApi.settings.set("recording.saveDir", "");
+                    }}
+                  >
+                    {t("settings.recordingDirReset")}
+                  </button>
+                )}
+              </div>
+              <p className="settings-hint">{t("settings.recordingSaveDirHint")}</p>
             </section>
 
             {/* --- AI（2026-10-10 第 6 分区）：服务商管理自独立对话框并入；

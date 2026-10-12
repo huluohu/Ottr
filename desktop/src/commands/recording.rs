@@ -27,6 +27,7 @@ use ottr_vault::{Hosts, RecordingEntry, RecordingHit, RecordingInput, Recordings
 
 use super::state::SessionMap;
 use crate::vault::VaultState;
+use ottr_vault::settings::SETTING_RECORDING_SAVE_DIR;
 
 /// tee 队列容量（批上限 256KB × 64 ≈ 16MB 洪峰缓冲；满即丢批不阻塞转发）。
 const CHANNEL_CAP: usize = 64;
@@ -470,14 +471,58 @@ pub(crate) fn recording_start(
         .map(|p| p.to_string_lossy().into_owned())
 }
 
-/// 停录并入库（返回完整行——前端可提示「已保存 N 秒」）。
+/// 停录结果：库行 + 保存目录副本路径（未启用目录 = None）。
+#[derive(serde::Serialize, specta::Type)]
+pub struct RecordingStopOutcome {
+    #[serde(flatten)]
+    pub entry: RecordingEntry,
+    /// 停录时按「录制默认保存目录」设置落盘的 .cast 副本（best-effort，失败 = None）。
+    pub saved_path: Option<String>,
+}
+
+/// 停录并入库（返回完整行——前端可提示「已保存 N 秒」）；随后按
+/// 「录制默认保存目录」设置将 .cast 副本落盘到用户可见目录
+/// （未配置兜底 = 下载目录 Ottr 录制；副本失败不影响停录本身）。
 #[tauri::command]
 pub(crate) fn recording_stop(
     state: tauri::State<'_, crate::commands::state::AppState>,
     vault: tauri::State<'_, VaultState>,
+    app: tauri::AppHandle,
     rust_id: String,
-) -> Result<RecordingEntry, String> {
-    stop_recording_on(&state.sessions, &vault.0, &rust_id)
+) -> Result<RecordingStopOutcome, String> {
+    use tauri::Manager as _;
+    let entry = stop_recording_on(&state.sessions, &vault.0, &rust_id)?;
+    let saved_path = save_cast_copy(&vault.0, &app, &entry);
+    Ok(RecordingStopOutcome {
+        entry,
+        saved_path,
+    })
+}
+
+/// 按「录制默认保存目录」设置把 .cast 副本复制到用户可见目录：
+/// 设置 recording.saveDir 优先；未配置兜底 = 下载目录/Ottr 录制（建目录）。
+/// 任何失败 = None（best-effort，不影响停录入库主链路）。
+fn save_cast_copy(vault: &Vault, app: &tauri::AppHandle, entry: &RecordingEntry) -> Option<String> {
+    use std::path::{Path, PathBuf};
+    use tauri::Manager as _;
+
+    let configured = ottr_vault::Settings::get_str(vault, SETTING_RECORDING_SAVE_DIR)
+        .ok()
+        .flatten()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let dir: PathBuf = match configured {
+        Some(d) => PathBuf::from(d),
+        None => {
+            let downloads = app.path().download_dir().ok()?;
+            downloads.join("Ottr 录制")
+        }
+    };
+    std::fs::create_dir_all(&dir).ok()?;
+    let name = Path::new(&entry.path).file_name()?.to_string_lossy().into_owned();
+    let target = dir.join(&name);
+    std::fs::copy(&entry.path, &target).ok()?;
+    Some(target.to_string_lossy().into_owned())
 }
 
 /// 最近录制（⌘R「录制」页签初始态）；`host_id` 缺省 = 跨主机。

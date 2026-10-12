@@ -84,6 +84,12 @@ tauri-plugin-updater = "2"
 # Phase 2 Task 4（B10 下半）：trzsz 传输的文件/目录选择（chooseSendFiles /
 # chooseSaveDirectory 走原生对话框；JS 侧 @tauri-apps/plugin-dialog）。
 tauri-plugin-dialog = "2"
+# 单实例（2026-10-12「窗口回不来」此类问题三端收口）：主窗隐藏（关窗到托盘
+# 默认开）后点任务栏固定图标/启动器会拉起第二进程——Win/Linux 没有 macOS 的
+# applicationShouldHandleReopen 语义。本插件令二实例启动即退、首实例回调里
+# 恢复主窗（等价 macOS Dock 点击）。三端都有实现（Win 命名互斥 / Linux
+# D-Bus / macOS Unix socket——macOS 额外防 `open -n` 双开），须最先注册。
+tauri-plugin-single-instance = "2"
 # T11（A7）：剪贴板敏感复制自动清空——arboard（tauri-plugin-clipboard-manager
 # 的同源后端）Rust 侧直用，免插件/Capability 面（前端永不接触明文，见 security.rs）。
 # default-features = false：关 image-data（文本剪贴板够用，少拖 image 依赖树）。

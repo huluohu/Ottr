@@ -79,7 +79,19 @@ pub use commands::mcp::{ApprovalGate, HostSessionResolver, McpEngine};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 单实例（「窗口回不来」此类问题三端收口 2026-10-12）：主窗隐藏（关窗到
+    // 托盘默认开）后点任务栏固定图标/启动器会拉起第二进程——Win/Linux 没有
+    // macOS 的 applicationShouldHandleReopen 语义，双开即双托盘 + vault 争锁。
+    // 二实例启动即退，本回调在首实例里恢复主窗（等价 macOS Dock 点击）。
+    // 三端实现（Win 命名互斥 / Linux D-Bus / macOS Unix socket），macOS 顺带
+    // 防住 `open -n` 双开。官方要求最先注册——二实例尽早死，不做任何重活。
+    // 与 app.restart()（vault_reset）的交互：restart 是 spawn→exit(0)，旧进程
+    // socket 来不及走 RunEvent::Exit 清理即死亡，残留 socket 在新实例侧命中
+    // 插件的 NotFound/ConnectionRefused 兜底（清理后自立为单例），不误杀。
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            menu::show_main_window(app);
+        }))
         // Task 11 / Spike #8：系统通知（macOS 首次调用触发系统授权）。
         .plugin(tauri_plugin_notification::init())
         // Phase 2 Task 4（B10 下半）：trzsz 传输文件/目录选择（原生对话框）。

@@ -490,13 +490,9 @@ pub(crate) fn recording_stop(
     app: tauri::AppHandle,
     rust_id: String,
 ) -> Result<RecordingStopOutcome, String> {
-    use tauri::Manager as _;
     let entry = stop_recording_on(&state.sessions, &vault.0, &rust_id)?;
     let saved_path = save_cast_copy(&vault.0, &app, &entry);
-    Ok(RecordingStopOutcome {
-        entry,
-        saved_path,
-    })
+    Ok(RecordingStopOutcome { entry, saved_path })
 }
 
 /// 按「录制默认保存目录」设置把 .cast 副本复制到用户可见目录：
@@ -519,7 +515,10 @@ fn save_cast_copy(vault: &Vault, app: &tauri::AppHandle, entry: &RecordingEntry)
         }
     };
     std::fs::create_dir_all(&dir).ok()?;
-    let name = Path::new(&entry.path).file_name()?.to_string_lossy().into_owned();
+    let name = Path::new(&entry.path)
+        .file_name()?
+        .to_string_lossy()
+        .into_owned();
     let target = dir.join(&name);
     std::fs::copy(&entry.path, &target).ok()?;
     Some(target.to_string_lossy().into_owned())

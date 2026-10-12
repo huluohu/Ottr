@@ -107,11 +107,19 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/build-signing.keychain-db"
           security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # 防锁定（2026-10-12 实测）：钥匙串默认策略会在长编译期自动锁定，
+          # 后续 codesign 无头环境下等解锁弹窗 → 任务假死（Intel 腿挂 84min）
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security set-keychain-settings -t 720000 "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
           security list-keychains -s "$KEYCHAIN_PATH" $(security list-keychains | tr -d '"')
           openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -passin env:APPLE_CERTIFICATE_PASSWORD -nokeys -clcerts -out "$RUNNER_TEMP/cert.pem"
           sudo security add-trusted-cert -d -r trustRoot -k "$KEYCHAIN_PATH" "$RUNNER_TEMP/cert.pem"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          # 冒烟签名：让签名链路问题在导入步骤即刻失败，而非编译 10 分钟后假死
+          cp /bin/echo "$RUNNER_TEMP/smoke-sign-bin"
+          codesign --force --sign "OttrCodesign" "$RUNNER_TEMP/smoke-sign-bin"
+          rm -f "$RUNNER_TEMP/smoke-sign-bin"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

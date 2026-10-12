@@ -485,6 +485,11 @@ pub fn run() {
                 // tao 原样返回 false，AppKit 不做任何恢复动作——不处理就是用户报告
                 // 的「Dock 图标点了没反应」（2026-10-12）。true（窗口可见/最小化）
                 // 交给 AppKit 激活/还原，不插手。
+                // cfg(macos) 硬门：Reopen 变体本身是 macos-only（tauri app.rs
+                // #[cfg]），不门控则 Linux/Windows 编译直接失败——v0.9.0 首次
+                // 打 tag 时 CI 三平台构建抓住（2026-10-13），教训 = macOS 专属
+                // API 的引用点必须与变体同门。
+                #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen {
                     has_visible_windows: false,
                     ..

@@ -154,9 +154,9 @@ pub fn validate_known_setting(
         // 录制默认保存目录（字符串路径；空串 = 恢复默认；上限 1024 防误粘）
         SETTING_RECORDING_SAVE_DIR => match value {
             serde_json::Value::String(s) if s.trim().len() <= 1024 => Ok(()),
-            serde_json::Value::String(_) => {
-                Err(format!("{SETTING_RECORDING_SAVE_DIR} path exceeds 1024 chars"))
-            }
+            serde_json::Value::String(_) => Err(format!(
+                "{SETTING_RECORDING_SAVE_DIR} path exceeds 1024 chars"
+            )),
             _ => Err(format!("{SETTING_RECORDING_SAVE_DIR} expects a string")),
         },
         // B9（Phase 3 Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关

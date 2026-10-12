@@ -71,8 +71,6 @@ jobs:
     # 跨版本一致，TCC 记录永久匹配）。tauri-bundler 读这三个 env 自动导入
     # p12 到临时钥匙串并签名；Win/Linux 忽略（证书仅用于 macOS 代码签名）。
     env:
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       APPLE_SIGNING_IDENTITY: OttrCodesign
     strategy:
       fail-fast: false
@@ -94,6 +92,26 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      # 自签证书导入 + 信任（2026-10-12）：bundler 按「有效身份」解析
+      # （security find-identity -v），自签证书不加信任会报 failed to
+      # resolve signing identity——故在此自行导入钥匙串并加显式信任。
+      - name: Import code signing certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          KEYCHAIN_PW=$(openssl rand -hex 16)
+          KEYCHAIN_PATH="$RUNNER_TEMP/build-signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security list-keychains -s "$KEYCHAIN_PATH" $(security list-keychains | tr -d '"')
+          openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -passin env:APPLE_CERTIFICATE_PASSWORD -nokeys -clcerts -out "$RUNNER_TEMP/cert.pem"
+          sudo security add-trusted-cert -d -r trustRoot -k "$KEYCHAIN_PATH" "$RUNNER_TEMP/cert.pem"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

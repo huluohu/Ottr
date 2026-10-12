@@ -4,10 +4,6 @@ import ReactDOM from "react-dom/client";
 import "./i18n";
 import App from "./App";
 
-if (import.meta.env.DEV) {
-  import("./__ui-audit"); // TEMP：UI 验证驱动器，验证后删除
-}
-
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <App />

@@ -15,12 +15,13 @@
 #   scripts/release.sh --notes-only <v0.4.0>    # 仅重新生成/应用某 tag 的发布说明
 #
 # 选项:
-#   --skip-gate   跳过「推送门全绿」等待（不推荐）
+#   --gate        打 tag 前等待「main 推送门全绿」（默认不等——发布流水线
+#                 本身就是全量验证，双跑约浪费 15-20 分钟；2026-10-12 用户裁定）
 #   --no-wait     打 tag 后不等待 Release 创建（之后可用 --notes-only 补说明）
 #   --dry-run     演练：执行版本号修改并预览发布说明，最后自动还原，不改任何状态
 #
 # 环境变量:
-#   GATE_TIMEOUT      推送门最长等待秒数（默认 1800）
+#   GATE_TIMEOUT      推送门最长等待秒数（默认 1800；仅 --gate 时生效）
 #   RELEASE_TIMEOUT   Release 最长等待秒数（默认 2700）
 
 set -euo pipefail
@@ -31,7 +32,7 @@ export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:$PATH"
 VERSION=""
 MODE="release"
 TAG=""
-SKIP_GATE=0
+SKIP_GATE=1
 NO_WAIT=0
 DRYRUN=0
 
@@ -40,7 +41,7 @@ usage() { sed -n '2,23p' "$0"; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --notes-only) MODE="notes" ;;
-    --skip-gate) SKIP_GATE=1 ;;
+    --gate) SKIP_GATE=0 ;;
     --no-wait) NO_WAIT=1 ;;
     --dry-run) DRYRUN=1 ;;
     -h|--help) usage; exit 0 ;;
@@ -187,7 +188,7 @@ git push origin main
 SHA=$(git rev-parse HEAD)
 
 if [ "$SKIP_GATE" = 0 ]; then
-  step "等待推送门（spike-build）全绿——最长 ${GATE_TIMEOUT}s，--skip-gate 可跳过"
+  step "等待推送门（spike-build）全绿——最长 ${GATE_TIMEOUT}s（--gate 关闭时跳过本等待）"
   waited=0
   while :; do
     sleep 30; waited=$((waited + 30))

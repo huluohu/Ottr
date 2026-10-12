@@ -1,61 +1,42 @@
-/* --- 右侧 dock 槽位 + 主区视图槽位（UI 批次一 Task 2；T4 承接实体）-------- *
- * dock：app-body 右缘停靠壳（sidebar | resizer | main-area | dock 四列 flex）。
- * 视觉语言对齐 monitor-sidebar（border-left + surface 底 + 基线头行）；宽度由
- * dock/DockPanel 逐面板内联设定（380/420，CSS 默认宽仅兜底）。dock-body 不再
- * 自带留白/灰字——实体面板（.dock-entity）自带内边距与配色。 */
-.dock-panel {
-  flex: none;
-  width: 420px;   /* 全面板统一宽度（2026-10-10 用户裁定：切换不跳动） */
+/* --- 主区视图槽位 + 工具面板弹框（2026-10-12 dock 侧栏退役）------------- *
+ * 弹框：六工具面板统一模态壳（workspace/ToolDialog），复用全局 overlay/.dialog
+ * 动效；不占布局——终端常驻不变量由 overlay 语义天然保证。宽度分档：通知
+ * 中心 520（列表型），其余 640（表单/清单型）；高度内容自适应、上限 86vh
+ * （.dialog 基类），滚动收进 body。 */
+.tool-dialog {
+  width: min(640px, 100%);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border-subtle);
-  background: var(--color-surface);
+  padding: 0; /* 基类 20px 内边距交给 head/body 分治 */
   overflow: hidden;
-  /* 宽度过渡（评审 P1-10）：展开/收起由 keyframes 驱动（见文件尾动效区），
-   * 此处合并主题切换的颜色过渡（00-base 容器规则刻意不列本元素防覆盖）。 */
-  transition: background-color var(--dur) ease, border-color var(--dur) ease;
 }
-.dock-head {
+.overlay[data-panel="notifications"] > .tool-dialog {
+  width: min(520px, 100%);
+}
+.tool-dialog-head {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 14px 16px 10px;
   border-bottom: 1px solid var(--border-subtle);
 }
-.dock-title {
+.tool-dialog-head h2 {
+  margin: 0;
+  font-size: var(--text-lg);
   font-weight: 600;
   flex: 1;
 }
-.dock-close {
-  border: none;
-  background: none;
-  font-size: var(--text-md);
-  cursor: pointer;
-  line-height: 1;
-  color: var(--color-fg);
-  flex: none;
-}
-.dock-body {
+.tool-dialog-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
-/* keep-alive 面板容器：非活动页 CSS 隐藏（组件保持挂载，切换不丢状态）；
-   活动页撑满 dock-body（滚动面仍在 dock-body）。 */
-.dock-pane {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-.dock-pane[hidden] {
-  display: none !important;
-}
-/* dock 内实体面板容器（T4）：原对话框体（.dialog）迁移后的内容形态——
-   自带留白与纵向流；宽度/滚动交给 dock 壳（不再有对话框的圆角/阴影/
-   max-height）。settings-dialog 系的定宽在 dock 内解除。 */
+/* 面板内容容器（T4 沿旧）：原对话框体（.dialog）迁移后的内容形态——
+   自带留白与纵向流；宽度/滚动交给弹框壳。settings-dialog 系的定宽在壳内
+   解除。命名沿用 dock-entity（六面板组件根类，改名将牵连样式与测试面）。 */
 .dock-entity {
   box-sizing: border-box;
   min-height: 100%;
@@ -109,15 +90,13 @@
 /* 克制动效（评审 P1-8/P1-10/P1-14；令牌驱动 + 00-base 全局 reduced-motion 兜底）：
  * 1) 页签/主视图切换淡入；2) 浮层体系入退场——入场 dialog-in/palette-in，
  *    退场 .closing 镜像（useDelayedUnmount 挂类），scrim 同步淡入淡出
- *    （进从哪入、退回哪去）；3) dock 壳宽度展开/收起（keep-alive 语义不变，
- *    只是壳的出现在的可感知）。退场动画 fill-mode: forwards 停在透明帧，
+ *    （进从哪入、退回哪去；工具面板弹框同享）。退场动画 fill-mode: forwards 停在透明帧，
  *    等待 hook 计时卸载，尾帧不闪回。 */
 @keyframes pane-fade-in {
   from {
     opacity: 0;
   }
 }
-.dock-pane:not([hidden]),
 .file-panel,
 .proc-panel,
 .main-view {
@@ -157,18 +136,6 @@
     transform: translateY(-6px) scale(0.99);
   }
 }
-@keyframes dock-in {
-  from {
-    width: 0;
-    opacity: 0;
-  }
-}
-@keyframes dock-out {
-  to {
-    width: 0;
-    opacity: 0;
-  }
-}
 .overlay > .dialog,
 .overlay > .host-form {
   animation: dialog-in var(--dur) var(--ease-out);
@@ -191,12 +158,4 @@
 }
 .palette-overlay.closing > .palette {
   animation: palette-out var(--dur-fast) var(--ease-in) forwards;
-}
-/* dock 壳：展开/收起宽度过渡（closing 态由 DockPanel 的
-   useDelayedUnmount(active !== null, 280) 驱动）。 */
-.dock-panel {
-  animation: dock-in var(--dur-slow) var(--ease-out);
-}
-.dock-panel.closing {
-  animation: dock-out var(--dur-slow) var(--ease-in) forwards;
 }

@@ -1,7 +1,7 @@
 // 应用级侧栏（2026-10-10 壳层重构）：单列宽侧栏三段式——
 // ①快捷连接 ②主机区（HostTree 原样嵌入：搜索/分组树/导入/分组悬停加主机）
 // ③功能导航（定时任务/告警/MCP/通知中心）+ 底部设置。导航项点击 = 既有
-// openDock 直派（dock 单槽保留）；通知中心 = App 受控浮层开关；设置 = 对话框。
+// toggleToolDialog 直派（工具面板统一弹框，同值再点 = 关）；设置 = 对话框。
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { HostTree, type HostTreeProps } from "../hosts/HostTree";
@@ -156,8 +156,8 @@ export function Sidebar({
   ...tree
 }: SidebarProps) {
   const { t } = useTranslation();
-  const toggleDock = useWorkspaceStore((s) => s.toggleDock);
-  const dockActive = useWorkspaceStore((s) => s.dockActive);
+  const toggleToolDialog = useWorkspaceStore((s) => s.toggleToolDialog);
+  const toolDialog = useWorkspaceStore((s) => s.toolDialog);
   const unread = useNotifyStore((s) => s.unread);
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
@@ -278,9 +278,9 @@ export function Sidebar({
               key={item.panel}
               type="button"
               data-testid={`sidebar-nav-${item.panel}`}
-              data-active={dockActive === item.panel}
+              data-active={toolDialog === item.panel}
               onClick={() => {
-                toggleDock(item.panel);
+                toggleToolDialog(item.panel);
                 setMenu(null);
                 setSub(null);
               }}

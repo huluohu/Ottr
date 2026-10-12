@@ -52,7 +52,7 @@ function openQuickMenu() {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ dockTabs: [], dockActive: null });
+  useWorkspaceStore.setState({ toolDialog: null });
   useNotifyStore.setState({ unread: 0 });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
   vi.stubGlobal(
@@ -90,20 +90,18 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-nav-settings")).toBeTruthy();
   });
 
-  it("导航点击开对应 dock 页签（共存不互关）；再点同页签关闭（开关二态）", () => {
+  it("导航点击开对应弹框；异值即替换（单槽一次一个）；再点同值关闭（开关二态）", () => {
     renderSidebar();
     openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-nav-cron"));
-    expect(useWorkspaceStore.getState().dockActive).toBe("cron");
+    expect(useWorkspaceStore.getState().toolDialog).toBe("cron");
     // 选即关（原生菜单语义）：再次操作需重新打开快捷菜单
     openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-nav-alerts"));
-    expect(useWorkspaceStore.getState().dockActive).toBe("alerts");
-    expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron", "alerts"]); // 共存
+    expect(useWorkspaceStore.getState().toolDialog).toBe("alerts"); // 单槽替换
     openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-nav-alerts")); // 再点 = 关该页签
-    expect(useWorkspaceStore.getState().dockActive).toBe("cron"); // 活动权移交右邻
-    expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron"]);
+    fireEvent.click(screen.getByTestId("sidebar-nav-alerts")); // 再点 = 关
+    expect(useWorkspaceStore.getState().toolDialog).toBeNull();
   });
 
   it("未读数徽标：unread=3 显示 3；归零消失（快捷菜单弹出态）", () => {

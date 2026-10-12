@@ -50,9 +50,9 @@ import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
 // UI 批次一 Task 2/4：主区视图路由 + 右侧 dock 实体壳（workspaceStore 状态机）。
 // 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
-// cron/alerts/mcp 实体 T4 迁入 dock（实体渲染在 dock/DockPanel 内）。
+// 六工具面板实体渲染在 workspace/ToolDialog（2026-10-12 dock 退役改弹框）。
 import { MainArea } from "./workspace/MainArea";
-import { DockPanel } from "./dock/DockPanel";
+import { ToolDialog } from "./workspace/ToolDialog";
 import { useWorkspaceStore } from "./workspace/workspaceStore";
 import {
   isTerminalTarget,
@@ -103,9 +103,9 @@ function HomeLayout() {
   // 渲染面已随 UI 批次一 Task 2 迁入 workspace/MainArea（读 session store）。
   const openTab = useSessionStore((s) => s.openTab);
   // UI 批次一 Task 2：工作区视图/dock 动作（主区路由在 workspace/MainArea，
-  // dock 壳在 dock/DockPanel；互斥语义见 workspace/types.ts）。
+  // 弹框壳在 workspace/ToolDialog；单槽语义见 workspaceStore.ts）。
   const openMainView = useWorkspaceStore((s) => s.openMainView);
-  const openDock = useWorkspaceStore((s) => s.openDock);
+  const openToolDialog = useWorkspaceStore((s) => s.openToolDialog);
   // A12：面板动作需要当前主题/语言（toggle 循环用）
   const { mode: themeMode, setMode } = useTheme();
   const { lang } = useLanguage();
@@ -153,7 +153,7 @@ function HomeLayout() {
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   // 【UI 批次一 Task 2】原面板开关 setState（alertSettings/forwards/jumpChains/
   // overview/procs/batch/cron/mcp/filesOpen）已收口进 workspaceStore——主区视图
-  // 走 MainArea 路由，工具面板走 dock/DockPanel；T3/T4 迁实体。
+  // 走 MainArea 路由，工具面板走 workspace/ToolDialog 弹框；T3/T4 迁实体。
   // Task 16.5 就绪门：vault 后台初始化（钥匙链访问）完成前不发首批 vault 命令
   // （State 未 manage 时命令被 Tauri 拒绝）。纯浏览器 dev / vitest 无 Tauri
   // 运行时，初始值即 ready 直通——门只在真 Tauri 环境生效。
@@ -192,15 +192,15 @@ function HomeLayout() {
     (key: string) => {
       switch (key) {
         case "update.check": openAboutUpdate(); break;
-        case "notify-center": openDock("notifications"); break;
+        case "notify-center": openToolDialog("notifications"); break;
         case "credentials": setCredentialsOpen(true); break;
-        case "alerts": openDock("alerts"); break;
-        case "mcp": openDock("mcp"); break;
-        case "forwards": openDock("forwards"); break;
-        case "jump-chains": openDock("jumpchains"); break;
+        case "alerts": openToolDialog("alerts"); break;
+        case "mcp": openToolDialog("mcp"); break;
+        case "forwards": openToolDialog("forwards"); break;
+        case "jump-chains": openToolDialog("jumpchains"); break;
         case "overview": openMainView("overview"); break;
         case "batch": openMainView("batch"); break;
-        case "cron": openDock("cron"); break;
+        case "cron": openToolDialog("cron"); break;
         case "sync": setSyncOpen(true); break;
         case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
         // mac 工具菜单「AI 设置」（tool_ai 文案即「AI 设置」，menu.rs）：落设置
@@ -321,7 +321,7 @@ function HomeLayout() {
           setNewGroupSignal((n) => n + 1);
           break;
         case "notify.center":
-          openDock("notifications");
+          openToolDialog("notifications");
           break;
         case "hosts.import":
           setImportOpen(true);
@@ -531,9 +531,9 @@ function HomeLayout() {
           onAddHost={() => setForm({ mode: "new", groupId: null })}
           onOpenPalette={() => setPaletteOpen(true)}
         />
-        {/* 右侧 dock 槽位（UI 批次一 Task 2 骨架 / Task 4 实体）：工具面板统一
-            停靠壳（单槽互斥，openDock 换值即替换）；五工具面板实体渲染其中。 */}
-        <DockPanel />
+        {/* 工具面板统一弹框（2026-10-12 dock 退役）：单槽 toolDialog，
+            一次一个；不占布局，终端常驻不变量由 overlay 语义天然保证。 */}
+        <ToolDialog />
       </div>
       {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
       <Toaster />

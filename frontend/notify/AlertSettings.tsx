@@ -1,5 +1,5 @@
 // AlertSettings（Phase 3 Task 3，B5；UI 批次一 Task 4 迁右侧 dock）：告警设置
-// 面板——渠道配置区 + 告警规则配置区（工具菜单 → dock/DockPanel 承载）。
+// 面板——渠道配置区 + 告警规则配置区（工具菜单 → workspace/ToolDialog 弹框承载）。
 // * 【T4 分区化】渠道/规则两分区以 SegmentedControl 独占切换（一次只挂载一
 //   分区）：原对话框两节纵排 + 内嵌向导表单要滚过两屏（Phase 3 走查 13/14 号
 //   截图问题），dock 内编辑表单改在所在分区内展开——双屏滚动消除。

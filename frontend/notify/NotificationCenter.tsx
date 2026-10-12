@@ -1,16 +1,15 @@
 // NotificationCenter（Task 12，spec §7①；2026-10-09 四面板统一批次）：通知
-// 中心面板。原为右上受控浮层（点外/Esc 收起）——按「四面板统一为 dock 面板」
-// 裁定改造为 dock 页签面板（DockPanel 挂载，标题由 dock 壳供给），入口 =
-// 侧栏导航行（带未读徽标）+ 原生菜单（未读数经 menu_set_notify_count 进文案）。
+// 中心面板。原为右上受控浮层 → dock 页签面板 → 2026-10-12 起统一为弹框
+// （workspace/ToolDialog 挂载，标题由弹框壳供给），入口 = 侧栏导航行（带
+// 未读徽标）+ 原生菜单（未读数经 menu_set_notify_count 进文案）。
 // * 面板：列表（severity 语义配色 / 未读标记 / 点击单条已读）、全部已读、
 //   清空、按 kind 静音开关（存 vault settings，管线入口判定，见 core.ts）。
 //   【Phase 5 T1（BL-517）】投递失败块：条目 payload.delivery_failed（由重试
 //   装饰器终败回执写入）→ 状态标签 + 渠道名 + 错误摘要 + 手动重发按钮
 //   （channelRegistry.resendNotification 重跑该渠道 send）。
 // * 空态引导（ui-batch2 T3，审计 A4）：「暂无通知」文案保留，补「查看告警
-//   规则」入口——既有 openDock("alerts") 动作（workspaceStore 单槽 dock），
-//   点击后通知面板收起（导航即收，防与右侧 dock 视觉叠压）。空态判定不变
-//   （items.length === 0 分支），非空列表不渲染引导块。
+//   规则」入口——openToolDialog("alerts")（toolDialog 单槽，弹框内容即换）。
+//   空态判定不变（items.length === 0 分支），非空列表不渲染引导块。
 // * 数据面全部在 useNotifyStore（core.ts）；本组件只渲染 + 调 action。
 // * 主题/i18n 纪律：severity 走语义令牌（--color-*），文案全走词典键。
 import { useEffect, useState } from "react";
@@ -115,7 +114,7 @@ export function NotificationCenter() {
   const clear = useNotifyStore((s) => s.clear);
   const toggleMuted = useNotifyStore((s) => s.toggleMuted);
   // 空态引导入口（ui2 T3，A4）：告警规则面板走既有 dock 单槽动作。
-  const openDock = useWorkspaceStore((s) => s.openDock);
+  const openToolDialog = useWorkspaceStore((s) => s.openToolDialog);
 
   // 挂载即对齐真源（多窗口/落库失败兜底）；未读数 → 原生菜单文案跟随。
   useEffect(() => {
@@ -157,7 +156,7 @@ export function NotificationCenter() {
                 hint={t("notify.emptyHint")}
                 action={{
                   label: t("notify.emptyAlertsCta"),
-                  onClick: () => openDock("alerts"),
+                  onClick: () => openToolDialog("alerts"),
                   testid: "notify-empty-alerts",
                 }}
                 testid="notify-empty"

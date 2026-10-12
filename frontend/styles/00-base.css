@@ -73,7 +73,6 @@ body {
 
 /* 主题切换防闪跳（评审 P1-13）：明暗翻转时大面积表面颜色渐变（Apple：
  * abrupt brightness jumps 应避免）；仅颜色属性，无 transform，一次性成本。
- * .dock-panel 的 transition 在 26 号文件与宽度过渡合并声明，此处不列。
  * （对话框/面板各写独立规则——选择器列表会把对话框类名带逗号的前缀子串
  * 提前引入源文本，干扰 dialogScroll.test 的规则定位。） */
 body,

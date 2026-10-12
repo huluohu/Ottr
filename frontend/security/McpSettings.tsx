@@ -1,5 +1,5 @@
 // McpSettings（Phase 4 Task 3，C1；UI 批次一 Task 4 迁右侧 dock）：MCP server
-// 设置面板（工具菜单 → dock/DockPanel 承载，open/onClose 由 dock 单槽驱动；
+// 设置面板（工具菜单 → workspace/ToolDialog 弹框承载，开合由 toolDialog 单槽驱动；
 // 组件逻辑零改动，仅外壳从 overlay 对话框换为 dock 内容形态）。
 // * 总开关（settings mcp.enabled；Rust 侧同步起/停 UDS listener，改设即生效）；
 // * 运行状态行：监听中/已停止 + socket 绝对路径（Claude Desktop 接入说明用）；

@@ -1,6 +1,6 @@
 // workspaceStore 单测（UI 批次一 Task 2 Step 1）：mainView 状态机互斥 /
-// dockPanel 单槽互斥 / toggleDock 开关语义 / 终端保留不变量（store 动作永不
-// 触碰会话状态）/ 托盘关窗语义（store 活在模块作用域，窗口隐藏不重置）。
+// toolDialog 单槽互斥 / toggleToolDialog 开关语义 / 终端保留不变量（store 动作
+// 永不触碰会话状态）/ 托盘关窗语义（store 活在模块作用域，窗口隐藏不重置）。
 import { beforeEach, describe, expect, it } from "vitest";
 import { useSessionStore, type Session } from "../session/SessionStore";
 import { DOCK_PANELS, MAIN_VIEWS, TOOL_DOCK_PANELS, type MainView } from "./types";
@@ -33,7 +33,7 @@ function fakeSession(over: Partial<Session> = {}): Session {
 
 beforeEach(() => {
   // 回默认态：zustand 模块级单例，跨用例必须复位（防用例间互斥语义串扰）
-  useWorkspaceStore.setState({ mainView: "terminal", dockTabs: [], dockActive: null });
+  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
   useSessionStore.setState({ sessions: [], activeId: null });
 });
 
@@ -61,71 +61,39 @@ describe("mainView 状态机", () => {
   });
 });
 
-describe("dock 多页签（共存 + 激活，2026-10-09 根治互相覆盖）", () => {
-  it("默认空（dock 关闭）", () => {
-    expect(useWorkspaceStore.getState().dockTabs).toEqual([]);
-    expect(useWorkspaceStore.getState().dockActive).toBeNull();
+describe("toolDialog 工具面板弹框（2026-10-12 dock 退役：单槽一次一个）", () => {
+  it("默认无弹框", () => {
+    expect(useWorkspaceStore.getState().toolDialog).toBeNull();
   });
 
-  it("openDock：新页签追加并激活；重复打开仅激活（不重复追加）", () => {
+  it("openToolDialog：打开；重复打开幂等；异值打开即替换（一次一个）", () => {
     const ws = () => useWorkspaceStore.getState();
-    ws().openDock("cron");
-    ws().openDock("alerts");
-    expect(ws().dockTabs).toEqual(["cron", "alerts"]);
-    expect(ws().dockActive).toBe("alerts");
-    ws().openDock("cron");
-    expect(ws().dockTabs).toEqual(["cron", "alerts"]); // 不重复追加
-    expect(ws().dockActive).toBe("cron"); // 仅激活
+    ws().openToolDialog("cron");
+    expect(ws().toolDialog).toBe("cron");
+    ws().openToolDialog("alerts");
+    expect(ws().toolDialog).toBe("alerts"); // 单槽替换
+    ws().openToolDialog("alerts");
+    expect(ws().toolDialog).toBe("alerts"); // 幂等
   });
 
-  it("切换不互相关闭（根治「开 A 顶掉 B」的核心不变量）", () => {
+  it("closeToolDialog 关闭；对已空状态幂等", () => {
     const ws = () => useWorkspaceStore.getState();
-    ws().openDock("cron");
-    ws().openDock("alerts");
-    ws().openDock("mcp");
-    ws().openDock("cron"); // 切回最先打开的页签
-    expect(ws().dockTabs).toEqual(["cron", "alerts", "mcp"]); // 三页签共存
-    expect(ws().dockActive).toBe("cron");
+    ws().openToolDialog("alerts");
+    ws().closeToolDialog();
+    expect(ws().toolDialog).toBeNull();
+    ws().closeToolDialog();
+    expect(ws().toolDialog).toBeNull();
   });
 
-  it("closeTab：关活动页活动权移交右邻，关尾页签回落最右；关非活动页不影响激活", () => {
+  it("toggleToolDialog：同值关、异值开/换（侧栏导航行二态语义）", () => {
     const ws = () => useWorkspaceStore.getState();
-    ws().openDock("cron");
-    ws().openDock("alerts");
-    ws().openDock("mcp");
-    ws().openDock("alerts"); // active=alerts, tabs=[cron,alerts,mcp]
-    ws().closeTab("alerts");
-    expect(ws().dockTabs).toEqual(["cron", "mcp"]);
-    expect(ws().dockActive).toBe("mcp"); // 右邻
-    ws().closeTab("mcp"); // 关尾页签 → 回落
-    expect(ws().dockTabs).toEqual(["cron"]);
-    expect(ws().dockActive).toBe("cron");
-    ws().openDock("alerts");
-    ws().closeTab("cron"); // 关非活动页（激活不动）
-    expect(ws().dockTabs).toEqual(["alerts"]);
-    expect(ws().dockActive).toBe("alerts");
-  });
-
-  it("closeDock 清空全部页签；对已空状态幂等", () => {
-    const ws = () => useWorkspaceStore.getState();
-    ws().openDock("alerts");
-    ws().closeDock();
-    expect(ws().dockTabs).toEqual([]);
-    expect(ws().dockActive).toBeNull();
-    ws().closeDock();
-    expect(ws().dockTabs).toEqual([]);
-  });
-
-  it("toggleDock：活动页同值关、异值开/激活（异值不关闭已开页签）", () => {
-    const ws = () => useWorkspaceStore.getState();
-    ws().toggleDock("mcp");
-    expect(ws().dockActive).toBe("mcp");
-    ws().toggleDock("mcp");
-    expect(ws().dockActive).toBeNull();
-    ws().toggleDock("cron");
-    ws().toggleDock("mcp"); // 异值 = 打开/激活新页签，cron 页签保留
-    expect(ws().dockTabs).toEqual(["cron", "mcp"]);
-    expect(ws().dockActive).toBe("mcp");
+    ws().toggleToolDialog("mcp");
+    expect(ws().toolDialog).toBe("mcp");
+    ws().toggleToolDialog("mcp");
+    expect(ws().toolDialog).toBeNull();
+    ws().toggleToolDialog("cron");
+    ws().toggleToolDialog("mcp"); // 异值 = 换内容
+    expect(ws().toolDialog).toBe("mcp");
   });
 
   it("工具面板六值集合与类型口径一致（防漂移）", () => {
@@ -155,9 +123,9 @@ describe("终端保留不变量（store 层）", () => {
     ws.openMainView("overview");
     ws.openMainView("batch");
     ws.openMainView("terminal");
-    ws.openDock("forwards");
-    ws.toggleDock("cron");
-    ws.closeDock();
+    ws.openToolDialog("forwards");
+    ws.toggleToolDialog("cron");
+    ws.closeToolDialog();
 
     // 同一数组引用 = 会话 store 零 mutation（渲染侧终端 DOM 保留的状态前提）
     expect(useSessionStore.getState().sessions).toBe(before);

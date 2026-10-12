@@ -232,28 +232,28 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
   });
 
   // 用户反馈「通知中心点击无任何响应」的回归钉：菜单动作直派链必须打开面板
-  // （2026-10-09 dock 多页签：动作 = openDock 打开/激活；再派一次保持激活——
-  // 面板已是页签，不存在「收起」，收起走页签 ✕/壳 ✕/Esc）。
-  it("tool.notify-center 打开通知中心 dock 页签；再派一次保持激活", async () => {
+  // （2026-10-12 弹框语义：动作 = openToolDialog；再派一次幂等保持——弹框
+  // 仍开，不存在「收起」，收起走 ✕/Esc）。
+  it("tool.notify-center 打开通知中心弹框；再派一次保持打开", async () => {
     listMock();
     render(<App />);
     await waitFor(() => expect(menuActionHandler).toBeTruthy());
     act(() => menuActionHandler!({ payload: "tool.notify-center" }));
     expect(screen.getByTestId("notify-panel")).toBeTruthy();
-    expect(useWorkspaceStore.getState().dockActive).toBe("notifications");
+    expect(useWorkspaceStore.getState().toolDialog).toBe("notifications");
     act(() => menuActionHandler!({ payload: "tool.notify-center" }));
-    expect(useWorkspaceStore.getState().dockActive).toBe("notifications");
+    expect(useWorkspaceStore.getState().toolDialog).toBe("notifications");
     expect(screen.getByTestId("notify-panel")).toBeTruthy();
   });
 
-  it("tool.<key> 与顶栏工具下拉同源（openDock 路由）", async () => {
+  it("tool.<key> 与顶栏工具下拉同源（openToolDialog 路由）", async () => {
     listMock();
-    useWorkspaceStore.setState({ mainView: "terminal", dockTabs: [], dockActive: null });
+    useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
     act(() => menuActionHandler!({ payload: "tool.cron" }));
-    await waitFor(() => expect(useWorkspaceStore.getState().dockActive).toBe("cron"));
+    await waitFor(() => expect(useWorkspaceStore.getState().toolDialog).toBe("cron"));
   });
 });
 
@@ -384,47 +384,44 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
   }
 
   beforeEach(() => {
-    useWorkspaceStore.setState({ mainView: "terminal", dockTabs: [], dockActive: null });
+    useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
   });
 
-  it("转发/定时任务 → openDock 单槽（后者替换前者）；dock 关闭按钮可用", async () => {
+  it("转发/定时任务 → toolDialog 单槽（后者替换前者）；✕ 关闭", async () => {
     listMock();
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
 
     act(() => menuActionHandler!({ payload: "tool.forwards" }));
-    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("forwards");
-    expect(screen.getByTestId("forward-panel")).toBeTruthy(); // T4：实体在 dock 内
+    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("forwards");
+    expect(screen.getByTestId("forward-panel")).toBeTruthy(); // 实体在弹框内
 
-    // 多页签（2026-10-09 根治互相覆盖）：开 cron 不替换 forwards——两页签共存，
-    // cron 激活、forwards 隐藏（keep-alive）
+    // 单槽（2026-10-12 弹框化）：开 cron 即替换 forwards——一次一个
     act(() => menuActionHandler!({ payload: "tool.cron" }));
-    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("cron");
+    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("cron");
     expect(screen.getByTestId("cron-panel")).toBeTruthy();
-    expect(screen.getByTestId("dock-pane-forwards").hidden).toBe(true);
+    expect(screen.queryByTestId("forward-panel")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("dock-close")); // 壳 ✕ = 关活动页
-    expect(useWorkspaceStore.getState().dockActive).toBe("forwards"); // 活动权移交
-    expect(screen.getByTestId("forward-panel")).toBeTruthy(); // keep-alive 仍在
-    fireEvent.click(screen.getByTestId("dock-close"));
-    expect(screen.queryByTestId("dock-container")).toBeNull();
+    fireEvent.click(screen.getByTestId("tool-dialog-close")); // ✕ 关闭
+    expect(useWorkspaceStore.getState().toolDialog).toBeNull();
+    expect(screen.queryByTestId("tool-dialog")).toBeNull();
   });
 
-  it("告警/MCP/跳板链 → openDock 对应面板；总览/批量 → openMainView 主区实体视图", async () => {
+  it("告警/MCP/跳板链 → openToolDialog 对应弹框；总览/批量 → openMainView 主区实体视图", async () => {
     listMock();
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
 
     act(() => menuActionHandler!({ payload: "tool.alerts" }));
-    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("alerts");
-    expect(screen.getByTestId("alert-settings")).toBeTruthy(); // T4：实体在 dock 内
+    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("alerts");
+    expect(screen.getByTestId("alert-settings")).toBeTruthy(); // 实体在弹框内
     act(() => menuActionHandler!({ payload: "tool.mcp" }));
-    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("mcp");
+    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("mcp");
     expect(screen.getByTestId("mcp-settings")).toBeTruthy();
     act(() => menuActionHandler!({ payload: "tool.jump-chains" }));
-    expect(screen.getByTestId("dock-container").getAttribute("data-panel")).toBe("jumpchains");
+    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("jumpchains");
     expect(screen.getByTestId("jump-editor")).toBeTruthy();
 
     // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义；T3 起挂实体）。

@@ -107,6 +107,13 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "New Host"
             }
         }
+        "import_host" => {
+            if zh {
+                "导入主机…"
+            } else {
+                "Import Hosts…"
+            }
+        }
         "split_right" => {
             if zh {
                 "向右分屏"
@@ -468,6 +475,11 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     label: text(lang, "new_group"),
                     accelerator: None,
                 },
+                MenuNode::Item {
+                    id: "hosts.import",
+                    label: text(lang, "import_host"),
+                    accelerator: None,
+                },
                 MenuNode::Sep,
                 MenuNode::Predef(Predef::CloseWindow),
             ],
@@ -777,8 +789,8 @@ pub fn dispatch_of(id: &str) -> Option<Dispatch> {
         return Some(Dispatch::Frontend);
     }
     match id {
-        "settings.open" | "hosts.new" | "hosts.new_group" | "session.splitRight"
-        | "session.splitDown" | "palette.toggle" => Some(Dispatch::Frontend),
+        "settings.open" | "hosts.new" | "hosts.new_group" | "hosts.import"
+        | "session.splitRight" | "session.splitDown" | "palette.toggle" => Some(Dispatch::Frontend),
         "help.github" => Some(Dispatch::OpenGitHub),
         "update.check" | "tray.status" | "notify.center" => Some(Dispatch::Frontend),
         "app.quit" | "tray.quit" => Some(Dispatch::Quit),

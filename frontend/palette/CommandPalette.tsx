@@ -58,7 +58,7 @@ interface PaletteItem {
  * 呼出面板）、系统类（设置/外观/安全/退出）。组序 = 展示序；组内保持 registry
  * 顺序。未知 id（测试注入缩表/未来新增未归组）回落 system，不炸渲染。 */
 const COMMAND_GROUPS: readonly { id: "connection" | "panels" | "system"; ids: readonly ActionId[] }[] = [
-  { id: "connection", ids: ["hosts.new", "session.splitRight", "session.splitDown"] },
+  { id: "connection", ids: ["hosts.new", "hosts.import", "session.splitRight", "session.splitDown"] },
   { id: "panels", ids: ["palette.toggle", "history.search", "ai.nl2cmd"] },
   {
     id: "system",

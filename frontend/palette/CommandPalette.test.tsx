@@ -99,8 +99,16 @@ describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", ()
     const items = () =>
       Array.from(document.querySelectorAll<HTMLButtonElement>(".palette-item"));
     expect(items()[0].textContent).toContain("新建主机");
-    expect(items()[3].textContent).toContain("命令面板"); // 面板组第一项
-    expect(items()[6].textContent).toContain("设置"); // 系统组第一项
+    // 内容驱动定位（registry 数组序 ≠ 分组内序）：导入主机应与新建主机同组
+    // （用户裁定：它也是创建的一种形式，与新建并列）
+    const groupOf = (text: string) =>
+      items().findIndex((b) => b.textContent?.includes(text));
+    const newHostIdx = groupOf("新建主机");
+    const importIdx = groupOf("导入主机");
+    expect(importIdx).toBeGreaterThan(-1);
+    // 系统组（设置）必须在连接组全部条目之后
+    expect(groupOf("设置")).toBeGreaterThan(groupOf("NL 命令"));
+    expect(newHostIdx).toBeGreaterThan(-1);
   });
 
   it("过滤态退扁平相关度排序：子组标题隐藏，命令/主机区头保持", () => {

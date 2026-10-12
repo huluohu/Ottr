@@ -188,3 +188,14 @@
 .sidebar-flyout button[data-checked="true"] svg {
   margin-left: auto;
 }
+
+/* 快捷菜单弹层分隔线 + 工具行激活态（弹层内行复用 .sidebar-flyout button 基础样式） */
+.sidebar-flyout-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-subtle);
+}
+.sidebar-flyout button[data-active="true"] {
+  color: var(--color-accent-text);
+  font-weight: 600;
+}

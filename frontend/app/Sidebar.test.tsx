@@ -46,6 +46,11 @@ function renderSidebar(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
   return { shell };
 }
 
+// 快捷菜单（2026-10-12 ZCode 式收合）：入口行收进弹层，先点按钮再点条目
+function openQuickMenu() {
+  fireEvent.click(screen.getByTestId("sidebar-quickmenu"));
+}
+
 beforeEach(() => {
   useWorkspaceStore.setState({ dockTabs: [], dockActive: null });
   useNotifyStore.setState({ unread: 0 });
@@ -68,37 +73,48 @@ afterEach(() => {
 });
 
 describe("Sidebar", () => {
-  it("三段式渲染：搜索/主机区（新建主机入口）/导航/设置", () => {
+  it("三段式渲染：搜索/主机区（新建主机入口）/快捷菜单按钮；弹出含全部入口", () => {
     renderSidebar();
     expect(screen.getByTestId("sidebar-search")).toBeTruthy();
     expect(screen.getByTestId("sidebar-add-host")).toBeTruthy(); // 主机区 = HostTree 原样嵌入
     expect(screen.getByTestId("sidebar-add-group")).toBeTruthy();
+    expect(screen.getByTestId("sidebar-quickmenu")).toBeTruthy();
+    // ZCode 式收合：弹出前无入口行
+    expect(screen.queryByTestId("sidebar-nav-cron")).toBeNull();
+    openQuickMenu();
     expect(screen.getByTestId("sidebar-nav-cron")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-alerts")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-mcp")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-notifications")).toBeTruthy();
+    expect(screen.getByTestId("sidebar-nav-credentials")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-settings")).toBeTruthy();
   });
 
   it("导航点击开对应 dock 页签（共存不互关）；再点同页签关闭（开关二态）", () => {
     renderSidebar();
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-nav-cron"));
     expect(useWorkspaceStore.getState().dockActive).toBe("cron");
+    // 选即关（原生菜单语义）：再次操作需重新打开快捷菜单
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-nav-alerts"));
     expect(useWorkspaceStore.getState().dockActive).toBe("alerts");
     expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron", "alerts"]); // 共存
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-nav-alerts")); // 再点 = 关该页签
     expect(useWorkspaceStore.getState().dockActive).toBe("cron"); // 活动权移交右邻
     expect(useWorkspaceStore.getState().dockTabs).toEqual(["cron"]);
   });
 
-  it("未读数徽标：unread=3 显示 3；归零消失", () => {
+  it("未读数徽标：unread=3 显示 3；归零消失（快捷菜单弹出态）", () => {
     useNotifyStore.setState({ unread: 3 });
     renderSidebar();
+    openQuickMenu();
     expect(screen.getByTestId("sidebar-unread").textContent).toBe("3");
     cleanup();
     useNotifyStore.setState({ unread: 0 });
     renderSidebar();
+    openQuickMenu();
     expect(screen.queryByTestId("sidebar-unread")).toBeNull();
   });
 
@@ -110,13 +126,15 @@ describe("Sidebar", () => {
     renderSidebar(shell);
     fireEvent.click(screen.getByTestId("sidebar-search"));
     expect(shell.onQuickConnect).toHaveBeenCalledTimes(1);
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-nav-settings"));
     expect(shell.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("主题子菜单：行点击弹出浮层七选项；选即应用并收起（不挤动侧栏布局）", async () => {
+  it("主题子菜单：快捷菜单内点主题弹七选项；选即应用并收起（主机树不受影响）", () => {
     renderSidebar();
-    const treeBefore = screen.getByTestId("app-sidebar").textContent;
+    const hostsBefore = screen.getByTestId("app-sidebar").querySelector(".sidebar-hosts")?.textContent;
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-theme"));
     expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
     for (const id of ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"]) {
@@ -126,8 +144,8 @@ describe("Sidebar", () => {
     expect(document.documentElement.dataset.theme).toBe("oled");
     // 选即关（原生菜单语义）
     expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
-    // 侧栏自身文本不变 = 布局未被顶动
-    expect(screen.getByTestId("app-sidebar").textContent).toBe(treeBefore);
+    // 主机树区文本不变 = 布局未被顶动（弹层为 fixed，不占布局）
+    expect(screen.getByTestId("app-sidebar").querySelector(".sidebar-hosts")?.textContent).toBe(hostsBefore);
   });
 
   // 回归（v0.5.0 实测「选择不生效」）：浮层渲染在 nav 之外，外点关闭监听
@@ -136,6 +154,7 @@ describe("Sidebar", () => {
   // 事件序模拟：面板内 mousedown 不得卸载，随后 click 正常应用主题。
   it("回归：面板内 mousedown 不卸载浮层，随后 click 正常应用（真实事件序）", () => {
     renderSidebar();
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-theme"));
     const option = screen.getByTestId("sidebar-theme-oled");
     fireEvent.mouseDown(option); // 旧实现：面板在此被卸载 → click 落空
@@ -147,6 +166,7 @@ describe("Sidebar", () => {
 
   it("外点（面板外元素）mousedown 仍收起浮层", () => {
     renderSidebar();
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-theme"));
     expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
     fireEvent.mouseDown(document.body);
@@ -155,6 +175,7 @@ describe("Sidebar", () => {
 
   it("语言子菜单：浮层展开中英选项，点选切换 i18n 实例语言并收起", async () => {
     renderSidebar();
+    openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-lang"));
     expect(screen.getByTestId("sidebar-flyout-lang")).toBeTruthy();
     fireEvent.click(screen.getByTestId("sidebar-lang-zh-CN"));

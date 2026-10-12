@@ -66,6 +66,14 @@ jobs:
     needs: verify
     if: ${{ !cancelled() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
+    # macOS 自签证书（2026-10-12）：稳定签名身份 com.ottr.app——修复「每次升级
+    # 本地网络授权失效」（adhoc 签名 DR = cdhash，每构建必变；证书锚定后
+    # 跨版本一致，TCC 记录永久匹配）。tauri-bundler 读这三个 env 自动导入
+    # p12 到临时钥匙串并签名；Win/Linux 忽略（证书仅用于 macOS 代码签名）。
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: OttrCodesign
     strategy:
       fail-fast: false
       matrix:

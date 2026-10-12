@@ -10,12 +10,13 @@ import { vaultApi, type ImportReport } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { useEscClose } from "../ui/useEscClose";
 
-type ImportSource = "ssh" | "xshell" | "tabby";
+type ImportSource = "ssh" | "xshell" | "tabby" | "csv";
 
 const SOURCES: { id: ImportSource; labelKey: string }[] = [
   { id: "ssh", labelKey: "importDialog.sourceSsh" },
   { id: "xshell", labelKey: "importDialog.sourceXshell" },
   { id: "tabby", labelKey: "importDialog.sourceTabby" },
+  { id: "csv", labelKey: "importDialog.sourceCsv" },
 ];
 
 export function ImportDialog({ onClose, closing }: { onClose: () => void; closing?: boolean }) {
@@ -29,7 +30,9 @@ export function ImportDialog({ onClose, closing }: { onClose: () => void; closin
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Tabby 无跨平台惯例位置：必须先选文件才能开始（xshell 可回落服务端默认目录）
-  const startEnabled = source !== "tabby" || pickedPath !== null;
+  // ssh/xshell 允许空路径（回落服务端默认）；tabby/csv 必须先选文件。
+  const startEnabled =
+    source === "tabby" || source === "csv" ? pickedPath !== null : true;
 
   function switchSource(next: ImportSource) {
     if (next === source) return;
@@ -47,13 +50,19 @@ export function ImportDialog({ onClose, closing }: { onClose: () => void; closin
       const picked = await open(
         source === "xshell"
           ? { directory: true, title: t("importDialog.pickFolder") }
-          : {
-              multiple: false,
-              title: t("importDialog.pickFile"),
-              // BL-513：Tabby 生产配置是 YAML（~/.config/tabby/config.yaml）——
-              // 对话框放行 yaml/yml，Rust 侧按内容嗅探 JSON/YAML
-              filters: [{ name: "Tabby config", extensions: ["json", "yaml", "yml"] }],
-            },
+          : source === "csv"
+            ? {
+                multiple: false,
+                title: t("importDialog.pickFile"),
+                filters: [{ name: "CSV", extensions: ["csv"] }],
+              }
+            : {
+                multiple: false,
+                title: t("importDialog.pickFile"),
+                // BL-513：Tabby 生产配置是 YAML（~/.config/tabby/config.yaml）——
+                // 对话框放行 yaml/yml，Rust 侧按内容嗅探 JSON/YAML
+                filters: [{ name: "Tabby config", extensions: ["json", "yaml", "yml"] }],
+              },
       );
       if (typeof picked === "string") setPickedPath(picked);
     } catch {
@@ -70,7 +79,9 @@ export function ImportDialog({ onClose, closing }: { onClose: () => void; closin
           ? await vaultApi.importSshConfig(null)
           : source === "xshell"
             ? await vaultApi.importXshellSessions(pickedPath)
-            : await vaultApi.importTabbyConfig(pickedPath as string);
+            : source === "csv"
+              ? await vaultApi.importHostsCsv(pickedPath as string)
+              : await vaultApi.importTabbyConfig(pickedPath as string);
       setReport(r);
       setPhase("done");
       // 导入结果对树可见（refresh 失败不影响导入本身的完成态）
@@ -86,7 +97,9 @@ export function ImportDialog({ onClose, closing }: { onClose: () => void; closin
       ? t("importDialog.intro")
       : source === "xshell"
         ? t("importDialog.xshellIntro")
-        : t("importDialog.tabbyIntro");
+        : source === "csv"
+          ? t("importDialog.csvIntro")
+          : t("importDialog.tabbyIntro");
 
   return (
     <div

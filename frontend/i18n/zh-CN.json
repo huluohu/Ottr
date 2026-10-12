@@ -155,11 +155,13 @@
     "sourceSsh": "~/.ssh/config",
     "sourceXshell": "Xshell 会话目录",
     "sourceTabby": "Tabby 配置（JSON/YAML）",
+    "sourceCsv": "CSV 文件",
     "pickFile": "选择文件…",
     "pickFolder": "选择目录…",
     "skippedEntries": "跳过 {{count}} 个不可用条目/文件",
     "xshellIntro": "选择 Xshell .xsh 会话文件所在目录（或单个 .xsh）。导入主机/端口/用户；按地址+端口+用户去重。",
-    "tabbyIntro": "选择 Tabby 配置导出文件（JSON 或 YAML，~/.config/tabby/config.yaml 即 YAML）。导入其中 SSH 配置；按地址+端口+用户去重。"
+    "tabbyIntro": "选择 Tabby 配置导出文件（JSON 或 YAML，~/.config/tabby/config.yaml 即 YAML）。导入其中 SSH 配置；按地址+端口+用户去重。",
+    "csvIntro": "选择「导出主机 CSV」导出的文件回导（8 列与导出完全对表：名称/用户/地址/端口/分组/标签/编码/备注；按地址+端口+用户去重，缺失的分组自动创建）。"
   },
   "palette": {
     "title": "命令面板",
@@ -1192,7 +1194,7 @@
     "notifications": "通知中心",
     "credentials": "凭据",
     "settings": "设置",
-    "quickMenu": "快捷菜单",
+    "quickMenu": "控制中心",
     "theme": "主题",
     "themeCycle": "切换主题（循环七主题）",
     "language": "语言",

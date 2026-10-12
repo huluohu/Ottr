@@ -82,6 +82,7 @@ fn run_bindings_check() -> Result<(), String> {
             ottr_lib::vault::import_ssh_config,
             ottr_lib::vault::import_xshell_sessions,
             ottr_lib::vault::import_tabby_config,
+            ottr_lib::vault::import_hosts_csv,
             ottr_lib::vault::export_hosts_csv,
         ]);
 

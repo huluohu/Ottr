@@ -443,6 +443,7 @@ pub fn run() {
             hostkey_audit::known_hosts_probe,
             hostkey_audit::known_hosts_audit_run,
             vault::import_ssh_config,
+            vault::import_hosts_csv,
             vault::export_hosts_csv,
             // 迁移导入器（Phase 2 Task 10，B3；命令名契约见 frontend/vault/api.ts）
             vault::import_xshell_sessions,

@@ -155,11 +155,13 @@
     "sourceSsh": "~/.ssh/config",
     "sourceXshell": "Xshell sessions folder",
     "sourceTabby": "Tabby config (JSON/YAML)",
+    "sourceCsv": "CSV file",
     "pickFile": "Choose file…",
     "pickFolder": "Choose folder…",
     "skippedEntries": "Skipped {{count}} unusable entries/files",
     "xshellIntro": "Pick a folder of Xshell .xsh session files (or a single .xsh). Host/port/user are imported; duplicates by address+port+user are skipped.",
-    "tabbyIntro": "Pick a Tabby config export (JSON or YAML — ~/.config/tabby/config.yaml is YAML). SSH profiles are imported; duplicates by address+port+user are skipped."
+    "tabbyIntro": "Pick a Tabby config export (JSON or YAML — ~/.config/tabby/config.yaml is YAML). SSH profiles are imported; duplicates by address+port+user are skipped.",
+    "csvIntro": "Pick a file exported via “Export Hosts CSV” (8 columns exactly matching the export: name/user/address/port/group/tags/encoding/notes; duplicates by address+port+user are skipped; missing groups are created)."
   },
   "palette": {
     "title": "Command Palette",
@@ -1193,7 +1195,7 @@
     "notifications": "Notifications",
     "credentials": "Credentials",
     "settings": "Settings",
-    "quickMenu": "Quick Menu",
+    "quickMenu": "Control Center",
     "theme": "Theme",
     "themeCycle": "Cycle through themes",
     "language": "Language",

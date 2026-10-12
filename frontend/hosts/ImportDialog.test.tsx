@@ -57,6 +57,34 @@ describe("ImportDialog", () => {
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("hosts_list"));
   });
 
+  it("CSV 源：文件必选；回导入经 import_hosts_csv 并展示报告", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "import_hosts_csv") {
+        return Promise.resolve({ added: 2, skipped_wildcards: 0, skipped_duplicates: 1, errors: [] });
+      }
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<ImportDialog onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("import-source-csv"));
+    // CSV 未选文件 → 开始钮禁用
+    expect((screen.getByTestId("import-start") as HTMLButtonElement).disabled).toBe(true);
+    mockOpen.mockResolvedValue("/tmp/hosts.csv");
+    fireEvent.click(screen.getByTestId("import-pick"));
+    await waitFor(() =>
+      expect((screen.getByTestId("import-start") as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(screen.getByTestId("import-start"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("import_hosts_csv", { path: "/tmp/hosts.csv" }),
+    );
+    await waitFor(() => expect(screen.getByTestId("import-report")).toBeTruthy());
+    expect(screen.getByTestId("import-report").textContent).toContain("2");
+    expect(screen.getByTestId("import-report").textContent).toContain("1");
+  });
+
   it("零新增时显示 addedZero 文案", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "import_ssh_config") {

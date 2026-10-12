@@ -42,6 +42,8 @@ export const commands = {
 	credentialsGet: (id: number) => typedError<{
 	id: number,
 	kind: CredentialKind,
+	/**  用户可见的明文名称/标签（0021；非敏感不加密）。NULL = 未命名。 */
+	name: string | null,
 	key_pub: string | null,
 	created_at: number,
 	updated_at: number,
@@ -114,6 +116,11 @@ export const commands = {
 	 */
 	importTabbyConfig: (path: string) => typedError<ImportReport, string>(__TAURI_INVOKE("import_tabby_config", { path })),
 	/**
+	 *  主机清单 CSV 回导入（2026-10-12）：与 export_hosts_csv 完全对表
+	 *  （8 列 RFC4180）；path 必传（无惯例缺省位置）。
+	 */
+	importHostsCsv: (path: string) => typedError<ImportReport, string>(__TAURI_INVOKE("import_hosts_csv", { path })),
+	/**
 	 *  CSV 导出主机清单。`path` 缺省写到系统下载目录 `ottr-hosts.csv`；返回落盘路径。
 	 *  CSV 组装（RFC4180 转义 + 实体 join）在 ottr-vault `hosts_csv`（BL-206：随
 	 *  实体同库可独立单测）；本命令只保留路径解析与落盘。
@@ -129,6 +136,8 @@ export const commands = {
 export type Credential = {
 	id: number,
 	kind: CredentialKind,
+	/**  用户可见的明文名称/标签（0021；非敏感不加密）。NULL = 未命名。 */
+	name: string | null,
 	key_pub: string | null,
 	created_at: number,
 	updated_at: number,
@@ -140,6 +149,8 @@ export type Credential = {
  */
 export type CredentialInput = {
 	kind: CredentialKind,
+	/**  名称/标签（明文可选；空 = UI 按 kind 兜底显示）。 */
+	name: string | null,
 	secret: string | null,
 	key_pub: string | null,
 	passphrase: string | null,
@@ -156,6 +167,8 @@ export type CredentialKind = "password" | "key" | "totp" | "ftp" | "ftps";
 /**  更新凭据的补丁：全部 `None = 保留现值`（UI 语义：未重输的密钥不重密封）。 */
 export type CredentialPatch = {
 	kind: CredentialKind | null,
+	/**  Some(None) = 清空名称；None = 保留现值。 */
+	name: string | null,
 	secret: string | null,
 	key_pub: string | null,
 	passphrase: string | null,

@@ -30,6 +30,22 @@ pub fn import_ssh_config(
     cmd(crate::ssh_config::import_entries(&state.0, outcome))
 }
 
+/// 主机清单 CSV 回导入（2026-10-12）：与 export_hosts_csv 完全对表
+/// （8 列 RFC4180）；path 必传（无惯例缺省位置）。
+#[specta::specta]
+#[tauri::command]
+pub fn import_hosts_csv(
+    state: State<'_, VaultState>,
+    path: String,
+) -> CmdResult<crate::ssh_config::ImportReport> {
+    ensure_unlocked(&state.0)?;
+    let content = std::fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))?;
+    let outcome = crate::importers::hosts_csv::parse(&content);
+    cmd(crate::importers::hosts_csv::import_entries(
+        &state.0, outcome,
+    ))
+}
+
 /// 导入 Xshell 会话（Phase 2 Task 10，B3）。`path` = 会话目录或单个 .xsh；
 /// 缺省回落 Windows 惯例会话目录（不存在即报错——mac/Linux 无默认位置）。
 /// 解析规则与去重见 importers::xshell 模块文档；报告同构 ssh-config 导入。

@@ -579,6 +579,9 @@ export const vaultApi = {
   /** Tabby 配置 JSON 导入（Phase 2 Task 10；path 必传——文件对话框选定）。 */
   importTabbyConfig: (path: string) =>
     invoke<ImportReport>("import_tabby_config", { path }),
+  /** 主机清单 CSV 回导入（2026-10-12；与 export_hosts_csv 八列对表；path 必传）。 */
+  importHostsCsv: (path: string) =>
+    invoke<ImportReport>("import_hosts_csv", { path }),
   /** CSV 导出（path=null → 系统下载目录 ottr-hosts.csv），返回落盘路径。 */
   exportHostsCsv: (path: string | null) => invoke<string>("export_hosts_csv", { path }),
   credentials: {

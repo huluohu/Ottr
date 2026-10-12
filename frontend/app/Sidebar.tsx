@@ -34,10 +34,14 @@ export interface SidebarProps extends HostTreeProps {
   onOpenSettings: () => void;
 }
 
-function MenuIcon() {
+function GridIcon() {
+  // 四宫格（2×2 圆角方块）：macOS 控制中心/Launchpad 同族语义。
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
-      <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1.2" />
+      <rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1.2" />
+      <rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1.2" />
+      <rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1.2" />
     </svg>
   );
 }
@@ -97,10 +101,12 @@ function PlugIcon() {
 }
 
 function GearIcon() {
+  // Lucide「settings」齿轮（24 viewBox，齿廓 + 中孔）；旧细辐条版视觉上
+  // 像太阳/色轮（用户误读为主题概念，2026-10-12 反馈）。
   return (
-    <svg className="sidebar-nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="8" cy="8" r="2.1" />
-      <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6 11 5M5 11l-1.4 1.4" />
+    <svg className="sidebar-nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }
@@ -248,7 +254,7 @@ export function Sidebar({
           aria-expanded={menu !== null}
           onClick={openQuickMenu}
         >
-          <MenuIcon />
+          <GridIcon />
           <span>{t("nav.quickMenu")}</span>
         </button>
       </div>

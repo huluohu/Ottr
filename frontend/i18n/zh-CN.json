@@ -511,7 +511,9 @@
       "delete": "删除「{{name}}」",
       "edit": "编辑「{{name}}」",
       "stopEdit": "停止编辑「{{name}}」",
-      "download": "下载「{{name}}」"
+      "download": "下载「{{name}}」",
+      "downloadToLocal": "下载到本地当前目录",
+      "upload": "上传到远程（{{name}}）"
     },
     "dlg": {
       "mkdirTitle": "新建目录",
@@ -553,10 +555,7 @@
       "dismissAria": "移除记录 {{name}}",
       "errorText": "错误：{{message}}"
     },
-    "ftpNoEdit": "FTP 会话不支持远端编辑",
-    "menu.upload": "上传到远程（{{name}}）",
-    "menu.downloadToLocal": "下载到本地当前目录",
-    "downloadToLocal": "已下载到本地当前目录：{{name}}"
+    "ftpNoEdit": "FTP 会话不支持远端编辑"
   },
   "forward": {
     "title": "端口转发",

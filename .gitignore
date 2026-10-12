@@ -18,6 +18,9 @@ target/
 # Tauri 生成物
 desktop/gen/
 
+# 代码签名身份（自签证书私钥，绝对禁止入库）
+desktop/codesign/
+
 # 系统与工具
 .DS_Store
 .video_agent/

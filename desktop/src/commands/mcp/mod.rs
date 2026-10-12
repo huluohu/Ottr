@@ -195,6 +195,9 @@ pub(crate) fn mcp_status(app: AppHandle, state: State<'_, VaultState>) -> CmdRes
 }
 
 /// 总开关：持久化 settings + 起/停 listener（改设即生效，无需重启）。
+/// 顺序即契约：动作成功**先于**落盘——开启时 listener 起不来（如 Windows 无
+/// UDS）则报错返回、设置不残留 enabled=true 的「永远起不来」态；关闭时先停
+/// 再落盘同理。落盘本身失败属罕见盘错，报错时以动作实况为准（mcp_status 可查）。
 #[tauri::command]
 pub(crate) fn mcp_set_enabled(
     app: AppHandle,
@@ -202,8 +205,6 @@ pub(crate) fn mcp_set_enabled(
     enabled: bool,
 ) -> CmdResult<McpStatus> {
     crate::security::validate_setting(SETTING_MCP_ENABLED, &serde_json::json!(enabled))?;
-    Settings::set(&state.0, SETTING_MCP_ENABLED, &serde_json::json!(enabled))
-        .map_err(|e| e.to_string())?;
     {
         let manager = app.state::<McpManager>();
         if enabled {
@@ -212,6 +213,8 @@ pub(crate) fn mcp_set_enabled(
             manager.stop();
         }
     }
+    Settings::set(&state.0, SETTING_MCP_ENABLED, &serde_json::json!(enabled))
+        .map_err(|e| e.to_string())?;
     mcp_status(app, state)
 }
 

@@ -984,12 +984,14 @@ fn open_repo_url() {
 
 /// webview 缩放（视图菜单）：delta=None 重置 1.0；步进 ×1.1 / ÷1.1，clamp [0.5,3]。
 /// 当前倍率记在 managed [`ZoomState`]（set_zoom 是绝对值语义，无读回）。
+/// pub(crate)：commands::view::view_zoom（Win/Linux 键盘/面板入口）与 mac 菜单
+/// Dispatch::Zoom* 共用此实现，三端单一状态源。
 #[derive(Default)]
 pub struct ZoomState(std::sync::Mutex<f64>);
 
-const ZOOM_STEP: f64 = 1.1;
+pub(crate) const ZOOM_STEP: f64 = 1.1;
 
-fn apply_zoom<R: Runtime>(app: &AppHandle<R>, delta: Option<f64>) {
+pub(crate) fn apply_zoom<R: Runtime>(app: &AppHandle<R>, delta: Option<f64>) {
     let state = app.state::<ZoomState>();
     let mut current = state.0.lock().unwrap();
     *current = match delta {

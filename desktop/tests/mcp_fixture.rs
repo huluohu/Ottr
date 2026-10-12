@@ -11,6 +11,10 @@
 //! 夹具不可达即 SKIP 并提示启动命令（batch_fixture 同纪律）。
 //!
 //! Run: `cargo test -p ottr --test mcp_fixture`
+// 全文件 unix-only：UDS listener（spawn_listener 是 cfg(unix) 面）+ ottr-mcp
+// relay 子进程（Windows 是 exit(1) stub）。不门控则 Windows 上整个集成测试
+// 目标编译失败（2026-10-12 跨平台审计）。
+#![cfg(unix)]
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};

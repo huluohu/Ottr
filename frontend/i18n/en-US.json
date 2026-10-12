@@ -1205,7 +1205,17 @@
     "language": "Language",
     "langToggle": "Toggle Chinese/English"
   },
+  "menu": {
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "zoomReset": "Actual Size",
+    "closeWindow": "Close Window",
+    "fullscreen": "Toggle Full Screen"
+  },
   "sidebar": {
     "search": "Search"
+  },
+  "tools": {
+    "exportHostsCsv": "Export Hosts CSV…"
   }
 }

@@ -840,6 +840,10 @@ mod tests {
 
     /// 24h 惰性清扫：老目录整树删、新目录保留（mtime 用 touch -t 钉旧）；
     /// EditMap 在册的活会话（I-3）即便目录 mtime 陈旧也绝不清扫。
+    // unix-only：touch -t 钉**目录** mtime——Windows 无 touch 可拉，std 也没有
+    // 目录 mtime 的跨平台写法（File::set_times 打不开目录句柄）；清扫本体跨平
+    // 台，此测试的 Windows 等价物挂账（2026-10-12 跨平台审计）。
+    #[cfg(unix)]
     #[test]
     fn sweep_removes_only_stale_session_dirs() {
         let root = temp_root().join(format!("ut-sweep-{}", std::process::id()));

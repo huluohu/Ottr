@@ -1204,7 +1204,17 @@
     "language": "语言",
     "langToggle": "切换中英文"
   },
+  "menu": {
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "zoomReset": "实际大小",
+    "closeWindow": "关闭窗口",
+    "fullscreen": "切换全屏"
+  },
   "sidebar": {
     "search": "搜索"
+  },
+  "tools": {
+    "exportHostsCsv": "导出主机 CSV…"
   }
 }

@@ -31,6 +31,12 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.credentials", labelKey: "credentials.dialogTitle", group: "hosts" },
   { id: "tool.overview", labelKey: "overview.title", group: "hosts" },
   { id: "tool.batch", labelKey: "batch.title", group: "hosts" },
+  // 同步 / 导出主机 CSV（2026-10-12 跨平台审计补齐）：mac 工具菜单 12 项里有
+  // 这两项（menu.rs TOOL_KEYS），本表此前只有 10 项——Win/Linux 汉堡/⌘K/托盘
+  // 由此渲染，「导出主机 CSV」在 Win/Linux 无任何触达口（runToolAction 的
+  // case 本就已存在，只差清单缺项）。
+  { id: "tool.sync", labelKey: "sync.sectionTitle", group: "system" },
+  { id: "tool.export-hosts-csv", labelKey: "tools.exportHostsCsv", group: "hosts" },
   { id: "update.check", labelKey: "update.check", group: "system" },
 ];
 

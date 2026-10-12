@@ -7,6 +7,10 @@
 //! 夹具不可达 / 本机无 ssh-keyscan → SKIP（batch_fixture 同纪律）。
 //!
 //! Run: `cargo test -p ottr --test hostkey_fixture`
+// 全文件 unix-only：真 ssh-keyscan 外部进程（Windows OpenSSH 可选功能不含
+// keyscan）+ ottr-sshd 容器夹具。不门控则 Windows 上运行时必挂（2026-10-12
+// 跨平台审计）。
+#![cfg(unix)]
 use std::time::Duration;
 
 use ottr_vault::KnownHostState;

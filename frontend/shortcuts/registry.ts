@@ -40,7 +40,12 @@ export type ActionId =
   | "hosts.new_group"
   | "hosts.import"
   | "notify.center"
-  | "app.quit";
+  | "app.quit"
+  | "app.closeWindow"
+  | "app.toggleFullscreen"
+  | "view.zoomIn"
+  | "view.zoomOut"
+  | "view.zoomReset";
 
 /** 每平台键位（mac 用 ⌘ 系，win/linux 用 Ctrl 系；无差异时三份同值）。
  * 平台项可缺省 = 该平台不注册全局键（仅面板/菜单可及）。 */
@@ -147,6 +152,33 @@ export const ACTIONS: readonly ActionDef[] = [
   // 通知中心（工具族）：mac 原生工具菜单 + win/linux 汉堡同源入口。
   { id: "notify.center", labelKey: "notify.centerTitle" },
   { id: "app.quit", labelKey: "palette.quit" },
+  // --- 2026-10-12 跨平台审计补齐（此前 Win/Linux 整体不可达的 mac-only 面）---
+  {
+    // 关窗键：mac ⌘W 由原生菜单 Predef::CloseWindow 承担；win/linux 用
+    // Ctrl+Shift+W（带 Shift 满足终端守卫——裸 Ctrl+W 是 shell 删词，禁抢）。
+    // 动作 = window.close()，与点标题栏 X 同路（close-to-tray 拦截转隐藏）。
+    id: "app.closeWindow",
+    labelKey: "menu.closeWindow",
+    keys: { win: "Ctrl+Shift+W", linux: "Ctrl+Shift+W" },
+    terminalSafe: true,
+  },
+  {
+    // 全屏切换：F11（win/linux 惯例）。不标 terminalSafe——终端聚焦时 F11
+    // 原样放行 PTY（远端程序自会处理），与 history.search 同一守卫口径。
+    id: "app.toggleFullscreen",
+    labelKey: "menu.fullscreen",
+    keys: { win: "F11", linux: "F11" },
+  },
+  // 缩放三键（2026-10-12 跨平台审计）：mac 视图菜单 ⌘=/⌘-/⌘0（menu.rs
+  // view.zoom*）是此前唯一入口——Win/Linux 既无原生菜单也无键位，缩放整体
+  // 不可达。键位走浏览器惯例 Ctrl+=/Ctrl+-/Ctrl+0；mac 不注册全局键（原生
+  // 菜单 chord 拥有 ⌘ 系，全局监听不重复承接）。三端 palette/汉堡经
+  // handleAction → invoke("view_zoom") 进 menu.rs apply_zoom——与 mac 菜单
+  // 共用 ZoomState 单一状态源。不标 terminalSafe：终端聚焦时放行 PTY（同
+  // F11 口径，Ctrl 系数字/符号非 shell 关键键但守卫纪律优先）。
+  { id: "view.zoomIn", labelKey: "menu.zoomIn", keys: { win: "Ctrl+=", linux: "Ctrl+=" } },
+  { id: "view.zoomOut", labelKey: "menu.zoomOut", keys: { win: "Ctrl+-", linux: "Ctrl+-" } },
+  { id: "view.zoomReset", labelKey: "menu.zoomReset", keys: { win: "Ctrl+0", linux: "Ctrl+0" } },
 ];
 
 /** 平台判定（Navigator.userAgent；jsdom 默认走 win 分支，测试可 stub）。 */

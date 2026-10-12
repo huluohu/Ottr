@@ -58,6 +58,9 @@ pub mod sync_http;
 pub mod spike;
 pub mod state;
 pub mod transfer;
+// 视图命令域（2026-10-12 跨平台审计）：webview 缩放的键盘/面板入口
+// （view_zoom → menu.rs apply_zoom 同一状态源），模块文档见本文件。
+pub mod view;
 // trzsz 本地文件桥（Phase 2 Task 4，B10 下半）：trzsz.js node 模式的 fs 垫片
 // invoke 落点（stat/read/write/list/mkdir/remove/check），模块文档见本文件。
 pub mod trzsz_fs;

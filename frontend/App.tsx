@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sidebar } from "./app/Sidebar";
 import { Toaster } from "./ui/Toaster";
 import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
@@ -202,6 +203,10 @@ function HomeLayout() {
         case "cron": openDock("cron"); break;
         case "sync": setSyncOpen(true); break;
         case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
+        // mac 工具菜单「AI 命令条」（tool.ai → "ai"）：此前无 case，点击静默
+        // 无反应（2026-10-12 跨平台审计）。打开语义（非切换）：菜单是入口，
+        // 重复点击预期是「打开/聚焦」而非关掉；nlBegin 清场与 ai.nl2cmd 同源。
+        case "ai": nlBegin(); setNlOpen(true); break;
       }
     },
     // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定）+
@@ -373,6 +378,25 @@ function HomeLayout() {
         case "app.quit":
           // 真退出（不走 close-to-tray 拦截路径）；非 Tauri 环境静默。
           invoke("quit_app").catch(() => {});
+          break;
+        // --- 2026-10-12 跨平台审计补齐（此前 Win/Linux 不可达的面）---
+        case "app.closeWindow":
+          // 与标题栏 X 同路：CloseRequested → close-to-tray 拦截转隐藏
+          // （mac ⌘W 原生菜单同语义）；纯浏览器 dev 静默。
+          getCurrentWindow().close().catch(() => {});
+          break;
+        case "app.toggleFullscreen": {
+          const w = getCurrentWindow();
+          void w.isFullscreen().then((fs) => w.setFullscreen(!fs)).catch(() => {});
+          break;
+        }
+        case "view.zoomIn":
+        case "view.zoomOut":
+        case "view.zoomReset":
+          // 进 menu.rs apply_zoom（ZoomState 单一状态源，mac 菜单同源）。
+          invoke("view_zoom", {
+            op: action === "view.zoomIn" ? "in" : action === "view.zoomOut" ? "out" : "reset",
+          }).catch(() => {});
           break;
       }
     },

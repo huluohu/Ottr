@@ -465,6 +465,9 @@ pub fn run() {
             keys::key_inspect,
             keys::key_export,
             keys::key_deploy,
+            // 视图域（2026-10-12 跨平台审计）：缩放的键盘/面板入口——mac 视图
+            // 菜单 view.zoom* 之外的三端统一口（commands/view.rs 模块文档）。
+            commands::view::view_zoom,
             commands::session::resize_session
         ])
         .build(tauri::generate_context!())

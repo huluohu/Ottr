@@ -107,7 +107,9 @@ export function CronPanel({ open }: CronPanelProps) {
     let cancelled = false;
     void (async () => {
       const entries = await Promise.all(
-        useCronStore.getState().jobs.map(async (j) => {
+        // ?? []：CI 测试污染曾使 jobs 瞬时 null（v0.9.10 三连红实录）——
+        // 渲染与效果面对空表防御，绝不因 store 瞬态崩进程。
+        (useCronStore.getState().jobs ?? []).map(async (j) => {
           try {
             return [j.id, await cronApi.nextFire(j.schedule)] as const;
           } catch {

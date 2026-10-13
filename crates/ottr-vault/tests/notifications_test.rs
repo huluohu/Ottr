@@ -5,13 +5,13 @@
 //! 真实用户目录与真钥匙链。通知是明文面（无 *_enc 列，不涉 scan_registry
 //! 守卫；锁定态可读写不另测——settings 同语义）。
 
-use ottr_vault::master_key::InMemoryStorage;
+mod common;
 use ottr_vault::{
     DeliveryFailure, HostInput, Hosts, NotificationInput, Notifications, Vault, VaultError,
 };
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 fn failure(channel: &str, channel_id: i64, error: &str, ts: i64) -> DeliveryFailure {

@@ -3,16 +3,16 @@
 //! 纪律（同 Task 3）：tempfile 临时目录 + InMemoryStorage，绝不触碰真实用户目录与真钥匙链；
 //! 密文断言按裁定 #2 绕过 API——另开 rusqlite 连接直读同一库文件。
 
+mod common;
 use ottr_vault::entities::{
     CredentialInput, CredentialKind, CredentialPatch, KnownHostState, SecretField, SnippetInput,
 };
-use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::{
     Credentials, HostGroups, HostInput, Hosts, KnownHosts, Snippets, Vault, VaultError,
 };
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 fn host_input(name: &str, notes: &str) -> HostInput {

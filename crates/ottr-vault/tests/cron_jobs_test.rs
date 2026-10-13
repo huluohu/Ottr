@@ -8,15 +8,15 @@
 //! 五段式语义（*/N/列表/范围/边界）的 golden 在 ottr-monitor::cron 的
 //! crate 内测试（解析器不在本 crate——存储层不是解析器，分工见模块文档）。
 
+mod common;
 use ottr_vault::cron_jobs::{
     CRON_RUNS_KEEP, CRON_SCHEDULE_MAX_BYTES, CRON_SCRIPT_MAX_BYTES, CronJobInput, CronJobs,
     CronRunInput, CronRuns,
 };
-use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::{HostInput, Hosts, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 fn host_input(name: &str) -> HostInput {

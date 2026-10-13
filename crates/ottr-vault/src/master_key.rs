@@ -1,7 +1,8 @@
 //! Master Key 层级（spec §3）。
 //!
 //! 层级：系统钥匙链存 32B 随机 Master Key → 每条敏感字段独立 AES-256-GCM。
-//! 无钥匙链条目时生成新 key 写回钥匙链（默认无感模式，用户零负担）。
+//! 全新库首开时生成新 key 写回钥匙链（用户零负担）；**已有库条目丢失时
+//! 禁止静默换钥**（KeyringLost，2026-10-13 事故备案见 DEFAULT_SERVICE 注）。
 //! Linux 无 Secret Service 的 fallback（加密文件 + Argon2id 主密码，
 //! `Vault::unlock_with_password`）走 [`derive_key_argon2id`] 派生原语，
 //! 完整文件存储在主密码模式（Task 11 安全底座）落地——见 [`keyring_available`]
@@ -15,6 +16,16 @@ use crate::crypto::{self, Cipher};
 use crate::{Result, VaultError};
 
 /// 钥匙链 service（正式数据；Phase 0 spike 用 "ottr.spike" 与之隔离）。
+///
+/// ⛔ dev 构建与 release 构建强制隔离命名空间（debug_assertions 按 cargo
+/// profile 生效：`tauri dev`/devshot 等 debug 构建走 `.debug` 后缀，正式
+/// 打包走正式名）。事故备案（2026-10-13）：两态曾共用 "ottr.dev"——devshot
+/// 种子库（主密码模式）open 时按「迁移残留清理」删掉同名条目，正式版主
+/// 密钥随之消失、全部已存凭据不可解。命名空间隔离后 dev 物理上碰不到
+/// 正式钥匙。
+#[cfg(debug_assertions)]
+pub const DEFAULT_SERVICE: &str = "ottr.dev.debug";
+#[cfg(not(debug_assertions))]
 pub const DEFAULT_SERVICE: &str = "ottr.dev";
 /// 同一 service 下的 Master Key 条目 account。
 pub const MASTER_KEY_ACCOUNT: &str = "master_key";
@@ -76,8 +87,28 @@ impl MasterKey {
         Self::load_with_storage(&KeyringStorage::new(service))
     }
 
-    /// 生成或复用：无条目 → 生成 32B 随机并存入；有条目 → 解码复用。
-    /// 条目存在但内容非法（非十六进制/长度不对）→ [`VaultError::CorruptedMasterKey`]。
+    /// 读既有 key（**无生成语义**）。`None` = 钥匙链条目不存在——调用方必须
+    /// 自行区分「全新库（可生成，走 [`Self::generate_and_store`]）」与
+    /// 「已有库（禁止换钥，换钥 = 全部密文作废，见 store.rs open_with）」。
+    pub fn from_stored(raw: &str) -> Result<MasterKey> {
+        Ok(MasterKey(decode_key(raw)?))
+    }
+
+    /// 全新库专用：生成 32B 随机钥并写回存储。
+    pub fn generate_and_store(storage: &dyn KeyStorage) -> Result<MasterKey> {
+        let mut key: RawKey = [0u8; crypto::KEY_LEN];
+        // OS CSPRNG 直采（BL-206，见 crypto::fill_os）：Master Key
+        // 是全库信任根，不经用户态 ThreadRng 缓冲。
+        crate::crypto::fill_os(&mut key);
+        storage.save(&hex::encode(key))?;
+        Ok(MasterKey(key))
+    }
+
+    /// 生成或复用（生成-if-missing 语义）。⛔ 仅限独立钥匙链验证工具
+    /// （examples/keyring_manual.rs）——vault 打开路径**禁止**使用本函数：
+    /// 已有库 + 条目丢失时它会静默生成新钥，全部既有密文随之不可解
+    /// （2026-10-13 事故根因）。vault 打开走 [`Self::from_stored`] /
+    /// [`Self::generate_and_store`]，由调用方显式区分全新与既有。
     pub fn load_with_storage(storage: &dyn KeyStorage) -> Result<MasterKey> {
         match storage.load()? {
             Some(raw) => Ok(MasterKey(decode_key(&raw)?)),

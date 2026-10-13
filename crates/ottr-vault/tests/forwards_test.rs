@@ -6,13 +6,13 @@
 //! 纪律（同 notifications_test）：tempfile 临时目录 + InMemoryStorage，绝不
 //! 触碰真实用户目录与真钥匙链。明文配置面（无 *_enc 列，不涉 scan_registry）。
 
-use ottr_vault::master_key::InMemoryStorage;
+mod common;
 use ottr_vault::{
     ForwardKind, HostInput, Hosts, PortForwardInput, PortForwards, Vault, VaultError,
 };
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 fn input(kind: ForwardKind) -> PortForwardInput {

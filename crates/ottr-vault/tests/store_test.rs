@@ -205,3 +205,82 @@ fn fk_child_columns_are_indexed() {
         assert_eq!(n, 1, "missing FK child-column index: {idx}");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 钥匙链安全纪律（2026-10-13 主密钥事故回归钉）：静默换钥禁止 / verifier
+// 开库校验 / 历史库语义保留。事故链：同名 dev 实例删条目 → open_with 曾按
+// 「全新库」静默生成新钥 → 全部既有密文不可解，直到连接凭据才以 aead 显形。
+// ---------------------------------------------------------------------------
+
+/// 已有 keyring 库 + 钥匙链条目丢失 → 显式 KeyringLost，**绝不生成新钥**
+/// （钥匙链存储保持空——静默写入 = 把「可恢复」变「永久丢失」）。
+#[test]
+fn existing_vault_with_lost_key_entry_is_error_not_regen() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = open_vault(dir.path(), &storage); // 首开：生成 + 存储有钥
+    drop(vault);
+
+    let err = match Vault::open_with(dir.path(), &InMemoryStorage::new()) {
+        Err(e) => e,
+        Ok(_) => panic!("open must not silently re-key an existing vault"),
+    };
+    assert!(
+        matches!(err, ottr_vault::VaultError::KeyringLost),
+        "unexpected error: {err:?}"
+    );
+}
+
+/// verifier 开库校验：钥匙链中的钥与本库不匹配 → 显式 KeyringMismatch，
+/// 绝不带错钥静默打开（错钥下首次写操作即不可逆污染）。
+#[test]
+fn keychain_key_mismatch_is_rejected_at_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = open_vault(dir.path(), &storage); // 首开：verifier 落盘
+    drop(vault);
+
+    // 换一把不同的钥放進存储（模拟条目被另一份库覆盖）
+    let wrong = InMemoryStorage::with_raw(&hex_key(b"0123456789abcdef0123456789abcdef"));
+    let err = match Vault::open_with(dir.path(), &wrong) {
+        Err(e) => e,
+        Ok(_) => panic!("mismatched keychain key must be rejected at open"),
+    };
+    assert!(
+        matches!(err, ottr_vault::VaultError::KeyringMismatch),
+        "unexpected error: {err:?}"
+    );
+}
+
+/// 正确钥重开：verifier 校验通过、数据可续用（既有幂等语义保持）。
+#[test]
+fn reopen_with_matching_key_still_works() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = open_vault(dir.path(), &storage);
+    drop(vault);
+    let reopened = Vault::open_with(dir.path(), &storage).expect("reopen with matching key");
+    assert_eq!(reopened.mode(), ottr_vault::KeyMode::Keyring);
+}
+
+/// 历史库语义保留：模式行缺失但钥匙链条目在 → 复用既有钥（不生成），
+/// 并补写模式行（原「历史库首次补写」行为）。
+#[test]
+fn legacy_vault_without_mode_row_reuses_existing_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = open_vault(dir.path(), &storage);
+    // 模拟模式行纪律之前的历史库：删掉模式行（钥匙与 verifier 留在库里）
+    vault
+        .connection()
+        .execute("DELETE FROM meta WHERE key = 'master_key.mode'", [])
+        .unwrap();
+    drop(vault);
+
+    let reopened = Vault::open_with(dir.path(), &storage).expect("legacy reopen must reuse key");
+    assert_eq!(reopened.mode(), ottr_vault::KeyMode::Keyring);
+}
+
+fn hex_key(raw: &[u8; 32]) -> String {
+    raw.iter().map(|b| format!("{b:02x}")).collect()
+}

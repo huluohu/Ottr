@@ -5,13 +5,13 @@
 //! 主密码升级重密封覆盖本表、未知 id NotFound、enabled 位。
 //! 纪律（同 summaries_test）：tempfile 临时目录 + InMemoryStorage。
 
-use ottr_vault::master_key::InMemoryStorage;
+mod common;
 use ottr_vault::{
     CHANNEL_KINDS, NotifyChannelInput, NotifyChannelPatch, NotifyChannels, Vault, VaultError,
 };
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 fn input(kind: &str) -> NotifyChannelInput {

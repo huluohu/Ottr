@@ -7,13 +7,13 @@
 //! 真实用户目录与真钥匙链。history 是明文面（无 *_enc 列，不涉 scan_registry
 //! 守卫；锁定态可读写同 notifications，不另测）。
 
-use ottr_vault::master_key::InMemoryStorage;
+mod common;
 use ottr_vault::settings::SETTING_HISTORY_LIMIT;
 use ottr_vault::settings::Settings;
 use ottr_vault::{History, HistoryInput, HostInput, Hosts, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 fn host_input(name: &str) -> HostInput {

@@ -226,15 +226,18 @@ fn interrupted_upgrade_rolls_back_and_keeps_keyring_mode() {
         )
         .unwrap();
     assert_eq!(mode, "keyring", "失败升级不得翻转模式行");
-    let leftovers: i64 = vault
+    // 仅断言 kdf_salt 不残留（主密码派生参数不得半落盘）。verifier 现为
+    // keyring 模式的合法 meta（开库钥匙链匹配校验用，见 open_with），不再
+    // 属于「失败升级残留」——keyring 库天生持有它。
+    let salt_leftovers: i64 = vault
         .connection()
         .query_row(
-            "SELECT count(*) FROM meta WHERE key IN ('master_key.kdf_salt','master_key.verifier')",
+            "SELECT count(*) FROM meta WHERE key = 'master_key.kdf_salt'",
             [],
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(leftovers, 0, "salt/verifier 不得残留");
+    assert_eq!(salt_leftovers, 0, "salt 不得残留");
     assert_eq!(
         Credentials::reveal(&vault, id_a, ottr_vault::SecretField::Secret)
             .unwrap()
@@ -480,7 +483,9 @@ fn keyring_error_classification() {
 #[test]
 fn settings_roundtrip_and_type_convenience() {
     let dir = tempfile::tempdir().unwrap();
-    let vault = Vault::open_with(dir.path(), &InMemoryStorage::new()).unwrap();
+    // 同目录重开复用同一 storage（KeyringLost 纪律：重开不得静默换钥）。
+    let storage = InMemoryStorage::new();
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
 
     assert_eq!(Settings::get(&vault, "ui.theme").unwrap(), None);
     Settings::set_str(&vault, "ui.theme", "dark").unwrap();
@@ -528,7 +533,7 @@ fn settings_roundtrip_and_type_convenience() {
     // 还原后重开：设置持久（幂等 open）。
     Settings::set_str(&vault, "ui.theme", "light").unwrap();
     drop(vault);
-    let reopened = Vault::open_with(dir.path(), &InMemoryStorage::new()).unwrap();
+    let reopened = Vault::open_with(dir.path(), &storage).unwrap();
     assert_eq!(
         Settings::get_str(&reopened, "ui.theme").unwrap().as_deref(),
         Some("light")

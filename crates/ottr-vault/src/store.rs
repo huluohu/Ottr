@@ -272,19 +272,62 @@ impl Vault {
                 vault.mode = AtomicU8::new(MODE_PASSWORD);
                 // 升级提交后、钥匙链条目删除前的崩溃残留：下次 open 兜底清理。
                 // best-effort：Linux fallback 等场景 storage 本不可用，静默忽略。
+                // （钥匙链命名空间已按 dev/release 隔离，见 master_key.rs
+                // DEFAULT_SERVICE——本清理不再可能波及另一形态的正式数据。）
                 if let Err(e) = storage.delete() {
                     eprintln!("[vault] stale keyring cleanup skipped: {e}");
                 }
             }
-            Some(KeyMode::Keyring) | None => {
+            Some(KeyMode::Keyring) => {
                 vault.mode = AtomicU8::new(MODE_KEYRING);
-                let key = MasterKey::load_with_storage(storage)?;
-                *vault.cipher_slot.lock().expect("cipher slot poisoned") = Some(key.cipher());
-                // 模式行显式落盘（历史库首次补写、新库首写，之后 no-op）：
-                // 无模式行 = 「从没被 Ottr 打开过的全新库」。Linux fallback 据此
-                // 区分「首装走主密码」与「keyring 库的钥匙链死了（报错不换钥）」。
-                if read_key_mode_raw(&vault.connection())?.is_none() {
-                    set_meta(vault.connection(), META_KEY_MODE, KeyMode::Keyring.as_str())?;
+                // 已有 keyring 库：钥匙链条目必须存在。丢失 = 显式报错，**禁止
+                // 静默换钥**——换钥等于把全部既有密文变不可解（2026-10-13 事故：
+                // 本路径曾按「全新库」静默生成新钥，直到连接凭据才以 aead 报错
+                // 显形）。同 `MasterKeyUnreachable` 的裁定：fallback 换钥 = 销毁数据。
+                let key = match storage.load()? {
+                    Some(raw) => MasterKey::from_stored(&raw)?,
+                    None => return Err(VaultError::KeyringLost),
+                };
+                let cipher = key.cipher();
+                // 既有 verifier（存在即验）：钥匙链中的钥与本库不匹配时大声
+                // 报错，绝不带错钥静默运行（错钥下首次写操作即不可逆污染）。
+                // legacy 库无 verifier 时跳过校验（无从验起；写入面见 None 臂）。
+                if let Some(hex_verifier) = read_meta_value(&vault.connection(), META_KEY_VERIFIER)?
+                {
+                    let blob =
+                        hex::decode(&hex_verifier).map_err(|_| VaultError::CorruptedMasterKey)?;
+                    cipher
+                        .open(&blob, &verifier_aad())
+                        .map_err(|_| VaultError::KeyringMismatch)?;
+                }
+                *vault.cipher_slot.lock().expect("cipher slot poisoned") = Some(cipher);
+            }
+            None => {
+                vault.mode = AtomicU8::new(MODE_KEYRING);
+                match storage.load()? {
+                    // 历史库（模式行纪律之前的数据）：有钥即复用，仅补写模式行
+                    // （原行为原样保留，不写 verifier——无从确认该钥与本库匹配）。
+                    Some(raw) => {
+                        let key = MasterKey::from_stored(&raw)?;
+                        set_meta(vault.connection(), META_KEY_MODE, KeyMode::Keyring.as_str())?;
+                        *vault.cipher_slot.lock().expect("cipher slot poisoned") =
+                            Some(key.cipher());
+                    }
+                    // 全新库（从没被 Ottr 打开过）：生成新钥 + 模式行 + verifier
+                    // （verifier 供后续每次 open 校验钥匙链中的钥与本库匹配，
+                    // 见 Some(KeyMode::Keyring) 臂）。
+                    None => {
+                        let key = MasterKey::generate_and_store(storage)?;
+                        let cipher = key.cipher();
+                        let verifier = cipher.seal(VERIFIER_PLAINTEXT, &verifier_aad())?;
+                        set_meta(vault.connection(), META_KEY_MODE, KeyMode::Keyring.as_str())?;
+                        set_meta(
+                            vault.connection(),
+                            META_KEY_VERIFIER,
+                            &hex::encode(verifier),
+                        )?;
+                        *vault.cipher_slot.lock().expect("cipher slot poisoned") = Some(cipher);
+                    }
                 }
             }
         }
@@ -511,7 +554,7 @@ impl Vault {
     /// 的本体；升级 [`Self::set_master_password`] 的镜像逆操作）：
     /// 1. 门卫：必须 password 模式（否则 [`VaultError::InvalidInput`]）且未锁定
     ///    （旧钥要开封全部密文，锁定 → [`VaultError::Locked`]）；
-    /// 2. 新随机 32B key（OS CSPRNG 直采，同 [`MasterKey::load_with_storage`] /
+    /// 2. 新随机 32B key（OS CSPRNG 直采，同 [`MasterKey::generate_and_store`] /
     ///    BL-206 的 crypto::fill_os 纪律）；
     /// 3. **先写钥匙链**：`storage.save(&hex(new_key))`——此步在事务**前**。
     ///    崩溃于此 = 钥匙链多一个未使用的新条目 + 库仍是 password 模式（打开
@@ -545,7 +588,7 @@ impl Vault {
 
         let mut new_key: crate::master_key::RawKey = [0u8; crate::crypto::KEY_LEN];
         // OS CSPRNG 直采（BL-206）：新 Master Key 是全库信任根，不经用户态
-        // ThreadRng 缓冲（同 MasterKey::load_with_storage 生成路径）。
+        // ThreadRng 缓冲（同 MasterKey::generate_and_store 生成路径）。
         crate::crypto::fill_os(&mut new_key);
         // 新钥就地清理收口：Cipher（key schedule ZeroizeOnDrop）之外的裸字节
         // 在任何早退路径统一清零后返回（同 set_master_password 的盐清理纪律）。
@@ -822,6 +865,13 @@ fn read_key_mode_raw(conn: &Connection) -> Result<Option<String>> {
             [META_KEY_MODE],
             |r| r.get(0),
         )
+        .optional()?)
+}
+
+/// 读单个 meta 值（缺行 = None）。open 路径的 verifier 读取用。
+fn read_meta_value(conn: &Connection, key: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
         .optional()?)
 }
 

@@ -116,6 +116,12 @@
  * 非活动标签/已回收 pane：data-active=false → 隐藏但常驻（xterm 缓冲不丢） */
 .term-pane {
   position: absolute;
+  /* box-sizing 强制 border-box（2026-10-14 事故备案）：content-box 下
+     padding 8px 12px 使每个窗格实际渲染 = 布局矩形 + 24px——最后一个
+     窗格多出的 24px 悬在窗外，右上角关闭钮（right:8）被推出窗口 16px，
+     用户侧表现 = 「最右分屏没有关闭按钮/被遮挡」（浏览器全壳
+     elementFromPoint 实测 inViewport:false 后定位）。 */
+  box-sizing: border-box;
   /* 内边距 = 文字与窗框的呼吸空隙（2026-10-09 用户反馈文字贴边）；fit 随
      内容盒自适应，行列数略减属预期。 */
   padding: 8px 12px;

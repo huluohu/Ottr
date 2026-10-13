@@ -96,6 +96,25 @@ describe("TitleBar（win/linux 自绘标题栏）", () => {
     fireEvent.click(screen.getByTestId("titlebar-menu-btn"));
     expect(screen.getByText("⌘,")).toBeTruthy();
   });
+
+  it("退出置底：分隔线之下、是最后一个菜单项、点击派发 app.quit（2026-10-13）", () => {
+    const { props } = renderBar();
+    fireEvent.click(screen.getByTestId("titlebar-menu-btn"));
+    const menu = screen.getByTestId("titlebar-menu");
+    const items = [...menu.querySelectorAll(".titlebar-menu-item")];
+    const quit = screen.getByTestId("titlebar-menu-quit");
+    expect(items[items.length - 1]).toBe(quit);
+    // 分隔线在退出项紧上方（压线惯例）
+    const children = [...menu.children];
+    expect(children[children.indexOf(quit) - 1]?.getAttribute("role")).toBe("separator");
+    fireEvent.click(quit);
+    expect(props.onAction).toHaveBeenCalledWith("app.quit");
+  });
+
+  it("关闭按钮带「关窗到托盘」提示（title 属性，2026-10-13）", () => {
+    renderBar();
+    expect(screen.getByTestId("titlebar-close").getAttribute("title")).toContain("托盘");
+  });
 });
 
 describe("Win11 贴靠选择器（2026-10-13）", () => {

@@ -203,6 +203,7 @@
     "minimize": "最小化",
     "maximize": "最大化 / 还原",
     "close": "关闭",
+    "closeHint": "关闭到托盘（想直接退出，可在设置中关闭「关窗到托盘」）",
     "snap": "贴靠布局",
     "snapLeft": "贴靠到左半",
     "snapRight": "贴靠到右半",

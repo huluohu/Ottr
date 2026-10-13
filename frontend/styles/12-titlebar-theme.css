@@ -42,6 +42,10 @@
   left: 0;
   z-index: var(--z-topbar);
   min-width: 240px;
+  /* 矮窗兜底（2026-10-13 随「退出置底」发现）：菜单自然高 ~1065px，窗口
+     <720px 时底部（含置底的退出项）整体截出视口够不着——限高内滚，退出恒可达。 */
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
   padding: 6px;
   background: var(--surface-overlay);
   border: 1px solid var(--border-subtle);

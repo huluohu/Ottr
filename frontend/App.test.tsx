@@ -359,8 +359,18 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
 describe("分屏动作去重（2026-10-14：菜单事件链路偶发双发防护）", () => {
   beforeEach(() => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
-    // shim 生效后 App 首帧 effects 会 invoke（menu_set_theme 等）——给可链式承诺
-    (invoke as unknown as Mock).mockResolvedValue(null);
+    // shim 生效后 App 首帧 effects 会 invoke（refresh/menu_set_theme 等）——
+    // 列表命令回空数组（null 会让 refresh 把 hosts 置 null → HomeLayout
+    // hosts.find 崩，CI v0.9.10 首跑实录），其余命令回 null。
+    (invoke as unknown as Mock).mockImplementation((cmd: string) => {
+      if (
+        cmd === "hosts_list" || cmd === "host_groups_list" ||
+        cmd === "credentials_list" || cmd === "jc_list" || cmd === "snippets_list"
+      ) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(null);
+    });
   });
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;

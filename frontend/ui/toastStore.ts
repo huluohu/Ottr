@@ -24,7 +24,13 @@ export interface ToastItem {
 
 interface ToastStore {
   toasts: ToastItem[];
-  show: (message: string, kind?: "info" | "error", action?: ToastAction, ttlMs?: number) => void;
+  /** 返回 toast id（调用方可据此提前 dismiss——如「正在检查」在结果到达时收走）。 */
+  show: (
+    message: string,
+    kind?: "info" | "error",
+    action?: ToastAction,
+    ttlMs?: number,
+  ) => number;
   dismiss: (id: number) => void;
 }
 
@@ -43,6 +49,7 @@ export const useToastStore = create<ToastStore>((set) => ({
     setTimeout(() => {
       useToastStore.getState().dismiss(id);
     }, ttlMs ?? TOAST_TTL_MS);
+    return id;
   },
   dismiss: (id) => {
     // 幂等：closing 态的重复 dismiss（连点/TTL 追上手动关）不再重启计时。
@@ -66,8 +73,8 @@ export function showToast(
   kind: "info" | "error" = "info",
   action?: ToastAction,
   ttlMs?: number,
-): void {
-  useToastStore.getState().show(message, kind, action, ttlMs);
+): number {
+  return useToastStore.getState().show(message, kind, action, ttlMs);
 }
 
 export { TOAST_TTL_MS, TOAST_EXIT_MS };

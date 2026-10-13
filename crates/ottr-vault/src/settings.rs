@@ -116,6 +116,10 @@ pub const HISTORY_LIMIT_MIN: u64 = 100;
 pub const HISTORY_LIMIT_MAX: u64 = 1_000_000;
 /// AI 单请求 token 上限（Task 13 成本护栏）：写入侧上限 8192（缺省 1024）。
 pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
+/// 自动检查更新频率（2026-10-13 用户需求）：off / startup / interval（24h）。
+/// 消费方在前端 update/autoCheck.ts；Rust 侧只管写入校验（枚举白名单）。
+pub const SETTING_UPDATE_CHECK_MODE: &str = "update.check_mode";
+pub const UPDATE_CHECK_MODES: [&str; 3] = ["off", "startup", "interval"];
 
 /// 已知 settings 键的写入校验（越界/类型错显式拒绝，不静默收敛——写入侧拒绝
 /// 比读取侧收敛更能暴露 bug；读取侧仍收敛兜底，见 desktop security.rs *_from）。
@@ -169,6 +173,14 @@ pub fn validate_known_setting(
             Ok(())
         }
         SETTING_SHELL_INTEGRATION => bool_value(key, value),
+        // 自动检查更新频率（字符串枚举白名单；非法值显式拒绝）
+        SETTING_UPDATE_CHECK_MODE => match value {
+            serde_json::Value::String(s) if UPDATE_CHECK_MODES.contains(&s.as_str()) => Ok(()),
+            serde_json::Value::String(s) => Err(format!(
+                "{SETTING_UPDATE_CHECK_MODE} must be one of {UPDATE_CHECK_MODES:?}, got {s:?}"
+            )),
+            _ => Err(format!("{SETTING_UPDATE_CHECK_MODE} expects a string")),
+        },
         // 录制默认保存目录（字符串路径；空串 = 恢复默认；上限 1024 防误粘）
         SETTING_RECORDING_SAVE_DIR => match value {
             serde_json::Value::String(s) if s.trim().len() <= 1024 => Ok(()),
@@ -270,6 +282,27 @@ mod tests {
         );
         assert!(
             validate_known_setting(key, &serde_json::json!("many")).is_err(),
+            "类型错拒绝"
+        );
+    }
+
+    /// 自动检查更新频率（2026-10-13）：三枚举放行，非法串/类型错拒绝
+    /// （settings_set 与 sync 分类导入共享本注册表）。
+    #[test]
+    fn update_check_mode_write_side_validation() {
+        let key = SETTING_UPDATE_CHECK_MODE;
+        for mode in UPDATE_CHECK_MODES {
+            assert!(
+                validate_known_setting(key, &serde_json::json!(mode)).is_ok(),
+                "合法枚举放行: {mode}"
+            );
+        }
+        assert!(
+            validate_known_setting(key, &serde_json::json!("daily")).is_err(),
+            "未知枚举拒绝"
+        );
+        assert!(
+            validate_known_setting(key, &serde_json::json!(1)).is_err(),
             "类型错拒绝"
         );
     }

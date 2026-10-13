@@ -62,6 +62,7 @@ import {
 } from "./shortcuts/registry";
 import { ThemeProvider, useTheme, syncThemeFromVault } from "./theme/ThemeContext";
 import { useTerminalThemeStore } from "./theme/terminalThemeStore";
+import { initAutoCheck } from "./update/autoCheck";
 import { useVaultStore } from "./vault/store";
 import { vaultApi, type Host } from "./vault/api";
 import "./theme/tokens.css";
@@ -238,6 +239,9 @@ function HomeLayout() {
       // B2 主题生态（Phase 2 Task 9）：终端配色选择/自定义清单同点对齐（真源
       // vault settings `ui.terminalTheme`；缓存镜像先行防闪烁，此处到达后覆盖）。
       void useTerminalThemeStore.getState().syncFromVault();
+      // 自动检查更新（2026-10-13 用户需求）：vault 就绪后读 update.check_mode
+      // （off 默认 / startup / interval 24h）；便携版在模块内整体禁用。
+      void initAutoCheck();
       try {
         await useVaultStore.getState().refresh();
       } catch {

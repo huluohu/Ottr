@@ -7,18 +7,29 @@
 //
 // 现为模块级单飞：flowActive 期间任何再触发（连点/多入口）静默忽略——
 // 状态机仍是 update/updateStore 单源，本模块只做「phase → toast」的翻译：
-//   检查中 → toast 一条；
+//   检查中 → toast 一条（结果到达即收走——2026-10-13 用户反馈「都检查到
+//   新版本了进度条还在走」：该 toast 的 TTL 进度条在结果出来后继续空走，
+//   粗糙且误导，见 checkingToastId）；
 //   已是最新 / 出错 → toast 结果；
 //   发现新版 → toast 内「下载并安装」按钮（15s 决策窗；点击就地下载，
 //   2026-10-10「绝不自动一条龙」裁定保持——下载仍须显式点击）→ 下载安静
 //   （进度不逐条播报）→ 完成提示 toast 内「立即重启」（15s 决策窗；
 //   2026-10-13 用户需求：安装完成不再要求手动退出重开）。
 // 设置 → 关于 的 UpdateCheck 面板（完整进度 UX）不受影响，两者同源同状态。
-import { showToast } from "../ui/toastStore";
+import { showToast, useToastStore } from "../ui/toastStore";
 import i18n from "../i18n";
 import { useUpdateStore } from "./updateStore";
 
 let flowActive = false;
+
+/** 「发现新版本」toast（手动/自动两条路径共用）：内嵌「下载并安装」，15s 决策窗。 */
+function availableToast(version: string): void {
+  const t = i18n.t.bind(i18n);
+  showToast(t("update.available", { version }), "info", {
+    label: t("update.downloadInstall"),
+    run: startInstallToasts,
+  }, 15000);
+}
 
 /** 安装完成 toast（两处终态汇合：检查直达 / toast 内下载）统一带「立即重启」。 */
 function installedToast(t: (key: string) => string): void {
@@ -40,19 +51,19 @@ export function runUpdateCheckToasts(): void {
   if (st.phase.kind === "checking" || st.phase.kind === "downloading") return;
   flowActive = true;
   const t = i18n.t.bind(i18n);
-  showToast(t("update.checking"), "info");
+  const checkingToastId = showToast(t("update.checking"), "info");
   const unsub = useUpdateStore.subscribe((s) => {
     const k = s.phase.kind;
     if (k === "checking") return;
     unsub();
     flowActive = false;
+    // 检查出结果的即刻收走「正在检查」——TTL 进度条不再空走（慢检查超过
+    // 6s 时该 toast 已自愈消失，dismiss 幂等无害）。
+    useToastStore.getState().dismiss(checkingToastId);
     if (k === "uptodate") {
       showToast(t("update.upToDate"), "info");
     } else if (k === "available") {
-      showToast(t("update.available", { version: s.phase.version }), "info", {
-        label: t("update.downloadInstall"),
-        run: startInstallToasts,
-      }, 15000);
+      availableToast(s.phase.version);
     } else if (k === "installed") {
       installedToast(t);
     } else if (k === "error") {

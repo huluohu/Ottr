@@ -191,6 +191,24 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
   // App 的菜单监听有 Tauri 运行时门卫（IS_TAURI）——jsdom 下伪造标记放行。
   beforeEach(() => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    // shim 生效后挂载的 App 面板会拉数据（mcp_status/grants/settings…）——
+    // 裸 vi.fn() 返回 undefined 会让渲染面 .map/.find 崩（CI v0.9.10 两次
+    // unhandled 实录）：缺省给「空数据」实现，具体用例可再覆写。
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "mcp_status") {
+        return Promise.resolve({
+          enabled: false,
+          listening: false,
+          socket_path: null,
+          approvals_pending: 0,
+          grants_count: 0,
+        });
+      }
+      if (cmd === "mcp_grants_list" || cmd === "ar_list" || cmd === "nc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(null);
+    });
   });
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;

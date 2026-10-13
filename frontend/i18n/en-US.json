@@ -201,7 +201,16 @@
     "menu": "Menu",
     "minimize": "Minimize",
     "maximize": "Maximize / Restore",
-    "close": "Close"
+    "close": "Close",
+    "snap": "Snap layouts",
+    "snapLeft": "Snap to left half",
+    "snapRight": "Snap to right half",
+    "snapTop": "Snap to top half",
+    "snapBottom": "Snap to bottom half",
+    "snapTl": "Snap to top left",
+    "snapTr": "Snap to top right",
+    "snapBl": "Snap to bottom left",
+    "snapBr": "Snap to bottom right"
   },
   "topbar": {
     "tools": "Tools"

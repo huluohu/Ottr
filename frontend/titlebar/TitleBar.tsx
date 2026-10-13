@@ -24,11 +24,24 @@ import {
 } from "../shortcuts/registry";
 import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
 
-export interface TitleBarProps {
+/** 贴靠分区（与 Rust commands/view.rs SnapLayout 逐字对齐）。 */
+export type SnapLayoutId =
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "tl"
+  | "tr"
+  | "bl"
+  | "br";
+
+interface TitleBarProps {
   /** 平台（键位提示口径）；测试注入。 */
   plat?: Platform;
   /** 动作分派（收口到 App.handleAction）。 */
   onAction: (action: string) => void;
+  /** 贴靠分派（win：最大化按钮 hover 弹选择器；缺省 = 不启用）。 */
+  onSnap?: (layout: SnapLayoutId) => void;
   /** 命令表；默认 registry ACTIONS（测试可注入缩表）。 */
   actions?: readonly ActionDef[];
   /** 窗口控制面；默认 Tauri getCurrentWindow()（测试注入 stub）。 */
@@ -41,10 +54,49 @@ interface WindowControls {
   close: () => void;
 }
 
-export function TitleBar({ plat = "win", onAction, actions = ACTIONS, win }: TitleBarProps) {
+export function TitleBar({
+  plat = "win",
+  onAction,
+  onSnap,
+  actions = ACTIONS,
+  win,
+}: TitleBarProps) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Win11 贴靠（2026-10-13 用户目标）：最大化按钮 hover 350ms 弹布局选择器
+  // （win 限定；每个分区 = window_snap 到 work_area 对应矩形）。悬停延迟与
+  // Win11 一致的「停留才弹」，避免路过的指针误触。
+  const [snapOpen, setSnapOpen] = useState(false);
+  const snapAnchorRef = useRef<HTMLDivElement>(null);
+  const snapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const snapEnabled = plat === "win" && typeof onSnap === "function";
+
+  const startSnapHover = () => {
+    if (!snapEnabled) return;
+    clearTimeout(snapTimer.current);
+    snapTimer.current = setTimeout(() => setSnapOpen(true), 350);
+  };
+  const cancelSnapHover = () => clearTimeout(snapTimer.current);
+
+  // 点外/Esc 收（与汉堡菜单同交互纪律）
+  useEffect(() => {
+    if (!snapOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!snapAnchorRef.current?.contains(e.target as Node)) setSnapOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSnapOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [snapOpen]);
+
+  useEffect(() => () => clearTimeout(snapTimer.current), []);
 
   // 点击标题栏外部收起汉堡菜单（Esc 亦收）。
   useEffect(() => {
@@ -92,14 +144,59 @@ export function TitleBar({ plat = "win", onAction, actions = ACTIONS, win }: Tit
       >
         &#x2500;
       </button>
-      <button
-        className="titlebar-btn"
-        data-testid="titlebar-maximize"
-        aria-label={t("titlebar.maximize")}
-        onClick={() => controls.toggleMaximize()}
+      <div
+        className="titlebar-snap-anchor"
+        ref={snapAnchorRef}
+        onMouseEnter={startSnapHover}
+        onMouseLeave={cancelSnapHover}
       >
-        &#x2750;
-      </button>
+        <button
+          className="titlebar-btn"
+          data-testid="titlebar-maximize"
+          aria-label={t("titlebar.maximize")}
+          aria-expanded={snapOpen}
+          onClick={() => controls.toggleMaximize()}
+        >
+          &#x2750;
+        </button>
+        {snapEnabled && snapOpen && (
+          <div className="titlebar-snap" data-testid="titlebar-snap" role="menu" aria-label={t("titlebar.snap")}>
+            {(
+              [
+                { group: "halves-v", zones: [["left", "titlebar.snapLeft"], ["right", "titlebar.snapRight"]] },
+                { group: "halves-h", zones: [["top", "titlebar.snapTop"], ["bottom", "titlebar.snapBottom"]] },
+                {
+                  group: "quad",
+                  zones: [
+                    ["tl", "titlebar.snapTl"],
+                    ["tr", "titlebar.snapTr"],
+                    ["bl", "titlebar.snapBl"],
+                    ["br", "titlebar.snapBr"],
+                  ],
+                },
+              ] as const
+            ).map(({ group, zones }) => (
+              <div key={group} className={`titlebar-snap-group titlebar-snap-${group}`}>
+                {zones.map(([layout, labelKey]) => (
+                  <button
+                    key={layout}
+                    type="button"
+                    role="menuitem"
+                    className="titlebar-snap-zone"
+                    data-testid={`titlebar-snap-${layout}`}
+                    aria-label={t(labelKey)}
+                    title={t(labelKey)}
+                    onClick={() => {
+                      setSnapOpen(false);
+                      onSnap?.(layout);
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <button
         className="titlebar-btn titlebar-close"
         data-testid="titlebar-close"

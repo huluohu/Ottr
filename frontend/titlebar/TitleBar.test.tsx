@@ -1,6 +1,6 @@
 // TitleBar 单测（Task 14）：三钮窗口控制分派、汉堡菜单展开/动作派发/外部收起、
 // 拖拽区属性、键位提示平台口径（注入 plat）。
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   afterAll,
   afterEach,
@@ -95,5 +95,27 @@ describe("TitleBar（win/linux 自绘标题栏）", () => {
     renderBar({ plat: "mac", actions: mini });
     fireEvent.click(screen.getByTestId("titlebar-menu-btn"));
     expect(screen.getByText("⌘,")).toBeTruthy();
+  });
+});
+
+describe("Win11 贴靠选择器（2026-10-13）", () => {
+  it("最大化按钮 hover 350ms 弹选择器；点击分区分派 onSnap 并收起", async () => {
+    const onSnap = vi.fn();
+    render(<TitleBar plat="win" onAction={vi.fn()} onSnap={onSnap} />);
+    // 悬停锚点域（按钮父容器）起计时
+    fireEvent.mouseEnter(screen.getByTestId("titlebar-maximize").parentElement as Element);
+    const snap = await waitFor(() => screen.getByTestId("titlebar-snap"));
+    expect(snap.getAttribute("aria-label")).toBeTruthy();
+    // 三组布局：竖排 2 + 横排 2 + 四宫格 4 = 8 分区
+    expect(snap.querySelectorAll(".titlebar-snap-zone").length).toBe(8);
+    fireEvent.click(screen.getByTestId("titlebar-snap-left"));
+    expect(onSnap).toHaveBeenCalledWith("left");
+    expect(screen.queryByTestId("titlebar-snap")).toBeNull(); // 点击后收起
+  });
+
+  it("mac 不启用贴靠选择器（原生窗口本就有系统贴靠）", () => {
+    render(<TitleBar plat="mac" onAction={vi.fn()} onSnap={vi.fn()} />);
+    fireEvent.mouseEnter(screen.getByTestId("titlebar-maximize").parentElement as Element);
+    expect(screen.queryByTestId("titlebar-snap")).toBeNull();
   });
 });

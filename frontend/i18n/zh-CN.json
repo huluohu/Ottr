@@ -201,7 +201,16 @@
     "menu": "菜单",
     "minimize": "最小化",
     "maximize": "最大化 / 还原",
-    "close": "关闭"
+    "close": "关闭",
+    "snap": "贴靠布局",
+    "snapLeft": "贴靠到左半",
+    "snapRight": "贴靠到右半",
+    "snapTop": "贴靠到上半",
+    "snapBottom": "贴靠到下半",
+    "snapTl": "贴靠到左上",
+    "snapTr": "贴靠到右上",
+    "snapBl": "贴靠到左下",
+    "snapBr": "贴靠到右下"
   },
   "topbar": {
     "tools": "工具"

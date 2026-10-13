@@ -75,3 +75,48 @@
 /* --- A10 主题切换器：设置页三联按钮已迁 SegmentedControl（.ui-segmented，
  * Task 1 / UI 审计 A2 清偿，样式见文件尾「基础控件」段）。 --- */
 
+
+/* Win11 贴靠（2026-10-13 用户目标）：最大化按钮 hover 弹布局选择器。
+   锚点容器包住按钮 + 弹层（hover 域一致，离开即收）；弹层固定于按钮下方
+   右缘对齐。分区按钮 = 迷你示意图（grid 摆位），悬停 accent 描边。 */
+.titlebar-snap-anchor {
+  position: relative;
+  display: flex;
+}
+.titlebar-snap {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+}
+.titlebar-snap-group {
+  display: grid;
+  gap: 2px;
+  width: 56px;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.titlebar-snap-halves-v { grid-template-columns: 1fr 1fr; }
+.titlebar-snap-halves-h { grid-template-rows: 1fr 1fr; }
+.titlebar-snap-quad { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.titlebar-snap-zone {
+  border: none;
+  padding: 0;
+  background: color-mix(in srgb, var(--color-fg) 14%, transparent);
+  cursor: pointer;
+  border-radius: 2px;
+}
+.titlebar-snap-zone:hover,
+.titlebar-snap-zone:focus-visible {
+  background: var(--color-accent);
+  outline: none;
+}

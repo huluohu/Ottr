@@ -11,6 +11,8 @@ on:
       - "desktop/src/bin/ottr-mcp.rs"
       - "desktop/src/mcp.rs"
       - "desktop/tests/mcp_pipe_fixture.rs"
+      - "desktop/Cargo.toml"
+      - "Cargo.lock"
       - ".github/workflows/windows-mcp-test.yml"
 
 jobs:

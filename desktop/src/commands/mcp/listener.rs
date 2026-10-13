@@ -255,13 +255,19 @@ async fn windows_conn_loop(
     let mut pending: Vec<u8> = Vec::new();
     let mut server = McpServer::new();
     loop {
-        let n = match conn.read(&mut buf).await {
-            Ok(0) => {
+        // 读心跳（诊断态）：10s 无数据 = 记一条 pending（区分「等数据」与
+        // 「读挂死」）
+        let n = match tokio::time::timeout(Duration::from_secs(10), conn.read(&mut buf)).await {
+            Err(elapsed) => {
+                eprintln!("[mcp] read pending {}s", elapsed.as_secs());
+                continue;
+            }
+            Ok(Ok(0)) => {
                 eprintln!("[mcp] conn eof");
                 return;
             }
-            Ok(n) => n,
-            Err(e) => {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => {
                 eprintln!("[mcp] conn read failed: {e}");
                 return;
             }

@@ -32,10 +32,11 @@ export type DockPanel =
   | "mcp"
   | "notifications";
 
-/** dock 工具面板（dock/DockPanel 实际承载的五值；monitor/plugins 不经此壳）。 */
+/** dock 工具面板。2026-10-13 起 monitor/plugins 并入本壳（终端右栏折叠
+ * 竖条退役——被当成滚动条、压住分屏关闭钮，用户三次反馈）。 */
 export type ToolDockPanel = Extract<
   DockPanel,
-  "forwards" | "jumpchains" | "cron" | "alerts" | "mcp" | "notifications"
+  "forwards" | "jumpchains" | "cron" | "alerts" | "mcp" | "notifications" | "monitor" | "plugins"
 >;
 
 /** 全量取值表（测试枚举 + 防漂移：联合类型扩员时此表必须同步）。 */
@@ -63,6 +64,8 @@ export const TOOL_DOCK_PANELS: readonly ToolDockPanel[] = [
   "alerts",
   "mcp",
   "notifications",
+  "monitor",
+  "plugins",
 ];
 
 /** dock 工具面板标题 i18n 键（全部复用既有键——零新增文案键，双语守卫直接过）。 */
@@ -73,4 +76,6 @@ export const DOCK_PANEL_TITLE_KEY: Record<ToolDockPanel, string> = {
   alerts: "alert.sectionTitle",
   mcp: "mcp.title",
   notifications: "nav.notifications",
+  monitor: "monitor.title",
+  plugins: "plugins.title",
 };

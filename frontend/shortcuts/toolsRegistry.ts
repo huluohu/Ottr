@@ -26,6 +26,8 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.alerts", labelKey: "nav.alerts", group: "panels" },
   { id: "tool.mcp", labelKey: "nav.mcp", group: "panels" },
   { id: "notify.center", labelKey: "nav.notifications", group: "panels" },
+  { id: "tool.monitor", labelKey: "monitor.title", group: "panels" },
+  { id: "tool.plugins", labelKey: "plugins.title", group: "panels" },
   { id: "tool.forwards", labelKey: "forward.title", group: "panels" },
   { id: "tool.jump-chains", labelKey: "jump.title", group: "panels" },
   { id: "tool.credentials", labelKey: "credentials.dialogTitle", group: "hosts" },

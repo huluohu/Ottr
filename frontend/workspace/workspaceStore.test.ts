@@ -96,7 +96,7 @@ describe("toolDialog 工具面板弹框（2026-10-12 dock 退役：单槽一次�
     expect(ws().toolDialog).toBe("mcp");
   });
 
-  it("工具面板六值集合与类型口径一致（防漂移）", () => {
+  it("工具面板八值集合与类型口径一致（防漂移；2026-10-13 monitor/plugins 并入）", () => {
     expect(TOOL_DOCK_PANELS).toEqual([
       "forwards",
       "jumpchains",
@@ -104,9 +104,11 @@ describe("toolDialog 工具面板弹框（2026-10-12 dock 退役：单槽一次�
       "alerts",
       "mcp",
       "notifications",
+      "monitor",
+      "plugins",
     ]);
-    // 全量 DockPanel = 侧栏二值 + 工具六值
-    expect(DOCK_PANELS).toEqual(["monitor", "plugins", ...TOOL_DOCK_PANELS]);
+    // 全量 DockPanel 与工具面板同值集（侧栏二值语义已并入工具壳）
+    expect([...DOCK_PANELS].sort()).toEqual([...TOOL_DOCK_PANELS].sort());
   });
 });
 

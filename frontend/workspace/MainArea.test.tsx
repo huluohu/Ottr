@@ -95,14 +95,14 @@ afterEach(() => {
 });
 
 describe("MainArea：terminal 视图（默认）", () => {
-  it("终端可见 + 三侧栏挂载 + 视图切换三按钮", () => {
+  it("终端可见 + 诊断面板 + 视图切换三按钮（监控/插件侧栏已退役 2026-10-13）", () => {
     seedSessions([fakeSession()]);
     render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
     expect(screen.getByTestId("terminal-area")).toBeTruthy();
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("false");
     expect(screen.getByTestId("diagnose-panel")).toBeTruthy();
-    expect(screen.getByTestId("monitor-sidebar")).toBeTruthy();
-    expect(screen.getByTestId("plugin-sidebar")).toBeTruthy();
+    expect(screen.queryByTestId("monitor-sidebar")).toBeNull();
+    expect(screen.queryByTestId("plugin-sidebar")).toBeNull();
     expect(screen.getByTestId("view-terminal").getAttribute("data-active")).toBe("true");
     expect(screen.getByTestId("view-files")).toBeTruthy();
     expect(screen.getByTestId("view-processes")).toBeTruthy();

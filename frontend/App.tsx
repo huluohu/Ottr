@@ -181,6 +181,8 @@ function HomeLayout() {
         case "credentials": setCredentialsOpen(true); break;
         case "alerts": openToolDialog("alerts"); break;
         case "mcp": openToolDialog("mcp"); break;
+        case "monitor": openToolDialog("monitor"); break;
+        case "plugins": openToolDialog("plugins"); break;
         case "forwards": openToolDialog("forwards"); break;
         case "jump-chains": openToolDialog("jumpchains"); break;
         case "overview": openMainView("overview"); break;

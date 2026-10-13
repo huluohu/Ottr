@@ -1,9 +1,10 @@
-// PluginSidebar 组件测试（Phase 4 Task 6 Step 2）：折叠开合（localStorage 记忆）
-// / 网络摘要卡片 live 值与等待态 / 快捷命令包复制（显式动作 → 剪贴板）。
+// PluginPanel 组件测试（2026-10-13 改造自 PluginSidebar）：网络摘要卡片
+// live 值与等待态 / 快捷命令包复制（显式动作 → 剪贴板）。rail/开合记忆已随
+// 「终端右栏折叠竖条」退役（面板改经 ToolDialog 打开，壳提供标题与 ✕）。
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
-import { PluginSidebar } from "./PluginSidebar";
+import { PluginPanel } from "./PluginSidebar";
 import { useMonitorStore, type MonitorMetrics } from "../monitor/monitorStore";
 
 function metrics(over: Partial<MonitorMetrics> = {}): MonitorMetrics {
@@ -41,13 +42,11 @@ function seedLive(id = "pty-1") {
   });
 }
 
-function openSidebar() {
-  render(<PluginSidebar rustId="pty-1" />);
-  fireEvent.click(screen.getByTestId("plugin-rail"));
+function openPanel() {
+  render(<PluginPanel rustId="pty-1" />);
 }
 
 beforeEach(() => {
-  localStorage.clear();
   useMonitorStore.setState({ windows: {} });
   Object.assign(navigator, {
     clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -55,36 +54,24 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("collapse/expand", () => {
-  it("defaults to collapsed rail and remembers open state", () => {
-    const { rerender } = render(<PluginSidebar rustId="pty-1" />);
-    expect(screen.getByTestId("plugin-rail")).toBeTruthy();
-    expect(screen.queryByTestId("plugin-sidebar")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("plugin-rail"));
+describe("rail 退役回归钉（2026-10-13）", () => {
+  it("无 rail 残留：折叠竖条已退役，面板即内容", () => {
+    openPanel();
+    expect(screen.queryByTestId("plugin-rail")).toBeNull();
     expect(screen.getByTestId("plugin-sidebar")).toBeTruthy();
-    expect(localStorage.getItem("ottr.plugins.sidebarOpen")).toBe("1");
-
-    // 重挂载走 localStorage 初始值
-    rerender(<PluginSidebar rustId="pty-1" />);
-    expect(screen.getByTestId("plugin-sidebar")).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId("plugin-collapse"));
-    expect(screen.queryByTestId("plugin-sidebar")).toBeNull();
-    expect(localStorage.getItem("ottr.plugins.sidebarOpen")).toBe("0");
   });
 });
 
 describe("net-summary card", () => {
   it("renders live rx/tx rates（复用 formatRate 口径）", () => {
     seedLive();
-    openSidebar();
+    openPanel();
     expect(screen.getByTestId("plugin-net-card")).toBeTruthy();
     expect(screen.getByTestId("plugin-net-value").textContent).toBe("↓ 4.0 KB/s · ↑ 512 B/s");
   });
 
   it("shows waiting face without a live window", () => {
-    openSidebar();
+    openPanel();
     expect(screen.getByTestId("plugin-net-waiting")).toBeTruthy();
     expect(screen.queryByTestId("plugin-net-value")).toBeNull();
   });
@@ -92,7 +79,7 @@ describe("net-summary card", () => {
 
 describe("quick-commands card", () => {
   it("lists 4 readonly commands with copy buttons", () => {
-    openSidebar();
+    openPanel();
     const rows = screen.getAllByTestId("plugin-cmd-row");
     expect(rows).toHaveLength(4);
     expect(screen.getByText("df -h")).toBeTruthy();
@@ -102,7 +89,7 @@ describe("quick-commands card", () => {
   });
 
   it("copies command on explicit click（插件不自动执行）", async () => {
-    openSidebar();
+    openPanel();
     const copy = navigator.clipboard.writeText as ReturnType<typeof vi.fn>;
     fireEvent.click(screen.getByTestId("plugin-cmd-copy-quick-commands.df"));
     await vi.waitFor(() => expect(copy).toHaveBeenCalledWith("df -h"));

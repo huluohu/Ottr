@@ -477,6 +477,18 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         observed = true;
       }
     };
+    // PTY 尺寸同步尾随防抖（2026-10-13 用户反馈「拖侧栏宽度，终端文字一直
+    // 往下压，改一下压一次」）：拖动期间 RO 每帧触发 fit，若逐帧下发 PTY
+    // 尺寸，远端 shell 每个 SIGWINCH 都重绘提示符 = 每帧压一次。本地 fit
+    // 即时（显示不拖泥带水），PTY 同步尾随 200ms——一次手势至多一次
+    // SIGWINCH。卸载丢一次同步无碍（下次尺寸变化会带上最新值）。
+    let ptyResizeTimer: ReturnType<typeof setTimeout> | undefined;
+    const schedulePtyResize = () => {
+      clearTimeout(ptyResizeTimer);
+      ptyResizeTimer = setTimeout(() => {
+        resizeSession(sessionId, term.cols, term.rows);
+      }, 200);
+    };
     const refitNow = () => {
       const el = hostRef.current;
       if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
@@ -488,8 +500,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       }
       trzsz.setTerminalColumns(term.cols); // 进度条按列宽重绘
       // 缺陷 34：fit 后把真实尺寸下发给 PTY（2×1 退化 attach 尺寸的修复面；
-      // 同尺寸去重在 SessionStore.resizeSession 内）。
-      resizeSession(sessionId, term.cols, term.rows);
+      // 同尺寸去重在 SessionStore.resizeSession 内）。防抖见 schedulePtyResize。
+      schedulePtyResize();
       // 退化尺寸（<4 列）而容器其实有宽度 → 布局/字体未稳，rAF 重测（≤8 次）：
       // 会话恢复后首测 1 列竖排（用户实测）即此类一次性退化且 RO 此后不再触发。
       if (term.cols < 4 && el.clientWidth > 40 && degenerateTries < 8) {
@@ -512,6 +524,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
     return () => {
       late.forEach((t) => clearTimeout(t));
+      clearTimeout(ptyResizeTimer);
       window.removeEventListener("focus", onWinFocus);
       document.removeEventListener("visibilitychange", onVis);
       ro.disconnect();

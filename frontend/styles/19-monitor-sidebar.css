@@ -1,36 +1,6 @@
-/* --- Phase 3 Task 1（B4 上半）：监控侧栏（终端右栏折叠面板） --------------- */
-
-/* 折叠态：窄竖条按钮（贴右缘，开合状态 localStorage 记忆）。
- * 2026-10-12 用户反馈「终端右侧粗滚动条太丑」：即本 rail——14px 实底 +
- * hover 整条染 accent，被当成滚动条。照 2026-10-09 plugin-rail 同案改：
- * 透明底 + 居中握把（圆角短棒），hover 只提亮握把与底色。 */
-.monitor-rail {
-  flex: none;
-  width: 10px;
-  border: none;
-  border-left: 1px solid var(--border-subtle);
-  background: transparent;
-  cursor: pointer;
-  padding: 0;
-  position: relative;
-}
-.monitor-rail::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 3px;
-  height: 64px;
-  border-radius: var(--radius-pill);
-  background: var(--border-subtle);
-}
-.monitor-rail:hover {
-  background: color-mix(in srgb, var(--color-fg) 6%, transparent);
-}
-.monitor-rail:hover::after {
-  background: var(--color-accent-border);
-}
+/* --- Phase 3 Task 1（B4 上半）：监控面板（2026-10-13 起 ToolDialog 内容） ---
+ * 旧终端右栏折叠竖条（.monitor-rail）已退役：14px 握把条被当成滚动条、
+ * 且压住分屏关闭钮（用户三次反馈），面板改经 工具菜单/⌘K → ToolDialog 打开。 */
 
 /* 展开态：右栏面板（AI 面板同构：固定宽、独立滚动、表面色） */
 .monitor-sidebar {

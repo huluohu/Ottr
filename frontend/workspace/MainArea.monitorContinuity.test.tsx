@@ -1,28 +1,22 @@
-// 监控侧栏连续性测试（UI 批次一 Task 3 评审提醒面）：总览/批量迁入主区互斥视
-// 图后，监控/插件侧栏在非终端视图让位卸载——本套件验证「切走→切回」监控指标
-// **连续**：数据真源 useMonitorStore 挂模块作用域（事件驱动持续灌入，与视图挂
-// 载无关），侧栏重挂后即读即显最新窗口，不重置、不丢窗口。
-// 顺带钉住终端常驻不变量在实体视图下的表现：整趟往返终端是同一 DOM 实例。
+// 监控面板连续性测试（2026-10-13 改造自「侧栏让位」套件）：监控/插件侧栏
+// 退役后，面板改经 ToolDialog 打开。连续性主张不变：数据真源 useMonitorStore
+// 挂模块作用域（事件驱动持续灌入，与视图/弹框挂载无关）——弹框关了再开，
+// 即读即显最新窗口，不重置、不丢窗口。
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
-vi.mock("../terminal/Terminal", () => ({
-  TerminalArea: () => <div data-testid="terminal-area" />,
-}));
-vi.mock("../session/TabBar", () => ({ TabBar: () => <div data-testid="tabbar" /> }));
-vi.mock("../ai/DiagnosePanel", () => ({ DiagnosePanel: () => <div data-testid="diagnose-panel" /> }));
-// PluginSidebar 真组件依赖插件 loader（动态 import 面到此为止即可——mock 成
-// 标记节点；连续性主张只涉监控侧栏）。
-vi.mock("../plugins/PluginSidebar", () => ({
-  PluginSidebar: () => <div data-testid="plugin-sidebar" />,
-}));
-vi.mock("../history/RecordToggle", () => ({
-  RecordToggle: () => <div data-testid="record-toggle" />,
+vi.mock("../forward/ForwardPanel", () => ({ ForwardPanel: () => <div data-testid="fw" /> }));
+vi.mock("../hosts/JumpChainEditor", () => ({ JumpChainEditor: () => <div data-testid="jc" /> }));
+vi.mock("../cron/CronPanel", () => ({ CronPanel: () => <div data-testid="cron" /> }));
+vi.mock("../notify/AlertSettings", () => ({ AlertSettings: () => <div data-testid="alerts" /> }));
+vi.mock("../security/McpSettings", () => ({ McpSettings: () => <div data-testid="mcp" /> }));
+vi.mock("../notify/NotificationCenter", () => ({
+  NotificationCenter: () => <div data-testid="nc" />,
 }));
 
 import "../i18n";
-import { MainArea } from "./MainArea";
+import { ToolDialog } from "./ToolDialog";
 import { useWorkspaceStore } from "./workspaceStore";
 import { useSessionStore, type Session } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
@@ -100,66 +94,56 @@ function win(cpuPercent: number, cpuSeries: number[]): MonitorWindow {
 }
 
 function cpuValue(): string {
-  // 指标行序：CPU 在首位（MonitorSidebar MetricRow 顺序）
+  // 指标行序：CPU 在首位（MonitorPanel MetricRow 顺序）
   return screen.getAllByTestId("monitor-metric-value")[0].textContent ?? "";
 }
 
+function openMonitorDialog() {
+  act(() => {
+    useWorkspaceStore.setState({ toolDialog: "monitor" });
+  });
+}
+
+function closeDialog() {
+  act(() => {
+    useWorkspaceStore.setState({ toolDialog: null });
+  });
+}
+
 beforeEach(() => {
-  localStorage.setItem("ottr.monitor.sidebarOpen", "1"); // 展开态（默认收起）
   useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
   useSessionStore.setState({ sessions: [fakeSession()], activeId: "sess-1" });
   useVaultStore.setState({ hosts: [fakeHost], hostGroups: [], credentials: [], loading: false, error: null });
   useMonitorStore.setState({ windows: { "pty-1": win(42, [40, 41, 42]) } });
 });
 
-afterEach(() => {
-  cleanup();
-  localStorage.removeItem("ottr.monitor.sidebarOpen");
-});
+afterEach(cleanup);
 
-describe("MainArea 实体视图 ↔ 监控侧栏让位（指标连续性）", () => {
-  it("切 overview 侧栏让位、数据源持续；切回后侧栏即显最新窗口（不重置）", () => {
-    render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+describe("监控面板（ToolDialog）指标连续性", () => {
+  it("打开即显当前窗口；关闭期间采样照常灌入；重开即显最新（不重置）", () => {
+    render(<ToolDialog />);
+    openMonitorDialog();
     expect(cpuValue()).toBe("42%");
-    const terminalBefore = screen.getByTestId("terminal-area");
+    expect(screen.getAllByTestId("monitor-metric").length).toBe(5);
 
-    // 切 overview：监控侧栏卸载让位；终端 DOM 仍在（不变量）
-    act(() => {
-      useWorkspaceStore.getState().openMainView("overview");
-    });
+    // 关弹框：面板卸载；数据源（store）仍在模块作用域持续更新
+    closeDialog();
     expect(screen.queryByTestId("monitor-sidebar")).toBeNull();
-    expect(screen.getByTestId("overview-panel")).toBeTruthy();
-    expect(screen.getByTestId("terminal-area")).toBeTruthy();
-
-    // 让位期间采样事件照常到达（事件源在 Rust、store 挂模块作用域——与视图无关）
     act(() => {
       useMonitorStore.setState({ windows: { "pty-1": win(77, [40, 41, 42, 60, 77]) } });
     });
-    expect(screen.queryByTestId("monitor-sidebar")).toBeNull(); // 仍无挂载面
 
-    // 切回终端：侧栏重挂即显最新值（窗口未丢未重置）+ 终端同一实例
-    act(() => {
-      useWorkspaceStore.getState().openMainView("terminal");
-    });
-    expect(screen.getByTestId("monitor-sidebar")).toBeTruthy();
+    // 重开：即显最新窗口（未丢未重置）
+    openMonitorDialog();
     expect(cpuValue()).toBe("77%");
     expect(screen.getAllByTestId("monitor-metric").length).toBe(5);
-    expect(screen.getByTestId("terminal-area")).toBe(terminalBefore);
   });
 
-  it("切 batch 同制式：侧栏让位后切回，指标仍连续", () => {
-    render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
-    act(() => {
-      useWorkspaceStore.getState().openMainView("batch");
-    });
-    expect(screen.queryByTestId("monitor-sidebar")).toBeNull();
-    expect(screen.getByTestId("batch-panel")).toBeTruthy();
-    act(() => {
-      useMonitorStore.setState({ windows: { "pty-1": win(55, [50, 55]) } });
-    });
-    act(() => {
-      useWorkspaceStore.getState().openMainView("terminal");
-    });
-    expect(cpuValue()).toBe("55%");
+  it("主机未开启监控 → off 指引面（非 live 窗口时 StatusFace 口径）", () => {
+    useVaultStore.setState({ hosts: [{ ...fakeHost, monitor_enabled: false }], hostGroups: [], credentials: [], loading: false, error: null });
+    useMonitorStore.setState({ windows: {} }); // off 面仅非 live 生效（live 压过状态面）
+    render(<ToolDialog />);
+    openMonitorDialog();
+    expect(screen.getByTestId("monitor-off")).toBeTruthy();
   });
 });

@@ -1,33 +1,14 @@
-// MonitorSidebar（Phase 3 Task 1，B4 上半）：终端右栏折叠侧栏。
-// * 折叠态 = 窄竖条按钮（开合状态 localStorage 记忆，默认收起——不打扰
-//   首次使用的用户）；展开态 = CPU/内存/磁盘/负载/网络五行迷你图 + 当前值；
+// MonitorPanel（原 MonitorSidebar，2026-10-13 改造）：监控面板内容组件。
+// * 旧「终端右栏折叠竖条 + 开合记忆」形态退役（用户三次反馈竖条被当成
+//   滚动条、且压住分屏关闭钮）——现作为 ToolDialog 的 monitor 面板内容
+//   渲染（工具菜单/⌘K「监控」打开），入口与其余工具面板一致；
 // * 数据源 = useMonitorStore（rustId 分桶；rustId 变化 = 重连，窗口重来）；
 // * 状态面：host 未开启监控（off）→ 指引主机表单；远端非 Linux（unsupported）
 //   → 「不支持」；采样终止（stopped）→ 提示重连。连接中/无数据显示等待态；
 // * 主题/i18n 纪律：色板走 App.css 令牌，文案全走 t()。
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Sparkline } from "./Sparkline";
 import { useMonitorStore, type MonitorWindow } from "./monitorStore";
-
-/** 折叠态记忆键（布局面，同侧栏宽度先 localStorage 的既有惯例）。 */
-const OPEN_KEY = "ottr.monitor.sidebarOpen";
-
-export function loadSidebarOpen(): boolean {
-  try {
-    return localStorage.getItem(OPEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function persistSidebarOpen(open: boolean): void {
-  try {
-    localStorage.setItem(OPEN_KEY, open ? "1" : "0");
-  } catch {
-    // 持久化失败不阻塞
-  }
-}
 
 /** 速率人话格式（B/s → KB/s/MB/s；1 位小数，负载面不需要精确）。 */
 export function formatRate(bps: number): string {
@@ -99,7 +80,8 @@ function StatusFace({ status, enabled }: { status: MonitorWindow["status"]; enab
   );
 }
 
-export function MonitorSidebar({
+/** 面板内容（ToolDialog monitor 面板渲染；弹框壳提供标题与 ✕）。 */
+export function MonitorPanel({
   rustId,
   enabled,
 }: {
@@ -109,41 +91,11 @@ export function MonitorSidebar({
   enabled: boolean;
 }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState<boolean>(loadSidebarOpen);
   const win = useMonitorStore((s) => (rustId ? s.windows[rustId] : undefined));
-
-  if (!open) {
-    return (
-      <button
-        className="monitor-rail"
-        data-testid="monitor-rail"
-        aria-label={t("monitor.open")}
-        title={t("monitor.open")}
-        onClick={() => {
-          persistSidebarOpen(true);
-          setOpen(true);
-        }}
-      />
-    );
-  }
 
   const live = win?.status === "live" && win.latest != null;
   return (
     <aside className="monitor-sidebar" data-testid="monitor-sidebar" aria-label={t("monitor.title")}>
-      <div className="monitor-head">
-        <span className="monitor-title">{t("monitor.title")}</span>
-        <button
-          className="monitor-close"
-          data-testid="monitor-collapse"
-          aria-label={t("monitor.close")}
-          onClick={() => {
-            persistSidebarOpen(false);
-            setOpen(false);
-          }}
-        >
-          ✕
-        </button>
-      </div>
       {live && win ? (
         <div className="monitor-body" data-testid="monitor-body">
           <MetricRow

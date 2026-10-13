@@ -184,10 +184,7 @@ fn write_sidecar(
 
 /// sidecar 目录绝对路径（路径守卫用 canonical 形态比对）。
 fn output_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app_data_dir: {e}"))?;
+    let base = crate::paths::data_root(app).map_err(|e| format!("app_data_dir: {e}"))?;
     Ok(base.join(CRON_OUTPUT_DIR))
 }
 

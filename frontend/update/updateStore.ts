@@ -18,6 +18,9 @@ export type UpdatePhase =
 
 interface UpdateState {
   current: string | null;
+  /** 便携模式（exe 旁 portable.flag，2026-10-13 Windows 便携版；null = 未拉到）。
+   * 便携版无安装器/updater 签名件——检查更新入口据此隐藏（更新 = 手动换包）。 */
+  portable: boolean | null;
   phase: UpdatePhase;
   /** 拉当前版本号（非 Tauri 置 null）。 */
   loadCurrent: () => void;
@@ -33,12 +36,18 @@ interface UpdateState {
 
 export const useUpdateStore = create<UpdateState>()((set, get) => ({
   current: null,
+  portable: null,
   phase: { kind: "idle" },
   loadCurrent: () => {
     import("@tauri-apps/api/app")
       .then(({ getVersion }) => getVersion())
       .then((v) => set({ current: v }))
       .catch(() => set({ current: null }));
+    // 便携标记（Rust paths::app_portable）：非 Tauri = false（正常更新面）
+    import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<boolean>("app_portable"))
+      .then((p) => set({ portable: p === true }))
+      .catch(() => set({ portable: false }));
   },
   checkForUpdate: async () => {
     const p = get().phase;

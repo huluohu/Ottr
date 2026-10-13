@@ -1,7 +1,7 @@
 //! 安全状态机（T11，A7）：解锁/锁定/升降级向导/重置应用 + OTTR_DEV_UNLOCK
 //! 旁路判定。纯搬家拆分（原 vault.rs 单文件）——锁定语义零改动。
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{KeyMode, Vault, VaultError};
@@ -260,10 +260,7 @@ pub fn vault_reset(
     if state.0.mode() == KeyMode::Password {
         state.0.lock();
     }
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("resolve app data dir: {e}"))?;
+    let dir = crate::paths::data_root(&app)?;
     // 防呆：app_data_dir 解析异常退化成根/无父目录时拒绝清（宁可不重置）。
     if dir.parent().is_none() || dir == std::path::Path::new("/") {
         return Err(format!(

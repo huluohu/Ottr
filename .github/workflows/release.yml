@@ -210,6 +210,21 @@ jobs:
             cp -R "target/$RUST_TARGET/release/bundle/." target/release/bundle/
           fi
 
+      # Windows 便携包（2026-10-13 用户需求）：免安装、双击 exe 即用、配置
+      # 全在包内——bare exe + portable.flag 标记（Rust paths::data_root 据此
+      # 把数据根切到 exe 旁 data/）。tag 构建带版本号，手动触发用 dev。
+      - name: Bundle Windows portable zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ver = if ($env:GITHUB_REF_NAME -like 'v*') { $env:GITHUB_REF_NAME } else { "dev" }
+          New-Item -ItemType Directory -Force "target/release/bundle/portable/Ottr" | Out-Null
+          Copy-Item "target/release/Ottr.exe" "target/release/bundle/portable/Ottr/Ottr.exe"
+          New-Item -ItemType File -Force "target/release/bundle/portable/Ottr/portable.flag" | Out-Null
+          Compress-Archive -Path "target/release/bundle/portable/Ottr/*" `
+            -DestinationPath "target/release/bundle/portable/Ottr_${ver}_x64_portable.zip" -Force
+          Get-ChildItem "target/release/bundle/portable"
+
       # 发布闸（v0.2.0 事故固化）：macOS 15+ 对无本地网络隐私声明的应用静默
       # 禁止局域网访问——核心功能（连内网 SSH 主机）全残且测试矩阵测不到
       # （127.0.0.1 夹具豁免该权限）。缺声明 = 构建失败，不进 Release。
@@ -255,6 +270,7 @@ jobs:
             target/release/bundle/msi/*.msi
             target/release/bundle/msi/*.msi.zip
             target/release/bundle/nsis/*.exe
+            target/release/bundle/portable/*.zip
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
@@ -315,6 +331,7 @@ jobs:
             bundle/**/*.msi
             bundle/**/*.msi.zip
             bundle/**/*.exe
+            bundle/**/*portable*.zip
             bundle/**/*.deb
             bundle/**/*.rpm
             bundle/**/*.AppImage

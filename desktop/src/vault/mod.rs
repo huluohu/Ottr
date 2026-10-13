@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use tauri::{Manager, State};
+use tauri::State;
 
 use ottr_vault::{Vault, VaultError};
 /// 托管进 Tauri 的 vault 句柄（全局唯一实例）。
@@ -26,7 +26,7 @@ pub struct VaultState(pub Arc<Vault>);
 /// 钥匙链模式（macOS/Windows 恒可用），Linux 无 Secret Service 自动落主密码
 /// 模式（Phase 0 spec §3 fallback 承诺，见 ottr-vault store.rs）。
 pub fn init(app: &tauri::AppHandle) -> Result<VaultState, Box<dyn std::error::Error>> {
-    let dir = app.path().app_data_dir()?;
+    let dir = crate::paths::data_root(app)?;
     let vault = Vault::open_auto(&dir)?;
     Ok(VaultState(Arc::new(vault)))
 }

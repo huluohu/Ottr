@@ -19,6 +19,9 @@ pub mod hostkey_audit;
 pub mod importers;
 pub mod keys;
 pub mod menu;
+// 数据目录唯一出口（2026-10-13 Windows 便携版）：安装版 = app_data_dir，
+// 便携版（exe 旁有 portable.flag）= exe 旁 data/。全部持久化落盘面经此。
+pub mod paths;
 mod vibrancy;
 // MCP 协议核（Phase 4 Task 3，C1）：纯 JSON-RPC/MCP 消息层（无 tauri/IO 依赖），
 // 引擎装配与命令面在 commands/mcp.rs，stdio relay 子进程在 bin/ottr-mcp.rs。
@@ -241,6 +244,8 @@ pub fn run() {
             commands::session::quit_app,
             // 应用重启（2026-10-13）：更新安装完成后「立即重启」入口。
             commands::session::app_restart,
+            // 便携模式查询（2026-10-13）：设置→关于据此隐藏「检查更新」。
+            paths::app_portable,
             menu::menu_set_theme,
             menu::menu_set_notify_count,
             menu::menu_set_tray_status,

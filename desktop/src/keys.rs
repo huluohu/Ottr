@@ -83,7 +83,7 @@ pub fn key_export(app: AppHandle, pem: String, path: Option<String>) -> CmdResul
             let dir = app
                 .path()
                 .download_dir()
-                .or_else(|_| app.path().app_data_dir())
+                .or_else(|_| crate::paths::data_root(&app))
                 .map_err(|e| format!("resolve export dir: {e}"))?;
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

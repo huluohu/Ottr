@@ -95,7 +95,7 @@ pub fn export_hosts_csv(
             let dir = app
                 .path()
                 .download_dir()
-                .or_else(|_| app.path().app_data_dir())
+                .or_else(|_| crate::paths::data_root(&app))
                 .map_err(|e| format!("resolve export dir: {e}"))?;
             dir.join("ottr-hosts.csv")
         }

@@ -1200,7 +1200,8 @@
     "downloading": "正在下载…",
     "downloadingOf": "正在下载… {{received}}/{{total}} KB",
     "installed": "安装完成，重启 Ottr 以生效。",
-    "restartNow": "立即重启"
+    "restartNow": "立即重启",
+    "portableHint": "便携版不内置自动更新——请到 GitHub Releases 下载新的便携包，替换 exe 即可（data 文件夹保留）。"
   },
   "home": {
     "tagline": "选一台主机，开始下潜。",

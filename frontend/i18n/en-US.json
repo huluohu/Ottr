@@ -1201,7 +1201,8 @@
     "downloading": "Downloading…",
     "downloadingOf": "Downloading… {{received}}/{{total}} KB",
     "installed": "Installed. Restart Ottr to apply.",
-    "restartNow": "Restart Now"
+    "restartNow": "Restart Now",
+    "portableHint": "The portable build has no in-app updater — download a new portable package from GitHub Releases and replace the exe (the data folder is kept)."
   },
   "home": {
     "tagline": "Pick a host and dive in.",

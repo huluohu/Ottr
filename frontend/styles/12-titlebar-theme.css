@@ -113,7 +113,7 @@
   padding: 0;
   background: color-mix(in srgb, var(--color-fg) 14%, transparent);
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: calc(var(--radius-sm) / 2); /* 迷你分区小圆角（token 派生） */
 }
 .titlebar-snap-zone:hover,
 .titlebar-snap-zone:focus-visible {

@@ -74,6 +74,7 @@ impl Transport for std::os::unix::net::UnixStream {
 
 #[cfg(windows)]
 fn main() {
+    eprintln!("ottr-mcp: starting");
     let endpoint = parse_args();
     let stream = match connect_with_retry(&endpoint) {
         Ok(s) => s,

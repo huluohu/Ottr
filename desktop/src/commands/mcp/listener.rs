@@ -158,6 +158,7 @@ pub fn spawn_listener(
         socket_path: pipe_path.clone(),
         cancel: cancel.clone(),
     };
+    eprintln!("[mcp] listener starting, pipe = {}", pipe_path.display());
     std::thread::Builder::new()
         .name("mcp-listener".into())
         .spawn(move || {
@@ -206,6 +207,7 @@ async fn windows_accept_loop(
         tokio::select! {
             _ = cancel.cancelled() => break,
             connected = server.connect() => {
+                eprintln!("[mcp] connect() resolved");
                 if let Err(e) = connected {
                     if e.kind() == std::io::ErrorKind::WouldBlock {
                         // 无客户端：短暂让出后再 poll 同一实例（cancel 可打断）

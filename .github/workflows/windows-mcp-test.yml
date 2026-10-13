@@ -1,0 +1,34 @@
+# Windows MCP 命名管道快速验证（2026-10-13）：专用轻量 job——只编 debug bins
+# + 跑 mcp_pipe_fixture，迭代周期 ≈4 分钟（spike-build 全矩阵 ≈10 分钟）。
+# push 直跑；稳定后可移除或改 workflow_dispatch。
+name: windows-mcp-test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/src/commands/mcp/**"
+      - "desktop/src/bin/ottr-mcp.rs"
+      - "desktop/src/mcp.rs"
+      - "desktop/tests/mcp_pipe_fixture.rs"
+      - ".github/workflows/windows-mcp-test.yml"
+
+jobs:
+  pipe-e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build debug bins
+        run: cargo build -p ottr --bins
+
+      - name: Run MCP named-pipe e2e
+        env:
+          RUST_BACKTRACE: 1
+        run: cargo test -p ottr --test mcp_pipe_fixture -- --nocapture

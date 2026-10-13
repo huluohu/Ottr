@@ -214,11 +214,15 @@ async fn mcp_flow(handle: tokio::runtime::Handle) {
         exec_timeout: Duration::from_secs(10),
     });
     let pipe = pipe_name();
+    eprintln!("[fx] pipe = {pipe}");
     let listener = spawn_listener(std::path::PathBuf::from(&pipe), Arc::clone(&engine))
         .expect("create pipe listener");
+    std::thread::sleep(Duration::from_millis(500)); // listener 就绪窗（retry 兜底）
 
     // --- MCP 客户端全流程（经 relay 子进程）---
+    eprintln!("[fx] spawning relay");
     let mut client = RelayClient::spawn(&pipe);
+    eprintln!("[fx] relay spawned");
 
     // initialize：协议头 + serverInfo
     let init = client.roundtrip(1, "initialize", r#"{"protocolVersion":"2024-11-05"}"#);

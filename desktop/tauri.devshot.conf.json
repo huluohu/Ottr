@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.ottr.app.devshot",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Ottr",
+        "width": 1600,
+        "height": 1000,
+        "minWidth": 720,
+        "minHeight": 480,
+        "transparent": true
+      }
+    ]
+  }
+}

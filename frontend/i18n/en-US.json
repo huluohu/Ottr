@@ -620,7 +620,8 @@
       "cronOk": "Scheduled task finished",
       "cronFailed": "Scheduled task failed",
       "cronTimeout": "Scheduled task timed out",
-      "cronMissed": "Scheduled task missed"
+      "cronMissed": "Scheduled task missed",
+      "hostkeyAuditUnavailable": "Host key audit unavailable"
     },
     "kindAi": "AI",
     "kindAlert": "Alerts",
@@ -741,7 +742,13 @@
       "failedHint": "The system keychain may have denied access. Restart the app to retry; if it keeps failing, reinstall or contact support.",
       "timeout": "Data vault initialization timed out (no response for {{seconds}} seconds).",
       "quit": "Quit"
-    }
+    },
+    "hostkeyStatusNever": "Not run yet",
+    "hostkeyStatusLast": "Last audit",
+    "hostkeyStatusUnavailable": "ssh-keyscan not found; audit skipped",
+    "hostkeyStatusResult": "{{checked}} checked, {{changed}} changed",
+    "hostkeyAuditNow": "Audit now",
+    "hostkeyAuditUnavailableHint": "ssh-keyscan is missing (Windows OpenSSH optional feature); the audit will not run"
   },
   "jump": {
     "title": "Jump chains",

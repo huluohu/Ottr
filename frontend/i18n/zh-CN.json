@@ -619,7 +619,8 @@
       "cronOk": "定时任务完成",
       "cronFailed": "定时任务失败",
       "cronTimeout": "定时任务超时",
-      "cronMissed": "定时任务未执行"
+      "cronMissed": "定时任务未执行",
+      "hostkeyAuditUnavailable": "指纹巡检不可用"
     },
     "kindAi": "AI",
     "kindAlert": "告警",
@@ -740,7 +741,13 @@
       "failedHint": "可能是系统钥匙链拒绝了访问。请重启应用重试；若持续失败，请重新安装或联系支持。",
       "timeout": "数据保险库初始化超时（{{seconds}} 秒无响应）。",
       "quit": "退出"
-    }
+    },
+    "hostkeyStatusNever": "尚未巡检",
+    "hostkeyStatusLast": "上次巡检",
+    "hostkeyStatusUnavailable": "本机缺少 ssh-keyscan，巡检未执行",
+    "hostkeyStatusResult": "检查 {{checked}} 台，变更 {{changed}} 台",
+    "hostkeyAuditNow": "立即巡检",
+    "hostkeyAuditUnavailableHint": "本机缺少 ssh-keyscan（Windows OpenSSH 可选组件），巡检不会执行"
   },
   "jump": {
     "title": "跳板链",

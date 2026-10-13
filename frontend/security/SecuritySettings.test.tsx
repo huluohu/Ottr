@@ -333,6 +333,57 @@ describe("SecuritySettings", () => {
     );
   });
 
+  // 巡检状态可见面（2026-10-13「Windows 静默空转」修复）：状态行渲染最近
+  // 一轮快照；工具缺席 = 常驻提示；「立即巡检」调 audit_run 后刷新状态。
+  it("巡检状态行：快照渲染 + 工具缺席提示 + 立即巡检刷新", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "hostkey_audit_status") {
+        return Promise.resolve({
+          enabled: true,
+          keyscan_available: false,
+          last: { at: 1_700_000_000, checked: 0, changed: 0, error: "ssh-keyscan not found on PATH", available: false },
+        });
+      }
+      if (cmd === "known_hosts_audit_run") {
+        return Promise.reject(new Error("ssh-keyscan not found on PATH"));
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    const status = await waitFor(() => screen.getByTestId("hostkey-audit-status-text"));
+    // 工具缺席：状态行 = 缺席提示 + 常驻 hint
+    expect(status.textContent).toContain("ssh-keyscan");
+    expect(screen.getByTestId("hostkey-audit-unavailable-hint")).toBeTruthy();
+
+    // 立即巡检：调 audit_run（失败被吞）→ 状态刷新
+    fireEvent.click(screen.getByTestId("hostkey-audit-run"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("known_hosts_audit_run"),
+    );
+  });
+
+  it("巡检状态行：可用态渲染检查/变更计数", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "hostkey_audit_status") {
+        return Promise.resolve({
+          enabled: true,
+          keyscan_available: true,
+          last: { at: 1_700_000_000, checked: 3, changed: 1, error: null, available: true },
+        });
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    const status = await waitFor(() => screen.getByTestId("hostkey-audit-status-text"));
+    expect(status.textContent).toContain("3");
+    expect(status.textContent).toContain("1");
+    expect(screen.queryByTestId("hostkey-audit-unavailable-hint")).toBeNull();
+  });
+
   it("sudo 自动填充（B9）：keyring 模式隐藏（主密码模式限定）", async () => {
     seedMode("keyring");
     mockedInvoke.mockImplementation((cmd: string) => {

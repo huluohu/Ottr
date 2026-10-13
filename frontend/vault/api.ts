@@ -203,6 +203,20 @@ export interface HostKeyAuditOutcome {
   changed: KnownHostChangedEntry[];
 }
 
+/** `hostkey_audit_status` 状态回执（Rust AuditStatusReport/AuditStatus 同构）。
+ * last = null 表示本会话尚未巡检过（重启后瞬态归零）。 */
+export interface HostKeyAuditStatus {
+  enabled: boolean;
+  keyscan_available: boolean;
+  last: null | {
+    at: number;
+    checked: number;
+    changed: number;
+    error: string | null;
+    available: boolean;
+  };
+}
+
 /** Rust `keygen::KeyAlgorithm` 同构（serde lowercase）。 */
 export type KeyAlgorithm = "ed25519" | "ecdsa-p256" | "rsa";
 
@@ -624,6 +638,7 @@ export const vaultApi = {
     remove: (hostKey: string) => invoke<boolean>("known_hosts_delete", { hostKey }),
     /** 单端点探测（管理页「检查」取证面）：观测到的指纹集；空集 = 不可达。 */
     probe: (hostKey: string) => invoke<string[]>("known_hosts_probe", { hostKey }),
+    auditStatus: () => invoke<HostKeyAuditStatus>("hostkey_audit_status"),
     /** 手动全量巡检一轮（探测 + changed 落账 + 通知事件），返回巡检回执。 */
     auditRun: () => invoke<HostKeyAuditOutcome>("known_hosts_audit_run"),
   },

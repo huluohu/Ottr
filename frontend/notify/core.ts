@@ -428,6 +428,19 @@ export function onHostKeyChanged(payload: HostKeyChangedPayload): Promise<boolea
   });
 }
 
+/** `ottr://hostkey-audit-unavailable` → security 通知（2026-10-13「Windows
+ * 静默空转」修复）：巡检工具缺席时告知一次（去重在 Rust 调度器侧按回合
+ * 账本完成，这里只进管线）。恢复可用后再次缺席会重新告知（新回合）。 */
+export function onHostkeyAuditUnavailable(): Promise<boolean> {
+  return notify({
+    kind: "security",
+    severity: "warning",
+    host_id: null,
+    title_key: "notify.title.hostkeyAuditUnavailable",
+    body: i18n.t("security.hostkeyAuditUnavailableHint"),
+  });
+}
+
 let wired = false;
 const unlisteners: UnlistenFn[] = [];
 
@@ -449,6 +462,11 @@ export async function initNotifyEvents(): Promise<void> {
   unlisteners.push(
     await listen<HostKeyChangedPayload>("ottr://host-key-changed", (e) => {
       void onHostKeyChanged(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen("ottr://hostkey-audit-unavailable", () => {
+      void onHostkeyAuditUnavailable();
     }),
   );
   await useNotifyStore.getState().bootstrap();

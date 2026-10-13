@@ -285,6 +285,18 @@ pub(crate) fn quit_app(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 应用重启（2026-10-13 用户需求）：检查更新「下载并安装」完成后立即生效——
+/// `AppHandle::restart` spawn 新实例再退当前进程（与 vault_reset 同一核），
+/// 本命令不返回，前端 invoke 永不 resolve 是预期形态。与单实例插件的交互
+/// 已备案（lib.rs：残留 socket 由新实例侧 NotFound/ConnectionRefused 兜底
+/// 清理，不误杀）。
+#[tauri::command]
+pub(crate) fn app_restart(app: AppHandle) -> Result<(), String> {
+    app.restart();
+    #[allow(unreachable_code)]
+    Ok(())
+}
+
 /// 断开全部会话（A12，Task 14）：托盘菜单「断开全部」的实现核。
 /// 逐条走 drop_session 同款语义（移除表项 + cancel 通知转发循环），循环退出后
 /// 统一 disconnect 并发 `ottr://session-closed`(cancelled)——前端既有事件路径

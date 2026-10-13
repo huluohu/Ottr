@@ -13,6 +13,7 @@ export function UpdateCheck() {
   const loadCurrent = useUpdateStore((s) => s.loadCurrent);
   const checkForUpdate = useUpdateStore((s) => s.checkForUpdate);
   const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
+  const restartNow = useUpdateStore((s) => s.restartNow);
 
   useEffect(() => {
     loadCurrent();
@@ -69,10 +70,22 @@ export function UpdateCheck() {
           </div>
         </div>
       )}
+      {/* 安装完成（2026-10-13）：提示 + 「立即重启」就地生效，不再要求用户
+          手动退出重开。restartNow 的 invoke 永不 resolve（Rust 侧 diverges）。 */}
       {phase.kind === "installed" && (
-        <p className="settings-hint" data-testid="update-installed">
-          {t("update.installed")}
-        </p>
+        <div className="settings-row" data-testid="update-installed-row">
+          <span className="settings-hint" data-testid="update-installed">
+            {t("update.installed")}
+          </span>
+          <button
+            type="button"
+            className="btn-accent"
+            data-testid="update-restart"
+            onClick={restartNow}
+          >
+            {t("update.restartNow")}
+          </button>
+        </div>
       )}
       {phase.kind === "error" && (
         <p className="form-error" data-testid="update-error">

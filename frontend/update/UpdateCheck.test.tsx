@@ -6,12 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const checkMock = vi.fn();
 const getVersionMock = vi.fn();
+const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
   check: vi.fn(() => checkMock()),
 }));
 vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(() => getVersionMock()),
+}));
+// restartNow 经动态 import 取 core.invoke（jsdom 无 Tauri runtime，全 mock）
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...a: unknown[]) => invokeMock(...a),
 }));
 
 import "../i18n";
@@ -34,6 +39,7 @@ function makeUpdate(version: string, events: UpdateEvent[]) {
 beforeEach(() => {
   checkMock.mockReset();
   getVersionMock.mockReset();
+  invokeMock.mockReset();
   getVersionMock.mockResolvedValue("0.3.0");
 });
 
@@ -68,6 +74,20 @@ describe("UpdateCheck", () => {
     fireEvent.click(screen.getByTestId("update-install"));
     await waitFor(() => expect(screen.getByTestId("update-installed")).toBeTruthy());
     expect(update.downloadAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("安装完成 → 「立即重启」按钮出现，点击走 app_restart（2026-10-13）", async () => {
+    const update = makeUpdate("0.4.0", [
+      { event: "Started", data: { contentLength: 1024 } },
+      { event: "Finished" },
+    ]);
+    checkMock.mockResolvedValue(update);
+    render(<UpdateCheck />);
+    fireEvent.click(screen.getByTestId("update-check-button"));
+    fireEvent.click(await waitFor(() => screen.getByTestId("update-install")));
+    await waitFor(() => expect(screen.getByTestId("update-installed")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("update-restart"));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("app_restart"));
   });
 
   it("检查失败：错误文本就地展示", async () => {

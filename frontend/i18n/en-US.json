@@ -71,6 +71,7 @@
       "verdant": "Verdant",
       "glass": "Frosted Glass"
     },
+    "themeAmethystGlassHint": "Amethyst and Frosted Glass are both purple-tinted dark themes: Amethyst has an opaque background; Frosted Glass is translucent and shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",
     "terminalFont": "Terminal font",
     "terminalFontDefault": "System default",
     "terminalFontSize": "Terminal size",
@@ -1199,7 +1200,8 @@
     "downloadInstall": "Download & install",
     "downloading": "Downloading…",
     "downloadingOf": "Downloading… {{received}}/{{total}} KB",
-    "installed": "Installed. Restart Ottr to apply."
+    "installed": "Installed. Restart Ottr to apply.",
+    "restartNow": "Restart Now"
   },
   "home": {
     "tagline": "Pick a host and dive in.",

@@ -49,6 +49,23 @@
    （安全/同步/外观/通用）原为单列长滚动、行为开关混进外观节；现按系统设置
    形态分派（通用 = 语言 + 关窗到托盘 + shell 集成）。未激活面板 hidden
    隐藏但保持挂载（控件状态/向导进度/测试断言不丢面），滚动收进面板内。 */
+/* 设置对话框（2026-10-09 交互重构）：左侧分区导航 + 右侧内容面板——四段
+   （安全/同步/外观/通用）原为单列长滚动、行为开关混进外观节；现按系统设置
+   形态分派（通用 = 语言 + 关窗到托盘 + shell 集成）。未激活面板 hidden
+   隐藏但保持挂载（控件状态/向导进度/测试断言不丢面），滚动收进面板内。
+
+   排版体系（2026-10-13 重构，字阶 token 口径）：
+   * 层级 = 窗标题 h2（--text-lg 页标题档）→ 分区 h3（--text-md + 600，去
+     opacity 弱化）→ 行标签（500）→ 正文/控件（400，body 14px）→ 提示
+     （--text-sm + --fg-muted）——原提示与正文同字号同色，靠 opacity 压
+     灰，五个分区扫读无锚点；
+   * 行布局：标签列弹性占满（flex:1），控件簇右靠相邻——原 space-between
+     把多控件行（单选组/徽标+按钮）均匀散满整行，视觉上互不相干；
+   * 间距：行距 --space-2、行内最小高 32px 统一节奏，分区头下 --space-2
+     贴合自己的分隔线。 */
+.settings-dialog .dialog-head h2 {
+  font-size: var(--text-lg);
+}
 .settings-dialog {
   width: min(720px, 100%);
   display: flex;
@@ -68,15 +85,15 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-right: 12px;
+  padding-right: var(--space-3);
   border-right: 1px solid var(--border-subtle);
 }
 .settings-nav button {
   text-align: left;
   background: none;
   border: none;
-  border-radius: var(--radius-lg);
-  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-base);
   color: var(--fg-muted);
   cursor: pointer;
@@ -94,13 +111,13 @@
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding-left: 18px;
+  padding-left: var(--space-5);
 }
 .settings-panes [hidden] {
   display: none !important;
 }
 .settings-panes h3:first-child {
-  margin-top: 2px;
+  margin-top: 0;
 }
 /* 窄窗降级：导航横排到顶部（不做左右双栏）。 */
 @media (max-width: 620px) {
@@ -111,28 +128,40 @@
     flex-direction: row;
     flex-wrap: wrap;
     padding-right: 0;
-    padding-bottom: 8px;
+    padding-bottom: var(--space-2);
     border-right: none;
     border-bottom: 1px solid var(--border-subtle);
   }
   .settings-panes {
     padding-left: 0;
-    padding-top: 10px;
+    padding-top: var(--space-3);
   }
 }
 .settings-dialog h3 {
-  margin: 14px 0 6px;
+  margin: var(--space-5) 0 var(--space-2);
   font-size: var(--text-md);
-  opacity: 0.8;
+  font-weight: 600;
   border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 4px;
+  padding-bottom: var(--space-2);
 }
 .settings-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 8px 0;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+  min-height: 32px;
+}
+/* 标签列弹性占满 + 500 字重：控件簇右靠相邻（散行根因修复，见文件头注）；
+ * 首位是提示文案的行（巡检状态行）同法占满，按钮右靠。 */
+.settings-row > .settings-label,
+.settings-row > .settings-hint:first-child {
+  flex: 1 1 auto;
+  font-weight: 500;
+}
+.settings-row > label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 .settings-row > select {
   min-width: 120px;
@@ -141,9 +170,10 @@
   flex: 0 0 auto;
 }
 .settings-hint {
-  margin: 2px 0 8px;
-  font-size: var(--text-base);
-  opacity: 0.75;
+  margin: var(--space-1) 0 var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--fg-muted);
 }
 
 /* 升级向导步骤区（password → progress → done）。 */
@@ -154,16 +184,16 @@
   box-sizing: border-box;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 12px;
-  margin: 8px 0;
+  padding: var(--space-3);
+  margin: var(--space-2) 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .wizard-step label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--text-base);
 }
 .wizard-step input,
@@ -175,10 +205,11 @@
 
 /* 模式徽标：keyring（中性）/ password（accent）。 */
 .vault-mode-badge {
-  padding: 2px 10px;
+  padding: 1px var(--space-2);
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-subtle);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
+  font-weight: 500;
 }
 .vault-mode-badge.vault-mode-password {
   color: var(--color-accent-text, inherit);

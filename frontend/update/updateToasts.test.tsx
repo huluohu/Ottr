@@ -87,6 +87,11 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
       ),
     );
     expect(useUpdateStore.getState().phase.kind).toBe("installed");
+    // 安装完成 toast 带「立即重启」动作（2026-10-13：不再要求手动退出重开）
+    const installedToast = useToastStore
+      .getState()
+      .toasts.find((t) => t.action?.label === "Restart Now");
+    expect(installedToast?.message).toContain("Installed");
   });
 
   it("检查失败：错误原样入 toast", async () => {

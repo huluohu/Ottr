@@ -162,12 +162,23 @@ export function CommandPalette({
 
   // 打开时重置并聚焦（面板反复开关是主路径）。
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActiveIndex(0);
-      // 聚焦等首帧渲染完（overlay 挂载后 input 才存在）。
-      queueMicrotask(() => inputRef.current?.focus());
-    }
+    if (!open) return;
+    setQuery("");
+    setActiveIndex(0);
+    // 聚焦等首帧渲染完（overlay 挂载后 input 才存在）。queueMicrotask 的一次
+    // 性 focus() 在 WKWebView（macOS 窗口）会被吞——2026-10-13 用户实测 ⌘K
+    // 打开后光标不在输入框。改 rAF 连帧重试：命中 activeElement 即停（至多
+    // 10 帧，正常 1-2 帧内命中），卸载/关闭时取消。
+    let raf = 0;
+    let tries = 0;
+    const tick = () => {
+      if (document.activeElement === inputRef.current) return;
+      inputRef.current?.focus();
+      tries += 1;
+      if (tries < 10) raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
   }, [open]);
 
   // 过滤 + 排序（渲染即纯计算）：空查询 = 浏览态（命令按组聚拢，registry 序）；

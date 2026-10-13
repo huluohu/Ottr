@@ -241,60 +241,67 @@ async fn windows_accept_loop(
     eprintln!("[mcp] listener stopped");
 }
 
-/// 单连接消息循环（async 形态，语义与 unix conn_loop 逐条对齐）：行分隔
-/// JSON-RPC；帧上限同源 MAX_FRAME_BYTES；协议核 handle_frame 是阻塞面
-/// （SSH exec / 审批等待可达分钟级）→ spawn_blocking 下放阻塞池。
+/// 单连接消息循环（async 形态；诊断态 = 裸 read + 手工分行，绕开
+/// BufReader/take 中间层，数据断点直接可读；定位后可视情况回收为行读）。
 #[cfg(windows)]
 async fn windows_conn_loop(
     mut conn: tokio::net::windows::named_pipe::NamedPipeServer,
     engine: Arc<McpEngine>,
 ) {
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let mut reader = BufReader::new(&mut conn);
+    eprintln!("[mcp] conn loop entered");
+    let mut buf = vec![0u8; 8192];
+    let mut pending: Vec<u8> = Vec::new();
     let mut server = McpServer::new();
-    let mut line = String::new();
     loop {
-        line.clear();
-        let mut limited = (&mut reader).take((crate::mcp::MAX_FRAME_BYTES + 1) as u64);
-        match limited.read_line(&mut line).await {
-            Ok(0) => return, // 客户端收线
-            Ok(_) => {}
+        let n = match conn.read(&mut buf).await {
+            Ok(0) => {
+                eprintln!("[mcp] conn eof");
+                return;
+            }
+            Ok(n) => n,
             Err(e) => {
                 eprintln!("[mcp] conn read failed: {e}");
                 return;
             }
-        }
-        if line.len() as u64 > crate::mcp::MAX_FRAME_BYTES as u64 {
-            eprintln!("[mcp] oversized frame; dropping connection");
-            return;
-        }
-        eprintln!("[mcp] frame {} bytes", line.len());
-        let frame = line.clone();
-        let eng = Arc::clone(&engine);
-        // 协议核状态机随帧进出阻塞池（闭包归还 server，下一帧继续用）
-        let (server_back, response) = match tokio::task::spawn_blocking(move || {
-            let resp = server.handle_frame(frame.as_bytes(), eng.as_ref());
-            (server, resp)
-        })
-        .await
-        {
-            Ok(pair) => pair,
-            Err(e) => {
-                eprintln!("[mcp] frame task join failed: {e}");
+        };
+        eprintln!("[mcp] raw read {n}B: {:02x?}", &buf[..n.min(32)]);
+        pending.extend_from_slice(&buf[..n]);
+        while let Some(pos) = pending.iter().position(|&b| b == b'\n') {
+            let line_bytes: Vec<u8> = pending.drain(..=pos).collect();
+            if line_bytes.len() as u64 > crate::mcp::MAX_FRAME_BYTES as u64 {
+                eprintln!("[mcp] oversized frame; dropping connection");
                 return;
             }
-        };
-        server = server_back;
-        if let Some(resp) = response {
-            let write = async {
-                reader.get_mut().write_all(resp.as_bytes()).await?;
-                reader.get_mut().write_all(b"\n").await?;
-                reader.get_mut().flush().await
+            let frame = String::from_utf8_lossy(&line_bytes).into_owned();
+            eprintln!("[mcp] frame {} bytes", frame.len());
+            let eng = Arc::clone(&engine);
+            // 协议核状态机随帧进出阻塞池（闭包归还 server，下一帧继续用）
+            let (server_back, response) = match tokio::task::spawn_blocking(move || {
+                let resp = server.handle_frame(frame.as_bytes(), eng.as_ref());
+                (server, resp)
+            })
+            .await
+            {
+                Ok(pair) => pair,
+                Err(e) => {
+                    eprintln!("[mcp] frame task join failed: {e}");
+                    return;
+                }
             };
-            if let Err(e) = write.await {
-                eprintln!("[mcp] conn write failed: {e}");
-                return;
+            server = server_back;
+            if let Some(resp) = response {
+                let write = async {
+                    conn.write_all(resp.as_bytes()).await?;
+                    conn.write_all(b"\n").await?;
+                    conn.flush().await
+                };
+                if let Err(e) = write.await {
+                    eprintln!("[mcp] conn write failed: {e}");
+                    return;
+                }
+                eprintln!("[mcp] response {} bytes written", resp.len());
             }
         }
     }

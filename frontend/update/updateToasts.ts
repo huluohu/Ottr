@@ -22,6 +22,12 @@ let flowActive = false;
 export function runUpdateCheckToasts(): void {
   if (flowActive) return; // 单飞：进行中的重复触发（连点/多入口）一律忽略
   const st = useUpdateStore.getState();
+  // 便携版（2026-10-13 Windows 便携版）：无 updater 签名件，检查没有意义——
+  // 四端入口就地一条指引（与 设置→关于 面板的隐藏同源，updateStore.portable）。
+  if (st.portable === true) {
+    showToast(i18n.t("update.portableHint"), "info");
+    return;
+  }
   if (st.phase.kind === "checking" || st.phase.kind === "downloading") return;
   flowActive = true;
   const t = i18n.t.bind(i18n);

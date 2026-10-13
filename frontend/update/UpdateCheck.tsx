@@ -9,6 +9,7 @@ import { useUpdateStore } from "./updateStore";
 export function UpdateCheck() {
   const { t } = useTranslation();
   const current = useUpdateStore((s) => s.current);
+  const portable = useUpdateStore((s) => s.portable);
   const phase = useUpdateStore((s) => s.phase);
   const loadCurrent = useUpdateStore((s) => s.loadCurrent);
   const checkForUpdate = useUpdateStore((s) => s.checkForUpdate);
@@ -26,27 +27,35 @@ export function UpdateCheck() {
           {current ?? "—"}
         </span>
       </label>
-      <div className="settings-row">
-        <button
-          type="button"
-          className="btn-accent"
-          data-testid="update-check-button"
-          disabled={phase.kind === "checking" || phase.kind === "downloading"}
-          onClick={() => void checkForUpdate()}
-        >
-          {phase.kind === "checking" ? t("update.checking") : t("update.check")}
-        </button>
-        {phase.kind === "downloading" && (
-          <span className="settings-hint" data-testid="update-progress">
-            {phase.total
-              ? t("update.downloadingOf", {
-                  received: Math.round(phase.received / 1024),
-                  total: Math.round(phase.total / 1024),
-                })
-              : t("update.downloading")}
-          </span>
-        )}
-      </div>
+      {/* 便携版（2026-10-13）：无安装器/updater 签名件，检查更新没有意义——
+          面板就地换成手动更新指引（toast 编排同源拦截，updateToasts）。 */}
+      {portable === true ? (
+        <p className="settings-hint" data-testid="update-portable-hint">
+          {t("update.portableHint")}
+        </p>
+      ) : (
+        <div className="settings-row">
+          <button
+            type="button"
+            className="btn-accent"
+            data-testid="update-check-button"
+            disabled={phase.kind === "checking" || phase.kind === "downloading"}
+            onClick={() => void checkForUpdate()}
+          >
+            {phase.kind === "checking" ? t("update.checking") : t("update.check")}
+          </button>
+          {phase.kind === "downloading" && (
+            <span className="settings-hint" data-testid="update-progress">
+              {phase.total
+                ? t("update.downloadingOf", {
+                    received: Math.round(phase.received / 1024),
+                    total: Math.round(phase.total / 1024),
+                  })
+                : t("update.downloading")}
+            </span>
+          )}
+        </div>
+      )}
       {phase.kind === "uptodate" && (
         <p className="settings-hint" data-testid="update-uptodate">
           {t("update.upToDate")}

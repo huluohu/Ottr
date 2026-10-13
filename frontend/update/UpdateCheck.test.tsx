@@ -1,11 +1,12 @@
 // UpdateCheck 组件测试（2026-10-09 检查更新功能）：当前版本回显、已是最新、
 // 发现新版 → 下载安装（进度事件 → 完成提示）。plugin-updater/api/app 全 mock
-// （jsdom 无 Tauri runtime）。
+// （jsdom 无 Tauri runtime）；core.invoke mock 供便携标记（app_portable）用。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const checkMock = vi.fn();
 const getVersionMock = vi.fn();
+const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
   check: vi.fn(() => checkMock()),
@@ -13,9 +14,13 @@ vi.mock("@tauri-apps/plugin-updater", () => ({
 vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(() => getVersionMock()),
 }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...a: unknown[]) => invokeMock(...a),
+}));
 
 import "../i18n";
 import { UpdateCheck } from "./UpdateCheck";
+import { useUpdateStore } from "./updateStore";
 
 type UpdateEvent =
   | { event: "Started"; data: { contentLength?: number } }
@@ -34,12 +39,22 @@ function makeUpdate(version: string, events: UpdateEvent[]) {
 beforeEach(() => {
   checkMock.mockReset();
   getVersionMock.mockReset();
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue(false); // app_portable：默认安装版
   getVersionMock.mockResolvedValue("0.3.0");
+  useUpdateStore.setState({ portable: null, phase: { kind: "idle" } });
 });
 
 afterEach(() => cleanup());
 
 describe("UpdateCheck", () => {
+  it("便携模式：检查按钮隐藏，就地显示手动更新指引（2026-10-13）", async () => {
+    invokeMock.mockResolvedValue(true); // app_portable → true
+    render(<UpdateCheck />);
+    await waitFor(() => expect(screen.getByTestId("update-portable-hint")).toBeTruthy());
+    expect(screen.queryByTestId("update-check-button")).toBeNull();
+  });
+
   it("回显当前版本 + 检查按钮", async () => {
     checkMock.mockResolvedValue(null);
     render(<UpdateCheck />);

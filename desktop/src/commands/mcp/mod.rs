@@ -115,10 +115,7 @@ impl McpManager {
 pub fn socket_path(app: &AppHandle) -> CmdResult<PathBuf> {
     #[cfg(unix)]
     {
-        let dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| format!("app_data_dir: {e}"))?;
+        let dir = crate::paths::data_root(app).map_err(|e| format!("app_data_dir: {e}"))?;
         Ok(dir.join(MCP_SOCKET_NAME))
     }
     #[cfg(windows)]

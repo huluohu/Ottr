@@ -450,11 +450,7 @@ pub fn export_recording(
 /// 继承」表述失准——目录名不敏感、敏感面在文件内容，文件本体创建即 0600
 /// 原子收紧，见 `open_private_new`）。
 fn recordings_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    use tauri::Manager as _;
-    app.path()
-        .app_data_dir()
-        .map(|d| d.join("recordings"))
-        .map_err(|e| format!("resolve app data dir: {e}"))
+    crate::paths::data_root(app).map(|d| d.join("recordings"))
 }
 
 /// 开录（Terminal 工具栏按钮）。`host_id` 由前端会话表给出（录制归属主机）。
@@ -588,10 +584,8 @@ pub(crate) fn recording_export(
     path: Option<String>,
 ) -> Result<String, String> {
     use tauri::Manager as _;
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("resolve app data dir: {e}"))?;
+    let app_dir =
+        crate::paths::data_root(&app).map_err(|e| format!("resolve app data dir: {e}"))?;
     let download_dir = app.path().download_dir().ok();
     export_recording(&vault.0, &app_dir, download_dir, id, events, path)
 }

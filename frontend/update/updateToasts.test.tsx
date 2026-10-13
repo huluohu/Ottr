@@ -30,7 +30,7 @@ function fakeUpdate(version: string) {
 
 beforeEach(() => {
   useToastStore.setState({ toasts: [] });
-  useUpdateStore.setState({ current: "0.9.0", phase: { kind: "idle" } });
+  useUpdateStore.setState({ current: "0.9.0", portable: false, phase: { kind: "idle" } });
   checkMock.mockReset();
 });
 
@@ -87,6 +87,20 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
       ),
     );
     expect(useUpdateStore.getState().phase.kind).toBe("installed");
+  });
+
+  it("便携模式：四端入口就地一条手动更新指引，不发检查（2026-10-13）", async () => {
+    render(<Toaster />);
+    useUpdateStore.setState({ portable: true });
+    checkMock.mockResolvedValue(null);
+    runUpdateCheckToasts();
+    await waitFor(() =>
+      expect(
+        useToastStore.getState().toasts.some((t) => t.message.includes("portable")),
+      ).toBe(true),
+    );
+    expect(checkMock).not.toHaveBeenCalled();
+    expect(useUpdateStore.getState().phase.kind).toBe("idle");
   });
 
   it("检查失败：错误原样入 toast", async () => {

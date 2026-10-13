@@ -117,6 +117,16 @@ jobs:
             Add-Content $env:GITHUB_ENV "PATH=$env:PATH;C:\Program Files\NASM"
           }
 
+      # MCP 命名管道 e2e（2026-10-13 形态验收面）：真 Windows 上 relay
+      # --pipe ↔ 引擎 named pipe listener 全链（协议面 + 授权矩阵 + 工具
+      # 错误路径）。unix 侧等价夹具 = tests/mcp_fixture.rs（UDS + 真 SSH
+      # 容器，随 Linux 任务跑）。放构建前：debug 测试编译远快于 release
+      # 打包，失败快。
+      - name: Run MCP named-pipe e2e (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cargo test -p ottr --test mcp_pipe_fixture
+
       - name: Install frontend dependencies
         run: npm ci
 

@@ -39,6 +39,11 @@ use crate::vault::{CmdResult, VaultState, ensure_unlocked};
 
 /// UDS 文件名（app_data_dir 下；生产 listener 与设置页接入说明共用）。
 pub const MCP_SOCKET_NAME: &str = "mcp.sock";
+/// Windows 命名管道名（2026-10-13 命名管道形态）。安全 = 管道默认 DACL
+/// （创建者 token：仅当前用户与管理员可连）——与 UDS 0600 同级保证。
+/// cfg(windows)：unix 编译无消费点（socket_path 的 windows 分支整支裁剪）。
+#[cfg(windows)]
+pub const MCP_PIPE_NAME: &str = "\\\\.\\pipe\\com.ottr.app.mcp";
 /// MCP 总开关（settings 明文面键；缺省关——安全侧）。
 pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
 mod approvals;
@@ -48,9 +53,9 @@ mod listener;
 pub use approvals::{ApprovalGate, McpApprovals, UiApprovalGate};
 pub use engine::{APPROVAL_TIMEOUT, EXEC_TIMEOUT, HostSessionResolver, McpEngine};
 pub use listener::ListenerHandle;
-// spawn_listener 是 cfg(unix) 面（UDS listener）；Windows 编译仍需本模块
-// （McpManager.start 的 not(unix) 分支 fail-closed），故再导出须同门控。
-#[cfg(unix)]
+// spawn_listener：unix = UDS listener、windows = 命名管道 listener（2026-10-13
+// 形态落地），两端同签名同语义（cancel token + 路径句柄；stop 只保证不再
+// 接受新连接）。其余平台（理论无）在 McpManager::start fail-closed。
 pub use listener::spawn_listener;
 
 // ---------------------------------------------------------------------------
@@ -62,27 +67,17 @@ pub use listener::spawn_listener;
 #[derive(Default)]
 pub struct McpManager {
     approvals: Arc<McpApprovals>,
-    #[cfg(unix)]
     listener: Mutex<Option<ListenerHandle>>,
 }
 
 impl McpManager {
     fn start(&self, engine: Arc<McpEngine>, socket_path: PathBuf) -> CmdResult<()> {
         self.stop();
-        #[cfg(unix)]
-        {
-            let handle = spawn_listener(socket_path, engine)
-                .map_err(|e| format!("mcp listener bind failed: {e}"))?;
-            *self.listener.lock().unwrap() = Some(handle);
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = (engine, socket_path);
-            return Err(
-                "MCP stdio relay requires a Unix domain socket; not supported on this platform yet"
-                    .into(),
-            );
-        }
+        // unix = UDS（bind + 0600）；windows = 命名管道（默认 DACL 限当前
+        // 用户）。两端 spawn_listener 同签名；stop 语义一致（停收新连接）。
+        let handle = spawn_listener(socket_path, engine)
+            .map_err(|e| format!("mcp listener bind failed: {e}"))?;
+        *self.listener.lock().unwrap() = Some(handle);
         Ok(())
     }
 
@@ -93,31 +88,40 @@ impl McpManager {
             let _ = std::fs::remove_file(&h.socket_path);
             eprintln!("[mcp] listener stopped (socket removed)");
         }
+        // windows：命名管道对象随句柄释放消亡，cancel 停收新连接即可。
+        #[cfg(windows)]
+        if let Some(h) = self.listener.lock().unwrap().take() {
+            h.cancel.cancel();
+            eprintln!("[mcp] listener stopped (pipe released)");
+        }
     }
 
     fn socket(&self) -> Option<PathBuf> {
-        #[cfg(unix)]
-        {
-            self.listener
-                .lock()
-                .unwrap()
-                .as_ref()
-                .map(|h| h.socket_path.clone())
-        }
-        #[cfg(not(unix))]
-        {
-            None
-        }
+        self.listener
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|h| h.socket_path.clone())
     }
 }
 
-/// socket 绝对路径（app_data_dir/mcp.sock；设置页接入说明与 listener 共用）。
+/// 传输端点（设置页接入说明与 listener 共用）：unix = app_data_dir/mcp.sock
+/// 绝对路径；windows = 固定命名管道名（默认 DACL 限当前用户，无需逐安装
+/// 区分——管道名空间本就按会话隔离）。
 pub fn socket_path(app: &AppHandle) -> CmdResult<PathBuf> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app_data_dir: {e}"))?;
-    Ok(dir.join(MCP_SOCKET_NAME))
+    #[cfg(unix)]
+    {
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("app_data_dir: {e}"))?;
+        Ok(dir.join(MCP_SOCKET_NAME))
+    }
+    #[cfg(windows)]
+    {
+        let _ = app;
+        Ok(PathBuf::from(MCP_PIPE_NAME))
+    }
 }
 
 /// `mcp.enabled` settings 现读（缺省关——安全侧；坏值收敛关）。

@@ -9,6 +9,7 @@
 //   read_file 目录白名单（逗号分隔，回车/失焦保存）——默认全拒，无授权行 =
 //   该主机对 MCP 客户端完全不可见；审批框组件在 McpApprovalDialog（全局挂载）。
 import { useCallback, useEffect, useState } from "react";
+import { platform as detectPlatform } from "../shortcuts/registry";
 import { useTranslation } from "react-i18next";
 import {
   vaultApi,
@@ -115,13 +116,15 @@ export function McpSettings({ open }: McpSettingsProps) {
   const grantedIds = new Set(grants.map((g) => g.host_id));
   const addable = hosts.filter((h) => !grantedIds.has(h.id));
   const socket = status?.socket_path ?? null;
+  // Windows 传输 = 命名管道（--pipe <name>）；unix = UDS（--socket <path>）。
+  // 与 Rust 侧 socket_path/parse_args 的口径逐字对齐（mod.rs / ottr-mcp.rs）。
   const snippet = socket
     ? JSON.stringify(
         {
           mcpServers: {
             ottr: {
               command: "<path-to-ottr-mcp>",
-              args: ["--socket", socket],
+              args: [detectPlatform() === "win" ? "--pipe" : "--socket", socket],
             },
           },
         },

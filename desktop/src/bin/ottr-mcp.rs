@@ -213,7 +213,7 @@ fn connect_with_retry(
 
 #[cfg(windows)]
 mod pipe {
-    use std::io;
+    use std::io::{self, Read, Write};
     use windows_sys::Win32::Foundation::{
         CloseHandle, DUPLICATE_SAME_ACCESS, DuplicateHandle, GetLastError, HANDLE,
         INVALID_HANDLE_VALUE,
@@ -333,7 +333,7 @@ mod pipe {
 }
 
 #[cfg(windows)]
-impl super::Transport for pipe::PipeStream {
+impl Transport for pipe::PipeStream {
     fn try_clone(&self) -> std::io::Result<Self> {
         pipe::PipeStream::try_clone(self)
     }

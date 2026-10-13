@@ -70,6 +70,11 @@ export function McpSettings({ open }: McpSettingsProps) {
     void run(() => vaultApi.mcp.setEnabled(on));
   }
 
+  /** 审批超时改配（2026-10-13「MCP 深化」）：run 自带刷新——新引擎新超时。 */
+  function setApprovalTimeout(secs: number) {
+    void run(() => vaultApi.mcp.setApprovalTimeout(secs));
+  }
+
   function flipGrant(g: McpGrant, patch: Partial<McpGrantInput>) {
     void run(() =>
       vaultApi.mcp.grantsUpsert({
@@ -154,6 +159,24 @@ export function McpSettings({ open }: McpSettingsProps) {
               {status?.listening ? t("mcp.listeningOn") : t("mcp.listeningOff")}
             </span>
           </div>
+          {/* 审批超时可配（2026-10-13「MCP 深化」）：改配 = 落盘 + 监听中重启
+              listener（新引擎新超时即时生效；在途审批随重启清空——开关翻转同
+              语义）。范围 10-600s 由 Rust 注册表拒绝，UI 给四档常用值。 */}
+          <label className="settings-row" data-testid="mcp-approval-timeout-row">
+            <span className="settings-label">{t("mcp.approvalTimeout")}</span>
+            <select
+              data-testid="mcp-approval-timeout"
+              value={status?.approval_timeout ?? 60}
+              onChange={(e) => setApprovalTimeout(Number(e.currentTarget.value))}
+            >
+              {[30, 60, 120, 300].map((secs) => (
+                <option key={secs} value={secs}>
+                  {t("mcp.approvalTimeoutSecs", { count: secs })}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="settings-hint">{t("mcp.approvalTimeoutHint")}</p>
           {socket && (
             <p className="settings-hint" data-testid="mcp-socket-path">
               {t("mcp.socketPath")}: <code>{socket}</code>

@@ -1055,7 +1055,10 @@
     "approvalCommand": "Command",
     "approvalHint": "Approving runs this command on the remote host now. The request is denied automatically after 60 seconds.",
     "approvalDeny": "Deny",
-    "approvalAllow": "Run it"
+    "approvalAllow": "Run it",
+    "approvalTimeout": "Approval wait",
+    "approvalTimeoutSecs": "{{count}}s",
+    "approvalTimeoutHint": "How long an approval popup waits before timing out as denied (safe side). Changing it restarts the listener once; pending approvals are cleared."
   },
   "plugins": {
     "title": "Plugins",

@@ -43,6 +43,7 @@ const STATUS_OFF: McpStatus = {
   socket_path: null,
   approvals_pending: 0,
   grants_count: 0,
+  approval_timeout: 60,
 };
 
 const STATUS_ON: McpStatus = {
@@ -84,6 +85,12 @@ function seedInvoke({
         return Promise.resolve(grants);
       case "hosts_list":
         return Promise.resolve(hosts);
+      case "mcp_set_approval_timeout":
+        currentStatus = {
+          ...currentStatus,
+          approval_timeout: Number(args?.secs),
+        };
+        return Promise.resolve(currentStatus);
       case "mcp_set_enabled":
         currentStatus = {
           ...currentStatus,
@@ -128,6 +135,20 @@ describe("McpSettings", () => {
     expect(toggle.checked).toBe(false);
     expect(screen.getByTestId("mcp-listening").textContent).toContain("已停止");
     expect(screen.getByTestId("mcp-no-grants")).toBeTruthy();
+  });
+
+  it("审批超时改配：mcp_set_approval_timeout 落盘 + 状态回显新值", async () => {
+    seedInvoke();
+    render(<McpSettings open />);
+    await waitFor(() => expect(screen.getByTestId("mcp-approval-timeout")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("mcp-approval-timeout"), { target: { value: "120" } });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("mcp_set_approval_timeout", { secs: 120 }),
+    );
+    const timeoutSelect = (await waitFor(() =>
+      screen.getByTestId("mcp-approval-timeout"),
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(timeoutSelect.value).toBe("120"));
   });
 
   it("enabling the server persists via mcp_set_enabled and shows socket path", async () => {

@@ -33,6 +33,7 @@ use std::sync::{Arc, Mutex};
 
 use ottr_vault::{McpGrant, McpGrantInput, McpGrants, Settings, Vault};
 use serde::Serialize;
+use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
 use crate::vault::{CmdResult, VaultState, ensure_unlocked};
@@ -46,12 +47,15 @@ pub const MCP_SOCKET_NAME: &str = "mcp.sock";
 pub const MCP_PIPE_NAME: &str = "\\\\.\\pipe\\com.ottr.app.mcp";
 /// MCP 总开关（settings 明文面键；缺省关——安全侧）。
 pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
+/// 逐次审批超时（秒）settings 键（2026-10-13「MCP 深化」）：默认 60；
+/// 越界收敛 60（写入侧 vault 注册表拒绝 10..=600 外，读取侧再收敛兜底）。
+pub const SETTING_MCP_APPROVAL_TIMEOUT: &str = "mcp.approval_timeout_secs";
 mod approvals;
 mod engine;
 mod listener;
 
 pub use approvals::{ApprovalGate, McpApprovals, UiApprovalGate};
-pub use engine::{APPROVAL_TIMEOUT, EXEC_TIMEOUT, HostSessionResolver, McpEngine};
+pub use engine::{EXEC_TIMEOUT, HostSessionResolver, McpEngine};
 pub use listener::ListenerHandle;
 // spawn_listener：unix = UDS listener、windows = 命名管道 listener（2026-10-13
 // 形态落地），两端同签名同语义（cancel token + 路径句柄；stop 只保证不再
@@ -129,6 +133,25 @@ pub fn enabled_from(raw: Option<&serde_json::Value>) -> bool {
     raw.and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
+/// 审批超时 settings 现读（缺省/越界收敛 60s——语义同 APPROVAL_TIMEOUT 旧常量）。
+pub fn approval_timeout_from(raw: Option<u64>) -> Duration {
+    const DEFAULT_SECS: u64 = 60;
+    const MIN_SECS: u64 = 10;
+    const MAX_SECS: u64 = 600;
+    let secs = raw
+        .filter(|s| (MIN_SECS..=MAX_SECS).contains(s))
+        .unwrap_or(DEFAULT_SECS);
+    Duration::from_secs(secs)
+}
+
+fn setting_approval_timeout(vault: &Vault) -> Duration {
+    approval_timeout_from(
+        Settings::get_u64(vault, SETTING_MCP_APPROVAL_TIMEOUT)
+            .ok()
+            .flatten(),
+    )
+}
+
 fn setting_enabled(vault: &Vault) -> bool {
     enabled_from(
         Settings::get(vault, SETTING_MCP_ENABLED)
@@ -149,7 +172,7 @@ fn production_engine(app: &AppHandle, vault: &VaultState) -> Arc<McpEngine> {
         gate: Arc::new(UiApprovalGate {
             app: app.clone(),
             approvals,
-            timeout: APPROVAL_TIMEOUT,
+            timeout: setting_approval_timeout(&vault.0),
         }),
         rt: tauri::async_runtime::handle().inner().clone(),
         exec_timeout: EXEC_TIMEOUT,
@@ -183,6 +206,9 @@ pub struct McpStatus {
     pub socket_path: Option<String>,
     pub approvals_pending: usize,
     pub grants_count: usize,
+    /// 逐次审批超时（秒；当前生效值——引擎在监听中则是旧引擎的超时，
+    /// 改配即重启 listener 后生效）。
+    pub approval_timeout: u64,
 }
 
 #[tauri::command]
@@ -195,6 +221,7 @@ pub(crate) fn mcp_status(app: AppHandle, state: State<'_, VaultState>) -> CmdRes
         socket_path: socket.map(|p| p.to_string_lossy().into_owned()),
         approvals_pending: manager.approvals.pending_count(),
         grants_count: McpGrants::list(&state.0).unwrap_or_default().len(),
+        approval_timeout: setting_approval_timeout(&state.0).as_secs(),
     })
 }
 
@@ -219,6 +246,31 @@ pub(crate) fn mcp_set_enabled(
     }
     Settings::set(&state.0, SETTING_MCP_ENABLED, &serde_json::json!(enabled))
         .map_err(|e| e.to_string())?;
+    mcp_status(app, state)
+}
+
+/// 改审批超时（秒；10..=600，vault 注册表拒绝越界）：落盘 + 监听中则重启
+/// listener（引擎在构造时固化超时——重启即时生效，审批面板在途请求随之清空，
+/// 与开关翻转同一语义）。
+#[tauri::command]
+pub(crate) fn mcp_set_approval_timeout(
+    app: AppHandle,
+    state: State<'_, VaultState>,
+    secs: u64,
+) -> CmdResult<McpStatus> {
+    crate::security::validate_setting(SETTING_MCP_APPROVAL_TIMEOUT, &serde_json::json!(secs))?;
+    Settings::set(
+        &state.0,
+        SETTING_MCP_APPROVAL_TIMEOUT,
+        &serde_json::json!(secs),
+    )
+    .map_err(|e| e.to_string())?;
+    {
+        let manager = app.state::<McpManager>();
+        if manager.socket().is_some() {
+            start_listener(&app, &state)?;
+        }
+    }
     mcp_status(app, state)
 }
 
@@ -270,6 +322,21 @@ mod tests {
     use std::io::{BufRead, Write};
     use std::time::Duration;
     // McpApprovalAsk 序列化面测试若在，super::* 已覆盖；此处不再单列。
+
+    /// 审批超时读取收敛（2026-10-13「审批超时可配」）：缺省 60 / 界内原样 /
+    /// 越界两侧收敛 60（写入侧注册表拒绝，读取侧收敛兜底）。
+    #[test]
+    fn approval_timeout_from_converges_out_of_range() {
+        assert_eq!(approval_timeout_from(None).as_secs(), 60);
+        assert_eq!(approval_timeout_from(Some(60)).as_secs(), 60);
+        assert_eq!(approval_timeout_from(Some(5)).as_secs(), 60, "低于下限收敛");
+        assert_eq!(
+            approval_timeout_from(Some(3600)).as_secs(),
+            60,
+            "超上限收敛"
+        );
+        assert_eq!(approval_timeout_from(Some(300)).as_secs(), 300, "界内原样");
+    }
 
     // --- 测试具柄 -----------------------------------------------------------
 

@@ -382,7 +382,6 @@ pub(super) fn cap_output(bytes: &[u8]) -> (String, bool) {
 
 pub const EXEC_TIMEOUT: Duration = Duration::from_secs(30);
 /// 逐次审批等待窗（TOFU host key 问询 HOST_KEY_ASK_TIMEOUT 同值；超时=拒绝）。
-pub const APPROVAL_TIMEOUT: Duration = Duration::from_secs(60);
 /// 单命令字节上限（batch 同款护栏）。
 pub const COMMAND_MAX_BYTES: usize = 64 * 1024;
 /// stdout/stderr 各自字节上限（batch 输出面同口径，超限截断 + truncated 标志）。

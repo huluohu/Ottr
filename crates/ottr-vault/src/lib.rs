@@ -102,6 +102,15 @@ pub enum VaultError {
     /// Secret Service 在建库后消失）。密钥在打不开的钥匙链里，fallback 换钥
     /// 等于销毁数据——显式报错，绝不静默换钥。
     MasterKeyUnreachable,
+    /// 已有 keyring 库的钥匙链条目丢失（库有数据、钥匙没了）。**拒绝静默
+    /// 换钥**——生成新钥 = 全部既有密文变不可解（2026-10-13 事故：同名 dev
+    /// 实例删条目 → 本路径曾按全新库静默换钥）。恢复 = 找回钥匙链条目，或
+    /// 清库重录凭据。
+    KeyringLost,
+    /// 钥匙链中的主密钥与本库不匹配（verifier 开封失败）——典型：条目被另
+    /// 一份库覆盖、或钥匙链从备份还原后钥与库错位。带错钥继续 = 首次写操作
+    /// 即不可逆污染，故开库即拒绝。
+    KeyringMismatch,
     /// JSON 序列化/反序列化失败（tags/variables 等 JSON 列）。
     Json(serde_json::Error),
     /// 同步快照导入**写入段**中途失败（BL-206 反馈面）：单事务原子回滚不变，
@@ -148,6 +157,17 @@ impl fmt::Display for VaultError {
                 f,
                 "master key lives in the system keychain, which is currently unavailable; \
                  restore the keychain service to open this vault"
+            ),
+            Self::KeyringLost => write!(
+                f,
+                "this vault's keychain entry (master_key) is missing; refusing to \
+                 regenerate a new key because all stored secrets would become \
+                 unreadable — restore the keychain entry, or re-enter credentials"
+            ),
+            Self::KeyringMismatch => write!(
+                f,
+                "the master key in the system keychain does not match this vault \
+                 (verifier mismatch); the entry may have been overwritten"
             ),
             Self::Json(e) => write!(f, "json error: {e}"),
             Self::ImportStep { category, source } => {

@@ -3,11 +3,11 @@
 //! join/序列化端到端）。
 //! 纪律（同既有 vault 测试）：tempfile 临时目录 + InMemoryStorage。
 
-use ottr_vault::master_key::InMemoryStorage;
+mod common;
 use ottr_vault::{HostGroups, HostInput, Hosts, Vault};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 /// 端到端：分组 join（group_id → 名）+ 各字段序列化 + 危险字符转义。

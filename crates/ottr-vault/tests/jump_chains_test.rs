@@ -6,11 +6,11 @@
 //! 纪律（同 forwards_test）：tempfile 临时目录 + InMemoryStorage，绝不触碰
 //! 真实用户目录与真钥匙链。明文配置面（无 *_enc 列，不涉 scan_registry）。
 
-use ottr_vault::master_key::InMemoryStorage;
+mod common;
 use ottr_vault::{HostInput, Hosts, JumpChainInput, JumpChains, Vault, VaultError};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
-    Vault::open_with(dir, &InMemoryStorage::new()).expect("open vault")
+    common::open_vault(dir)
 }
 
 /// 建一台主机返回 host_id（hop 用）。

@@ -94,3 +94,16 @@ fn master_key_feeds_vault_crypto_roundtrip() {
         b"secret-bytes"
     );
 }
+
+/// dev 与 release 的钥匙链命名空间必须隔离（2026-10-13 事故回归钉）：debug
+/// 构建（tauri dev / devshot）走 `.debug` 后缀，正式打包走正式名——dev 实例
+/// 从此物理上碰不到正式版主密钥。
+#[cfg(debug_assertions)]
+#[test]
+fn debug_builds_use_isolated_keychain_namespace() {
+    assert_eq!(
+        ottr_vault::master_key::DEFAULT_SERVICE,
+        "ottr.dev.debug",
+        "debug 构建必须使用隔离命名空间，防止 dev 实例触碰正式钥匙链数据"
+    );
+}

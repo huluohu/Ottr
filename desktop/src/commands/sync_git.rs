@@ -51,9 +51,13 @@ const EXEC_TIMEOUT: Duration = Duration::from_secs(120);
 // 信封口令钥匙链（T11 keyring 先例；CI 不触真钥匙链，命令体薄包装）
 // ---------------------------------------------------------------------------
 
-/// 与 ottr-vault master_key::DEFAULT_SERVICE 同 service（正式数据命名空间），
+/// 与 ottr-vault master_key::DEFAULT_SERVICE 同命名空间纪律（dev/release
+/// 强制隔离，dev 实例绝不可触碰正式信封口令——2026-10-13 主密钥事故同源），
 /// account 独立条目——主密码与信封口令互不可见。pub(crate)：vault_reset
 /// 清库须同删本条目（T5 评审 P1——漏清则重置后云信封仍可被记忆口令解密）。
+#[cfg(debug_assertions)]
+pub(crate) const SYNC_SERVICE: &str = "ottr.dev.debug";
+#[cfg(not(debug_assertions))]
 pub(crate) const SYNC_SERVICE: &str = "ottr.dev";
 pub(crate) const SYNC_ACCOUNT: &str = "sync-passphrase";
 

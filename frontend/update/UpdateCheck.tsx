@@ -1,14 +1,14 @@
-// 设置页「软件更新」面板（2026-10-09；2026-10-10 改造为 updateStore 消费面）：
-// 状态/检查/下载安装逻辑单源在 update/updateStore.ts——本组件只渲染 phase。
-// 四端「检查更新」入口（mac 菜单/汉堡/⌘K/托盘）经 updateStore.checkForUpdate
-// 直接走 toast 反馈，不打开本面板（用户裁定：点检查更新不跳设置页）。
+// 设置页「软件更新」面板（2026-10-09；2026-10-10 改造为 updateStore 消费面；
+// 2026-10-13 v2 重排）：紧凑单行状态条——检查按钮与状态文案/动作同行，
+// 发现新版为 accent 弱底单行条（文案左、按钮右），替代原 wizard-step 大空盒。
+// 版本号不在本组件显示（关于卡已有，去重复）。便携版（exe 旁 portable.flag）
+// 检查入口就地换手动指引 + 「打开下载页」直达 Releases（更新 = 手动换包）。
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useUpdateStore } from "./updateStore";
 
 export function UpdateCheck() {
   const { t } = useTranslation();
-  const current = useUpdateStore((s) => s.current);
   const portable = useUpdateStore((s) => s.portable);
   const phase = useUpdateStore((s) => s.phase);
   const loadCurrent = useUpdateStore((s) => s.loadCurrent);
@@ -22,84 +22,86 @@ export function UpdateCheck() {
 
   return (
     <div data-testid="update-check">
-      <label className="settings-row">
-        <span className="settings-label">{t("update.currentVersion")}</span>
-        <span className="settings-hint" data-testid="update-current">
-          {current ?? "—"}
-        </span>
-      </label>
-      {/* 便携版（2026-10-13）：无安装器/updater 签名件，检查更新没有意义——
-          面板就地换成手动更新指引（toast 编排同源拦截，updateToasts）。 */}
       {portable === true ? (
+        // 便携版：无安装器/updater 签名件，检查更新没有意义——指引 + 直达
+        // Releases 链接（html 链接与关于卡仓库链接同模式，系统浏览器打开）。
         <p className="settings-hint" data-testid="update-portable-hint">
-          {t("update.portableHint")}
+          {t("update.portableHint")}{" "}
+          <a
+            href="https://github.com/huluohu/Ottr/releases/latest"
+            target="_blank"
+            rel="noreferrer"
+            data-testid="update-portable-link"
+          >
+            {t("update.openDownloadPage")}
+          </a>
         </p>
       ) : (
-        <div className="settings-row">
-          <button
-            type="button"
-            className="btn-accent"
-            data-testid="update-check-button"
-            disabled={phase.kind === "checking" || phase.kind === "downloading"}
-            onClick={() => void checkForUpdate()}
-          >
-            {phase.kind === "checking" ? t("update.checking") : t("update.check")}
-          </button>
-          {phase.kind === "downloading" && (
-            <span className="settings-hint" data-testid="update-progress">
-              {phase.total
-                ? t("update.downloadingOf", {
-                    received: Math.round(phase.received / 1024),
-                    total: Math.round(phase.total / 1024),
-                  })
-                : t("update.downloading")}
-            </span>
-          )}
-        </div>
-      )}
-      {phase.kind === "uptodate" && (
-        <p className="settings-hint" data-testid="update-uptodate">
-          {t("update.upToDate")}
-        </p>
-      )}
-      {phase.kind === "available" && (
-        <div className="wizard-step" data-testid="update-available">
-          <p className="dialog-intro">
-            {t("update.available", { version: phase.version })}
-          </p>
-          <div className="form-actions">
+        <>
+          {/* 单行状态条：检查按钮 + 当前状态/动作（下载进度/已最新/装完重启/错误） */}
+          <div className="settings-row">
             <button
               type="button"
               className="btn-accent"
-              data-testid="update-install"
-              onClick={() => void downloadAndInstall()}
+              data-testid="update-check-button"
+              disabled={phase.kind === "checking" || phase.kind === "downloading"}
+              onClick={() => void checkForUpdate()}
             >
-              {t("update.downloadInstall")}
+              {phase.kind === "checking" ? t("update.checking") : t("update.check")}
             </button>
+            {phase.kind === "downloading" && (
+              <span className="settings-hint" data-testid="update-progress">
+                {phase.total
+                  ? t("update.downloadingOf", {
+                      received: Math.round(phase.received / 1024),
+                      total: Math.round(phase.total / 1024),
+                    })
+                  : t("update.downloading")}
+              </span>
+            )}
+            {phase.kind === "uptodate" && (
+              <span className="settings-hint" data-testid="update-uptodate">
+                {t("update.upToDate")}
+              </span>
+            )}
+            {/* 装完：提示 + 「立即重启」就地生效（restartNow 的 invoke 永不
+                resolve——Rust 侧 AppHandle::restart diverges，预期形态）。 */}
+            {phase.kind === "installed" && (
+              <>
+                <span className="settings-hint" data-testid="update-installed">
+                  {t("update.installed")}
+                </span>
+                <button
+                  type="button"
+                  className="btn-accent"
+                  data-testid="update-restart"
+                  onClick={restartNow}
+                >
+                  {t("update.restartNow")}
+                </button>
+              </>
+            )}
+            {phase.kind === "error" && (
+              <span className="form-error" data-testid="update-error">
+                {phase.message}
+              </span>
+            )}
           </div>
-        </div>
-      )}
-      {/* 安装完成（2026-10-13）：提示 + 「立即重启」就地生效，不再要求用户
-          手动退出重开。restartNow 的 invoke 永不 resolve（Rust 侧 diverges）。 */}
-      {phase.kind === "installed" && (
-        <div className="settings-row" data-testid="update-installed-row">
-          <span className="settings-hint" data-testid="update-installed">
-            {t("update.installed")}
-          </span>
-          <button
-            type="button"
-            className="btn-accent"
-            data-testid="update-restart"
-            onClick={restartNow}
-          >
-            {t("update.restartNow")}
-          </button>
-        </div>
-      )}
-      {phase.kind === "error" && (
-        <p className="form-error" data-testid="update-error">
-          {phase.message}
-        </p>
+          {/* 发现新版：accent 弱底单行条（文案左、安装钮右），一行解决不铺开 */}
+          {phase.kind === "available" && (
+            <div className="update-available" data-testid="update-available">
+              <span>{t("update.available", { version: phase.version })}</span>
+              <button
+                type="button"
+                className="btn-accent"
+                data-testid="update-install"
+                onClick={() => void downloadAndInstall()}
+              >
+                {t("update.downloadInstall")}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

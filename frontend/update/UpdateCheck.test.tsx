@@ -57,11 +57,19 @@ describe("UpdateCheck", () => {
     expect(screen.queryByTestId("update-check-button")).toBeNull();
   });
 
-  it("回显当前版本 + 检查按钮", async () => {
+  it("检查按钮渲染（v2：版本号由关于卡显示，本组件不再重复）", async () => {
     checkMock.mockResolvedValue(null);
     render(<UpdateCheck />);
-    await waitFor(() => expect(screen.getByTestId("update-current").textContent).toBe("0.3.0"));
+    expect(screen.queryByTestId("update-current")).toBeNull();
     expect(screen.getByTestId("update-check-button")).toBeTruthy();
+  });
+
+  it("便携模式：指引 + 「打开下载页」直达 Releases 链接（2026-10-13）", async () => {
+    invokeMock.mockResolvedValue(true); // app_portable → true
+    render(<UpdateCheck />);
+    const link = await waitFor(() => screen.getByTestId("update-portable-link"));
+    expect(link.getAttribute("href")).toContain("releases/latest");
+    expect(screen.queryByTestId("update-check-button")).toBeNull();
   });
 
   it("已是最新：check 返回 null → upToDate 提示", async () => {

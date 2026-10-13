@@ -19,8 +19,20 @@ vi.mock("@tauri-apps/api/app", () => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (...a: unknown[]) => invokeMock(...a),
 }));
+const settingsGetMock = vi.fn();
+const settingsSetMock = vi.fn();
+// UpdateCheck 读 update.check_mode（autoCheck 频率行，2026-10-13）
+vi.mock("../vault/api", () => ({
+  vaultApi: {
+    settings: {
+      get: (...a: unknown[]) => settingsGetMock(...a),
+      set: (...a: unknown[]) => settingsSetMock(...a),
+    },
+  },
+}));
 
 import "../i18n";
+import { SETTING_UPDATE_CHECK_MODE } from "./autoCheck";
 import { UpdateCheck } from "./UpdateCheck";
 import { useUpdateStore } from "./updateStore";
 
@@ -43,6 +55,8 @@ beforeEach(() => {
   getVersionMock.mockReset();
   invokeMock.mockReset();
   invokeMock.mockResolvedValue(false); // app_portable：默认安装版
+  settingsGetMock.mockResolvedValue("off");
+  settingsSetMock.mockResolvedValue(undefined);
   getVersionMock.mockResolvedValue("0.3.0");
   useUpdateStore.setState({ portable: null, phase: { kind: "idle" } });
 });
@@ -55,6 +69,19 @@ describe("UpdateCheck", () => {
     render(<UpdateCheck />);
     await waitFor(() => expect(screen.getByTestId("update-portable-hint")).toBeTruthy());
     expect(screen.queryByTestId("update-check-button")).toBeNull();
+  });
+
+  it("自动检查频率行：渲染三档 + 变更即落盘 update.check_mode（2026-10-13）", async () => {
+    settingsGetMock.mockResolvedValue("off");
+    render(<UpdateCheck />);
+    const select = (await waitFor(() =>
+      screen.getByTestId("update-auto-check"),
+    )) as HTMLSelectElement;
+    expect(select.value).toBe("off");
+    fireEvent.change(select, { target: { value: "startup" } });
+    await waitFor(() =>
+      expect(settingsSetMock).toHaveBeenCalledWith(SETTING_UPDATE_CHECK_MODE, "startup"),
+    );
   });
 
   it("检查按钮渲染（v2：版本号由关于卡显示，本组件不再重复）", async () => {

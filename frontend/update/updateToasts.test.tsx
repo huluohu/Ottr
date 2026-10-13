@@ -67,6 +67,31 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
     );
   });
 
+  it("检查出结果即收走「正在检查」toast（TTL 进度条不再空走，2026-10-13）", async () => {
+    let resolveCheck!: (v: unknown) => void;
+    checkMock.mockReturnValue(
+      new Promise((r) => {
+        resolveCheck = r;
+      }),
+    );
+    runUpdateCheckToasts();
+    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(
+      true,
+    );
+    await act(async () => {
+      resolveCheck(null);
+    });
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts.some((t) => t.message.includes("up to date"))).toBe(
+        true,
+      ),
+    );
+    // 「正在检查」即刻消失：结果 toast 与它不再同屏共存
+    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(
+      false,
+    );
+  });
+
   it("发现新版：单条 toast 内「下载 & 安装」按钮，点击就地下载（不再跳设置页）", async () => {
     render(<Toaster />);
     checkMock.mockResolvedValue(fakeUpdate("0.9.1"));

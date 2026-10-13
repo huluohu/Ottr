@@ -3,9 +3,18 @@
 // 发现新版为 accent 弱底单行条（文案左、按钮右），替代原 wizard-step 大空盒。
 // 版本号不在本组件显示（关于卡已有，去重复）。便携版（exe 旁 portable.flag）
 // 检查入口就地换手动指引 + 「打开下载页」直达 Releases（更新 = 手动换包）。
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { vaultApi } from "../vault/api";
+import {
+  applyAutoCheckMode,
+  parseMode,
+  SETTING_UPDATE_CHECK_MODE,
+  type AutoCheckMode,
+} from "./autoCheck";
 import { useUpdateStore } from "./updateStore";
+
+const AUTO_CHECK_MODES: readonly AutoCheckMode[] = ["off", "startup", "interval"];
 
 export function UpdateCheck() {
   const { t } = useTranslation();
@@ -15,9 +24,16 @@ export function UpdateCheck() {
   const checkForUpdate = useUpdateStore((s) => s.checkForUpdate);
   const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
   const restartNow = useUpdateStore((s) => s.restartNow);
+  // 自动检查频率（vault settings update.check_mode；null = 未拉到/非 Tauri）
+  const [autoCheckMode, setAutoCheckMode] = useState<AutoCheckMode | null>(null);
 
   useEffect(() => {
     loadCurrent();
+    // Promise.resolve 兜底：测试 mock 对未列命令返回 undefined（非 thenable，
+    // 同 hostkey 巡检状态读取的既有先例）。
+    Promise.resolve(vaultApi.settings.get<string>(SETTING_UPDATE_CHECK_MODE))
+      .then((raw) => setAutoCheckMode(parseMode(raw)))
+      .catch(() => setAutoCheckMode("off"));
   }, [loadCurrent]);
 
   return (
@@ -38,6 +54,32 @@ export function UpdateCheck() {
         </p>
       ) : (
         <>
+          {/* 自动检查频率（2026-10-13 用户需求）：即改即存即生效（autoCheck
+              模块重臂计时）；便携版随整个检查区隐藏（无 updater 无意义）。 */}
+          {autoCheckMode !== null && (
+            <label className="settings-row" data-testid="update-auto-check-row">
+              <span className="settings-label">{t("update.autoCheck")}</span>
+              <select
+                data-testid="update-auto-check"
+                value={autoCheckMode}
+                onChange={(e) => {
+                  const mode = parseMode(e.currentTarget.value);
+                  setAutoCheckMode(mode);
+                  void vaultApi.settings.set(SETTING_UPDATE_CHECK_MODE, mode).catch(() => {
+                    // 写入失败回落旧值（Rust validate 是权威；失败原因罕见）
+                    setAutoCheckMode(autoCheckMode);
+                  });
+                  void applyAutoCheckMode(mode);
+                }}
+              >
+                {AUTO_CHECK_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {t(`update.autoCheck_${m}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {/* 单行状态条：检查按钮 + 当前状态/动作（下载进度/已最新/装完重启/错误） */}
           <div className="settings-row">
             <button

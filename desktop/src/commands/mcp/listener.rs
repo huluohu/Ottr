@@ -158,7 +158,6 @@ pub fn spawn_listener(
         socket_path: pipe_path.clone(),
         cancel: cancel.clone(),
     };
-    eprintln!("[mcp] listener starting, pipe = {}", pipe_path.display());
     std::thread::Builder::new()
         .name("mcp-listener".into())
         .spawn(move || {
@@ -207,7 +206,6 @@ async fn windows_accept_loop(
         tokio::select! {
             _ = cancel.cancelled() => break,
             connected = server.connect() => {
-                eprintln!("[mcp] connect() resolved");
                 if let Err(e) = connected {
                     if e.kind() == std::io::ErrorKind::WouldBlock {
                         // 无客户端：短暂让出后再 poll 同一实例（cancel 可打断）
@@ -229,7 +227,6 @@ async fn windows_accept_loop(
                         return;
                     }
                 };
-                eprintln!("[mcp] pipe conn accepted");
                 let engine = Arc::clone(&engine);
                 tokio::spawn(async move {
                     windows_conn_loop(conn, engine).await;
@@ -241,8 +238,8 @@ async fn windows_accept_loop(
     eprintln!("[mcp] listener stopped");
 }
 
-/// 单连接消息循环（async 形态；诊断态 = 裸 read + 手工分行，绕开
-/// BufReader/take 中间层，数据断点直接可读；定位后可视情况回收为行读）。
+/// 单连接消息循环（async 形态）：裸 read + 手工分行（take/BufReader 分层
+/// 在该平台曾遮挂数据断点——直接裸读，帧界手工切，逻辑可见）。
 #[cfg(windows)]
 async fn windows_conn_loop(
     mut conn: tokio::net::windows::named_pipe::NamedPipeServer,
@@ -250,29 +247,18 @@ async fn windows_conn_loop(
 ) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    eprintln!("[mcp] conn loop entered");
     let mut buf = vec![0u8; 8192];
     let mut pending: Vec<u8> = Vec::new();
     let mut server = McpServer::new();
     loop {
-        // 读心跳（诊断态）：10s 无数据 = 记一条 pending（区分「等数据」与
-        // 「读挂死」）
-        let n = match tokio::time::timeout(Duration::from_secs(10), conn.read(&mut buf)).await {
-            Err(elapsed) => {
-                eprintln!("[mcp] read pending (10s heartbeat)");
-                continue;
-            }
-            Ok(Ok(0)) => {
-                eprintln!("[mcp] conn eof");
-                return;
-            }
-            Ok(Ok(n)) => n,
-            Ok(Err(e)) => {
+        let n = match conn.read(&mut buf).await {
+            Ok(0) => return, // 客户端收线
+            Ok(n) => n,
+            Err(e) => {
                 eprintln!("[mcp] conn read failed: {e}");
                 return;
             }
         };
-        eprintln!("[mcp] raw read {n}B: {:02x?}", &buf[..n.min(32)]);
         pending.extend_from_slice(&buf[..n]);
         while let Some(pos) = pending.iter().position(|&b| b == b'\n') {
             let line_bytes: Vec<u8> = pending.drain(..=pos).collect();
@@ -281,7 +267,6 @@ async fn windows_conn_loop(
                 return;
             }
             let frame = String::from_utf8_lossy(&line_bytes).into_owned();
-            eprintln!("[mcp] frame {} bytes", frame.len());
             let eng = Arc::clone(&engine);
             // 协议核状态机随帧进出阻塞池（闭包归还 server，下一帧继续用）
             let (server_back, response) = match tokio::task::spawn_blocking(move || {
@@ -307,7 +292,6 @@ async fn windows_conn_loop(
                     eprintln!("[mcp] conn write failed: {e}");
                     return;
                 }
-                eprintln!("[mcp] response {} bytes written", resp.len());
             }
         }
     }

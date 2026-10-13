@@ -187,13 +187,10 @@ fn pump<T: Transport + Send + 'static>(stream: T) {
             match reader.read_line(&mut line) {
                 Ok(0) => break, // 客户端 stdin 关闭
                 Ok(_) => {
-                    eprintln!("[relay] stdin {}B, forwarding", line.len());
                     if writer.write_all(line.as_bytes()).is_err() {
-                        eprintln!("[relay] pipe write failed");
                         break;
                     }
                     let _ = writer.flush();
-                    eprintln!("[relay] pipe write ok {}B", line.len());
                 }
                 Err(_) => break,
             }

@@ -203,6 +203,7 @@
     "minimize": "Minimize",
     "maximize": "Maximize / Restore",
     "close": "Close",
+    "closeHint": "Close to tray (turn off \"Close to tray\" in Settings to quit instead)",
     "snap": "Snap layouts",
     "snapLeft": "Snap to left half",
     "snapRight": "Snap to right half",

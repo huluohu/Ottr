@@ -201,6 +201,7 @@ export function TitleBar({
         className="titlebar-btn titlebar-close"
         data-testid="titlebar-close"
         aria-label={t("titlebar.close")}
+        title={t("titlebar.closeHint")}
         onClick={() => controls.close()}
       >
         &#x2715;
@@ -208,7 +209,11 @@ export function TitleBar({
 
       {menuOpen && (
         <div className="titlebar-menu" role="menu" data-testid="titlebar-menu">
-          {actions.map((def) => (
+          {/* 退出项置底（2026-10-13 用户设计确认）：桌面菜单惯例 = 退出永远
+              在最底部、上方压分隔线（Windows File→Exit 同构）；此前与设置/
+              主题平铺混排不显眼（用户问「要不要加退出」的根因）。动作仍是
+              app.quit 同一命令，不加确认弹窗。 */}
+          {actions.filter((def) => def.id !== "app.quit").map((def) => (
             <button
               key={def.id}
               role="menuitem"
@@ -234,6 +239,17 @@ export function TitleBar({
               <span>{t(f.labelKey)}</span>
             </button>
           ))}
+          {/* 退出置底 + 分隔线（桌面菜单惯例位置）。 */}
+          <div className="titlebar-menu-sep" role="separator" />
+          <button
+            role="menuitem"
+            className="titlebar-menu-item titlebar-menu-quit"
+            data-testid="titlebar-menu-quit"
+            onClick={() => runAction("app.quit")}
+          >
+            <span>{t("palette.quit")}</span>
+            {shortcutHint("app.quit") && <kbd>{shortcutHint("app.quit")}</kbd>}
+          </button>
         </div>
       )}
     </div>

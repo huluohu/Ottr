@@ -1,7 +1,9 @@
 //! UDS listener（std 阻塞面：连接专属线程处理整条连接，async 桥只在工具段）。
 //! 纯搬家拆分（原 commands/mcp.rs 单文件）。
 
-use std::io::{BufRead, Read, Write};
+#[cfg(unix)]
+use std::io::Write;
+use std::io::{BufRead, Read};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -213,7 +215,7 @@ async fn windows_accept_loop(
                 if cancel.is_cancelled() {
                     break;
                 }
-                let client = server;
+                let conn = server;
                 server = match ServerOptions::new().max_instances(PIPE_INSTANCES).create(&pipe_name) {
                     Ok(s) => s,
                     Err(e) => {
@@ -223,7 +225,7 @@ async fn windows_accept_loop(
                 };
                 let engine = Arc::clone(&engine);
                 tokio::spawn(async move {
-                    windows_conn_loop(client, engine).await;
+                    windows_conn_loop(conn, engine).await;
                 });
             }
         }
@@ -236,12 +238,12 @@ async fn windows_accept_loop(
 /// （SSH exec / 审批等待可达分钟级）→ spawn_blocking 下放阻塞池。
 #[cfg(windows)]
 async fn windows_conn_loop(
-    client: tokio::net::windows::named_pipe::NamedPipeClient,
+    mut conn: tokio::net::windows::named_pipe::NamedPipeServer,
     engine: Arc<McpEngine>,
 ) {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
-    let mut reader = BufReader::new(client);
+    let mut reader = BufReader::new(&mut conn);
     let mut server = McpServer::new();
     let mut line = String::new();
     loop {
@@ -276,16 +278,15 @@ async fn windows_conn_loop(
         };
         server = server_back;
         if let Some(resp) = response {
-            if let Err(e) = reader
-                .get_mut()
-                .write_all(resp.as_bytes())
-                .await
-                .and_then(|_| reader.get_mut().write_all(b"\n").await)
-            {
+            let write = async {
+                reader.get_mut().write_all(resp.as_bytes()).await?;
+                reader.get_mut().write_all(b"\n").await?;
+                reader.get_mut().flush().await
+            };
+            if let Err(e) = write.await {
                 eprintln!("[mcp] conn write failed: {e}");
                 return;
             }
-            let _ = reader.get_mut().flush().await;
         }
     }
 }

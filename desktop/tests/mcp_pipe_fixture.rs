@@ -110,7 +110,7 @@ impl RelayClient {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         loop {
             let remain = deadline.saturating_duration_since(std::time::Instant::now());
-            match self.responses.recv_timeout(remain) {
+            let line = match self.responses.recv_timeout(remain) {
                 Ok(line) => line,
                 Err(timeout_err) => {
                     let exit = self.child.try_wait().ok().flatten();
@@ -118,7 +118,7 @@ impl RelayClient {
                         "relay response timeout ({timeout_err:?}) for {method}: relay exit = {exit:?}"
                     );
                 }
-            }
+            };
             let v: serde_json::Value = serde_json::from_str(&line).expect("valid json line");
             if v["id"] == serde_json::json!(id) {
                 return v;

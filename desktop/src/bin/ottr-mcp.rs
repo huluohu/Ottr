@@ -253,7 +253,7 @@ mod pipe {
                         std::ptr::null(),
                         OPEN_EXISTING,
                         0,
-                        std::ptr::null_mut(),
+                        0, // htemplatefile：HANDLE = isize（0.52 口径），空 = 0
                     )
                 };
                 if handle != INVALID_HANDLE_VALUE {
@@ -269,7 +269,7 @@ mod pipe {
         }
 
         pub fn try_clone(&self) -> io::Result<PipeStream> {
-            let mut out: HANDLE = std::ptr::null_mut();
+            let mut out: HANDLE = 0;
             let ok = unsafe {
                 DuplicateHandle(
                     unsafe { GetCurrentProcess() },

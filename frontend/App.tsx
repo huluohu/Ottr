@@ -133,6 +133,9 @@ function HomeLayout() {
     if (!IS_TAURI) return;
     invoke("menu_set_tray_status", { count: sessionCount }).catch(() => {});
   }, [sessionCount]);
+  // TEMP-SCREENSHOT（配图重采驱动，采完即删）：?shot=<target> 控制面板；
+  // 改代码后 touch main.tsx 强制整页重载。
+
   // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认安全区。
   const [settingsPane, setSettingsPane] = useState<null | import("./security/SecuritySettings").SettingsPane>(null);
   const openSettingsToPane = (pane: "ai" | "about") => {

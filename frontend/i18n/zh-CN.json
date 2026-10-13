@@ -338,7 +338,7 @@
     "encoding": "编码",
     "splitRight": "向右分屏",
     "splitDown": "向下分屏",
-    "closePane": "关闭窗格",
+    "closePane": "关闭此分屏",
     "menuAria": "终端右键菜单",
     "splitAria": "分屏",
     "pasteTitle": "确认粘贴",
@@ -1178,7 +1178,6 @@
     "available": "发现新版本 v{{version}}",
     "downloadInstall": "下载并安装",
     "downloading": "正在下载…",
-    "goToSettings": "到 设置 → 关于 下载安装",
     "downloadingOf": "正在下载… {{received}}/{{total}} KB",
     "installed": "安装完成。退出 Ottr 并重新打开即生效。"
   },

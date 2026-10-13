@@ -62,6 +62,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --toast-ttl: 6s; /* 与 ui/toastStore.ts TOAST_TTL_MS 同源（进度条时长） */
+  --toast-ttl-action: 15s; /* 操作型 toast（带按钮的决策窗）；29-toast 覆写用 */
   /* 阴影三级（评审 P0-1/P2-15）：黑基不随主题前景翻转（原 --shadow-overlay
    * 未定义、三套字面值并存——全部浮层投影静默失效）。层级越高越深越大；
    * --shadow-glow 仅供 accent 光圈（页签激活态），非高程语义。 */

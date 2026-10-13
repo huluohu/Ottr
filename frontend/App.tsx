@@ -14,8 +14,7 @@ import { Sidebar } from "./app/Sidebar";
 import { Toaster } from "./ui/Toaster";
 import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
 import { showToast } from "./ui/toastStore";
-import { useUpdateStore } from "./update/updateStore";
-import { useTranslation } from "react-i18next";
+import { runUpdateCheckToasts } from "./update/updateToasts";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
 import { SyncDialog } from "./sync/SyncDialog";
@@ -127,11 +126,6 @@ function HomeLayout() {
   // Phase 2 B1（Task 6）：⌘J NL→命令输入条（registry ai.nl2cmd；全局直呼，
   // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
   const [nlOpen, setNlOpen] = useState(false);
-  // 检查更新（四端入口）：就地检查 + toast 反馈，不打开设置页（用户裁定）。
-  const updatePhase = useUpdateStore((s) => s.phase);
-  const updateCheckFn = useUpdateStore((s) => s.checkForUpdate);
-  const updateLoadCurrent = useUpdateStore((s) => s.loadCurrent);
-  const { t: tUpdate } = useTranslation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 托盘状态行会话计数同步（menu_set_tray_status；非 Tauri 环境 no-op）。
   const sessionCount = useSessionStore((s) => s.sessions.length);
@@ -139,9 +133,6 @@ function HomeLayout() {
     if (!IS_TAURI) return;
     invoke("menu_set_tray_status", { count: sessionCount }).catch(() => {});
   }, [sessionCount]);
-  useEffect(() => {
-    updateLoadCurrent();
-  }, [updateLoadCurrent]);
   // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认安全区。
   const [settingsPane, setSettingsPane] = useState<null | import("./security/SecuritySettings").SettingsPane>(null);
   const openSettingsToPane = (pane: "ai" | "about") => {
@@ -179,19 +170,9 @@ function HomeLayout() {
   /** 工具动作单一来源（2026-10-08 菜单栏启用批次）：顶栏「工具」下拉与
    * macOS 原生「工具」菜单（ottr://menu-action 的 tool.<key>）同一分派——
    * 两入口永不分叉（用户口径：同类功能在两处必须同步）。 */
-  // 检查更新统一入口：打开设置「关于」分区 + 触发一次就地检查（复用
-  // UpdateCheck 全 UX：进度/安装/重启提示——不另造反馈面）。四端入口
-  // （palette/汉堡/mac 菜单/托盘）与设置关于分区共用。
-  const openAboutUpdate = useCallback(() => {
-    setSettingsPane("about");
-    setSettingsOpen(true);
-    window.dispatchEvent(new CustomEvent("ottr:update-check"));
-  }, []);
-
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
-        case "update.check": openAboutUpdate(); break;
         case "notify-center": openToolDialog("notifications"); break;
         case "credentials": setCredentialsOpen(true); break;
         case "alerts": openToolDialog("alerts"); break;
@@ -330,36 +311,12 @@ function HomeLayout() {
           setSettingsPane(null);
           setSettingsOpen(true);
           break;
-        case "update.check": {
-          if (updatePhase.kind === "checking" || updatePhase.kind === "downloading") break;
-          void updateCheckFn();
-          showToast(tUpdate("update.checking"), "info");
-          const unsubPhase = useUpdateStore.subscribe((st) => {
-            const k = st.phase.kind;
-            if (k === "uptodate") {
-              showToast(tUpdate("update.upToDate"), "info");
-              unsubPhase();
-            } else if (k === "available") {
-              // 用户裁定（2026-10-10）：检测到新版只提示+指引，下载安装须用户
-              // 到 设置 → 关于 明确点「下载并安装」——绝不自动一条龙。
-              showToast(
-                tUpdate("update.available", { version: st.phase.version }),
-                "info",
-              );
-              showToast(tUpdate("update.goToSettings"), "info");
-              unsubPhase();
-            } else if (k === "downloading") {
-              unsubPhase(); // 下载中的进度不再逐条 toast（安静下载）
-            } else if (k === "installed") {
-              showToast(tUpdate("update.installed"), "info");
-              unsubPhase();
-            } else if (k === "error") {
-              showToast(st.phase.message, "error");
-              unsubPhase();
-            }
-          });
+        case "update.check":
+          // 四端入口统一走 toast 编排（update/updateToasts.ts）：单飞防重 +
+          // 发现新版 toast 内直接「下载安装」（2026-10-13 用户裁定：跳设置页
+          // 太扯）；「不自动一条龙」裁定保持——下载仍须显式点击。
+          runUpdateCheckToasts();
           break;
-        }
         case "theme.toggle":
           setMode(themeMode === "light" ? "dark" : themeMode === "dark" ? "system" : "light");
           break;

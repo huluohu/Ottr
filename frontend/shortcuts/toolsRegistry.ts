@@ -4,7 +4,7 @@
 //
 // id 形态与 App 分派字面量逐字对齐：tool.* 走 runToolAction（workspaceStore
 // openDock / openMainView / setCredentialsOpen），notify.center 走 handleAction，
-// update.check 走「打开设置关于分区 + 触发一次检查」（ottr:update-check 事件）。
+// update.check 走 toast 就地更新（update/updateToasts.ts：检查→新版内下载安装）。
 //
 // 与 shortcuts/registry ACTIONS 的划界：ACTIONS = 带 ActionId 类型面的键盘
 // 动作（快捷键监听/终端守卫），本表 = 导航型工具命令（无键位面）；notify.center

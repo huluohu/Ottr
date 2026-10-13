@@ -612,3 +612,50 @@ describe("B11 防呆（Phase 2 Task 11）：危险输入提醒 + 生产 pane 标
     expect(screen.getByTestId("term-pane-tab-dev").getAttribute("data-production")).toBeNull();
   });
 });
+
+describe("分屏 pane 关闭（2026-10-13 用户反馈「分屏后怎么关闭」）", () => {
+  const splitState = () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-a" }), sess({ id: "t-b", paneOf: "t-a", rustId: "pty-2" })],
+      activeId: "t-b",
+      trees: {
+        "t-a": {
+          kind: "split",
+          dir: "row",
+          ratio: 0.5,
+          first: { kind: "leaf", id: "t-a" },
+          second: { kind: "leaf", id: "t-b" },
+        },
+      },
+      activePane: { "t-a": "t-b" },
+    });
+  };
+
+  it("每个 pane 有关闭钮；关子 pane = 断该会话 + 树回落 leaf + drop_session 下发", () => {
+    splitState();
+    render(
+      <ThemeProvider>
+        <TerminalArea />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId("term-pane-close-t-a")).toBeTruthy();
+    expect(screen.getByTestId("term-pane-close-t-b")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("term-pane-close-t-b"));
+    expect(useSessionStore.getState().sessions.map((s) => s.id)).toEqual(["t-a"]);
+    expect(useSessionStore.getState().sessions[0].paneOf).toBeNull();
+    expect(useSessionStore.getState().trees["t-a"].kind).toBe("leaf");
+    expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-2" });
+  });
+
+  it("关根 pane = 关标签（全会话消亡，closePane→closeTab 既有语义）", () => {
+    splitState();
+    render(
+      <ThemeProvider>
+        <TerminalArea />
+      </ThemeProvider>,
+    );
+    fireEvent.click(screen.getByTestId("term-pane-close-t-a"));
+    expect(useSessionStore.getState().sessions).toEqual([]);
+  });
+});

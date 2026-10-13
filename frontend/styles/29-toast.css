@@ -87,3 +87,15 @@
 .toast-close:hover {
   color: var(--color-fg);
 }
+
+/* 操作型 toast（2026-10-13）：带按钮的决策窗 6s 太短——TTL 15s，进度条
+   同步调速（tokens 加 --toast-ttl-action 同源值）。 */
+.toast[data-has-action] {
+  --toast-ttl: var(--toast-ttl-action);
+  align-items: center;
+}
+.toast-action {
+  flex: none;
+  padding: 4px 12px;
+  font-size: var(--text-sm);
+}

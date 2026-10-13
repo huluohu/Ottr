@@ -1001,8 +1001,9 @@ export function SecuritySettings({
               <AISettings open embedded />
             </section>
 
-            {/* --- 关于（2026-10-10 第 7 分区）：关于信息卡 + 检查更新（自通用迁入，
-                四端入口 mac 菜单/汉堡/⌘K/托盘 经 ottr:update-check 事件触发本面板）--- */}
+            {/* --- 关于（2026-10-10 第 7 分区）：关于信息卡 + 检查更新（自通用迁入；
+                四端「检查更新」入口 2026-10-13 起走 toast 就地更新，本面板为
+                完整进度 UX 的手动入口）--- */}
             <section
               role="tabpanel"
               aria-label={t("settings.sectionAbout")}

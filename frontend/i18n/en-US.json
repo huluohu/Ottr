@@ -1179,7 +1179,6 @@
     "available": "New version v{{version}} available",
     "downloadInstall": "Download & install",
     "downloading": "Downloading…",
-    "goToSettings": "Go to Settings → About to download and install",
     "downloadingOf": "Downloading… {{received}}/{{total}} KB",
     "installed": "Installed. Restart Ottr to apply."
   },

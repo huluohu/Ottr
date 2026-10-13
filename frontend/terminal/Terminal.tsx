@@ -939,6 +939,23 @@ export function TerminalArea() {
                 }
               }}
             >
+              {/* 分屏关闭（2026-10-13 用户反馈「分屏后怎么关闭」）：closePane
+                  语义 = 关子 pane 断该会话、关根 pane 等于关标签（store 内已
+                  有语义，此前缺 UI 入口）。常驻但低调（半透明，悬停提亮），
+                  与内容重叠时以悬停对比度保证可点。 */}
+              <button
+                type="button"
+                className="term-pane-close"
+                data-testid={`term-pane-close-${session.id}`}
+                aria-label={t("terminal.closePane")}
+                title={t("terminal.closePane")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  useSessionStore.getState().closePane(session.id);
+                }}
+              >
+                ✕
+              </button>
               <SessionTerminal sessionId={session.id} />
             </div>
           );

@@ -13,9 +13,24 @@ export function Toaster() {
           key={toast.id}
           className={`toast toast-${toast.kind}${toast.closing ? " closing" : ""}`}
           data-testid={`toast-${toast.id}`}
+          data-has-action={toast.action ? "true" : undefined}
           onClick={() => useToastStore.getState().dismiss(toast.id)}
         >
           <span className="toast-message">{toast.message}</span>
+          {toast.action && (
+            <button
+              type="button"
+              className="btn-accent toast-action"
+              data-testid={`toast-action-${toast.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toast.action?.run();
+                useToastStore.getState().dismiss(toast.id);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button
             type="button"
             className="toast-close"

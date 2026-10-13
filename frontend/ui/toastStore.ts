@@ -2,7 +2,15 @@
 // 可手动关闭。替代此前「主区顶部状态条」的路径/结果反馈（用户反馈太丑）。
 // 2026-10-10 评审 P1-9：补出现/消失动画与剩余时间进度条——dismiss 两段式
 // （先置 closing 播退场动画 160ms，再移除；TTL 与手动关闭同路）。
+// 2026-10-13：补可选操作按钮（action）与逐条 TTL——「发现新版本」toast
+// 内直接「下载并安装」（用户裁定：跳设置页下载太扯），操作型 toast 默认
+// 15s（6s 对带按钮的决策窗口太短）。
 import { create } from "zustand";
+
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
 
 export interface ToastItem {
   id: number;
@@ -10,11 +18,13 @@ export interface ToastItem {
   kind: "info" | "error";
   /** 退场中（播完移除；此态不再响应重复 dismiss）。 */
   closing?: boolean;
+  /** 可选主操作按钮（点击 = run + 收起本条）。 */
+  action?: ToastAction;
 }
 
 interface ToastStore {
   toasts: ToastItem[];
-  show: (message: string, kind?: "info" | "error") => void;
+  show: (message: string, kind?: "info" | "error", action?: ToastAction, ttlMs?: number) => void;
   dismiss: (id: number) => void;
 }
 
@@ -27,12 +37,12 @@ const TOAST_EXIT_MS = import.meta.env?.MODE === "test" ? 0 : 160;
 
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
-  show: (message, kind = "info") => {
+  show: (message, kind = "info", action, ttlMs) => {
     const id = nextToastId++;
-    set((s) => ({ toasts: [...s.toasts, { id, message, kind }] }));
+    set((s) => ({ toasts: [...s.toasts, { id, message, kind, action }] }));
     setTimeout(() => {
       useToastStore.getState().dismiss(id);
-    }, TOAST_TTL_MS);
+    }, ttlMs ?? TOAST_TTL_MS);
   },
   dismiss: (id) => {
     // 幂等：closing 态的重复 dismiss（连点/TTL 追上手动关）不再重启计时。
@@ -51,8 +61,13 @@ export const useToastStore = create<ToastStore>((set) => ({
 }));
 
 /** 命令式入口（非组件环境/事件回调均可直接调用）。 */
-export function showToast(message: string, kind: "info" | "error" = "info"): void {
-  useToastStore.getState().show(message, kind);
+export function showToast(
+  message: string,
+  kind: "info" | "error" = "info",
+  action?: ToastAction,
+  ttlMs?: number,
+): void {
+  useToastStore.getState().show(message, kind, action, ttlMs);
 }
 
 export { TOAST_TTL_MS, TOAST_EXIT_MS };

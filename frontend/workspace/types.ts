@@ -36,7 +36,7 @@ export type DockPanel =
  * 竖条退役——被当成滚动条、压住分屏关闭钮，用户三次反馈）。 */
 export type ToolDockPanel = Extract<
   DockPanel,
-  "forwards" | "jumpchains" | "cron" | "alerts" | "mcp" | "notifications" | "monitor" | "plugins"
+  "forwards" | "jumpchains" | "cron" | "alerts" | "notifications" | "monitor" | "plugins"
 >;
 
 /** 全量取值表（测试枚举 + 防漂移：联合类型扩员时此表必须同步）。 */
@@ -62,7 +62,6 @@ export const TOOL_DOCK_PANELS: readonly ToolDockPanel[] = [
   "jumpchains",
   "cron",
   "alerts",
-  "mcp",
   "notifications",
   "monitor",
   "plugins",
@@ -74,7 +73,6 @@ export const DOCK_PANEL_TITLE_KEY: Record<ToolDockPanel, string> = {
   jumpchains: "jump.title",
   cron: "cron.title",
   alerts: "alert.sectionTitle",
-  mcp: "mcp.title",
   notifications: "nav.notifications",
   monitor: "monitor.title",
   plugins: "plugins.title",

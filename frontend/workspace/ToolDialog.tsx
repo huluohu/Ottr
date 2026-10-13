@@ -15,7 +15,6 @@ import { ForwardPanel } from "../forward/ForwardPanel";
 import { JumpChainEditor } from "../hosts/JumpChainEditor";
 import { CronPanel } from "../cron/CronPanel";
 import { AlertSettings } from "../notify/AlertSettings";
-import { McpSettings } from "../security/McpSettings";
 import { NotificationCenter } from "../notify/NotificationCenter";
 import { MonitorPanel } from "../monitor/MonitorSidebar";
 import { PluginPanel } from "../plugins/PluginSidebar";
@@ -97,7 +96,7 @@ export function ToolDialog() {
           {titlePanel === "jumpchains" && <JumpChainEditor open />}
           {titlePanel === "cron" && <CronPanel open />}
           {titlePanel === "alerts" && <AlertSettings open />}
-          {titlePanel === "mcp" && <McpSettings open />}
+
           {titlePanel === "notifications" && <NotificationCenter />}
           {titlePanel === "monitor" && <MonitorPanelBody />}
           {titlePanel === "plugins" && <PluginPanelBody />}

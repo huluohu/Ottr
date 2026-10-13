@@ -79,6 +79,11 @@ const IS_TAURI = "__TAURI_INTERNALS__" in window;
 
 // A12：macOS 原生菜单动作回传事件（Rust menu.rs 把 ActionId 字符串转发过来）。
 const MENU_ACTION_EVENT = "ottr://menu-action";
+// 分屏动作去重（2026-10-14 用户反馈「视图菜单分屏点一次触发两次」）：macOS
+// 菜单事件链路存在偶发双发（muda 加速器/事件桥层），分屏是非幂等动作——
+// 同方向 250ms 内的重复事件直接丢弃。其余菜单动作皆幂等，不做去重。
+let lastSplitAction = "";
+let lastSplitActionAt = 0;
 
 // --- 顶栏下拉菜单（Phase 5 T1 顶栏收纳） --------------------------------------
 //
@@ -180,7 +185,9 @@ function HomeLayout() {
         case "notify-center": openToolDialog("notifications"); break;
         case "credentials": setCredentialsOpen(true); break;
         case "alerts": openToolDialog("alerts"); break;
-        case "mcp": openToolDialog("mcp"); break;
+        // MCP（2026-10-14 用户裁定）：与设置页 MCP 分区单一家——菜单/⌘K
+        // 打开 设置 → MCP，不再另起弹框（此前双入口内容重复）。
+        case "mcp": setSettingsPane("mcp"); setSettingsOpen(true); break;
         case "monitor": openToolDialog("monitor"); break;
         case "plugins": openToolDialog("plugins"); break;
         case "forwards": openToolDialog("forwards"); break;
@@ -190,10 +197,6 @@ function HomeLayout() {
         case "cron": openToolDialog("cron"); break;
         case "sync": setSyncOpen(true); break;
         case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
-        // mac 工具菜单「AI 设置」（tool_ai 文案即「AI 设置」，menu.rs）：落设置
-        // 页 AI 分区——与诊断面板「去设置」（aiSettingsOpener）同一落地。
-        // 2026-10-10 AI 设置并入设置页后，这里不该再是命令条。
-        case "ai": setSettingsPane("ai"); setSettingsOpen(true); break;
       }
     },
     // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定）+
@@ -402,6 +405,12 @@ function HomeLayout() {
       try {
         const stop = await listen<string>(MENU_ACTION_EVENT, (e) => {
           const action = e.payload;
+          if (action === "session.splitRight" || action === "session.splitDown") {
+            const now = Date.now();
+            if (action === lastSplitAction && now - lastSplitActionAt < 250) return;
+            lastSplitAction = action;
+            lastSplitActionAt = now;
+          }
           // 原生菜单扩展面（2026-10-08）：主题七选（theme.set.<id>）与工具
           // 菜单（tool.<key>）不在 registry ActionId 内，按前缀直派单一来源。
           if (action.startsWith("theme.set.")) {
@@ -480,6 +489,10 @@ function HomeLayout() {
           onOpenCredentials={() => setCredentialsOpen(true)}
           onNewGroup={() => setNewGroupSignal((n) => n + 1)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenMcpSettings={() => {
+            setSettingsPane("mcp");
+            setSettingsOpen(true);
+          }}
         />
         <div
           className="sidebar-resizer"

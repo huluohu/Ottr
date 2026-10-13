@@ -16,16 +16,18 @@
 //   （进度不逐条播报）→ 完成提示 toast 内「立即重启」（15s 决策窗；
 //   2026-10-13 用户需求：安装完成不再要求手动退出重开）。
 // 设置 → 关于 的 UpdateCheck 面板（完整进度 UX）不受影响，两者同源同状态。
-import { showToast, useToastStore } from "../ui/toastStore";
+import { showToast, updateToast, useToastStore } from "../ui/toastStore";
 import i18n from "../i18n";
 import { useUpdateStore } from "./updateStore";
 
 let flowActive = false;
 
+let availableToastId: number | null = null;
+
 /** 「发现新版本」toast（手动/自动两条路径共用）：内嵌「下载并安装」，15s 决策窗。 */
 function availableToast(version: string): void {
   const t = i18n.t.bind(i18n);
-  showToast(t("update.available", { version }), "info", {
+  availableToastId = showToast(t("update.available", { version }), "info", {
     label: t("update.downloadInstall"),
     run: startInstallToasts,
   }, 15000);
@@ -73,13 +75,43 @@ export function runUpdateCheckToasts(): void {
   void st.checkForUpdate();
 }
 
-/** 「下载并安装」点击后：安静下载（进度不逐条播报），终态 toast 收尾。
+/** 「下载并安装」点击后：收走决策窗 toast，改弹**下载进度 toast**并就地
+ * 更新百分比（2026-10-14 用户反馈「点击下载后啥都没了，用户一片茫然」——
+ * 旧的安静下载策略修正为可见进度），终态收尾 = 完成 toast 带「立即重启」。
  * 先订阅后触发——downloadAndInstall 入口同步置 downloading，不会漏终态。 */
-function startInstallToasts(): void {
+export function startInstallToasts(): void {
   const t = i18n.t.bind(i18n);
+  let downloadToastId: number | null = null;
+  let lastPct = -5; // 节流：百分比每前进 ≥5% 才改写一次（避免逐 chunk 重渲染）
   const unsub = useUpdateStore.subscribe((s) => {
     const k = s.phase.kind;
-    if (k === "downloading") return;
+    if (k === "downloading") {
+      if (availableToastId != null) {
+        useToastStore.getState().dismiss(availableToastId);
+        availableToastId = null;
+      }
+      if (downloadToastId == null) {
+        downloadToastId = showToast(t("update.downloading"), "info");
+        lastPct = 0;
+        return;
+      }
+      if (s.phase.total != null && s.phase.total > 0) {
+        const pct = Math.floor((s.phase.received / s.phase.total) * 100);
+        if (pct - lastPct >= 5) {
+          lastPct = pct;
+          updateToast(
+            downloadToastId,
+            t("update.downloadingOf", {
+              received: Math.round(s.phase.received / 1024),
+              total: Math.round(s.phase.total / 1024),
+            }),
+          );
+        }
+      }
+      return;
+    }
+    // 终态：进度 toast 收走，结果发声
+    if (downloadToastId != null) useToastStore.getState().dismiss(downloadToastId);
     unsub();
     if (k === "installed") installedToast(t);
     else if (k === "error") showToast(s.phase.message, "error");

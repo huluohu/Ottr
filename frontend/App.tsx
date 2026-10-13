@@ -62,6 +62,7 @@ import {
 } from "./shortcuts/registry";
 import { ThemeProvider, useTheme, syncThemeFromVault } from "./theme/ThemeContext";
 import { useTerminalThemeStore } from "./theme/terminalThemeStore";
+import { createSplitDedupe } from "./shortcuts/splitDedupe";
 import { initAutoCheck } from "./update/autoCheck";
 import { useVaultStore } from "./vault/store";
 import { vaultApi, type Host } from "./vault/api";
@@ -82,8 +83,7 @@ const MENU_ACTION_EVENT = "ottr://menu-action";
 // 分屏动作去重（2026-10-14 用户反馈「视图菜单分屏点一次触发两次」）：macOS
 // 菜单事件链路存在偶发双发（muda 加速器/事件桥层），分屏是非幂等动作——
 // 同方向 250ms 内的重复事件直接丢弃。其余菜单动作皆幂等，不做去重。
-let lastSplitAction = "";
-let lastSplitActionAt = 0;
+const passSplitAction = createSplitDedupe();
 
 // --- 顶栏下拉菜单（Phase 5 T1 顶栏收纳） --------------------------------------
 //
@@ -405,12 +405,7 @@ function HomeLayout() {
       try {
         const stop = await listen<string>(MENU_ACTION_EVENT, (e) => {
           const action = e.payload;
-          if (action === "session.splitRight" || action === "session.splitDown") {
-            const now = Date.now();
-            if (action === lastSplitAction && now - lastSplitActionAt < 250) return;
-            lastSplitAction = action;
-            lastSplitActionAt = now;
-          }
+          if (!passSplitAction(action, Date.now())) return;
           // 原生菜单扩展面（2026-10-08）：主题七选（theme.set.<id>）与工具
           // 菜单（tool.<key>）不在 registry ActionId 内，按前缀直派单一来源。
           if (action.startsWith("theme.set.")) {

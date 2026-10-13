@@ -20,6 +20,9 @@ name: spike-build
 on:
   push:
     branches: [phase0-spike, phase2, main]
+  # 分支开发门（2026-10-13 用户裁定：大工程单独开分支）：feature 分支经
+  # PR 合入前，三平台构建/fmt/clippy 先在此跑绿。
+  pull_request:
   workflow_dispatch:
 
 permissions:

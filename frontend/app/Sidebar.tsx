@@ -32,6 +32,7 @@ export interface SidebarProps extends HostTreeProps {
   /** 新建分组：HostTree 分组输入展开（信号递增链）。 */
   onNewGroup: () => void;
   onOpenSettings: () => void;
+  onOpenMcpSettings: () => void;
 }
 
 function GridIcon() {
@@ -139,7 +140,13 @@ function KeyIcon() {
     </svg>
   );
 }
-const NAV_DOCK: ReadonlyArray<{ panel: ToolDockPanel; labelKey: string; icon: ReactElement }> = [
+// mcp 行特殊：面板已并入设置页（2026-10-14 单一家裁定），点击走 onOpenSettings
+// 并以 URL 无关的 store 信号打开 MCP 分区——此处 panel 值仅作 key/active 标记。
+const NAV_DOCK: ReadonlyArray<{
+  panel: ToolDockPanel | "mcp";
+  labelKey: string;
+  icon: ReactElement;
+}> = [
   { panel: "cron", labelKey: "nav.cron", icon: <ClockIcon /> },
   { panel: "alerts", labelKey: "nav.alerts", icon: <BellIcon /> },
   { panel: "mcp", labelKey: "nav.mcp", icon: <PlugIcon /> },
@@ -152,6 +159,7 @@ export function Sidebar({
   onOpenCredentials,
   onNewGroup,
   onOpenSettings,
+  onOpenMcpSettings,
   onAdd,
   ...tree
 }: SidebarProps) {
@@ -280,7 +288,11 @@ export function Sidebar({
               data-testid={`sidebar-nav-${item.panel}`}
               data-active={toolDialog === item.panel}
               onClick={() => {
-                toggleToolDialog(item.panel);
+                if (item.panel === "mcp") {
+                  onOpenMcpSettings();
+                } else {
+                  toggleToolDialog(item.panel);
+                }
                 setMenu(null);
                 setSub(null);
               }}

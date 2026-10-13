@@ -10,7 +10,7 @@
 // 失败重试时不会重复建凭据。
 // 【Phase 5 T1 三段式布局】连接信息 / 分类与选项 / 标签与备注 三段分组，
 // 短字段并排、复选框左对齐内联标签，消除居中悬浮孤复选框。
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { Host, HostInput, HostProtocol } from "../vault/api";
 import { useVaultStore } from "../vault/store";
@@ -66,6 +66,14 @@ export function HostForm({ host, defaultGroupId, onClose, closing }: HostFormPro
   );
   // 内联凭据草稿（Phase 5 T1）：非 null = 「＋ 新建凭据…」已选、子表单展开。
   const [credDraft, setCredDraft] = useState<CredentialDraft | null>(null);
+  // 内联凭据展开定位（2026-10-14）：展开后滚入视野（表单超视口时入口区可见）
+  const credInlineRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (credDraft) {
+      // scrollIntoView 可选调用（jsdom 无实现，测试环境静默跳过）
+      credInlineRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+  }, [credDraft]);
   const [credError, setCredError] = useState<string | null>(null);
   const [jumpChainId, setJumpChainId] = useState<string>(
     host?.jump_chain_id != null ? String(host.jump_chain_id) : "",
@@ -288,13 +296,13 @@ export function HostForm({ host, defaultGroupId, onClose, closing }: HostFormPro
                 onChange={(e) => pickCredential(e.currentTarget.value)}
               >
                 <option value="">{t("hostForm.credentialNone")}</option>
+                {/* 新建凭据入口置顶（2026-10-14：凭据多时埋在列表底部难找） */}
+                <option value={CRED_NEW}>{t("hostForm.credentialNew")}</option>
                 {credentials.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name?.trim() || t("hostForm.credentialLabel", { id: c.id, kind: c.kind })}
                   </option>
                 ))}
-                {/* Phase 5 T1：选中即内联展开凭据子表单，保存主机时一并创建并绑定 */}
-                <option value={CRED_NEW}>{t("hostForm.credentialNew")}</option>
               </select>
             </label>
             <label>
@@ -331,14 +339,17 @@ export function HostForm({ host, defaultGroupId, onClose, closing }: HostFormPro
             </label>
           </div>
 
-          {/* 内联凭据子表单（Phase 5 T1）：「＋ 新建凭据…」展开，随主机保存一并创建 */}
+          {/* 内联凭据子表单（Phase 5 T1）：「＋ 新建凭据…」展开，随主机保存一并创建。
+              展开即滚动定位（2026-10-14：表单展开后整高超出视口，入口区滚出视野）。 */}
           {credDraft && (
-            <CredentialInlineForm
-              draft={credDraft}
-              onDraftChange={setCredDraft}
-              error={credError}
-              onCancel={cancelInlineCredential}
-            />
+            <div ref={credInlineRef} data-testid="cred-inline-anchor">
+              <CredentialInlineForm
+                draft={credDraft}
+                onDraftChange={setCredDraft}
+                error={credError}
+                onCancel={cancelInlineCredential}
+              />
+            </div>
           )}
 
           {/* 生产环境标记（Phase 2 Task 11，B11 防呆）+ 监控开关（Phase 3 Task 1）：

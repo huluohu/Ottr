@@ -68,7 +68,7 @@ describe("ToolDialog：工具面板统一弹框壳", () => {
       ["jumpchains", "jump-editor"],
       ["cron", "cron-panel"],
       ["alerts", "alert-settings"],
-      ["mcp", "mcp-settings"],
+      ["notifications", "notify-panel"],
       ["notifications", "notify-panel"],
     ] as const) {
       useWorkspaceStore.getState().openToolDialog(panel);

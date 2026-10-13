@@ -1025,7 +1025,7 @@
     "saveFailed": "Save failed: {{message}}"
   },
   "mcp": {
-    "title": "MCP (AI)",
+    "title": "MCP",
     "serverSection": "MCP Server",
     "enabled": "Enable MCP server",
     "enabledHint": "Exposes granted hosts as tools to local AI clients (e.g. Claude Desktop) via a stdio relay. Master switch off by default; nothing is exposed until you enable it here AND grant hosts below.",

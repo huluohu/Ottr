@@ -32,6 +32,7 @@ function shellProps(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
     onOpenCredentials: vi.fn(),
     onNewGroup: vi.fn(),
     onOpenSettings: vi.fn(),
+          onOpenMcpSettings: vi.fn(),
     ...overrides,
   };
 }

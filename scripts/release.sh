@@ -17,7 +17,8 @@
 # 选项:
 #   --gate        打 tag 前等待「main 推送门全绿」（默认不等——发布流水线
 #                 本身就是全量验证，双跑约浪费 15-20 分钟；2026-10-12 用户裁定）
-#   --no-wait     打 tag 后不等待 Release 创建（之后可用 --notes-only 补说明）
+#   --wait        打 tag 后阻塞等待 Release 创建并应用说明（默认不等——
+                阻塞开发，2026-10-14 用户裁定；之后可用 --notes-only 补说明）
 #   --dry-run     演练：执行版本号修改并预览发布说明，最后自动还原，不改任何状态
 #
 # 环境变量:
@@ -33,7 +34,7 @@ VERSION=""
 MODE="release"
 TAG=""
 SKIP_GATE=1
-NO_WAIT=0
+NO_WAIT=1
 DRYRUN=0
 
 usage() { sed -n '2,23p' "$0"; }
@@ -42,7 +43,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --notes-only) MODE="notes" ;;
     --gate) SKIP_GATE=0 ;;
-    --no-wait) NO_WAIT=1 ;;
+    --wait) NO_WAIT=0 ;;
     --dry-run) DRYRUN=1 ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "未知选项: $1"; usage; exit 2 ;;

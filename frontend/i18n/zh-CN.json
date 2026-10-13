@@ -1024,7 +1024,7 @@
     "saveFailed": "保存失败：{{message}}"
   },
   "mcp": {
-    "title": "MCP（AI）",
+    "title": "MCP",
     "serverSection": "MCP Server",
     "enabled": "启用 MCP server",
     "enabledHint": "经 stdio relay 把已授权主机以工具面暴露给本地 AI 客户端（如 Claude Desktop）。总开关默认关；先在此启用、再在下方面授权主机，主机才可见。",

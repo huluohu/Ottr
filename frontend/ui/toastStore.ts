@@ -32,6 +32,8 @@ interface ToastStore {
     ttlMs?: number,
   ) => number;
   dismiss: (id: number) => void;
+  /** 就地更新文案（下载进度等长驻 toast 的原地改写，不重弹）。 */
+  update: (id: number, patch: { message?: string }) => void;
 }
 
 let nextToastId = 1;
@@ -50,6 +52,13 @@ export const useToastStore = create<ToastStore>((set) => ({
       useToastStore.getState().dismiss(id);
     }, ttlMs ?? TOAST_TTL_MS);
     return id;
+  },
+  update: (id, patch) => {
+    set((s) => ({
+      toasts: s.toasts.map((t) =>
+        t.id === id ? { ...t, message: patch.message ?? t.message } : t,
+      ),
+    }));
   },
   dismiss: (id) => {
     // 幂等：closing 态的重复 dismiss（连点/TTL 追上手动关）不再重启计时。
@@ -75,6 +84,11 @@ export function showToast(
   ttlMs?: number,
 ): number {
   return useToastStore.getState().show(message, kind, action, ttlMs);
+}
+
+/** 就地更新 toast 文案（导出便捷入口，语义同 showToast）。 */
+export function updateToast(id: number, message: string): void {
+  useToastStore.getState().update(id, { message });
 }
 
 export { TOAST_TTL_MS, TOAST_EXIT_MS };

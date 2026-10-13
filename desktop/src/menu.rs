@@ -304,13 +304,6 @@ fn text(lang: Lang, key: &str) -> &'static str {
             }
         }
         "tool_mcp" => "MCP",
-        "tool_ai" => {
-            if zh {
-                "AI 设置"
-            } else {
-                "AI Settings"
-            }
-        }
         "tool_forwards" => {
             if zh {
                 "端口转发"
@@ -432,7 +425,7 @@ pub const THEME_IDS: [&str; 7] = [
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
-pub const TOOL_KEYS: [&str; 14] = [
+pub const TOOL_KEYS: [&str; 13] = [
     "cron",
     "alerts",
     "mcp",
@@ -444,7 +437,6 @@ pub const TOOL_KEYS: [&str; 14] = [
     "credentials",
     "overview",
     "batch",
-    "ai",
     "sync",
     "export-hosts-csv",
 ];
@@ -644,11 +636,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.batch",
                     label: text(lang, "tool_batch"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.ai",
-                    label: text(lang, "tool_ai"),
                     accelerator: None,
                 },
                 MenuNode::Item {

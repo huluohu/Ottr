@@ -5,9 +5,18 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { useToastStore } from "./ui/toastStore";
+import { useSessionStore } from "./session/SessionStore";
+import { leaf } from "./terminal/split";
 import { save } from "@tauri-apps/plugin-dialog";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// jsdom 无 ResizeObserver（终端 fit/挂载观测用）——测试桩
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
 // CSV 导出的原生保存框（2026-10-09 交互优化：导出前选落盘路径）。
 const saveDialog = save;
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
@@ -346,6 +355,59 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
 // UI 批次一 Task 2：工具菜单工作区族条目 → workspaceStore 路由（T14 守卫的
 // 实现面——条目→openDock/openMainView 映射；registry 动作 ID 零新增零删除，
 // registry.test.ts 原样锁定）。对话框族（凭据/AI/同步）不在此列。
+describe("分屏动作去重（2026-10-14：菜单事件链路偶发双发防护）", () => {
+  beforeEach(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    // shim 生效后 App 首帧 effects 会 invoke（menu_set_theme 等）——给可链式承诺
+    (invoke as unknown as Mock).mockResolvedValue(null);
+  });
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    useSessionStore.setState({ sessions: [], activeId: null, trees: {} });
+    // cron store 复位（jobs 若被 pollution 成 null 会让后续用例崩在 jobs.length）
+    import("./cron/cronStore").then(({ useCronStore }) => {
+      useCronStore.setState({ jobs: [], error: null, live: {} });
+    });
+  });
+  it("同方向分屏事件 250ms 内重复 → 只分一次", async () => {
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: "sess-d",
+          hostId: 1,
+          hostName: "h",
+          address: "10.0.0.1",
+          port: 22,
+          username: "u",
+          protocol: "ssh",
+          jumpChainId: null,
+          status: "disconnected", // 避免挂载连接面（测试只验分屏 store 语义）
+          rustId: "pty-d",
+          attempt: 0,
+          lastError: null,
+          nextRetryAt: null,
+          paneOf: null,
+          encoding: "utf-8",
+          encodingOverride: "utf-8",
+          encodingHint: null,
+          isProduction: false,
+        },
+      ],
+      activeId: "sess-d",
+      trees: { "sess-d": leaf("sess-d") },
+      activePane: {},
+    });
+    render(<App />);
+    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    act(() => {
+      menuActionHandler!({ payload: "session.splitRight" });
+      menuActionHandler!({ payload: "session.splitRight" });
+    });
+    // 一次分屏 = 根 + 一个 pane（共 2 会话）；双发未去重会是 3
+    expect(useSessionStore.getState().sessions.length).toBe(2);
+  });
+});
+
 describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () => {
   // 菜单监听门卫（IS_TAURI）：jsdom 伪造运行时标记放行（先例 VaultInitGate.test）。
   beforeEach(() => {
@@ -417,9 +479,11 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     act(() => menuActionHandler!({ payload: "tool.alerts" }));
     expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("alerts");
     expect(screen.getByTestId("alert-settings")).toBeTruthy(); // 实体在弹框内
+    // MCP（2026-10-14 单一家裁定）：菜单入口 → 设置页 MCP 分区（不再弹框；
+    // 此前打开的工具弹框不受影响——MCP 不再占用 toolDialog 单槽）
     act(() => menuActionHandler!({ payload: "tool.mcp" }));
-    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("mcp");
-    expect(screen.getByTestId("mcp-settings")).toBeTruthy();
+    expect(screen.getByTestId("security-settings")).toBeTruthy();
+    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("alerts");
     act(() => menuActionHandler!({ payload: "tool.jump-chains" }));
     expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("jumpchains");
     expect(screen.getByTestId("jump-editor")).toBeTruthy();

@@ -87,28 +87,29 @@ describe("toolDialog 工具面板弹框（2026-10-12 dock 退役：单槽一次�
 
   it("toggleToolDialog：同值关、异值开/换（侧栏导航行二态语义）", () => {
     const ws = () => useWorkspaceStore.getState();
-    ws().toggleToolDialog("mcp");
-    expect(ws().toolDialog).toBe("mcp");
-    ws().toggleToolDialog("mcp");
+    ws().toggleToolDialog("alerts");
+    expect(ws().toolDialog).toBe("alerts");
+    ws().toggleToolDialog("alerts");
     expect(ws().toolDialog).toBeNull();
     ws().toggleToolDialog("cron");
-    ws().toggleToolDialog("mcp"); // 异值 = 换内容
-    expect(ws().toolDialog).toBe("mcp");
+    ws().toggleToolDialog("alerts"); // 异值 = 换内容
+    expect(ws().toolDialog).toBe("alerts");
   });
 
-  it("工具面板八值集合与类型口径一致（防漂移；2026-10-13 monitor/plugins 并入）", () => {
+  it("工具面板七值集合与类型口径一致（防漂移；2026-10-14 mcp 改走设置单一家）", () => {
     expect(TOOL_DOCK_PANELS).toEqual([
       "forwards",
       "jumpchains",
       "cron",
       "alerts",
-      "mcp",
       "notifications",
       "monitor",
       "plugins",
     ]);
-    // 全量 DockPanel 与工具面板同值集（侧栏二值语义已并入工具壳）
-    expect([...DOCK_PANELS].sort()).toEqual([...TOOL_DOCK_PANELS].sort());
+    // DockPanel 保留 mcp 枚举（历史），但工具壳不再承载——mcp 入口 = 设置分区
+    expect(DOCK_PANELS).toContain("mcp");
+    expect(TOOL_DOCK_PANELS).not.toContain("mcp");
+    for (const v of TOOL_DOCK_PANELS) expect(DOCK_PANELS).toContain(v);
   });
 });
 

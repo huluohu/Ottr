@@ -61,22 +61,10 @@ async function runSilentCheck(): Promise<void> {
     const t = i18n.t.bind(i18n);
     showToast(t("update.available", { version: after.version }), "info", {
       label: t("update.downloadInstall"),
-      // 与手动路径同一动作内核：toast 内点击 → 安静下载 → 完成带「立即重启」。
+      // 与手动路径同一动作内核（startInstallToasts：下载进度可见 + 完成带
+      // 「立即重启」）。
       run: () => {
-        const unsub = useUpdateStore.subscribe((s) => {
-          const k = s.phase.kind;
-          if (k === "downloading") return;
-          unsub();
-          if (k === "installed") {
-            showToast(t("update.installed"), "info", {
-              label: t("update.restartNow"),
-              run: () => useUpdateStore.getState().restartNow(),
-            }, 15000);
-          } else if (k === "error") {
-            showToast(s.phase.message, "error");
-          }
-        });
-        void useUpdateStore.getState().downloadAndInstall();
+        void import("./updateToasts").then(({ startInstallToasts }) => startInstallToasts());
       },
     }, 15000);
   }

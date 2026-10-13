@@ -563,6 +563,8 @@ export interface McpStatus {
   socket_path: string | null;
   approvals_pending: number;
   grants_count: number;
+  /** 逐次审批超时（秒；2026-10-13 可配化）。 */
+  approval_timeout: number;
 }
 
 /** ottr://mcp-approval 事件载荷（Rust McpApprovalAsk 同构）。 */
@@ -826,6 +828,7 @@ export const vaultApi = {
   mcp: {
     status: () => invoke<McpStatus>("mcp_status"),
     setEnabled: (enabled: boolean) => invoke<McpStatus>("mcp_set_enabled", { enabled }),
+    setApprovalTimeout: (secs: number) => invoke<McpStatus>("mcp_set_approval_timeout", { secs }),
     grantsList: () => invoke<McpGrant[]>("mcp_grants_list"),
     grantsUpsert: (input: McpGrantInput) => invoke<McpGrant>("mcp_grants_upsert", { input }),
     grantsDelete: (id: number) => invoke<void>("mcp_grants_delete", { id }),

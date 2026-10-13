@@ -472,6 +472,8 @@ pub fn run() {
             commands::view::view_zoom,
             // Win11 贴靠（2026-10-13 用户目标）：自绘标题栏布局选择器的落地面。
             commands::view::window_snap,
+            // MCP 深化（2026-10-13 用户目标）：审批超时可配（改配重启 listener）。
+            commands::mcp::mcp_set_approval_timeout,
             commands::session::resize_session
         ])
         .build(tauri::generate_context!())

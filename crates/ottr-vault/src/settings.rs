@@ -103,6 +103,11 @@ pub const HOSTKEY_AUDIT_INTERVAL_MAX_SECS: u64 = 7 * 24 * 3600;
 pub const SETTING_SUDO_AUTOFILL: &str = "security.sudo_autofill";
 /// MCP server 总开关（Phase 4 Task 3，C1）：默认关。
 pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
+/// MCP 逐次审批超时（秒）（2026-10-13 用户目标「审批超时策略可配」）：
+/// 默认 60；写入范围 10..=600（下限防误触瞬超=变相全拒，上限防占死连接）。
+pub const SETTING_MCP_APPROVAL_TIMEOUT: &str = "mcp.approval_timeout_secs";
+pub const MCP_APPROVAL_TIMEOUT_MIN_SECS: u64 = 10;
+pub const MCP_APPROVAL_TIMEOUT_MAX_SECS: u64 = 600;
 /// ⌘R 历史保留行数上限（BL-205①）：滚动窗口按此值裁最旧；默认 =
 /// [`crate::history::HISTORY_KEEP_ROWS`]（5 万）。写入范围 100..=1_000_000
 /// （下限防 0/极小值把历史清成摆设，上限防误输入把库撑爆）。
@@ -150,6 +155,19 @@ pub fn validate_known_setting(
             }
             Ok(())
         }
+        SETTING_MCP_ENABLED => bool_value(key, value),
+        SETTING_MCP_APPROVAL_TIMEOUT => {
+            let n = value
+                .as_u64()
+                .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+            if !(MCP_APPROVAL_TIMEOUT_MIN_SECS..=MCP_APPROVAL_TIMEOUT_MAX_SECS).contains(&n) {
+                return Err(format!(
+                    "{SETTING_MCP_APPROVAL_TIMEOUT} must be {}-{}, got {n}",
+                    MCP_APPROVAL_TIMEOUT_MIN_SECS, MCP_APPROVAL_TIMEOUT_MAX_SECS
+                ));
+            }
+            Ok(())
+        }
         SETTING_SHELL_INTEGRATION => bool_value(key, value),
         // 录制默认保存目录（字符串路径；空串 = 恢复默认；上限 1024 防误粘）
         SETTING_RECORDING_SAVE_DIR => match value {
@@ -175,7 +193,6 @@ pub fn validate_known_setting(
         }
         SETTING_SUDO_AUTOFILL => bool_value(key, value),
         // C1（Phase 4 Task 3）：MCP server 总开关（布尔；默认关）
-        SETTING_MCP_ENABLED => bool_value(key, value),
         // BL-205①：⌘R 历史保留行数上限（100..=1_000_000，见常量处注释）
         SETTING_HISTORY_LIMIT => {
             let n = value

@@ -137,17 +137,28 @@
   height: 100%;
 }
 
-/* 终端视口滚动条彻底隐藏（2026-10-13 用户再反馈「右侧两条粗滚动条太丑」，
- * 此前 8px 半透明方案在系统「滚动条常显」下仍是显眼白条且与分屏关闭钮
- * 叠在一处）：滚动条在终端里纯装饰——滚动走滚轮/PgUp/PgDn/⌘F 搜索，xterm
- * 缓冲与滚动位置不受影响。width/height 0（WebKit）+ scrollbar-width none
- * （标准属性）双保险，竖横两条一并消失。 */
+/* 终端滚动条根除（2026-10-13 用户三次反馈「两条粗滚动条」）。xterm 6 有
+   **两套**滚动条，必须一起藏：
+   1. 原生条（.xterm-viewport 的 overflow-y: scroll）——width/height 0 +
+      scrollbar-width none；0.9.3 起生效但用户仍见条 = 还有第 2 套：
+   2. xterm 6 内嵌的 VS Code 式自绘滚动条（.xterm-scrollable-element >
+      .scrollbar，DOM div 非 native，z-index 11、thumb ~14px 粗、滚动静置
+      可见）——0.9.3-0.9.5 一直在渲染，这才是用户截图里的粗柱子。
+   display none 只藏 UI 层：滚轮/PgUp/⌘F 搜索照常，缓冲不受影响。 */
 .session-term .xterm .xterm-viewport {
   scrollbar-width: none;
 }
 .session-term .xterm .xterm-viewport::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+.session-term .xterm .xterm-scrollable-element > .scrollbar {
+  display: none;
+}
+/* 自绘滚动条附带的上/左 inset 阴影装饰（`.shadow`）一并隐藏——左缘那条
+   3px 竖影在深色终端里看起来就是「又一条滚动条」。 */
+.session-term .xterm .xterm-scrollable-element > .shadow {
+  display: none;
 }
 
 /* 编码检测提示条（Task 9，A9）：detect_hint 命中后浮于终端顶部，不挤布局。
@@ -421,7 +432,11 @@
   position: absolute;
   top: 6px;
   right: 8px;
-  z-index: 3;
+  /* z-index 20 > xterm 6 自绘滚动条层的 11（.xterm-scrollable-element）：
+     该层是全 pane 覆盖，关闭钮曾被压在其下——看不见也点不到（用户三次
+     反馈「右边的 pane 没有关闭按钮」的真正根因；0.9.4 的提对比度治标
+     不治本）。 */
+  z-index: 20;
   width: 22px;
   height: 22px;
   display: flex;

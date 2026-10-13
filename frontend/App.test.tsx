@@ -204,7 +204,12 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
           grants_count: 0,
         });
       }
-      if (cmd === "mcp_grants_list" || cmd === "ar_list" || cmd === "nc_list") {
+      if (
+        cmd === "hosts_list" || cmd === "host_groups_list" || cmd === "credentials_list" ||
+        cmd === "jc_list" || cmd === "mcp_grants_list" || cmd === "ar_list" ||
+        cmd === "nc_list" || cmd === "snippets_list" || cmd === "pf_list" ||
+        cmd === "cj_list"
+      ) {
         return Promise.resolve([]);
       }
       return Promise.resolve(null);

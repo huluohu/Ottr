@@ -129,11 +129,11 @@ async fn connect_with_retry(
 /// 退出（管道无半关；unix 的 Shutdown 写端礼貌形态不适用于本端，见文件头）。
 #[cfg(windows)]
 async fn pump_async(pipe: tokio::net::windows::named_pipe::NamedPipeClient) {
-    use tokio::io::{AsyncWriteExt, Stdin, Stdout};
+    use tokio::io::AsyncWriteExt;
 
     let (mut pipe_read, mut pipe_write) = tokio::io::split(pipe);
-    let mut stdin = Stdin::default();
-    let mut stdout = Stdout::default();
+    let mut stdin = tokio::io::stdin();
+    let mut stdout = tokio::io::stdout();
 
     let up = async move {
         let mut buf = vec![0u8; 8192];
@@ -315,26 +315,5 @@ fn parse_args() -> std::path::PathBuf {
             println!("usage: ottr-mcp --pipe <\\\\.\\pipe\\name>");
             exit(2);
         }
-    }
-}
-
-/// 带重试的连接（App 正在启动时首个管道实例可能还没建好；总窗 10s；
-/// ERROR_PIPE_BUSY 的实例内等待已在 PipeStream::connect 内部处理）。
-#[cfg(windows)]
-fn connect_with_retry(pipe: &std::path::PathBuf) -> Result<pipe::PipeStream, String> {
-    let deadline = std::time::Instant::now() + CONNECT_TIMEOUT;
-    loop {
-        match pipe::PipeStream::connect(&pipe.to_string_lossy()) {
-            Ok(s) => return Ok(s),
-            Err(e) => {
-                if std::time::Instant::now() >= deadline {
-                    return Err(format!(
-                        "{e} (retry window {}s exhausted)",
-                        CONNECT_TIMEOUT.as_secs()
-                    ));
-                }
-            }
-        }
-        std::thread::sleep(RETRY_INTERVAL);
     }
 }

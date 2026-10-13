@@ -218,7 +218,7 @@ async fn mcp_flow(handle: tokio::runtime::Handle) {
         .expect("create pipe listener");
 
     // --- MCP 客户端全流程（经 relay 子进程）---
-    let client = RelayClient::spawn(&pipe);
+    let mut client = RelayClient::spawn(&pipe);
 
     // initialize：协议头 + serverInfo
     let init = client.roundtrip(1, "initialize", r#"{"protocolVersion":"2024-11-05"}"#);

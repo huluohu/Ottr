@@ -1,9 +1,10 @@
-// MonitorSidebar 组件测试（Phase 3 Task 1 Step 3）：折叠开合（localStorage
-// 记忆）/ live 数据渲染（数值 + 图）/ 四态文案（off/unsupported/stopped/waiting）。
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+// MonitorPanel 组件测试（2026-10-13 改造自 MonitorSidebar）：live 数据渲染
+// （数值 + 图）/ 四态文案（off/unsupported/stopped/waiting）。rail/开合记忆
+// 已随「终端右栏折叠竖条」退役（面板改经 ToolDialog 打开，壳提供标题与 ✕）。
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "../i18n";
-import { MonitorSidebar, formatRate, formatMemKB } from "./MonitorSidebar";
+import { MonitorPanel, formatRate, formatMemKB } from "./MonitorSidebar";
 import { useMonitorStore, type MonitorMetrics } from "./monitorStore";
 
 function metrics(over: Partial<MonitorMetrics> = {}): MonitorMetrics {
@@ -42,36 +43,14 @@ function seedLive(id = "pty-1") {
 }
 
 beforeEach(() => {
-  localStorage.clear();
   useMonitorStore.setState({ windows: {} });
 });
 afterEach(cleanup);
 
-describe("collapse/expand", () => {
-  it("defaults to collapsed rail and remembers open state", () => {
-    const { rerender } = render(<MonitorSidebar rustId="pty-1" enabled />);
-    expect(screen.getByTestId("monitor-rail")).toBeTruthy();
-    expect(screen.queryByTestId("monitor-sidebar")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("monitor-rail"));
-    expect(screen.getByTestId("monitor-sidebar")).toBeTruthy();
-    expect(localStorage.getItem("ottr.monitor.sidebarOpen")).toBe("1");
-
-    // 重挂载走 localStorage 初始值
-    rerender(<MonitorSidebar rustId="pty-1" enabled />);
-    expect(screen.getByTestId("monitor-sidebar")).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId("monitor-collapse"));
-    expect(screen.queryByTestId("monitor-sidebar")).toBeNull();
-    expect(localStorage.getItem("ottr.monitor.sidebarOpen")).toBe("0");
-  });
-});
-
-describe("data face", () => {
+describe("MonitorPanel（数据面）", () => {
   it("renders live metrics values and sparklines", () => {
     seedLive();
-    render(<MonitorSidebar rustId="pty-1" enabled />);
-    fireEvent.click(screen.getByTestId("monitor-rail"));
+    render(<MonitorPanel rustId="pty-1" enabled />);
     const values = screen.getAllByTestId("monitor-metric-value").map((el) => el.textContent);
     expect(values).toEqual(["42%", "61% · 3.6 GB", "30%", "1.25", "↓ 4.0 KB/s ↑ 512 B/s"]);
     expect(screen.getAllByTestId("monitor-metric").length).toBe(5);
@@ -79,14 +58,12 @@ describe("data face", () => {
   });
 
   it("shows waiting face for enabled host without samples", () => {
-    render(<MonitorSidebar rustId="pty-1" enabled />);
-    fireEvent.click(screen.getByTestId("monitor-rail"));
+    render(<MonitorPanel rustId="pty-1" enabled />);
     expect(screen.getByTestId("monitor-waiting")).toBeTruthy();
   });
 
   it("shows off face when host monitoring disabled", () => {
-    render(<MonitorSidebar rustId="pty-1" enabled={false} />);
-    fireEvent.click(screen.getByTestId("monitor-rail"));
+    render(<MonitorPanel rustId="pty-1" enabled={false} />);
     expect(screen.getByTestId("monitor-off")).toBeTruthy();
   });
 
@@ -94,24 +71,25 @@ describe("data face", () => {
     useMonitorStore.setState({
       windows: { "pty-9": { status: "unsupported" } } as never,
     });
-    render(<MonitorSidebar rustId="pty-9" enabled />);
-    fireEvent.click(screen.getByTestId("monitor-rail"));
+    render(<MonitorPanel rustId="pty-9" enabled />);
     expect(screen.getByTestId("monitor-unsupported")).toBeTruthy();
 
     cleanup();
-    localStorage.clear();
     useMonitorStore.setState({
       windows: { "pty-9": { status: "stopped" } } as never,
     });
-    render(<MonitorSidebar rustId="pty-9" enabled />);
-    fireEvent.click(screen.getByTestId("monitor-rail"));
+    render(<MonitorPanel rustId="pty-9" enabled />);
     expect(screen.getByTestId("monitor-stopped")).toBeTruthy();
   });
 
   it("renders with rustId null (disconnected) as waiting/off", () => {
-    render(<MonitorSidebar rustId={null} enabled />);
-    fireEvent.click(screen.getByTestId("monitor-rail"));
+    render(<MonitorPanel rustId={null} enabled />);
     expect(screen.getByTestId("monitor-waiting")).toBeTruthy();
+  });
+
+  it("无 rail 残留（折叠竖条已退役，回归钉 2026-10-13）", () => {
+    render(<MonitorPanel rustId="pty-1" enabled />);
+    expect(screen.queryByTestId("monitor-rail")).toBeNull();
   });
 });
 

@@ -37,8 +37,6 @@ import { TerminalArea } from "../terminal/Terminal";
 import { FilePanel } from "../files/FilePanel";
 import { ProcessBrowser } from "../monitor/ProcessBrowser";
 import { DiagnosePanel } from "../ai/DiagnosePanel";
-import { MonitorSidebar } from "../monitor/MonitorSidebar";
-import { PluginSidebar } from "../plugins/PluginSidebar";
 import { RecordToggle } from "../history/RecordToggle";
 import { OverviewPage } from "../monitor/OverviewPage";
 import { BatchPanel } from "../batch/BatchPanel";
@@ -246,18 +244,7 @@ export function MainArea({
         {slotView !== null ? (
           slotPane
         ) : (
-          termViewActive && (
-            <>
-              <DiagnosePanel onOpenSettings={onOpenAiSettings} />
-              <MonitorSidebar
-                rustId={rootSession?.rustId ?? null}
-                enabled={
-                  hosts.find((h) => h.id === rootSession?.hostId)?.monitor_enabled ?? false
-                }
-              />
-              <PluginSidebar rustId={rootSession?.rustId ?? null} />
-            </>
-          )
+          termViewActive && <DiagnosePanel onOpenSettings={onOpenAiSettings} />
         )}
       </div>
       {filesVisible && rootSession && <FilePanel session={rootSession} />}

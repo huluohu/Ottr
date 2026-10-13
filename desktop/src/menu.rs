@@ -268,6 +268,20 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Tools"
             }
         }
+        "tool_monitor" => {
+            if zh {
+                "监控"
+            } else {
+                "Monitor"
+            }
+        }
+        "tool_plugins" => {
+            if zh {
+                "插件"
+            } else {
+                "Plugins"
+            }
+        }
         "tool_notify_center" => {
             if zh {
                 "通知中心"
@@ -418,10 +432,12 @@ pub const THEME_IDS: [&str; 7] = [
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
-pub const TOOL_KEYS: [&str; 12] = [
+pub const TOOL_KEYS: [&str; 14] = [
     "cron",
     "alerts",
     "mcp",
+    "monitor",
+    "plugins",
     "notify-center",
     "forwards",
     "jump-chains",
@@ -587,6 +603,16 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.mcp",
                     label: text(lang, "tool_mcp"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.monitor",
+                    label: text(lang, "tool_monitor"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.plugins",
+                    label: text(lang, "tool_plugins"),
                     accelerator: None,
                 },
                 MenuNode::Item {

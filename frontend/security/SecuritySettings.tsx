@@ -855,6 +855,9 @@ export function SecuritySettings({
               </button>
             ))}
           </div>
+          {/* 幻紫/雾镜同为紫调暗色主题，选择卡看不出差别（2026-10-13 用户问询）：
+              网格下一行说明差异本体（实色 vs 真透明）。 */}
+          <p className="settings-hint">{t("settings.themeAmethystGlassHint")}</p>
           {/* --- 终端配色（B2 主题生态，Phase 2 Task 9）：auto 跟随界面 /
               内置画廊 / 自定义（iTerm2 .itermcolors 与 Windows Terminal .json
               导入，vault settings 持久化）--- */}

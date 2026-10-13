@@ -18,7 +18,7 @@ mod relay;
 mod shell_integration;
 
 pub(crate) use attach::{
-    attach_host_session, attach_session, disconnect_all_inner, drop_session, quit_app,
+    app_restart, attach_host_session, attach_session, disconnect_all_inner, drop_session, quit_app,
     session_disconnect_all,
 };
 pub(crate) use hostkey::{host_key_decision, tofu_host_key_policy};
@@ -28,11 +28,13 @@ pub use shell_integration::{ShellIntegrationOutcome, inject_shell_integration};
 
 // Tauri 命令宏（#[tauri::command] 生成的隐藏 __cmd__ 项）定义在各子模块，
 // generate_handler 按 `commands::session::<name>` 前缀解析时需一并再导出。
+pub(crate) use attach::__cmd__app_restart;
 pub(crate) use attach::__cmd__attach_host_session;
 pub(crate) use attach::__cmd__attach_session;
 pub(crate) use attach::__cmd__drop_session;
 pub(crate) use attach::__cmd__quit_app;
 pub(crate) use attach::__cmd__session_disconnect_all;
+pub(crate) use attach::__tauri_command_name_app_restart;
 pub(crate) use attach::__tauri_command_name_attach_host_session;
 pub(crate) use attach::__tauri_command_name_attach_session;
 pub(crate) use attach::__tauri_command_name_drop_session;

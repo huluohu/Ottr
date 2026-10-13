@@ -25,6 +25,10 @@ interface UpdateState {
   checkForUpdate: () => Promise<void>;
   /** 下载并安装（available 态消费）。 */
   downloadAndInstall: () => Promise<void>;
+  /** 立即重启（installed 态消费，2026-10-13）：Rust app_restart 走
+   * AppHandle::restart——spawn 新实例后当前进程退出，invoke 永不 resolve
+   * 是预期形态；非 Tauri 环境静默忽略。 */
+  restartNow: () => void;
 }
 
 export const useUpdateStore = create<UpdateState>()((set, get) => ({
@@ -69,5 +73,10 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     } catch (e) {
       set({ phase: { kind: "error", message: e instanceof Error ? e.message : String(e) } });
     }
+  },
+  restartNow: () => {
+    import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke("app_restart"))
+      .catch(() => {});
   },
 }));

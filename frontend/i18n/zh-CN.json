@@ -71,6 +71,7 @@
       "verdant": "青野",
       "glass": "雾镜"
     },
+    "themeAmethystGlassHint": "幻紫与雾镜同为紫调暗色主题：幻紫是实色背景；雾镜的背景半透明，透出窗口后的桌面模糊（Linux 无系统模糊时自动提近实底）。",
     "terminalFont": "终端字体",
     "terminalFontDefault": "系统默认",
     "terminalFontSize": "终端字号",
@@ -1198,7 +1199,8 @@
     "downloadInstall": "下载并安装",
     "downloading": "正在下载…",
     "downloadingOf": "正在下载… {{received}}/{{total}} KB",
-    "installed": "安装完成。退出 Ottr 并重新打开即生效。"
+    "installed": "安装完成，重启 Ottr 以生效。",
+    "restartNow": "立即重启"
   },
   "home": {
     "tagline": "选一台主机，开始下潜。",

@@ -11,13 +11,22 @@
 //   已是最新 / 出错 → toast 结果；
 //   发现新版 → toast 内「下载并安装」按钮（15s 决策窗；点击就地下载，
 //   2026-10-10「绝不自动一条龙」裁定保持——下载仍须显式点击）→ 下载安静
-//   （进度不逐条播报）→ 完成提示「退出重开即生效」。
+//   （进度不逐条播报）→ 完成提示 toast 内「立即重启」（15s 决策窗；
+//   2026-10-13 用户需求：安装完成不再要求手动退出重开）。
 // 设置 → 关于 的 UpdateCheck 面板（完整进度 UX）不受影响，两者同源同状态。
 import { showToast } from "../ui/toastStore";
 import i18n from "../i18n";
 import { useUpdateStore } from "./updateStore";
 
 let flowActive = false;
+
+/** 安装完成 toast（两处终态汇合：检查直达 / toast 内下载）统一带「立即重启」。 */
+function installedToast(t: (key: string) => string): void {
+  showToast(t("update.installed"), "info", {
+    label: t("update.restartNow"),
+    run: () => useUpdateStore.getState().restartNow(),
+  }, 15000);
+}
 
 export function runUpdateCheckToasts(): void {
   if (flowActive) return; // 单飞：进行中的重复触发（连点/多入口）一律忽略
@@ -39,7 +48,7 @@ export function runUpdateCheckToasts(): void {
         run: startInstallToasts,
       }, 15000);
     } else if (k === "installed") {
-      showToast(t("update.installed"), "info");
+      installedToast(t);
     } else if (k === "error") {
       showToast(s.phase.message, "error");
     }
@@ -55,7 +64,7 @@ function startInstallToasts(): void {
     const k = s.phase.kind;
     if (k === "downloading") return;
     unsub();
-    if (k === "installed") showToast(t("update.installed"), "info");
+    if (k === "installed") installedToast(t);
     else if (k === "error") showToast(s.phase.message, "error");
   });
   void useUpdateStore.getState().downloadAndInstall();

@@ -239,6 +239,8 @@ pub fn run() {
             commands::encoding::set_session_encoding,
             commands::session::drop_session,
             commands::session::quit_app,
+            // 应用重启（2026-10-13）：更新安装完成后「立即重启」入口。
+            commands::session::app_restart,
             menu::menu_set_theme,
             menu::menu_set_notify_count,
             menu::menu_set_tray_status,

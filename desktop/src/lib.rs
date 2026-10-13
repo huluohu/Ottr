@@ -454,6 +454,8 @@ pub fn run() {
             // 指纹巡检（Phase 3 Task 6，B9 收口；模块 hostkey_audit.rs）
             hostkey_audit::known_hosts_probe,
             hostkey_audit::known_hosts_audit_run,
+            // 巡检状态面（2026-10-13「Windows 静默空转」修复的设置页可见面）
+            hostkey_audit::hostkey_audit_status,
             vault::import_ssh_config,
             vault::import_hosts_csv,
             vault::export_hosts_csv,

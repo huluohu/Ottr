@@ -6,10 +6,10 @@
 // * 手动锁定按钮（password 模式；Task 14 快捷键接 vault_lock 同一命令）；
 // * 外观（主题网格）/语言两项沿用 T2 词典键——persist 已迁 vault settings
 //   （ThemeContext / i18n index 负责读写，本页只触发 setMode/setLang）。
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
-import { vaultApi, type ReencryptProgress } from "../vault/api";
+import { vaultApi, type HostKeyAuditStatus, type ReencryptProgress } from "../vault/api";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import {
   AUTO_TERMINAL_THEME_ID,
@@ -98,7 +98,6 @@ const HOSTKEY_AUDIT_CHOICES = [3_600, 21_600, 86_400, 604_800] as const;
 
 const SETTING_HOSTKEY_AUDIT = "security.hostkey_audit_enabled";
 const SETTING_HOSTKEY_AUDIT_INTERVAL = "security.hostkey_audit_interval_secs";
-
 type WizardStep = "password" | "progress" | "done";
 
 export function SecuritySettings({
@@ -158,6 +157,39 @@ export function SecuritySettings({
   // B9（Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关（默认关；开启须确认框）。
   const [hostkeyAudit, setHostkeyAudit] = useState<boolean | null>(null);
   const [hostkeyAuditInterval, setHostkeyAuditInterval] = useState<number | null>(null);
+  // 巡检状态可见面（2026-10-13「Windows 静默空转」修复）：hostkey_audit_status
+  // 快照 + 手动巡检 in-flight 位。null = 尚未拉到（非 Tauri 环境）。
+  const [hostkeyStatus, setHostkeyStatus] = useState<HostKeyAuditStatus | null>(null);
+  const [hostkeyAuditRunning, setHostkeyAuditRunning] = useState(false);
+  // 状态行文案：工具缺席 > 未巡检 > 最近一轮（时刻 + 检查/变更计数）
+  const hostkeyStatusText = (() => {
+    const last = hostkeyStatus?.last ?? null;
+    if (last === null) return t("security.hostkeyStatusNever");
+    if (!last.available) return t("security.hostkeyStatusUnavailable");
+    const when = new Date(last.at * 1000).toLocaleString();
+    return `${t("security.hostkeyStatusLast")} ${when} · ${t("security.hostkeyStatusResult", { checked: last.checked, changed: last.changed })}`;
+  })();
+  const refreshHostkeyAuditStatus = useCallback(() => {
+    // Promise.resolve 兜底：测试 mock 对未列命令返回 undefined（非 thenable）
+    void Promise.resolve(vaultApi.knownHosts.auditStatus())
+      .then(setHostkeyStatus)
+      .catch(() => {});
+  }, []);
+  const runHostkeyAuditNow = useCallback(async () => {
+    setHostkeyAuditRunning(true);
+    try {
+      await vaultApi.knownHosts.auditRun();
+    } catch (e) {
+      // 不可用（如 Windows 缺 ssh-keyscan）：错误经状态行 + 常驻提示可见
+      console.warn("[hostkey] audit run failed:", e);
+    }
+    try {
+      setHostkeyStatus(await vaultApi.knownHosts.auditStatus());
+    } catch {
+      // 状态拉取失败不打断（提示行保持旧值）
+    }
+    setHostkeyAuditRunning(false);
+  }, []);
   const [sudoAutofill, setSudoAutofill] = useState<boolean | null>(null);
   const [sudoConfirm, setSudoConfirm] = useState(false);
   // 分区导航当前面板（默认安全——对话框的历史主区）。
@@ -169,7 +201,8 @@ export function SecuritySettings({
     getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(null));
-  }, [open]);
+    refreshHostkeyAuditStatus();
+  }, [open, refreshHostkeyAuditStatus]);
   // 关闭交互统一（2026-10-08）：Esc = 右上 X 等价；sudo 确认子层打开时先收
   // 子层（Esc 逐层退出，不跨层关闭整个面板）——consumeSubLayer 口径。
   useEscClose(open, onClose, () => {
@@ -648,9 +681,30 @@ export function SecuritySettings({
                 const on = e.currentTarget.checked;
                 setHostkeyAudit(on);
                 void saveSetting(SETTING_HOSTKEY_AUDIT, on);
+                if (on) void refreshHostkeyAuditStatus();
               }}
             />
           </label>
+          {/* 巡检状态可见面（2026-10-13「Windows 静默空转」修复）：最近一轮
+              快照 / 工具缺席提示 + 立即巡检（known_hosts_audit_run 同一命令核） */}
+          <div className="settings-row" data-testid="hostkey-audit-status">
+            <span className="settings-hint" data-testid="hostkey-audit-status-text">
+              {hostkeyStatusText}
+            </span>
+            <button
+              type="button"
+              data-testid="hostkey-audit-run"
+              disabled={hostkeyAuditRunning}
+              onClick={() => void runHostkeyAuditNow()}
+            >
+              {hostkeyAuditRunning ? t("update.checking") : t("security.hostkeyAuditNow")}
+            </button>
+          </div>
+          {!hostkeyStatus?.keyscan_available && (
+            <p className="settings-hint" data-testid="hostkey-audit-unavailable-hint">
+              {t("security.hostkeyAuditUnavailableHint")}
+            </p>
+          )}
           {hostkeyAudit && (
             <label className="settings-row" data-testid="hostkey-audit-interval-row">
               <span className="settings-label">{t("security.hostkeyAuditInterval")}</span>

@@ -21,6 +21,7 @@
 //! [`known_hosts_audit_run`] 与调度器走同一条 [`audit_round`]，事件形状一致。
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -111,6 +112,86 @@ pub fn probe_endpoint(address: &str, port: u16) -> Result<Vec<String>, String> {
         .lines()
         .filter_map(keyscan_line_fingerprint)
         .collect())
+}
+
+// ---------------------------------------------------------------------------
+// 可用性（Windows 无 ssh-keyscan——巡检不可用要作为一等信号可见，2026-10-13）
+// ---------------------------------------------------------------------------
+
+/// ssh-keyscan 是否在本机 PATH 上。廉价探测：无参数 spawn（打印用法后非零
+/// 退出，无网络）——spawn 成功即可用，退出码无关紧要。
+pub fn keyscan_available() -> bool {
+    std::process::Command::new("ssh-keyscan")
+        .output()
+        .map(|_| true)
+        .unwrap_or(false)
+}
+
+/// 「巡检不可用」一次性告知的回合账本（episode 语义）：不可用且未告知 →
+/// 告知一次并记账；恢复可用 → 复位（再次不可用 = 新回合，再告知一次）。
+/// 静态位包装成结构体，回合语义可单测。
+pub struct UnavailabilityTracker {
+    notified: AtomicBool,
+}
+
+impl Default for UnavailabilityTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl UnavailabilityTracker {
+    pub const fn new() -> Self {
+        Self {
+            notified: AtomicBool::new(false),
+        }
+    }
+
+    /// available=false 且本回合未告知 → true（并记账）；available=true →
+    /// 复位并返回 false。调用方按 true 发通知。
+    pub fn notify_if_unavailable(&self, available: bool) -> bool {
+        if available {
+            self.notified.store(false, Ordering::Relaxed);
+            return false;
+        }
+        !self
+            .notified
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_err()
+    }
+}
+
+/// 最近一轮巡检的状态快照（设置页可见面 + serde 下发前端）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct AuditStatus {
+    /// 快照时刻（unix 秒）。
+    pub at: u64,
+    /// 实际探测端点数（不可用轮 = 0）。
+    pub checked: usize,
+    /// 判 changed 条数。
+    pub changed: usize,
+    /// 轮失败原因（探测全部失败/超时等）；None = 正常完成。
+    pub error: Option<String>,
+    /// ssh-keyscan 在本机是否可用（false = 巡检未真正执行）。
+    pub available: bool,
+}
+
+/// 纯记账：旧快照 + 本轮数据 → 新快照（静态位的可测内核）。
+pub fn record_status(
+    prev: &mut Option<AuditStatus>,
+    at: u64,
+    checked: usize,
+    changed: usize,
+    error: Option<String>,
+    available: bool,
+) {
+    *prev = Some(AuditStatus {
+        at,
+        checked,
+        changed,
+        error,
+        available,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +297,34 @@ pub async fn audit_round(vault: Arc<Vault>, app: &AppHandle) -> Result<AuditOutc
 /// 才跑，避免每次启动都出网）。
 static LAST_RUN_SECS: AtomicU64 = AtomicU64::new(0);
 
+/// 最近一轮状态快照（设置页 `hostkey_audit_status` 读取面）。
+static LAST_STATUS: Mutex<Option<AuditStatus>> = Mutex::new(None);
+
+/// 巡检不可用回合账本（调度器专用；episode 语义见结构体文档）。
+static UNAVAIL_TRACKER: UnavailabilityTracker = UnavailabilityTracker::new();
+
+/// 「巡检不可用」事件（前端 notify 管线：一次性 security 通知）。
+pub const HOSTKEY_AUDIT_UNAVAILABLE_EVENT: &str = "ottr://hostkey-audit-unavailable";
+
+fn record_last_status(
+    at: u64,
+    checked: usize,
+    changed: usize,
+    error: Option<String>,
+    available: bool,
+) {
+    let mut slot = LAST_STATUS.lock().unwrap();
+    record_status(&mut slot, at, checked, changed, error, available);
+}
+
+/// 设置页状态面：开关现值 + 最近一轮快照（None = 尚未巡检）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AuditStatusReport {
+    pub enabled: bool,
+    pub keyscan_available: bool,
+    pub last: Option<AuditStatus>,
+}
+
 /// 巡检轮 in-flight 守卫（M-1，fix round 1）：心跳 60s，端点一多单轮可能超
 /// 心跳——不守卫则上一轮未完下一跳又起一轮（自重叠双轮：重复出网 + 事件双发）。
 /// CAS 抢占，error 路径同样释放（defer 风格 guard）。
@@ -274,9 +383,30 @@ pub fn spawn_audit_scheduler(app: AppHandle) {
             let Some(_guard) = try_begin_round() else {
                 continue;
             };
+            // 可用性门（2026-10-13「Windows 静默空转」修复）：keyscan 缺席 =
+            // 巡检根本没法跑——记录状态 + 一次性告知（episode 去重），不推进
+            // LAST_RUN（工具恢复后下一心跳立即补跑，最长延迟 60s）。
+            let available = keyscan_available();
+            if !available {
+                record_last_status(
+                    now,
+                    0,
+                    0,
+                    Some("ssh-keyscan not found on PATH".into()),
+                    false,
+                );
+                if UNAVAIL_TRACKER.notify_if_unavailable(false) {
+                    let _ = app.emit(HOSTKEY_AUDIT_UNAVAILABLE_EVENT, ());
+                    eprintln!("[hostkey-audit] unavailable: ssh-keyscan missing (notified once)");
+                }
+                drop(_guard);
+                continue;
+            }
+            UNAVAIL_TRACKER.notify_if_unavailable(true); // 恢复可用：复位回合账
             match audit_round(state.0.clone(), &app).await {
                 Ok(o) => {
                     LAST_RUN_SECS.store(now, Ordering::Relaxed);
+                    record_last_status(now, o.checked, o.changed.len(), None, true);
                     if !o.changed.is_empty() {
                         eprintln!(
                             "[hostkey-audit] round done: {} checked, {} changed",
@@ -285,7 +415,10 @@ pub fn spawn_audit_scheduler(app: AppHandle) {
                         );
                     }
                 }
-                Err(e) => eprintln!("[hostkey-audit] round failed: {e}"),
+                Err(e) => {
+                    record_last_status(now, 0, 0, Some(e.clone()), true);
+                    eprintln!("[hostkey-audit] round failed: {e}");
+                }
             }
             drop(_guard); // 显式收尾（语义面；Drop 本可兜底）
         }
@@ -322,13 +455,44 @@ pub async fn known_hosts_audit_run(
     state: State<'_, VaultState>,
 ) -> Result<AuditOutcome, String> {
     state.0.ensure_unlocked().map_err(|e| e.to_string())?;
+    let available = keyscan_available();
+    if !available {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        record_last_status(
+            now,
+            0,
+            0,
+            Some("ssh-keyscan not found on PATH".into()),
+            false,
+        );
+        return Err("ssh-keyscan not found on PATH".into());
+    }
     let outcome = audit_round(state.0.clone(), &app).await?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
     LAST_RUN_SECS.store(now, Ordering::Relaxed);
+    record_last_status(now, outcome.checked, outcome.changed.len(), None, true);
     Ok(outcome)
+}
+
+/// 设置页状态面（开关 + 最近一轮快照；None = 本会话尚未巡检过）。
+#[tauri::command]
+pub fn hostkey_audit_status(state: State<'_, VaultState>) -> Result<AuditStatusReport, String> {
+    let enabled = Settings::get(&state.0, SETTING_HOSTKEY_AUDIT)
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    Ok(AuditStatusReport {
+        enabled,
+        keyscan_available: keyscan_available(),
+        last: LAST_STATUS.lock().unwrap().clone(),
+    })
 }
 
 #[cfg(test)]
@@ -527,5 +691,44 @@ mod tests {
         let g2 = try_begin_round();
         assert!(g2.is_some(), "Drop 释放后应可再抢");
         drop(g2); // 归还静态位，不污染后续测试
+    }
+    // --- 可用性回合账本 + 状态记账（2026-10-13 Windows 静默空转修复）---
+
+    #[test]
+    fn unavailability_tracker_notifies_once_per_episode() {
+        let t = UnavailabilityTracker::new();
+        // 可用态：永不告知，且复位回合
+        assert!(!t.notify_if_unavailable(true));
+        // 不可用 → 告知一次；连续不可用不再重复
+        assert!(t.notify_if_unavailable(false), "首次不可用必须告知");
+        assert!(!t.notify_if_unavailable(false), "同回合不得重复告知");
+        // 恢复可用（复位）→ 再次不可用 = 新回合，再告知一次
+        assert!(!t.notify_if_unavailable(true));
+        assert!(t.notify_if_unavailable(false), "新回合必须重新告知");
+    }
+
+    #[test]
+    fn record_status_roundtrip_and_error_path() {
+        let mut slot: Option<AuditStatus> = None;
+        assert!(slot.is_none(), "初始无快照 = 尚未巡检");
+        record_status(&mut slot, 1_000, 3, 1, None, true);
+        let st = slot.as_ref().unwrap();
+        assert_eq!(
+            (st.at, st.checked, st.changed, st.available),
+            (1_000, 3, 1, true)
+        );
+        assert_eq!(st.error, None);
+        // 不可用轮：checked/changed 归零 + error 记原因
+        record_status(
+            &mut slot,
+            2_000,
+            0,
+            0,
+            Some("ssh-keyscan not found on PATH".into()),
+            false,
+        );
+        let st = slot.as_ref().unwrap();
+        assert_eq!((st.checked, st.changed, st.available), (0, 0, false));
+        assert!(st.error.as_deref() == Some("ssh-keyscan not found on PATH"));
     }
 }

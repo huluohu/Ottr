@@ -1063,9 +1063,11 @@ export function SecuritySettings({
               <AISettings open embedded />
             </section>
 
-            {/* --- 关于（2026-10-10 第 7 分区）：关于信息卡 + 检查更新（自通用迁入；
-                四端「检查更新」入口 2026-10-13 起走 toast 就地更新，本面板为
-                完整进度 UX 的手动入口）--- */}
+            {/* --- 关于（2026-10-13 第 7 分区；v2 重排）：紧凑信息卡（名称+版本
+                一行、作者/许可/仓库元信息一行）+ 软件更新小节——原四行
+                label:value 表格的「产品」行零信息量、版本号与更新区重复，
+                用户反馈「别扭不协调」；检查更新（自通用迁入；四端入口走
+                toast 就地更新，本面板为完整进度 UX 的手动入口）--- */}
             <section
               role="tabpanel"
               aria-label={t("settings.sectionAbout")}
@@ -1073,33 +1075,24 @@ export function SecuritySettings({
               data-testid="about-section"
             >
               <h3>{t("settings.sectionAbout")}</h3>
-              <div className="settings-row">
-                <span className="settings-label">{t("settings.aboutProduct")}</span>
-                <span>Ottr</span>
-              </div>
-              {appVersion !== null && (
-                <div className="settings-row">
-                  <span className="settings-label">{t("settings.aboutVersion")}</span>
-                  <span data-testid="about-version">{appVersion}</span>
+              <div className="about-card" data-testid="about-card">
+                <div className="about-line">
+                  <span className="about-name">Ottr</span>
+                  {appVersion !== null && (
+                    <span className="about-version" data-testid="about-version">{appVersion}</span>
+                  )}
                 </div>
-              )}
-              <div className="settings-row">
-                <span className="settings-label">{t("settings.aboutAuthor")}</span>
-                <span>@huluohu</span>
+                <div className="about-meta">
+                  <span>@huluohu</span>
+                  <span aria-hidden="true">·</span>
+                  <span>MIT</span>
+                  <span aria-hidden="true">·</span>
+                  <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
+                    github.com/huluohu/Ottr
+                  </a>
+                </div>
               </div>
-              <div className="settings-row">
-                <span className="settings-label">{t("settings.aboutRepo")}</span>
-                <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
-                  github.com/huluohu/Ottr
-                </a>
-              </div>
-              <div className="settings-row">
-                <span className="settings-label">{t("settings.aboutLicense")}</span>
-                <span>MIT</span>
-              </div>
-              <div className="settings-row">
-                <span className="settings-label">{t("settings.softwareUpdate")}</span>
-              </div>
+              <div className="form-section-title">{t("settings.softwareUpdate")}</div>
               <UpdateCheck />
             </section>
           </div>

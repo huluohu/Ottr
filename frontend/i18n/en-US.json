@@ -28,11 +28,6 @@
     "sectionGeneral": "General",
     "sectionAi": "AI",
     "sectionAbout": "About",
-    "aboutProduct": "Product",
-    "aboutVersion": "Version",
-    "aboutAuthor": "Author",
-    "aboutRepo": "Repository",
-    "aboutLicense": "License",
     "softwareUpdate": "Software updates",
     "sectionLanguage": "Language",
     "theme": "Theme",
@@ -1193,7 +1188,6 @@
     }
   },
   "update": {
-    "currentVersion": "Current version",
     "check": "Check for updates",
     "checking": "Checking…",
     "upToDate": "You're up to date.",
@@ -1203,7 +1197,8 @@
     "downloadingOf": "Downloading… {{received}}/{{total}} KB",
     "installed": "Installed. Restart Ottr to apply.",
     "restartNow": "Restart Now",
-    "portableHint": "The portable build has no in-app updater — download a new portable package from GitHub Releases and replace the exe (the data folder is kept)."
+    "portableHint": "The portable build has no in-app updater — download a new portable package from GitHub Releases and replace the exe (the data folder is kept).",
+    "openDownloadPage": "Open download page"
   },
   "home": {
     "tagline": "Pick a host and dive in.",

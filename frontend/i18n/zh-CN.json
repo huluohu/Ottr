@@ -28,11 +28,6 @@
     "sectionGeneral": "通用",
     "sectionAi": "AI",
     "sectionAbout": "关于",
-    "aboutProduct": "产品",
-    "aboutVersion": "版本",
-    "aboutAuthor": "作者",
-    "aboutRepo": "仓库",
-    "aboutLicense": "许可",
     "softwareUpdate": "软件更新",
     "sectionLanguage": "语言",
     "theme": "主题",
@@ -1192,7 +1187,6 @@
     }
   },
   "update": {
-    "currentVersion": "当前版本",
     "check": "检查更新",
     "checking": "正在检查…",
     "upToDate": "已是最新版本。",
@@ -1202,7 +1196,8 @@
     "downloadingOf": "正在下载… {{received}}/{{total}} KB",
     "installed": "安装完成，重启 Ottr 以生效。",
     "restartNow": "立即重启",
-    "portableHint": "便携版不内置自动更新——请到 GitHub Releases 下载新的便携包，替换 exe 即可（data 文件夹保留）。"
+    "portableHint": "便携版不内置自动更新——请到 GitHub Releases 下载新的便携包，替换 exe 即可（data 文件夹保留）。",
+    "openDownloadPage": "打开下载页"
   },
   "home": {
     "tagline": "选一台主机，开始下潜。",

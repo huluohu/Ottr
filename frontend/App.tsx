@@ -450,7 +450,11 @@ function HomeLayout() {
       {/* A12：Win/Linux 自绘标题栏（decorations:false 的窗口壳；mac 不渲染走
           原生红绿灯 + 系统菜单栏）。动作收口同一 handleAction。 */}
       {PLATFORM !== "mac" && IS_TAURI && (
-        <TitleBar plat={PLATFORM} onAction={handleAction} />
+        <TitleBar
+          plat={PLATFORM}
+          onAction={handleAction}
+          onSnap={(layout) => invoke("window_snap", { layout }).catch(() => {})}
+        />
       )}
       <div className="app-body">
         {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树） +

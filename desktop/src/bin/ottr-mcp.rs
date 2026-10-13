@@ -76,8 +76,15 @@ impl Transport for std::os::unix::net::UnixStream {
 fn main() {
     eprintln!("ottr-mcp: starting");
     let endpoint = parse_args();
-    let stream = match connect_with_retry(&endpoint) {
-        Ok(s) => s,
+    // 两端同构 tokio overlapped：引擎侧本就是 tokio named pipe；客户端若用
+    // 同步 FFI 句柄，与 overlapped 服务端组合实测写挂死（89B 写入不返回，
+    // 2026-10-13 CI 诊断）——客户端同用 tokio = 与 tokio 文档模式一致。
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("relay runtime");
+    let pipe = match rt.block_on(connect_with_retry(&endpoint)) {
+        Ok(p) => p,
         Err(e) => {
             eprintln!(
                 "ottr-mcp: cannot connect to the Ottr app at {}: {e}; \
@@ -88,7 +95,75 @@ fn main() {
         }
     };
     eprintln!("ottr-mcp: connected to {}", endpoint.display());
-    pump(stream);
+    rt.block_on(pump_async(pipe));
+}
+
+/// 带重试的连接（App 正在启动时首个管道实例可能还没建好；总窗 10s）。
+#[cfg(windows)]
+async fn connect_with_retry(
+    pipe: &std::path::PathBuf,
+) -> Result<tokio::net::windows::named_pipe::NamedPipeClient, String> {
+    use tokio::net::windows::named_pipe::ClientOptions;
+
+    let name = pipe.to_string_lossy().into_owned();
+    let deadline = std::time::Instant::now() + CONNECT_TIMEOUT;
+    loop {
+        match ClientOptions::new().open(&name) {
+            Ok(p) => return Ok(p),
+            Err(e) => {
+                // ERROR_PIPE_BUSY（229/231 语义：无空闲实例）→ 稍后重试；
+                // 总窗耗尽报最后一条错误（现场最有诊断价值）。
+                if std::time::Instant::now() >= deadline {
+                    return Err(format!(
+                        "{e} (retry window {}s exhausted)",
+                        CONNECT_TIMEOUT.as_secs()
+                    ));
+                }
+            }
+        }
+        tokio::time::sleep(RETRY_INTERVAL).await;
+    }
+}
+
+/// 异步双拷贝泵：stdin → 管道写半，管道读半 → stdout。任一方向收线即整体
+/// 退出（管道无半关；unix 的 Shutdown 写端礼貌形态不适用于本端，见文件头）。
+#[cfg(windows)]
+async fn pump_async(pipe: tokio::net::windows::named_pipe::NamedPipeClient) {
+    use tokio::io::{AsyncWriteExt, Stdin, Stdout};
+
+    let (mut pipe_read, mut pipe_write) = tokio::io::split(pipe);
+    let mut stdin = Stdin::default();
+    let mut stdout = Stdout::default();
+
+    let up = async move {
+        let mut buf = vec![0u8; 8192];
+        loop {
+            let n = tokio::io::AsyncReadExt::read(&mut stdin, &mut buf).await?;
+            if n == 0 {
+                break; // 客户端 stdin 关闭
+            }
+            pipe_write.write_all(&buf[..n]).await?;
+            pipe_write.flush().await?;
+        }
+        Ok::<(), std::io::Error>(())
+    };
+    let down = async move {
+        let mut buf = vec![0u8; 8192];
+        loop {
+            let n = tokio::io::AsyncReadExt::read(&mut pipe_read, &mut buf).await?;
+            if n == 0 {
+                break; // 引擎侧断开
+            }
+            stdout.write_all(&buf[..n]).await?;
+            stdout.flush().await?;
+        }
+        Ok::<(), std::io::Error>(())
+    };
+    tokio::select! {
+        r = up => { if let Err(e) = r { eprintln!("ottr-mcp: up pump failed: {e}"); } }
+        r = down => { if let Err(e) = r { eprintln!("ottr-mcp: down pump failed: {e}"); } }
+    }
+    eprintln!("ottr-mcp: connection closed");
 }
 
 // stdin → 传输（客户端 → 引擎）。stdin 收线 = 半关写端，让引擎的回包排空
@@ -208,141 +283,6 @@ fn connect_with_retry(
         }
         std::thread::sleep(RETRY_INTERVAL);
     }
-}
-// ---------------------------------------------------------------------------
-// windows：命名管道（windows-sys 同步 FFI 客户端——零运行时依赖，维持薄
-// 管道形态）。字节模式管道，ReadFile/WriteFile 与 std 读写语义一致；
-// 常量就地声明（windows-sys 的常量也是裸 u32，本地声明省特性路径猜测）。
-// ---------------------------------------------------------------------------
-
-#[cfg(windows)]
-mod pipe {
-    use std::io::{self, Read, Write};
-    use windows_sys::Win32::Foundation::{
-        CloseHandle, DUPLICATE_SAME_ACCESS, DuplicateHandle, GetLastError, HANDLE,
-        INVALID_HANDLE_VALUE,
-    };
-    use windows_sys::Win32::Storage::FileSystem::{
-        CreateFileW, OPEN_EXISTING, ReadFile, WriteFile,
-    };
-    use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
-    use windows_sys::Win32::System::Threading::GetCurrentProcess;
-
-    const GENERIC_READ: u32 = 0x8000_0000;
-    const GENERIC_WRITE: u32 = 0x4000_0000;
-    const ERROR_PIPE_BUSY: u32 = 231;
-    /// WaitNamedPipeW 单次等待上限（ms）；总窗由外层 CONNECT_TIMEOUT 兜底。
-    const BUSY_WAIT_MS: u32 = 1000;
-
-    /// 命名管道连接（同步句柄；RAII = Drop CloseHandle）。
-    pub struct PipeStream(pub HANDLE);
-
-    impl Drop for PipeStream {
-        fn drop(&mut self) {
-            unsafe { CloseHandle(self.0) };
-        }
-    }
-
-    impl PipeStream {
-        /// 连接命名管道；ERROR_PIPE_BUSY 时 WaitNamedPipe 有界等待重试。
-        pub fn connect(name: &str) -> io::Result<PipeStream> {
-            let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
-            let deadline = std::time::Instant::now() + super::CONNECT_TIMEOUT;
-            loop {
-                let handle = unsafe {
-                    CreateFileW(
-                        wide.as_ptr(),
-                        GENERIC_READ | GENERIC_WRITE,
-                        0,
-                        std::ptr::null(),
-                        OPEN_EXISTING,
-                        0,
-                        0, // htemplatefile：HANDLE = isize（0.52 口径），空 = 0
-                    )
-                };
-                if handle != INVALID_HANDLE_VALUE {
-                    return Ok(PipeStream(handle));
-                }
-                let err = unsafe { GetLastError() };
-                if err == ERROR_PIPE_BUSY && std::time::Instant::now() < deadline {
-                    unsafe { WaitNamedPipeW(wide.as_ptr(), BUSY_WAIT_MS) };
-                    continue;
-                }
-                return Err(io::Error::from_raw_os_error(err as i32));
-            }
-        }
-
-        pub fn try_clone(&self) -> io::Result<PipeStream> {
-            let mut out: HANDLE = 0;
-            let ok = unsafe {
-                DuplicateHandle(
-                    unsafe { GetCurrentProcess() },
-                    self.0,
-                    unsafe { GetCurrentProcess() },
-                    &mut out,
-                    0,
-                    0,
-                    DUPLICATE_SAME_ACCESS,
-                )
-            };
-            if ok == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(PipeStream(out))
-        }
-    }
-
-    impl Read for PipeStream {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            let mut got: u32 = 0;
-            let len = buf.len().min(u32::MAX as usize) as u32;
-            let ok = unsafe {
-                ReadFile(
-                    self.0,
-                    buf.as_mut_ptr() as *mut u8,
-                    len,
-                    &mut got,
-                    std::ptr::null_mut(),
-                )
-            };
-            if ok == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(got as usize)
-        }
-    }
-
-    impl Write for PipeStream {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            let mut put: u32 = 0;
-            let len = buf.len().min(u32::MAX as usize) as u32;
-            let ok = unsafe {
-                WriteFile(
-                    self.0,
-                    buf.as_ptr() as *const u8,
-                    len,
-                    &mut put,
-                    std::ptr::null_mut(),
-                )
-            };
-            if ok == 0 {
-                return Err(io::Error::last_os_error());
-            }
-            Ok(put as usize)
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(()) // 字节模式管道无用户态缓冲
-        }
-    }
-}
-
-#[cfg(windows)]
-impl Transport for pipe::PipeStream {
-    fn try_clone(&self) -> std::io::Result<Self> {
-        pipe::PipeStream::try_clone(self)
-    }
-    // 管道无半关（见文件头【传输面】）；stdin 收线经 dead 标志 + 引擎侧
-    // 写失败感知收尾。
 }
 
 /// `--pipe <name>`（必填——管道名由 Ottr 设置页的配置生成器给出）。

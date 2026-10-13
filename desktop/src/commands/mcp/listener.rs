@@ -161,7 +161,11 @@ pub fn spawn_listener(
     std::thread::Builder::new()
         .name("mcp-listener".into())
         .spawn(move || {
-            let rt = match Builder::new_current_thread().enable_all().build() {
+            let rt = match Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+            {
                 Ok(rt) => rt,
                 Err(e) => {
                     eprintln!("[mcp] pipe runtime build failed: {e}");
@@ -223,9 +227,11 @@ async fn windows_accept_loop(
                         return;
                     }
                 };
+                eprintln!("[mcp] pipe conn accepted");
                 let engine = Arc::clone(&engine);
                 tokio::spawn(async move {
                     windows_conn_loop(conn, engine).await;
+                    eprintln!("[mcp] pipe conn closed");
                 });
             }
         }
@@ -261,6 +267,7 @@ async fn windows_conn_loop(
             eprintln!("[mcp] oversized frame; dropping connection");
             return;
         }
+        eprintln!("[mcp] frame {} bytes", line.len());
         let frame = line.clone();
         let eng = Arc::clone(&engine);
         // 协议核状态机随帧进出阻塞池（闭包归还 server，下一帧继续用）

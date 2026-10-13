@@ -58,11 +58,19 @@ impl RelayClient {
             .arg(pipe)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("spawn ottr-mcp relay (CARGO_BIN_EXE)");
         let stdin = child.stdin.take().expect("relay stdin");
         let stdout = child.stdout.take().expect("relay stdout");
+        let stderr = child.stderr.take().expect("relay stderr");
+        // relay stderr（连接诊断日志）转发到测试 stderr，失败时可读
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                eprintln!("[relay] {line}");
+            }
+        });
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
@@ -102,10 +110,15 @@ impl RelayClient {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         loop {
             let remain = deadline.saturating_duration_since(std::time::Instant::now());
-            let line = self
-                .responses
-                .recv_timeout(remain)
-                .expect("relay response timeout");
+            match self.responses.recv_timeout(remain) {
+                Ok(line) => line,
+                Err(timeout_err) => {
+                    let exit = self.child.try_wait().ok().flatten();
+                    panic!(
+                        "relay response timeout ({timeout_err:?}) for {method}: relay exit = {exit:?}"
+                    );
+                }
+            }
             let v: serde_json::Value = serde_json::from_str(&line).expect("valid json line");
             if v["id"] == serde_json::json!(id) {
                 return v;

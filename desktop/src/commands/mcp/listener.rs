@@ -259,7 +259,7 @@ async fn windows_conn_loop(
         // 「读挂死」）
         let n = match tokio::time::timeout(Duration::from_secs(10), conn.read(&mut buf)).await {
             Err(elapsed) => {
-                eprintln!("[mcp] read pending {}s", elapsed.as_secs());
+                eprintln!("[mcp] read pending (10s heartbeat)");
                 continue;
             }
             Ok(Ok(0)) => {

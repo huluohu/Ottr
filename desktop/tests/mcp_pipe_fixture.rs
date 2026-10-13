@@ -100,7 +100,7 @@ impl RelayClient {
     }
 
     /// 发请求并等响应行（id 对账；超时 = relay/引擎挂死，fail 而非悬死）。
-    fn roundtrip(&self, id: u64, method: &str, params: &str) -> serde_json::Value {
+    fn roundtrip(&mut self, id: u64, method: &str, params: &str) -> serde_json::Value {
         let frame = if params.is_empty() {
             format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"{method}"}}"#)
         } else {
@@ -128,7 +128,7 @@ impl RelayClient {
     }
 
     /// tools/call 快捷面 → (isError?, 结果 text 或 error.message)。
-    fn call_tool(&self, id: u64, name: &str, args: &str) -> (bool, String) {
+    fn call_tool(&mut self, id: u64, name: &str, args: &str) -> (bool, String) {
         let params = format!(r#"{{"name":"{name}","arguments":{args}}}"#);
         let v = self.roundtrip(id, "tools/call", &params);
         if let Some(err) = v["error"].as_object() {

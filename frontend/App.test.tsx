@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { invoke } from "@tauri-apps/api/core";
 import { useToastStore } from "./ui/toastStore";
 import { useSessionStore } from "./session/SessionStore";
+import { useCronStore } from "./cron/cronStore";
 import { leaf } from "./terminal/split";
 import { save } from "@tauri-apps/plugin-dialog";
 
@@ -364,10 +365,10 @@ describe("分屏动作去重（2026-10-14：菜单事件链路偶发双发防护
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     useSessionStore.setState({ sessions: [], activeId: null, trees: {} });
-    // cron store 复位（jobs 若被 pollution 成 null 会让后续用例崩在 jobs.length）
-    import("./cron/cronStore").then(({ useCronStore }) => {
-      useCronStore.setState({ jobs: [], error: null, live: {} });
-    });
+    // cron store 复位（同步！异步复位会泄漏到下一用例的 CronPanel 渲染期，
+    // CI 上曾以 jobs.length 崩溃——v0.9.10 首发流水线红）。
+    useCronStore.setState({ jobs: [], error: null, live: {} });
+    useWorkspaceStore.setState({ toolDialog: null });
   });
   it("同方向分屏事件 250ms 内重复 → 只分一次", async () => {
     useSessionStore.setState({

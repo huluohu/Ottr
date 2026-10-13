@@ -64,7 +64,8 @@ export function formatTime(ts: number | null): string {
 export function CronPanel({ open }: CronPanelProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
-  const jobs = useCronStore((s) => s.jobs);
+  // ?? []：refresh 竞态窗口 jobs 可能瞬时为 undefined/null——渲染面防御
+  const jobs = useCronStore((s) => s.jobs) ?? [];
   const live = useCronStore((s) => s.live);
   const storeError = useCronStore((s) => s.error);
   const refreshJobs = useCronStore((s) => s.refresh);

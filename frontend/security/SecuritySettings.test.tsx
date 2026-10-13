@@ -549,3 +549,25 @@ describe("SecuritySettings 主题网格（theme-suite T2）", () => {
     expect(preview.querySelectorAll("i").length).toBe(4);
   });
 });
+
+describe("定向分区消费（2026-10-13 修复：initialPane 此前从未被消费）", () => {
+  it("initialPane=ai 打开即落 AI 分区（工具菜单「AI 设置」回归钉）", () => {
+    render(
+      <ThemeProvider>
+        <SecuritySettings open initialPane="ai" onClose={() => {}} />
+      </ThemeProvider>,
+    );
+    expect((screen.getByTestId("ai-pane") as HTMLElement).hidden).toBe(false);
+    expect((screen.getByTestId("security-section") as HTMLElement).hidden).toBe(true);
+  });
+
+  it("initialPane=null = 默认安全区（原有语义不回退）", () => {
+    render(
+      <ThemeProvider>
+        <SecuritySettings open initialPane={null} onClose={() => {}} />
+      </ThemeProvider>,
+    );
+    expect((screen.getByTestId("security-section") as HTMLElement).hidden).toBe(false);
+    expect((screen.getByTestId("ai-pane") as HTMLElement).hidden).toBe(true);
+  });
+});

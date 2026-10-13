@@ -215,6 +215,11 @@ export function SecuritySettings({
       setTermFontSize(ts.fontSize ?? 13);
       return;
     }
+    // 定向分区消费（2026-10-13 修复）：initialPane 此前只有文档与依赖数组，
+    // 函数体从未 setPane——所有定向入口（工具菜单「AI 设置」/AI 诊断
+    // 「去设置」/同步「去设置」）都静默落在默认安全区（用户截图实锤）。
+    // null = 默认安全区（关闭时已重置，此处不额外翻页）。
+    if (initialPane !== null) setPane(initialPane);
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void (async () => {

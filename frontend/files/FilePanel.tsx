@@ -615,7 +615,7 @@ export function FilePanel({ session }: { session: Session }) {
               }}
             >
               <span className="file-icon" aria-hidden>
-                {e.is_dir ? "▸" : "·"}
+                <FileIcon kind={fileIconKind(e)} />
               </span>
               <span className="file-name" title={e.name}>
                 {e.name}
@@ -745,6 +745,109 @@ async function sftpListFor(rustId: string, path: string): Promise<DirEntry[]> {
   return sftpList(rustId, path);
 }
 
+// ---------------------------------------------------------------------------
+// 文件类型图标（2026-10-16 用户反馈：一列「·」分不出文件夹/文件/文本）。
+// 按扩展名启发式分五类——不做内容嗅探（SFTP 逐文件读头部太贵），扩展名覆盖
+// 日常面足够；未命中回落通用文件。
+// ---------------------------------------------------------------------------
+
+export type FileIconKind = "dir" | "text" | "image" | "archive" | "file";
+
+const TEXT_EXTS = new Set([
+  "txt", "md", "markdown", "log", "conf", "cfg", "ini", "env", "yaml", "yml",
+  "toml", "json", "xml", "html", "htm", "css", "scss", "less", "js", "mjs",
+  "cjs", "ts", "tsx", "jsx", "py", "rb", "rs", "go", "c", "h", "cpp", "hpp",
+  "java", "kt", "swift", "php", "pl", "sql", "sh", "bash", "zsh", "fish",
+  "lua", "vim", "service", "socket", "timer", "desktop", "properties",
+  "gitignore", "gitconfig", "gitattributes", "dockerfile", "makefile", "lock",
+  "csv", "tsv", "plist", "bat", "ps1", "diff", "patch", "srt", "lrc",
+  "readme", "license", "contributing", "changelog",
+]);
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp", "tiff", "tif", "heic", "avif"]);
+const ARCHIVE_EXTS = new Set(["zip", "tar", "gz", "tgz", "bz2", "xz", "zst", "7z", "rar", "dmg", "iso", "deb", "rpm", "apk", "jar"]);
+
+/** 条目 → 图标类别（纯函数；dotfile 去前导点再取扩展名，.gitignore/.env 归文本；
+ * 无点文件名整个当扩展名候选——README/LICENSE/Makefile 归文本，随机二进制不命中集合回落通用）。 */
+export function fileIconKind(entry: { name: string; is_dir: boolean }): FileIconKind {
+  if (entry.is_dir) return "dir";
+  const base = entry.name.replace(/^\./, "");
+  const dot = base.lastIndexOf(".");
+  const ext = (dot > 0 ? base.slice(dot + 1) : base).toLowerCase();
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (ARCHIVE_EXTS.has(ext)) return "archive";
+  if (TEXT_EXTS.has(ext)) return "text";
+  return "file";
+}
+
+/** 文件类型小图标（14px 线性，currentColor 随主题）。 */
+function FileIcon({ kind }: { kind: FileIconKind }) {
+  return (
+    <svg
+      className="file-svg-icon"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      data-icon={kind}
+    >
+      {kind === "dir" && (
+        <path d="M1.8 4.4c0-.8.6-1.4 1.4-1.4h2.9l1.5 1.7h5.2c.8 0 1.4.6 1.4 1.4v5.7c0 .8-.6 1.4-1.4 1.4H3.2c-.8 0-1.4-.6-1.4-1.4V4.4Z" />
+      )}
+      {kind === "text" && (
+        <>
+          <path d="M3.6 1.9h5.6l3.2 3.2v9H3.6v-12.2Z" />
+          <path d="M9.2 1.9v3.2h3.2" />
+          <path d="M5.6 8h4.8M5.6 10.2h4.8M5.6 12.4h3" />
+        </>
+      )}
+      {kind === "image" && (
+        <>
+          <rect x="2.2" y="2.6" width="11.6" height="10.8" rx="1.2" />
+          <circle cx="5.7" cy="6" r="1.1" />
+          <path d="m3 12.2 3.3-3.2 2.3 2.3 2.1-2.1 2.3 2.3" />
+        </>
+      )}
+      {kind === "archive" && (
+        <>
+          <path d="M3.6 1.9h5.6l3.2 3.2v9H3.6v-12.2Z" />
+          <path d="M6.4 1.9v2.6M8.4 1.9v2.6" />
+          <path d="M6.2 7.2h3.2v3.4H6.2V7.2Z" />
+        </>
+      )}
+      {kind === "file" && <path d="M3.6 1.9h5.6l3.2 3.2v9H3.6v-12.2Z" />}
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 权限九宫格（2026-10-16 用户反馈：裸八进制输入框不直观——参照经典 FTP 客户端
+// 的 所有者/组/其他 × 读/写/执行 复选矩阵，与八进制输入双向同步）。
+// ---------------------------------------------------------------------------
+
+/** POSIX 位序 9 元布尔（owner rwx / group rwx / other rwx，高位在前）。 */
+export function modeToPermBits(mode: number): boolean[] {
+  const m = mode & 0o777;
+  return Array.from({ length: 9 }, (_, i) => ((m >> (8 - i)) & 1) === 1);
+}
+
+/** 位 → mode（与 modeToPermBits 互逆）。 */
+export function permBitsToMode(bits: boolean[]): number {
+  return bits.reduce((acc, on, i) => acc + (on ? 1 << (8 - i) : 0), 0);
+}
+
+/** 八进制输入解析：0-3 位八进制数字，越界/含非八进制字符 = null（位不回写）。 */
+export function parseOctalMode(raw: string): number | null {
+  const s = raw.trim();
+  if (!/^[0-7]{1,3}$/.test(s)) return null;
+  const v = parseInt(s, 8);
+  return Number.isFinite(v) ? v : null;
+}
+
 /** mkdir/rename/chmod/delete 的小对话框（无 window.prompt——Tauri 不支持）。 */
 function PanelDialog({
   dialog,
@@ -756,14 +859,31 @@ function PanelDialog({
   onConfirm: (value: string) => void;
 }) {
   const { t } = useTranslation();
+  const isChmod = dialog.kind === "chmod";
+  const isDelete = dialog.kind === "delete";
   const [value, setValue] = useState(
     dialog.kind === "rename"
       ? (dialog.target?.name ?? "")
-      : dialog.kind === "chmod"
-        ? ((dialog.target?.mode ?? 0o644) & 0o777).toString(8).padStart(3, "0")
-        : "",
+      : "",
   );
-  const isDelete = dialog.kind === "delete";
+  // chmod 九宫格态：位与八进制输入双向同步（2026-10-16 用户反馈可视化）。
+  const [permBits, setPermBits] = useState<boolean[]>(() =>
+    modeToPermBits(dialog.target?.mode ?? 0o644),
+  );
+  const [octal, setOctal] = useState(() =>
+    ((dialog.target?.mode ?? 0o644) & 0o777).toString(8).padStart(3, "0"),
+  );
+  function setBitAt(i: number, on: boolean) {
+    const next = [...permBits];
+    next[i] = on;
+    setPermBits(next);
+    setOctal(permBitsToMode(next).toString(8).padStart(3, "0"));
+  }
+  function setFromOctal(raw: string) {
+    setOctal(raw);
+    const v = parseOctalMode(raw);
+    if (v !== null) setPermBits(modeToPermBits(v));
+  }
   // Esc 关闭统一交互（2026-10-09 断点清偿）：旧实现 Esc 只绑在改名 input 上，
   // delete/chmod 对话框无 input = 无 Esc 路径。input 自身的 Escape 分支移除
   // （避免双路径双触发，统一走本监听）。
@@ -776,6 +896,7 @@ function PanelDialog({
         : dialog.kind === "chmod"
           ? "files.dlg.chmodTitle"
           : "files.dlg.deleteTitle";
+  const submitValue = isChmod ? octal : value;
   return (
     <div className="overlay" role="presentation" onMouseDown={onClose}>
       <div
@@ -787,7 +908,56 @@ function PanelDialog({
         data-testid="file-dialog"
       >
         <h2>{t(titleKey, { name: dialog.target?.name ?? "" })}</h2>
-        {!isDelete && (
+        {isChmod && (
+          <div className="perm-editor" data-testid="perm-editor">
+            <table className="perm-matrix" data-testid="perm-matrix">
+              <thead>
+                <tr>
+                  <th scope="col" aria-hidden="true" />
+                  <th scope="col">{t("files.dlg.permRead")}</th>
+                  <th scope="col">{t("files.dlg.permWrite")}</th>
+                  <th scope="col">{t("files.dlg.permExec")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[t("files.dlg.permOwner"), t("files.dlg.permGroup"), t("files.dlg.permOthers")].map(
+                  (group, g) => (
+                    <tr key={group}>
+                      <th scope="row">{group}</th>
+                      {[0, 1, 2].map((p) => {
+                        const idx = g * 3 + p;
+                        return (
+                          <td key={p}>
+                            <input
+                              type="checkbox"
+                              checked={permBits[idx]}
+                              data-testid={`perm-bit-${idx}`}
+                              aria-label={`${group} ${permsLabel(t, p)}`}
+                              onChange={(e) => setBitAt(idx, e.currentTarget.checked)}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+            <label className="perm-octal">
+              <span>{t("files.dlg.permOctal")}</span>
+              <input
+                value={octal}
+                data-testid="perm-octal"
+                aria-label={t("files.dlg.permOctal")}
+                onChange={(e) => setFromOctal(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && parseOctalMode(octal) !== null) onConfirm(octal);
+                }}
+              />
+            </label>
+          </div>
+        )}
+        {!isDelete && !isChmod && (
           <input
             autoFocus
             value={value}
@@ -804,8 +974,8 @@ function PanelDialog({
           <button onClick={onClose}>{t("common.cancel")}</button>
           <button
             className={isDelete ? "btn-danger" : "btn-accent"}
-            disabled={!isDelete && !value}
-            onClick={() => onConfirm(isDelete ? "" : value)}
+            disabled={!isDelete && !submitValue}
+            onClick={() => onConfirm(isDelete ? "" : submitValue)}
             data-testid="file-dialog-confirm"
           >
             {isDelete ? t("common.delete") : t("common.ok")}
@@ -814,4 +984,9 @@ function PanelDialog({
       </div>
     </div>
   );
+}
+
+/** 列头权限名（读/写/执行）——aria 标签用，独立小函数免在 map 里闭包传参。 */
+function permsLabel(t: (k: string) => string, p: number): string {
+  return t(p === 0 ? "files.dlg.permRead" : p === 1 ? "files.dlg.permWrite" : "files.dlg.permExec");
 }

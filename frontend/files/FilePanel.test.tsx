@@ -14,7 +14,13 @@ vi.mock("@tauri-apps/api/webview", () => ({
 }));
 
 import "../i18n";
-import { FilePanel } from "./FilePanel";
+import {
+  FilePanel,
+  fileIconKind,
+  modeToPermBits,
+  parseOctalMode,
+  permBitsToMode,
+} from "./FilePanel";
 import { EDIT_POLL_MS, remoteEdits } from "./RemoteEdit";
 import type { Session } from "../session/SessionStore";
 
@@ -153,7 +159,7 @@ describe("FilePanel", () => {
     });
   });
 
-  it("右键远端条目出菜单；chmod 对话框回写 sftp_chmod（八进制）", async () => {
+  it("右键远端条目出菜单；chmod 九宫格与八进制双向联动，回写 sftp_chmod", async () => {
     mockListings();
     render(<FilePanel session={makeSession()} />);
     await waitFor(() => {
@@ -163,9 +169,23 @@ describe("FilePanel", () => {
     const menu = screen.getByTestId("file-ctx-menu");
     expect(menu.textContent).toContain('Change permissions of "big100"');
     fireEvent.click(screen.getByText(/Change permissions of "big100"/));
-    const input = screen.getByTestId("file-dialog-input") as HTMLInputElement;
-    expect(input.value).toBe("644");
-    fireEvent.change(input, { target: { value: "600" } });
+    // 九宫格初值 = 条目当前 mode 644：用户读写有、执行无（2026-10-16 可视化）。
+    const bit = (i: number) => screen.getByTestId(`perm-bit-${i}`) as HTMLInputElement;
+    expect(bit(0).checked, "用户-读").toBe(true);
+    expect(bit(1).checked, "用户-写").toBe(true);
+    expect(bit(2).checked, "用户-执行").toBe(false);
+    expect(bit(6).checked, "其他-读").toBe(true);
+    expect(bit(8).checked, "其他-执行").toBe(false);
+    const octal = screen.getByTestId("perm-octal") as HTMLInputElement;
+    expect(octal.value).toBe("644");
+    // 位 → 八进制：勾上用户执行 → 744。
+    fireEvent.click(bit(2));
+    expect(octal.value).toBe("744");
+    // 八进制 → 位：改 600 → 用户执行退、组/其他读全退。
+    fireEvent.change(octal, { target: { value: "600" } });
+    expect(bit(2).checked).toBe(false);
+    expect(bit(3).checked).toBe(false);
+    expect(bit(6).checked).toBe(false);
     mockedInvoke.mockResolvedValueOnce(undefined);
     fireEvent.click(screen.getByTestId("file-dialog-confirm"));
     await waitFor(() => {
@@ -404,3 +424,58 @@ function mockListingsDispatcher(_cmd: string, args: { path?: string }): Promise<
   }
   return Promise.resolve(undefined as unknown as never);
 }
+
+// 2026-10-16 用户反馈两件套：文件类型图标 + 权限九宫格的纯函数面。
+describe("文件类型图标与权限位纯函数", () => {
+  it("fileIconKind：目录/文本/图片/压缩包/通用五类；dotfile 去前导点取扩展名", () => {
+    expect(fileIconKind({ name: "src", is_dir: true })).toBe("dir");
+    expect(fileIconKind({ name: "notes.txt", is_dir: false })).toBe("text");
+    expect(fileIconKind({ name: "deploy.sh", is_dir: false })).toBe("text");
+    expect(fileIconKind({ name: ".gitignore", is_dir: false })).toBe("text");
+    expect(fileIconKind({ name: "photo.PNG", is_dir: false }), "扩展名大小写不敏感").toBe("image");
+    expect(fileIconKind({ name: "backup.tar.gz", is_dir: false })).toBe("archive");
+    expect(fileIconKind({ name: "ottr", is_dir: false }), "无扩展名二进制 = 通用").toBe("file");
+    expect(fileIconKind({ name: "weird.unknownext", is_dir: false })).toBe("file");
+  });
+
+  it("modeToPermBits / permBitsToMode 互逆：644 与 755", () => {
+    expect(modeToPermBits(0o644)).toEqual([
+      true, true, false,
+      true, false, false,
+      true, false, false,
+    ]);
+    expect(modeToPermBits(0o755)).toEqual([
+      true, true, true,
+      true, false, true,
+      true, false, true,
+    ]);
+    expect(permBitsToMode(modeToPermBits(0o644))).toBe(0o644);
+    expect(permBitsToMode(modeToPermBits(0o755))).toBe(0o755);
+    // 高位文件类型位（0o100644 的 0o100000）不进九宫格
+    expect(permBitsToMode(modeToPermBits(0o100644))).toBe(0o644);
+  });
+
+  it("parseOctalMode：合法 0-3 位八进制收下，越界/非八进制/空串拒收", () => {
+    expect(parseOctalMode("644")).toBe(0o644);
+    expect(parseOctalMode("7")).toBe(0o7);
+    expect(parseOctalMode(" 755 ")).toBe(0o755);
+    expect(parseOctalMode("")).toBeNull();
+    expect(parseOctalMode("99")).toBeNull();
+    expect(parseOctalMode("abc")).toBeNull();
+    expect(parseOctalMode("1777")).toBeNull();
+  });
+
+  it("行渲染带类型图标：目录 dir / 文本 text / 通用 file（data-icon 钉住）", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("big100");
+    });
+    const srcRow = screen.getByText("src").closest(".file-row") as HTMLElement;
+    expect(srcRow.querySelector('[data-icon="dir"]')).toBeTruthy();
+    const txtRow = screen.getByText("notes.txt").closest(".file-row") as HTMLElement;
+    expect(txtRow.querySelector('[data-icon="text"]')).toBeTruthy();
+    const bigRow = screen.getByText("big100").closest(".file-row") as HTMLElement;
+    expect(bigRow.querySelector('[data-icon="file"]')).toBeTruthy();
+  });
+});

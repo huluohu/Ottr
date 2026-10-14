@@ -209,6 +209,43 @@
   width: 1em;
   color: var(--fg-muted);
 }
+/* 类型小图标（2026-10-16 用户反馈）：目录/文本/图片/压缩包/通用文件五类，
+ * 14px 线性 SVG 随主题着色；目录微提亮一眼可辨。 */
+.file-icon .file-svg-icon {
+  display: block;
+}
+.file-icon [data-icon="dir"] {
+  color: var(--color-accent-border);
+}
+/* chmod 权限九宫格（2026-10-16 用户反馈可视化）：紧凑表 + 八进制联动行。 */
+.perm-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.perm-matrix {
+  border-collapse: collapse;
+}
+.perm-matrix th,
+.perm-matrix td {
+  padding: var(--space-1) var(--space-3);
+  text-align: center;
+  font-weight: 400;
+}
+.perm-matrix tbody th {
+  text-align: left;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.perm-octal {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.perm-octal input {
+  width: 5.5em;
+  font-family: var(--font-mono, monospace);
+}
 .file-name {
   flex: 1;
   min-width: 0;

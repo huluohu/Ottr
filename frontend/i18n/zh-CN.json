@@ -792,11 +792,12 @@
     "disk": "磁盘",
     "load": "负载",
     "net": "网络",
-    "off": "此主机未开启监控（主机表单 → 监控面板）。",
+    "off": "此主机未开启监控——在主机表单或总览页开启后即可采样。",
     "unsupported": "远端不支持监控（仅 Linux /proc）。",
-    "waiting": "等待采样…",
+    "waiting": "等待首次采样…（连接后每 5 秒只读采样一次）",
     "stopped": "采样已停止（会话丢失？）——重连后恢复。",
-    "monitorHint": "终端侧栏迷你图：CPU / 内存 / 磁盘 / 负载 / 网络。只读采样（cat /proc、df -k），默认每 5 秒一次。"
+    "disconnected": "还没有已连接的主机。监控显示当前连接主机的 CPU / 内存 / 磁盘 / 负载 / 网络——先连接一台主机，并在主机表单或总览页开启监控。",
+    "monitorHint": "只读采样当前连接的主机（cat /proc、df -k），默认每 5 秒一次；远端仅支持 Linux。"
   },
   "overview": {
     "title": "总览",
@@ -1029,13 +1030,13 @@
     "title": "MCP",
     "serverSection": "MCP Server",
     "enabled": "启用 MCP server",
-    "enabledHint": "经 stdio relay 把已授权主机以工具面暴露给本地 AI 客户端（如 Claude Desktop）。总开关默认关；先在此启用、再在下方面授权主机，主机才可见。",
+    "enabledHint": "经标准 MCP（stdio）把已授权主机以工具面暴露给本地 AI 客户端（Claude Desktop、Cursor 等）。总开关默认关；先在此启用、再在下方面授权主机，主机才可见。",
     "listening": "状态",
     "listeningOn": "监听中",
     "listeningOff": "已停止",
     "socketPath": "Socket",
-    "snippetToggle": "Claude Desktop 接入",
-    "snippetHint": "把下面的配置加入 claude_desktop_config.json（command 替换为 ottr-mcp 可执行文件的实际路径）：",
+    "snippetToggle": "客户端接入配置",
+    "snippetHint": "把下面的 mcpServers 配置加入任意支持 MCP 的客户端（Claude Desktop 即 claude_desktop_config.json；command 替换为 ottr-mcp 可执行文件的实际路径）：",
     "snippetUnavailable": "先启用 server 才能看到 socket 路径。",
     "snippetDocs": "MCP 客户端连接期间 Ottr 必须在运行。完整说明见 docs/mcp.md。",
     "grantsSection": "主机授权（默认全部拒收）",
@@ -1062,9 +1063,10 @@
     "title": "插件",
     "open": "打开插件侧栏",
     "close": "收起插件侧栏",
+    "intro": "插件以卡片和快捷命令扩展面板，当前为内置示例。",
     "net": {
       "title": "网络摘要",
-      "waiting": "等待采样…"
+      "waiting": "连接主机并开启监控后，这里显示当前网络吞吐。"
     },
     "quick": {
       "title": "快捷命令",

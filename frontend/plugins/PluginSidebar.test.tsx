@@ -60,6 +60,11 @@ describe("rail 退役回归钉（2026-10-13）", () => {
     expect(screen.queryByTestId("plugin-rail")).toBeNull();
     expect(screen.getByTestId("plugin-sidebar")).toBeTruthy();
   });
+
+  it("面板首行 = 插件机制说明（2026-10-14 用户反馈「插件怎么用」）", () => {
+    openPanel();
+    expect(screen.getByTestId("plugin-intro")).toBeTruthy();
+  });
 });
 
 describe("net-summary card", () => {

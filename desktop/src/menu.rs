@@ -412,8 +412,10 @@ pub enum MenuNode {
 }
 
 /// 主题七态 id（与前端 THEME_IDS 同序同值；快切菜单/设置网格/原生菜单三处共用）。
+/// 「跟随系统」首位（2026-10-14 用户反馈）：与设置网格/侧栏快切菜单一致——
+/// 系统推荐的缺省档排第一，具体主题跟在后。
 pub const THEME_IDS: [&str; 7] = [
-    "light", "dark", "system", "oled", "amethyst", "verdant", "glass",
+    "system", "light", "dark", "oled", "amethyst", "verdant", "glass",
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
@@ -514,9 +516,14 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Sep,
                 // 主题七选子菜单（2026-10-08 菜单栏启用批次）：与顶栏快切/
                 // 设置网格同源同词；勾选态经 menu_set_theme 跟随前端 mode。
+                // 「跟随系统」首位（2026-10-14 用户反馈，与 THEME_IDS 同序）。
                 MenuNode::Sub {
                     label: text(lang, "theme"),
                     items: vec![
+                        MenuNode::Check {
+                            id: "theme.set.system",
+                            label: text(lang, "theme_system"),
+                        },
                         MenuNode::Check {
                             id: "theme.set.light",
                             label: text(lang, "theme_light"),
@@ -524,10 +531,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                         MenuNode::Check {
                             id: "theme.set.dark",
                             label: text(lang, "theme_dark"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.system",
-                            label: text(lang, "theme_system"),
                         },
                         MenuNode::Check {
                             id: "theme.set.oled",

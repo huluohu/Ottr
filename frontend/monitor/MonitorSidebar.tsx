@@ -3,8 +3,10 @@
 //   滚动条、且压住分屏关闭钮）——现作为 ToolDialog 的 monitor 面板内容
 //   渲染（工具菜单/⌘K「监控」打开），入口与其余工具面板一致；
 // * 数据源 = useMonitorStore（rustId 分桶；rustId 变化 = 重连，窗口重来）；
-// * 状态面：host 未开启监控（off）→ 指引主机表单；远端非 Linux（unsupported）
-//   → 「不支持」；采样终止（stopped）→ 提示重连。连接中/无数据显示等待态；
+// * 状态面：未连接任何主机（disconnected）→ 说明前置条件；host 未开启监控
+//   （off）→ 指引主机表单/总览；远端非 Linux（unsupported）→「不支持」；
+//   采样终止（stopped）→ 提示重连。已连接且开启但无数据显示等待首采样；
+//   采样机制说明（只读/间隔/仅 Linux）常驻面板底部；
 // * 主题/i18n 纪律：色板走 App.css 令牌，文案全走 t()。
 import { useTranslation } from "react-i18next";
 import { Sparkline } from "./Sparkline";
@@ -49,8 +51,19 @@ function MetricRow({
   );
 }
 
-/** 状态面（非 live 的四态文案）。 */
-function StatusFace({ status, enabled }: { status: MonitorWindow["status"]; enabled: boolean }) {
+/** 状态面（非 live 的五态文案）：unsupported/stopped 按 store 状态；未连接
+ * （rustId = null）优先于未开启——「此主机未开启监控」对没连任何主机的场景
+ * 是误导（2026-10-14 用户反馈「等待采样…看不懂」：空态必须说清前置条件）。
+ * 已连接未开启 → off 指引；已连接已开启无数据 → 等待首采样。 */
+function StatusFace({
+  status,
+  enabled,
+  connected,
+}: {
+  status: MonitorWindow["status"];
+  enabled: boolean;
+  connected: boolean;
+}) {
   const { t } = useTranslation();
   if (status === "unsupported") {
     return (
@@ -63,6 +76,13 @@ function StatusFace({ status, enabled }: { status: MonitorWindow["status"]; enab
     return (
       <p className="monitor-state" data-testid="monitor-stopped">
         {t("monitor.stopped")}
+      </p>
+    );
+  }
+  if (!connected) {
+    return (
+      <p className="monitor-state" data-testid="monitor-disconnected">
+        {t("monitor.disconnected")}
       </p>
     );
   }
@@ -129,9 +149,13 @@ export function MonitorPanel({
         </div>
       ) : (
         <div className="monitor-body">
-          <StatusFace status={win?.status ?? "idle"} enabled={enabled} />
+          <StatusFace status={win?.status ?? "idle"} enabled={enabled} connected={rustId !== null} />
         </div>
       )}
+      {/* 机制说明常驻（2026-10-14 用户反馈「监控怎么用」）：采样口径一行说清。 */}
+      <p className="monitor-state" data-testid="monitor-hint">
+        {t("monitor.monitorHint")}
+      </p>
     </aside>
   );
 }

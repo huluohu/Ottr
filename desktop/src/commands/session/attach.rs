@@ -285,16 +285,109 @@ pub(crate) fn quit_app(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 应用重启（2026-10-13 用户需求）：检查更新「下载并安装」完成后立即生效——
-/// `AppHandle::restart` spawn 新实例再退当前进程（与 vault_reset 同一核），
-/// 本命令不返回，前端 invoke 永不 resolve 是预期形态。与单实例插件的交互
-/// 已备案（lib.rs：残留 socket 由新实例侧 NotFound/ConnectionRefused 兜底
-/// 清理，不误杀）。
+/// 应用重启（2026-10-13 用户需求）：检查更新「下载并安装」完成后立即生效。
+/// 本命令不返回，前端 invoke 永不 resolve 是预期形态。
+///
+/// macOS 特化（2026-10-16 用户报告「每次更新后要点一下 Dock 图标才见主页」）：
+/// `AppHandle::restart` 是**裸子进程**拉起——不经 LaunchServices，新实例拿不到
+/// 应用激活（窗口不上前/不成为 key），且在旧实例退出前的窗口期连接单实例
+/// socket 会被判为二开直接 `exit(0)`（插件源码 platform_impl/macos.rs：
+/// notify 成功即自尽）。改为：spawn 一个脱离的 `/bin/sh` 助手等旧 pid 消亡后
+/// `open <bundle>`——LaunchServices 拉起 = 系统级激活 + socket 已清，无双开
+/// 竞态；再 `app.exit(0)` 走正常退出清理（RunEvent::Exit → 单实例 socket 摘除
+/// → 远端编辑临时文件清扫）。
+/// 非 bundle 形态（dev 裸二进制，无 Contents/MacOS 祖先）没有可 open 的
+/// .app，回退 `AppHandle::restart`（dev 场景激活问题无感）。Win/Linux 的
+/// restart 子进程拉起本就随窗口创建自激活，保持原样（跨平台审计表随修复交付）。
 #[tauri::command]
 pub(crate) fn app_restart(app: AppHandle) -> Result<(), String> {
-    app.restart();
-    #[allow(unreachable_code)]
-    Ok(())
+    #[cfg(target_os = "macos")]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        if let Some(bundle) = macos_bundle_dir(&exe) {
+            let pid = std::process::id();
+            // 上限 200×0.1s：pid 若被即时复用为其他进程也不至于干等（届时
+            // open 的对象是正在消亡的旧实例，LaunchServices 会自行收敛）。
+            let script = format!(
+                "i=0; while kill -0 {pid} 2>/dev/null && [ $i -lt 200 ]; do sleep 0.1; i=$((i+1)); done; exec open {}",
+                sh_single_quote(&bundle.to_string_lossy()),
+            );
+            std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(&script)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            app.exit(0);
+            #[allow(unreachable_code)]
+            return Ok(());
+        }
+        app.restart();
+        #[allow(unreachable_code)]
+        return Ok(());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        app.restart();
+        #[allow(unreachable_code)]
+        Ok(())
+    }
+}
+
+/// 可执行文件路径 → 所属 .app bundle 目录（`…/Bundle.app/Contents/MacOS/bin`
+/// 的 bundle = `…/Bundle.app`）。裸二进制（dev 构建）返回 None。
+#[cfg(target_os = "macos")]
+fn macos_bundle_dir(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    for anc in exe.ancestors() {
+        if anc.file_name().is_some_and(|n| n == "MacOS") {
+            return anc
+                .parent()
+                .and_then(|c| c.parent())
+                .map(|p| p.to_path_buf());
+        }
+    }
+    None
+}
+
+/// POSIX 单引号包裹（路径含空格/中文时安全；内嵌单引号按 `'\''` 惯例转义）。
+#[cfg(target_os = "macos")]
+fn sh_single_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_restart_tests {
+    use super::*;
+
+    #[test]
+    fn bundle_dir_from_installed_app_path() {
+        let exe = std::path::Path::new("/Applications/Ottr.app/Contents/MacOS/ottr");
+        assert_eq!(
+            macos_bundle_dir(exe),
+            Some(std::path::PathBuf::from("/Applications/Ottr.app"))
+        );
+    }
+
+    #[test]
+    fn bundle_dir_none_for_bare_binary() {
+        let exe = std::path::Path::new("/Users/x/repo/target/debug/ottr");
+        assert_eq!(macos_bundle_dir(exe), None);
+    }
+
+    #[test]
+    fn shell_quote_plain_and_tricky() {
+        assert_eq!(
+            sh_single_quote("/Applications/Ottr.app"),
+            "'/Applications/Ottr.app'"
+        );
+        assert_eq!(
+            sh_single_quote("/Users/a b/Ötter.app"),
+            "'/Users/a b/Ötter.app'"
+        );
+        assert_eq!(sh_single_quote("it's.app"), r"'it'\''s.app'");
+    }
 }
 
 /// 断开全部会话（A12，Task 14）：托盘菜单「断开全部」的实现核。

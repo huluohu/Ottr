@@ -403,11 +403,7 @@ export function Sidebar({
                 type="button"
                 data-testid={`sidebar-theme-${id}`}
                 data-checked={themeMode === id}
-                onClick={() => {
-                  setMode(id);
-                  setMenu(null);
-                  setSub(null);
-                }}
+                onClick={() => setMode(id) /* 选中留场（2026-10-14 用户裁定：连续预览/切换），点外/Esc 才收 */}
               >
                 <span>{t(`settings.themes.${id}`)}</span>
                 {themeMode === id && (
@@ -424,11 +420,7 @@ export function Sidebar({
                 type="button"
                 data-testid={`sidebar-lang-${id}`}
                 data-checked={lang === id}
-                onClick={() => {
-                  setLang(id);
-                  setMenu(null);
-                  setSub(null);
-                }}
+                onClick={() => setLang(id) /* 选中留场，同主题子面板 */}
               >
                 <span>{id === "zh-CN" ? "中文" : "English"}</span>
                 {lang === id && (

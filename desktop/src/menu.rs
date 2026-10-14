@@ -1030,7 +1030,10 @@ pub(crate) fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// 托盘左键：主窗显示/隐藏切换（简报定值）。已显示 → 隐藏；否则显示+聚焦。
+/// 托盘左键：主窗显示/隐藏切换。已显示 → 隐藏；否则显示+聚焦。
+/// 仅 Win/Linux（mac 左键 2026-10-14 起改弹与右键相同的菜单，本函数随之
+/// 不再参与 mac 构建——差异显式声明于 on_tray_icon_event 注释）。
+#[cfg(not(target_os = "macos"))]
 fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
         if w.is_visible().unwrap_or(false) {
@@ -1214,15 +1217,18 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| match event {
-            // 右键（仅 macOS）= 原生 NSMenu 弹窗（muda 0.20 的
-            // setMenu+performClick 路径在本机 macOS 27 静默失效，见
-            // dock_menu.rs popup_tray_menu）；弹出位置 = 当前光标位置
-            // （popup_tray_menu 内读 NSEvent::mouseLocation——状态栏图标
-            // 可能被重排/折叠，事件坐标不可信，光标必然在图标上）。
-            // Win/Linux：muda 内建右键菜单正常，无需接管。
+            // 左键/右键（仅 macOS）= 同一原生 NSMenu 弹窗（2026-10-14 用户
+            // 裁定：左键单击弹与右键相同的菜单，原「左键切换主窗」在 mac
+            // 退役——窗口恢复走菜单「显示主窗」）。muda 0.20 的
+            // setMenu+performClick 路径在本机 macOS 27 静默失效（见
+            // dock_menu.rs popup_tray_menu），两键都走原生弹出；弹出位置 =
+            // 当前光标位置（popup_tray_menu 内读 NSEvent::mouseLocation——
+            // 状态栏图标可能被重排/折叠，事件坐标不可信，光标必然在图标上）。
+            // Win/Linux：右键 muda 内建菜单正常（builder on_menu_event 分派），
+            // 左键维持切换主窗（平台差异显式声明，见 PR 审计表）。
             #[cfg(target_os = "macos")]
             TrayIconEvent::Click {
-                button: MouseButton::Right,
+                button: MouseButton::Left | MouseButton::Right,
                 button_state: MouseButtonState::Up,
                 ..
             } => {
@@ -1233,6 +1239,7 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
                     tray_menu_action(app),
                 );
             }
+            #[cfg(not(target_os = "macos"))]
             TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,

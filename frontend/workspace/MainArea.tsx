@@ -190,7 +190,9 @@ export function MainArea({
   return (
     <main className="main-area terminal-mode" data-testid="main-area">
       <div className="tabbar-row" {...dragRegion}>
-        <TabBar />
+        {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
+            命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}
+        <TabBar dragRegion={dragRegion} />
         <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
           {!filesOnly && (
             <button

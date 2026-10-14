@@ -5,7 +5,15 @@
 import { useTranslation } from "react-i18next";
 import { useSessionStore, type Session } from "./SessionStore";
 
-export function TabBar() {
+export interface TabBarProps {
+  /** 融合式标题栏拖拽面延伸（mac 注入，MainArea 透传）：标签容器 flex:1
+   * 占满行内空档——不带 data-tauri-drag-region 属性则空档双击缩放/起拖
+   * 都落空（事件目标是本元素、属性检查不过，2026-10-16 用户反馈）。
+   * 只放容器本身：标签（子元素）点击语义不受影响。 */
+  dragRegion?: Record<string, unknown>;
+}
+
+export function TabBar({ dragRegion }: TabBarProps) {
   const { t } = useTranslation();
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
@@ -18,7 +26,7 @@ export function TabBar() {
   if (tabs.length === 0) return null;
 
   return (
-    <div className="tabbar" role="tablist" aria-label={t("tabs.list")}>
+    <div className="tabbar" role="tablist" aria-label={t("tabs.list")} {...dragRegion}>
       {tabs.map((session: Session) => (
         <div
           key={session.id}

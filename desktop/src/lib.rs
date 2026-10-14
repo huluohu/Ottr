@@ -487,6 +487,18 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             match event {
+                // 启动自激活兜底（2026-10-16「更新后要点一下 Dock 图标才见主页」
+                // 修复层二）：经 LaunchServices 启动时系统已激活，本调用幂等无害；
+                // 经裸子进程拉起（旧版 restart / 直接 exec 二进制）时补上应用激活
+                // ——tao 的 set_focus = makeKeyAndOrderFront + activateIgnoring-
+                // OtherApps，窗口上前并成为 key。注意：若未来加「启动隐藏到托盘」
+                // 类特性，此处 show 须按该开关让位。
+                // cfg 门：修的是 mac 的激活模型；Win/Linux 子进程拉起本就随窗口
+                // 创建自激活，保持启动路径零改动（跨平台审计表随修复交付）。
+                tauri::RunEvent::Ready => {
+                    #[cfg(target_os = "macos")]
+                    menu::show_main_window(app);
+                }
                 // App 退出清理（Phase 2 Task 3）：编辑临时目录随进程收尾。
                 // RunEvent::Exit 对 quit_app / 菜单退出 / 正常退出路径统一触发；
                 // 异常死亡的漏网残留由 24h 惰性清扫兜底（remote_edit 模块文档）。

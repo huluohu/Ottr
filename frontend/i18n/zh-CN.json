@@ -66,7 +66,7 @@
       "verdant": "青野",
       "glass": "雾镜"
     },
-    "themeAmethystGlassHint": "幻紫与雾镜同为紫调暗色主题：幻紫是实色背景；雾镜的背景半透明，透出窗口后的桌面模糊（Linux 无系统模糊时自动提近实底）。",
+    "themeAmethystGlassHint": "幻紫为饱和紫的实色暗底；雾镜为冷霜蓝调、背景半透明，透出窗口后的桌面模糊（Linux 无系统模糊时自动提近实底）。",
     "terminalFont": "终端字体",
     "terminalFontDefault": "系统默认",
     "terminalFontSize": "终端字号",
@@ -334,6 +334,8 @@
     "connectFailed": "连接失败：{{message}}",
     "hostKeyRejected": "主机密钥确认未通过，未连接",
     "reconnectHint": "双击左侧主机可发起连接",
+    "restoredHint": "已恢复上次退出时的标签（未连接）。双击左侧主机，或点「连接」开始会话。",
+    "notConnected": "未连接",
     "copyOnSelect": "选择即复制",
     "completion": "输入补全建议（Tab 采纳）",
     "searchPlaceholder": "搜索终端内容…",

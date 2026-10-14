@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { DOCK_PANEL_TITLE_KEY, type ToolDockPanel } from "./types";
 import { useWorkspaceStore } from "./workspaceStore";
 import { useModalStore } from "../ui/modalStore";
+import { DialogClose } from "../ui/DialogClose";
 import { useEscClose } from "../ui/useEscClose";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { ForwardPanel } from "../forward/ForwardPanel";
@@ -86,15 +87,7 @@ export function ToolDialog() {
       <div className="dialog tool-dialog">
         <div className="tool-dialog-head">
           <h2 data-testid="tool-dialog-title">{t(DOCK_PANEL_TITLE_KEY[titlePanel])}</h2>
-          <button
-            type="button"
-            className="dialog-close"
-            data-testid="tool-dialog-close"
-            aria-label={t("common.close")}
-            onClick={close}
-          >
-            ✕
-          </button>
+          <DialogClose onClose={close} testid="tool-dialog-close" />
         </div>
         <div className="tool-dialog-body">
           {titlePanel === "forwards" && <ForwardPanel open />}

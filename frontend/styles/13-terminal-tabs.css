@@ -137,7 +137,29 @@
 .session-term {
   width: 100%;
   height: 100%;
-  position: relative; /* 编码提示条（Task 9）绝对定位于终端顶部 */
+  position: relative; /* 编码提示条（Task 9）/ 恢复标签浮层绝对定位 */
+}
+
+/* 恢复标签「未连接」浮层（2026-10-14 用户反馈）：空终端 + 光标闪烁被误读为
+ * 卡死——居中小卡给状态与一键重连。只盖一小块，终端其余交互（选区/滚动）
+ * 不受影响。 */
+.term-restored-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-2);
+}
+.term-restored-text {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
 }
 .session-term .xterm {
   height: 100%;
@@ -153,6 +175,14 @@
    display none 只藏 UI 层：滚轮/PgUp/⌘F 搜索照常，缓冲不受影响。 */
 .session-term .xterm .xterm-viewport {
   scrollbar-width: none;
+  /* xterm 6 起核心不再给 viewport 写主题内联底色（theme bg 改写在
+     .xterm-scrollable-element 节点），viewport 保留 xterm.css 的
+     `background-color: #000`（"On OS X scroll bar opaque" 遗产）。屏幕行区
+     （rows×cellH）盖不住的余量区于是露出纯黑——亮色终端主题下 = 主区底部
+     一条黑带（2026-10-14 用户截图；暗色主题下不可见故长期未察觉）。
+     滚动条已被隐藏，黑底的存在理由失效：改透明，余量区露出 scrollable
+     element 的主题底色（core inline，与行区同色无缝）。 */
+  background-color: transparent;
 }
 .session-term .xterm .xterm-viewport::-webkit-scrollbar {
   width: 0;

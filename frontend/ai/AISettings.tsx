@@ -9,6 +9,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import { Switch } from "../ui/Switch";
+import { DialogClose } from "../ui/DialogClose";
 import { createProvider, type ProviderMeta } from "./provider";
 import type { RedactRule } from "./redact";
 import {
@@ -521,15 +522,7 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
       <div className="dialog settings-dialog ai-settings-dialog">
         <div className="dialog-head">
           <h2>{t("ai.settings.title")}</h2>
-          <button
-            type="button"
-            className="dialog-close"
-            data-testid="ai-settings-dialog-close"
-            aria-label={t("common.close")}
-            onClick={() => onClose?.()}
-          >
-            ✕
-          </button>
+          <DialogClose onClose={() => onClose?.()} testid="ai-settings-dialog-close" />
         </div>
         {body}
       </div>

@@ -291,9 +291,9 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "tool_credentials" => {
             if zh {
-                "凭据…"
+                "凭据"
             } else {
-                "Credentials…"
+                "Credentials"
             }
         }
         "tool_alerts" => {

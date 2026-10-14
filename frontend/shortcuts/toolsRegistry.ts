@@ -33,7 +33,7 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.plugins", labelKey: "plugins.title", group: "panels" },
   { id: "tool.forwards", labelKey: "forward.title", group: "panels" },
   { id: "tool.jump-chains", labelKey: "jump.title", group: "panels" },
-  { id: "tool.credentials", labelKey: "credentials.dialogTitle", group: "hosts" },
+  { id: "tool.credentials", labelKey: "nav.credentials", group: "hosts" },
   { id: "tool.overview", labelKey: "overview.title", group: "hosts" },
   { id: "tool.batch", labelKey: "batch.title", group: "hosts" },
   // 导出主机 CSV（2026-10-12 跨平台审计补齐）：runToolAction 的 case 本就已

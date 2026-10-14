@@ -372,7 +372,8 @@ describe.each(NEW_THEME_BLOCKS.map((b) => [b.id, b.map, b.scheme] as const))(
 // --- Glass 主题（theme-suite T3）：真透明/毛玻璃令牌的 alpha 合成校准 ----------
 // 假设（与上方 REF_DESKTOP、terminal glass 色板注释同一前提）：玻璃面后的桌面
 // 为深色壁纸 #1C2430。半透明令牌先合成再实算：
-//   glass bg rgba(18,13,32,0.86) → 合成 #131022（lum 0.006，暗底系）
+//   glass bg rgba(16,20,32,0.86) → 合成 #121622（lum 0.008，暗底系；2026-10-14
+//   冷霜蓝调改版——与幻紫在色相上拉开，终端 glass 色板同族冷蓝）
 //   accent-text 6.86/6.04/5.45/5.45  danger 6.70/5.90/5.32/5.32
 //   warning 8.69/7.65/6.91/6.91      success 10.03/8.83/7.97/7.97
 //   fg-muted(60%) 5.97/5.26/4.74/4.74  on-accent 6.56  on-danger 6.41
@@ -387,9 +388,9 @@ describe("Glass 主题 alpha 合成（theme-suite T3）", () => {
     expect(c.a).toBeLessThan(1);
   });
 
-  it("bg 合成到参考桌面底 #1C2430 后 = #131022（暗底，二级解析=dark 的实感）", () => {
+  it("bg 合成到参考桌面底 #1C2430 后 = #121622（暗底，二级解析=dark 的实感）", () => {
     const glassMap = glass!.map;
-    expect(flatten(resolve(glassMap, "--color-bg"))).toBe("#131022");
+    expect(flatten(resolve(glassMap, "--color-bg"))).toBe("#121622");
     // color-scheme: dark 与合成底明暗一致
     expect(glass!.scheme).toBe("dark");
   });
@@ -397,8 +398,8 @@ describe("Glass 主题 alpha 合成（theme-suite T3）", () => {
   it("Linux 兜底（无系统模糊面）：alpha 提到 0.94，合成仍为暗底", () => {
     // CSS 侧 [data-theme="glass"][data-platform="linux"] 的覆写值——这里按同一
     // 数学核对其合成结果（tokens.css 注释同源）。
-    const c = over(toRgba("rgba(18, 13, 32, 0.94)"), REF_DESKTOP);
-    expect(toHex(c)).toBe("#130e21");
+    const c = over(toRgba("rgba(16, 20, 32, 0.94)"), REF_DESKTOP);
+    expect(toHex(c)).toBe("#111521");
     expect(luminance(toHex(c))).toBeLessThan(0.5);
   });
 });

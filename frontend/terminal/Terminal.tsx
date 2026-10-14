@@ -162,6 +162,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const status = useSessionStore(
     (s) => s.sessions.find((x) => x.id === sessionId)?.status ?? "disconnected",
   );
+  const restored = useSessionStore(
+    (s) => s.sessions.find((x) => x.id === sessionId)?.restored ?? false,
+  );
   const attempt = useSessionStore(
     (s) => s.sessions.find((x) => x.id === sessionId)?.attempt ?? 0,
   );
@@ -626,7 +629,15 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       term.writeln(`\x1b[2m[ottr] ${t("terminal.connecting", { host: host ?? "" })}\x1b[0m`);
       return;
     }
-    if (first) return; // 恢复的静默标签（disconnected）不写历史横幅
+    if (first) {
+      // 恢复的静默标签（disconnected）：不能什么都不写——空终端 + 光标闪烁
+      // 会被误读为卡死（2026-10-14 用户反馈）。显式告知状态与出口。新建/分屏
+      // 会话同样首帧 disconnected，但 restored=false 不写（随即 connecting）。
+      if (restored) {
+        term.writeln(`\x1b[2m[ottr] ${t("terminal.restoredHint")}\x1b[0m`);
+      }
+      return;
+    }
     switch (status) {
       case "connected":
         if (attempt === 0) break; // 首连成功：shell 输出即反馈，不打横幅
@@ -666,7 +677,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     }
     // attempt 变化（重连计数推进）不单独写横幅——reconnecting 分支已带计数
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, lastError]);
+  }, [status, lastError, restored]);
 
   // --- 右键菜单 ---
   function openContextMenu(e: React.MouseEvent) {
@@ -769,6 +780,21 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="session-term" ref={hostRef} data-session-id={sessionId} onContextMenu={openContextMenu}>
+      {/* 恢复标签的「未连接」浮层（2026-10-14 用户反馈）：状态可读 + 一键重连。
+          仅恢复标签显示——新建/分屏会话首帧的短暂 disconnected 不打扰。 */}
+      {restored && status === "disconnected" && (
+        <div className="term-restored-hint" data-testid="term-restored-hint">
+          <span className="term-restored-text">{t("terminal.notConnected")}</span>
+          <button
+            type="button"
+            className="btn-accent"
+            data-testid="term-restored-connect"
+            onClick={() => void useSessionStore.getState().connect(sessionId)}
+          >
+            {t("common.connect")}
+          </button>
+        </div>
+      )}
       {dangerHint && <DangerHintBar finding={dangerHint} onDismiss={() => setDangerHint(null)} />}
       <EncodingHintBar sessionId={sessionId} />
       {menu && (

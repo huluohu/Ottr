@@ -39,8 +39,8 @@ body {
  * 不透明；非玻璃面仍带 alpha 透出 vibrancy 模糊）。Glass 的 --scrim 同理
  * 在 tokens.css glass 块覆盖。覆写与 :root 同特异性、后置生效。 */
 [data-theme="glass"] {
-  --surface-raised: color-mix(in srgb, var(--color-fg) 6%, rgba(18, 13, 32, 0.97));
-  --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, rgba(18, 13, 32, 0.97));
+  --surface-raised: color-mix(in srgb, var(--color-fg) 6%, rgba(16, 20, 32, 0.97));
+  --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, rgba(16, 20, 32, 0.97));
 }
 
 :root {
@@ -184,8 +184,9 @@ textarea:focus-visible {
   font-size: 1em;
   line-height: 1;
   padding: 2px 6px;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
   border-radius: var(--radius-md);
   cursor: pointer;
   flex: none;
@@ -193,6 +194,33 @@ textarea:focus-visible {
 .dialog-close:hover {
   background: var(--surface-raised);
   color: var(--color-fg);
+}
+/* 关闭组（2026-10-14 用户反馈：既不好点也不明显）：键帽提示「Esc 关闭」+
+ * 放大命中面的 ✕，横向成组（ui/DialogClose.tsx）。键帽口径同 .sidebar-kbd。 */
+.dialog-close-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.dialog-esc-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  user-select: none;
+  white-space: nowrap;
+}
+.dialog-esc-hint kbd {
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--btn-bg);
+  color: var(--fg-muted);
 }
 .icon-btn.danger {
   color: var(--color-danger);

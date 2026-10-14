@@ -387,7 +387,17 @@ describe("标签持久化与恢复（open_host_ids）", () => {
     const sessions = useSessionStore.getState().sessions;
     expect(sessions.map((s: Session) => s.hostId)).toEqual([1, 3]);
     expect(sessions.every((s: Session) => s.status === "disconnected")).toBe(true);
+    // 恢复标记（2026-10-14）：驱动终端「未连接」横幅 + 重连浮层
+    expect(sessions.every((s: Session) => s.restored === true)).toBe(true);
     expect(attachCalls()).toHaveLength(0);
+
+    // 常规开标签不背 restored 标记（新建/分屏首帧的短暂 disconnected 不得
+    // 触发恢复态 UI）
+    // hostB 的标签在恢复前已关（无 existing 分支）——常规开标签不背 restored
+    const plainId = useSessionStore.getState().openTab(hostB, { autoConnect: false });
+    expect(
+      useSessionStore.getState().sessions.find((s: Session) => s.id === plainId)?.restored ?? false,
+    ).toBe(false);
     void a;
   });
 });

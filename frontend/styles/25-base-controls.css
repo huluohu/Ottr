@@ -194,11 +194,12 @@
 .tp-verdant .tp-surface { background: #ffffff; }
 .tp-verdant .tp-fg { background: #1c2b22; }
 .tp-verdant .tp-accent { background: #2f855a; }
-/* 雾镜（半透明底示意；真效果见窗口 vibrancy/acrylic） */
-.tp-glass .tp-bg { background: rgba(28, 36, 48, 0.55); }
-.tp-glass .tp-surface { background: rgba(255, 255, 255, 0.14); }
+/* 雾镜（冷霜蓝调，2026-10-14 与幻紫拉开色相；半透明底示意，真效果见窗口
+ * vibrancy/acrylic。surface = fg 10% 叠 bg 合成 ≈#272c37） */
+.tp-glass .tp-bg { background: rgba(16, 20, 32, 0.55); }
+.tp-glass .tp-surface { background: #272c37; }
 .tp-glass .tp-fg { background: #e6edf3; }
-.tp-glass .tp-accent { background: #93c5fd; }
+.tp-glass .tp-accent { background: #7dd3fc; }
 
 
 /* --- 原语层补遗（2026-10-10 UI 重构一期）-------------------------------- */

@@ -49,6 +49,11 @@ export interface Session {
    * attach 看门狗只护直连（见 ATTACH_WATCHDOG_MS 注释），链式不武装。 */
   jumpChainId: number | null;
   status: SessionStatus;
+  /** 启动恢复标签（restoreTabs 置 true，会话生命周期内不变）：恢复策略不自动
+   * 连接（安全考虑），此标记驱动终端的「未连接」横幅与重连浮层——没有它，
+   * 恢复标签与「首帧短暂 disconnected、随即 connecting」的新建/分屏会话无法
+   * 区分（deferConnect 是宏任务，首帧人人都停在 disconnected）。 */
+  restored?: boolean;
   /** 当前 Rust 侧会话 id（attach 成功后非空；重连期间清空）。 */
   rustId: string | null;
   /** 已进行的自动重连次数（0 = 从未断线/已成功复位）。 */

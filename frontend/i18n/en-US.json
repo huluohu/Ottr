@@ -66,7 +66,7 @@
       "verdant": "Verdant",
       "glass": "Frosted Glass"
     },
-    "themeAmethystGlassHint": "Amethyst and Frosted Glass are both purple-tinted dark themes: Amethyst has an opaque background; Frosted Glass is translucent and shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",
+    "themeAmethystGlassHint": "Amethyst is a saturated violet opaque dark theme; Frosted Glass is a cool icy-blue theme whose translucent background shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",
     "terminalFont": "Terminal font",
     "terminalFontDefault": "System default",
     "terminalFontSize": "Terminal size",
@@ -335,6 +335,8 @@
     "connectFailed": "Connection failed: {{message}}",
     "hostKeyRejected": "Host key confirmation rejected; not connected",
     "reconnectHint": "Double-click a host in the sidebar to connect",
+    "restoredHint": "Tabs from your last session were restored (not connected). Double-click a host in the sidebar, or click Connect, to start.",
+    "notConnected": "Not connected",
     "copyOnSelect": "Copy on select",
     "completion": "Input suggestions (Tab accepts)",
     "searchPlaceholder": "Search terminal…",

@@ -137,7 +137,29 @@
 .session-term {
   width: 100%;
   height: 100%;
-  position: relative; /* 编码提示条（Task 9）绝对定位于终端顶部 */
+  position: relative; /* 编码提示条（Task 9）/ 恢复标签浮层绝对定位 */
+}
+
+/* 恢复标签「未连接」浮层（2026-10-14 用户反馈）：空终端 + 光标闪烁被误读为
+ * 卡死——居中小卡给状态与一键重连。只盖一小块，终端其余交互（选区/滚动）
+ * 不受影响。 */
+.term-restored-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-2);
+}
+.term-restored-text {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
 }
 .session-term .xterm {
   height: 100%;

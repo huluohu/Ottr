@@ -10,8 +10,22 @@
   padding: 0; /* 基类 20px 内边距交给 head/body 分治 */
   overflow: hidden;
 }
-.overlay[data-panel="notifications"] > .tool-dialog {
+/* 列表/卡片型面板收窄到 520：监控/插件是竖排卡片流（19/20 侧栏遗产），
+ * 640 宽会右侧大片留空（2026-10-14 用户反馈「颜色搭配是啥意思」的另一半）。 */
+.overlay[data-panel="notifications"] > .tool-dialog,
+.overlay[data-panel="monitor"] > .tool-dialog,
+.overlay[data-panel="plugins"] > .tool-dialog {
   width: min(520px, 100%);
+}
+/* 监控/插件面板（19/20 的终端右栏遗产样式）在弹框内的形态校正：224px 定宽
+ * + 左缘线 + 独立表面色（--color-surface 白）浮在弹框灰面（--surface-overlay）
+ * 上 = 白条贴灰底的割裂观感。弹框内改充盈宽度、透明底，卡片直接坐在弹框
+ * 统一表面上。 */
+.tool-dialog-body .monitor-sidebar,
+.tool-dialog-body .plugin-sidebar {
+  width: auto;
+  border-left: none;
+  background: transparent;
 }
 .tool-dialog-head {
   flex: none;

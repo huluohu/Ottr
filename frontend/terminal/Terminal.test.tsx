@@ -3,7 +3,7 @@
 // 主题实时跟随（system 模式 OS 切换 → xterm theme）与 TerminalArea 分隔条/⌘F。
 // xterm 在 jsdom 里 open() 会失败（Terminal.tsx 已容错），DOM 交互面不受影响；
 // ThemeProvider 需 matchMedia（jsdom 不实现）→ 最小 stub。
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -178,6 +178,45 @@ describe("ContextMenuView（菜单渲染）", () => {
     expect(copy.disabled).toBe(true);
     fireEvent.click(copy);
     expect(onAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("SessionTerminal 恢复标签（未连接浮层，2026-10-14）", () => {
+  it("restored + disconnected → 居中「未连接」卡 + 连接按钮；点击发起 attach", async () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-r", status: "disconnected", rustId: null, restored: true })],
+      activeId: "tab-r",
+      trees: { "tab-r": { kind: "leaf", id: "tab-r" } },
+      activePane: { "tab-r": "tab-r" },
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-r" />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId("term-restored-hint").textContent).toContain("未连接");
+    fireEvent.click(screen.getByTestId("term-restored-connect"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "attach_host_session",
+        expect.objectContaining({ hostId: 1 }),
+      ),
+    );
+  });
+
+  it("非恢复会话（restored 缺省）首帧 disconnected 不显示浮层", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-n", status: "disconnected", rustId: null })],
+      activeId: "tab-n",
+      trees: { "tab-n": { kind: "leaf", id: "tab-n" } },
+      activePane: { "tab-n": "tab-n" },
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-n" />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId("term-restored-hint")).toBeNull();
   });
 });
 

@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useEscClose } from "../ui/useEscClose";
+import { DialogClose } from "../ui/DialogClose";
 import { CredentialList } from "./CredentialList";
 import { KeyManager } from "./KeyManager";
 import { KnownHostsManager } from "../security/KnownHostsManager";
@@ -27,9 +28,7 @@ export function CredentialsDialog({ onClose, closing }: { onClose: () => void; c
       <div className="dialog credentials-dialog" data-testid="credentials-dialog">
         <div className="dialog-head">
           <h2>{t("credentials.dialogTitle")}</h2>
-          <button type="button" className="dialog-close" aria-label={t("common.close")} onClick={onClose}>
-            ✕
-          </button>
+          <DialogClose onClose={onClose} />
         </div>
         <div className="dialog-tabs" role="tablist">
           <button

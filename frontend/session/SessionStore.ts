@@ -97,7 +97,7 @@ interface SessionStore {
   searchSessionId: string | null;
 
   /** 双击主机树/⌘K 选中：开新标签并立即连接（同主机已开则只激活）。返回标签 id。 */
-  openTab: (host: Host, opts?: { autoConnect?: boolean }) => string;
+  openTab: (host: Host, opts?: { autoConnect?: boolean; restored?: boolean }) => string;
   /** 关标签 = drop_session（主动断开不重连）；分屏 pane 一并收尾。 */
   closeTab: (id: string) => void;
   /** 激活标签（不触发连接）。 */
@@ -263,6 +263,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       protocol: host.protocol ?? "ssh",
       jumpChainId: host.jump_chain_id ?? null,
       status: "disconnected",
+      restored: opts?.restored ?? false,
       rustId: null,
       attempt: 0,
       lastError: null,
@@ -602,7 +603,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     for (const hostId of ids) {
       const host = hosts.find((h) => h.id === hostId);
       if (!host) continue; // 主机已删除：跳过（持久化随下次开关标签自愈）
-      get().openTab(host, { autoConnect: false });
+      // restored 标记驱动终端「未连接」横幅 + 重连浮层（2026-10-14 用户反馈：
+      // 恢复标签静默空终端 + 光标闪烁被误读为卡死——必须显式给状态与出口）
+      get().openTab(host, { autoConnect: false, restored: true });
       restored++;
     }
     return restored;

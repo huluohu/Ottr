@@ -31,6 +31,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { AlertSettings } from "../notify/AlertSettings";
 import { McpSettings } from "./McpSettings";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
+import { DialogClose } from "../ui/DialogClose";
 
 export interface SecuritySettingsProps {
   open: boolean;
@@ -422,15 +423,7 @@ export function SecuritySettings({
       <div className="dialog settings-dialog">
         <div className="dialog-head">
           <h2>{t("settings.title")}</h2>
-          <button
-            type="button"
-            className="dialog-close"
-            data-testid="settings-dialog-close"
-            aria-label={t("common.close")}
-            onClick={onClose}
-          >
-            ✕
-          </button>
+          <DialogClose onClose={onClose} testid="settings-dialog-close" />
         </div>
 
         <div className="settings-body">

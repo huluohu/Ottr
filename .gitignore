@@ -42,6 +42,8 @@ brand/drafts/
 # 内部开发过程文档（路线图/验收报告/规格/运行手册）——本地保留，不公开
 docs/*
 !docs/screenshots/
+# 发布正文对外公开（发布流水线直读 docs/release-notes/<tag>.md 建 Release）
+!docs/release-notes/
 /.zcodeignore
 /.vscode/extensions.json
 /.zcode/

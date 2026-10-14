@@ -4,11 +4,12 @@
 # 流程:
 #   1. 前置检查（main 分支 / 工作树干净 / 与远端同步 / 版本 tag 未占用）
 #   2. 版本号三处对齐（tauri.conf.json / package.json / Cargo.toml）+ 两份锁文件同步
-#   3. 提交版本号并推送 main
-#   4. 等待推送门（spike-build：fmt+clippy+三平台构建）全绿
-#   5. 打 tag 推送，触发发布流水线（四平台构建 + 签名更新件 + latest.json）
-#   6. 等待 Release 自动创建后，用分类整理的发布说明覆盖正文
-#      （✨ 新功能 / 🐞 问题修复 / 🔧 优化改进 / 📦 平台提示 / 📋 完整变更）
+#   3. 发布正文就位（2026-10-14 用户裁定：正文随 tag 发布，不发完再补）——
+#      docs/release-notes/v<版本>.md 不存在则生成草稿并中止；人工润色后重跑，
+#      正文随版本号提交一起进仓库，流水线创建 Release 时直接采用
+#   4. 提交版本号与正文并推送 main
+#   5. 打 tag 推送，触发发布流水线（四平台构建 + 签名更新件 + latest.json；
+#      Release 正文 = 仓库内 docs/release-notes/<tag>.md，缺文件回退自动生成）
 #
 # 用法:
 #   scripts/release.sh <版本号>                 # 例: scripts/release.sh 0.4.0
@@ -155,7 +156,13 @@ NOTES_FILE=$(mktemp -t ottr-notes)
 
 # ---------------------------------------------------------------- 模式分派
 if [ "$MODE" = "notes" ]; then
-  step "生成发布说明（${PREV_TAG}..${TAG}）"
+  # 仓库内正文优先（人工润色过的版本）；仅旧 tag 缺文件时才从提交历史重新生成。
+  if [ -f "docs/release-notes/$TAG.md" ]; then
+    step "应用仓库内发布正文（docs/release-notes/$TAG.md）"
+    gh release edit "$TAG" -R "$REPO" --notes-file "docs/release-notes/$TAG.md" && echo "✓ Release $TAG 正文已更新"
+    exit 0
+  fi
+  step "生成发布说明（${PREV_TAG}..${TAG}；仓库无 docs/release-notes/$TAG.md，从提交历史生成）"
   gen_notes "$PREV_TAG" "$TAG" "$NOTES_FILE"
   cat "$NOTES_FILE"
   echo
@@ -178,12 +185,24 @@ if [ "$DRYRUN" = 1 ]; then
   exit 0
 fi
 
-step "提交版本号并推送 main"
-git add desktop/tauri.conf.json package.json desktop/Cargo.toml package-lock.json Cargo.lock
+# 发布正文就位（2026-10-14 用户裁定：不发完再补）——不存在则生成草稿并
+# 中止，人工润色后重跑（版本号已对齐，断点续跑安全）；存在则随版本提交
+# 进仓库，流水线创建 Release 时直接采用。
+NOTES_PATH="docs/release-notes/v$VERSION.md"
+if [ ! -f "$NOTES_PATH" ]; then
+  step "生成发布正文草稿（$NOTES_PATH）"
+  mkdir -p "$(dirname "$NOTES_PATH")"
+  gen_notes "$PREV_TAG" "HEAD" "$NOTES_PATH"
+  echo "  草稿已写入 $NOTES_PATH"
+  die "发布正文需人工润色（访客视角/信息量检验/无内部黑话）——编辑 $NOTES_PATH 后重跑本命令即可继续发版"
+fi
+
+step "提交版本号与发布正文并推送 main"
+git add desktop/tauri.conf.json package.json desktop/Cargo.toml package-lock.json Cargo.lock "$NOTES_PATH"
 if git diff --cached --quiet; then
   echo "  版本号无变化，跳过提交（断点重跑）"
 else
-  git commit -m "chore(release): v$VERSION 版本号三处对齐（tauri.conf/package.json/Cargo.toml）+ 锁文件同步"
+  git commit -m "chore(release): v$VERSION 版本号三处对齐 + 锁文件同步 + 发布正文"
 fi
 git push origin main
 SHA=$(git rev-parse HEAD)

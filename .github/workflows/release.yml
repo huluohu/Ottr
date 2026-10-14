@@ -306,13 +306,20 @@ jobs:
         run: |
           python3 scripts/gen-updater-manifest.py bundle "${GITHUB_REF_NAME}" bundle/latest.json
 
-      # 变更日志：面向用户的更新内容（2026-10-10 用户裁定：只写正经的功能与
-      # 修复，不写开发过程）——gen-release-notes.py 只收录 feat/fix，剥离
-      # 前缀/长解释/内部括注，按 ✨ 新功能 / 🐞 问题修复 分节。generate_release_
-      # notes 仍开启（叠加 changelog 链接）。
-      - name: Generate changelog body
+      # 发布正文（2026-10-14 用户裁定：正文随 tag 一起发布，不发完再补）——
+      # 仓库内 docs/release-notes/<tag>.md 优先（release.sh 打 tag 前强制就位、
+      # 人工润色过）；旧 tag 缺文件时回退自动生成（只收录 feat/fix，剥前缀/
+      # 长解释/内部括注）。generate_release_notes 仍开启（叠加 changelog 链接）。
+      - name: Resolve release body (repo notes file first, generated fallback)
         run: |
-          python3 scripts/gen-release-notes.py "${GITHUB_REF_NAME}" release-body.md
+          notes="docs/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            echo "使用仓库内发布正文: $notes"
+            cp "$notes" release-body.md
+          else
+            echo "未找到 $notes —— 回退自动生成"
+            python3 scripts/gen-release-notes.py "${GITHUB_REF_NAME}" release-body.md
+          fi
           echo "---- release-body.md ----"
           cat release-body.md
 

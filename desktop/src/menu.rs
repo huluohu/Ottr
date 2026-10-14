@@ -421,7 +421,9 @@ pub const THEME_IDS: [&str; 7] = [
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
 /// 2026-10-14 设置类收敛：mcp（单一家 = 设置页 MCP 分区）与 sync（单一家 =
 /// 设置页同步分区）退役——工具菜单不得出现设置概念项（前端 toolsRegistry.ts
-/// 同批删除，13 → 11 项）。
+/// 同批删除，13 → 11 项）。2026-10-16：overview 迁「视图」菜单首项（主区视图
+/// 归位，用户裁定）——**键保留在本表**（分派校验按 id 前缀不按所在菜单），
+/// 仅不再渲染进工具子菜单（镜像测试按 OVERVIEW_VIEW_MENU 标记排除）。
 pub const TOOL_KEYS: [&str; 11] = [
     "cron",
     "alerts",
@@ -435,6 +437,10 @@ pub const TOOL_KEYS: [&str; 11] = [
     "batch",
     "export-hosts-csv",
 ];
+
+/// 已迁出工具菜单、改挂「视图」菜单首项的 key（2026-10-16）：镜像测试与
+/// 工具子菜单构建按此排除，分派校验仍认它。
+pub const OVERVIEW_IN_VIEW: &str = "overview";
 
 /// 应用菜单树（HIG：应用/文件/编辑/视图/窗口/帮助）。
 /// 带键位的条目与前端 registry 镜像（见模块文档）。
@@ -502,7 +508,15 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
         },
         MenuNode::Sub {
             label: text(lang, "view"),
+            // 总览（2026-10-16 用户裁定迁出工具菜单）：主区视图归「视图」
+            // 菜单首项——id 仍是 tool.overview，分派走同一条前端直派链。
             items: vec![
+                MenuNode::Item {
+                    id: "tool.overview",
+                    label: text(lang, "tool_overview"),
+                    accelerator: None,
+                },
+                MenuNode::Sep,
                 MenuNode::Item {
                     id: "session.splitRight",
                     label: text(lang, "split_right"),
@@ -617,11 +631,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.credentials",
                     label: text(lang, "tool_credentials"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.overview",
-                    label: text(lang, "tool_overview"),
                     accelerator: None,
                 },
                 MenuNode::Item {
@@ -1555,8 +1564,39 @@ mod tests {
                 _ => None, // 2026-10-10 分组分隔线（Sep）合法存在
             })
             .collect();
-        let expected: Vec<String> = TOOL_KEYS.iter().map(|k| format!("tool.{k}")).collect();
+        // 2026-10-16：overview 迁「视图」菜单首项——工具子菜单不再含它。
+        let expected: Vec<String> = TOOL_KEYS
+            .iter()
+            .filter(|k| **k != OVERVIEW_IN_VIEW)
+            .map(|k| format!("tool.{k}"))
+            .collect();
         assert_eq!(ids, expected);
+    }
+
+    /// 总览挂「视图」菜单首项（2026-10-16 用户裁定：主区视图归视图菜单）。
+    #[test]
+    fn overview_is_first_item_of_view_menu() {
+        for lang in [Lang::Zh, Lang::En] {
+            let tree = menu_tree(lang);
+            let find_sub = |label: &str| {
+                tree.iter().find_map(|n| match n {
+                    MenuNode::Sub { label: l, items } if *l == label => Some(items),
+                    _ => None,
+                })
+            };
+            let view = find_sub(text(lang, "view")).expect("视图 submenu");
+            match view.first().expect("视图首项 = 总览") {
+                MenuNode::Item { id, .. } => assert_eq!(*id, "tool.overview"),
+                other => panic!("视图首项应为 Item(tool.overview)，实际 {other:?}"),
+            }
+            let tools = find_sub(text(lang, "tools")).expect("工具 submenu");
+            assert!(
+                !tools
+                    .iter()
+                    .any(|n| matches!(n, MenuNode::Item { id, .. } if **id == *"tool.overview")),
+                "总览不得出现在工具菜单"
+            );
+        }
     }
 
     #[test]

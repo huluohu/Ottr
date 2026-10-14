@@ -24,8 +24,11 @@ export interface FeatureCommand {
   group: FeatureGroup;
 }
 
-/** 展示序 = 数组序；组序由消费方定（汉堡/⌘K 按 groups，托盘/mac 菜单按安家表）。 */
+/** 展示序 = 数组序；组序由消费方定（汉堡/⌘K 按 groups，托盘/mac 菜单按安家表）。
+ * 2026-10-16 用户裁定：总览是主区视图（现为打开默认落地页）不是工具——
+ * 提到 panels 组首位（⌘K/汉堡同序），mac 原生菜单挂「视图」菜单首项。 */
 export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
+  { id: "tool.overview", labelKey: "overview.title", group: "panels" },
   { id: "tool.cron", labelKey: "nav.cron", group: "panels" },
   { id: "tool.alerts", labelKey: "nav.alerts", group: "panels" },
   { id: "notify.center", labelKey: "nav.notifications", group: "panels" },
@@ -34,7 +37,6 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.forwards", labelKey: "forward.title", group: "panels" },
   { id: "tool.jump-chains", labelKey: "jump.title", group: "panels" },
   { id: "tool.credentials", labelKey: "nav.credentials", group: "hosts" },
-  { id: "tool.overview", labelKey: "overview.title", group: "hosts" },
   { id: "tool.batch", labelKey: "batch.title", group: "hosts" },
   // 导出主机 CSV（2026-10-12 跨平台审计补齐）：runToolAction 的 case 本就已
   // 存在，清单缺项曾致 Win/Linux 无触达口。

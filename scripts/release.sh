@@ -190,7 +190,7 @@ fi
 # 进仓库，流水线创建 Release 时直接采用。
 NOTES_PATH="docs/release-notes/v$VERSION.md"
 if [ ! -f "$NOTES_PATH" ]; then
-  step "生成发布正文草稿（$NOTES_PATH）"
+  step "生成发布正文草稿（${NOTES_PATH}）"
   mkdir -p "$(dirname "$NOTES_PATH")"
   gen_notes "$PREV_TAG" "HEAD" "$NOTES_PATH"
   echo "  草稿已写入 $NOTES_PATH"

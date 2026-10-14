@@ -810,7 +810,20 @@ fn reseal_all_enc_columns(
                         continue;
                     };
                     let aad = col.aad(row_id);
-                    let mut plain = old.open(&blob, &aad)?; // 旧钥坏 → 整体回滚
+                    // 死胡同错误就地转诊断（2026-10-16 用户升级实测
+                    // "crypto error: aead::Error" 无法定位）：指明表/列/行与密文
+                    // 规模 + 明示事务已回滚数据未动。该字段无法开封通常是历史
+                    // 异常写入或损坏——升级被挡是重密封的必然（不能跳过：跳过 =
+                    // 该字段以旧钥密文留在已换钥库里，永久不可解 = 静默丢数据）。
+                    let mut plain = old.open(&blob, &aad).map_err(|e| {
+                        VaultError::Crypto(format!(
+                            "解密封失败：{table}.{}（行 {row_id}，密文 {} 字节）\
+                             无法用当前主密钥开封——升级已整体回滚、数据原样未动，\
+                             可重试或携本条信息反馈。原始错误：{e}",
+                            col.column,
+                            blob.len()
+                        ))
+                    })?;
                     let resealed = match new.seal(&plain, &aad) {
                         Ok(b) => b,
                         Err(e) => {

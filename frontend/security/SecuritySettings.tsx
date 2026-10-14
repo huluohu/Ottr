@@ -666,11 +666,14 @@ export function SecuritySettings({
             </select>
           </label>
 
-          {/* B9（Task 6）：主机指纹巡检——默认关（主动出网行为），间隔可配 */}
-          <label className="settings-row" data-testid="hostkey-audit-row">
+          {/* B9（Task 6）：主机指纹巡检——默认关（主动出网行为），间隔可配。
+              开关行用 div 包行（2026-10-16 用户反馈：label 包行 = 全行可点命中
+              面过大）；可访问名经 Switch label prop 补回。 */}
+          <div className="settings-row" data-testid="hostkey-audit-row">
             <span className="settings-label">{t("security.hostkeyAudit")}</span>
             <Switch
               testid="hostkey-audit-toggle"
+              label={t("security.hostkeyAudit")}
               checked={hostkeyAudit ?? false}
               onChange={(e) => {
                 const on = e.currentTarget.checked;
@@ -679,7 +682,7 @@ export function SecuritySettings({
                 if (on) void refreshHostkeyAuditStatus();
               }}
             />
-          </label>
+          </div>
           {/* 巡检状态可见面（2026-10-13「Windows 静默空转」修复）：最近一轮
               快照 / 工具缺席提示 + 立即巡检（known_hosts_audit_run 同一命令核） */}
           <div className="settings-row" data-testid="hostkey-audit-status">
@@ -728,10 +731,11 @@ export function SecuritySettings({
               （主密码）模式限定 + 开启须确认框说明风险（keyring 模式隐藏） */}
           {isPasswordMode && (
             <>
-              <label className="settings-row" data-testid="sudo-autofill-row">
+              <div className="settings-row" data-testid="sudo-autofill-row">
                 <span className="settings-label">{t("security.sudoAutofill")}</span>
                 <Switch
                   testid="sudo-autofill-toggle"
+                  label={t("security.sudoAutofill")}
                   checked={sudoAutofill ?? false}
                   onChange={(e) => {
                     const on = e.currentTarget.checked;
@@ -744,7 +748,7 @@ export function SecuritySettings({
                     }
                   }}
                 />
-              </label>
+              </div>
               <p className="settings-hint">{t("security.sudoAutofillHint")}</p>
               {sudoConfirm && (
                 <div className="wizard-step" data-testid="sudo-autofill-dialog">
@@ -987,11 +991,13 @@ export function SecuritySettings({
                   ))}
                 </select>
               </label>
-              {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。 */}
-              <label className="settings-row" data-testid="close-to-tray-row">
+              {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。开关行
+                  div 包行 + Switch label 补可访问名（点击面收窄到控件本身）。 */}
+              <div className="settings-row" data-testid="close-to-tray-row">
                 <span className="settings-label">{t("settings.closeToTray")}</span>
                 <Switch
                   testid="close-to-tray-toggle"
+                  label={t("settings.closeToTray")}
                   checked={closeToTray ?? true}
                   onChange={(e) => {
                     const on = e.currentTarget.checked;
@@ -999,14 +1005,15 @@ export function SecuritySettings({
                     void saveSetting("ui.close_to_tray", on ? 1 : 0);
                   }}
                 />
-              </label>
+              </div>
               <p className="settings-hint">{t("settings.closeToTrayHint")}</p>
               {/* Task 15 fix 1/5：shell 集成自动注入（⌘R 历史搜索 / T13 报错即诊的
                   数据源）。关 = attach 不探测不注入；已自带集成的远端自动跳过。 */}
-              <label className="settings-row" data-testid="shell-integration-row">
+              <div className="settings-row" data-testid="shell-integration-row">
                 <span className="settings-label">{t("settings.shellIntegration")}</span>
                 <Switch
                   testid="shell-integration-toggle"
+                  label={t("settings.shellIntegration")}
                   checked={shellIntegration ?? true}
                   onChange={(e) => {
                     const on = e.currentTarget.checked;
@@ -1014,7 +1021,7 @@ export function SecuritySettings({
                     void saveSetting("shell.integration", on);
                   }}
                 />
-              </label>
+              </div>
               <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
               {/* 录制默认保存目录（2026-10-12 用户需求）：停录时 .cast 副本落盘位置；
                   空 = 下载目录/Ottr 录制 兜底。目录选择走 plugin-dialog。 */}
@@ -1077,6 +1084,10 @@ export function SecuritySettings({
                     <span className="about-version" data-testid="about-version">{appVersion}</span>
                   )}
                 </div>
+                {/* Slogan（2026-10-16 用户需求）：brand.md 主口号双语。 */}
+                <p className="about-slogan" data-testid="about-slogan">
+                  {t("settings.aboutSlogan")}
+                </p>
                 <div className="about-meta">
                   <span>@huluohu</span>
                   <span aria-hidden="true">·</span>

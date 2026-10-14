@@ -493,14 +493,15 @@ export function AlertSettings({ open }: AlertSettingsProps) {
                   )}
                 </label>
               ))}
-              <label className="settings-row">
+              <div className="settings-row">
                 <span className="settings-label">{t("alert.fieldEnabled")}</span>
                 <Switch
                   testid="alert-channel-enabled"
+                  label={t("alert.fieldEnabled")}
                   checked={channelDraft.enabled}
                   onChange={(e) => setChannelDraft({ ...channelDraft, enabled: e.currentTarget.checked })}
                 />
-              </label>
+              </div>
               <div className="form-actions">
                 <button type="button" data-testid="alert-channel-test-draft" disabled={testing !== null} onClick={() => void testDraft()}>
                   {testing === "draft" ? t("alert.testing") : t("alert.test")}

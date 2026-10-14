@@ -305,7 +305,7 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
         ))}
       </div>
 
-      <form onSubmit={(e) => void save(e)} noValidate>
+      <form className="sync-form" onSubmit={(e) => void save(e)} noValidate>
         {cfg.kind === "webdav" && (
           <>
             <label className="settings-row">

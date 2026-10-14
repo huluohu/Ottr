@@ -166,14 +166,17 @@ export function McpSettings({ open }: McpSettingsProps) {
     <div className="dock-entity settings-dialog" role="region" aria-label={t("mcp.title")} data-testid="mcp-settings">
         <section aria-label={t("mcp.serverSection")} data-testid="mcp-server-section">
           <h3>{t("mcp.serverSection")}</h3>
-          <label className="settings-row" data-testid="mcp-enabled-row">
+          {/* 开关行 div 包行（2026-10-16 用户反馈：label 包行全行可点命中面过大），
+              可访问名经 Switch label prop 补回。 */}
+          <div className="settings-row" data-testid="mcp-enabled-row">
             <span className="settings-label">{t("mcp.enabled")}</span>
             <Switch
               testid="mcp-enabled-toggle"
+              label={t("mcp.enabled")}
               checked={status?.enabled ?? false}
               onChange={(e) => toggleEnabled(e.currentTarget.checked)}
             />
-          </label>
+          </div>
           <p className="settings-hint">{t("mcp.enabledHint")}</p>
           <div className="settings-row" data-testid="mcp-listening">
             <span className="settings-label">{t("mcp.listening")}</span>

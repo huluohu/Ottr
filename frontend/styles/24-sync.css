@@ -57,15 +57,16 @@
   width: min(420px, 100%);
 }
 
-/* 通道字段放宽（2026-10-16 用户反馈：服务器地址等输入框太短）：settings-row
- * 的 label 列弹性吃满剩余空间、input 落浏览器默认宽——同步表单内改为字段
- * 弹性占满、标签定宽。input 的 label 语义保留（点击标签聚焦输入框不受影响）。 */
+/* 通道字段放宽（2026-10-16 用户反馈「加长不是搞乱」二轮修正）：首版让
+ * input 弹性占满但标签列随文字长短伸缩 → 输入框左缘参差。定宽标签列
+ * （容最长标签「服务器地址」5 字）+ input 弹性占满 = 左缘对齐且加长。
+ * label 点击聚焦语义保留。 */
 .sync-form .settings-row > .settings-label {
-  flex: 0 0 auto;
+  flex: 0 0 5.5em;
 }
 .sync-form .settings-row > input {
   flex: 1 1 auto;
   width: auto;
-  min-width: 240px;
+  min-width: 0;
   box-sizing: border-box;
 }

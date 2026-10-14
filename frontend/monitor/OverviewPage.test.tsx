@@ -178,7 +178,9 @@ describe("OverviewPage 卡片网格", () => {
 
     const offCard = screen.getByTestId("overview-card-1");
     expect(offCard.getAttribute("data-off")).toBe("true");
-    expect(offCard.textContent).toContain("Monitoring off");
+    // 未连接的灰卡说清两件事（2026-10-16 用户反馈：单条件文案摸不着头脑）
+    expect(offCard.textContent).toContain("Not connected");
+    expect(offCard.textContent).toContain("monitoring");
     expect(offCard.querySelector(".overview-light")?.getAttribute("data-state")).toBe("off");
 
     const idleCard = screen.getByTestId("overview-card-2");
@@ -256,6 +258,32 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
     expect(screen.queryByTestId("overview-monitor-on-7"), "已开启主机非 off 态，不出开启入口").toBeNull();
     fireEvent.click(screen.getByTestId("overview-monitor-on-5"));
     expect(onOpen, "按钮点击不冒泡成卡片跳转").not.toHaveBeenCalled();
+  });
+
+  // 2026-10-16 用户反馈：未连接卡片此前只有灰字提示，可点连接完全不可发现——
+  // 显式「连接」首动作（语义 = 卡片本体 onOpen = openTab + 回终端）。
+  it("未连接卡片渲染「连接」首动作：点击走 onOpen 且不冒泡双触发；已连接卡片不渲染", () => {
+    useVaultStore.setState({
+      hosts: [
+        host({ id: 5, name: "disconnected", monitor_enabled: true }),
+        host({ id: 7, name: "connected", monitor_enabled: true }),
+        host({ id: 8, name: "ftp-disc", protocol: "ftp", monitor_enabled: false }),
+      ],
+    });
+    useSessionStore.setState({
+      sessions: [makeSession({ id: "t7", hostId: 7, rustId: "pty-7" })],
+    });
+    useMonitorStore.setState({ windows: { "pty-7": win() } });
+    const onOpen = vi.fn();
+    render(<OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={() => {}} />);
+
+    expect(screen.getByTestId("overview-connect-5"), "未连接 ssh 卡出连接").toBeTruthy();
+    expect(screen.queryByTestId("overview-connect-7"), "已连接卡不出连接").toBeNull();
+    expect(screen.getByTestId("overview-connect-8"), "未连接 ftp 卡也出连接（连接与协议无关）").toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("overview-connect-5"));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen.mock.calls[0][0].id).toBe(5);
   });
 
   // ui2 T4（A5 清偿·三态扫描）：updateHost 会 rethrow——此前无 catch =

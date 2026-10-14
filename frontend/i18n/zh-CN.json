@@ -803,6 +803,8 @@
     "title": "总览",
     "empty": "还没有主机。点击「新建主机」创建后即可总览。",
     "offHint": "未开启监控——开启后此处实时展示资源指标。",
+    "offDisconnectedHint": "未连接——连接并开启监控后，此处实时展示资源指标。",
+    "connect": "连接",
     "enableMonitor": "开启监控",
     "enabling": "开启中…",
     "enableFailed": "{{host}} 开启监控失败：{{message}}",

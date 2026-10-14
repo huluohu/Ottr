@@ -804,6 +804,8 @@
     "title": "Overview",
     "empty": "No hosts yet — create one with \"New host\" to see it here.",
     "offHint": "Monitoring off — enable it to see live metrics here.",
+    "offDisconnectedHint": "Not connected — connect and enable monitoring to see live metrics here.",
+    "connect": "Connect",
     "enableMonitor": "Enable monitoring",
     "enabling": "Enabling…",
     "enableFailed": "Failed to enable monitoring for {{host}}: {{message}}",

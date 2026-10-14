@@ -11,8 +11,9 @@
 // * 状态灯四态：live（绿）/ unsupported（黄，远端非 Linux）/ stopped（红，
 //   采样终止）/ idle（灰，未连上或未采样）+ off（灰卡整体降级）；
 // * 动作：点击卡片 → 跳转该主机终端标签（onOpen，MainArea 接线 = openTab +
-//   openMainView("terminal")）；「进程」按钮 → 跳标签 + 切进程视图
-//   （onOpenProcesses，SSH 会话可用）；
+//   openMainView("terminal")）；未连接卡片的显式「连接」按钮同语义首动作
+//   （2026-10-16 用户反馈：卡片可点连接此前不可发现）；「进程」按钮 →
+//   跳标签 + 切进程视图（onOpenProcesses，SSH 会话可用）；
 // * 一键开启监控（ui-batch2 T3，审计 A4）：未开启主机的灰卡直接放「开启监控」
 //   按钮——替代「主机表单 → 监控面板」深路径。动作 = 既有 updateHost 全量替换
 //   语义（HostInput 由 host 记录逐字段推导、只翻 monitor_enabled，HostForm
@@ -217,7 +218,11 @@ export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageP
               ) : (
                 <p className="overview-state">
                   {light === "off"
-                    ? t("overview.offHint")
+                    ? rustId != null
+                      ? t("overview.offHint")
+                      : /* 未连接的灰卡把两件事都说清（2026-10-16 用户反馈：
+                           「未开启监控」单条件文案让人摸不着头脑——还得先连接） */
+                        t("overview.offDisconnectedHint")
                     : light === "idle"
                       ? t("overview.notConnected")
                       : light === "unsupported"
@@ -225,11 +230,26 @@ export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageP
                         : t("monitor.stopped")}
                 </p>
               )}
-              {host.protocol === "ssh" && (
+              {(rustId == null || host.protocol === "ssh") && (
                 <div className="overview-card-actions">
+                  {/* 连接（2026-10-16 用户反馈）：未连接卡片的首要动作——此前
+                      只有灰字提示，卡片可点击连接这件事完全不可发现。动作 =
+                      卡片本体同语义（onOpen = openTab + 回终端）；
+                      stopPropagation 防按钮点击冒泡成双触发。 */}
+                  {rustId == null && (
+                    <button
+                      data-testid={`overview-connect-${host.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpen(host);
+                      }}
+                    >
+                      {t("overview.connect")}
+                    </button>
+                  )}
                   {/* 一键开启监控（ui2 T3，A4）：只在 ssh + off 态灰卡出现，
-                      stopPropagation 防冒泡成卡片跳转；在途禁用。 */}
-                  {light === "off" && (
+                      在途禁用。 */}
+                  {host.protocol === "ssh" && light === "off" && (
                     <button
                       data-testid={`overview-monitor-on-${host.id}`}
                       disabled={enablingId === host.id}

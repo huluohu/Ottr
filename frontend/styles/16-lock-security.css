@@ -112,6 +112,9 @@
   min-width: 0;
   overflow-y: auto;
   padding-left: var(--space-5);
+  /* 右内边距（2026-10-14 用户反馈）：内容与滚动条之间留出呼吸位——原右侧
+     零内边距，内容顶满容器右缘，滚动条盖住开关/按钮/输入框。 */
+  padding-right: var(--space-4);
 }
 .settings-panes [hidden] {
   display: none !important;

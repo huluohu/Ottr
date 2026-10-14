@@ -67,6 +67,19 @@ describe("对话框滚动语义守卫（BL-526 + T5 披露）", () => {
     expect(rule).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   });
 
+  it("嵌套滚动容器同享 6px 规格 + 设置分区面板右内边距（2026-10-14 用户反馈：原生宽滚动条盖住设置页内容右缘）", () => {
+    const css = allAppCss();
+    const barRule = ruleOf(css, ".dialog::-webkit-scrollbar,");
+    expect(barRule).toContain(".settings-panes::-webkit-scrollbar");
+    expect(barRule).toContain(".tool-dialog-body::-webkit-scrollbar");
+    const thumbRule = ruleOf(css, ".dialog::-webkit-scrollbar-thumb,");
+    expect(thumbRule).toContain(".settings-panes::-webkit-scrollbar-thumb");
+    expect(thumbRule).toContain(".tool-dialog-body::-webkit-scrollbar-thumb");
+    const panes = ruleOf(css, ".settings-panes {");
+    expect(panes).toContain("overflow-y: auto");
+    expect(panes).toContain("padding-right: var(--space-4)");
+  });
+
   it("SyncDialog / LockScreen 容器挂 .dialog 类（承接滚动语义，防类名漂移）", () => {
     expect(syncDialogTsx).toContain('"dialog settings-dialog"');
     expect(lockScreenTsx).toContain('"dialog lock-card"');

@@ -1,6 +1,7 @@
 // MonitorPanel 组件测试（2026-10-13 改造自 MonitorSidebar）：live 数据渲染
-// （数值 + 图）/ 四态文案（off/unsupported/stopped/waiting）。rail/开合记忆
-// 已随「终端右栏折叠竖条」退役（面板改经 ToolDialog 打开，壳提供标题与 ✕）。
+// （数值 + 图）/ 五态文案（disconnected/off/unsupported/stopped/waiting）+
+// 采样机制说明常驻。rail/开合记忆已随「终端右栏折叠竖条」退役（面板改经
+// ToolDialog 打开，壳提供标题与 ✕）。
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "../i18n";
@@ -67,6 +68,25 @@ describe("MonitorPanel（数据面）", () => {
     expect(screen.getByTestId("monitor-off")).toBeTruthy();
   });
 
+  it("shows disconnected face (not waiting/off) when no host connected — even if enabled", () => {
+    // 未连接优先于未开启：enabled 镜像自活动主机，无会话时恒 false，
+    // 但面板不得据此误导「此主机未开启监控」（2026-10-14 用户反馈）。
+    render(<MonitorPanel rustId={null} enabled />);
+    expect(screen.getByTestId("monitor-disconnected")).toBeTruthy();
+    expect(screen.queryByTestId("monitor-waiting")).toBeNull();
+    expect(screen.queryByTestId("monitor-off")).toBeNull();
+  });
+
+  it("renders sampling explainer hint persistently (live or not)", () => {
+    seedLive();
+    const { unmount } = render(<MonitorPanel rustId="pty-1" enabled />);
+    expect(screen.getByTestId("monitor-hint")).toBeTruthy();
+    unmount();
+    useMonitorStore.setState({ windows: {} });
+    render(<MonitorPanel rustId={null} enabled={false} />);
+    expect(screen.getByTestId("monitor-hint")).toBeTruthy();
+  });
+
   it("shows unsupported and stopped faces from store status", () => {
     useMonitorStore.setState({
       windows: { "pty-9": { status: "unsupported" } } as never,
@@ -82,9 +102,9 @@ describe("MonitorPanel（数据面）", () => {
     expect(screen.getByTestId("monitor-stopped")).toBeTruthy();
   });
 
-  it("renders with rustId null (disconnected) as waiting/off", () => {
+  it("renders with rustId null (disconnected) as disconnected face", () => {
     render(<MonitorPanel rustId={null} enabled />);
-    expect(screen.getByTestId("monitor-waiting")).toBeTruthy();
+    expect(screen.getByTestId("monitor-disconnected")).toBeTruthy();
   });
 
   it("无 rail 残留（折叠竖条已退役，回归钉 2026-10-13）", () => {

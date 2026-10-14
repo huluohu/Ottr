@@ -53,7 +53,7 @@ function openQuickMenu() {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ toolDialog: null });
+  useWorkspaceStore.setState({ toolDialog: null, mainView: "terminal" });
   useNotifyStore.setState({ unread: 0 });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
   vi.stubGlobal(
@@ -83,12 +83,22 @@ describe("Sidebar", () => {
     // ZCode 式收合：弹出前无入口行
     expect(screen.queryByTestId("sidebar-nav-cron")).toBeNull();
     openQuickMenu();
+    expect(screen.getByTestId("sidebar-nav-overview")).toBeTruthy(); // 总览首项（2026-10-14 用户裁定）
     expect(screen.getByTestId("sidebar-nav-cron")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-alerts")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-mcp")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-notifications")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-credentials")).toBeTruthy();
     expect(screen.getByTestId("sidebar-nav-settings")).toBeTruthy();
+  });
+
+  it("总览入口 = 主区实体视图切（openMainView），非工具弹框（2026-10-14 用户裁定）", () => {
+    useWorkspaceStore.setState({ mainView: "terminal" });
+    renderSidebar();
+    openQuickMenu();
+    fireEvent.click(screen.getByTestId("sidebar-nav-overview"));
+    expect(useWorkspaceStore.getState().mainView).toBe("overview");
+    expect(useWorkspaceStore.getState().toolDialog).toBeNull(); // 不占工具弹框槽
   });
 
   it("导航点击开对应弹框；异值即替换（单槽一次一个）；再点同值关闭（开关二态）", () => {

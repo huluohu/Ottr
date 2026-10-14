@@ -3,7 +3,9 @@
 //   滚动条、压住分屏关闭钮）——现作为 ToolDialog 的 plugins 面板内容渲染
 //   （工具菜单/⌘K「插件」打开），入口与其余工具面板一致；
 // * 渲染面 = loadBuiltinRegistry() 的 cards（声明白名单过闸后的贡献面），
-//   组件映射取 builtin/PLUGIN_CARD_COMPONENTS；未知卡片 id 跳过不 crash。
+//   组件映射取 builtin/PLUGIN_CARD_COMPONENTS；未知卡片 id 跳过不 crash；
+// * 面板首行 = 插件机制一句话说明（2026-10-14 用户反馈「插件怎么用」：
+//   内置示例面须自解释——卡片贡献 + 快捷命令，无外部插件装载）。
 import { useTranslation } from "react-i18next";
 import { loadBuiltinRegistry } from "./loader";
 import { PLUGIN_CARD_COMPONENTS } from "./builtin";
@@ -16,6 +18,9 @@ export function PluginPanel({ rustId }: { rustId: string | null }) {
   const { t } = useTranslation();
   return (
     <aside className="plugin-sidebar" data-testid="plugin-sidebar" aria-label={t("plugins.title")}>
+      <p className="plugin-state" data-testid="plugin-intro">
+        {t("plugins.intro")}
+      </p>
       {REGISTRY.cards.map(({ plugin, card }) => {
         const Component = PLUGIN_CARD_COMPONENTS[card.id];
         if (!Component) return null; // 未知卡片 id（理论不可达：内置面编译期对齐）

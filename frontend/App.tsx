@@ -273,8 +273,30 @@ function HomeLayout() {
       await initAlertEngine();
       void remountChannels();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
+      // 默认落地总览（2026-10-14 用户裁定「打开 app 默认进总览」）：库内有主机
+      // 且启动后无会话标签 → 打开即落总览页。空库保留欢迎页（首启引导更完整）；
+      // restoreTabs 恢复了会话则留在终端面（用户要的是恢复的会话，不是总览）。
+      const ws = useWorkspaceStore.getState();
+      if (
+        useVaultStore.getState().hosts.length > 0 &&
+        useSessionStore.getState().sessions.length === 0 &&
+        ws.mainView === "terminal"
+      ) {
+        ws.openMainView("overview");
+      }
     })();
   }, [initPhase]);
+
+  // 首会话落地终端（默认总览的配套不变量）：默认视图改总览后，从主机树/
+  // 面板/⌘K 发起的连接要把用户带回终端面（总览卡片与实体导航本就显式
+  // openMainView("terminal")，此处兜住其余连接入口）。只在 0 → >0 的首会话
+  // 切——用户在文件/进程视图再开一条连接不被拽走（旧行为保留）。
+  const prevSessionCount = useRef(sessionCount);
+  useEffect(() => {
+    const prev = prevSessionCount.current;
+    prevSessionCount.current = sessionCount;
+    if (prev === 0 && sessionCount > 0) openMainView("terminal");
+  }, [sessionCount, openMainView]);
 
   // T13：设置页路由钩子注入（aiStore 错误面「去设置」按钮 → 打开 AI 设置）
   useEffect(() => {

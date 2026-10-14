@@ -793,11 +793,12 @@
     "disk": "Disk",
     "load": "Load",
     "net": "Network",
-    "off": "Monitoring is off for this host (Host form → Monitor panel).",
+    "off": "Monitoring is off for this host — enable it in the host form or on the Overview page.",
     "unsupported": "Remote does not support monitoring (Linux /proc only).",
-    "waiting": "Waiting for samples…",
+    "waiting": "Waiting for the first sample… (read-only sampling every 5s while connected)",
     "stopped": "Sampling stopped (session lost?) — reconnect to resume.",
-    "monitorHint": "Terminal sidebar mini charts: CPU / memory / disk / load / network. Sampling is read-only (cat /proc, df -k) every 5s."
+    "disconnected": "No host connected yet. The panel shows CPU / memory / disk / load / network for the current connection — connect to a host and enable monitoring in the host form or on the Overview page.",
+    "monitorHint": "Read-only sampling of the connected host (cat /proc, df -k), every 5s by default; Linux remotes only."
   },
   "overview": {
     "title": "Overview",
@@ -1030,13 +1031,13 @@
     "title": "MCP",
     "serverSection": "MCP Server",
     "enabled": "Enable MCP server",
-    "enabledHint": "Exposes granted hosts as tools to local AI clients (e.g. Claude Desktop) via a stdio relay. Master switch off by default; nothing is exposed until you enable it here AND grant hosts below.",
+    "enabledHint": "Exposes granted hosts as tools to local AI clients (Claude Desktop, Cursor, …) over standard MCP (stdio). Master switch off by default; nothing is exposed until you enable it here AND grant hosts below.",
     "listening": "Status",
     "listeningOn": "Listening",
     "listeningOff": "Stopped",
     "socketPath": "Socket",
-    "snippetToggle": "Claude Desktop setup",
-    "snippetHint": "Add this to claude_desktop_config.json (replace the command path with the actual ottr-mcp binary path):",
+    "snippetToggle": "Client setup",
+    "snippetHint": "Add the mcpServers config below to any MCP-capable client (Claude Desktop: claude_desktop_config.json; replace the command path with the actual ottr-mcp binary path):",
     "snippetUnavailable": "Enable the server first to see the socket path.",
     "snippetDocs": "The Ottr app must be running while the MCP client is connected. Full guide: docs/mcp.md.",
     "grantsSection": "Host grants (default: deny all)",
@@ -1063,9 +1064,10 @@
     "title": "Plugins",
     "open": "Open plugin sidebar",
     "close": "Collapse plugin sidebar",
+    "intro": "Plugins extend the panel with cards and quick commands — built-in examples below.",
     "net": {
       "title": "Network",
-      "waiting": "Waiting for samples…"
+      "waiting": "Connect a host with monitoring enabled to see current network throughput."
     },
     "quick": {
       "title": "Quick Commands",

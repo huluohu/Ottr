@@ -31,12 +31,13 @@ export type ThemeMode =
 export type ResolvedTheme = "light" | "dark";
 
 /** 主题 id 全集（theme-suite T2）。白名单单一来源——load/persist/syncThemeFromVault
- * 三处共用 isThemeId，新增主题只改这里；顶栏快切菜单（App ThemeMenu）与设置页
- * 主题网格同消费本全集（2026-10-08 用户口径：快切菜单必须同步全部主题）。 */
+ * 三处共用 isThemeId，新增主题只改这里；侧栏快切菜单（Sidebar THEME_CYCLE）与
+ * 设置页主题网格（SecuritySettings THEME_CHOICES）同消费本全集且「跟随系统」
+ * 首位（2026-10-14 用户口径：缺省档排第一，原生菜单同序）。 */
 export const THEME_IDS: readonly ThemeMode[] = [
+  "system",
   "light",
   "dark",
-  "system",
   "oled",
   "amethyst",
   "verdant",

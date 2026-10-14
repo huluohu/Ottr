@@ -2,8 +2,8 @@
 // 设置面板（工具菜单 → workspace/ToolDialog 弹框承载，开合由 toolDialog 单槽驱动；
 // 组件逻辑零改动，仅外壳从 overlay 对话框换为 dock 内容形态）。
 // * 总开关（settings mcp.enabled；Rust 侧同步起/停 UDS listener，改设即生效）；
-// * 运行状态行：监听中/已停止 + socket 绝对路径（Claude Desktop 接入说明用）；
-// * 接入片段：`ottr-mcp` relay 子进程的 claude_desktop_config.json 形态
+// * 运行状态行：监听中/已停止 + socket 绝对路径（客户端接入配置说明用）；
+// * 接入片段：`ottr-mcp` relay 子进程的标准 mcpServers 配置形态
 //   （socket 路径经 --socket 显式传入，完整文档见 docs/mcp.md）；
 // * 授权矩阵：主机粒度 can_list / can_exec / exec_approval 三个开关 +
 //   read_file 目录白名单（逗号分隔，回车/失焦保存）——默认全拒，无授权行 =

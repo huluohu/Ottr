@@ -1,4 +1,4 @@
-/* --- A12 自绘标题栏（Task 14，win/linux；mac 不渲染走原生） --- */
+/* --- A12 自绘标题栏（Task 14，win/linux；mac 走融合式标题栏，见文末） --- */
 .titlebar {
   position: relative;
   flex: none;
@@ -123,4 +123,28 @@
 .titlebar-snap-zone:focus-visible {
   background: var(--color-accent);
   outline: none;
+}
+
+/* --- macOS 融合式标题栏（2026-10-14 用户裁定「标题栏与系统融合」）---------
+ * 原生标题栏退役（desktop/tauri.conf.json titleBarStyle=Overlay + hiddenTitle，
+ * 仅 macOS 生效；Win/Linux 仍走上方自绘 .titlebar）：内容顶到窗口顶缘，
+ * 红绿灯悬浮于侧栏左上。侧栏顶部让出红绿灯区（52px ≈ 惯例工具条高，
+ * ZCode 同量级），该区 + 主区标签行/空态主区 = 拖拽面（data-tauri-drag-region
+ * 由 App/Sidebar/MainArea 按 mac+Tauri 注入；属性只命中元素本身才起拖，
+ * 子元素交互不受影响）。Win/Linux 无此属性，零影响。 */
+.app-shell[data-titlebar="overlay"] {
+  --ottr-titlebar-inset: 52px;
+}
+.sidebar-v2 {
+  position: relative;
+}
+.app-shell[data-titlebar="overlay"] .sidebar-v2 {
+  padding-top: calc(var(--ottr-titlebar-inset) + 10px);
+}
+.titlebar-inset {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--ottr-titlebar-inset);
 }

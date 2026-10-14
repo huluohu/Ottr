@@ -36,7 +36,7 @@ export interface SecuritySettingsProps {
   open: boolean;
   onClose: () => void;
   /** 外部定向打开（AI 设置跳转/检查更新入口）：本次打开落地的分区；
-   * null = 默认安全区。仅在本轮 open=true 时消费。 */
+   * null = 默认通用区。仅在本轮 open=true 时消费。 */
   initialPane?: SettingsPane | null;
   /** 同步区「立即同步」入口（App 根部挂 SyncDialog，Task 4）。 */
   onOpenSyncDialog?: () => void;
@@ -74,22 +74,24 @@ const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 // 行为开关混进外观节）。未激活面板 hidden 隐藏但**保持挂载**——控件状态、
 // 升级/降级向导进度与既有测试断言都不因切换丢面；DOM 顺序 = 导航顺序
 // （Tab 序一致）。面板内滚动替代整窗滚动（样式见 16-lock-security.css）。
+// 2026-10-14 用户裁定（最佳实践）：「通用」排第一、设置打开默认落地通用区
+// （系统设置类应用的通行序），打开落点与关闭重置同步改 general。
 export type SettingsPane =
+  | "general"
   | "security"
   | "sync"
   | "alerts"
   | "mcp"
   | "appearance"
-  | "general"
   | "ai"
   | "about";
 const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
+  { id: "general", labelKey: "settings.sectionGeneral" },
   { id: "security", labelKey: "settings.sectionSecurity" },
   { id: "sync", labelKey: "settings.sectionSync" },
   { id: "alerts", labelKey: "settings.sectionAlerts" },
   { id: "mcp", labelKey: "settings.sectionMcp" },
   { id: "appearance", labelKey: "settings.sectionAppearance" },
-  { id: "general", labelKey: "settings.sectionGeneral" },
   { id: "ai", labelKey: "settings.sectionAi" },
   { id: "about", labelKey: "settings.sectionAbout" },
 ];
@@ -193,7 +195,7 @@ export function SecuritySettings({
   const [sudoAutofill, setSudoAutofill] = useState<boolean | null>(null);
   const [sudoConfirm, setSudoConfirm] = useState(false);
   // 分区导航当前面板（默认安全——对话框的历史主区）。
-  const [pane, setPane] = useState<SettingsPane>("security");
+  const [pane, setPane] = useState<SettingsPane>("general");
   // 关于分区版本号（getVersion；非 Tauri 隐藏行）
   const [appVersion, setAppVersion] = useState<string | null>(null);
   useEffect(() => {
@@ -242,7 +244,7 @@ export function SecuritySettings({
       setThemeImportError(null);
       setThemeImportedCount(null);
       setSudoConfirm(false);
-      setPane("security");
+      setPane("general");
       const ts = loadTerminalSettings();
       setTermFont(ts.fontFamily);
       setTermFontSize(ts.fontSize ?? 13);
@@ -250,8 +252,8 @@ export function SecuritySettings({
     }
     // 定向分区消费（2026-10-13 修复）：initialPane 此前只有文档与依赖数组，
     // 函数体从未 setPane——所有定向入口（工具菜单「AI 设置」/AI 诊断
-    // 「去设置」/同步「去设置」）都静默落在默认安全区（用户截图实锤）。
-    // null = 默认安全区（关闭时已重置，此处不额外翻页）。
+    // 「去设置」/同步「去设置」）都静默落在默认分区（用户截图实锤）。
+    // null = 默认通用区（关闭时已重置，此处不额外翻页）。
     if (initialPane !== null) setPane(initialPane);
     let disposed = false;
     let unlisten: (() => void) | undefined;

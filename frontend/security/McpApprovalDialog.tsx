@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { useEscClose } from "../ui/useEscClose";
+import { useModalStore } from "../ui/modalStore";
 import { vaultApi, type McpApprovalAsk } from "../vault/api";
 
 export const MCP_APPROVAL_EVENT = "ottr://mcp-approval";
@@ -26,8 +27,11 @@ export function visualizeCommand(raw: string): string {
 export function McpApprovalDialog() {
   const { t } = useTranslation();
   const [queue, setQueue] = useState<McpApprovalAsk[]>([]);
+  // 全局弹窗唯一槽（2026-10-14）：审批到达即认领（事件回调内同步），持有
+  // 槽位才渲染；被其他弹窗顶掉 = 本框暂隐（队列保留，门侧 60s 超时各自计时）。
+  const owned = useModalStore((s) => s.active === "mcpApproval");
   // Esc = 拒绝（与门侧超时=拒绝同口径的安全侧默认）。
-  useEscClose(queue.length > 0, () => {
+  useEscClose(queue.length > 0 && owned, () => {
     if (queue.length > 0) void decide(false);
   });
 
@@ -36,6 +40,7 @@ export function McpApprovalDialog() {
     let unlisten: (() => void) | undefined;
     void listen<McpApprovalAsk>(MCP_APPROVAL_EVENT, (e) => {
       setQueue((q) => [...q, e.payload]);
+      useModalStore.getState().open("mcpApproval");
     })
       .then((stop) => {
         if (disposed) stop();
@@ -50,7 +55,7 @@ export function McpApprovalDialog() {
     };
   }, []);
 
-  if (queue.length === 0) return null;
+  if (queue.length === 0 || !owned) return null;
   const ask = queue[0];
 
   async function decide(allow: boolean) {
@@ -59,7 +64,11 @@ export function McpApprovalDialog() {
     } catch {
       // 裁定回传失败（窗口已超时等）：仅摘除本条——门侧早已按拒绝收尾。
     }
-    setQueue((q) => q.filter((a) => a.request_id !== ask.request_id));
+    setQueue((q) => {
+      const rest = q.filter((a) => a.request_id !== ask.request_id);
+      if (rest.length === 0) useModalStore.getState().close("mcpApproval");
+      return rest;
+    });
   }
 
   return (

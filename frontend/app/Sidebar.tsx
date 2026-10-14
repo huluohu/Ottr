@@ -25,6 +25,10 @@ const THEME_CYCLE: readonly ThemeMode[] = [
 export interface SidebarProps extends HostTreeProps {
   /** 壳层宽度（App 侧拖拽 resizer 持有）。 */
   style?: CSSProperties;
+  /** macOS 融合式标题栏（2026-10-14）：顶部让出红绿灯区并铺拖拽面
+   * （tauri.conf.json titleBarStyle=Overlay；高度与背景见 12-titlebar-theme.css）。
+   * Win/Linux 自绘标题栏承担窗口壳，不注入。 */
+  titlebarInset?: boolean;
   /** ⌘K 全局搜索（命令面板：主机 + 命令）。 */
   onQuickConnect: () => void;
   /** 凭据管理（对话框：凭据/密钥/known_hosts 三页签）。 */
@@ -155,6 +159,7 @@ const NAV_DOCK: ReadonlyArray<{
 
 export function Sidebar({
   style,
+  titlebarInset,
   onQuickConnect,
   onOpenCredentials,
   onNewGroup,
@@ -219,6 +224,11 @@ export function Sidebar({
 
   return (
     <aside className="sidebar sidebar-v2" style={style} data-testid="app-sidebar">
+      {/* 融合式标题栏拖拽面（mac 专属注入）：覆盖侧栏顶部红绿灯让位区。
+          data-tauri-drag-region 只在命中本元素时起拖——无子元素不挡交互。 */}
+      {titlebarInset && (
+        <div className="titlebar-inset" data-tauri-drag-region aria-hidden="true" />
+      )}
       {/* 搜索 = 标准输入框形（放大镜 + ⌘K 右嵌）；点击呼出 ⌘K 面板。 */}
       <div className="sidebar-quick">
         <button

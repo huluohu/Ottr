@@ -6,20 +6,27 @@
 import { useTranslation } from "react-i18next";
 import { useEscClose } from "../ui/useEscClose";
 import { useDelayedValue } from "../ui/useDelayedUnmount";
+import { useModalStore } from "../ui/modalStore";
 import { useSessionStore } from "./SessionStore";
 
 export function HostKeyDialog() {
   const { t } = useTranslation();
   const ask = useSessionStore((s) => s.hostKeyAsk);
   const decide = useSessionStore((s) => s.decideHostKey);
+  // 全局弹窗唯一槽（2026-10-14）：问询置起即认领（SessionStore），持有槽位
+  // 才渲染；被其他弹窗顶掉 = 本框销毁——问询留在 SessionStore，Rust 门 60s
+  // 超时按拒绝收尾（安全侧），不自动重回。
+  const owned = useModalStore((s) => s.active === "hostKey");
   // Esc = 拒绝连接（与 Rust 侧超时=拒绝同口径；changed 强提醒下 Esc 不可能
   // 误连——拒绝是两种形态的共同安全侧）。
-  useEscClose(ask != null, () => {
+  useEscClose(ask != null && owned, () => {
     void decide(false);
   });
   // 退场动画窗（评审 P1-8）：ask 清空后保留挂载播镜像动画，再真卸载。
+  // 渲染门 `|| (view.closing && 槽位空闲)`：正常裁定播退场；被顶掉立即销毁。
   const view = useDelayedValue(ask);
-  if (!view.value) return null;
+  const slotIdle = useModalStore((s) => s.active === null);
+  if (!view.value || !(owned || (view.closing && slotIdle))) return null;
   const ask0 = view.value;
   const changed = ask0.kind === "changed";
   return (

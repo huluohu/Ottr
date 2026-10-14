@@ -406,7 +406,7 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     expect(screen.queryByTestId("tool-dialog")).toBeNull();
   });
 
-  it("告警/MCP/跳板链 → openToolDialog 对应弹框；总览/批量 → openMainView 主区实体视图", async () => {
+  it("告警/跳板链 → openToolDialog 对应弹框；总览/批量 → openMainView 主区实体视图", async () => {
     listMock();
     render(<App />);
     await act(async () => {});
@@ -415,14 +415,23 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     act(() => menuActionHandler!({ payload: "tool.alerts" }));
     expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("alerts");
     expect(screen.getByTestId("alert-settings")).toBeTruthy(); // 实体在弹框内
-    // MCP（2026-10-14 单一家裁定）：菜单入口 → 设置页 MCP 分区（不再弹框；
-    // 此前打开的工具弹框不受影响——MCP 不再占用 toolDialog 单槽）
-    act(() => menuActionHandler!({ payload: "tool.mcp" }));
-    expect(screen.getByTestId("security-settings")).toBeTruthy();
-    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("alerts");
     act(() => menuActionHandler!({ payload: "tool.jump-chains" }));
     expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("jumpchains");
     expect(screen.getByTestId("jump-editor")).toBeTruthy();
+
+    // MCP（2026-10-14 设置类收敛）：工具清单已无 mcp 项——事件无分派，
+    // 既不开设置也不动当前弹框（MCP 单一家 = 设置页 MCP 分区，经侧栏进入）。
+    act(() => menuActionHandler!({ payload: "tool.mcp" }));
+    expect(screen.queryByTestId("security-settings")).toBeNull();
+    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("jumpchains");
+
+    // 全局弹窗单实例（2026-10-14 裁定）：设置打开即顶掉工具弹框——新弹框
+    // 显示，其他弹框先销毁。
+    act(() => menuActionHandler!({ payload: "settings.open" }));
+    expect(screen.getByTestId("security-settings")).toBeTruthy();
+    expect(screen.queryByTestId("tool-dialog")).toBeNull();
+    fireEvent.click(screen.getByTestId("settings-dialog-close"));
+    expect(screen.queryByTestId("security-settings")).toBeNull();
 
     // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义；T3 起挂实体）。
     // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel。

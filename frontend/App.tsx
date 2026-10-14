@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sidebar } from "./app/Sidebar";
 import { Toaster } from "./ui/Toaster";
+import { useModalStore, type ModalId } from "./ui/modalStore";
 import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
 import { showToast } from "./ui/toastStore";
 import { runUpdateCheckToasts } from "./update/updateToasts";
@@ -119,20 +120,31 @@ function HomeLayout() {
   const lockPhase = useVaultLockStore((s) => s.phase);
   const lockView = useDelayedUnmount(lockPhase === "locked");
   const [form, setForm] = useState<FormState>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [credentialsOpen, setCredentialsOpen] = useState(false);
+  // 全局弹窗唯一槽位（2026-10-14 用户裁定「同时只能有一个弹框」）：开/关全走
+  // modalStore，open(id) 顶掉当前弹窗；form/settingsPane 只是渲染载荷。
+  const activeModal = useModalStore((s) => s.active);
+  const openModal = useModalStore((s) => s.open);
+  const closeModal = useModalStore((s) => s.close);
+  /** id 是否持有唯一槽位（渲染门）。 */
+  const owned = (id: ModalId) => activeModal === id;
   // 浮层退场动画窗（评审 P1-8）：关闭期保留挂载并下发 closing，CSS 播完镜像
-  // 动画再由 hook 真卸载（时长 ≥ --dur-fast 100ms）。
+  // 动画再由 hook 真卸载（时长 ≥ --dur-fast 100ms）。渲染门加
+  // `activeModal === null`：被新弹窗顶掉时立即销毁（不播退场、不留叠影），
+  // 正常关闭（此刻槽位已空）照常播完动画。
   const formView = useDelayedValue(form);
+  const importOpen = activeModal === "importHosts";
   const importView = useDelayedUnmount(importOpen);
+  const credentialsOpen = activeModal === "credentials";
   const credentialsView = useDelayedUnmount(credentialsOpen);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  // T15：⌘R 历史搜索面板（registry history.search；终端内放行 PTY 见 registry）
-  const [historyOpen, setHistoryOpen] = useState(false);
-  // Phase 2 B1（Task 6）：⌘J NL→命令输入条（registry ai.nl2cmd；全局直呼，
-  // 终端内也命中——begin 的 cwd 锚点在 nlBegin 里按聚焦 pane 查 CwdTracker）
-  const [nlOpen, setNlOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认通用区。
+  const [settingsPane, setSettingsPane] = useState<null | import("./security/SecuritySettings").SettingsPane>(null);
+  const openSettingsToPane = useCallback(
+    (pane: import("./security/SecuritySettings").SettingsPane | null) => {
+      setSettingsPane(pane);
+      openModal("settings");
+    },
+    [openModal],
+  );
   // 托盘状态行会话计数同步（menu_set_tray_status；非 Tauri 环境 no-op）。
   const sessionCount = useSessionStore((s) => s.sessions.length);
   useEffect(() => {
@@ -142,14 +154,6 @@ function HomeLayout() {
   // TEMP-SCREENSHOT（配图重采驱动，采完即删）：?shot=<target> 控制面板；
   // 改代码后 touch main.tsx 强制整页重载。
 
-  // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认安全区。
-  const [settingsPane, setSettingsPane] = useState<null | import("./security/SecuritySettings").SettingsPane>(null);
-  const openSettingsToPane = (pane: "ai" | "about") => {
-    setSettingsPane(pane);
-    setSettingsOpen(true);
-  };
-  // Phase 5 Task 4：同步对话框（设置页「立即同步」+ 顶栏工具菜单两个入口）。
-  const [syncOpen, setSyncOpen] = useState(false);
   // T13：AI 设置对话框（诊断面板 noProvider/noKey 引导、顶栏 AI 按钮两个入口）
   // 【UI 批次一 Task 2】原面板开关 setState（alertSettings/forwards/jumpChains/
   // overview/procs/batch/cron/mcp/filesOpen）已收口进 workspaceStore——主区视图
@@ -176,18 +180,18 @@ function HomeLayout() {
   // 顶部行内状态条废弃（用户反馈路径直接糊在页面顶部太丑），改右下角
   // Toast（ui/toastStore，6 秒自动消失，成功 info / 失败 error）。
 
-  /** 工具动作单一来源（2026-10-08 菜单栏启用批次）：顶栏「工具」下拉与
+  /** 工具动作单一来源（2026-10-08 菜单栏启用批次）：各工具菜单入口与
    * macOS 原生「工具」菜单（ottr://menu-action 的 tool.<key>）同一分派——
-   * 两入口永不分叉（用户口径：同类功能在两处必须同步）。 */
+   * 多入口永不分叉（用户口径：同类功能在多处必须同步）。
+   * 2026-10-14 设置类收敛：mcp（单一家 = 设置页 MCP 分区）与 sync（单一家 =
+   * 设置页同步分区）自工具清单退役——工具菜单不再有设置概念项，本表同步
+   * 删除对应 case（清单见 shortcuts/toolsRegistry.ts）。 */
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
         case "notify-center": openToolDialog("notifications"); break;
-        case "credentials": setCredentialsOpen(true); break;
+        case "credentials": openModal("credentials"); break;
         case "alerts": openToolDialog("alerts"); break;
-        // MCP（2026-10-14 用户裁定）：与设置页 MCP 分区单一家——菜单/⌘K
-        // 打开 设置 → MCP，不再另起弹框（此前双入口内容重复）。
-        case "mcp": setSettingsPane("mcp"); setSettingsOpen(true); break;
         case "monitor": openToolDialog("monitor"); break;
         case "plugins": openToolDialog("plugins"); break;
         case "forwards": openToolDialog("forwards"); break;
@@ -195,7 +199,6 @@ function HomeLayout() {
         case "overview": openMainView("overview"); break;
         case "batch": openMainView("batch"); break;
         case "cron": openToolDialog("cron"); break;
-        case "sync": setSyncOpen(true); break;
         case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
       }
     },
@@ -277,9 +280,9 @@ function HomeLayout() {
   useEffect(() => {
     // AI 设置入口（诊断面板「去设置」）：设置对话框落「AI」分区（2026-10-10
     // AI 设置并入设置页，独立对话框退役）。
-    setAiSettingsOpener(() => setSettingsPane("ai"));
+    setAiSettingsOpener(() => openSettingsToPane("ai"));
     return () => setAiSettingsOpener(null);
-  }, []);
+  }, [openSettingsToPane]);
 
   // Phase 2 Task 7（B1 会话纪要）：会话收尾钩子注入——closeTab / disconnect /
   // 重连耗尽时异步生成纪要（onSessionEnded fire-and-forget，失败静默不反噬）。
@@ -292,22 +295,25 @@ function HomeLayout() {
   // 汉堡菜单——一处 action 多入口，全部汇到 handleAction。
   const handleAction = useCallback(
     (action: string) => {
+      // 开关二态动作读现值（getState 避免把 activeModal 拉进依赖面）。
+      const modal = useModalStore.getState();
       switch (action) {
         case "palette.toggle":
-          setPaletteOpen((v) => !v);
+          modal.active === "palette" ? modal.close("palette") : modal.open("palette");
           break;
         case "history.search":
-          setHistoryOpen((v) => !v);
+          modal.active === "history" ? modal.close("history") : modal.open("history");
           break;
         case "ai.nl2cmd":
           // 打开 = 清场 + 聚焦 pane 的 cwd 锚点（OSC7 活值）；关闭 = 顺带清场
           // （在途请求 abort，panel 卸载后 store 不留尾巴）。副作用在 updater
           // 外（StrictMode 下 updater 可能双调）。
           nlBegin();
-          setNlOpen((v) => !v);
+          modal.active === "nl2cmd" ? modal.close("nl2cmd") : modal.open("nl2cmd");
           break;
         case "hosts.new":
           setForm({ mode: "new", groupId: null });
+          modal.open("hostForm");
           break;
         case "hosts.new_group":
           // 信号计数：HostTree useEffect 监听展开分组输入（连续触发也生效）。
@@ -317,11 +323,10 @@ function HomeLayout() {
           openToolDialog("notifications");
           break;
         case "hosts.import":
-          setImportOpen(true);
+          modal.open("importHosts");
           break;
         case "settings.open":
-          setSettingsPane(null);
-          setSettingsOpen(true);
+          openSettingsToPane(null);
           break;
         case "update.check":
           // 四端入口统一走 toast 编排（update/updateToasts.ts）：单飞防重 +
@@ -459,7 +464,14 @@ function HomeLayout() {
   const selected = hosts.find((h) => h.id === selectedId) ?? null;
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      // macOS 融合式标题栏（2026-10-14 用户裁定「标题栏与系统融合」）：
+      // 原生标题栏退役（tauri.conf.json titleBarStyle=Overlay + hiddenTitle），
+      // 内容顶到窗口顶缘、红绿灯悬浮于侧栏左上；侧栏顶部让位 + 拖拽面见
+      // Sidebar titlebarInset / MainArea 拖拽区 / 12-titlebar-theme.css。
+      data-titlebar={PLATFORM === "mac" && IS_TAURI ? "overlay" : undefined}
+    >
       {/* A12：Win/Linux 自绘标题栏（decorations:false 的窗口壳；mac 不渲染走
           原生红绿灯 + 系统菜单栏）。动作收口同一 handleAction。 */}
       {PLATFORM !== "mac" && IS_TAURI && (
@@ -474,20 +486,24 @@ function HomeLayout() {
             功能导航 + 设置，单列三段式；宽度仍由 resizer 持有。 */}
         <Sidebar
           style={{ width: sidebarWidth }}
+          titlebarInset={PLATFORM === "mac" && IS_TAURI}
           newGroupSignal={newGroupSignal}
           selectedId={selectedId}
           onSelect={(host) => setSelectedId(host.id)}
           onOpen={(host) => openTab(host)}
-          onEdit={(host) => setForm({ mode: "edit", host })}
-          onAdd={(groupId) => setForm({ mode: "new", groupId })}
-          onQuickConnect={() => setPaletteOpen(true)}
-          onOpenCredentials={() => setCredentialsOpen(true)}
-          onNewGroup={() => setNewGroupSignal((n) => n + 1)}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenMcpSettings={() => {
-            setSettingsPane("mcp");
-            setSettingsOpen(true);
+          onEdit={(host) => {
+            setForm({ mode: "edit", host });
+            openModal("hostForm");
           }}
+          onAdd={(groupId) => {
+            setForm({ mode: "new", groupId });
+            openModal("hostForm");
+          }}
+          onQuickConnect={() => openModal("palette")}
+          onOpenCredentials={() => openModal("credentials")}
+          onNewGroup={() => setNewGroupSignal((n) => n + 1)}
+          onOpenSettings={() => openSettingsToPane(null)}
+          onOpenMcpSettings={() => openSettingsToPane("mcp")}
         />
         <div
           className="sidebar-resizer"
@@ -501,13 +517,16 @@ function HomeLayout() {
             运行中会话不卸载）。 */}
         {/* 空态快捷卡（ui-batch2 T3，审计 A4）：三入口动作全为既有语义——
             新建主机 = HostTree onAdd 同款 setForm({mode:"new"})；⌘K =
-            顶栏 palette 按钮同款 setPaletteOpen(true)。 */}
+            侧栏搜索行同款 openModal("palette")（modalStore 唯一槽）。 */}
         <MainArea
           storeError={storeError}
           selected={selected}
           onOpenAiSettings={() => openSettingsToPane("ai")}
-          onAddHost={() => setForm({ mode: "new", groupId: null })}
-          onOpenPalette={() => setPaletteOpen(true)}
+          onAddHost={() => {
+            setForm({ mode: "new", groupId: null });
+            openModal("hostForm");
+          }}
+          onOpenPalette={() => openModal("palette")}
         />
         {/* 工具面板统一弹框（2026-10-12 dock 退役）：单槽 toolDialog，
             一次一个；不占布局，终端常驻不变量由 overlay 语义天然保证。 */}
@@ -516,35 +535,48 @@ function HomeLayout() {
       {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
       <Toaster />
 
-      {formView.value && (
+      {/* 弹窗渲染门（modalStore 单实例，2026-10-14 用户裁定）：open 态 =
+          owned(id)；`|| (closing && activeModal === null)` = 正常关闭播完
+          退场动画、被新弹窗顶掉时立即销毁不播退场。 */}
+      {formView.value && (owned("hostForm") || (formView.closing && activeModal === null)) && (
         <HostForm
           closing={formView.closing}
           host={formView.value.mode === "edit" ? formView.value.host : null}
           defaultGroupId={formView.value.mode === "new" ? formView.value.groupId : null}
-          onClose={() => setForm(null)}
+          onClose={() => {
+            setForm(null);
+            closeModal("hostForm");
+          }}
         />
       )}
-      {importView.shouldRender && (
-        <ImportDialog closing={importView.closing} onClose={() => setImportOpen(false)} />
+      {importView.shouldRender && (importOpen || (importView.closing && activeModal === null)) && (
+        <ImportDialog closing={importView.closing} onClose={() => closeModal("importHosts")} />
       )}
-      {credentialsView.shouldRender && (
-        <CredentialsDialog closing={credentialsView.closing} onClose={() => setCredentialsOpen(false)} />
+      {credentialsView.shouldRender &&
+        (credentialsOpen || (credentialsView.closing && activeModal === null)) && (
+          <CredentialsDialog
+            closing={credentialsView.closing}
+            onClose={() => closeModal("credentials")}
+          />
+        )}
+      {(owned("settings") || activeModal === null) && (
+        <SecuritySettings
+          open={owned("settings")}
+          initialPane={settingsPane}
+          onClose={() => closeModal("settings")}
+          onOpenSyncDialog={() => openModal("sync")}
+        />
       )}
-      <SecuritySettings
-        open={settingsOpen}
-        initialPane={settingsPane}
-        onClose={() => setSettingsOpen(false)}
-        onOpenSyncDialog={() => setSyncOpen(true)}
-      />
-      {/* Phase 5 Task 4：同步流程对话框（在设置对话框之后渲染 = 叠于其上）。 */}
-      <SyncDialog
-        open={syncOpen}
-        onClose={() => setSyncOpen(false)}
-        onOpenSettings={() => {
-          setSettingsPane("sync");
-          setSettingsOpen(true);
-        }}
-      />
+      {/* 同步流程对话框：设置页同步分区「立即同步」的唯一弹窗入口（工具菜单
+          同步项已退役，2026-10-14 设置类收敛）；开启即顶掉设置页（单实例槽），
+          「去设置」按钮反向顶回。 */}
+      {(owned("sync") || activeModal === null) && (
+        <SyncDialog
+          open={owned("sync")}
+          onClose={() => closeModal("sync")}
+          onOpenSettings={() => openSettingsToPane("sync")}
+        />
+      )}
       {/* 【UI 批次一 Task 2】原对话框面板（AlertSettings/ForwardPanel/
           JumpChainEditor/OverviewPage/BatchPanel/CronPanel/McpSettings）已停挂——
           实体 T4 迁入右侧 dock（alerts/forwards/jumpchains/cron/mcp）、T3 迁入
@@ -562,41 +594,48 @@ function HomeLayout() {
           z 序在锁屏之上——初始化未完成时锁屏状态机尚未启动，两者互斥）。 */}
       <VaultInitGateOverlay phase={initPhase} error={initError} />
       {/* A12 命令面板（T5 QuickConnect 并入收口）：主机 + 命令统一搜索。
-          动作经 handleAction 分派；连主机即开标签。 */}
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        hosts={hosts}
-        onConnect={(host) => {
-          openTab(host);
-          setPaletteOpen(false);
-        }}
-        onAction={(action) => {
-          setPaletteOpen(false);
-          handleAction(action);
-        }}
-        plat={PLATFORM}
-      />
+          动作经 handleAction 分派；连主机即开标签。外门口径同上：被新弹窗
+          顶掉立即销毁，正常关闭（槽位已空）播完退场。 */}
+      {(owned("palette") || activeModal === null) && (
+        <CommandPalette
+          open={owned("palette")}
+          onClose={() => closeModal("palette")}
+          hosts={hosts}
+          onConnect={(host) => {
+            openTab(host);
+            closeModal("palette");
+          }}
+          onAction={(action) => {
+            closeModal("palette");
+            handleAction(action);
+          }}
+          plat={PLATFORM}
+        />
+      )}
       {/* T15 历史搜索面板（⌘R）：跨主机命令历史 FTS 检索；回车把命令写进当前
           聚焦 pane（剥提示符前缀——CommandWatch 提取含提示符原文；不带换行，
           落在输入行由用户确认执行）。 */}
-      <HistorySearch
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        hosts={hosts}
-        onInsert={(command) => {
-          useSessionStore.getState().insertToFocusedPane(stripPromptPrefix(command));
-          setHistoryOpen(false);
-        }}
-        plat={PLATFORM}
-      />
+      {(owned("history") || activeModal === null) && (
+        <HistorySearch
+          open={owned("history")}
+          onClose={() => closeModal("history")}
+          hosts={hosts}
+          onInsert={(command) => {
+            useSessionStore.getState().insertToFocusedPane(stripPromptPrefix(command));
+            closeModal("history");
+          }}
+          plat={PLATFORM}
+        />
+      )}
       {/* Phase 2 B1（Task 6）⌘J NL→命令输入条：底部锚定；生成结果走公共
           InsertRow 的 danger 三档确认插终端（聚焦 pane 的 rustId 面板内解析）。 */}
-      <NLCommandPanel
-        open={nlOpen}
-        onClose={() => setNlOpen(false)}
-        onOpenSettings={() => openSettingsToPane("ai")}
-      />
+      {(owned("nl2cmd") || activeModal === null) && (
+        <NLCommandPanel
+          open={owned("nl2cmd")}
+          onClose={() => closeModal("nl2cmd")}
+          onOpenSettings={() => openSettingsToPane("ai")}
+        />
+      )}
     </div>
   );
 }

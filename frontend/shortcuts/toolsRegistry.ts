@@ -9,7 +9,11 @@
 // 与 shortcuts/registry ACTIONS 的划界：ACTIONS = 带 ActionId 类型面的键盘
 // 动作（快捷键监听/终端守卫），本表 = 导航型工具命令（无键位面）；notify.center
 // 两边都有（键盘面在 ACTIONS，清单面在此）——消费方按各自渲染去重。
-
+//
+// 【设置类收敛（2026-10-14 用户裁定，多次重申）】工具菜单不得出现设置概念项：
+// tool.ai（v0.9.12）、tool.mcp（单一家 = 设置页 MCP 分区）、tool.sync（单一家 =
+// 设置页同步分区）先后退役。此后新增功能先问安家：改配置的面进设置页分区，
+// 不进本表。
 export type FeatureGroup = "panels" | "hosts" | "system";
 
 export interface FeatureCommand {
@@ -24,7 +28,6 @@ export interface FeatureCommand {
 export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.cron", labelKey: "nav.cron", group: "panels" },
   { id: "tool.alerts", labelKey: "nav.alerts", group: "panels" },
-  { id: "tool.mcp", labelKey: "nav.mcp", group: "panels" },
   { id: "notify.center", labelKey: "nav.notifications", group: "panels" },
   { id: "tool.monitor", labelKey: "monitor.title", group: "panels" },
   { id: "tool.plugins", labelKey: "plugins.title", group: "panels" },
@@ -33,11 +36,8 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.credentials", labelKey: "credentials.dialogTitle", group: "hosts" },
   { id: "tool.overview", labelKey: "overview.title", group: "hosts" },
   { id: "tool.batch", labelKey: "batch.title", group: "hosts" },
-  // 同步 / 导出主机 CSV（2026-10-12 跨平台审计补齐）：mac 工具菜单 12 项里有
-  // 这两项（menu.rs TOOL_KEYS），本表此前只有 10 项——Win/Linux 汉堡/⌘K/托盘
-  // 由此渲染，「导出主机 CSV」在 Win/Linux 无任何触达口（runToolAction 的
-  // case 本就已存在，只差清单缺项）。
-  { id: "tool.sync", labelKey: "sync.sectionTitle", group: "system" },
+  // 导出主机 CSV（2026-10-12 跨平台审计补齐）：runToolAction 的 case 本就已
+  // 存在，清单缺项曾致 Win/Linux 无触达口。
   { id: "tool.export-hosts-csv", labelKey: "tools.exportHostsCsv", group: "hosts" },
   { id: "update.check", labelKey: "update.check", group: "system" },
 ];

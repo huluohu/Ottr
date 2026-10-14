@@ -15,6 +15,7 @@
 // 会话耦合：未连接（rustId 空）显示提示；会话切换时两栏重置到各自 home。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useEscClose } from "../ui/useEscClose";
+import { useModalStore } from "../ui/modalStore";
 import { useTranslation } from "react-i18next";
 import type { Session } from "../session/SessionStore";
 import {
@@ -83,6 +84,28 @@ export function FilePanel({ session }: { session: Session }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [menu]);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  // 文件操作小对话框接入全局弹窗唯一槽（2026-10-14 用户裁定）：开启即认领
+  // "filesDialog" 槽；被其他弹窗顶掉 = 本框销毁；面板卸载时如仍持槽则释放。
+  const dialogOwned = useModalStore((s) => s.active === "filesDialog");
+  const openDialog = (d: DialogState) => {
+    setDialog(d);
+    useModalStore.getState().open("filesDialog");
+  };
+  const closeDialog = () => {
+    setDialog(null);
+    useModalStore.getState().close("filesDialog");
+  };
+  useEffect(() => {
+    if (dialog !== null && !dialogOwned) closeDialog();
+  }, [dialog, dialogOwned]);
+  useEffect(
+    () => () => {
+      if (useModalStore.getState().active === "filesDialog") {
+        useModalStore.getState().close("filesDialog");
+      }
+    },
+    [],
+  );
   const [notice, setNotice] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<Side | null>(null);
   // 内部拖拽源侧（行 dragstart 记录；drop 消费后清空）。
@@ -343,7 +366,7 @@ export function FilePanel({ session }: { session: Session }) {
       } else if (kind === "delete" && target) {
         await sftpRemove(rustId!, path, target.is_dir);
       }
-      setDialog(null);
+      closeDialog();
       if (side === "remote") void loadRemote(remote.path);
     } catch (e) {
       showNotice(t("files.opFailed", { message: String(e) }));
@@ -356,24 +379,24 @@ export function FilePanel({ session }: { session: Session }) {
           { label: t("files.menu.refresh"), action: () => loadRemote(remote.path) },
           {
             label: t("files.menu.mkdir"),
-            action: () => setDialog({ kind: "mkdir", side: "remote", target: null }),
+            action: () => openDialog({ kind: "mkdir", side: "remote", target: null }),
           },
           ...(selectedEntry
             ? [
                 {
                   label: t("files.menu.rename", { name: selectedEntry.name }),
                   action: () =>
-                    setDialog({ kind: "rename", side: "remote", target: selectedEntry }),
+                    openDialog({ kind: "rename", side: "remote", target: selectedEntry }),
                 },
                 {
                   label: t("files.menu.chmod", { name: selectedEntry.name }),
-                  action: () => setDialog({ kind: "chmod", side: "remote", target: selectedEntry }),
+                  action: () => openDialog({ kind: "chmod", side: "remote", target: selectedEntry }),
                 },
                 {
                   label: t("files.menu.delete", { name: selectedEntry.name }),
                   danger: true,
                   action: () =>
-                    setDialog({ kind: "delete", side: "remote", target: selectedEntry }),
+                    openDialog({ kind: "delete", side: "remote", target: selectedEntry }),
                 },
               ]
             : []),
@@ -616,25 +639,25 @@ export function FilePanel({ session }: { session: Session }) {
         <button onClick={() => navigate(focus, pane.path)}>{t("files.menu.refresh")}</button>
         {focus === "remote" && (
           <>
-            <button data-testid="fb-mkdir" onClick={() => setDialog({ kind: "mkdir", side: "remote", target: null })}>
+            <button data-testid="fb-mkdir" onClick={() => openDialog({ kind: "mkdir", side: "remote", target: null })}>
               {t("files.menu.mkdir")}
             </button>
             <button
               disabled={!selectedEntry}
-              onClick={() => selectedEntry && setDialog({ kind: "rename", side: "remote", target: selectedEntry })}
+              onClick={() => selectedEntry && openDialog({ kind: "rename", side: "remote", target: selectedEntry })}
             >
               {t("files.rename")}
             </button>
             <button
               disabled={!selectedEntry}
-              onClick={() => selectedEntry && setDialog({ kind: "chmod", side: "remote", target: selectedEntry })}
+              onClick={() => selectedEntry && openDialog({ kind: "chmod", side: "remote", target: selectedEntry })}
             >
               {t("files.chmod")}
             </button>
             <button
               disabled={!selectedEntry}
               className="icon-btn danger"
-              onClick={() => selectedEntry && setDialog({ kind: "delete", side: "remote", target: selectedEntry })}
+              onClick={() => selectedEntry && openDialog({ kind: "delete", side: "remote", target: selectedEntry })}
             >
               {t("common.delete")}
             </button>
@@ -679,10 +702,10 @@ export function FilePanel({ session }: { session: Session }) {
           </div>
         </>
       )}
-      {dialog && (
+      {dialog && dialogOwned && (
         <PanelDialog
           dialog={dialog}
-          onClose={() => setDialog(null)}
+          onClose={() => closeDialog()}
           onConfirm={(v) => void applyDialog(v)}
         />
       )}

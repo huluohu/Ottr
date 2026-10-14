@@ -43,5 +43,7 @@ pub use collect::{COMPOSITE_CMD, MonitorError, collect};
 pub use log::{LogTailSample, collect_log_tail, log_path_is_safe, log_stat_cmd, log_tail_cmd};
 pub use metrics::{Metrics, RawSample};
 pub use parse::{DiskEntry, LoadAvg, MemInfo, NetCounters, StatCounters};
-pub use proc::{PS_CMD, ProcEntry, collect_ps, kill_cmd, kill_process, parse_ps_eo};
+pub use proc::{
+    PS_AUX_CMD, PS_CMD, ProcEntry, collect_ps, kill_cmd, kill_process, parse_ps_aux, parse_ps_eo,
+};
 pub use task::{LoopConfig, MonitorGuard, SamplingEnd, run_sampling};

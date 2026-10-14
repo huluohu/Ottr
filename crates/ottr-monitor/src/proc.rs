@@ -23,6 +23,13 @@ use crate::collect::MonitorError;
 /// 进程列表采集命令（只读白名单的 ps 追加点；唯一构造点，见模块文档）。
 pub const PS_CMD: &str = "ps -eo pid,ppid,user,pcpu,pmem,etime,comm --sort=-pcpu";
 
+/// 兜底采集命令（2026-10-16 用户反馈：NAS 主机进程卡恒空）：GNU 形态的
+/// `-eo` 长列 + `--sort` 在 busybox（QNAP/Synology/嵌入式）与 BSD/macOS ps
+/// 上不支持——命令失败输出为空 = 进程卡恒「无进程」。`ps aux` 是三形态的
+/// 最小公倍数（列少：无 ppid/pcpu/etime），由 [`parse_ps_aux`] 按表头列名
+/// 宽松映射，缺的列填中性值。只读，白名单纪律同 [`PS_CMD`]。
+pub const PS_AUX_CMD: &str = "ps aux";
+
 /// 单进程条目（前端 ProcessBrowser 表格行，serde snake_case 同构）。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ProcEntry {
@@ -90,6 +97,53 @@ pub fn parse_ps_eo(text: &str) -> Vec<ProcEntry> {
     out
 }
 
+/// `ps aux` 宽松解析（[`PS_AUX_CMD`] 兜底链）：按**表头列名**定位 PID/USER/
+/// COMMAND 三列（busybox「PID USER VSZ STAT COMMAND」、macOS/BSD「USER PID
+/// %CPU %MEM VSZ RSS TT STAT STARTED TIME COMMAND」皆命中），COMMAND 取到行尾
+/// （可含空格）。无表头/缺 PID/缺 COMMAND/非数字 PID 的行丢弃（宁缺毋错）。
+/// 缺失的列填中性值：ppid 0、cpu/mem 0.0、etime 空（前端展示空、排序退位）。
+pub fn parse_ps_aux(text: &str) -> Vec<ProcEntry> {
+    let mut lines = text.lines().filter(|l| !l.trim().is_empty());
+    let Some(header) = lines.next() else {
+        return Vec::new();
+    };
+    let cols: Vec<String> = header
+        .split_whitespace()
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    let Some(pid_idx) = cols.iter().position(|c| c == "PID") else {
+        return Vec::new();
+    };
+    let Some(cmd_idx) = cols.iter().position(|c| c == "COMMAND" || c == "CMD") else {
+        return Vec::new();
+    };
+    let user_idx = cols.iter().position(|c| c == "USER");
+    let mut rows = Vec::new();
+    for line in lines {
+        let f: Vec<&str> = line.split_whitespace().collect();
+        if f.len() <= cmd_idx || f.len() <= pid_idx {
+            continue;
+        }
+        let Ok(pid) = f[pid_idx].parse::<u32>() else {
+            continue;
+        };
+        rows.push(ProcEntry {
+            pid,
+            ppid: 0,
+            user: user_idx
+                .and_then(|i| f.get(i))
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+            cpu_percent: 0.0,
+            mem_percent: 0.0,
+            etime_secs: 0,
+            etime: String::new(),
+            comm: f[cmd_idx..].join(" "),
+        });
+    }
+    rows
+}
+
 /// kill 命令构造（防注入的**结构性**防线：`u32` 入参，只可能产出
 /// `kill <数字>` / `kill -9 <数字>`）。pid=0（整个调用方进程组）在命令域
 /// 校验层拒绝——构造层保持纯格式化。
@@ -101,15 +155,24 @@ pub fn kill_cmd(pid: u32, force: bool) -> String {
     }
 }
 
-/// 采集进程列表：exec [`PS_CMD`] → [`parse_ps_eo`]。ps 缺席/输出异常 →
-/// 空表（进程浏览器展示空态；与采样的 Unsupported 判定不同，这里不短路
+/// 采集进程列表：exec [`PS_CMD`] → [`parse_ps_eo`]；空表再 exec [`PS_AUX_CMD`]
+/// → [`parse_ps_aux`] 兜底（busybox/BSD ps 不认 GNU 长列）。ps 缺席/两枪皆空
+/// → 空表（进程浏览器展示空态；与采样的 Unsupported 判定不同，这里不短路
 /// 任何循环——进程浏览器是按需拉取，不是常驻循环）。
 pub async fn collect_ps(session: &SshSession) -> Result<Vec<ProcEntry>, MonitorError> {
     let out = session
         .exec(PS_CMD)
         .await
         .map_err(|e| MonitorError::Exec(e.to_string()))?;
-    Ok(parse_ps_eo(&String::from_utf8_lossy(&out.stdout)))
+    let rows = parse_ps_eo(&String::from_utf8_lossy(&out.stdout));
+    if !rows.is_empty() {
+        return Ok(rows);
+    }
+    let out = session
+        .exec(PS_AUX_CMD)
+        .await
+        .map_err(|e| MonitorError::Exec(e.to_string()))?;
+    Ok(parse_ps_aux(&String::from_utf8_lossy(&out.stdout)))
 }
 
 /// 终止进程：exec [`kill_cmd`]。退出码非 0 → Err（携带 stderr——权限不足
@@ -218,6 +281,54 @@ mod tests {
         }
         assert!(PS_CMD.starts_with("ps -eo "));
         assert!(PS_CMD.ends_with("--sort=-pcpu"));
+        // 兜底命令同纪律（2026-10-16 NAS 兜底链）：单 ps、无任何串联面
+        assert_eq!(PS_AUX_CMD, "ps aux");
+        for banned in [";", "|", "&", ">", "<", "`", "$", "\n"] {
+            assert!(!PS_AUX_CMD.contains(banned));
+        }
+    }
+
+    #[test]
+    fn ps_aux_lenient_parse_busybox_and_bsd_headers() {
+        // busybox 形态（QNAP/Synology/嵌入式）：PID USER VSZ STAT COMMAND
+        let busybox = "  PID USER       VSZ  STAT COMMAND\n\
+                        1   root      1024 S    init\n\
+                        156 admin     3412 S    /usr/sbin/sshd -D\n";
+        let rows = parse_ps_aux(busybox);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].pid, 1);
+        assert_eq!(rows[0].user, "root");
+        assert_eq!(rows[0].comm, "init");
+        assert_eq!(rows[1].pid, 156);
+        assert_eq!(rows[1].comm, "/usr/sbin/sshd -D", "COMMAND 取到行尾");
+        // 缺失列填中性值
+        assert_eq!(rows[0].ppid, 0);
+        assert_eq!(rows[0].cpu_percent, 0.0);
+        assert_eq!(rows[0].etime, "");
+        // BSD/macOS 形态：USER PID %CPU %MEM VSZ RSS TT STAT STARTED TIME COMMAND
+        let bsd = "USER    PID  %CPU %MEM    VSZ   RSS TT  STAT STARTED      TIME COMMAND\n\
+                   root    321   0.0  0.1  4096  2048 ??  S    Tue01AM       0:01.42 login -fp\n";
+        let rows = parse_ps_aux(bsd);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pid, 321);
+        assert_eq!(rows[0].user, "root");
+        assert_eq!(rows[0].comm, "login -fp");
+    }
+
+    #[test]
+    fn ps_aux_garbage_headers_and_rows_dropped() {
+        assert_eq!(parse_ps_aux(""), Vec::new());
+        // 无表头（首个非空行被当表头，无 PID 列）→ 空
+        assert_eq!(parse_ps_aux("random line\nanother\n"), Vec::new());
+        // 有表头：非数字 PID 行丢弃、短行丢弃
+        let text = "  PID USER  COMMAND\n\
+                    not-a-pid root init\n\
+                    42 root\n\
+                    43 root myproc --flag\n";
+        let rows = parse_ps_aux(text);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].pid, 43);
+        assert_eq!(rows[0].comm, "myproc --flag");
     }
 
     #[test]

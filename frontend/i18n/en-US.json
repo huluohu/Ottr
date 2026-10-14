@@ -1037,6 +1037,8 @@
     "listeningOff": "Stopped",
     "socketPath": "Socket",
     "snippetToggle": "Client setup",
+    "snippetCopy": "Copy config",
+    "snippetCopied": "Copied",
     "snippetHint": "Add the mcpServers config below to any MCP-capable client (Claude Desktop: claude_desktop_config.json; replace the command path with the actual ottr-mcp binary path):",
     "snippetUnavailable": "Enable the server first to see the socket path.",
     "snippetDocs": "The Ottr app must be running while the MCP client is connected. Full guide: docs/mcp.md.",

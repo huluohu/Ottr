@@ -291,4 +291,52 @@ describe("McpApprovalDialog", () => {
     expect(visualizeCommand("a\tb")).toBe("a⇥b");
     expect(visualizeCommand("plain cmd")).toBe("plain cmd");
   });
+
+  it("接入片段复制：展开后写入剪贴板并回弹「已复制」（2026-10-16 用户需求）", async () => {
+    // jsdom UA（darwin）不含 "Mac" 会落 platform()="win" 分支——钉住 Mac UA
+    // 让片段 args 断言走 --socket（unix 形态，与夹具 socket_path 一致）。
+    Object.defineProperty(window.navigator, "userAgent", {
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      configurable: true,
+    });
+    seedInvoke({ status: STATUS_ON });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    renderSettings();
+    fireEvent.click(await screen.findByTestId("mcp-toggle-snippet"));
+    const code = await screen.findByTestId("mcp-snippet");
+    expect(code.textContent).toContain("mcpServers");
+    fireEvent.click(screen.getByTestId("mcp-copy-snippet"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const copied = String(writeText.mock.calls[0][0]);
+    expect(copied).toContain('"mcpServers"');
+    expect(copied).toContain("mcp.sock");
+    expect(copied).toContain("--socket");
+    // 回弹反馈 1.5s 后恢复（fake timers 纪律：不用 vi.useFakeTimers 配 waitFor，
+    // 这里只断言复制落定后立即出现的文案——1.5s 回弹用真实定时器，测试不等待）。
+    await waitFor(() =>
+      expect(screen.getByTestId("mcp-copy-snippet").textContent).toBe("已复制"),
+    );
+  });
+
+  it("接入片段复制失败：按钮维持原文案（诚实面，不装已复制）", async () => {
+    seedInvoke({ status: STATUS_ON });
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.assign(navigator, { clipboard: { writeText } });
+    renderSettings();
+    fireEvent.click(await screen.findByTestId("mcp-toggle-snippet"));
+    fireEvent.click(screen.getByTestId("mcp-copy-snippet"));
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    // 失败路径：rejection 被组件消化（无 unhandled rejection），文案保持原样。
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByTestId("mcp-copy-snippet").textContent).toBe("复制配置");
+  });
+
+  it("未启用 server 时无 socket：接入片段只显示占位且不出现复制按钮", async () => {
+    seedInvoke();
+    renderSettings();
+    fireEvent.click(await screen.findByTestId("mcp-toggle-snippet"));
+    expect(screen.getByTestId("mcp-snippet").textContent).toContain("先启用 server");
+    expect(screen.queryByTestId("mcp-copy-snippet")).toBeNull();
+  });
 });

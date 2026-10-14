@@ -217,13 +217,17 @@
 .file-icon [data-icon="dir"] {
   color: var(--color-accent-border);
 }
-/* chmod 权限九宫格（2026-10-16 用户反馈可视化）：紧凑表 + 八进制联动行。 */
+/* chmod 权限九宫格（2026-10-16 用户反馈可视化）：紧凑表 + 八进制联动行。
+ * 注意两条压制：.file-dialog input 的 width:100%/margin 同文件靠后声明，
+ * 八进制输入须带 .perm-editor 前缀压过它（同序后赢会翻车——首版实测）； */
 .perm-editor {
   display: flex;
   flex-direction: column;
+  align-items: flex-start; /* 不让矩阵/联动行被 flex 拉伸满宽 */
   gap: var(--space-3);
 }
 .perm-matrix {
+  width: fit-content;
   border-collapse: collapse;
 }
 .perm-matrix th,
@@ -231,6 +235,9 @@
   padding: var(--space-1) var(--space-3);
   text-align: center;
   font-weight: 400;
+}
+.perm-matrix thead th {
+  min-width: 3.5em;
 }
 .perm-matrix tbody th {
   text-align: left;
@@ -242,9 +249,14 @@
   align-items: center;
   gap: var(--space-2);
 }
-.perm-octal input {
-  width: 5.5em;
-  font-family: var(--font-mono, monospace);
+.perm-octal > span {
+  white-space: nowrap;
+}
+.perm-editor .perm-octal input {
+  width: 6em;
+  box-sizing: border-box;
+  margin-bottom: 0;
+  font-size: var(--text-base);
 }
 .file-name {
   flex: 1;

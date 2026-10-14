@@ -840,14 +840,6 @@ export function permBitsToMode(bits: boolean[]): number {
   return bits.reduce((acc, on, i) => acc + (on ? 1 << (8 - i) : 0), 0);
 }
 
-/** 八进制输入解析：0-3 位八进制数字，越界/含非八进制字符 = null（位不回写）。 */
-export function parseOctalMode(raw: string): number | null {
-  const s = raw.trim();
-  if (!/^[0-7]{1,3}$/.test(s)) return null;
-  const v = parseInt(s, 8);
-  return Number.isFinite(v) ? v : null;
-}
-
 /** mkdir/rename/chmod/delete 的小对话框（无 window.prompt——Tauri 不支持）。 */
 function PanelDialog({
   dialog,
@@ -866,23 +858,15 @@ function PanelDialog({
       ? (dialog.target?.name ?? "")
       : "",
   );
-  // chmod 九宫格态：位与八进制输入双向同步（2026-10-16 用户反馈可视化）。
+  // chmod 九宫格态（2026-10-16 用户裁定：只留九宫格，八进制输入不显示——
+  // 提交时由位算回 mode，applyDialog 侧校验照旧）。
   const [permBits, setPermBits] = useState<boolean[]>(() =>
     modeToPermBits(dialog.target?.mode ?? 0o644),
-  );
-  const [octal, setOctal] = useState(() =>
-    ((dialog.target?.mode ?? 0o644) & 0o777).toString(8).padStart(3, "0"),
   );
   function setBitAt(i: number, on: boolean) {
     const next = [...permBits];
     next[i] = on;
     setPermBits(next);
-    setOctal(permBitsToMode(next).toString(8).padStart(3, "0"));
-  }
-  function setFromOctal(raw: string) {
-    setOctal(raw);
-    const v = parseOctalMode(raw);
-    if (v !== null) setPermBits(modeToPermBits(v));
   }
   // Esc 关闭统一交互（2026-10-09 断点清偿）：旧实现 Esc 只绑在改名 input 上，
   // delete/chmod 对话框无 input = 无 Esc 路径。input 自身的 Escape 分支移除
@@ -896,7 +880,7 @@ function PanelDialog({
         : dialog.kind === "chmod"
           ? "files.dlg.chmodTitle"
           : "files.dlg.deleteTitle";
-  const submitValue = isChmod ? octal : value;
+  const submitValue = isChmod ? permBitsToMode(permBits).toString(8) : value;
   return (
     <div className="overlay" role="presentation" onMouseDown={onClose}>
       <div
@@ -943,18 +927,6 @@ function PanelDialog({
                 )}
               </tbody>
             </table>
-            <label className="perm-octal">
-              <span>{t("files.dlg.permOctal")}</span>
-              <input
-                value={octal}
-                data-testid="perm-octal"
-                aria-label={t("files.dlg.permOctal")}
-                onChange={(e) => setFromOctal(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && parseOctalMode(octal) !== null) onConfirm(octal);
-                }}
-              />
-            </label>
           </div>
         )}
         {!isDelete && !isChmod && (

@@ -14,13 +14,7 @@ vi.mock("@tauri-apps/api/webview", () => ({
 }));
 
 import "../i18n";
-import {
-  FilePanel,
-  fileIconKind,
-  modeToPermBits,
-  parseOctalMode,
-  permBitsToMode,
-} from "./FilePanel";
+import { FilePanel, fileIconKind, modeToPermBits, permBitsToMode } from "./FilePanel";
 import { EDIT_POLL_MS, remoteEdits } from "./RemoteEdit";
 import type { Session } from "../session/SessionStore";
 
@@ -159,7 +153,7 @@ describe("FilePanel", () => {
     });
   });
 
-  it("右键远端条目出菜单；chmod 九宫格与八进制双向联动，回写 sftp_chmod", async () => {
+  it("右键远端条目出菜单；chmod 九宫格点选即换算，确认回写 sftp_chmod", async () => {
     mockListings();
     render(<FilePanel session={makeSession()} />);
     await waitFor(() => {
@@ -169,30 +163,25 @@ describe("FilePanel", () => {
     const menu = screen.getByTestId("file-ctx-menu");
     expect(menu.textContent).toContain('Change permissions of "big100"');
     fireEvent.click(screen.getByText(/Change permissions of "big100"/));
-    // 九宫格初值 = 条目当前 mode 644：用户读写有、执行无（2026-10-16 可视化）。
+    // 九宫格初值 = 条目当前 mode 644：用户读写有、执行无（2026-10-16 可视化；
+    // 用户裁定只留九宫格，八进制输入不显示——mode 由位算回）。
     const bit = (i: number) => screen.getByTestId(`perm-bit-${i}`) as HTMLInputElement;
     expect(bit(0).checked, "用户-读").toBe(true);
     expect(bit(1).checked, "用户-写").toBe(true);
     expect(bit(2).checked, "用户-执行").toBe(false);
     expect(bit(6).checked, "其他-读").toBe(true);
     expect(bit(8).checked, "其他-执行").toBe(false);
-    const octal = screen.getByTestId("perm-octal") as HTMLInputElement;
-    expect(octal.value).toBe("644");
-    // 位 → 八进制：勾上用户执行 → 744。
+    expect(screen.queryByTestId("perm-octal"), "八进制输入不显示").toBeNull();
+    // 点选即换算：勾用户执行（→744）再退组读（→704），确认按位回写。
     fireEvent.click(bit(2));
-    expect(octal.value).toBe("744");
-    // 八进制 → 位：改 600 → 用户执行退、组/其他读全退。
-    fireEvent.change(octal, { target: { value: "600" } });
-    expect(bit(2).checked).toBe(false);
-    expect(bit(3).checked).toBe(false);
-    expect(bit(6).checked).toBe(false);
+    fireEvent.click(bit(3));
     mockedInvoke.mockResolvedValueOnce(undefined);
     fireEvent.click(screen.getByTestId("file-dialog-confirm"));
     await waitFor(() => {
       expect(mockedInvoke).toHaveBeenCalledWith("sftp_chmod", {
         id: "pty-0",
         path: "/home/spike/big100",
-        mode: 0o600,
+        mode: 0o704,
       });
     });
   });
@@ -453,16 +442,6 @@ describe("文件类型图标与权限位纯函数", () => {
     expect(permBitsToMode(modeToPermBits(0o755))).toBe(0o755);
     // 高位文件类型位（0o100644 的 0o100000）不进九宫格
     expect(permBitsToMode(modeToPermBits(0o100644))).toBe(0o644);
-  });
-
-  it("parseOctalMode：合法 0-3 位八进制收下，越界/非八进制/空串拒收", () => {
-    expect(parseOctalMode("644")).toBe(0o644);
-    expect(parseOctalMode("7")).toBe(0o7);
-    expect(parseOctalMode(" 755 ")).toBe(0o755);
-    expect(parseOctalMode("")).toBeNull();
-    expect(parseOctalMode("99")).toBeNull();
-    expect(parseOctalMode("abc")).toBeNull();
-    expect(parseOctalMode("1777")).toBeNull();
   });
 
   it("行渲染带类型图标：目录 dir / 文本 text / 通用 file（data-icon 钉住）", async () => {

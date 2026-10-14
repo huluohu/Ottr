@@ -539,7 +539,6 @@
       "permRead": "Read",
       "permWrite": "Write",
       "permExec": "Execute",
-      "permOctal": "Octal mode",
       "deleteTitle": "Delete \"{{name}}\"",
       "deleteConfirm": "Delete permanently? This cannot be undone (folders must be empty).",
       "conflictTitle": "Remote file changed",

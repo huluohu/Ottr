@@ -538,7 +538,6 @@
       "permRead": "读",
       "permWrite": "写",
       "permExec": "执行",
-      "permOctal": "八进制模式",
       "deleteTitle": "删除「{{name}}」",
       "deleteConfirm": "确定删除吗？此操作不可撤销（目录须为空）。",
       "conflictTitle": "远端文件已变更",

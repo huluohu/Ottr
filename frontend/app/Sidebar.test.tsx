@@ -130,7 +130,7 @@ describe("Sidebar", () => {
     expect(shell.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("主题子菜单：快捷菜单内点主题弹七选项；选即应用并收起（主机树不受影响）", () => {
+  it("主题子菜单：快捷菜单内点主题弹七选项；选即应用且浮层保留（2026-10-14 裁定：连续预览/切换，点外/Esc 才收）", () => {
     renderSidebar();
     const hostsBefore = screen.getByTestId("app-sidebar").querySelector(".sidebar-hosts")?.textContent;
     openQuickMenu();
@@ -141,8 +141,11 @@ describe("Sidebar", () => {
     }
     fireEvent.click(screen.getByTestId("sidebar-theme-oled"));
     expect(document.documentElement.dataset.theme).toBe("oled");
-    // 选即关（原生菜单语义）
-    expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
+    // 选中留场：浮层与子面板都不收，勾选态跟手（连续切换免重开）
+    expect(screen.getByTestId("sidebar-flyout-main")).toBeTruthy();
+    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
+    expect(screen.getByTestId("sidebar-theme-oled").getAttribute("data-checked")).toBe("true");
+    expect(screen.getByTestId("sidebar-theme-glass").getAttribute("data-checked")).toBe("false");
     // 主机树区文本不变 = 布局未被顶动（弹层为 fixed，不占布局）
     expect(screen.getByTestId("app-sidebar").querySelector(".sidebar-hosts")?.textContent).toBe(hostsBefore);
   });
@@ -160,7 +163,8 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
     fireEvent.click(option);
     expect(document.documentElement.dataset.theme).toBe("oled");
-    expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
+    // 选中留场（2026-10-14）：面板继续在册
+    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
   });
 
   it("外点（面板外元素）mousedown 仍收起浮层", () => {
@@ -172,14 +176,16 @@ describe("Sidebar", () => {
     expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
   });
 
-  it("语言子菜单：浮层展开中英选项，点选切换 i18n 实例语言并收起", async () => {
+  it("语言子菜单：浮层展开中英选项，点选切换 i18n 实例语言且浮层保留", async () => {
     renderSidebar();
     openQuickMenu();
     fireEvent.click(screen.getByTestId("sidebar-lang"));
     expect(screen.getByTestId("sidebar-flyout-lang")).toBeTruthy();
     fireEvent.click(screen.getByTestId("sidebar-lang-zh-CN"));
     await waitFor(() => expect(i18n.language).toBe("zh-CN"));
-    // 选即关
+    // 选中留场（2026-10-14），点外才收
+    expect(screen.getByTestId("sidebar-flyout-lang")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
     expect(screen.queryByTestId("sidebar-flyout-lang")).toBeNull();
   });
 });

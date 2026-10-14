@@ -298,6 +298,24 @@ function HomeLayout() {
     if (prev === 0 && sessionCount > 0) openMainView("terminal");
   }, [sessionCount, openMainView]);
 
+  // 融合式标题栏双击缩放（2026-10-16 用户反馈：拖拽面双击不放大/缩小）：
+  // data-tauri-drag-region 走手动拖拽（performWindowDrag），系统「双击标题栏
+  // 缩放」只在真标题栏生效——Overlay 形态下真标题栏被 webview 内容盖住。
+  // 补全局 dblclick：命中拖拽面元素本身（与起拖同判定，子元素交互不受扰）
+  // 即 toggleMaximize。仅 mac + Tauri——Win/Linux 自绘标题栏的拖拽区经
+  // HTCAPTION 仿真，系统原生双击缩放已生效，再叠 JS 会双次翻转。
+  useEffect(() => {
+    if (PLATFORM !== "mac" || !IS_TAURI) return;
+    const onDblClick = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.hasAttribute("data-tauri-drag-region")) {
+        getCurrentWindow().toggleMaximize().catch(() => {});
+      }
+    };
+    window.addEventListener("dblclick", onDblClick);
+    return () => window.removeEventListener("dblclick", onDblClick);
+  }, []);
+
   // T13：设置页路由钩子注入（aiStore 错误面「去设置」按钮 → 打开 AI 设置）
   useEffect(() => {
     // AI 设置入口（诊断面板「去设置」）：设置对话框落「AI」分区（2026-10-10

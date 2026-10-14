@@ -63,6 +63,18 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
     expect(offenders, `字号字面值回流:\n${offenders.join("\n")}`).toEqual([]);
   });
 
+  it("file-row 选中态选择器必须连 :hover 一起声明（2026-10-16 用户反馈：两选择器特异性同为 (0,2,0)，:hover 在后按序获胜盖掉选中高亮——悬停选中行高亮消失、移开才现形）", () => {
+    const css = allAppCss();
+    const idx = css.indexOf('.file-row[data-selected="true"]');
+    expect(idx, "选中态规则存在").toBeGreaterThanOrEqual(0);
+    const brace = css.indexOf("{", idx);
+    const selectorList = css.slice(idx, brace);
+    expect(
+      selectorList,
+      "选中高亮被 :hover 盖掉的回归防线：选择器列表须含 data-selected=true]:hover",
+    ).toContain('.file-row[data-selected="true"]:hover');
+  });
+
   it("字阶七档与动效 token 存在（结构锚）", () => {
     for (const key of [
       "--text-2xs",

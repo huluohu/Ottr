@@ -195,7 +195,11 @@
   font-size: var(--text-sm);
   user-select: none;
 }
-.file-row[data-selected="true"] {
+.file-row[data-selected="true"],
+/* 选中压制悬停（2026-10-16 用户反馈：悬停选中行时高亮消失）——两选择器
+ * 特异性同为 (0,2,0)，:hover 在后按序获胜会盖掉 accent 底；选中态必须
+ * 连 :hover 一起声明才能稳赢。 */
+.file-row[data-selected="true"]:hover {
   /* 选中态 = accent 染色 + 左缘指示条（surface-raised 在 OLED 纯黑上几乎
    * 不可见，用户实测；accent 染色天然随七主题适配） */
   background: color-mix(in srgb, var(--color-accent) 24%, var(--color-bg));

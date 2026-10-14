@@ -8,7 +8,7 @@
 // * 授权矩阵：主机粒度 can_list / can_exec / exec_approval 三个开关 +
 //   read_file 目录白名单（逗号分隔，回车/失焦保存）——默认全拒，无授权行 =
 //   该主机对 MCP 客户端完全不可见；审批框组件在 McpApprovalDialog（全局挂载）。
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { platform as detectPlatform } from "../shortcuts/registry";
 import { useTranslation } from "react-i18next";
 import {
@@ -36,6 +36,16 @@ export function McpSettings({ open }: McpSettingsProps) {
   const [error, setError] = useState<string | null>(null);
   const [pathsDraft, setPathsDraft] = useState<PathsDraft>({});
   const [showSnippet, setShowSnippet] = useState(false);
+  // 接入片段复制反馈（2026-10-16 用户需求）：已复制 1.5s 回弹；失败不装
+  // 「已复制」（诚实面，与快捷命令插件/Terminal 剪贴板路径同口径）。
+  const [snippetCopied, setSnippetCopied] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
 
   const refresh = useCallback(async () => {
     const [s, g, h] = await Promise.all([
@@ -63,6 +73,18 @@ export function McpSettings({ open }: McpSettingsProps) {
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function copySnippet() {
+    if (!snippet) return;
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setSnippetCopied(true);
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setSnippetCopied(false), 1500);
+    } catch {
+      // 剪贴板不可用（权限/非安全上下文）：按钮维持原文案，不装「已复制」。
     }
   }
 
@@ -193,6 +215,13 @@ export function McpSettings({ open }: McpSettingsProps) {
               <pre className="host-key-fp">
                 <code>{snippet ?? t("mcp.snippetUnavailable")}</code>
               </pre>
+              {snippet && (
+                <div className="settings-row">
+                  <button type="button" data-testid="mcp-copy-snippet" onClick={() => void copySnippet()}>
+                    {snippetCopied ? t("mcp.snippetCopied") : t("mcp.snippetCopy")}
+                  </button>
+                </div>
+              )}
               <p className="settings-hint">{t("mcp.snippetDocs")}</p>
             </div>
           )}

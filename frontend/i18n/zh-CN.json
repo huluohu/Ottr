@@ -1036,6 +1036,8 @@
     "listeningOff": "已停止",
     "socketPath": "Socket",
     "snippetToggle": "客户端接入配置",
+    "snippetCopy": "复制配置",
+    "snippetCopied": "已复制",
     "snippetHint": "把下面的 mcpServers 配置加入任意支持 MCP 的客户端（Claude Desktop 即 claude_desktop_config.json；command 替换为 ottr-mcp 可执行文件的实际路径）：",
     "snippetUnavailable": "先启用 server 才能看到 socket 路径。",
     "snippetDocs": "MCP 客户端连接期间 Ottr 必须在运行。完整说明见 docs/mcp.md。",

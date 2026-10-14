@@ -83,6 +83,9 @@ beforeEach(() => {
     })),
   );
   useVaultStore.setState({ hosts: [], hostGroups: [], credentials: [], loading: false, error: null });
+  // workspaceStore 是模块级单例：上一用例经默认落地/动作切过的视图态必须
+  // 复位，否则泄漏成假失败（默认落总览逻辑 2026-10-14 起会真实切 mainView）。
+  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
 });
 
 afterEach(() => {
@@ -100,8 +103,11 @@ describe("App 主页布局（集成）", () => {
 
     render(<App />);
     expect(screen.getByTestId("main-area")).toBeTruthy();
-    // refresh 完成后主机树可见；主区 = 欢迎首页（问候 + 快捷卡）
+    // refresh 完成后主机树可见；默认落地总览（2026-10-14 用户裁定，独立用例
+    // 钉住）——本用例测欢迎占位面，显式回到终端视图。
     await waitFor(() => expect(screen.getByText("web-01")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("overview-panel")).toBeTruthy());
+    act(() => useWorkspaceStore.setState({ mainView: "terminal" }));
     expect(screen.getByTestId("home-greeting")).toBeTruthy();
     expect(screen.getByTestId("empty-add-host")).toBeTruthy();
 
@@ -118,6 +124,31 @@ describe("App 主页布局（集成）", () => {
     expect(paletteEl.textContent).toContain("Hosts");
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(screen.queryByTestId("command-palette")).toBeNull();
+  });
+
+  it("默认落地总览（2026-10-14 用户裁定）：有主机打开即总览；空库保留欢迎页", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list") return Promise.resolve([web]);
+      if (cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") return Promise.resolve([]);
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("overview-panel")).toBeTruthy());
+    expect(screen.queryByTestId("home-greeting")).toBeNull();
+
+    cleanup();
+    // 空库：欢迎页引导保留（新建主机/导入/⌘K 快捷卡更完整）。先复位视图态
+    // （同用例内前一段的真实落地会把 store 留在 overview）。
+    useWorkspaceStore.setState({ mainView: "terminal" });
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") {
+        return Promise.resolve([]);
+      }
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId("home-greeting")).toBeTruthy());
+    expect(screen.queryByTestId("overview-panel")).toBeNull();
   });
 
   it("refresh 失败：主区显示错误横幅", async () => {

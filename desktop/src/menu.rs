@@ -319,7 +319,7 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "tool_overview" => {
             if zh {
-                "多主机总览"
+                "总览"
             } else {
                 "Overview"
             }
@@ -1492,6 +1492,10 @@ mod tests {
         }
         assert_eq!(text(Lang::Zh, "tray_disconnect_all"), "断开全部连接");
         assert_eq!(text(Lang::En, "tray_disconnect_all"), "Disconnect All");
+        // 总览条目名（2026-10-14 用户裁定）：与 ⌘K/设置侧同词「总览」，
+        // 不再叫「多主机总览」。
+        assert_eq!(text(Lang::Zh, "tool_overview"), "总览");
+        assert_eq!(text(Lang::En, "tool_overview"), "Overview");
     }
 
     /// 主题子菜单（视图下）：七项 = 前端 THEME_IDS 同序（dispatch 前缀测试

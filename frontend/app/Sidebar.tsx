@@ -1,7 +1,9 @@
 // 应用级侧栏（2026-10-10 壳层重构）：单列宽侧栏三段式——
 // ①快捷连接 ②主机区（HostTree 原样嵌入：搜索/分组树/导入/分组悬停加主机）
-// ③功能导航（定时任务/告警/MCP/通知中心）+ 底部设置。导航项点击 = 既有
-// toggleToolDialog 直派（工具面板统一弹框，同值再点 = 关）；设置 = 对话框。
+// ③功能导航（总览/定时任务/告警/MCP/通知中心，总览为 2026-10-14 用户裁定
+// 新增首项——默认落地页同源入口）+ 底部设置。面板项点击 = 既有
+// toggleToolDialog 直派（工具面板统一弹框，同值再点 = 关）；总览 = 主区实体
+// 视图切 openMainView；设置 = 对话框。
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { HostTree, type HostTreeProps } from "../hosts/HostTree";
@@ -144,6 +146,14 @@ function KeyIcon() {
     </svg>
   );
 }
+function OverviewIcon() {
+  // Lucide「activity」脉搏线：总览 = 全部主机的资源脉动一眼看全。
+  return (
+    <svg className="sidebar-nav-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1.8 8h2.6l1.8-4.4L9.8 12.4 11.2 8h3" />
+    </svg>
+  );
+}
 // mcp 行特殊：面板已并入设置页（2026-10-14 单一家裁定），点击走 onOpenSettings
 // 并以 URL 无关的 store 信号打开 MCP 分区——此处 panel 值仅作 key/active 标记。
 const NAV_DOCK: ReadonlyArray<{
@@ -171,6 +181,8 @@ export function Sidebar({
   const { t } = useTranslation();
   const toggleToolDialog = useWorkspaceStore((s) => s.toggleToolDialog);
   const toolDialog = useWorkspaceStore((s) => s.toolDialog);
+  const mainView = useWorkspaceStore((s) => s.mainView);
+  const openMainView = useWorkspaceStore((s) => s.openMainView);
   const unread = useNotifyStore((s) => s.unread);
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
@@ -291,6 +303,21 @@ export function Sidebar({
           data-testid="sidebar-flyout-main"
           style={{ bottom: flyoutPos.bottom, left: flyoutPos.left }}
         >
+          {/* 总览（主区实体视图，非工具弹框）：控制中心首项（2026-10-14 用户
+              裁定：默认落地页同源入口；选中留场由 mainView 驱动高亮）。 */}
+          <button
+            type="button"
+            data-testid="sidebar-nav-overview"
+            data-active={mainView === "overview"}
+            onClick={() => {
+              openMainView("overview");
+              setMenu(null);
+              setSub(null);
+            }}
+          >
+            <OverviewIcon />
+            <span>{t("overview.title")}</span>
+          </button>
           {NAV_DOCK.map((item) => (
             <button
               key={item.panel}

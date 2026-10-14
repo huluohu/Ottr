@@ -1094,7 +1094,7 @@ export function SecuritySettings({
                   <span>MIT</span>
                   <span aria-hidden="true">·</span>
                   <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
-                    github.com/huluohu/Ottr
+                    https://github.com/huluohu/Ottr
                   </a>
                 </div>
               </div>

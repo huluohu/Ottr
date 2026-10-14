@@ -107,7 +107,9 @@ export function UpdateCheck() {
               </span>
             )}
             {/* 装完：提示 + 「立即重启」就地生效（restartNow 的 invoke 永不
-                resolve——Rust 侧 AppHandle::restart diverges，预期形态）。 */}
+                resolve——Rust 侧 AppHandle::restart diverges，预期形态）。
+                按钮用默认次级样式（2026-10-16 用户反馈：btn-accent 与检查
+                更新同权重喧宾夺主——主动作只有「检查更新」）。 */}
             {phase.kind === "installed" && (
               <>
                 <span className="settings-hint" data-testid="update-installed">
@@ -115,7 +117,6 @@ export function UpdateCheck() {
                 </span>
                 <button
                   type="button"
-                  className="btn-accent"
                   data-testid="update-restart"
                   onClick={restartNow}
                 >

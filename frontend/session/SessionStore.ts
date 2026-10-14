@@ -70,6 +70,7 @@ import {
 } from "./types";
 import { loadDismissedEncodingHosts } from "./encoding";
 import type { SessionClosedPayload } from "./types";
+import { useModalStore } from "../ui/modalStore";
 
 export * from "./types";
 export * from "./encoding";
@@ -310,6 +311,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         fingerprint: st0.hostKeyAsk.fingerprint,
         accept: false,
       }).catch(() => {});
+      useModalStore.getState().close("hostKey");
     }
     set((st) => {
       const sessions = st.sessions.filter((s) => !doomedIds.has(s.id));
@@ -534,18 +536,23 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // 确认框——裁定的 host_key_decision 不依赖会话；不弹则 Rust 侧 60s
       // 超时按拒绝收尾。sessionId 空串 = 无关联会话（弹窗关闭只经裁定按钮）。
       set({ hostKeyAsk: { ...payload, sessionId: "" } });
+      // 主机密钥确认框认领全局弹窗唯一槽（2026-10-14）：顶掉当前弹窗——
+      // 信任裁定是模态阻断面，不允许与其他弹窗并存。
+      useModalStore.getState().open("hostKey");
       return;
     }
     set({
       hostKeyAsk: { ...payload, sessionId: session.id },
       sessions: patchSession(get().sessions, session.id, { status: "waiting_host_key" }),
     });
+    useModalStore.getState().open("hostKey");
   },
 
   decideHostKey: async (accept) => {
     const ask = get().hostKeyAsk;
     if (!ask) return;
     set({ hostKeyAsk: null });
+    useModalStore.getState().close("hostKey");
     try {
       await invoke("host_key_decision", {
         hostId: ask.host_id,
@@ -668,6 +675,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         fingerprint: st.hostKeyAsk.fingerprint,
         accept: false,
       }).catch(() => {});
+      useModalStore.getState().close("hostKey");
     }
     set((s0) => ({
       sessions: s0.sessions.filter((s) => s.id !== sessionId),

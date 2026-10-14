@@ -16,6 +16,7 @@ import "../i18n";
 import { TabBar } from "./TabBar";
 import { HostKeyDialog } from "./HostKeyDialog";
 import { OPEN_TABS_KEY, useSessionStore, type Session } from "./SessionStore";
+import { useModalStore } from "../ui/modalStore";
 
 const mockedInvoke = invoke as unknown as Mock;
 
@@ -62,6 +63,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useSessionStore.setState({ sessions: [], activeId: null, hostKeyAsk: null });
+  useModalStore.setState({ active: null });
 });
 
 describe("TabBar（3 会话：切换/关闭/状态灯）", () => {
@@ -151,6 +153,7 @@ describe("HostKeyDialog（TOFU 两态）", () => {
         kind: "first",
       },
     });
+    useModalStore.getState().open("hostKey");
     render(<HostKeyDialog />);
     expect(screen.getByTestId("host-key-fingerprint").textContent).toBe("SHA256:FP1");
     const trust = screen.getByTestId("host-key-accept");
@@ -176,6 +179,7 @@ describe("HostKeyDialog（TOFU 两态）", () => {
         kind: "changed",
       },
     });
+    useModalStore.getState().open("hostKey");
     render(<HostKeyDialog />);
     expect(screen.getByTestId("host-key-reject").className).toContain("btn-accent");
     expect(screen.getByTestId("host-key-accept").className).toContain("btn-danger");

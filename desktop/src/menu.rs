@@ -303,7 +303,6 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Alert Rules"
             }
         }
-        "tool_mcp" => "MCP",
         "tool_forwards" => {
             if zh {
                 "端口转发"
@@ -337,13 +336,6 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "定时任务"
             } else {
                 "Scheduled Tasks"
-            }
-        }
-        "tool_sync" => {
-            if zh {
-                "同步"
-            } else {
-                "Sync"
             }
         }
         "tool_export_csv" => {
@@ -425,10 +417,12 @@ pub const THEME_IDS: [&str; 7] = [
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
-pub const TOOL_KEYS: [&str; 13] = [
+/// 2026-10-14 设置类收敛：mcp（单一家 = 设置页 MCP 分区）与 sync（单一家 =
+/// 设置页同步分区）退役——工具菜单不得出现设置概念项（前端 toolsRegistry.ts
+/// 同批删除，13 → 11 项）。
+pub const TOOL_KEYS: [&str; 11] = [
     "cron",
     "alerts",
-    "mcp",
     "monitor",
     "plugins",
     "notify-center",
@@ -437,7 +431,6 @@ pub const TOOL_KEYS: [&str; 13] = [
     "credentials",
     "overview",
     "batch",
-    "sync",
     "export-hosts-csv",
 ];
 
@@ -574,13 +567,13 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Predef(Predef::Fullscreen),
             ],
         },
-        // 工具菜单（2026-10-08 菜单栏启用批次）：与顶栏「工具」下拉同源
+        // 工具菜单（2026-10-08 菜单栏启用批次）：与前端工具清单同源
         // （id = tool.<key>，前端 runToolAction 单一分派）；macOS 惯例位于
-        // 视图与窗口之间。
+        // 视图与窗口之间。2026-10-14 设置类收敛：mcp/sync 退役（单一家在
+        // 设置页对应分区），工具菜单不再出现设置概念项。
         MenuNode::Sub {
             label: text(lang, "tools"),
-            // 2026-10-10 安家表分组（面板/主机/系统 + 检查更新）；id 仍 = tool.<key>
-            // 与 update.check（Frontend 分派 → App 打开设置关于分区并触发检查）。
+            // 2026-10-10 安家表分组（面板/主机）；id 仍 = tool.<key>。
             items: vec![
                 MenuNode::Item {
                     id: "tool.cron",
@@ -590,11 +583,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.alerts",
                     label: text(lang, "tool_alerts"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.mcp",
-                    label: text(lang, "tool_mcp"),
                     accelerator: None,
                 },
                 MenuNode::Item {
@@ -636,11 +624,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.batch",
                     label: text(lang, "tool_batch"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.sync",
-                    label: text(lang, "tool_sync"),
                     accelerator: None,
                 },
                 MenuNode::Item {

@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DOCK_PANEL_TITLE_KEY, type ToolDockPanel } from "./types";
 import { useWorkspaceStore } from "./workspaceStore";
+import { useModalStore } from "../ui/modalStore";
 import { useEscClose } from "../ui/useEscClose";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { ForwardPanel } from "../forward/ForwardPanel";
@@ -53,10 +54,14 @@ export function ToolDialog() {
   const { t } = useTranslation();
   const active = useWorkspaceStore((s) => s.toolDialog);
   const close = useWorkspaceStore((s) => s.closeToolDialog);
+  // 全局弹窗唯一槽（2026-10-14）：持有槽位才渲染；被其他弹窗顶掉即销毁
+  // （正常关闭时全局槽已空，`activeModal === null` 放行退场动画播完）。
+  const slotOwned = useModalStore((s) => s.active === "toolDialog");
+  const slotIdle = useModalStore((s) => s.active === null);
 
-  // Esc 关弹框（null 时不注册——关闭态不劫持全局 Esc；后挂载语义保证：
-  // 叠在其上的对话框先收到 Esc）。
-  useEscClose(active !== null, close);
+  // Esc 关弹框（null 时不注册——关闭态不劫持全局 Esc；单实例槽下不存在叠框，
+  // Esc 只会命中本框）。
+  useEscClose(active !== null && slotOwned, close);
 
   // 退场动画窗：关闭期保留挂载播 dialog-out（.closing 类），播完真卸载。
   const mount = useDelayedUnmount(active !== null);
@@ -66,7 +71,7 @@ export function ToolDialog() {
   }, [active]);
 
   // 关闭动画播完（无面板）→ 不渲染；收尾期标题用最后活动面板避免关尾闪空。
-  if (!mount.shouldRender || lastActive === null) return null;
+  if (!mount.shouldRender || lastActive === null || !(slotOwned || slotIdle)) return null;
   const titlePanel = active ?? lastActive;
 
   return (

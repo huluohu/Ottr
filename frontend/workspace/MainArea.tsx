@@ -28,7 +28,7 @@
 // 【空态快捷操作卡（ui-batch2 T3，审计 A4）】零会话且未选中主机的占位面从
 // 纯文字升级为三入口卡：连接夹具（库内有走查夹具端点主机的条件入口，动作 =
 // 既有 openTab）/ 新建主机（onAddHost → App 的 setForm({mode:"new"}) 既有
-// 语义）/ ⌘K 命令面板卡（onOpenPalette → setPaletteOpen(true) 既有语义）。
+// 语义）/ ⌘K 命令面板卡（onOpenPalette → openModal("palette")，modalStore 唯一槽）。
 // 空态判定不变（terminalMode=false + selected=null 分支），占位文案保留为
 // 卡片引导语；两 prop 缺省时对应入口不渲染（组件可独立挂载，行为可裁剪）。
 import { useTranslation } from "react-i18next";
@@ -57,10 +57,10 @@ interface MainAreaProps {
   /** 空态快捷卡「新建主机」入口（App 注入 = setForm({ mode: "new", groupId: null })；
    * 缺省 = 入口不渲染）。 */
   onAddHost?: () => void;
-  /** 空态快捷卡「⌘K 命令面板」入口（App 注入 = setPaletteOpen(true)；缺省 =
+  /** 空态快捷卡「⌘K 命令面板」入口（App 注入 = openModal("palette")；缺省 =
    * 入口不渲染）。 */
   onOpenPalette?: () => void;
-  /** 空态快捷卡「导入配置」入口（App 注入 = setImportOpen(true)；缺省 =
+  /** 空态快捷卡「导入配置」入口（App 注入 = openModal("importHosts")；缺省 =
    * 入口不渲染）。 */
   onOpenImport?: () => void;
 }
@@ -90,6 +90,11 @@ export function MainArea({
 }: MainAreaProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
+  // macOS 融合式标题栏：主区顶部行（标签条/空态主区）兼作窗口拖拽面
+  // （2026-10-14；Win/Linux 有自绘标题栏，不注入）。data-tauri-drag-region
+  // 仅命中元素本身才起拖——标签/按钮等子元素交互不受影响。
+  const isMac = platform() === "mac";
+  const dragRegion = isMac ? { "data-tauri-drag-region": true } : {};
   const openMainView = useWorkspaceStore((s) => s.openMainView);
   const openTab = useSessionStore((s) => s.openTab);
   const sessions = useSessionStore((s) => s.sessions);
@@ -139,7 +144,7 @@ export function MainArea({
   // 零会话也可开（原对话框语义），此时无终端可保留，实体视图独占主区。
   if (!terminalMode) {
     return (
-      <main className="main-area" data-testid="main-area">
+      <main className="main-area" data-testid="main-area" {...dragRegion}>
         {slotView !== null ? (
           slotPane
         ) : (
@@ -184,7 +189,7 @@ export function MainArea({
   // 任何视图切换都不卸载终端（xterm 缓冲/滚动回看不丢，运行中会话保留）。
   return (
     <main className="main-area terminal-mode" data-testid="main-area">
-      <div className="tabbar-row">
+      <div className="tabbar-row" {...dragRegion}>
         <TabBar />
         <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
           {!filesOnly && (

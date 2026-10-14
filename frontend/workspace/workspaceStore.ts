@@ -16,7 +16,13 @@
 // 终端永不被挤压；keep-alive 随页签一并退役——配置保存即落库、转发轮询
 // 关闭即停（Rust 侧 ForwardManager 状态无损）。monitor/plugins 仍是终端
 // 右栏自管侧栏，不经本槽。
+//
+// 【全局弹窗唯一槽（2026-10-14 用户裁定）】本 store 的 toolDialog 开/关动作
+// 同步认领/释放 ui/modalStore 的 "toolDialog" 槽位；并订阅全局槽——任何其他
+// 弹窗开启即清空 toolDialog（工具弹框被顶掉 = 销毁，侧栏激活态不残留）。
+// 单向依赖（本模块 → modalStore），无环。
 import { create } from "zustand";
+import { useModalStore } from "../ui/modalStore";
 import type { MainView, ToolDockPanel } from "./types";
 
 export interface WorkspaceState {
@@ -26,7 +32,7 @@ export interface WorkspaceState {
   toolDialog: ToolDockPanel | null;
   /** 切主区视图（幂等；纯状态迁移，无副作用）。 */
   openMainView: (v: MainView) => void;
-  /** 打开工具面板弹框（幂等；异值即替换当前弹框）。 */
+  /** 打开工具面板弹框（幂等；异值即替换当前弹框，同时认领全局唯一槽）。 */
   openToolDialog: (p: ToolDockPanel) => void;
   /** 关闭当前弹框（幂等；无弹框时 no-op）。 */
   closeToolDialog: () => void;
@@ -38,7 +44,27 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   mainView: "terminal",
   toolDialog: null,
   openMainView: (v) => set({ mainView: v }),
-  openToolDialog: (p) => set({ toolDialog: p }),
-  closeToolDialog: () => set({ toolDialog: null }),
-  toggleToolDialog: (p) => set({ toolDialog: get().toolDialog === p ? null : p }),
+  openToolDialog: (p) => {
+    set({ toolDialog: p });
+    useModalStore.getState().open("toolDialog");
+  },
+  closeToolDialog: () => {
+    set({ toolDialog: null });
+    useModalStore.getState().close("toolDialog");
+  },
+  toggleToolDialog: (p) => {
+    if (get().toolDialog === p && useModalStore.getState().active === "toolDialog") {
+      get().closeToolDialog();
+    } else {
+      get().openToolDialog(p);
+    }
+  },
 }));
+
+// 被顶掉即销毁：其他弹窗认领全局槽时清空 toolDialog（纯状态对齐，无副作用；
+// ToolDialog 的渲染门另看全局槽，这里清值保证 Sidebar 激活高亮同步熄灭）。
+useModalStore.subscribe((state) => {
+  if (state.active !== "toolDialog" && useWorkspaceStore.getState().toolDialog !== null) {
+    useWorkspaceStore.setState({ toolDialog: null });
+  }
+});

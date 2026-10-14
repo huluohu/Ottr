@@ -612,13 +612,26 @@ describe("定向分区消费（2026-10-13 修复：initialPane 此前从未被�
     expect((screen.getByTestId("security-section") as HTMLElement).hidden).toBe(true);
   });
 
-  it("initialPane=null = 默认安全区（原有语义不回退）", () => {
+  it("initialPane=null = 默认通用区（2026-10-14 裁定：通用排第一、设置打开落地通用）", () => {
     render(
       <ThemeProvider>
         <SecuritySettings open initialPane={null} onClose={() => {}} />
       </ThemeProvider>,
     );
-    expect((screen.getByTestId("security-section") as HTMLElement).hidden).toBe(false);
+    expect((screen.getByTestId("general-section") as HTMLElement).hidden).toBe(false);
     expect((screen.getByTestId("ai-pane") as HTMLElement).hidden).toBe(true);
+  });
+
+  it("页签序：通用第一、关于最后（2026-10-14 用户裁定「走最佳实践」防漂移）", () => {
+    const { container } = render(
+      <ThemeProvider>
+        <SecuritySettings open initialPane={null} onClose={() => {}} />
+      </ThemeProvider>,
+    );
+    const tabs = Array.from(
+      container.querySelectorAll('[data-testid="settings-nav"] [role="tab"]'),
+    ) as HTMLElement[];
+    expect(tabs[0].getAttribute("data-testid")).toBe("settings-nav-general");
+    expect(tabs[tabs.length - 1].getAttribute("data-testid")).toBe("settings-nav-about");
   });
 });

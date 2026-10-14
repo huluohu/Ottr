@@ -242,6 +242,17 @@
   font-weight: 500;
   white-space: nowrap;
 }
+/* 复选框与列头对齐（2026-10-16 用户反馈：勾选框系统性左偏列头半个内边距）：
+ * 00-base 控件基线给所有 input 发 padding: 0.4em 0.8em——复选框元素盒比画的
+ * 方块宽一截，text-align 居中的是元素盒、画的方块偏左。清零 padding 后钉死
+ * 13px 方块（引擎无关）块级 margin auto 居中，与列头共用同一列盒。 */
+.perm-matrix input[type="checkbox"] {
+  display: block;
+  margin: 0 auto;
+  padding: 0;
+  width: 13px;
+  height: 13px;
+}
 .file-name {
   flex: 1;
   min-width: 0;

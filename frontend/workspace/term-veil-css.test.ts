@@ -29,6 +29,14 @@ describe("term 隐藏面 CSS 契约（ui2 T1，审计 48/49 守卫）", () => {
     expect(rule.slice(0, 200)).toContain("visibility: hidden");
   });
 
+  it("xterm viewport 黑底已透明化（2026-10-14 窗底黑带修复：余量区露 scrollable element 主题底色）", () => {
+    const i = css.indexOf(".session-term .xterm .xterm-viewport");
+    expect(i, "viewport 规则在册").toBeGreaterThanOrEqual(0);
+    const rule = css.slice(i, i + 900);
+    expect(rule).toContain("scrollbar-width: none");
+    expect(rule).toContain("background-color: transparent");
+  });
+
   it("term-main-row 的 data-yield 折叠规则在册", () => {
     expect(css).toContain('.term-main-row[data-yield="true"]');
     const rule = css.slice(css.indexOf('.term-main-row[data-yield="true"]'));

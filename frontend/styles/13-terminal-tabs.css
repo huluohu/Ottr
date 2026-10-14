@@ -175,6 +175,14 @@
    display none 只藏 UI 层：滚轮/PgUp/⌘F 搜索照常，缓冲不受影响。 */
 .session-term .xterm .xterm-viewport {
   scrollbar-width: none;
+  /* xterm 6 起核心不再给 viewport 写主题内联底色（theme bg 改写在
+     .xterm-scrollable-element 节点），viewport 保留 xterm.css 的
+     `background-color: #000`（"On OS X scroll bar opaque" 遗产）。屏幕行区
+     （rows×cellH）盖不住的余量区于是露出纯黑——亮色终端主题下 = 主区底部
+     一条黑带（2026-10-14 用户截图；暗色主题下不可见故长期未察觉）。
+     滚动条已被隐藏，黑底的存在理由失效：改透明，余量区露出 scrollable
+     element 的主题底色（core inline，与行区同色无缝）。 */
+  background-color: transparent;
 }
 .session-term .xterm .xterm-viewport::-webkit-scrollbar {
   width: 0;

@@ -242,12 +242,30 @@
 
 
 /* 关于卡（2026-10-13 关于分区 v2）：名称+版本一行、作者/许可/仓库元信息
-   一行——替代原四行 label:value 表格（产品行零信息量、版本与更新区重复）。 */
+   一行——替代原四行 label:value 表格（产品行零信息量、版本与更新区重复）。
+   2026-10-15：图标入卡（用户需求）——icon 左置 56px（品牌最小 24px 的
+   两倍余），名称/版本/slogan 右侧纵排；品牌纪律不加描边与阴影。 */
 .about-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   margin: var(--space-2) 0;
+}
+.about-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.about-logo {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+.about-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 /* Slogan（brand.md 主口号，双语）：名称行与元信息行之间的弱化一行。 */
 .about-slogan {

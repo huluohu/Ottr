@@ -1111,16 +1111,27 @@ export function SecuritySettings({
             >
               <h3>{t("settings.sectionAbout")}</h3>
               <div className="about-card" data-testid="about-card">
-                <div className="about-line">
-                  <span className="about-name">Ottr</span>
-                  {appVersion !== null && (
-                    <span className="about-version" data-testid="about-version">{appVersion}</span>
-                  )}
+                {/* 图标（2026-10-15 用户需求）：public/icon.svg = 品牌手册的
+                    App 图标源文件（Teal 底盘装版，明暗背景通用）；纯装饰，
+                    可访问名由旁边的产品名承担。版本带 v 前缀 = 与更新提示
+                    「发现新版本 v{{version}}」及 GitHub Release 命名同形。 */}
+                <div className="about-head">
+                  <img className="about-logo" src="/icon.svg" alt="" aria-hidden="true" />
+                  <div className="about-head-text">
+                    <div className="about-line">
+                      <span className="about-name">Ottr</span>
+                      {appVersion !== null && (
+                        <span className="about-version" data-testid="about-version">
+                          v{appVersion}
+                        </span>
+                      )}
+                    </div>
+                    {/* Slogan（2026-10-16 用户需求）：brand.md 主口号双语。 */}
+                    <p className="about-slogan" data-testid="about-slogan">
+                      {t("settings.aboutSlogan")}
+                    </p>
+                  </div>
                 </div>
-                {/* Slogan（2026-10-16 用户需求）：brand.md 主口号双语。 */}
-                <p className="about-slogan" data-testid="about-slogan">
-                  {t("settings.aboutSlogan")}
-                </p>
                 <div className="about-meta">
                   <span>@huluohu</span>
                   <span aria-hidden="true">·</span>

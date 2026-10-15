@@ -49,3 +49,5 @@ keyring = { version = "3", features = ["sync-secret-service"] }
 [dev-dependencies]
 # 测试一律用临时目录（tempfile），绝不触碰真实用户数据目录
 tempfile = { workspace = true }
+# 密码升级丢弃路径测试：直接改写 *_enc 为垃圾密文（伪造历史坏字段）
+rusqlite = { version = "0.40", features = ["bundled"] }

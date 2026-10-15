@@ -136,11 +136,11 @@ describe("SecuritySettings", () => {
 
   it("向导完成：升级命令携密码、进度事件驱动计数、完成页展示字段数并翻模式", async () => {
     seedMode("keyring");
-    let resolveUpgrade: ((fields: number) => void) | undefined;
+    let resolveUpgrade: ((v: { fields: number; dropped: string[] }) => void) | undefined;
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "settings_get") return Promise.resolve(null);
       if (cmd === "vault_upgrade_to_master_password") {
-        return new Promise<number>((resolve) => {
+        return new Promise<{ fields: number; dropped: string[] }>((resolve) => {
           resolveUpgrade = resolve;
         });
       }
@@ -159,12 +159,52 @@ describe("SecuritySettings", () => {
       expect(screen.getByTestId("wizard-progress-text").textContent).toBe("2/4"),
     );
 
-    resolveUpgrade!(4);
+    resolveUpgrade!({ fields: 4, dropped: [] });
     await waitFor(() => expect(screen.getByTestId("upgrade-done")).toBeTruthy());
     expect(screen.getByTestId("wizard-done-text").textContent).toContain("4");
     expect(mockedInvoke).toHaveBeenCalledWith("vault_upgrade_to_master_password", {
       password: "correct horse",
+      dropUnreadable: false,
     });
+  });
+
+  // 2026-10-16 用户需求：升级遇历史坏字段（解密封失败）→ 向导给「丢弃并继续」
+  // 选项——重试携 dropUnreadable=true，完成页点名被置空的字段。
+  it("解密封失败 → 丢弃并继续选项；重试携 dropUnreadable=true 且完成页点名", async () => {
+    let failThenSucceed = true;
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "vault_upgrade_to_master_password") {
+        if (failThenSucceed) {
+          failThenSucceed = false;
+          return Promise.reject(
+            new Error(
+              "crypto error: 解密封失败：credentials.secret_enc（行 1，密文 35 字节）无法用当前主密钥开封——升级已整体回滚、数据原样未动，可重试或携本条信息反馈。",
+            ),
+          );
+        }
+        return Promise.resolve({ fields: 3, dropped: ["credentials.secret_enc（行 1）"] });
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    fireEvent.click(screen.getByTestId("start-upgrade"));
+    fireEvent.change(screen.getByTestId("wizard-password"), { target: { value: "correct horse" } });
+    fireEvent.change(screen.getByTestId("wizard-confirm"), { target: { value: "correct horse" } });
+    fireEvent.click(screen.getByTestId("wizard-start"));
+    const err = await waitFor(() => screen.getByTestId("wizard-error"));
+    expect(err.textContent).toContain("解密封失败");
+    expect(screen.queryByTestId("wizard-drop-continue")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("wizard-drop-continue"));
+    await waitFor(() => expect(screen.getByTestId("upgrade-done")).toBeTruthy());
+    // 成功路径随后会发 vault_security_status 刷新——按参数匹配而非「最后一次」
+    expect(mockedInvoke).toHaveBeenCalledWith("vault_upgrade_to_master_password", {
+      password: "correct horse",
+      dropUnreadable: true,
+    });
+    const dropped = screen.getByTestId("wizard-dropped");
+    expect(dropped.textContent).toContain("credentials.secret_enc");
   });
 
   it("升级失败：回第一步并展示错误（库原样未动，可重试）", async () => {

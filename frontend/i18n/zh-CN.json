@@ -738,7 +738,9 @@
       "stepDone": "升级完成",
       "doneCount": "已重新加密 {{count}} 个密文字段，之后以主密码解锁。",
       "errTooShort": "主密码至少 {{min}} 位",
-      "errMismatch": "两次输入不一致"
+      "errMismatch": "两次输入不一致",
+      "dropContinue": "丢弃以上字段并继续升级",
+      "droppedTitle": "以下字段无法解密、已置空——请找到对应凭据重新录入密值："
     },
     "downgrade": {
       "start": "切换到免密模式…",

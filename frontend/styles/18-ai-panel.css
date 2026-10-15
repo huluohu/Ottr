@@ -177,7 +177,7 @@
   max-height: 88vh;
   overflow-y: auto;
 }
-.ai-provider-list,
+/* 告警规则列表（旧形态保留：小卡纵排） */
 .ai-rule-list {
   list-style: none;
   margin: 0 0 8px;
@@ -186,16 +186,31 @@
   flex-direction: column;
   gap: 6px;
 }
-.ai-provider-row {
+/* Provider 列表重排（2026-10-16 用户反馈「布局有点紧」，参照 Workbuddy
+ * 自定义模型卡片）：单卡承载全部行、行间发丝线分隔；行内 = 名称（+徽标）
+ * · 类型·模型（弱化、可截断）· 动作右对齐；行高有呼吸感。 */
+.ai-provider-list {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 6px 8px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.ai-provider-row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ai-provider-row:last-child {
+  border-bottom: none;
 }
 .ai-provider-name {
   font-weight: 600;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -216,13 +231,28 @@
   padding: 0 6px;
 }
 .ai-provider-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--text-xs);
-  opacity: 0.75;
+  color: var(--fg-muted);
 }
 .ai-provider-actions {
   display: flex;
   gap: 6px;
-  flex-wrap: wrap;
+  flex: none;
+}
+.ai-provider-actions button {
+  font-size: var(--text-xs);
+  padding: 0.1em 0.6em;
+  box-shadow: none;
+}
+/* 测试结果独占一行（flex 换行基线） */
+.ai-provider-row .settings-hint {
+  flex-basis: 100%;
+  margin: 0;
 }
 .ai-test-ok {
   color: var(--color-success);

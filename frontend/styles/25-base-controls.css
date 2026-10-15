@@ -4,6 +4,12 @@
  * appearance:none 自绘——键盘/表单/读屏语义零损失；组件层唯一挂载点
  * （全仓守卫 src/ui/ui-no-native-controls.test.ts 防裸写复发）。 */
 
+/* 表单卡（.wizard-step input { width:100% }）不得拉伸 settings-row 里的开关
+ * （2026-10-16 用户反馈：告警渠道「启用」开关被拉成整行宽）。 */
+.settings-row .ui-switch {
+  width: 34px;
+  flex: none;
+}
 .ui-switch {
   appearance: none;
   -webkit-appearance: none;

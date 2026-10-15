@@ -105,10 +105,25 @@ pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()>
     Ok(())
 }
 
+/// 升级结果（2026-10-16 用户需求：坏字段可选置空丢弃——完成页展示丢弃清单，
+/// 用户重新录入对应值）。
+#[derive(Clone, serde::Serialize)]
+pub struct UpgradeOutcome {
+    /// 重密封成功的字段数。
+    pub fields: usize,
+    /// 被置空的坏字段清单（表.列（行）——解密封失败、用户显式选择丢弃）。
+    pub dropped: Vec<String>,
+}
+
 /// 升级到主密码模式（设置页向导本体，keyring → password）：
 /// 重加密逐字段发 `ottr://reencrypt-progress`（向导进度条），成功后删除钥匙链
 /// 旧条目（失败路径什么都不动——vault 层单事务保证，残留由下次 open 兜底）。
-/// 返回值 = 重密封字段数（向导完成页展示）。
+/// 返回值 = 重密封字段数 + 被置空的坏字段清单。
+///
+/// `drop_unreadable`（2026-10-16 用户需求）：严格失败（诊断错误上屏：哪个表/
+/// 字段/行解不开）后，用户可选择丢弃以上坏字段并继续——置空不是静默决定，
+/// 向导先展示诊断、再由用户显式点「丢弃并继续」。
+///
 /// 明文主密码的 IPC 副本边界与 [`vault_unlock`] 同一套（BL-202 成文，见彼处
 /// 四点生命周期）；本命令在库内跑的是重密封（Argon2id 派生 + 全表重加密），
 /// 副本生命周期因 Argon2 拉长到秒级，结论不变：不落盘、不进日志、不缓存。
@@ -117,16 +132,23 @@ pub fn vault_upgrade_to_master_password(
     state: State<'_, VaultState>,
     app: AppHandle,
     password: String,
-) -> CmdResult<usize> {
+    drop_unreadable: Option<bool>,
+) -> CmdResult<UpgradeOutcome> {
+    let mut dropped = Vec::new();
     let emitter = app.clone();
     let fields = state
         .0
-        .set_master_password(&password, &mut |done, total| {
-            let _ = emitter.emit(
-                "ottr://reencrypt-progress",
-                serde_json::json!({ "done": done, "total": total }),
-            );
-        })
+        .set_master_password_ext(
+            &password,
+            drop_unreadable.unwrap_or(false),
+            &mut dropped,
+            &mut |done, total| {
+                let _ = emitter.emit(
+                    "ottr://reencrypt-progress",
+                    serde_json::json!({ "done": done, "total": total }),
+                );
+            },
+        )
         .map_err(|e| e.to_string())?;
     // 旧 Master Key 条目删除（升级成功的收尾）。失败不致命——残留条目在下次
     // open（password 模式）被兜底清理，且不再参与任何解锁路径。
@@ -137,7 +159,7 @@ pub fn vault_upgrade_to_master_password(
         eprintln!("[vault-upgrade] stale keyring entry cleanup failed: {e}");
     }
     let _ = app.emit("ottr://vault-unlocked", ());
-    Ok(fields)
+    Ok(UpgradeOutcome { fields, dropped })
 }
 
 /// 降级到免密钥匙链模式（password → keyring，设置页「切换到免密模式」向导）：

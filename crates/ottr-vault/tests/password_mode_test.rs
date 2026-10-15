@@ -877,3 +877,54 @@ fn master_password_min_len_counts_code_points_not_utf16_units() {
         .expect("8 码点必须通过最小长度门卫");
     assert_eq!(vault.mode(), KeyMode::Password);
 }
+
+// 2026-10-16 用户需求：升级遇历史坏字段可选「置空丢弃并继续」（不再死锁）。
+#[test]
+fn upgrade_strict_rejects_unreadable_and_drop_mode_neutralizes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let storage = InMemoryStorage::new();
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
+    let (id_a, _id_b) = seed_fixed_credentials(&vault);
+    // 伪造历史坏字段：直接改写 secret_enc 为垃圾密文（当前钥无法开封）。
+    vault
+        .connection()
+        .execute(
+            "UPDATE credentials SET secret_enc = X'00DEADBEF00D' WHERE id = ?1",
+            [id_a],
+        )
+        .unwrap();
+    drop(vault);
+
+    // 严格语义（默认）：诊断错误上屏（表/列/行齐全），库原样未动。
+    let vault = Vault::open_with(dir.path(), &storage).unwrap();
+    let err = vault
+        .set_master_password(GOOD_PASSWORD, &mut |_, _| {})
+        .unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("解密封失败"), "{msg}");
+    assert!(msg.contains("credentials.secret_enc"), "{msg}");
+    assert!(msg.contains("数据原样未动"), "{msg}");
+    assert_eq!(vault.mode(), KeyMode::Keyring, "严格失败 = 库原样未动");
+
+    // 丢弃语义（用户显式选择）：坏字段置空、升级成功、清单点名、其余字段完好。
+    let mut dropped = Vec::new();
+    vault
+        .set_master_password_ext(GOOD_PASSWORD, true, &mut dropped, &mut |_, _| {})
+        .unwrap();
+    assert_eq!(vault.mode(), KeyMode::Password);
+    assert_eq!(dropped.len(), 1, "{dropped:?}");
+    assert!(dropped[0].contains("credentials.secret_enc"), "{dropped:?}");
+    // 坏字段读取面 = 无值（NULL），其余字段正常重封可解。
+    assert_eq!(
+        Credentials::reveal(&vault, id_a, ottr_vault::SecretField::Secret).unwrap(),
+        None,
+        "被丢弃的 secret 读取面 = 无值"
+    );
+    assert_eq!(
+        Credentials::reveal(&vault, id_a, ottr_vault::SecretField::TotpSecret)
+            .unwrap()
+            .as_deref(),
+        Some("JBSWY3DPEHPK3PXP"),
+        "其余字段正常重封可解"
+    );
+}

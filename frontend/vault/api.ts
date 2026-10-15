@@ -673,9 +673,14 @@ export const vaultApi = {
     status: () => invoke<SecurityStatus>("vault_security_status"),
     unlock: (password: string) => invoke<void>("vault_unlock", { password }),
     lock: () => invoke<void>("vault_lock"),
-    /** keyring → password 升级（重加密迁移）；resolve = 完成并返回重密封字段数。 */
-    upgradeToMasterPassword: (password: string) =>
-      invoke<number>("vault_upgrade_to_master_password", { password }),
+    /** keyring → password 升级（重加密迁移）；resolve = 完成并返回重密封字段数
+     * + 被置空的坏字段清单（dropUnreadable=true 时：解不开的字段置空并点名，
+     * 2026-10-16 用户需求——严格失败后由用户显式选择丢弃再试）。 */
+    upgradeToMasterPassword: (password: string, dropUnreadable?: boolean) =>
+      invoke<{ fields: number; dropped: string[] }>("vault_upgrade_to_master_password", {
+        password,
+        dropUnreadable: dropUnreadable ?? false,
+      }),
     /** password → keyring 降级（no-lock 任务：切换到免密模式，重加密迁移）；
      * resolve = 完成且已解锁（免密）。密码错 reject（master password is incorrect）。 */
     downgradeToKeychain: (password: string) =>

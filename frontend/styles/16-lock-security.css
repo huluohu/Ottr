@@ -171,6 +171,20 @@
 }
 .settings-label {
   flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* MCP 授权行（2026-10-16 用户反馈：勾选文字被挤成竖排）：行内标签不许收缩
+ * 换行，弹性面集中在 read_paths 输入框（空间不足时输入框折到下一行）。 */
+.mcp-grant-row {
+  flex-wrap: wrap;
+}
+.mcp-grant-row > label {
+  flex: none;
+  white-space: nowrap;
+}
+.mcp-grant-row > input {
+  flex: 1 1 240px;
+  box-sizing: border-box;
 }
 .settings-hint {
   margin: var(--space-1) 0 var(--space-2);

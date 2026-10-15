@@ -128,6 +128,9 @@ export function SecuritySettings({
   const [wizardError, setWizardError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ReencryptProgress>({ done: 0, total: 0 });
   const [fieldsDone, setFieldsDone] = useState<number | null>(null);
+  // 主密码升级坏字段丢弃（2026-10-16 用户需求）：严格失败（诊断含「解密封
+  // 失败」）后向导给出「丢弃并继续」选项；完成页点名被置空的字段。
+  const [droppedFields, setDroppedFields] = useState<string[]>([]);
   const [upgrading, setUpgrading] = useState(false);
 
   // 降级向导状态（no-lock 任务：password → keyring「切换到免密模式」）。
@@ -325,8 +328,8 @@ export function SecuritySettings({
     return null;
   }
 
-  async function startUpgrade(e: FormEvent) {
-    e.preventDefault();
+  async function startUpgrade(e: FormEvent | null, dropUnreadable = false) {
+    if (e) e.preventDefault();
     const err = validate();
     if (err) {
       setWizardError(err);
@@ -336,20 +339,23 @@ export function SecuritySettings({
     setUpgrading(true);
     setWizard("progress");
     try {
-      const fields = await vaultApi.security.upgradeToMasterPassword(password);
-      setFieldsDone(fields);
+      const outcome = await vaultApi.security.upgradeToMasterPassword(password, dropUnreadable);
+      setFieldsDone(outcome.fields);
+      setDroppedFields(outcome.dropped);
       setWizard("done");
       // 模式已翻转（keyring → password）：store 的 mode 事件不覆盖，显式重查
       // 落地（否则徽标/入口停留在旧模式直到重启）。
       await useVaultLockStore.getState().refreshStatus();
+      // 成功收尾才清密码；失败保留（丢弃重试需要原密码，不逼重输）。
+      setPassword("");
+      setConfirm("");
     } catch (err2) {
-      // 升级失败 = 库原样未动（Rust 侧单事务），回第一步重试。
-      setWizardError(err2 instanceof Error ? err2.message : String(err2));
+      // 升级失败 = 库原样未动（Rust 侧单事务），回第一步。
+      const msg = err2 instanceof Error ? err2.message : String(err2);
+      setWizardError(msg);
       setWizard("password");
     } finally {
       setUpgrading(false);
-      setPassword("");
-      setConfirm("");
     }
   }
 
@@ -594,6 +600,18 @@ export function SecuritySettings({
                   {wizardError}
                 </p>
               )}
+              {wizardError?.includes("解密封失败") && (
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    data-testid="wizard-drop-continue"
+                    disabled={upgrading}
+                    onClick={() => void startUpgrade(null, true)}
+                  >
+                    {t("security.wizard.dropContinue")}
+                  </button>
+                </div>
+              )}
               <div className="form-actions">
                 <button type="button" data-testid="wizard-cancel" onClick={() => setWizard(null)}>
                   {t("common.cancel")}
@@ -622,6 +640,16 @@ export function SecuritySettings({
               <p className="settings-hint" data-testid="wizard-done-text">
                 {t("security.wizard.doneCount", { count: fieldsDone ?? 0 })}
               </p>
+              {droppedFields.length > 0 && (
+                <div data-testid="wizard-dropped">
+                  <p className="form-error">{t("security.wizard.droppedTitle")}</p>
+                  <ul className="settings-hint">
+                    {droppedFields.map((d) => (
+                      <li key={d}>{d}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

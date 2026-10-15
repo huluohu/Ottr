@@ -739,7 +739,9 @@
       "stepDone": "Upgrade complete",
       "doneCount": "Re-encrypted {{count}} secret fields; unlock with the master password from now on.",
       "errTooShort": "Master password must be at least {{min}} characters",
-      "errMismatch": "Passwords do not match"
+      "errMismatch": "Passwords do not match",
+      "dropContinue": "Discard the fields above and continue",
+      "droppedTitle": "These fields could not be decrypted and were cleared — re-enter the secret for the matching credentials:"
     },
     "downgrade": {
       "start": "Switch to passwordless mode…",

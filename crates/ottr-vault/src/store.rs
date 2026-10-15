@@ -506,6 +506,22 @@ impl Vault {
         password: &str,
         progress: &mut dyn FnMut(usize, usize),
     ) -> Result<usize> {
+        let mut dropped = Vec::new();
+        self.set_master_password_ext(password, false, &mut dropped, progress)
+    }
+
+    /// 带丢弃选项的升级（2026-10-16 用户需求：历史坏字段不再死锁升级）。
+    /// `drop_unreadable = true` 时，无法开封的字段**整列置空**（行保留，读取面
+    /// 按无值处理）并记入 `dropped` 清单（表.列（行）——完成页展示，用户重新
+    /// 录入对应值）；`false` = 严格语义（首个坏字段即整体回滚，诊断错误上屏）。
+    /// 丢弃是用户显式选择（向导在严格失败后给出选项），库层不擅自决定。
+    pub fn set_master_password_ext(
+        &self,
+        password: &str,
+        drop_unreadable: bool,
+        dropped: &mut Vec<String>,
+        progress: &mut dyn FnMut(usize, usize),
+    ) -> Result<usize> {
         if password.chars().count() < MASTER_PASSWORD_MIN_LEN {
             return Err(VaultError::InvalidInput(format!(
                 "master password must be at least {MASTER_PASSWORD_MIN_LEN} characters"
@@ -534,7 +550,7 @@ impl Vault {
             // [`scan_registry`] 生成——单一事实源，不存在第二处手写列名（扫描
             // 机器 [`reseal_all_enc_columns`] 与降级 [`Self::clear_master_password`]
             // 共享，见其文档）。
-            let done = reseal_all_enc_columns(&tx, &old, &new, progress)?;
+            let done = reseal_all_enc_columns(&tx, &old, &new, drop_unreadable, dropped, progress)?;
             set_meta_tx(&tx, META_KEY_MODE, KeyMode::Password.as_str())?;
             set_meta_tx(&tx, META_KEY_KDF_SALT, &hex::encode(salt))?;
             set_meta_tx(&tx, META_KEY_VERIFIER, &hex::encode(&verifier))?;
@@ -599,7 +615,7 @@ impl Vault {
             let new = Cipher::new(&new_key)?;
             let conn = self.connection();
             let tx = conn.unchecked_transaction()?;
-            let _done = reseal_all_enc_columns(&tx, &old, &new, progress)?;
+            let _done = reseal_all_enc_columns(&tx, &old, &new, false, &mut Vec::new(), progress)?;
             set_meta_tx(&tx, META_KEY_MODE, KeyMode::Keyring.as_str())?;
             clear_master_password_params_tx(&tx)?;
             tx.commit()?;
@@ -772,6 +788,8 @@ fn reseal_all_enc_columns(
     conn: &Connection,
     old: &Cipher,
     new: &Cipher,
+    drop_unreadable: bool,
+    dropped: &mut Vec<String>,
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<usize> {
     const RESEAL_BATCH: i64 = 64;
@@ -813,17 +831,32 @@ fn reseal_all_enc_columns(
                     // 死胡同错误就地转诊断（2026-10-16 用户升级实测
                     // "crypto error: aead::Error" 无法定位）：指明表/列/行与密文
                     // 规模 + 明示事务已回滚数据未动。该字段无法开封通常是历史
-                    // 异常写入或损坏——升级被挡是重密封的必然（不能跳过：跳过 =
-                    // 该字段以旧钥密文留在已换钥库里，永久不可解 = 静默丢数据）。
-                    let mut plain = old.open(&blob, &aad).map_err(|e| {
-                        VaultError::Crypto(format!(
-                            "解密封失败：{table}.{}（行 {row_id}，密文 {} 字节）\
-                             无法用当前主密钥开封——升级已整体回滚、数据原样未动，\
-                             可重试或携本条信息反馈。原始错误：{e}",
-                            col.column,
-                            blob.len()
-                        ))
-                    })?;
+                    // 异常写入或损坏——严格语义下升级被挡；用户显式选丢弃时
+                    // 置空该字段继续（见 ext 签名文档；不静默决定）。
+                    let mut plain = match old.open(&blob, &aad) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            if !drop_unreadable {
+                                return Err(VaultError::Crypto(format!(
+                                    "解密封失败：{table}.{}（行 {row_id}，密文 {} 字节）\
+                                     无法用当前主密钥开封——升级已整体回滚、数据原样未动，\
+                                     可重试或携本条信息反馈。原始错误：{e}",
+                                    col.column,
+                                    blob.len()
+                                )));
+                            }
+                            conn.execute(
+                                &format!(
+                                    "UPDATE {table} SET {} = NULL WHERE rowid = ?1",
+                                    col.column
+                                ),
+                                params![row_id],
+                            )?;
+                            dropped.push(format!("{table}.{}（行 {row_id}）", col.column));
+                            progress(done, total.max(1));
+                            continue;
+                        }
+                    };
                     let resealed = match new.seal(&plain, &aad) {
                         Ok(b) => b,
                         Err(e) => {

@@ -109,7 +109,19 @@ export interface DeliveryOk {
 /** 默认端口（生产路径）。 */
 export const defaultDeps: Required<Pick<ChannelDeps, "now">> & { fetchImpl: typeof fetch } = {
   now: () => Date.now(),
-  fetchImpl: (...args) => fetch(...args),
+  // 15s 超时（2026-10-16 用户反馈：代理/网络停滞时「发送中…」无限挂）：
+  // 挂起请求到点转「请求超时」错误上屏；测试注入的自定义 fetchImpl 不受影响。
+  fetchImpl: async (...args) => {
+    const [input, init] = args;
+    try {
+      return await fetch(input, { ...(init ?? {}), signal: AbortSignal.timeout(15_000) });
+    } catch (e) {
+      if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
+        throw new Error("请求超时（15 秒）——检查网络或代理设置");
+      }
+      throw e;
+    }
+  },
 };
 
 /** 单渠道字段描述符（设置页表单渲染面）。 */

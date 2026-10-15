@@ -11,6 +11,13 @@
   flex-direction: column;
   gap: 10px;
 }
+/* 主密码字段标签（label.grow 同病修）：无规则时「主密码」与密码框内联同行、
+   输入框不满宽。直接子选择器，不影响 lock-reset-panel 内结构。 */
+.lock-card > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 
 /* 忘记密码？引导（product-ready T5，BL-537 清偿）：link 式入口居中不抢解锁
    主视觉；说明区就地展开（左对齐小字 + danger 二击确认按钮）。 */

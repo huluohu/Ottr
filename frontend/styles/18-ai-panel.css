@@ -479,6 +479,14 @@
   margin: 0;
   font-size: var(--text-sm);
 }
+/* 链名称字段标签（label.grow 同病修）：jump-form 无 label 规则时 span+input
+   内联同行（「链名称 [输入框]」挤一行）。仅此一处直接子 label，> 防波及
+   hop 行内的控件。 */
+.jump-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .jump-hops-head {
   display: flex;
   align-items: center;

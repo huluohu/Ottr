@@ -122,4 +122,11 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
   it("右键菜单 z 小栈已入刻度（99/100/101 字面值清零）", () => {
     expect(allAppCss()).not.toMatch(/z-index:\s*(99|100|101);/);
   });
+
+  it("字段标签堆叠契约（2026-10-15 用户反馈：CronPanel 脚本域 textarea 与标签内联崩坏——.grow 是零定义死类名，form-row 内靠控件 width:100% 换行假象兜底，行外裸露即崩）：三处规则必须在位", () => {
+    const css = allAppCss();
+    expect(css.includes("label.grow {"), "label.grow 契约定义缺失（死类名回流）").toBe(true);
+    expect(css.includes(".jump-form > label {"), "jump-form 链名称字段标签规则缺失").toBe(true);
+    expect(css.includes(".lock-card > label {"), "lock-card 主密码字段标签规则缺失").toBe(true);
+  });
 });

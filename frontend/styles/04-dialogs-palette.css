@@ -98,6 +98,20 @@
   width: 100%;
   box-sizing: border-box;
 }
+/* 字段标签堆叠契约：label.grow = span + 控件上下排列。此前的 .grow 是死类名
+   （全项目零定义）——form-row 内靠「控件 width:100% 被迫换行」的偶然假象兜住，
+   行外裸露即内联崩坏（CronPanel 脚本域 textarea 拔地而起；jump-form/lock-card
+   同病各随其容器规则修）。min-width:0 与 .form-row > label 同口径防溢出。 */
+label.grow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+label.grow > textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
 
 /* --- 对话框统一头部（2026-10-08 关闭交互统一）：标题 + 右上 X 常驻可视 ---
    设置族面板（SecuritySettings/AISettings）此前关闭按钮埋在长面板底部（不滚到

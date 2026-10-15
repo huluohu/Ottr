@@ -94,6 +94,10 @@ tauri-plugin-single-instance = "2"
 # 内裸 fetch 是跨域请求，webhook API 无 CORS 头必被拦（2026-10-16 用户实测
 # 「Load failed」；其他工具无浏览器同源限制故「别处可用」）。
 tauri-plugin-http = "2"
+# 文件面板「下载完成 → 打开 / 在文件夹中显示」（feat/file-panel-enhancements）：
+# openPath / revealItemInDir 的三端差异由插件收口（macOS open -R / Win explorer
+# /select / Linux xdg-open），前端只调 @tauri-apps/plugin-opener。
+tauri-plugin-opener = "2"
 # T11（A7）：剪贴板敏感复制自动清空——arboard（tauri-plugin-clipboard-manager
 # 的同源后端）Rust 侧直用，免插件/Capability 面（前端永不接触明文，见 security.rs）。
 # default-features = false：关 image-data（文本剪贴板够用，少拖 image 依赖树）。

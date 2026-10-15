@@ -66,6 +66,33 @@ export function localDownloadsDir(): Promise<string> {
   return invoke("local_downloads_dir");
 }
 
+/** 新建本地目录（单级；已存在 Rust 侧显式报错）。 */
+export function localMkdir(path: string): Promise<void> {
+  return invoke("local_mkdir", { path });
+}
+
+/** 删除本地文件/目录（目录递归；UI 侧确认对话框把关）。 */
+export function localRemove(path: string, isDir: boolean): Promise<void> {
+  return invoke("local_remove", { path, isDir });
+}
+
+/** OS 拖拽落本地栏：把来源文件复制进目标目录（保留文件名，重名覆盖）。 */
+export function localCopy(from: string, toDir: string): Promise<void> {
+  return invoke("local_copy", { from, toDir });
+}
+
+/** 用系统默认程序打开本地文件（下载完成动作；JS 插件走 opener 插件）。 */
+export async function openLocalFile(path: string): Promise<void> {
+  const opener = await import("@tauri-apps/plugin-opener");
+  await opener.openPath(path);
+}
+
+/** 在系统文件管理器中显示本地文件（macOS Finder「显示」同款）。 */
+export async function revealLocalFile(path: string): Promise<void> {
+  const opener = await import("@tauri-apps/plugin-opener");
+  await opener.revealItemInDir(path);
+}
+
 /** local 缺省 → Rust 侧落「下载目录/远端文件名」（MVP 降级裁定）。 */
 export function sftpDownload(id: string, remote: string, local?: string): Promise<TransferStarted> {
   return invoke("sftp_download", { id, remote, local: local ?? null });

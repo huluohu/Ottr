@@ -24,8 +24,11 @@ import {
   formatBytes,
   formatMode,
   joinRemote,
+  localCopy,
   localHome,
   localList,
+  localMkdir,
+  localRemove,
   parentOf,
   sftpChmod,
   sftpList,
@@ -38,9 +41,36 @@ import {
 } from "./api";
 import { TransferQueue } from "./TransferQueue";
 import { remoteEdits } from "./RemoteEdit";
-import { useTransferStore } from "./TransferStore";
+import { useTransferStore, type TransferStatus } from "./TransferStore";
 
 type Side = "local" | "remote";
+
+// --- 排序（feat/file-panel-enhancements）：名称/大小/修改时间，目录恒在前 ---
+export type SortKey = "name" | "size" | "mtime";
+export interface SortSpec {
+  key: SortKey;
+  asc: boolean;
+}
+
+/** 排序纯函数：目录恒在前（升降序都不打散），其余按 key 比较；localeCompare
+ * 兼顾中文名。不变输入数组。 */
+export function sortFileEntries<
+  T extends { name: string; is_dir: boolean; size: number; mtime: number },
+>(entries: T[], sort: SortSpec): T[] {
+  const byKey = (a: T, b: T): number => {
+    switch (sort.key) {
+      case "size":
+        return a.size - b.size;
+      case "mtime":
+        return a.mtime - b.mtime;
+      default:
+        return a.name.localeCompare(b.name);
+    }
+  };
+  return [...entries].sort(
+    (a, b) => Number(b.is_dir) - Number(a.is_dir) || (sort.asc ? byKey(a, b) : -byKey(a, b)),
+  );
+}
 
 interface PaneState {
   path: string;
@@ -110,6 +140,11 @@ export function FilePanel({ session }: { session: Session }) {
   const [dropTarget, setDropTarget] = useState<Side | null>(null);
   // 内部拖拽源侧（行 dragstart 记录；drop 消费后清空）。
   const [dragSide, setDragSide] = useState<Side | null>(null);
+  // 每栏排序（feat/file-panel-enhancements）：默认名称升序；表头点击切换。
+  const [sorts, setSorts] = useState<Record<Side, SortSpec>>({
+    local: { key: "name", asc: true },
+    remote: { key: "name", asc: true },
+  });
   /** 本会话在编辑中的远端路径（RemoteEditManager 订阅同步）。 */
   const [editing, setEditing] = useState<string[]>([]);
   /** 冲突待裁定的远端路径（非空 = 「远端已变更，覆盖？」对话框开着）。 */
@@ -249,7 +284,36 @@ export function FilePanel({ session }: { session: Session }) {
     })();
   }, [rustId, loadRemote]);
 
-  // --- 拖拽上传（Tauri onDragDropEvent；落点命中远端栏才上传） -------------------
+  // 传输完成 → 对应侧自动刷新（上传=远端，下载=本地）：用户不用手动点刷新
+  // 才能看到传输结果。用状态迁移判定（前值非 done、现值 done）——初挂载时
+  // store 里可能残留旧会话的 done 条目，prev===undefined 不触发。
+  const transfers = useTransferStore((s) => s.items);
+  const transferStatusRef = useRef<Map<string, TransferStatus>>(new Map());
+  useEffect(() => {
+    let dirty = false;
+    const seen = new Set<string>();
+    for (const it of transfers) {
+      seen.add(it.transferId);
+      const prev = transferStatusRef.current.get(it.transferId);
+      if (prev !== undefined && prev !== "done" && it.status === "done") {
+        if (it.kind === "upload") void loadRemote(remote.path);
+        else void loadLocal(local.path);
+      }
+      if (prev !== it.status) {
+        transferStatusRef.current.set(it.transferId, it.status);
+        dirty = true;
+      }
+    }
+    // 收尾条目 6s 后自动销毁（TransferStore），水位表同步裁剪防无界增长。
+    if (dirty) {
+      for (const id of [...transferStatusRef.current.keys()]) {
+        if (!seen.has(id)) transferStatusRef.current.delete(id);
+      }
+    }
+  }, [transfers, loadRemote, loadLocal, remote.path, local.path]);
+
+  // --- 拖拽（Tauri onDragDropEvent）：OS 文件落远端栏=上传、落本地栏=复制进
+  // 当前目录；跨面板内部拖拽走行 dragstart（见 renderPane onDrop）。 ----------
   useEffect(() => {
     if (!rustId) return;
     let cancelled = false;
@@ -270,10 +334,10 @@ export function FilePanel({ session }: { session: Session }) {
             .elementFromPoint(x, y)
             ?.closest("[data-file-drop]")
             ?.getAttribute("data-file-drop");
-          const target: Side | null = hit === "remote" ? "remote" : null;
+          const target: Side | null = hit === "remote" ? "remote" : hit === "local" ? "local" : null;
           if (p.type === "drop") {
             setDropTarget(null);
-            if (target === "remote") void handleDrop(p.paths ?? []);
+            if (target !== null) void handleDrop(p.paths ?? [], target);
           } else {
             setDropTarget(target);
           }
@@ -289,9 +353,9 @@ export function FilePanel({ session }: { session: Session }) {
       unlisten?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rustId, remote.path]);
+  }, [rustId, remote.path, local.path]);
 
-  async function handleDrop(paths: string[]) {
+  async function handleDrop(paths: string[], target: Side) {
     if (!rustId || paths.length === 0) return;
     let queued = 0;
     let skippedDirs = 0;
@@ -305,17 +369,30 @@ export function FilePanel({ session }: { session: Session }) {
           continue;
         }
       } catch {
-        // 判定不了就尝试上传（Rust 侧 SFTP open 失败会进队列 failed 态）
+        // 判定不了就尝试（Rust 侧打开失败会进队列 failed 态 / copy 报错提示）
       }
-      queued++;
-      void startUpload(rustId, p, remote.path).catch((e) =>
-        showNotice(t("files.uploadFailed", { message: String(e) })),
-      );
+      if (target === "remote") {
+        queued++;
+        void startUpload(rustId, p, remote.path).catch((e) =>
+          showNotice(t("files.uploadFailed", { message: String(e) })),
+        );
+      } else {
+        try {
+          await localCopy(p, local.path);
+          queued++;
+        } catch (e) {
+          showNotice(t("files.opFailed", { message: String(e) }));
+        }
+      }
     }
     if (skippedDirs > 0) {
       showNotice(t("files.dropDirsSkipped", { count: skippedDirs }));
     } else if (queued > 0) {
-      showNotice(t("files.dropQueued", { count: queued }));
+      showNotice(
+        target === "remote"
+          ? t("files.dropQueued", { count: queued })
+          : t("files.dropLocalCopied", { count: queued }),
+      );
     }
   }
 
@@ -351,12 +428,30 @@ export function FilePanel({ session }: { session: Session }) {
   async function applyDialog(value: string) {
     if (!dialog) return;
     const { kind, side, target } = dialog;
-    const path = joinRemote((side === "local" ? local : remote).path, target?.name ?? "");
+    if (side === "local") {
+      // 本地写操作（feat/file-panel-enhancements）：mkdir / 删除。rename/chmod
+      // 本地暂无命令面，菜单不出现该入口；此分支为防御性兜底。
+      try {
+        if (kind === "mkdir") {
+          await localMkdir(joinLocalPath(local.path, value));
+        } else if (kind === "delete" && target) {
+          await localRemove(joinLocalPath(local.path, target.name), target.is_dir);
+        } else {
+          throw new Error(`unsupported local op: ${kind}`);
+        }
+        closeDialog();
+        void loadLocal(local.path);
+      } catch (e) {
+        showNotice(t("files.opFailed", { message: String(e) }));
+      }
+      return;
+    }
+    const path = joinRemote(remote.path, target?.name ?? "");
     try {
       if (kind === "mkdir") {
-        await sftpMkdir(rustId!, joinRemote((side === "local" ? local : remote).path, value));
+        await sftpMkdir(rustId!, joinRemote(remote.path, value));
       } else if (kind === "rename" && target) {
-        await sftpRename(rustId!, path, joinRemote((side === "local" ? local : remote).path, value));
+        await sftpRename(rustId!, path, joinRemote(remote.path, value));
       } else if (kind === "chmod" && target) {
         const mode = parseInt(value, 8);
         if (!Number.isFinite(mode) || mode < 0 || mode > 0o777) {
@@ -367,10 +462,18 @@ export function FilePanel({ session }: { session: Session }) {
         await sftpRemove(rustId!, path, target.is_dir);
       }
       closeDialog();
-      if (side === "remote") void loadRemote(remote.path);
+      void loadRemote(remote.path);
     } catch (e) {
       showNotice(t("files.opFailed", { message: String(e) }));
     }
+  }
+
+  /** 表头点击排序：同 key 翻转方向，新 key 默认升序（目录恒在前）。 */
+  function toggleSort(side: Side, key: SortKey) {
+    setSorts((prev) => {
+      const cur = prev[side];
+      return { ...prev, [side]: cur.key === key ? { key, asc: !cur.asc } : { key, asc: true } };
+    });
   }
 
   const menuItems: { label: string; danger?: boolean; action: () => void }[] =
@@ -451,6 +554,20 @@ export function FilePanel({ session }: { session: Session }) {
         ]
       : [
           { label: t("files.menu.refresh"), action: () => loadLocal(local.path) },
+          {
+            label: t("files.menu.mkdir"),
+            action: () => openDialog({ kind: "mkdir", side: "local", target: null }),
+          },
+          ...(selectedEntry
+            ? [
+                {
+                  label: t("files.menu.delete", { name: selectedEntry.name }),
+                  danger: true,
+                  action: () =>
+                    openDialog({ kind: "delete", side: "local", target: selectedEntry }),
+                },
+              ]
+            : []),
           ...(selectedEntry && !selectedEntry.is_dir && rustId
             ? [
                 {
@@ -574,6 +691,32 @@ export function FilePanel({ session }: { session: Session }) {
           {t("files.go")}
         </button>
       </div>
+      {/* 排序列头（feat/file-panel-enhancements）：名称/大小/时间可点，同 key
+          翻方向，目录恒在前；权限列不参与排序占位对齐。listbox 外置避免
+          role 冲突。 */}
+      <div className="file-head" data-testid={`file-sort-head-${side}`}>
+        <span className="file-icon" aria-hidden="true" />
+        {(["name", "size"] as SortKey[]).map((key) => (
+          <SortHeaderCell
+            key={key}
+            sortKey={key}
+            side={side}
+            label={t(key === "name" ? "files.sort.name" : "files.sort.size")}
+            extraClass={key === "size" ? " file-size" : ""}
+            sort={sorts[side]}
+            onToggle={() => toggleSort(side, key)}
+          />
+        ))}
+        <span className="file-meta file-mode" aria-hidden="true" />
+        <SortHeaderCell
+          sortKey="mtime"
+          side={side}
+          label={t("files.sort.mtime")}
+          extraClass=" file-mtime"
+          sort={sorts[side]}
+          onToggle={() => toggleSort(side, "mtime")}
+        />
+      </div>
       <div className="file-list" data-testid={`file-list-${side}`} role="listbox" aria-multiselectable={false}>
         {state.loading && <p className="file-status">{t("common.loading")}</p>}
         {state.error && (
@@ -583,7 +726,7 @@ export function FilePanel({ session }: { session: Session }) {
         )}
         {!state.loading &&
           !state.error &&
-          state.entries.map((e) => (
+          sortFileEntries(state.entries, sorts[side]).map((e) => (
             <div
               key={e.name}
               role="option"
@@ -640,7 +783,7 @@ export function FilePanel({ session }: { session: Session }) {
               <span className="file-name" title={e.name}>
                 {e.name}
               </span>
-              <span className="file-meta">
+              <span className="file-meta file-size">
                 {e.is_dir ? "—" : formatBytes(e.size)}
               </span>
               <span className="file-meta file-mode">{formatMode(e.mode)}</span>
@@ -656,7 +799,35 @@ export function FilePanel({ session }: { session: Session }) {
   return (
     <div className="file-panel" data-testid="file-panel">
       <div className="file-toolbar">
-        <button onClick={() => navigate(focus, pane.path)}>{t("files.menu.refresh")}</button>
+        {/* 刷新 = 双侧同时（2026-10-16 用户目标「支持刷新列表」——只刷焦点侧
+            时另一栏的传输/外部变更不可见）；右键菜单仍保留单侧刷新。 */}
+        <button
+          data-testid="fb-refresh"
+          onClick={() => {
+            void loadLocal(local.path);
+            void loadRemote(remote.path);
+          }}
+        >
+          {t("files.menu.refresh")}
+        </button>
+        {focus === "local" && (
+          <>
+            <button
+              data-testid="fb-mkdir-local"
+              onClick={() => openDialog({ kind: "mkdir", side: "local", target: null })}
+            >
+              {t("files.menu.mkdir")}
+            </button>
+            <button
+              data-testid="fb-delete-local"
+              disabled={!selectedEntry}
+              className="icon-btn danger"
+              onClick={() => selectedEntry && openDialog({ kind: "delete", side: "local", target: selectedEntry })}
+            >
+              {t("common.delete")}
+            </button>
+          </>
+        )}
         {focus === "remote" && (
           <>
             <button data-testid="fb-mkdir" onClick={() => openDialog({ kind: "mkdir", side: "remote", target: null })}>
@@ -981,4 +1152,38 @@ function PanelDialog({
 /** 列头权限名（读/写/执行）——aria 标签用，独立小函数免在 map 里闭包传参。 */
 function permsLabel(t: (k: string) => string, p: number): string {
   return t(p === 0 ? "files.dlg.permRead" : p === 1 ? "files.dlg.permWrite" : "files.dlg.permExec");
+}
+
+/** 排序列头单元格：激活列显方向箭头 + aria-sort；独立小组件免 map 闭包。 */
+function SortHeaderCell({
+  sortKey,
+  side,
+  label,
+  extraClass,
+  sort,
+  onToggle,
+}: {
+  sortKey: SortKey;
+  side: Side;
+  label: string;
+  extraClass?: string;
+  sort: SortSpec;
+  onToggle: () => void;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <button
+      type="button"
+      className={`file-head-cell${extraClass ?? ""}${active ? " active" : ""}`}
+      onClick={onToggle}
+      data-testid={`file-sort-${side}-${sortKey}`}
+      aria-sort={active ? (sort.asc ? "ascending" : "descending") : "none"}
+      aria-label={`${label} · ${sort.asc ? "▲" : "▼"}`}
+    >
+      {label}
+      {active && (
+        <span aria-hidden="true">{sort.asc ? "↑" : "↓"}</span>
+      )}
+    </button>
+  );
 }

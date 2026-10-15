@@ -26,6 +26,10 @@ import {
 export type TransferStatus = "active" | "done" | "failed" | "cancelled";
 export type TransferKind = "download" | "upload";
 
+/** done 条目自动销毁延迟（2026-10-16 用户目标：完成后进度条保留片刻可看清
+ * 状态，随后自清；failed/cancelled 不自动清——重试入口要常驻）。 */
+export const TRANSFER_DONE_TTL_MS = 6000;
+
 export interface TransferItem {
   transferId: string;
   kind: TransferKind;
@@ -242,6 +246,15 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
         cancelling: false,
       }),
     }));
+    // done 定时自清（用户目标：进度条 N 秒后销毁）；failed/cancelled 留给
+    // 用户重试或手动关。延迟时已手动 dismiss → 二次过滤是 no-op。
+    if (p.status === "done") {
+      setTimeout(() => {
+        if (get().items.find((it) => it.transferId === p.transfer_id)?.status === "done") {
+          get().dismiss(p.transfer_id);
+        }
+      }, TRANSFER_DONE_TTL_MS);
+    }
   },
 }));
 

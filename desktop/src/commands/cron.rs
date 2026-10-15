@@ -169,6 +169,8 @@ fn record_status_str(s: CronRunStatus) -> String {
 }
 
 /// sidecar 写入：`{app_data_dir}/cron-runs/{cron_id}-{run_id}.log`。
+/// 写入后顺带清理 7 天前的旧 sidecar 文件（2026-10-16 全面评审 cron-3：
+/// 文件本体永无清理路径 = 磁盘无界增长——DB 裁剪只删行不触文件）。
 fn write_sidecar(
     app: &AppHandle,
     cron_id: i64,
@@ -179,6 +181,21 @@ fn write_sidecar(
     std::fs::create_dir_all(&dir).map_err(|e| format!("create cron-runs dir: {e}"))?;
     let path = dir.join(format!("{cron_id}-{run_id}.log"));
     std::fs::write(&path, bytes).map_err(|e| format!("write sidecar: {e}"))?;
+    // 清理旧 sidecar：mtime > 7 天的 .log 文件删除（不依赖 DB 查询，简单有效）
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 24 * 3600);
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().is_some_and(|e| e == "log")
+                && std::fs::metadata(&p)
+                    .and_then(|m| m.modified())
+                    .map(|m| m < cutoff)
+                    .unwrap_or(false)
+            {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
     Ok(path.to_string_lossy().into_owned())
 }
 

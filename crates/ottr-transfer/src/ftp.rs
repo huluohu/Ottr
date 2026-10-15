@@ -497,7 +497,14 @@ async fn download_linear(
             .await
             .map_err(|e| protocol_error(e, &format!("retr stream {remote} @{pos}")))?;
         if n == 0 {
-            break; // EOF：数据收讫，226 由 finish() 确认
+            // P0 transfer-0（2026-10-16 全面评审）：EOF ≠ 成功——校验 pos==total，
+            // 远端在 SIZE 与 RETR 之间被替换/截短时在此检测（SFTP 侧同语义）。
+            if pos != total {
+                return Err(plain_error(format!(
+                    "FTP download premature EOF at offset {pos} of {total} (file changed on server during transfer?)"
+                )));
+            }
+            break; // 数据收讫且长度匹配
         }
         pwrite_all(&local_file, pos, &buf[..n])?;
         pos += n as u64;
@@ -601,6 +608,12 @@ async fn upload_linear(
         }
         let n = local_file.read(&mut buf)?;
         if n == 0 {
+            // P0 transfer-0 上传侧同修：本地源在传输中途被截短时不再静默成功。
+            if pos != total {
+                return Err(plain_error(format!(
+                    "FTP upload premature EOF at offset {pos} of {total} (local file truncated during transfer?)"
+                )));
+            }
             break;
         }
         transfer

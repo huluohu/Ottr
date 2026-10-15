@@ -24,8 +24,11 @@ impl Secrets {
                 "secret key must not be empty".into(),
             ));
         }
-        let cipher = vault.cipher()?;
         let conn = vault.connection();
+        // P0 vault-0（TOCTOU 修复）：先拿连接锁再取 Cipher——升级重密封持连接锁
+        // 时写入方在此等待，拿到的必是升级后的新钥（旧序先取 Cipher 会被升级
+        // 竞态出旧钥写入 = 永久不可解）。
+        let cipher = vault.cipher()?;
         let tx = conn.unchecked_transaction()?;
         let existing: Option<i64> = tx
             .query_row("SELECT id FROM secrets WHERE key = ?1", [key], |r| r.get(0))
@@ -55,8 +58,11 @@ impl Secrets {
 
     /// 读一个密文项（明文出库；未设置 → `None`；密文损坏/AAD 换绑 → Crypto 错误）。
     pub fn get(vault: &Vault, key: &str) -> Result<Option<String>> {
-        let cipher = vault.cipher()?;
         let conn = vault.connection();
+        // P0 vault-0（TOCTOU 修复）：先拿连接锁再取 Cipher——升级重密封持连接锁
+        // 时写入方在此等待，拿到的必是升级后的新钥（旧序先取 Cipher 会被升级
+        // 竞态出旧钥写入 = 永久不可解）。
+        let cipher = vault.cipher()?;
         let row: Option<(i64, Vec<u8>)> = conn
             .query_row(
                 "SELECT id, value_enc FROM secrets WHERE key = ?1",

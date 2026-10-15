@@ -461,6 +461,11 @@ export function SecuritySettings({
               data-testid="security-section"
             >
               <h3>{t("settings.sectionSecurity")}</h3>
+          {/* saveSetting 错误在向导外也可见（2026-10-16 全面评审 frontend-state-2：
+              原来只在向导内渲染，向导未开时保存失败完全不可见） */}
+          {wizardError && wizard === null && (
+            <p className="form-error" data-testid="settings-save-error">{wizardError}</p>
+          )}
 
           <div className="settings-row" data-testid="vault-mode">
             <span className="settings-label">{t("security.mode")}</span>

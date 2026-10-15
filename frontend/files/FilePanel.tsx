@@ -430,7 +430,7 @@ export function FilePanel({ session }: { session: Session }) {
                           )
                             .then(() =>
                               showNotice(
-                                t("files.downloadToLocal", { name: selectedEntry.name }),
+                                t("files.menu.downloadToLocal", { name: selectedEntry.name }),
                               ),
                             )
                             .catch((err) =>
@@ -528,7 +528,7 @@ export function FilePanel({ session }: { session: Session }) {
             joinRemote(remote.path, parsed.name),
             joinLocalPath(local.path, parsed.name),
           )
-            .then(() => showNotice(t("files.downloadToLocal", { name: parsed.name })))
+            .then(() => showNotice(t("files.menu.downloadToLocal", { name: parsed.name })))
             .catch((err) =>
               showNotice(t("files.downloadFailed", { message: String(err) })),
             );
@@ -590,6 +590,19 @@ export function FilePanel({ session }: { session: Session }) {
               aria-selected={state.selected === e.name}
               className="file-row"
               data-selected={state.selected === e.name}
+              tabIndex={0}
+              onKeyDown={(ev) => {
+                // 键盘可达（2026-10-16 全面评审 frontend-ui-3）：Enter=打开/
+                // 下载，空格=选中——此前整个文件列表键盘完全不可达。
+                if (ev.key === "Enter") {
+                  ev.preventDefault();
+                  openEntry(side, e);
+                } else if (ev.key === " ") {
+                  ev.preventDefault();
+                  if (side === "local") setLocal((p) => ({ ...p, selected: e.name }));
+                  else setRemote((p) => ({ ...p, selected: e.name }));
+                }
+              }}
               draggable={true}
               onDragStart={(ev) => {
                 // 内部拖拽传输源标记（HTML5 dataTransfer；跨面板 drop 消费）。
@@ -611,7 +624,14 @@ export function FilePanel({ session }: { session: Session }) {
                 ev.preventDefault();
                 setFocus(side);
                 if (side === "remote") setRemote((p) => ({ ...p, selected: e.name }));
-                setMenu({ x: ev.clientX, y: ev.clientY });
+                // 视口钳位（2026-10-16 全面评审 frontend-ui-2）：窗口右/下边缘
+                // 右键时菜单不再被裁出视口。
+                const menuW = 220;
+                const menuH = 360;
+                setMenu({
+                  x: Math.min(ev.clientX, window.innerWidth - menuW),
+                  y: Math.min(ev.clientY, window.innerHeight - menuH),
+                });
               }}
             >
               <span className="file-icon" aria-hidden>

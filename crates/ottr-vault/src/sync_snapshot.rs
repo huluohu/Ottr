@@ -455,13 +455,17 @@ pub fn import_categories(
         );
     }
 
-    // 密封器先取（锁定即拒，事务开始前失败零副作用）。
+    // P0 vault-0（TOCTOU 修复）：先拿连接锁再取密封器——升级重密封持连接锁
+    // 时导入在此等待，拿到的必是升级后的新钥（旧序先取密封器会被升级竞态出
+    // 旧钥写入 = 永久不可解）。
+    let conn = vault.connection();
+
+    // 密封器取（连接已持锁，cipher() 拿到的是一致态的钥）。
     let cipher = vault.cipher()?;
 
     let mut applied: BTreeMap<String, usize> = BTreeMap::new();
     let mut skipped: BTreeMap<String, usize> = BTreeMap::new();
 
-    let conn = vault.connection();
     let tx = conn.unchecked_transaction()?;
 
     // --- 替换删除（子行在前；级联面语义见模块文档）--------------------------

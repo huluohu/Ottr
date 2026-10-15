@@ -81,6 +81,11 @@ export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
       unlisteners.push(
         await listen(VAULT_UNLOCKED_EVENT, () => {
           set({ phase: "unlocked", error: null });
+          // mode 同步（2026-10-16 全面评审 frontend-state-1）：只补 mode 不动
+          // phase（refreshStatus 的 fail-closed catch 会覆盖刚置的 unlocked）。
+          void vaultApi.security.status().then((s) => {
+            set({ mode: s.mode as VaultMode });
+          }).catch(() => { /* mode 留 null，下次 refreshStatus 补 */ });
           // T4 顺带修：解锁（含自动升级/多入口）单一收口即重拉 vault 数据。
           refreshVaultAfterUnlock();
         }),
@@ -111,6 +116,14 @@ export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
       await vaultApi.security.unlock(password);
       // 状态以 Rust 侧 ottr://vault-unlocked 事件为准；事件丢失兜底在此直置。
       set({ phase: "unlocked", unlocking: false, error: null });
+      // mode 同步（2026-10-16 全面评审 frontend-state-1）：启动时 status 查询
+      // 失败后 mode 留 null，解锁成功必须补查——否则 password 模式库在设置页
+      // 显示成 keyring 直到重启。只补 mode 不动 phase（phase 已置 unlocked，
+      // refreshStatus 的 fail-closed catch 会覆盖它）。
+      try {
+        const s = await vaultApi.security.status();
+        set({ mode: s.mode as VaultMode });
+      } catch { /* mode 留 null，下次 refreshStatus 补 */ }
       // T4 顺带修：兜底路径同享解锁后重拉（事件照常到达时 refresh 幂等）。
       refreshVaultAfterUnlock();
       return true;

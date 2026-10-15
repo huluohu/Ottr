@@ -537,6 +537,15 @@ async fn read_chunk_pipelined(
                     "unexpected EOF at offset {block_off} (file shorter than stat size?)"
                 )));
             }
+            // P0 transfer-1（2026-10-16 全面评审）：补读循环同款防御——服务器
+            // 超量返回时切片越界 panic worker；此处改为显式报错（与首轮同口径）。
+            let want = out.len() - (rel + filled);
+            if more.data.len() > want {
+                return Err(plain_error(format!(
+                    "server over-read at offset {block_off}: got {}, wanted {want}",
+                    more.data.len()
+                )));
+            }
             out[rel + filled..rel + filled + more.data.len()].copy_from_slice(&more.data);
             filled += more.data.len();
         }

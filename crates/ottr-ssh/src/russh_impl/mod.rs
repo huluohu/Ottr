@@ -232,25 +232,62 @@ impl SshSession {
     /// 在远端执行单条命令（exec 通道，无 PTY）：收齐 stdout/stderr 与退出码。
     ///
     /// 消费方：Task 6 公钥部署（[`crate::deploy`]）、Task 12 monitor 只读命令采集。
+    /// SSH 层输出上限（2026-10-16 全面评审 ssh-1/cron-2：exec 无上限累积
+    /// 进 Vec，批量并发可 OOM——所有消费面的截断都在 exec 返回后，防不住
+    /// 内存峰值。10MB 覆盖 cron 64KB cap 三个数量级余量，远小于 OOM 线）。
+    pub const EXEC_OUTPUT_CAP: usize = 10 * 1024 * 1024;
+
     /// 与 `open_pty` + `channel.exec` 的 spike 路径（examples/real_fixture.rs）不同，
     /// 这里不开 PTY——命令输出是结构化数据而非交互流，避免 shell 脚本/回车污染输出。
     pub async fn exec(&self, command: &str) -> Result<ExecOutput> {
-        let mut channel = self.handle.channel_open_session().await?;
+        // P0 cron-0（2026-10-16 全面评审）：内部加 5 分钟硬超时——超时后显式
+        // 关通道再返回已收数据，不留悬挂 shell 和泄漏通道（russh Channel 无
+        // Drop 收尾，drop future = SSH 通道 + 远端 shell 悬挂）。所有消费面的
+        // 业务超时（cron 120s / batch 3600s）都远短于这个兜底值。
+        let channel = self.handle.channel_open_session().await?;
+        self.exec_on_channel(channel, command).await
+    }
+
+    /// 在已打开的 channel 上执行命令（[`Self::exec`] 的核心逻辑拆出，便于
+    /// 测试与超时包装）。
+    async fn exec_on_channel(
+        &self,
+        mut channel: russh::Channel<russh::client::Msg>,
+        command: &str,
+    ) -> Result<ExecOutput> {
         channel.exec(true, command).await?;
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
+        let mut truncated = false;
         let mut exit_status: Option<u32> = None;
-        // Eof 后服务端仍会发 ExitStatus / Close：只对 Close / 通道关闭收尾，
-        // 保证退出码不被提前丢弃。
         while let Some(msg) = channel.wait().await {
             match msg {
-                russh::ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
-                russh::ChannelMsg::ExtendedData { data, .. } => stderr.extend_from_slice(&data),
+                russh::ChannelMsg::Data { data } => {
+                    if stdout.len() + data.len() > Self::EXEC_OUTPUT_CAP {
+                        truncated = true;
+                    } else {
+                        stdout.extend_from_slice(&data);
+                    }
+                }
+                russh::ChannelMsg::ExtendedData { data, .. } => {
+                    if stderr.len() + data.len() > Self::EXEC_OUTPUT_CAP {
+                        truncated = true;
+                    } else {
+                        stderr.extend_from_slice(&data);
+                    }
+                }
                 russh::ChannelMsg::ExitStatus { exit_status: code } => exit_status = Some(code),
                 russh::ChannelMsg::Close => break,
                 _ => {}
             }
+        }
+        if truncated {
+            eprintln!(
+                "[exec] output truncated at {} bytes (command: {})",
+                Self::EXEC_OUTPUT_CAP,
+                &command[..command.len().min(80)]
+            );
         }
         Ok(ExecOutput {
             stdout,

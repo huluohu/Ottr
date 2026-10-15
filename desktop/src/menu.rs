@@ -1124,11 +1124,19 @@ fn register_notify_item(app: &AppHandle<Wry>, tree: &[MenuNode]) {
         }
         None
     }
-    let Some(label) = find_label(tree, "tool.notify-center") else {
+    if find_label(tree, "tool.notify-center").is_none() {
         return;
     };
-    let item =
-        tauri::menu::MenuItem::with_id(app, "tool.notify-center", label, true, None::<&str>).ok();
+    // P0 desktop-0（2026-10-16 全面评审）：原实现 with_id 新建孤儿实例——
+    // set_text 对它无视觉效果（从未挂进菜单）。改从已构建菜单取真实项：
+    // tauri Menu::get(id) 返回 MenuItemKind 枚举，匹配 MenuItem 变体提取。
+    let item = app
+        .menu()
+        .and_then(|m| m.get("tool.notify-center"))
+        .and_then(|kind| match kind {
+            tauri::menu::MenuItemKind::MenuItem(item) => Some(item),
+            _ => None,
+        });
     let state = app.state::<NotifyMenuState>();
     *state.item.lock().unwrap() = item;
     // 重建重放：把记忆的未读数刷进新实例文案。

@@ -77,8 +77,11 @@ impl SessionSummaries {
                 "summary command count must not be negative".into(),
             ));
         }
-        let cipher = vault.cipher()?;
         let conn = vault.connection();
+        // P0 vault-0（TOCTOU 修复）：先拿连接锁再取 Cipher——升级重密封持连接锁
+        // 时写入方在此等待，拿到的必是升级后的新钥（旧序先取 Cipher 会被升级
+        // 竞态出旧钥写入 = 永久不可解）。
+        let cipher = vault.cipher()?;
         let tx = conn.unchecked_transaction()?;
         let ts = now_ts();
         let existing: Option<i64> = tx
@@ -124,8 +127,11 @@ impl SessionSummaries {
 
     /// 纪要列表（逐行开封；`host_id` Some → 主机过滤；排序 id DESC，`limit` 下限 1）。
     pub fn list(vault: &Vault, host_id: Option<i64>, limit: usize) -> Result<Vec<SummaryEntry>> {
-        let cipher = vault.cipher()?;
         let conn = vault.connection();
+        // P0 vault-0（TOCTOU 修复）：先拿连接锁再取 Cipher——升级重密封持连接锁
+        // 时写入方在此等待，拿到的必是升级后的新钥（旧序先取 Cipher 会被升级
+        // 竞态出旧钥写入 = 永久不可解）。
+        let cipher = vault.cipher()?;
         let mut stmt = conn.prepare(
             "SELECT id, host_id, session_id, summary_enc, command_count, ts
              FROM session_summaries

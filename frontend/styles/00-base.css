@@ -42,6 +42,14 @@ body {
   --surface-raised: color-mix(in srgb, var(--color-fg) 6%, rgba(16, 20, 32, 0.97));
   --surface-overlay: color-mix(in srgb, var(--color-fg) 10%, rgba(16, 20, 32, 0.97));
 }
+/* theme-suite T3（OLED 可读性兜底，2026-10-16 全面评审 frontend-ui-1 确认整块
+   从未生效——:root 派生式后置覆盖了 tokens.css 的 OLED 显式值）：OLED 纯黑底
+   上 fg 6% ≈ #0e0e0e 肉眼不可辨（对比度 1.088:1），在此后置覆写回 tokens.css
+   的校准值。覆写与 :root 同特异性、后置生效。 */
+[data-theme="oled"] {
+  --surface-raised: #16191e;
+  --surface-overlay: #1d2127;
+}
 
 :root {
   /* 系统字体栈（评审 P2-17）：原 Inter 首位但从未打包（实际落 Avenir/Helvetica），

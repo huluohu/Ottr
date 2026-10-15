@@ -175,6 +175,15 @@ textarea:focus-visible {
   filter: brightness(1.08);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent-border) 45%, transparent);
 }
+/* 紧凑变体（2026-10-15 用户反馈「添加 Provider 不成比例」）：列表末尾的
+   「添加 X」入口——满配（1em/0.4em+600 字重+微光）在紧凑列表旁是全场最
+   醒目控件，降一档字阶 + 收内边距 + 去微光，介于行内小按钮与表单主按钮
+   之间；表单提交主按钮（保存类）仍用满配 .btn-accent。 */
+.btn-accent.btn-compact {
+  font-size: var(--text-sm);
+  padding: 0.25em 0.8em;
+  box-shadow: none;
+}
 /* 危险动作变体（2026-10-09 基础层收编：原寄居 07-credentials-dialog.css 却被
    8 个文件跨域使用——基础变体归位基础层）。 */
 .btn-danger {

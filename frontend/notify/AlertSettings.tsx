@@ -450,7 +450,7 @@ export function AlertSettings({ open }: AlertSettingsProps) {
             ))}
           </ul>
           {!channelDraft && (
-            <button className="btn-accent" data-testid="alert-add-channel" onClick={() => { setChannelDraft(emptyChannelDraft()); setTestState(null); }}>
+            <button className="btn-accent btn-compact" data-testid="alert-add-channel" onClick={() => { setChannelDraft(emptyChannelDraft()); setTestState(null); }}>
               {t("alert.addChannel")}
             </button>
           )}
@@ -560,7 +560,7 @@ export function AlertSettings({ open }: AlertSettingsProps) {
             ))}
           </ul>
           {!ruleDraft && (
-            <button className="btn-accent" data-testid="alert-add-rule" onClick={() => { setRuleDraft(emptyRuleDraft()); setFormError(null); }}>
+            <button className="btn-accent btn-compact" data-testid="alert-add-rule" onClick={() => { setRuleDraft(emptyRuleDraft()); setFormError(null); }}>
               {t("alert.addRule")}
             </button>
           )}

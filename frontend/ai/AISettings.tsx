@@ -368,7 +368,7 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
             ))}
           </ul>
           {!draft && (
-            <button className="btn-accent" data-testid="ai-add-provider" onClick={() => setDraft(emptyDraft())}>
+            <button className="btn-accent btn-compact" data-testid="ai-add-provider" onClick={() => setDraft(emptyDraft())}>
               {t("ai.settings.addProvider")}
             </button>
           )}

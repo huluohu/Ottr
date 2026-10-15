@@ -138,8 +138,25 @@ export function FilePanel({ session }: { session: Session }) {
   );
   const [notice, setNotice] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<Side | null>(null);
-  // 内部拖拽源侧（行 dragstart 记录；drop 消费后清空）。
-  const [dragSide, setDragSide] = useState<Side | null>(null);
+  // 行指针拖拽（2026-10-16 用户反馈：HTML5 DnD 在 Tauri webview 里松手无效——
+  // 原生文件拖接管后 drag 事件链不可靠，上一版只在 jsdom mock 里验证过）。
+  // 改 Pointer Events 自管：按下记录 → 移动超阈值激活 → 浮标跟随 + hit-test
+  // 高亮 → 松手命中对侧栏即传输。引擎无关、jsdom 可测真实逻辑。
+  const rowDragRef = useRef<{
+    side: Side;
+    name: string;
+    isDir: boolean;
+    startX: number;
+    startY: number;
+    active: boolean;
+  } | null>(null);
+  const [rowDragView, setRowDragView] = useState<{
+    side: Side;
+    name: string;
+    isDir: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
   // 每栏排序（feat/file-panel-enhancements）：默认名称升序；表头点击切换。
   const [sorts, setSorts] = useState<Record<Side, SortSpec>>({
     local: { key: "name", asc: true },
@@ -396,6 +413,70 @@ export function FilePanel({ session }: { session: Session }) {
     }
   }
 
+  // --- 行指针拖拽：传输分发（每渲染刷新 ref，window 监听拿最新闭包）--------
+  const dropRowRef = useRef<(d: { side: Side; name: string; isDir: boolean }, target: Side) => void>(
+    () => {},
+  );
+  dropRowRef.current = (d, target) => {
+    if (d.isDir) {
+      showNotice(t("files.dropDirsSkipped", { count: 1 }));
+      return;
+    }
+    if (!rustId) return;
+    if (d.side === "local" && target === "remote") {
+      void startUpload(rustId, joinLocalPath(local.path, d.name), remote.path).catch((e) =>
+        showNotice(t("files.uploadFailed", { message: String(e) })),
+      );
+    } else if (d.side === "remote" && target === "local") {
+      void startDownload(rustId, joinRemote(remote.path, d.name), joinLocalPath(local.path, d.name))
+        .then(() => showNotice(t("files.menu.downloadToLocal", { name: d.name })))
+        .catch((err) => showNotice(t("files.downloadFailed", { message: String(err) })));
+    }
+  };
+
+  useEffect(() => {
+    const DRAG_THRESHOLD = 6;
+    const hitSide = (x: number, y: number): Side | null => {
+      const el = document.elementFromPoint(x, y);
+      const hit = el?.closest("[data-file-drop]")?.getAttribute("data-file-drop");
+      return hit === "local" || hit === "remote" ? (hit as Side) : null;
+    };
+    const onMove = (ev: PointerEvent) => {
+      const d = rowDragRef.current;
+      if (!d) return;
+      if (!d.active) {
+        if (Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < DRAG_THRESHOLD) return;
+        d.active = true;
+      }
+      setRowDragView({ side: d.side, name: d.name, isDir: d.isDir, x: ev.clientX, y: ev.clientY });
+      const target = hitSide(ev.clientX, ev.clientY);
+      setDropTarget(target !== null && target !== d.side ? target : null);
+    };
+    const finish = (ev: PointerEvent) => {
+      const d = rowDragRef.current;
+      rowDragRef.current = null;
+      setRowDragView(null);
+      setDropTarget(null);
+      if (!d?.active) return; // 未过阈值 = 普通点击，交给 onClick
+      const target = hitSide(ev.clientX, ev.clientY);
+      if (target === null || target === d.side) return;
+      dropRowRef.current({ side: d.side, name: d.name, isDir: d.isDir }, target);
+    };
+    const onCancel = () => {
+      rowDragRef.current = null;
+      setRowDragView(null);
+      setDropTarget(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, []);
+
   // --- 操作（全部作用于 focus 侧；本地侧仅刷新——本地写操作不进 MVP） ------------
 
   const pane = focus === "local" ? local : remote;
@@ -601,55 +682,22 @@ export function FilePanel({ session }: { session: Session }) {
       className="file-pane"
       data-side={side}
       data-focused={focus === side}
-      data-droptarget={dropTarget === side || (dragSide !== null && dragSide !== side)}
+      data-droptarget={dropTarget === side}
       data-file-drop={side}
       aria-label={side === "local" ? t("files.localPane") : t("files.remotePane")}
       onPointerDown={() => setFocus(side)}
-      onDragOver={(ev) => {
-        // 内部拖拽（跨面板传输）：非来源侧才可放置。types 含自有标记即内部拖拽。
-        if (
-          dragSide !== null &&
-          dragSide !== side &&
-          Array.from(ev.dataTransfer.types).includes("application/x-ottr-file")
-        ) {
-          ev.preventDefault();
-          ev.dataTransfer.dropEffect = "copy";
-        }
-      }}
-      onDrop={(ev) => {
-        if (dragSide === null || dragSide === side) return;
-        const raw = ev.dataTransfer.getData("application/x-ottr-file");
-        if (!raw) return;
+      onContextMenu={(ev) => {
+        // 空白区右键（2026-10-16 用户反馈：弹了 webview 默认「Reload」）——
+        // 行级 handler 已 preventDefault 的不重复接管；此处只兜空白区。
+        if (ev.defaultPrevented) return;
         ev.preventDefault();
-        let parsed: { side: Side; name: string; isDir: boolean };
-        try {
-          parsed = JSON.parse(raw) as { side: Side; name: string; isDir: boolean };
-        } catch {
-          return;
-        }
-        if (parsed.isDir) {
-          showNotice(t("files.dropDirsSkipped", { count: 1 }));
-          return;
-        }
-        if (parsed.side === "local" && side === "remote" && rustId) {
-          // 本地 → 远端：上传到远端当前目录
-          void startUpload(
-            rustId,
-            joinLocalPath(local.path, parsed.name),
-            remote.path,
-          ).catch((e) => showNotice(t("files.uploadFailed", { message: String(e) })));
-        } else if (parsed.side === "remote" && side === "local" && rustId) {
-          // 远端 → 本地：下载到本地当前目录（对侧工作流闭环；非 Downloads）
-          void startDownload(
-            rustId,
-            joinRemote(remote.path, parsed.name),
-            joinLocalPath(local.path, parsed.name),
-          )
-            .then(() => showNotice(t("files.menu.downloadToLocal", { name: parsed.name })))
-            .catch((err) =>
-              showNotice(t("files.downloadFailed", { message: String(err) })),
-            );
-        }
+        setFocus(side);
+        const menuW = 220;
+        const menuH = 360;
+        setMenu({
+          x: Math.min(ev.clientX, window.innerWidth - menuW),
+          y: Math.min(ev.clientY, window.innerHeight - menuH),
+        });
       }}
     >
       {/* pane 标题条（2026-10-10 双栏重设计）：显性 本地/远端 标记——纯路径
@@ -746,17 +794,19 @@ export function FilePanel({ session }: { session: Session }) {
                   else setRemote((p) => ({ ...p, selected: e.name }));
                 }
               }}
-              draggable={true}
-              onDragStart={(ev) => {
-                // 内部拖拽传输源标记（HTML5 dataTransfer；跨面板 drop 消费）。
-                ev.dataTransfer.setData(
-                  "application/x-ottr-file",
-                  JSON.stringify({ side, name: e.name, isDir: e.is_dir }),
-                );
-                ev.dataTransfer.effectAllowed = "copy";
-                setDragSide(side);
+              onPointerDown={(ev) => {
+                // 指针拖拽源（2026-10-16 重写）：仅记录，移动超阈值才成拖拽；
+                // 左键之外（右键菜单）不进入拖拽流程。
+                if (ev.button !== 0) return;
+                rowDragRef.current = {
+                  side,
+                  name: e.name,
+                  isDir: e.is_dir,
+                  startX: ev.clientX,
+                  startY: ev.clientY,
+                  active: false,
+                };
               }}
-              onDragEnd={() => setDragSide(null)}
               onClick={() =>
                 side === "local"
                   ? setLocal((p) => ({ ...p, selected: e.name }))
@@ -873,6 +923,19 @@ export function FilePanel({ session }: { session: Session }) {
         {renderPane("remote", remote)}
       </div>
       <TransferQueue />
+      {rowDragView && (
+        <div
+          className="file-drag-badge"
+          data-testid="file-drag-badge"
+          style={{ left: rowDragView.x + 14, top: rowDragView.y + 14 }}
+          aria-hidden="true"
+        >
+          <span className="file-icon">
+            <FileIcon kind={fileIconKind({ name: rowDragView.name, is_dir: rowDragView.isDir })} />
+          </span>
+          {rowDragView.name}
+        </div>
+      )}
       {menu && (
         <>
           <div className="ctx-overlay" onMouseDown={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />

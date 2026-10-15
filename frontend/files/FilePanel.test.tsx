@@ -662,3 +662,104 @@ describe("文件面板增强", () => {
     act(() => useTransferStore.setState({ items: [] }));
   });
 });
+
+// ---------------------------------------------------------------------------
+// 第二轮（2026-10-16 用户实测反馈）：空白右键出 webview 默认菜单；HTML5 DnD
+// 在 Tauri webview 里松手无效——行拖拽已改 Pointer Events 自管，本组测试
+// 驱动真实 pointer 事件链（jsdom 无 Tauri，但拖拽逻辑不再依赖引擎）。
+// ---------------------------------------------------------------------------
+describe("文件面板增强·第二轮", () => {
+  function stubHitTarget(el: Element | null) {
+    const docWithHit = document as unknown as { elementFromPoint?: () => Element | null };
+    const original = docWithHit.elementFromPoint;
+    docWithHit.elementFromPoint = () => el;
+    return () => {
+      docWithHit.elementFromPoint = original;
+    };
+  }
+
+  it("空白区右键：出应用菜单（刷新/新建目录），不再落给 webview 默认菜单", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-remote").textContent).toContain("big100"));
+    // 右键远端栏列表空白（列表容器本身，非文件行）
+    fireEvent.contextMenu(screen.getByTestId("file-list-remote"), { clientX: 40, clientY: 400 });
+    const menu = await screen.findByTestId("file-ctx-menu");
+    const labels = [...menu.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.some((l) => l.includes("Refresh") || l.includes("刷新"))).toBe(true);
+    expect(labels.some((l) => l.includes("folder") || l.includes("目录"))).toBe(true);
+  });
+
+  it("行指针拖拽 本地→远端：过阈值出浮标+对侧高亮，松手即 sftp_upload", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    const remotePane = screen
+      .getByTestId("file-title-remote")
+      .closest("[data-file-drop]") as HTMLElement;
+    const restore = stubHitTarget(remotePane);
+    const row = screen
+      .getAllByRole("option")
+      .find((el) => (el.textContent ?? "").includes("notes.txt")) as HTMLElement;
+    fireEvent.pointerDown(row, { button: 0, clientX: 100, clientY: 200 });
+    fireEvent.pointerMove(window, { clientX: 160, clientY: 260 });
+    // 浮标已现、对侧栏高亮可放
+    expect(screen.getByTestId("file-drag-badge").textContent).toContain("notes.txt");
+    expect(
+      screen.getByTestId("file-title-remote").closest("[data-file-drop]")?.getAttribute("data-droptarget"),
+    ).toBe("true");
+    fireEvent.pointerUp(window, { clientX: 160, clientY: 260 });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("sftp_upload", {
+        id: "pty-0",
+        local: "/Users/me/notes.txt",
+        remoteDir: "/home/spike",
+      }),
+    );
+    // 收尾：浮标消失、高亮撤除
+    expect(screen.queryByTestId("file-drag-badge")).toBeNull();
+    expect(
+      screen.getByTestId("file-title-remote").closest("[data-file-drop]")?.getAttribute("data-droptarget"),
+    ).toBe("false");
+    restore();
+    act(() => useTransferStore.setState({ items: [] }));
+  });
+
+  it("目录行拖拽到对侧：不传输，出「已跳过」提示", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    const remotePane = screen
+      .getByTestId("file-title-remote")
+      .closest("[data-file-drop]") as HTMLElement;
+    const restore = stubHitTarget(remotePane);
+    const row = screen
+      .getAllByRole("option")
+      .find((el) => (el.textContent ?? "").includes("Downloads")) as HTMLElement;
+    fireEvent.pointerDown(row, { button: 0, clientX: 100, clientY: 200 });
+    fireEvent.pointerMove(window, { clientX: 160, clientY: 260 });
+    fireEvent.pointerUp(window, { clientX: 160, clientY: 260 });
+    expect(mockedInvoke).not.toHaveBeenCalledWith(
+      "sftp_upload",
+      expect.objectContaining({ local: expect.stringContaining("Downloads") }),
+    );
+    await waitFor(() => expect(screen.getByTestId("file-notice").textContent).toContain("Skipped"));
+    restore();
+  });
+
+  it("按下未过阈值即松手：普通点击选中，不出浮标不传输", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    const row = screen
+      .getAllByRole("option")
+      .find((el) => (el.textContent ?? "").includes("notes.txt")) as HTMLElement;
+    fireEvent.pointerDown(row, { button: 0, clientX: 100, clientY: 200 });
+    fireEvent.pointerUp(window, { clientX: 101, clientY: 200 });
+    // 真浏览器在按下/松开同一元素时会合成 click——补发以驱动选中
+    fireEvent.click(row);
+    expect(screen.queryByTestId("file-drag-badge")).toBeNull();
+    expect(row.getAttribute("aria-selected")).toBe("true");
+    expect(mockedInvoke).not.toHaveBeenCalledWith("sftp_upload", expect.anything());
+  });
+});

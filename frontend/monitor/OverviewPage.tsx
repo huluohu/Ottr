@@ -188,7 +188,7 @@ export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageP
               tabIndex={0}
               onClick={() => onOpen(host)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") onOpen(host);
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(host); }
               }}
             >
               <div className="overview-card-head">

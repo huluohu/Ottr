@@ -63,6 +63,19 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
     expect(offenders, `字号字面值回流:\n${offenders.join("\n")}`).toEqual([]);
   });
 
+  it("缓动关键字 ease 字面值回流（2026-10-16 全面评审 frontend-ui-low-1）：transition/animation 缓动只允许 motion token", () => {
+    const offenders: string[] = [];
+    for (const line of allAppCss().split("\n")) {
+      if (!/^\s*(transition|animation)\s*:/.test(line)) continue;
+      if (line.includes("0.01ms")) continue; // reduced-motion 兜底
+      // 匹配独立的 ease 关键字（非 ease-in/ease-out/ease-in-out）
+      if (/\bease\s*[,;]/.test(line) || line.trim().endsWith("ease")) {
+        offenders.push(line.trim());
+      }
+    }
+    expect(offenders, `缓动关键字 ease 回流:\n${offenders.join("\n")}`).toEqual([]);
+  });
+
   it("file-row 选中态选择器必须连 :hover 一起声明（2026-10-16 用户反馈：两选择器特异性同为 (0,2,0)，:hover 在后按序获胜盖掉选中高亮——悬停选中行高亮消失、移开才现形）", () => {
     const css = allAppCss();
     const idx = css.indexOf('.file-row[data-selected="true"]');

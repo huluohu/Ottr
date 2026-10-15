@@ -67,7 +67,7 @@
   margin-left: auto;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--dur-fast) ease;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 .tree-group-head:hover .tree-group-add,
 .tree-group-add:focus-visible {
@@ -182,7 +182,7 @@
   gap: 2px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--dur-fast) ease;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 .tree-host:hover .host-actions,
 .tree-host:focus-within .host-actions,

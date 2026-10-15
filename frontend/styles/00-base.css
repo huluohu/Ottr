@@ -86,16 +86,16 @@ body {
 body,
 .sidebar,
 .main-area {
-  transition: background-color var(--dur) ease, color var(--dur) ease;
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 .overlay > .dialog {
-  transition: background-color var(--dur) ease, color var(--dur) ease;
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 .overlay > .host-form {
-  transition: background-color var(--dur) ease, color var(--dur) ease;
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 .palette-overlay > .palette {
-  transition: background-color var(--dur) ease, color var(--dur) ease;
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
 }
 
 /* 控件底色（T1 挂账 M-1 清偿，Task 8）：字面值升格为 tokens 的 --color-surface，
@@ -123,9 +123,9 @@ button {
   cursor: pointer;
   /* hover/按压全属性过渡（评审 P1-11/P1-7）：原只过渡 border-color，底色瞬变。 */
   transition:
-    border-color var(--dur-fast) ease,
-    background-color var(--dur-fast) ease,
-    color var(--dur-fast) ease,
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
     transform var(--dur-fast) ease-out;
 }
 button:hover {

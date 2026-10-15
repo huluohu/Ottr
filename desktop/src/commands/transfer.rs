@@ -302,6 +302,64 @@ pub(crate) fn local_downloads_dir(app: AppHandle) -> Result<String, String> {
     })
 }
 
+// --- 本地栏写操作（feat/file-panel-enhancements）：mkdir/删除/OS 拖拽落盘复制。
+// 同步核心独立成 *_sync 供单测直驱；命令壳 spawn_blocking（删除大目录/复制大
+// 文件可能秒级，不得冻结 UI——与 local_list 同口径）。
+
+fn local_mkdir_sync(path: &str) -> Result<(), String> {
+    std::fs::create_dir(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::AlreadyExists => format!("mkdir {path}: already exists"),
+        _ => format!("mkdir {path}: {e}"),
+    })
+}
+
+fn local_remove_sync(path: &str, is_dir: bool) -> Result<(), String> {
+    // 根/盘符/空路径一律拒绝——删除是危险动作，UI 确认对话框之外再兜一道。
+    if path.trim().is_empty() || Path::new(path).parent().is_none() {
+        return Err(format!("local_remove: refuse suspicious path {path:?}"));
+    }
+    if is_dir {
+        std::fs::remove_dir_all(path).map_err(|e| format!("remove_dir {path}: {e}"))
+    } else {
+        std::fs::remove_file(path).map_err(|e| format!("remove_file {path}: {e}"))
+    }
+}
+
+fn local_copy_sync(from: &str, to_dir: &str) -> Result<(), String> {
+    let name = Path::new(from)
+        .file_name()
+        .ok_or_else(|| format!("local_copy: no file name in {from:?}"))?;
+    let dest = Path::new(to_dir).join(name);
+    std::fs::copy(from, &dest).map_err(|e| format!("copy {from}: {e}"))?;
+    Ok(())
+}
+
+/// 新建本地目录（本地栏「新建文件夹」）。单级 create_dir：已存在显式报错，
+/// 不做 create_dir_all 的静默幂等——避免用户以为建到了别的层级。
+#[tauri::command]
+pub(crate) async fn local_mkdir(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || local_mkdir_sync(&path))
+        .await
+        .map_err(|e| format!("local_mkdir join error: {e}"))?
+}
+
+/// 删除本地文件/目录（目录递归）。UI 侧有确认对话框把关，此处只兜根路径。
+#[tauri::command]
+pub(crate) async fn local_remove(path: String, is_dir: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || local_remove_sync(&path, is_dir))
+        .await
+        .map_err(|e| format!("local_remove join error: {e}"))?
+}
+
+/// OS 拖拽落本地栏：把来源文件复制进目标目录（保留文件名，重名覆盖——
+/// 与上传「重名覆盖」口径一致）。
+#[tauri::command]
+pub(crate) async fn local_copy(from: String, to_dir: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || local_copy_sync(&from, &to_dir))
+        .await
+        .map_err(|e| format!("local_copy join error: {e}"))?
+}
+
 // --- 传输队列（事件 + 取消） ---------------------------------------------------
 
 #[derive(Clone, serde::Serialize)]
@@ -715,4 +773,101 @@ pub(crate) fn transfer_cancel(
     };
     cancel.cancel();
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 本地栏写操作单测（feat/file-panel-enhancements）：*_sync 纯 std::fs 核心，
+// tempdir 隔离，不依赖 tauri 运行时。
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod local_write_tests {
+    use super::{local_copy_sync, local_mkdir_sync, local_remove_sync};
+
+    struct TempDir(std::path::PathBuf);
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "ottr-local-write-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn mkdir_creates_dir_and_rejects_duplicate() {
+        let tmp = TempDir::new("mkdir");
+        let dir = tmp.0.join("新建文件夹");
+        local_mkdir_sync(dir.to_str().unwrap()).unwrap();
+        assert!(dir.is_dir());
+        // 已存在显式报错（不静默幂等——避免用户以为建到了别处）
+        let err = local_mkdir_sync(dir.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
+    }
+
+    #[test]
+    fn remove_file_and_dir_recursively() {
+        let tmp = TempDir::new("remove");
+        let file = tmp.0.join("a.log");
+        std::fs::write(&file, b"x").unwrap();
+        local_remove_sync(file.to_str().unwrap(), false).unwrap();
+        assert!(!file.exists());
+        let nested = tmp.0.join("dir/nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("b.bin"), b"y").unwrap();
+        local_remove_sync(tmp.0.join("dir").to_str().unwrap(), true).unwrap();
+        assert!(!tmp.0.join("dir").exists());
+    }
+
+    #[test]
+    fn remove_refuses_root_and_empty_paths() {
+        assert!(local_remove_sync("", false).is_err());
+        assert!(local_remove_sync("/", true).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_refuses_symlink_target_outside() {
+        // 删除入口拿到符号链接时按链接本身处理：is_dir=false 走 remove_file，
+        // 绝不追出目标目录——软链指向外部文件时只断链、不伤原文件。
+        let tmp = TempDir::new("symlink");
+        let outside = TempDir::new("symlink-out");
+        let target = outside.0.join("precious.txt");
+        std::fs::write(&target, b"keep").unwrap();
+        let link = tmp.0.join("link.txt");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        local_remove_sync(link.to_str().unwrap(), false).unwrap();
+        assert!(!link.exists());
+        assert!(target.exists(), "软链删除不得波及目标文件");
+    }
+
+    #[test]
+    fn copy_keeps_name_and_overwrites() {
+        let tmp = TempDir::new("copy");
+        let src_dir = tmp.0.join("src");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let src = src_dir.join("pkg.deb");
+        std::fs::write(&src, b"v1").unwrap();
+        let dest_dir = tmp.0.join("dest");
+        std::fs::create_dir_all(&dest_dir).unwrap();
+        local_copy_sync(src.to_str().unwrap(), dest_dir.to_str().unwrap()).unwrap();
+        assert_eq!(std::fs::read(dest_dir.join("pkg.deb")).unwrap(), b"v1");
+        // 重名覆盖口径与上传一致
+        std::fs::write(&src, b"v2-longer").unwrap();
+        local_copy_sync(src.to_str().unwrap(), dest_dir.to_str().unwrap()).unwrap();
+        assert_eq!(
+            std::fs::read(dest_dir.join("pkg.deb")).unwrap(),
+            b"v2-longer"
+        );
+    }
 }

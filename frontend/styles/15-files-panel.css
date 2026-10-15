@@ -195,6 +195,45 @@
   font-size: var(--text-sm);
   user-select: none;
 }
+/* 排序列头（feat/file-panel-enhancements）：与 .file-row 同栅格口径
+ * （icon 占位 / 名称弹性 / 大小·权限·时间定宽）；可点列 hover 提亮，
+ * 激活列常亮并带方向箭头。 */
+.file-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px 6px;
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+.file-head-cell {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.file-head-cell:hover,
+.file-head-cell.active {
+  color: var(--color-fg);
+}
+/* 定宽列：行内容与列头同一宽度口径（宽度含 tabular-nums 数字），窄面板
+ * 靠 .file-name min-width:0 弹性收缩，列本身不缩防错位。 */
+.file-size {
+  width: 64px;
+  text-align: right;
+}
+.file-mode {
+  width: 84px;
+}
+.file-mtime {
+  width: 88px;
+  text-align: right;
+}
 .file-row[data-selected="true"],
 /* 选中压制悬停（2026-10-16 用户反馈：悬停选中行时高亮消失）——两选择器
  * 特异性同为 (0,2,0)，:hover 在后按序获胜会盖掉 accent 底；选中态必须

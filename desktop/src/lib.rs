@@ -105,6 +105,8 @@ pub fn run() {
         // 应用内检查更新（2026-10-09）：endpoints/pubkey 在 tauri.conf.json
         // plugins.updater；设置页通用面板经 JS 插件 check/downloadAndInstall。
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // 文件面板传输完成后的「打开 / 在文件夹中显示」（feat/file-panel-enhancements）。
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         // T11（A7）：自动锁定计时状态（失焦起 N 分钟计时，重聚焦作废；
         // Arc 共享给窗口事件闭包与 spawn 的计时任务）。
@@ -327,6 +329,9 @@ pub fn run() {
             commands::transfer::local_list,
             commands::transfer::local_home,
             commands::transfer::local_downloads_dir,
+            commands::transfer::local_mkdir,
+            commands::transfer::local_remove,
+            commands::transfer::local_copy,
             commands::transfer::sftp_download,
             commands::transfer::sftp_upload,
             commands::transfer::transfer_cancel,

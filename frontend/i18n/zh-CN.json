@@ -517,7 +517,7 @@
     "rename": "重命名",
     "chmod": "权限",
     "download": "下载",
-    "toolbarHint": "拖文件到此上传 · 右键更多操作",
+    "toolbarHint": "拖文件到远端栏上传 · 双栏可互拖传输 · 右键更多操作",
     "menu": {
       "refresh": "刷新",
       "mkdir": "新建目录",
@@ -574,9 +574,19 @@
       "cancelAria": "取消传输 {{name}}",
       "retryAria": "重试传输 {{name}}",
       "dismissAria": "移除记录 {{name}}",
-      "errorText": "错误：{{message}}"
+      "errorText": "错误：{{message}}",
+      "open": "打开",
+      "openAria": "打开 {{name}}",
+      "reveal": "在文件夹中显示",
+      "revealAria": "在文件夹中显示 {{name}}"
     },
-    "ftpNoEdit": "FTP 会话不支持远端编辑"
+    "ftpNoEdit": "FTP 会话不支持远端编辑",
+    "dropLocalCopied": "已复制 {{count}} 个文件到当前目录",
+    "sort": {
+      "name": "名称",
+      "size": "大小",
+      "mtime": "时间"
+    }
   },
   "forward": {
     "title": "端口转发",

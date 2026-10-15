@@ -518,7 +518,7 @@
     "rename": "Rename",
     "chmod": "Permissions",
     "download": "Download",
-    "toolbarHint": "Drop files here to upload · right-click for more",
+    "toolbarHint": "Drop onto remote pane to upload · drag across panes to transfer · right-click for more",
     "menu": {
       "refresh": "Refresh",
       "mkdir": "New folder",
@@ -575,9 +575,19 @@
       "cancelAria": "Cancel transfer {{name}}",
       "retryAria": "Retry transfer {{name}}",
       "dismissAria": "Remove record {{name}}",
-      "errorText": "Error: {{message}}"
+      "errorText": "Error: {{message}}",
+      "open": "Open",
+      "openAria": "Open {{name}}",
+      "reveal": "Reveal in Folder",
+      "revealAria": "Reveal {{name}} in folder"
     },
-    "ftpNoEdit": "Remote edit is not available for FTP sessions"
+    "ftpNoEdit": "Remote edit is not available for FTP sessions",
+    "dropLocalCopied": "Copied {{count}} file(s) into the folder",
+    "sort": {
+      "name": "Name",
+      "size": "Size",
+      "mtime": "Modified"
+    }
   },
   "forward": {
     "title": "Port forwards",

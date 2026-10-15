@@ -6,16 +6,22 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-// 拖拽监听依赖 Tauri webview API：组件测试隔离（jsdom 无 __TAURI_INTERNALS__）
+// 拖拽监听依赖 Tauri webview API：组件测试隔离（jsdom 无 __TAURI_INTERNALS__）。
+// 回调捕获到 drag.handler 供 OS 拖拽用例直驱（vi.hoisted 保工厂外可见）。
+const drag = vi.hoisted(() => ({ handler: null as null | ((ev: unknown) => void) }));
 vi.mock("@tauri-apps/api/webview", () => ({
   getCurrentWebview: () => ({
-    onDragDropEvent: vi.fn().mockResolvedValue(() => {}),
+    onDragDropEvent: vi.fn((cb: (ev: unknown) => void) => {
+      drag.handler = cb;
+      return Promise.resolve(() => {});
+    }),
   }),
 }));
 
 import "../i18n";
-import { FilePanel, fileIconKind, modeToPermBits, permBitsToMode } from "./FilePanel";
+import { FilePanel, fileIconKind, modeToPermBits, permBitsToMode, sortFileEntries } from "./FilePanel";
 import { EDIT_POLL_MS, remoteEdits } from "./RemoteEdit";
+import { useTransferStore, type TransferItem } from "./TransferStore";
 import type { Session } from "../session/SessionStore";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -456,5 +462,203 @@ describe("文件类型图标与权限位纯函数", () => {
     expect(txtRow.querySelector('[data-icon="text"]')).toBeTruthy();
     const bigRow = screen.getByText("big100").closest(".file-row") as HTMLElement;
     expect(bigRow.querySelector('[data-icon="file"]')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 文件面板增强（feat/file-panel-enhancements）：排序 / 本地写操作 / OS 拖拽
+// 落本地 / 双侧刷新 / 传输完成自动刷新。
+// ---------------------------------------------------------------------------
+describe("文件面板增强", () => {
+  function makeItem(over: Partial<TransferItem>): TransferItem {
+    return {
+      transferId: "t1",
+      kind: "upload",
+      remotePath: "/home/spike/x.bin",
+      localPath: "/Users/me/x.bin",
+      rustId: "pty-0",
+      total: 10,
+      transferred: 10,
+      status: "active",
+      error: null,
+      cancelling: false,
+      startedAt: Date.now(),
+      ...over,
+    };
+  }
+
+  it("排序纯函数：目录恒在前，名称/大小/时间升降翻转，不改输入数组", () => {
+    const rows = [
+      { name: "b.log", is_dir: false, size: 2, mtime: 1700000002 },
+      { name: "folder", is_dir: true, size: 4096, mtime: 1700000001 },
+      { name: "a.txt", is_dir: false, size: 30, mtime: 1700000003 },
+      { name: "c.zip", is_dir: false, size: 1, mtime: 1700000001 },
+    ];
+    const nameAsc = sortFileEntries(rows, { key: "name", asc: true });
+    expect(nameAsc.map((r) => r.name)).toEqual(["folder", "a.txt", "b.log", "c.zip"]);
+    expect(sortFileEntries(rows, { key: "name", asc: false }).map((r) => r.name)).toEqual([
+      "folder", "c.zip", "b.log", "a.txt",
+    ]);
+    expect(sortFileEntries(rows, { key: "size", asc: true }).map((r) => r.name)).toEqual([
+      "folder", "c.zip", "b.log", "a.txt",
+    ]);
+    expect(sortFileEntries(rows, { key: "mtime", asc: true }).map((r) => r.name)).toEqual([
+      "folder", "c.zip", "b.log", "a.txt",
+    ]);
+    expect(sortFileEntries(rows, { key: "mtime", asc: false }).map((r) => r.name)).toEqual([
+      "folder", "a.txt", "b.log", "c.zip",
+    ]);
+    // 输入数组不被改动
+    expect(rows[0].name).toBe("b.log");
+  });
+
+  it("排序表头：点击切换 key/方向，行序随之重排", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "local_home") return Promise.resolve("/Users/me");
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/spike");
+      if (cmd === "local_list") return Promise.resolve([]);
+      if (cmd === "sftp_list") {
+        return Promise.resolve([
+          { name: "b.log", is_dir: false, size: 2, mode: 0o100644, mtime: 1700000002 },
+          { name: "folder", is_dir: true, size: 4096, mode: 0o40755, mtime: 1700000001 },
+          { name: "a.txt", is_dir: false, size: 30, mode: 0o100644, mtime: 1700000003 },
+          { name: "c.zip", is_dir: false, size: 1, mode: 0o100644, mtime: 1700000001 },
+        ]);
+      }
+      return Promise.resolve(undefined as unknown as never);
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-remote").textContent).toContain("c.zip"));
+    const names = () =>
+      [...screen.getByTestId("file-list-remote").querySelectorAll(".file-name")].map(
+        (el) => el.textContent,
+      );
+    expect(names()).toEqual(["folder", "a.txt", "b.log", "c.zip"]);
+    fireEvent.click(screen.getByTestId("file-sort-remote-name"));
+    expect(names()).toEqual(["folder", "c.zip", "b.log", "a.txt"]);
+    fireEvent.click(screen.getByTestId("file-sort-remote-size"));
+    expect(names()).toEqual(["folder", "c.zip", "b.log", "a.txt"]);
+    fireEvent.click(screen.getByTestId("file-sort-remote-mtime"));
+    expect(names()).toEqual(["folder", "c.zip", "b.log", "a.txt"]);
+    fireEvent.click(screen.getByTestId("file-sort-remote-mtime"));
+    expect(names()).toEqual(["folder", "a.txt", "b.log", "c.zip"]);
+  });
+
+  it("本地新建文件夹：工具条 → 对话框 → local_mkdir + 本地列刷新", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    fireEvent.pointerDown(screen.getByTestId("file-title-local"));
+    fireEvent.click(screen.getByTestId("fb-mkdir-local"));
+    fireEvent.change(screen.getByTestId("file-dialog-input"), { target: { value: "新目录" } });
+    fireEvent.click(screen.getByTestId("file-dialog-confirm"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("local_mkdir", { path: "/Users/me/新目录" }),
+    );
+    // 操作后自动重列本地
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("local_list", { path: "/Users/me" }),
+    );
+  });
+
+  it("本地删除：选中文件 → 确认对话框 → local_remove(isDir)", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    fireEvent.pointerDown(screen.getByTestId("file-title-local"));
+    const row = screen
+      .getAllByRole("option")
+      .find((el) => (el.textContent ?? "").includes("notes.txt"));
+    fireEvent.click(row!);
+    fireEvent.click(screen.getByTestId("fb-delete-local"));
+    await screen.findByTestId("file-dialog");
+    fireEvent.click(screen.getByTestId("file-dialog-confirm"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("local_remove", {
+        path: "/Users/me/notes.txt",
+        isDir: false,
+      }),
+    );
+  });
+
+  it("工具条刷新：双侧同时重列", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    mockedInvoke.mockClear();
+    fireEvent.click(screen.getByTestId("fb-refresh"));
+    await waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("local_list", { path: "/Users/me" });
+      expect(mockedInvoke).toHaveBeenCalledWith("sftp_list", { id: "pty-0", path: "/home/spike" });
+    });
+  });
+
+  it("传输完成自动刷新对应栏：上传 done 重列远端、下载 done 重列本地", async () => {
+    mockListings();
+    const { unmount } = render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    act(() => {
+      useTransferStore.setState({ items: [makeItem({ transferId: "t1", status: "active" })] });
+    });
+    mockedInvoke.mockClear();
+    act(() => {
+      useTransferStore.setState({
+        items: [makeItem({ transferId: "t1", status: "done" })],
+      });
+    });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("sftp_list", { id: "pty-0", path: "/home/spike" }),
+    );
+    act(() => {
+      useTransferStore.setState({
+        items: [makeItem({ transferId: "t2", kind: "download", status: "active" })],
+      });
+    });
+    mockedInvoke.mockClear();
+    act(() => {
+      useTransferStore.setState({
+        items: [makeItem({ transferId: "t2", kind: "download", status: "done" })],
+      });
+    });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("local_list", { path: "/Users/me" }),
+    );
+    act(() => useTransferStore.setState({ items: [] }));
+    unmount();
+  });
+
+  it("OS 拖拽落本地栏：local_copy 复制进当前目录；目录条目跳过", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    // elementFromPoint 打桩指到本地栏（OS 拖拽落点判定）
+    const localPane = screen
+      .getByTestId("file-title-local")
+      .closest("[data-file-drop]") as HTMLElement;
+    // jsdom 无 elementFromPoint——直接下桩
+    const docWithHit = document as unknown as { elementFromPoint?: () => Element | null };
+    const originalHit = docWithHit.elementFromPoint;
+    docWithHit.elementFromPoint = () => localPane;
+    await act(async () => {
+      drag.handler?.({
+        payload: {
+          type: "drop",
+          paths: ["/Users/me/notes.txt", "/Users/me/Downloads"],
+          position: { x: 10, y: 10 },
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("local_copy", {
+        from: "/Users/me/notes.txt",
+        toDir: "/Users/me",
+      }),
+    );
+    // 目录（Downloads）被过滤：local_copy 只此一次
+    expect(
+      mockedInvoke.mock.calls.filter(([cmd]) => cmd === "local_copy"),
+    ).toHaveLength(1);
+    docWithHit.elementFromPoint = originalHit;
+    act(() => useTransferStore.setState({ items: [] }));
   });
 });

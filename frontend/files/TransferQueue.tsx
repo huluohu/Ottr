@@ -3,7 +3,7 @@
 // 状态机逻辑在 TransferStore（独立 vitest）。
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { fileNameOf, formatBytes } from "./api";
+import { fileNameOf, formatBytes, openLocalFile, revealLocalFile } from "./api";
 import { sortQueueItems, useTransferStore, type TransferItem } from "./TransferStore";
 
 function statusLabel(item: TransferItem, t: (k: string) => string): string {
@@ -98,6 +98,28 @@ export function TransferQueue() {
               >
                 {t("common.retry")}
               </button>
+            )}
+            {/* 下载完成动作（2026-10-16 用户目标）：直接打开 / 在文件夹中显示。
+                条目 6s 后自动销毁（TransferStore onEnd），动作要在窗口期内可用。 */}
+            {item.status === "done" && item.kind === "download" && (
+              <>
+                <button
+                  className="queue-act"
+                  data-testid={`queue-open-${item.transferId}`}
+                  onClick={() => void openLocalFile(item.localPath).catch(() => {})}
+                  aria-label={t("files.queue.openAria", { name: fileNameOf(item.localPath) })}
+                >
+                  {t("files.queue.open")}
+                </button>
+                <button
+                  className="queue-act"
+                  data-testid={`queue-reveal-${item.transferId}`}
+                  onClick={() => void revealLocalFile(item.localPath).catch(() => {})}
+                  aria-label={t("files.queue.revealAria", { name: fileNameOf(item.localPath) })}
+                >
+                  {t("files.queue.reveal")}
+                </button>
+              </>
             )}
             {item.status !== "active" && (
               <button

@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import {
   sortQueueItems,
   useTransferStore,
+  TRANSFER_DONE_TTL_MS,
   type TransferBeginPayload,
   type TransferEndPayload,
   type TransferProgressPayload,
@@ -288,5 +289,67 @@ describe("TransferStore 状态机", () => {
       "d",
       "a",
     ]);
+  });
+});
+
+describe("传输完成自动销毁（feat/file-panel-enhancements）", () => {
+  beforeEach(resetStore);
+
+  it("done 后 TRANSFER_DONE_TTL_MS 自动销毁；期间手动 dismiss 是 no-op 不炸", () => {
+    vi.useFakeTimers();
+    try {
+      useTransferStore.setState({
+        items: [
+          {
+            transferId: "xfer-done",
+            kind: "download",
+            remotePath: "/tmp/a.bin",
+            localPath: "/Users/me/Downloads/a.bin",
+            rustId: "pty-0",
+            total: 10,
+            transferred: 10,
+            status: "active",
+            error: null,
+            cancelling: false,
+            startedAt: 0,
+          },
+        ],
+      });
+      useTransferStore.getState().onEnd({ transfer_id: "xfer-done", status: "done", message: "" });
+      expect(useTransferStore.getState().items).toHaveLength(1);
+      vi.advanceTimersByTime(TRANSFER_DONE_TTL_MS);
+      expect(useTransferStore.getState().items).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("failed/cancelled 不自动销毁（重试入口常驻）", () => {
+    vi.useFakeTimers();
+    try {
+      useTransferStore.setState({
+        items: [
+          {
+            transferId: "xfer-fail",
+            kind: "upload",
+            remotePath: "/tmp/b.bin",
+            localPath: "/Users/me/b.bin",
+            rustId: "pty-0",
+            total: 10,
+            transferred: 3,
+            status: "active",
+            error: null,
+            cancelling: false,
+            startedAt: 0,
+          },
+        ],
+      });
+      useTransferStore.getState().onEnd({ transfer_id: "xfer-fail", status: "failed", message: "boom" });
+      vi.advanceTimersByTime(TRANSFER_DONE_TTL_MS * 3);
+      expect(useTransferStore.getState().items).toHaveLength(1);
+      expect(useTransferStore.getState().items[0]?.status).toBe("failed");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

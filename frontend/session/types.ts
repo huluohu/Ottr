@@ -31,7 +31,7 @@ export interface HostKeyAsk extends HostKeyAskPayload {
 /** `ottr://session-closed` 事件载荷（Rust SessionClosedPayload 同构）。 */
 export interface SessionClosedPayload {
   id: string;
-  reason: "cancelled" | "closed" | "ipc_failed";
+  reason: "cancelled" | "closed" | "ipc_failed" | "shell_exit";
 }
 
 export interface Session {

@@ -91,8 +91,11 @@ pub(crate) fn session_tail(
 pub enum SessionCloseReason {
     /// drop_session 主动取消（关标签/手动断开）。
     Cancelled,
-    /// 对端关闭（shell 退出 / 连接断开 / keepalive 超时）。
+    /// 对端关闭（连接断开 / keepalive 超时——意外断线，前端触发重连）。
     Closed,
+    /// 用户主动退出 shell（exit/logout——前端不重连，2026-10-16 全面评审
+    /// ssh-0：与 Closed 不区分导致敲 exit 标签静默重开新 shell）。
+    ShellExit,
     /// 前端 IPC 通道 send 失败（M-2 失败策略）。
     IpcFailed,
 }
@@ -159,6 +162,7 @@ pub async fn forward_pty_loop(
     }
 
     // send 失败 = 前端通道不可达（M-2 失败策略，见 flush_batch）：终止循环。
+    let mut shell_exited = false;
     loop {
         let msg = match deadline {
             Some(d) => {
@@ -212,7 +216,12 @@ pub async fn forward_pty_loop(
                     return SessionCloseReason::IpcFailed;
                 }
             }
-            Some(PtyEvent::ExitStatus(_)) => {}
+            Some(PtyEvent::ExitStatus(_)) => {
+                // ssh-0（2026-10-16 全面评审）：ExitStatus = 用户主动退出 shell
+                // （exit/logout），与意外断线区分——后续 Close 走 ShellExit，
+                // 前端不再对用户主动退出触发重连。
+                shell_exited = true;
+            }
             Some(PtyEvent::Eof) => {
                 flush_decoder_tail(&mut buf, decoder);
                 if !paced_flush!() {
@@ -223,6 +232,9 @@ pub async fn forward_pty_loop(
                 flush_decoder_tail(&mut buf, decoder);
                 paced_flush!();
                 eprintln!("[batcher:{session_id}] pty closed");
+                if shell_exited {
+                    return SessionCloseReason::ShellExit;
+                }
                 return SessionCloseReason::Closed;
             }
             _ => {}

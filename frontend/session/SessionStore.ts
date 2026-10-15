@@ -589,7 +589,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   onSessionClosed: (payload) => {
     const session = get().sessions.find((s) => s.rustId === payload.id);
     if (!session) return; // 未知会话（已关标签）——忽略
-    if (payload.reason === "cancelled") return; // 主动关闭，不重连
+    // 主动关闭（关标签/手动断开）+ 用户主动退出 shell（exit/logout）——不重连
+    // （2026-10-16 全面评审 ssh-0：原来 shell 退出与断线共用 Closed，敲 exit
+    // 会被静默重开新 shell）。
+    if (payload.reason === "cancelled" || payload.reason === "shell_exit") return;
     if (session.status !== "connected") return; // 手动断开/已在重连——忽略迟到事件
     set((st) => ({
       sessions: patchSession(st.sessions, session.id, { rustId: null }),

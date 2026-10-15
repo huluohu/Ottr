@@ -222,6 +222,10 @@ impl CronExpr {
                 continue;
             }
             // 命中：本地时刻 → unix（DST 缺口期该时刻不存在 → 跳过分前进）
+            // DST 重叠期（秋季回拨）：chrono earliest() 实际取第二次出现（标准
+            // 时），与旧注释「最早一次」相反——2026-10-16 全面评审确认。回拨跨越
+            // 处的整小时间隙属墙钟步进调度的固有限制（每分钟任务年度少 ~60 轮），
+            // 彻底修复需改为 UTC 步进 + 本地映射，当前不做。
             return match tz.from_local_datetime(&t).earliest() {
                 Some(dt) => Some(dt.timestamp()),
                 None => {

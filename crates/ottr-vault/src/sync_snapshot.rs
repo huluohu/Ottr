@@ -622,6 +622,19 @@ pub fn import_categories(
     if is_selected(&selected, "hosts") {
         import_step("hosts", || -> Result<()> {
             for h in &hosts {
+                // P0 vault-1（2026-10-16 全面评审）：导入路径补 create 路径同款
+                // 输入校验——此前绕过校验直接 SQL 落库，越界端口/空主机名入库。
+                if h.name.trim().is_empty() || h.address.trim().is_empty() {
+                    return Err(VaultError::InvalidInput(
+                        "host name and address must not be empty".into(),
+                    ));
+                }
+                if !(1..=65535).contains(&h.port) {
+                    return Err(VaultError::InvalidInput(format!(
+                        "port must be 1-65535, got {}",
+                        h.port
+                    )));
+                }
                 tx.execute(
                     "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
                                         credential_id, encoding_override, theme_override,
@@ -680,6 +693,13 @@ pub fn import_categories(
         import_step("alert_rules", || -> Result<()> {
             let (mut count, mut skip) = (0usize, 0usize);
             for r in &rules {
+                // P0 vault-1：导入路径补 create 路径同款校验（rate_limit ≥ 0 等）
+                if r.rate_limit < 0 {
+                    return Err(VaultError::InvalidInput(format!(
+                        "rate_limit must be ≥ 0, got {}",
+                        r.rate_limit
+                    )));
+                }
                 let Some(host_id) = host_map.get(&r.host_id) else {
                     skip += 1; // host_id NOT NULL：宿主不可重映射 → 整行跳过（不静默造悬空行）
                     continue;
@@ -711,6 +731,19 @@ pub fn import_categories(
         import_step("cron_jobs", || -> Result<()> {
             let (mut count, mut skip) = (0usize, 0usize);
             for j in &jobs {
+                // P0 vault-1：导入路径补长度校验（create 路径 schedule ≤ 256B、script ≤ 64KiB）
+                if j.schedule.len() > 256 {
+                    return Err(VaultError::InvalidInput(format!(
+                        "schedule exceeds 256 bytes (got {})",
+                        j.schedule.len()
+                    )));
+                }
+                if j.script.len() > 64 * 1024 {
+                    return Err(VaultError::InvalidInput(format!(
+                        "script exceeds 64KiB (got {})",
+                        j.script.len()
+                    )));
+                }
                 let Some(host_id) = host_map.get(&j.host_id) else {
                     skip += 1;
                     continue;

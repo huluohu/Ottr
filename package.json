@@ -2,7 +2,7 @@
   "name": "ottr",
   "private": true,
   "license": "MIT",
-  "version": "0.9.26",
+  "version": "0.9.27",
   "type": "module",
   "scripts": {
     "dev": "vite",

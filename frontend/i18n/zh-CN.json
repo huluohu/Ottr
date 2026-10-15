@@ -17,7 +17,8 @@
     "yes": "是",
     "no": "否",
     "error": "错误",
-    "done": "完成"
+    "done": "完成",
+    "connect": "连接"
   },
   "settings": {
     "title": "设置",

@@ -778,8 +778,25 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     }
   }
 
+  /** 回车重连（2026-10-15 用户需求）：恢复标签断连态，Enter = 点「连接」。
+      谓词与浮层显示完全一致（restored + disconnected，新建/分屏首帧的短暂
+      disconnected 不劫持按键）；IME 组合中的回车放行。挂 .session-term 根
+      div 上——xterm 隐藏 textarea 的 keydown 会冒泡到此，浮层未聚焦也生效。 */
+  function handleTermKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!restored || status !== "disconnected") return;
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    void useSessionStore.getState().connect(sessionId);
+  }
+
   return (
-    <div className="session-term" ref={hostRef} data-session-id={sessionId} onContextMenu={openContextMenu}>
+    <div
+      className="session-term"
+      ref={hostRef}
+      data-session-id={sessionId}
+      onContextMenu={openContextMenu}
+      onKeyDown={handleTermKeyDown}
+    >
       {/* 恢复标签的「未连接」浮层（2026-10-14 用户反馈）：状态可读 + 一键重连。
           仅恢复标签显示——新建/分屏会话首帧的短暂 disconnected 不打扰。 */}
       {restored && status === "disconnected" && (

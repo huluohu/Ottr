@@ -17,7 +17,8 @@
     "yes": "Yes",
     "no": "No",
     "error": "Error",
-    "done": "Done"
+    "done": "Done",
+    "connect": "Connect"
   },
   "settings": {
     "title": "Settings",

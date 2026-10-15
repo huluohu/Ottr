@@ -218,6 +218,48 @@ describe("SessionTerminal 恢复标签（未连接浮层，2026-10-14）", () =>
     );
     expect(screen.queryByTestId("term-restored-hint")).toBeNull();
   });
+
+  it("断连态回车 = 重连（2026-10-15 用户需求）；按钮文案走词典不露键名", async () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-r", status: "disconnected", rustId: null, restored: true })],
+      activeId: "tab-r",
+      trees: { "tab-r": { kind: "leaf", id: "tab-r" } },
+      activePane: { "tab-r": "tab-r" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-r" />
+      </ThemeProvider>,
+    );
+    // 回归：common.connect 键曾缺失，i18next 原样吐键名「common.connect」
+    expect(screen.getByTestId("term-restored-connect").textContent).toBe("连接");
+    fireEvent.keyDown(container.querySelector(".session-term")!, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "attach_host_session",
+        expect.objectContaining({ hostId: 1 }),
+      ),
+    );
+  });
+
+  it("非恢复会话断连态回车不劫持（新建/分屏首帧短暂 disconnected 不打扰）", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-n", status: "disconnected", rustId: null })],
+      activeId: "tab-n",
+      trees: { "tab-n": { kind: "leaf", id: "tab-n" } },
+      activePane: { "tab-n": "tab-n" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-n" />
+      </ThemeProvider>,
+    );
+    fireEvent.keyDown(container.querySelector(".session-term")!, { key: "Enter" });
+    expect(mockedInvoke).not.toHaveBeenCalledWith(
+      "attach_host_session",
+      expect.objectContaining({ hostId: 1 }),
+    );
+  });
 });
 
 describe("SessionTerminal 右键唤起菜单（集成）", () => {

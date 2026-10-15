@@ -200,8 +200,9 @@
 }
 .ai-provider-row {
   display: flex;
+  flex-wrap: wrap; /* 测试结果行（flex-basis:100%）换行独占 */
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-1) var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
 }

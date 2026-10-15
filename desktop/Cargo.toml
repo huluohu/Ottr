@@ -90,6 +90,10 @@ tauri-plugin-dialog = "2"
 # 恢复主窗（等价 macOS Dock 点击）。三端都有实现（Win 命名互斥 / Linux
 # D-Bus / macOS Unix socket——macOS 额外防 `open -n` 双开），须最先注册。
 tauri-plugin-single-instance = "2"
+# 告警渠道 webhook / AI Provider 测连等外发 HTTP：走 Rust reqwest——webview
+# 内裸 fetch 是跨域请求，webhook API 无 CORS 头必被拦（2026-10-16 用户实测
+# 「Load failed」；其他工具无浏览器同源限制故「别处可用」）。
+tauri-plugin-http = "2"
 # T11（A7）：剪贴板敏感复制自动清空——arboard（tauri-plugin-clipboard-manager
 # 的同源后端）Rust 侧直用，免插件/Capability 面（前端永不接触明文，见 security.rs）。
 # default-features = false：关 image-data（文本剪贴板够用，少拖 image 依赖树）。

@@ -3,6 +3,7 @@
 // baseURL 约定 = https://api.anthropic.com（本层追加 /v1/messages）。
 import type { ChatDelta, ChatRequest } from "./provider";
 import { httpError, sseData } from "./openai";
+import { outboundFetch } from "../notify/channels/outboundFetch";
 
 export class AnthropicProvider {
   constructor(
@@ -16,7 +17,7 @@ export class AnthropicProvider {
   }
 
   async *chat(req: ChatRequest): AsyncIterable<ChatDelta> {
-    const res = await fetch(this.endpoint, {
+    const res = await outboundFetch(this.endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -63,7 +64,7 @@ export class AnthropicProvider {
 
   /** 非流式一发（「测试连接」）。 */
   async testConnection(): Promise<string> {
-    const res = await fetch(this.endpoint, {
+    const res = await outboundFetch(this.endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

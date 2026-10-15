@@ -97,6 +97,9 @@ pub fn run() {
         }))
         // Task 11 / Spike #8：系统通知（macOS 首次调用触发系统授权）。
         .plugin(tauri_plugin_notification::init())
+        // 外发 HTTP 收口（告警渠道 webhook / AI Provider 测连）：前端 outboundFetch
+        // 经本插件走 Rust reqwest——webview 裸 fetch 跨域必被 CORS 拦（Load failed）。
+        .plugin(tauri_plugin_http::init())
         // Phase 2 Task 4（B10 下半）：trzsz 传输文件/目录选择（原生对话框）。
         .plugin(tauri_plugin_dialog::init())
         // 应用内检查更新（2026-10-09）：endpoints/pubkey 在 tauri.conf.json

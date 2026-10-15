@@ -7,6 +7,7 @@
 // * 渠道消息正文构造（buildChannelMessage）走 i18n（spec §7「文案走 i18n」）
 //   + M-1 聚合计数后缀（payload.suppressed > 0 时「（聚合 N 条）」）。
 import i18n from "../../i18n";
+import { outboundFetch } from "./outboundFetch";
 import type { NotificationEvent } from "../core";
 
 export type { ChannelKind } from "../../vault/api";
@@ -111,10 +112,12 @@ export const defaultDeps: Required<Pick<ChannelDeps, "now">> & { fetchImpl: type
   now: () => Date.now(),
   // 15s 超时（2026-10-16 用户反馈：代理/网络停滞时「发送中…」无限挂）：
   // 挂起请求到点转「请求超时」错误上屏；测试注入的自定义 fetchImpl 不受影响。
+  // fetch 本体走 outboundFetch（Tauri → http 插件，绕开 webview CORS——
+  // webhook API 无 CORS 头，裸 fetch 必「Load failed」）。
   fetchImpl: async (...args) => {
     const [input, init] = args;
     try {
-      return await fetch(input, { ...(init ?? {}), signal: AbortSignal.timeout(15_000) });
+      return await outboundFetch(input, { ...(init ?? {}), signal: AbortSignal.timeout(15_000) });
     } catch (e) {
       if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
         throw new Error("请求超时（15 秒）——检查网络或代理设置");

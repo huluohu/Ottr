@@ -7,6 +7,7 @@
 //
 // testConnection：非流式一发（max_tokens=16），校验 HTTP 状态与响应可解析——
 // 「测试连接」按钮的消费面；错误尽量带端点返回的 message。
+import { outboundFetch } from "../notify/channels/outboundFetch";
 /** 设置页存储的 Provider 元数据（settings `ai_providers` JSON 数组；**不含
  * apiKey**——key 走 vault secrets 表按 providerId 密封）。 */
 export interface ProviderMeta {
@@ -91,7 +92,7 @@ export class OpenAICompatibleProvider {
   }
 
   async *chat(req: import("./provider").ChatRequest): AsyncIterable<import("./provider").ChatDelta> {
-    const res = await fetch(this.endpoint, {
+    const res = await outboundFetch(this.endpoint, {
       method: "POST",
       headers: this.headers(),
       signal: req.signal,
@@ -127,7 +128,7 @@ export class OpenAICompatibleProvider {
 
   /** 非流式一发（「测试连接」按钮）：成功返回模型回的第一段文本。 */
   async testConnection(): Promise<string> {
-    const res = await fetch(this.endpoint, {
+    const res = await outboundFetch(this.endpoint, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({

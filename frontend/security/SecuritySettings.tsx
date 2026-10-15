@@ -198,6 +198,14 @@ export function SecuritySettings({
   }, []);
   const [sudoAutofill, setSudoAutofill] = useState<boolean | null>(null);
   const [sudoConfirm, setSudoConfirm] = useState(false);
+  const sudoConfirmRef = useRef<HTMLDivElement | null>(null);
+  // 确认框可见性（2026-10-15 用户反馈「点击无反应」事故）：开关在长滚动页
+  // 尾部，行内确认框插在视口外——出现时必须滚动到位并聚焦，否则等于静默。
+  useEffect(() => {
+    if (!sudoConfirm) return;
+    sudoConfirmRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    sudoConfirmRef.current?.focus();
+  }, [sudoConfirm]);
   // 分区导航当前面板（默认安全——对话框的历史主区）。
   const [pane, setPane] = useState<SettingsPane>("general");
   // 关于分区版本号（getVersion；非 Tauri 隐藏行）
@@ -784,7 +792,12 @@ export function SecuritySettings({
               </div>
               <p className="settings-hint">{t("security.sudoAutofillHint")}</p>
               {sudoConfirm && (
-                <div className="wizard-step" data-testid="sudo-autofill-dialog">
+                <div
+                  ref={sudoConfirmRef}
+                  tabIndex={-1}
+                  className="wizard-step sudo-confirm"
+                  data-testid="sudo-autofill-dialog"
+                >
                   <p className="dialog-intro">{t("security.sudoAutofillWarn")}</p>
                   <div className="form-actions">
                     <button

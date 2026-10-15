@@ -448,8 +448,19 @@ describe("SecuritySettings", () => {
     )) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
     // 勾选 → 先弹确认框（风险说明），未确认不写 settings
+    // jsdom 无 scrollIntoView（组件用 ?. 调用）——手动下桩记录调用
+    let scrollArgs: ScrollIntoViewOptions | undefined;
+    const proto = Element.prototype as Element & { scrollIntoView?: (o?: ScrollIntoViewOptions) => void };
+    proto.scrollIntoView = (o) => {
+      scrollArgs = o;
+    };
     fireEvent.click(toggle);
     await waitFor(() => expect(screen.getByTestId("sudo-autofill-dialog")).toBeTruthy());
+    // 2026-10-15 用户反馈「点击无反应」事故防线：确认框插在长滚动页尾部，
+    // 出现时必须滚动到可视区并聚焦——不能让用户以为开关坏了。
+    expect(scrollArgs).toEqual({ behavior: "smooth", block: "center" });
+    expect(document.activeElement).toBe(screen.getByTestId("sudo-autofill-dialog"));
+    proto.scrollIntoView = undefined;
     // Phase 4 走查批：确认框必须预告「凭据不符会连续失败」——绑定的密码凭据
     // 与主机实际 sudo 密码不一致时，每轮 sudo 都会填错并被反复提示直至中止。
     // （本文件钉 zh-CN 词典，断言用中文。）

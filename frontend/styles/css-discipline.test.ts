@@ -129,4 +129,12 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
     expect(css.includes(".jump-form > label {"), "jump-form 链名称字段标签规则缺失").toBe(true);
     expect(css.includes(".lock-card > label {"), "lock-card 主密码字段标签规则缺失").toBe(true);
   });
+
+  it("wizard-step 满宽规则必须排除勾选类控件（2026-10-15 用户反馈：告警规则「订阅渠道」勾选框拉成满宽蓝杠；settings-row 开关 34px 补丁为同病先例——ui-checkbox/ui-switch 均为 input[type=checkbox]）", () => {
+    const css = allAppCss();
+    expect(
+      css.includes(".wizard-step input:not([type=\"checkbox\"])"),
+      "wizard-step input 满宽规则未排除 checkbox——勾选框/开关将再被拉成通栏",
+    ).toBe(true);
+  });
 });

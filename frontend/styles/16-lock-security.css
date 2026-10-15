@@ -122,6 +122,9 @@
   /* 右内边距（2026-10-14 用户反馈）：内容与滚动条之间留出呼吸位——原右侧
      零内边距，内容顶满容器右缘，滚动条盖住开关/按钮/输入框。 */
   padding-right: var(--space-4);
+  /* 底部内边距（2026-10-15 用户反馈）：滚到底时末行（取消/保存）不贴容器
+     底缘「半裁」。 */
+  padding-bottom: var(--space-4);
 }
 .settings-panes [hidden] {
   display: none !important;
@@ -220,12 +223,29 @@
   gap: var(--space-1);
   font-size: var(--text-base);
 }
-.wizard-step input,
+/* 勾选行标签（notify-mute-row = 勾选框 + 文字横排一行）不吃字段标签的
+   纵排规则——特异性 (0,2,1) 压过上面 (0,1,1)，勾选框不再被顶到文字上方
+   居中悬浮（2026-10-15 告警规则表单走查）。 */
+.wizard-step label.notify-mute-row {
+  flex-direction: row;
+  align-items: center;
+}
+/* sudo 自动填充确认子层：危险色警示边——它插在长滚动页尾部，除了滚动
+   到位（组件内 scrollIntoView）还需颜色语义标明「这是待决策的警告」。 */
+.wizard-step.sudo-confirm {
+  border-color: color-mix(in srgb, var(--color-danger) 55%, transparent);
+}
+.wizard-step input:not([type="checkbox"]),
 .wizard-step select,
 .wizard-step textarea {
   box-sizing: border-box;
   width: 100%;
 }
+/* 勾选类控件不吃满宽：ui-checkbox/ui-switch 都是 input[type=checkbox]，
+   被上面的 width:100% 打中即拉成通栏色杠（2026-10-15 用户反馈：告警规则
+   「订阅渠道」勾选框满宽蓝杠、文字被挤到下一行；25-base-controls 的
+   settings-row 开关 34px 补丁是同病先例）——在规则源头排除，wizard-step
+   全面根治。 */
 
 /* 模式徽标：keyring（中性）/ password（accent）。 */
 .vault-mode-badge {

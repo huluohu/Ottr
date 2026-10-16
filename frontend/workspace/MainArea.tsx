@@ -45,6 +45,8 @@ import { CronPanel } from "../cron/CronPanel";
 import { NotificationCenter } from "../notify/NotificationCenter";
 import { ForwardPanel } from "../forward/ForwardPanel";
 import { JumpChainEditor } from "../hosts/JumpChainEditor";
+import { MonitorPanel } from "../monitor/MonitorSidebar";
+import { PluginPanel } from "../plugins/PluginSidebar";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
 import type { Host } from "../vault/api";
@@ -120,10 +122,19 @@ export function MainArea({
     ? (sessions.find((s) => s.id === (activeSession.paneOf ?? activeSession.id)) ?? null)
     : null;
   const filesOnly = rootSession?.protocol === "ftp" || rootSession?.protocol === "ftps";
+  // 监控面板采样开关（主机关闭监控时面板呈未采样态；ToolDialog 同口径）
+  const monitorEnabled =
+    rootSession != null
+      ? (hosts.find((h) => h.id === rootSession.hostId)?.monitor_enabled ?? false)
+      : false;
   // 视图可见性（mainView 单值互斥 + filesOnly 覆盖，语义与原实现等价）
   const filesVisible = mainView === "files" || (terminalMode && filesOnly);
   const procsVisible = mainView === "processes" && !filesVisible;
   const termViewActive = mainView === "terminal" && !filesOnly;
+  // 监控/插件（2026-10-16 IA 重构批次 B）：会话级子页签——与文件/进程同域
+  // （依赖已连接会话的 rustId；FTP/FTPS 无 PTY 不提供监控/插件）。
+  const monitorVisible = mainView === "monitor" && rootSession != null && !filesOnly;
+  const pluginsVisible = mainView === "plugins" && rootSession != null && !filesOnly;
   // overview/batch 实体视图（UI 批次一 Task 3 迁入；占位壳 MainViewSlot 消亡）。
   // 2026-10-16 总览标签化：OverviewPage 的「← 终端」返回按钮退役（导航走
   // 标签条：点会话标签回终端、关总览标签 ✕ 收场）；onOpen/onOpenProcesses
@@ -265,6 +276,26 @@ export function MainArea({
               {t("process.title")}
             </button>
           )}
+          {!filesOnly && (
+            <button
+              data-testid="view-monitor"
+              data-active={monitorVisible}
+              aria-pressed={monitorVisible}
+              onClick={() => openMainView("monitor")}
+            >
+              {t("monitor.title")}
+            </button>
+          )}
+          {!filesOnly && (
+            <button
+              data-testid="view-plugins"
+              data-active={pluginsVisible}
+              aria-pressed={pluginsVisible}
+              onClick={() => openMainView("plugins")}
+            >
+              {t("plugins.title")}
+            </button>
+          )}
         </div>
         {!filesOnly && (
           <RecordToggle
@@ -281,12 +312,12 @@ export function MainArea({
           面板被压半高。overview/batch 的实体视图渲染在行内，保持 flex:1。 */}
       <div
         className="term-main-row"
-        data-yield={filesVisible || procsVisible}
+        data-yield={filesVisible || procsVisible || monitorVisible || pluginsVisible}
       >
         <div
           className="term-area-holder"
           data-testid="term-holder"
-          data-hidden={slotView !== null || !termViewActive}
+          data-hidden={slotView !== null || !(termViewActive || monitorVisible || pluginsVisible)}
           data-terminal=""
         >
           <TerminalArea />
@@ -297,6 +328,10 @@ export function MainArea({
           termViewActive && <DiagnosePanel onOpenSettings={onOpenAiSettings} />
         )}
       </div>
+      {monitorVisible && rootSession && (
+        <MonitorPanel rustId={rootSession.rustId} enabled={monitorEnabled} />
+      )}
+      {pluginsVisible && rootSession && <PluginPanel rustId={rootSession.rustId} />}
       {filesVisible && rootSession && <FilePanel session={rootSession} />}
       {procsVisible && rootSession && <ProcessBrowser rustId={rootSession.rustId} />}
     </main>

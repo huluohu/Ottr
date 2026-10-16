@@ -35,6 +35,9 @@ export function CodeBlockRow(props: {
   rustId: string | null;
   inserter: TerminalInserter;
   disabled?: boolean;
+  /** 插入成功后的回调（2026-10-16 用户反馈：插完焦点没回终端还得再点一下
+   *  才能执行）——消费方在此切回终端视图并请求 xterm 聚焦。 */
+  onInserted?: () => void;
 }) {
   // A confirmation belongs to exactly this text and destination, including streaming
   // updates and focus changes. Remount also isolates in-flight completion callbacks.
@@ -46,11 +49,13 @@ function InsertRow({
   rustId,
   inserter,
   disabled = false,
+  onInserted,
 }: {
   code: string;
   rustId: string | null;
   inserter: TerminalInserter;
   disabled?: boolean;
+  onInserted?: () => void;
 }) {
   const { t } = useTranslation();
   const insertable = canInsertCommand(code);
@@ -61,7 +66,10 @@ function InsertRow({
   function proceed() {
     if (!rustId || !insertable || disabled) return;
     void inserter(rustId, code)
-      .then(() => setStage("inserted"))
+      .then(() => {
+        setStage("inserted");
+        onInserted?.();
+      })
       .catch(() => setStage("failed"));
   }
 

@@ -17,6 +17,8 @@ import { useSessionStore } from "../session/SessionStore";
 import { lastCwd } from "../terminal/CwdTracker";
 import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
 import { useNlStore } from "./nl2cmd";
+import { useWorkspaceStore } from "../workspace/workspaceStore";
+import { useTerminalFocus } from "../terminal/terminalFocus";
 import { activeProvider, loadAiSettings } from "./settings";
 
 /** 聚焦 pane 解析（App handleAction 与面板共用；与 insertToFocusedPane 同口径）。 */
@@ -65,6 +67,14 @@ export function NLCommandPanel({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 打开时聚焦（等首帧渲染完，overlay 挂载后 input 才存在）。
+  // 插入成功（2026-10-16 用户反馈）：切回终端视图 + 焦点交还 xterm + 收起
+  // 面板——插入即进入执行姿态，不用再点一下；最近生成留在 store 可复看。
+  const onInserted = () => {
+    useWorkspaceStore.getState().openMainView("terminal");
+    useTerminalFocus.getState().request();
+    onClose();
+  };
+
   useEffect(() => {
     if (open) queueMicrotask(() => inputRef.current?.focus());
   }, [open]);
@@ -176,7 +186,7 @@ export function NLCommandPanel({
         {/* done：去展示包裹后的命令（多行/控制字符由公共插入入口拒绝）——danger 徽标 + 三档确认插终端（公共 InsertRow） */}
         {status === "done" && command !== null && (
           <div className="nl2cmd-result">
-            <CodeBlockRow code={command} rustId={rustId} inserter={inserter} />
+            <CodeBlockRow code={command} rustId={rustId} inserter={inserter} onInserted={onInserted} />
           </div>
         )}
 
@@ -195,7 +205,7 @@ export function NLCommandPanel({
                     <span className="nl-history-input" title={r.input}>
                       {r.input}
                     </span>
-                    <CodeBlockRow code={r.command} rustId={rustId} inserter={inserter} />
+                    <CodeBlockRow code={r.command} rustId={rustId} inserter={inserter} onInserted={onInserted} />
                   </li>
                 ))}
               </ul>

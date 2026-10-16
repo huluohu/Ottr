@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import { useAiStore } from "./aiStore";
 import { activeProvider } from "./settings";
 import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
+import { useTerminalFocus } from "../terminal/terminalFocus";
 
 /** 从 markdown 形态的回复中提取 ``` 围栏代码块（位置 + 内容），供插终端按钮。 */
 export interface AnswerCodeBlock {
@@ -32,11 +33,19 @@ export function extractCodeBlocks(answer: string): AnswerCodeBlock[] {
 }
 
 /** 回复渲染：按围栏代码块切分（流式过程中未闭合的尾部代码块也即时呈现）。 */
-export function AnswerView({ answer, rustId, inserter, disabled = false }: {
+export function AnswerView({
+  answer,
+  rustId,
+  inserter,
+  disabled = false,
+  onInserted,
+}: {
   answer: string;
   rustId: string | null;
   inserter: TerminalInserter;
   disabled?: boolean;
+  /** 插入成功回调（焦点交还 xterm；本面板仅在终端视图挂载，无需切视图）。 */
+  onInserted?: () => void;
 }) {
   const parts: { kind: "text" | "code"; content: string }[] = [];
   const re = /```[^\n]*\n([\s\S]*?)(?:```|$)/g;
@@ -55,7 +64,7 @@ export function AnswerView({ answer, rustId, inserter, disabled = false }: {
         p.kind === "text" ? (
           <p key={i} className="ai-answer-text">{p.content}</p>
         ) : (
-          <CodeBlockRow key={i} code={p.content} rustId={rustId} inserter={inserter} disabled={disabled} />
+          <CodeBlockRow key={i} code={p.content} rustId={rustId} inserter={inserter} disabled={disabled} onInserted={onInserted} />
         ),
       )}
     </div>
@@ -69,6 +78,9 @@ export function DiagnosePanel({
   onOpenSettings: () => void;
   inserter?: TerminalInserter;
 }) {
+
+  // 插入成功：焦点交还 xterm——2026-10-16 用户反馈「插完还得再点一下才能执行」
+  const onInserted = () => useTerminalFocus.getState().request();
   const { t } = useTranslation();
   const request = useAiStore((s) => s.request);
   const status = useAiStore((s) => s.status);
@@ -165,7 +177,7 @@ export function DiagnosePanel({
         </p>
       )}
 
-      <AnswerView disabled={status !== "done"} answer={answer} rustId={request.kind === "diagnose" ? request.rustId : null} inserter={inserter} />
+      <AnswerView disabled={status !== "done"} answer={answer} rustId={request.kind === "diagnose" ? request.rustId : null} inserter={inserter} onInserted={onInserted} />
     </aside>
   );
 }

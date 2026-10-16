@@ -52,6 +52,7 @@ import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
 import { OttyMoments } from "./ui/otty/OttyMoments";
 import { syncOttyFromVault } from "./ui/otty/ottyStore";
+import { useTerminalFocus } from "./terminal/terminalFocus";
 // UI 批次一 Task 2/4：主区视图路由 + 右侧 dock 实体壳（workspaceStore 状态机）。
 // 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
 // 六工具面板实体渲染在 workspace/ToolDialog（2026-10-12 dock 退役改弹框）。
@@ -722,6 +723,10 @@ function HomeLayout() {
           hosts={hosts}
           onInsert={(command) => {
             useSessionStore.getState().insertToFocusedPane(stripPromptPrefix(command));
+            // 与 AI 生成命令同一姿态：插入即切回终端 + 焦点交还 xterm，
+            // 回车直接执行（2026-10-16 用户反馈）。
+            useWorkspaceStore.getState().openMainView("terminal");
+            useTerminalFocus.getState().request();
             closeModal("history");
           }}
           plat={PLATFORM}

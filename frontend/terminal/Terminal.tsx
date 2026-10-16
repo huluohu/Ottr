@@ -37,6 +37,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 import { registerSink, unregisterSink, resizeSession, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
+import { useTerminalFocus } from "./terminalFocus";
 import { useVaultStore } from "../vault/store";
 import { vaultApi } from "../vault/api";
 import { useVaultLockStore } from "../security/VaultLockStore";
@@ -185,6 +186,17 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     if (!term) return;
     resizeSession(sessionId, term.cols, term.rows);
   }, [status, sessionId]);
+
+  // 终端聚焦请求（2026-10-16 用户反馈：AI 命令插入后焦点没回终端）：总线
+  // nonce 变化 → 仅「当前聚焦 pane」把焦点交给自己的 xterm（多实例各自
+  // 判定，非聚焦 pane 不抢焦点）；派生口径与父层 focusedPane 一致。
+  const focusNonce = useTerminalFocus((s) => s.nonce);
+  useEffect(() => {
+    if (focusNonce === 0) return;
+    const st = useSessionStore.getState();
+    const focused = st.activeId != null ? (st.activePane[st.activeId] ?? st.activeId) : null;
+    if (focused === sessionId) termRef.current?.focus();
+  }, [focusNonce, sessionId]);
 
   // 设置页字体/字号变更（外观分节广播 ottr://terminal-settings）→ 活动终端
   // 实时应用 + 重排版（新终端创建时同样读取）。null = 恢复默认值——

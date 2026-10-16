@@ -85,7 +85,7 @@ function seedSessions(list: Session[]) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
+  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null, overviewOpen: false });
   useSessionStore.setState({ sessions: [], activeId: null });
   useVaultStore.setState({ hosts: [], hostGroups: [], credentials: [], loading: false, error: null });
 });
@@ -152,7 +152,7 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("true");
   });
 
-  it("切 overview/batch 实体视图（T3 迁入）：终端仍保留；返回按钮恢复终端视图", () => {
+  it("切 overview/batch 实体视图（T3 迁入）：终端仍保留；总览标签化后导航走标签（返回按钮退役）", () => {
     seedSessions([fakeSession()]);
     render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
     act(() => {
@@ -161,7 +161,9 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
     // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel（原 main-view-slot 消亡）
     expect(screen.getByTestId("overview-panel").getAttribute("data-view")).toBe("overview");
     expect(screen.getByTestId("terminal-area")).toBeTruthy(); // 未卸载
-    fireEvent.click(screen.getByTestId("slot-back-terminal"));
+    // 2026-10-16 总览标签化：返回按钮退役（导航 = 标签条），视图切换按钮恢复终端视图
+    expect(screen.queryByTestId("slot-back-terminal")).toBeNull();
+    fireEvent.click(screen.getByTestId("view-terminal"));
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("false");
 
     act(() => {
@@ -309,5 +311,54 @@ describe("MainArea：空态快捷操作卡（ui2 T3，审计 A4）", () => {
       />,
     );
     expect(screen.queryByTestId("main-empty-actions")).toBeNull();
+  });
+});
+
+// 总览置顶标签（2026-10-16 用户需求）：总览打开后是固定第一位的标签，零会话
+// 时标签条也在场；主区内容跟随 mainView（总览实体 / 欢迎占位面）。
+describe("MainArea：总览置顶标签（零会话形态）", () => {
+  it("零会话 + 总览标签激活：标签条在场 + 总览实体充盈，欢迎页让位", () => {
+    useWorkspaceStore.setState({ overviewOpen: true, mainView: "overview" });
+    render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(screen.getByTestId("tabbar")).toBeTruthy();
+    expect(screen.getByTestId("overview-panel").getAttribute("data-view")).toBe("overview");
+    expect(screen.queryByTestId("home-greeting")).toBeNull();
+  });
+
+  it("零会话 + 总览标签开但切回终端视图：标签条与欢迎页共存", () => {
+    useWorkspaceStore.setState({ overviewOpen: true, mainView: "terminal" });
+    render(
+      <MainArea
+        storeError={null}
+        selected={null}
+        onOpenAiSettings={() => {}}
+        onAddHost={() => {}}
+        onOpenPalette={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("tabbar")).toBeTruthy();
+    expect(screen.getByTestId("main-empty")).toBeTruthy();
+    expect(screen.getByTestId("empty-add-host")).toBeTruthy();
+  });
+
+  it("零会话 + 总览未开：不渲染标签条（原口径不变）", () => {
+    render(
+      <MainArea
+        storeError={null}
+        selected={null}
+        onOpenAiSettings={() => {}}
+        onAddHost={() => {}}
+        onOpenPalette={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId("tabbar")).toBeNull();
+    expect(screen.getByTestId("main-empty")).toBeTruthy();
+  });
+
+  it("零会话 + 批量视图（总览标签未开）：无标签条，批量实体独占（原口径不变）", () => {
+    useWorkspaceStore.setState({ mainView: "batch" });
+    render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(screen.queryByTestId("tabbar")).toBeNull();
+    expect(screen.getByTestId("batch-panel").getAttribute("data-view")).toBe("batch");
   });
 });

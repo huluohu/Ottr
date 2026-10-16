@@ -86,6 +86,18 @@ body[data-resizing] {
   display: flex;
   flex-direction: column;
 }
+/* 零会话空态与标签条共存的容器（2026-10-16 总览标签化）：总览置顶标签在场
+ * 而主区显示空态面（mainView 被切回 terminal）时，空态内容挂在标签条下方
+ * ——复刻 .main-area 的 padding/滚动制式（terminal-mode 已把 .main-area
+ * 的 padding 归零，由本容器承接）。 */
+.main-area-empty-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
 .main-error {
   margin: 0 0 12px;
   padding: 8px 12px;

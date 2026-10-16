@@ -1,6 +1,6 @@
 // LockScreen 组件测试（T11）：锁定遮罩渲染、空密码本地拦截、错误密码走 store
 // 错误面（Rust BadMasterPassword 消息映射为友好文案）、解锁成功调用。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -70,6 +70,46 @@ describe("LockScreen", () => {
     await waitFor(() => expect(useVaultLockStore.getState().phase).toBe("unlocked"));
     expect(mockedInvoke).toHaveBeenCalledWith("vault_unlock", { password: "correct horse" });
     expect(useVaultLockStore.getState().error).toBeNull();
+  });
+});
+
+// --- 锁屏小水獭（2026-10-16 用户需求：贪玩被拦在门外的形象动画） -----------------
+// 「概念」：Otty 贪玩晚归，被关在门外——从门沿探出头、两爪扒沿、眨眼等主人
+// 开门；密码输错缩一下脖子（duck），解锁在途转期待态（呼吸加快）。
+describe("LockScreen 小水獭", () => {
+  it("在场且为纯装饰（aria-hidden 不进可访问树，无新增词典键）", () => {
+    render(<LockScreen />);
+    const otter = screen.getByTestId("lock-otter");
+    expect(otter.getAttribute("aria-hidden")).toBe("true");
+    expect(otter.querySelector("svg")).toBeTruthy();
+  });
+
+  it("默认待机态；解锁在途转期待态（data-mood=eager）", () => {
+    render(<LockScreen />);
+    expect(screen.getByTestId("lock-otter").getAttribute("data-mood")).toBe("idle");
+    act(() => {
+      useVaultLockStore.setState({ unlocking: true });
+    });
+    expect(screen.getByTestId("lock-otter").getAttribute("data-mood")).toBe("eager");
+  });
+
+  it("密码错误：水獭缩脖动画重挂（duck 类挂上）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_unlock")
+        return Promise.reject("vault is locked: master password is incorrect");
+      return Promise.reject(new Error(cmd));
+    });
+    render(<LockScreen />);
+    expect(screen.getByTestId("lock-otter").querySelector("svg")!.getAttribute("class")).not.toContain(
+      "duck",
+    );
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "nope" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("lock-otter").querySelector("svg")!.getAttribute("class"),
+      ).toContain("duck"),
+    );
   });
 });
 

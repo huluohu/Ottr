@@ -52,6 +52,171 @@
   opacity: 1;
 }
 
+/* ---- 锁屏小水獭（2026-10-16 用户需求）：贪玩被拦在门外的小水獭 Otty -------
+ * 场景 = 头从门沿墙后探出、两爪扒沿。配色全走品牌保留色（brand.md）；动效
+ * 全部引用 motion token（含形象动画档 --dur-otter-peek / --dur-loop-* /
+ * --ease-soft，css-discipline 守卫）；reduced-motion 由 00-base 全局兜底。 */
+.lock-otter {
+  align-self: center;
+  width: 200px;
+  max-width: 72%;
+}
+.lock-otter-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* 藏身层（头部组）：peek/duck 一次性 translateY */
+.otter-lift {
+  animation: otter-peek var(--dur-otter-peek) var(--ease-out) both;
+}
+.lock-otter-svg.duck .otter-lift {
+  animation: otter-duck calc(var(--dur-otter-peek) * 2) var(--ease-soft) both;
+}
+/* 呼吸浮动（待机往复；eager = 解锁在途，节拍减半表达期待） */
+.otter-body {
+  animation: otter-bob var(--dur-loop-idle) var(--ease-soft) infinite alternate;
+}
+.lock-otter.eager .otter-body {
+  animation-duration: calc(var(--dur-loop-idle) / 2);
+}
+/* 眨眼：整组 scaleY，与呼吸错拍 */
+.otter-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: otter-blink var(--dur-loop-blink) linear infinite;
+}
+/* 扒沿爪轻拍：左右爪节拍错开（门外的急切） */
+.otter-paw {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: otter-tap var(--dur-loop-tap) var(--ease-soft) infinite;
+}
+.otter-paw-r {
+  animation-delay: calc(var(--dur-loop-tap) / 2);
+}
+/* 头顶草叶缓摆（贪玩的证物） */
+.otter-leaf {
+  transform-box: fill-box;
+  transform-origin: 20% 100%;
+  animation: otter-leaf-sway var(--dur-loop-tap) var(--ease-soft) infinite alternate;
+}
+
+@keyframes otter-peek {
+  from {
+    transform: translateY(48px);
+  }
+}
+@keyframes otter-duck {
+  0% {
+    transform: translateY(0);
+  }
+  38% {
+    transform: translateY(48px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes otter-bob {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-5px);
+  }
+}
+@keyframes otter-blink {
+  0%,
+  91%,
+  100% {
+    transform: scaleY(1);
+  }
+  94% {
+    transform: scaleY(0.06);
+  }
+  97% {
+    transform: scaleY(1);
+  }
+}
+@keyframes otter-tap {
+  0%,
+  88%,
+  100% {
+    transform: translateY(0);
+  }
+  92% {
+    transform: translateY(-3px);
+  }
+}
+@keyframes otter-leaf-sway {
+  from {
+    transform: rotate(-4deg);
+  }
+  to {
+    transform: rotate(6deg);
+  }
+}
+
+/* 造型填色/描边（品牌保留色） */
+.otter-door-edge {
+  fill: var(--surface-raised);
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+.ottr-fur {
+  fill: var(--ottr-fur-600);
+}
+.ottr-fur-dark {
+  fill: var(--ottr-fur-800);
+}
+.ottr-cream {
+  fill: var(--ottr-cream-100);
+}
+.ottr-ink {
+  fill: var(--ottr-ink-900);
+}
+.ottr-glint {
+  fill: var(--ottr-cream-100);
+  opacity: 0.9;
+}
+.otter-blush {
+  fill: var(--ottr-amber-500);
+  opacity: 0.3;
+}
+.otter-mouth,
+.otter-brow {
+  fill: none;
+  stroke: var(--ottr-ink-900);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+.otter-whiskers path {
+  fill: none;
+  stroke: var(--ottr-ink-900);
+  stroke-width: 1;
+  stroke-linecap: round;
+  opacity: 0.3;
+}
+.otter-leaf-stem {
+  fill: none;
+  stroke: var(--color-success);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.otter-leaf-blade {
+  fill: var(--color-success);
+  opacity: 0.85;
+}
+.otter-paw-line {
+  fill: none;
+  stroke: var(--ottr-fur-800);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+
 /* 设置对话框（2026-10-09 交互重构）：左侧分区导航 + 右侧内容面板——四段
    （安全/同步/外观/通用）原为单列长滚动、行为开关混进外观节；现按系统设置
    形态分派（通用 = 语言 + 关窗到托盘 + shell 集成）。未激活面板 hidden

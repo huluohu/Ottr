@@ -7,9 +7,10 @@
 // xterm 缓冲/滚动回看不丢，运行中会话不卸载。overview/batch 视图同制式
 // （Task 3 起 OverviewPage/BatchPanel 实体挂在这里，占位壳 MainViewSlot 消亡）。
 //
-// 【实体导航接线（Task 3）】总览卡片点击 = openTab + openMainView("terminal")
-// （原对话框 onClose 语义等价迁移）；「进程」= openTab + openMainView("processes")；
-// 两实体头部「← 终端」= openMainView("terminal")（原 slot-back-terminal 语义）。
+// 【实体导航接线（Task 3；2026-10-16 总览标签化）】总览卡片点击 = openTab +
+// openMainView("terminal")（原对话框 onClose 语义等价迁移）；「进程」= openTab +
+// openMainView("processes")；总览头部「← 终端」返回按钮退役——导航统一走
+// 标签条（点会话标签回终端、总览标签 ✕ 收场），BatchPanel 非标签制保留返回。
 //
 // 【filesOnly 覆盖】FTP/FTPS 会话无 PTY 终端：mainView 无论何值（视图族内）恒
 // 文件视图、终端/进程按钮隐藏——原 HomeLayout 行为等价迁移（原 filesOpen 布尔
@@ -90,6 +91,7 @@ export function MainArea({
 }: MainAreaProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
+  const overviewOpen = useWorkspaceStore((s) => s.overviewOpen);
   // macOS 融合式标题栏：主区顶部行（标签条/空态主区）兼作窗口拖拽面
   // （2026-10-14；Win/Linux 有自绘标题栏，不注入）。data-tauri-drag-region
   // 仅命中元素本身才起拖——标签/按钮等子元素交互不受影响。
@@ -119,14 +121,13 @@ export function MainArea({
   const procsVisible = mainView === "processes" && !filesVisible;
   const termViewActive = mainView === "terminal" && !filesOnly;
   // overview/batch 实体视图（UI 批次一 Task 3 迁入；占位壳 MainViewSlot 消亡）。
-  // 导航接线：卡片 = 跳标签 + 回终端；「进程」= 跳标签 + 切进程视图；
-  // 头部返回按钮 = 回终端（会话与终端缓冲从未卸载）。
+  // 2026-10-16 总览标签化：OverviewPage 的「← 终端」返回按钮退役（导航走
+  // 标签条：点会话标签回终端、关总览标签 ✕ 收场）；onOpen/onOpenProcesses
+  // 语义不变（跳标签 + 切视图）。BatchPanel 非标签制，返回按钮保留。
   const slotView = mainView === "overview" || mainView === "batch" ? mainView : null;
-  const backToTerminal = () => openMainView("terminal");
   const slotPane =
     slotView === null ? null : slotView === "overview" ? (
       <OverviewPage
-        onClose={backToTerminal}
         onOpen={(host) => {
           openTab(host);
           openMainView("terminal");
@@ -137,47 +138,67 @@ export function MainArea({
         }}
       />
     ) : (
-      <BatchPanel onClose={backToTerminal} />
+      <BatchPanel onClose={() => openMainView("terminal")} />
     );
 
-  // 零会话：占位面（原分支原样——视图族按钮只在有会话时存在）。overview/batch
-  // 零会话也可开（原对话框语义），此时无终端可保留，实体视图独占主区。
+  // 零会话空态内容（错误横幅 / 已选中占位 / 欢迎页）——总览标签在场时挂在
+  // 标签条下方（mainView 被切回 terminal 的零会话形态，如启动落地后用户
+  // 显式回终端视图），无标签时独占主区（原分支原样）。
+  const emptyBody = (
+    <>
+      {storeError && (
+        <p className="main-error" data-testid="store-error">
+          {t("mainArea.loadFailed", { message: storeError })}
+        </p>
+      )}
+      {selected ? (
+        <section className="main-placeholder">
+          <p className="placeholder-caption">{t("mainArea.selected")}</p>
+          <h2>{selected.name}</h2>
+          <p className="placeholder-mono">
+            {selected.username ? `${selected.username}@` : ""}
+            {selected.address}:{selected.port}
+          </p>
+          <p>{t("mainArea.openHint")}</p>
+        </section>
+      ) : (
+        <section className="main-placeholder" data-testid="main-empty">
+          <HomeWelcome
+            hosts={hosts}
+            fixtureHost={fixtureHost}
+            paletteLabel={paletteLabel}
+            onAddHost={onAddHost}
+            onOpenPalette={onOpenPalette}
+            onOpenImport={onOpenImport}
+            onConnect={openTab}
+          />
+        </section>
+      )}
+    </>
+  );
+
+  // 零会话：总览置顶标签在场 → 标签条常驻（2026-10-16 总览标签化）；主区内容
+  // 跟随 mainView（总览/批量实体，或空态面）。批量独开（总览标签未开）时无
+  // 标签可渲染，实体独占主区（原对话框语义）。
   if (!terminalMode) {
+    if (!overviewOpen) {
+      return (
+        <main className="main-area" data-testid="main-area" {...dragRegion}>
+          {slotView !== null ? slotPane : emptyBody}
+        </main>
+      );
+    }
     return (
-      <main className="main-area" data-testid="main-area" {...dragRegion}>
+      <main className="main-area terminal-mode" data-testid="main-area">
+        <div className="tabbar-row" {...dragRegion}>
+          {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
+              命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}
+          <TabBar dragRegion={dragRegion} />
+        </div>
         {slotView !== null ? (
-          slotPane
+          <div className="term-main-row">{slotPane}</div>
         ) : (
-          <>
-            {storeError && (
-              <p className="main-error" data-testid="store-error">
-                {t("mainArea.loadFailed", { message: storeError })}
-              </p>
-            )}
-            {selected ? (
-              <section className="main-placeholder">
-                <p className="placeholder-caption">{t("mainArea.selected")}</p>
-                <h2>{selected.name}</h2>
-                <p className="placeholder-mono">
-                  {selected.username ? `${selected.username}@` : ""}
-                  {selected.address}:{selected.port}
-                </p>
-                <p>{t("mainArea.openHint")}</p>
-              </section>
-            ) : (
-              <section className="main-placeholder" data-testid="main-empty">
-                <HomeWelcome
-                  hosts={hosts}
-                  fixtureHost={fixtureHost}
-                  paletteLabel={paletteLabel}
-                  onAddHost={onAddHost}
-                  onOpenPalette={onOpenPalette}
-                  onOpenImport={onOpenImport}
-                  onConnect={openTab}
-                />
-              </section>
-            )}
-          </>
+          <div className="main-area-empty-body">{emptyBody}</div>
         )}
       </main>
     );

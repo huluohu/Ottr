@@ -17,6 +17,7 @@ import { TabBar } from "./TabBar";
 import { HostKeyDialog } from "./HostKeyDialog";
 import { OPEN_TABS_KEY, useSessionStore, type Session } from "./SessionStore";
 import { useModalStore } from "../ui/modalStore";
+import { useWorkspaceStore } from "../workspace/workspaceStore";
 
 const mockedInvoke = invoke as unknown as Mock;
 
@@ -131,8 +132,67 @@ describe("TabBar（3 会话：切换/关闭/状态灯）", () => {
 
   it("无标签时不渲染", () => {
     useSessionStore.setState({ sessions: [], activeId: null });
+    useWorkspaceStore.setState({ overviewOpen: false });
     render(<TabBar />);
     expect(screen.queryByRole("tablist")).toBeNull();
+  });
+});
+
+// 总览置顶标签（2026-10-16 用户需求：总览标签化、打开后始终显示在第一个）。
+describe("TabBar 总览置顶标签", () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ overviewOpen: false, mainView: "terminal" });
+  });
+  afterEach(() => {
+    useWorkspaceStore.setState({ overviewOpen: false, mainView: "terminal" });
+  });
+
+  it("总览标签恒在第一位：点击激活总览视图；点会话标签激活会话并回终端视图", () => {
+    seedThreeTabs();
+    useWorkspaceStore.setState({ overviewOpen: true });
+    render(<TabBar />);
+    const bar = screen.getByRole("tablist");
+    expect((bar.firstElementChild as HTMLElement).getAttribute("data-testid")).toBe("tab-overview");
+    const overviewTab = screen.getByTestId("tab-overview");
+    expect(overviewTab.getAttribute("aria-selected")).toBe("false");
+    fireEvent.click(overviewTab);
+    expect(useWorkspaceStore.getState().mainView).toBe("overview");
+    expect(overviewTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("tab-web-01").getAttribute("data-active")).toBe("false");
+    // 从总览视图点会话标签 = 离开总览（标签语义：点标签切到该标签内容）
+    fireEvent.click(screen.getByTestId("tab-web-01"));
+    expect(useSessionStore.getState().activeId).toBe("t1");
+    expect(useWorkspaceStore.getState().mainView).toBe("terminal");
+    // 总览标签保持打开（固定首位不因会话切换消失）
+    expect(useWorkspaceStore.getState().overviewOpen).toBe(true);
+  });
+
+  it("关闭总览标签（✕）：标签消失；正显示总览时回终端视图", () => {
+    useWorkspaceStore.setState({ overviewOpen: true, mainView: "overview" });
+    render(<TabBar />);
+    fireEvent.click(screen.getByRole("button", { name: "Close tab Overview" }));
+    expect(useWorkspaceStore.getState().overviewOpen).toBe(false);
+    expect(useWorkspaceStore.getState().mainView).toBe("terminal");
+  });
+
+  it("关闭总览标签时正看着其他视图：只关标签，视图不动", () => {
+    seedThreeTabs();
+    useWorkspaceStore.setState({ overviewOpen: true, mainView: "terminal" });
+    render(<TabBar />);
+    fireEvent.click(screen.getByRole("button", { name: "Close tab Overview" }));
+    expect(useWorkspaceStore.getState().overviewOpen).toBe(false);
+    expect(useWorkspaceStore.getState().mainView).toBe("terminal");
+    expect(screen.queryByTestId("tab-overview")).toBeNull();
+    expect(screen.getByTestId("tab-web-01")).toBeTruthy();
+  });
+
+  it("零会话但总览标签开：仅渲染总览一个标签（标签条不消失）", () => {
+    useSessionStore.setState({ sessions: [], activeId: null });
+    useWorkspaceStore.setState({ overviewOpen: true });
+    render(<TabBar />);
+    const bar = screen.getByRole("tablist");
+    expect(bar.children).toHaveLength(1);
+    expect(screen.getByTestId("tab-overview")).toBeTruthy();
   });
 });
 

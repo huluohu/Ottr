@@ -72,7 +72,7 @@ function ruleBody(css: string, selector: string): string {
 
 describe("总览主区视图（宽屏利用）", () => {
   it("容器 = .main-view section 充盈主区（无 overlay/dialog 壳），网格直接铺在视图内", () => {
-    render(<OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
+    render(<OverviewPage onOpen={() => {}} onOpenProcesses={() => {}} />);
     const panel = screen.getByTestId("overview-panel");
     expect(panel.tagName).toBe("SECTION");
     expect(panel.className).toContain("main-view");

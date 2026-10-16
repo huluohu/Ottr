@@ -30,8 +30,19 @@ export interface WorkspaceState {
   mainView: MainView;
   /** 当前打开的工具面板弹框；null = 无。 */
   toolDialog: ToolDockPanel | null;
+  /** 总览置顶标签是否打开（2026-10-16 用户需求：总览标签化、固定第一位）。
+   * 标签是纯渲染层概念（TabBar 固定首项），不进 SessionStore——会话计数/
+   * openHostIds 持久化/终端挂载等「tab=主机会话」假设全部不受扰。会话级
+   * 状态：不持久化，重启后由启动默认落地逻辑按需重开。 */
+  overviewOpen: boolean;
   /** 切主区视图（幂等；纯状态迁移，无副作用）。 */
   openMainView: (v: MainView) => void;
+  /** 打开总览置顶标签并激活（幂等）。侧栏导航/菜单/启动落地统一走这里——
+   * 「显示总览」与「总览标签在场」由同一动作保证不分叉。 */
+  openOverview: () => void;
+  /** 关闭总览置顶标签（标签 ✕）；正显示总览时切回终端视图（零会话即欢迎页），
+   * 显示其他视图时只关标签不动视图（关闭 ≠ 跳走）。 */
+  closeOverview: () => void;
   /** 打开工具面板弹框（幂等；异值即替换当前弹框，同时认领全局唯一槽）。 */
   openToolDialog: (p: ToolDockPanel) => void;
   /** 关闭当前弹框（幂等；无弹框时 no-op）。 */
@@ -43,7 +54,14 @@ export interface WorkspaceState {
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   mainView: "terminal",
   toolDialog: null,
+  overviewOpen: false,
   openMainView: (v) => set({ mainView: v }),
+  openOverview: () => set({ overviewOpen: true, mainView: "overview" }),
+  closeOverview: () =>
+    set((st) => ({
+      overviewOpen: false,
+      mainView: st.mainView === "overview" ? "terminal" : st.mainView,
+    })),
   openToolDialog: (p) => {
     set({ toolDialog: p });
     useModalStore.getState().open("toolDialog");

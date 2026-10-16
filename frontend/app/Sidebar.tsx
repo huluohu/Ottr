@@ -182,7 +182,7 @@ export function Sidebar({
   const toggleToolDialog = useWorkspaceStore((s) => s.toggleToolDialog);
   const toolDialog = useWorkspaceStore((s) => s.toolDialog);
   const mainView = useWorkspaceStore((s) => s.mainView);
-  const openMainView = useWorkspaceStore((s) => s.openMainView);
+  const openOverview = useWorkspaceStore((s) => s.openOverview);
   const unread = useNotifyStore((s) => s.unread);
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
@@ -304,13 +304,14 @@ export function Sidebar({
           style={{ bottom: flyoutPos.bottom, left: flyoutPos.left }}
         >
           {/* 总览（主区实体视图，非工具弹框）：控制中心首项（2026-10-14 用户
-              裁定：默认落地页同源入口；选中留场由 mainView 驱动高亮）。 */}
+              裁定：默认落地页同源入口；选中留场由 mainView 驱动高亮）。
+              2026-10-16 总览标签化：入口走 openOverview（置顶标签 + 激活）。 */}
           <button
             type="button"
             data-testid="sidebar-nav-overview"
             data-active={mainView === "overview"}
             onClick={() => {
-              openMainView("overview");
+              openOverview();
               setMenu(null);
               setSub(null);
             }}

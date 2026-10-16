@@ -61,6 +61,13 @@
   --dur-slow: 240ms;  /* 大面积面板：dock 展开、NL 条展开 */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  /* 形象/环境动画（2026-10-16 锁屏小水獭）：一次性中速动作 + 待机循环档——
+   * 秒级循环字面值只允许出现在这里（消费处仍只引用 token）。 */
+  --dur-otter-peek: 480ms; /* 水獭探头/缩脖一次性动作 */
+  --dur-loop-idle: 2.8s;   /* 待机循环：呼吸/漂浮 */
+  --dur-loop-blink: 4.4s;  /* 眨眼循环（与呼吸错拍） */
+  --dur-loop-tap: 3.6s;    /* 扒沿爪轻拍/头顶草叶摇摆循环 */
+  --ease-soft: ease-in-out; /* 往复循环的对称缓动（呼吸/摇摆类） */
   --toast-ttl: 6s; /* 与 ui/toastStore.ts TOAST_TTL_MS 同源（进度条时长） */
   --toast-ttl-action: 15s; /* 操作型 toast（带按钮的决策窗）；29-toast 覆写用 */
   /* 阴影三级（评审 P0-1/P2-15）：黑基不随主题前景翻转（原 --shadow-overlay

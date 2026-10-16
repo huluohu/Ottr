@@ -206,9 +206,10 @@
 /* 弱动效偏好：整层不渲染级别的静帧兜底（ottyStore.play 已 JS 跳过，此处
  * 双保险防时序缝隙）——动画趋零即停在终态（opacity 0），视觉等同消失。 */
 
-/* --- 空态 Otty 小剪影（ui/OttySilhouette，报告 §4：48px 统一 sprite）--- */
+/* --- 空态 Otty 小剪影（ui/OttySilhouette，报告 §4：48px 统一 sprite）---
+ * 2026-10-16 定稿适配：C2-F5 基因（水面探头 + 双爪 + 呆毛）。 */
 .otty-silhouette {
-  opacity: 0.85;
+  opacity: 0.9;
   margin-bottom: var(--space-1);
 }
 .otty-sil-ink {
@@ -219,4 +220,8 @@
 }
 .otty-sil-amber {
   fill: var(--ottr-amber-500);
+}
+.otty-c-blush {
+  fill: var(--ottr-amber-500);
+  opacity: 0.42;
 }

@@ -15,23 +15,35 @@ import { useTransferStore } from "../../files/TransferStore";
 import { useVaultLockStore } from "../../security/VaultLockStore";
 import { OTTY_MOMENT_MS, useOttyStore, type OttyMoment } from "./ottyStore";
 
-/** Otty 头像（四时刻共用脸）：v5 同构——墨头 + 奶油脸盘 + 豆豆眼（teal-300
- * 瞳）+ 琥珀鼻；配色 class 全走品牌保留色 token（见 31-otty.css 色板段）。 */
+/** Otty 头像（四时刻共用脸）：C2-F5 呆毛歪头同构——宽圆墨头 + 双耳 + 呆毛 +
+ * 奶油宽吻 + 琥珀鼻 + 宽距豆豆眼（teal-300 瞳，歪头一高一低）+ 无辜下弯眉 +
+ * w 嘴 + 双腮红（56px ≥ 48 层，表情全开）；配色 class 全走品牌保留色 token
+ * （见 31-otty.css 色板段）。 */
 function OttyFace({ size = 56 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <circle cx="32" cy="34" r="26" className="otty-c-ink" />
-      <circle cx="47" cy="13" r="5" className="otty-c-ink" />
-      <circle cx="47" cy="13" r="2.3" className="otty-c-fur" />
-      <ellipse cx="30" cy="40" rx="17" ry="15" className="otty-c-cream" />
-      <path
-        d="M19.5 28.5 C 19.5 26 21.7 24.8 23.5 25.8 C 24.5 26.4 25.5 26.4 26.5 25.8 C 28.3 24.8 30.5 26 30.5 28.5 C 30.5 31.7 28.1 34 25 34 C 21.9 34 19.5 31.7 19.5 28.5 Z"
-        className="otty-c-amber"
-      />
-      <ellipse cx="19" cy="38.5" rx="3" ry="3.6" className="otty-c-ink" />
-      <ellipse cx="37.5" cy="37.3" rx="3" ry="3.6" className="otty-c-ink" />
-      <circle cx="18" cy="37.1" r="1.1" className="otty-c-teal" />
-      <circle cx="36.5" cy="35.9" r="1.1" className="otty-c-teal" />
+      {/* 呆毛 */}
+      <path d="M30.4 8.8 C 28.4 5.2 29.4 2.4 33 1.2 C 31 4.4 31.4 7.2 33.2 9.4 Z" className="otty-c-ink" />
+      {/* 双耳 */}
+      <circle cx="16.8" cy="15.2" r="4.8" className="otty-c-ink" />
+      <circle cx="47.2" cy="15.2" r="4.8" className="otty-c-ink" />
+      {/* 宽圆头 */}
+      <path d="M 16.8 54 L 16.8 34.8 C 16.8 20.8 23.2 14.4 32 14.4 C 40.8 14.4 47.2 20.8 47.2 34.8 L 47.2 54 Z" className="otty-c-ink" />
+      {/* 奶油宽吻 + 琥珀鼻 */}
+      <rect x="21.2" y="35.6" width="21.6" height="7.2" rx="3.6" className="otty-c-cream" />
+      <rect x="28" y="34.2" width="8" height="3.8" rx="1.9" className="otty-c-amber" />
+      {/* 宽距豆豆眼（歪头一高一低）+ 无辜下弯眉 */}
+      <circle cx="23.2" cy="29.2" r="2.3" className="otty-c-ink" />
+      <circle cx="40.8" cy="28.2" r="2.3" className="otty-c-ink" />
+      <circle cx="23.9" cy="29.9" r="0.9" className="otty-c-teal" />
+      <circle cx="41.5" cy="28.9" r="0.9" className="otty-c-teal" />
+      <path d="M 18.4 24 Q 23.2 21.6 28 24" stroke="#0F172A" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+      <path d="M 36 24 Q 40.8 21.6 45.6 24" stroke="#0F172A" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+      {/* w 小嘴 */}
+      <path d="M 28.4 45.8 Q 30 47.6 32 45.8 Q 34 47.6 35.6 45.8" stroke="#0F172A" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+      {/* 双腮红 */}
+      <ellipse cx="19.6" cy="40.4" rx="3.4" ry="1.9" className="otty-c-blush" />
+      <ellipse cx="44.4" cy="40.4" rx="3.4" ry="1.9" className="otty-c-blush" />
     </svg>
   );
 }
@@ -47,8 +59,8 @@ function MomentScene({ moment }: { moment: OttyMoment }) {
         <div className="otty-bob">
           <OttyFace />
           <svg className="otty-paw" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-            <ellipse cx="11" cy="11" rx="8" ry="6.5" className="otty-c-ink" />
-            <ellipse cx="11" cy="9" rx="4.5" ry="3" className="otty-c-cream" />
+            <rect x="7.4" y="3.4" width="7.2" height="15.2" rx="3.6" className="otty-c-ink" />
+            <ellipse cx="11" cy="6.6" rx="5" ry="3.2" className="otty-c-ink" />
           </svg>
           <svg className="otty-spark" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path

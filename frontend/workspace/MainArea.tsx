@@ -41,6 +41,10 @@ import { DiagnosePanel } from "../ai/DiagnosePanel";
 import { RecordToggle } from "../history/RecordToggle";
 import { OverviewPage } from "../monitor/OverviewPage";
 import { BatchPanel } from "../batch/BatchPanel";
+import { CronPanel } from "../cron/CronPanel";
+import { NotificationCenter } from "../notify/NotificationCenter";
+import { ForwardPanel } from "../forward/ForwardPanel";
+import { JumpChainEditor } from "../hosts/JumpChainEditor";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
 import type { Host } from "../vault/api";
@@ -124,7 +128,17 @@ export function MainArea({
   // 2026-10-16 总览标签化：OverviewPage 的「← 终端」返回按钮退役（导航走
   // 标签条：点会话标签回终端、关总览标签 ✕ 收场）；onOpen/onOpenProcesses
   // 语义不变（跳标签 + 切视图）。BatchPanel 非标签制，返回按钮保留。
-  const slotView = mainView === "overview" || mainView === "batch" ? mainView : null;
+  // 库级宽幅视图槽位（2026-10-16 IA 重构：定时任务/通知中心/端口转发/跳板链
+  // 自弹框迁入主区——弹框退役第一步）。监控/插件为会话级子页签，不走此槽。
+  const slotView =
+    mainView === "overview" ||
+    mainView === "batch" ||
+    mainView === "cron" ||
+    mainView === "notifications" ||
+    mainView === "forwards" ||
+    mainView === "jumpchains"
+      ? mainView
+      : null;
   const slotPane =
     slotView === null ? null : slotView === "overview" ? (
       <OverviewPage
@@ -137,8 +151,16 @@ export function MainArea({
           openMainView("processes");
         }}
       />
-    ) : (
+    ) : slotView === "batch" ? (
       <BatchPanel onClose={() => openMainView("terminal")} />
+    ) : slotView === "cron" ? (
+      <CronPanel open />
+    ) : slotView === "notifications" ? (
+      <NotificationCenter />
+    ) : slotView === "forwards" ? (
+      <ForwardPanel open />
+    ) : (
+      <JumpChainEditor open />
     );
 
   // 零会话空态内容（错误横幅 / 已选中占位 / 欢迎页）——总览标签在场时挂在

@@ -223,16 +223,20 @@ function HomeLayout() {
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
-        case "notify-center": openToolDialog("notifications"); break;
+        case "notify-center": openMainView("notifications"); break;
         case "credentials": openModal("credentials"); break;
-        case "alerts": openToolDialog("alerts"); break;
+        case "alerts":
+          // 2026-10-16 IA 重构：告警已在设置「告警」分区（AlertSettings 双入口
+          // 归位设置）——图标轨/工具菜单改跳转，弹框副本退役。
+          openSettingsToPane("alerts");
+          break;
         case "monitor": openToolDialog("monitor"); break;
         case "plugins": openToolDialog("plugins"); break;
-        case "forwards": openToolDialog("forwards"); break;
-        case "jump-chains": openToolDialog("jumpchains"); break;
+        case "forwards": openMainView("forwards"); break;
+        case "jump-chains": openMainView("jumpchains"); break;
         case "overview": openOverview(); break;
         case "batch": openMainView("batch"); break;
-        case "cron": openToolDialog("cron"); break;
+        case "cron": openMainView("cron"); break;
         case "export-hosts": openModal("exportHosts"); break;
         case "import-hosts": openModal("importHosts"); break;
       }
@@ -574,6 +578,7 @@ function HomeLayout() {
           onOpenCredentials={() => openModal("credentials")}
           onOpenSettings={() => openSettingsToPane(null)}
           onOpenMcpSettings={() => openSettingsToPane("mcp")}
+          onOpenAlerts={() => openSettingsToPane("alerts")}
         />
         {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树）；
             功能导航与设置已迁图标轨（M3）。⌓\ 折叠胶囊 = 64px 恒宽。 */}

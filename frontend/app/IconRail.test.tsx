@@ -21,6 +21,7 @@ function renderRail(overrides?: Partial<Parameters<typeof IconRail>[0]>) {
     onOpenCredentials: vi.fn(),
     onOpenSettings: vi.fn(),
     onOpenMcpSettings: vi.fn(),
+    onOpenAlerts: vi.fn(),
     ...overrides,
   };
   render(
@@ -61,7 +62,7 @@ describe("IconRail（48px 图标轨）", () => {
   it("五钮恒驻 + 锁定钮 + Otty 球；mac 标题栏让位面可注入", () => {
     const { rerender } = render(
       <ThemeProvider>
-        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} />
+        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} />
       </ThemeProvider>,
     );
     for (const id of ["rail-overview", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty"]) {
@@ -78,7 +79,7 @@ describe("IconRail（48px 图标轨）", () => {
     expect(document.querySelector(".titlebar-inset")).toBeTruthy();
     rerender(
       <ThemeProvider>
-        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} />
+        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} />
       </ThemeProvider>,
     );
     expect(document.querySelector(".titlebar-inset")).toBeNull();
@@ -100,20 +101,16 @@ describe("IconRail（48px 图标轨）", () => {
     expect(useWorkspaceStore.getState().toolDialog).toBeNull(); // 不占工具弹框槽
   });
 
-  it("工具钮开关二态 + 空间锚点：toolDialog 在场 = data-active（teal 光点）", () => {
+  it("定时任务钮：点击开主区视图 + data-active 锚点（2026-10-16 IA 重构）", () => {
     renderRail();
     fireEvent.click(screen.getByTestId("rail-cron"));
-    expect(useWorkspaceStore.getState().toolDialog).toBe("cron");
+    expect(useWorkspaceStore.getState().mainView).toBe("cron");
     expect(screen.getByTestId("rail-cron").getAttribute("data-active")).toBe("true");
-    // 异值替换（单槽）后光点随迁
-    fireEvent.click(screen.getByTestId("rail-alerts"));
-    expect(useWorkspaceStore.getState().toolDialog).toBe("alerts");
+    // 总览与定时任务互斥（主区单视图）：开总览后定时任务光点熄灭
+    fireEvent.click(screen.getByTestId("rail-overview"));
+    expect(useWorkspaceStore.getState().mainView).toBe("overview");
     expect(screen.getByTestId("rail-cron").getAttribute("data-active")).toBe("false");
-    expect(screen.getByTestId("rail-alerts").getAttribute("data-active")).toBe("true");
-    // 再点同值 = 关
-    fireEvent.click(screen.getByTestId("rail-alerts"));
-    expect(useWorkspaceStore.getState().toolDialog).toBeNull();
-    expect(screen.getByTestId("rail-alerts").getAttribute("data-active")).toBe("false");
+    expect(screen.getByTestId("rail-overview").getAttribute("data-active")).toBe("true");
   });
 
   it("Otty 弹层背板：点击弹层外任意区域（含主区拖拽面）即收起", () => {

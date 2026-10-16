@@ -17,8 +17,21 @@
 //  * 挂载域互斥（沿现状）：monitor/plugins 侧栏只在 terminal 视图挂载
 //    （原 `!filesVisible && !procsVisible` 域）；overview/batch 视图下同让位。
 
-/** 主区视图（mainView 状态机的五个取值；terminal 恒为默认）。 */
-export type MainView = "terminal" | "files" | "processes" | "overview" | "batch";
+/** 主区视图。terminal 恒为默认；overview/batch/cron/notifications/forwards/
+ * jumpchains 为库级宽幅视图（图标轨一级入口）；monitor/plugins 为会话级
+ * 子页签（2026-10-16 IA 重构：弹框退役，详见 docs/ia-restructure-1.1.md）。 */
+export type MainView =
+  | "terminal"
+  | "files"
+  | "processes"
+  | "overview"
+  | "batch"
+  | "cron"
+  | "notifications"
+  | "forwards"
+  | "jumpchains"
+  | "monitor"
+  | "plugins";
 
 /** 右侧停靠面板。monitor/plugins = 终端右栏自管侧栏（见上，并存语义沿现状）；
  * 其余五值为 dock 工具面板（T4 起实体渲染在 dock/DockPanel）。 */
@@ -46,6 +59,12 @@ export const MAIN_VIEWS: readonly MainView[] = [
   "processes",
   "overview",
   "batch",
+  "cron",
+  "notifications",
+  "forwards",
+  "jumpchains",
+  "monitor",
+  "plugins",
 ];
 export const DOCK_PANELS: readonly DockPanel[] = [
   "monitor",

@@ -21,6 +21,8 @@ export interface IconRailProps {
   onOpenCredentials: () => void;
   onOpenSettings: () => void;
   onOpenMcpSettings: () => void;
+  /** 告警钮（2026-10-16 IA 重构）：跳设置「告警」分区（原弹框退役）。 */
+  onOpenAlerts: () => void;
 }
 
 function OverviewIcon() {
@@ -162,6 +164,28 @@ function LockIcon() {
   );
 }
 
+function ShuffleIcon() {
+  // Lucide「shuffle」双向交换——端口转发（本地↔远端通道）语义。
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 4h2.6l6.8 8H14M14 4h-2.6l-2.2 2.6M2 12h2.6l2.2-2.6M11.4 4H14v0M11.4 12H14v0" />
+      <path d="M12 2l2 2-2 2M12 10l2 2-2 2" />
+    </svg>
+  );
+}
+
+function NetworkIcon() {
+  // 分支节点——跳板链（多级跳板拓扑）语义。
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="3.5" cy="8" r="1.8" />
+      <circle cx="12.5" cy="3.5" r="1.8" />
+      <circle cx="12.5" cy="12.5" r="1.8" />
+      <path d="M5.3 7.2 L10.8 4.2 M5.3 8.8 L10.8 11.8" />
+    </svg>
+  );
+}
+
 /** 主题快捷循环顺序（水域家族光量降序，与 THEME_IDS 同序）。 */
 const THEME_CYCLE: readonly ThemeMode[] = [
   "system",
@@ -173,10 +197,10 @@ const THEME_CYCLE: readonly ThemeMode[] = [
   "glass",
 ];
 
-export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onOpenMcpSettings }: IconRailProps) {
+export function IconRail({ titlebarInset, onOpenAlerts, onOpenCredentials, onOpenSettings, onOpenMcpSettings }: IconRailProps) {
   const { t } = useTranslation();
-  const toggleToolDialog = useWorkspaceStore((s) => s.toggleToolDialog);
-  const toolDialog = useWorkspaceStore((s) => s.toolDialog);
+  const mainView = useWorkspaceStore((s) => s.mainView);
+  const openMainView = useWorkspaceStore((s) => s.openMainView);
   const overviewOpen = useWorkspaceStore((s) => s.overviewOpen);
   const openOverview = useWorkspaceStore((s) => s.openOverview);
   const unread = useNotifyStore((s) => s.unread);
@@ -244,10 +268,10 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
         type="button"
         className="rail-btn"
         data-testid="rail-cron"
-        data-active={toolDialog === "cron"}
+        data-active={mainView === "cron"}
         title={t("nav.cron")}
         aria-label={t("nav.cron")}
-        onClick={() => toggleToolDialog("cron")}
+        onClick={() => openMainView("cron")}
       >
         <span className="rail-light" aria-hidden />
         <ClockIcon />
@@ -256,22 +280,20 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
         type="button"
         className="rail-btn"
         data-testid="rail-alerts"
-        data-active={toolDialog === "alerts"}
         title={t("nav.alerts")}
         aria-label={t("nav.alerts")}
-        onClick={() => toggleToolDialog("alerts")}
+        onClick={onOpenAlerts}
       >
-        <span className="rail-light" aria-hidden />
         <BellIcon />
       </button>
       <button
         type="button"
         className="rail-btn"
         data-testid="rail-notifications"
-        data-active={toolDialog === "notifications"}
+        data-active={mainView === "notifications"}
         title={t("nav.notifications")}
         aria-label={t("nav.notifications")}
-        onClick={() => toggleToolDialog("notifications")}
+        onClick={() => openMainView("notifications")}
       >
         <span className="rail-light" aria-hidden />
         <InboxIcon />
@@ -280,6 +302,30 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
             {unread > 99 ? "99+" : unread}
           </span>
         )}
+      </button>
+      <button
+        type="button"
+        className="rail-btn"
+        data-testid="rail-forwards"
+        data-active={mainView === "forwards"}
+        title={t("forward.title")}
+        aria-label={t("forward.title")}
+        onClick={() => openMainView("forwards")}
+      >
+        <span className="rail-light" aria-hidden />
+        <ShuffleIcon />
+      </button>
+      <button
+        type="button"
+        className="rail-btn"
+        data-testid="rail-jumpchains"
+        data-active={mainView === "jumpchains"}
+        title={t("jump.title")}
+        aria-label={t("jump.title")}
+        onClick={() => openMainView("jumpchains")}
+      >
+        <span className="rail-light" aria-hidden />
+        <NetworkIcon />
       </button>
       <div className="rail-spacer" aria-hidden />
       {/* 锁定（2026-10-16 用户需求：控制中心旁的锁定入口）——立即锁库，

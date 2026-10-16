@@ -341,28 +341,28 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
   });
 
   // 用户反馈「通知中心点击无任何响应」的回归钉：菜单动作直派链必须打开面板
-  // （2026-10-12 弹框语义：动作 = openToolDialog；再派一次幂等保持——弹框
-  // 仍开，不存在「收起」，收起走 ✕/Esc）。
-  it("tool.notify-center 打开通知中心弹框；再派一次保持打开", async () => {
+  // （2026-10-16 IA 重构：通知中心升主区宽幅视图——再派一次幂等保持）。
+  it("tool.notify-center 打开通知中心主区视图；再派一次保持打开", async () => {
     listMock();
     render(<App />);
     await waitFor(() => expect(menuActionHandler).toBeTruthy());
     act(() => menuActionHandler!({ payload: "tool.notify-center" }));
     expect(screen.getByTestId("notify-panel")).toBeTruthy();
-    expect(useWorkspaceStore.getState().toolDialog).toBe("notifications");
+    expect(useWorkspaceStore.getState().mainView).toBe("notifications");
     act(() => menuActionHandler!({ payload: "tool.notify-center" }));
-    expect(useWorkspaceStore.getState().toolDialog).toBe("notifications");
+    expect(useWorkspaceStore.getState().mainView).toBe("notifications");
     expect(screen.getByTestId("notify-panel")).toBeTruthy();
   });
 
-  it("tool.<key> 与顶栏工具下拉同源（openToolDialog 路由）", async () => {
+  // 2026-10-16 IA 重构：工具面板升主区视图——tool.cron 打开定时任务宽幅视图
+  it("tool.cron 打开定时任务主区视图", async () => {
     listMock();
     useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
     act(() => menuActionHandler!({ payload: "tool.cron" }));
-    await waitFor(() => expect(useWorkspaceStore.getState().toolDialog).toBe("cron"));
+    await waitFor(() => expect(useWorkspaceStore.getState().mainView).toBe("cron"));
   });
 });
 
@@ -508,53 +508,44 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
   });
 
-  it("转发/定时任务 → toolDialog 单槽（后者替换前者）；✕ 关闭", async () => {
+  it("转发/定时任务 → 主区宽幅视图（互斥切换）", async () => {
     listMock();
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
 
     act(() => menuActionHandler!({ payload: "tool.forwards" }));
-    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("forwards");
-    expect(screen.getByTestId("forward-panel")).toBeTruthy(); // 实体在弹框内
+    expect(useWorkspaceStore.getState().mainView).toBe("forwards");
+    expect(screen.getByTestId("forward-panel")).toBeTruthy(); // 实体在主区
 
-    // 单槽（2026-10-12 弹框化）：开 cron 即替换 forwards——一次一个
+    // 宽幅视图互斥：开 cron 即切换 forwards——主区一次显示一个
     act(() => menuActionHandler!({ payload: "tool.cron" }));
-    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("cron");
+    expect(useWorkspaceStore.getState().mainView).toBe("cron");
     expect(screen.getByTestId("cron-panel")).toBeTruthy();
     expect(screen.queryByTestId("forward-panel")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("tool-dialog-close")); // ✕ 关闭
-    expect(useWorkspaceStore.getState().toolDialog).toBeNull();
-    expect(screen.queryByTestId("tool-dialog")).toBeNull();
   });
 
-  it("告警/跳板链 → openToolDialog 对应弹框；总览/批量 → openMainView 主区实体视图", async () => {
+  it("告警 → 设置「告警」分区跳转；跳板链 → 主区宽幅视图；总览/批量 → 主区实体视图", async () => {
     listMock();
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
 
+    // 2026-10-16 IA 重构：告警弹框退役，跳设置「告警」分区（定向分区直落）
     act(() => menuActionHandler!({ payload: "tool.alerts" }));
-    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("alerts");
-    expect(screen.getByTestId("alert-settings")).toBeTruthy(); // 实体在弹框内
+    expect(screen.getByTestId("security-settings")).toBeTruthy();
+    expect(screen.getByTestId("alerts-pane")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("settings-dialog-close"));
+    expect(screen.queryByTestId("security-settings")).toBeNull();
+
     act(() => menuActionHandler!({ payload: "tool.jump-chains" }));
-    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("jumpchains");
+    expect(useWorkspaceStore.getState().mainView).toBe("jumpchains");
     expect(screen.getByTestId("jump-editor")).toBeTruthy();
 
     // MCP（2026-10-14 设置类收敛）：工具清单已无 mcp 项——事件无分派，
-    // 既不开设置也不动当前弹框（MCP 单一家 = 设置页 MCP 分区，经侧栏进入）。
+    // 不动当前视图（MCP 单一家 = 设置页 MCP 分区，经侧栏进入）。
     act(() => menuActionHandler!({ payload: "tool.mcp" }));
-    expect(screen.queryByTestId("security-settings")).toBeNull();
-    expect(screen.getByTestId("tool-dialog").getAttribute("data-panel")).toBe("jumpchains");
-
-    // 全局弹窗单实例（2026-10-14 裁定）：设置打开即顶掉工具弹框——新弹框
-    // 显示，其他弹框先销毁。
-    act(() => menuActionHandler!({ payload: "settings.open" }));
-    expect(screen.getByTestId("security-settings")).toBeTruthy();
-    expect(screen.queryByTestId("tool-dialog")).toBeNull();
-    fireEvent.click(screen.getByTestId("settings-dialog-close"));
-    expect(screen.queryByTestId("security-settings")).toBeNull();
+    expect(useWorkspaceStore.getState().mainView).toBe("jumpchains");
 
     // 总览/批量 = 主区互斥视图（零会话也可开——原对话框语义；T3 起挂实体）。
     // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel。

@@ -1,4 +1,7 @@
-/* --- 标签化终端主区（Task 7，A6）--- */
+/* --- 标签化终端主区（Task 7，A6）；2026-10-16 视觉重设计 M2「造浪」悬浮岛制式 ---
+ * 每条会话是一根浮木：四角圆角岛浮在水面（tabbar 去底色），激活岛 = teal 描边 +
+ * 阴影微升 + 提满不透明度；未激活岛半透明。微升用阴影表达而非 translateY——
+ * .tabbar overflow-x:auto 会剪纵向位移（规范：一轴 auto 另一轴亦 auto）。 */
 .main-area.terminal-mode {
   padding: 0;
   overflow: hidden;
@@ -8,33 +11,42 @@
   flex: none;
   display: flex;
   align-items: stretch;
-  gap: 2px;
-  padding: 6px 8px 0;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) 0;
   border-bottom: 1px solid var(--border-subtle);
   overflow-x: auto;
-  background: var(--surface-raised);
 }
 .tab {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px 5px 10px;
+  padding: 5px 10px;
   border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: var(--radius-lg) 8px 0 0;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   color: var(--fg-muted);
   font-size: var(--text-sm);
   white-space: nowrap;
   user-select: none;
+  opacity: 0.78;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
 }
 .tab[data-active="true"] {
   background: var(--color-bg);
-  border-color: var(--border-subtle);
+  border-color: var(--color-accent-border);
   color: var(--color-fg);
+  opacity: 1;
+  box-shadow: var(--shadow-1), var(--shadow-glow);
 }
 .tab:hover {
   border-color: var(--border-subtle);
+  background: var(--surface-raised);
+  opacity: 1;
 }
 .tab-dot {
   flex: none;
@@ -44,8 +56,50 @@
   /* disconnected/waiting 兜底灰 */
   background: var(--fg-muted);
 }
+/* 水滴语言（2026-10-16 视觉重设计 M2）：连接中呼吸缩放、已连接弹跳一次落定、
+ * 断线涟漪扩散渐隐——属性选择器新命中即重播（状态翻转天然触发）。
+ * reduced-motion 全局兜底把动画压到 0.01ms×1 次，静帧落在终态。 */
+.tab[data-status="connecting"] .tab-dot,
+.tab[data-status="reconnecting"] .tab-dot,
+.tab[data-status="waiting_host_key"] .tab-dot {
+  animation: dot-breathe var(--dur-loop-idle) var(--ease-drift) infinite;
+}
+@keyframes dot-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.7);
+    opacity: 0.55;
+  }
+}
 .tab[data-status="connected"] .tab-dot {
   background: var(--color-success);
+  animation: dot-pop var(--dur-otter-peek) var(--ease-float);
+}
+@keyframes dot-pop {
+  0% {
+    transform: scale(0.55);
+  }
+  55% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.tab[data-status="disconnected"] .tab-dot {
+  animation: dot-drop var(--dur-slow) var(--ease-out);
+}
+@keyframes dot-drop {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-danger) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 9px transparent;
+  }
 }
 .tab[data-status="reconnecting"] .tab-dot {
   background: var(--color-warning);
@@ -377,15 +431,15 @@
   border-radius: var(--radius-lg);
   padding: 4px;
   box-shadow: var(--shadow-3);
-  /* 锚定入场（评审 P1-8）：自触发点（光标=左上）缩放浮现；菜单类退场即时
-   * （HIG 惯例），不挂 closing。 */
+  /* 锚定入场（评审 P1-8；2026-10-16 M2 与 flyout 统一为水系制式）：
+   * ease-float + 4px 下潜——菜单类退场即时（HIG 惯例），不挂 closing。 */
   transform-origin: top left;
-  animation: ctx-in var(--dur-fast) var(--ease-out);
+  animation: ctx-in var(--dur) var(--ease-float);
 }
 @keyframes ctx-in {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: translateY(4px) scale(0.98);
   }
 }
 .ctx-menu-row {

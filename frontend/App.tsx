@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sidebar } from "./app/Sidebar";
 import { Toaster } from "./ui/Toaster";
+import { initRipple } from "./ui/ripple";
 import { useModalStore, type ModalId } from "./ui/modalStore";
 import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
 import { showToast } from "./ui/toastStore";
@@ -337,6 +338,10 @@ function HomeLayout() {
     setAiSettingsOpener(() => openSettingsToPane("ai"));
     return () => setAiSettingsOpener(null);
   }, [openSettingsToPane]);
+
+  // 涟漪反馈（2026-10-16 视觉重设计 M2）：document 级 pointerdown 委托，
+  // 目标三类见 ui/ripple.ts；卸载即解绑（App 是单例根，实际不卸）。
+  useEffect(() => initRipple(), []);
 
   // Phase 2 Task 7（B1 会话纪要）：会话收尾钩子注入——closeTab / disconnect /
   // 重连耗尽时异步生成纪要（onSessionEnded fire-and-forget，失败静默不反噬）。

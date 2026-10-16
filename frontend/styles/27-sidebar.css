@@ -155,14 +155,15 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* 锚定入场（评审 P1-8）：origin 指向触发行（左缘），空间关系可见。 */
+  /* 锚定入场（评审 P1-8；2026-10-16 M2 与右键菜单统一水系制式）：
+   * origin 指向触发行（左缘）+ ease-float + 4px 下潜。 */
   transform-origin: left center;
-  animation: flyout-in var(--dur-fast) var(--ease-out);
+  animation: flyout-in var(--dur) var(--ease-float);
 }
 @keyframes flyout-in {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: translateY(4px) scale(0.98);
   }
 }
 .sidebar-flyout button {

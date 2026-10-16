@@ -11,10 +11,11 @@
 //   * 确认前不发起任何命令（清库在 Rust 侧另有 confirm 门卫双保险）；
 //   * 清库失败错误如实上屏，armed 保持可重试。成功 = 进程重启回首启流程
 //     （invoke 永不 resolve 是预期——webview 随进程销毁）。
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import { useVaultLockStore } from "./VaultLockStore";
+import { LockOtter } from "./LockOtter";
 
 export function LockScreen({ closing }: { closing?: boolean }) {
   const { t } = useTranslation();
@@ -28,6 +29,14 @@ export function LockScreen({ closing }: { closing?: boolean }) {
   const [armed, setArmed] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  // 小水獭反应驱动（2026-10-16）：错误每次出现（null→msg，store 每次 unlock
+  // 前清 error）递增 nonce → LockOtter 重挂播「缩脖」一次性动画。
+  const [otterNonce, setOtterNonce] = useState(0);
+
+  const error = localError ?? storeError;
+  useEffect(() => {
+    if (error) setOtterNonce((n) => n + 1);
+  }, [error]);
 
   function handleToggleHelp() {
     setHelpOpen((v) => !v);
@@ -60,7 +69,6 @@ export function LockScreen({ closing }: { closing?: boolean }) {
     void unlock(password);
   }
 
-  const error = localError ?? storeError;
   const wrongPassword = storeError?.includes("master password is incorrect") ?? false;
 
   return (
@@ -72,6 +80,8 @@ export function LockScreen({ closing }: { closing?: boolean }) {
       aria-label={t("security.lockScreen.title")}
     >
       <form className="dialog lock-card" onSubmit={handleSubmit} noValidate>
+        {/* 小水獭（2026-10-16 用户需求）：贪玩被拦在门外，等主人开门——纯装饰 */}
+        <LockOtter mood={unlocking ? "eager" : "idle"} errorNonce={otterNonce} />
         <h2>{t("security.lockScreen.title")}</h2>
         <p className="dialog-intro">{t("security.lockScreen.hint")}</p>
         <label>

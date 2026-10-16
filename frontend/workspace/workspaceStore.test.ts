@@ -33,7 +33,7 @@ function fakeSession(over: Partial<Session> = {}): Session {
 
 beforeEach(() => {
   // 回默认态：zustand 模块级单例，跨用例必须复位（防用例间互斥语义串扰）
-  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
+  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null, overviewOpen: false });
   useSessionStore.setState({ sessions: [], activeId: null });
 });
 
@@ -110,6 +110,42 @@ describe("toolDialog 工具面板弹框（2026-10-12 dock 退役：单槽一次�
     expect(DOCK_PANELS).toContain("mcp");
     expect(TOOL_DOCK_PANELS).not.toContain("mcp");
     for (const v of TOOL_DOCK_PANELS) expect(DOCK_PANELS).toContain(v);
+  });
+});
+
+describe("总览置顶标签（2026-10-16 用户需求：总览标签化、打开后固定第一位）", () => {
+  it("默认不开；openOverview 开标签并激活总览视图（幂等）", () => {
+    const ws = () => useWorkspaceStore.getState();
+    expect(ws().overviewOpen).toBe(false);
+    ws().openOverview();
+    expect(ws().overviewOpen).toBe(true);
+    expect(ws().mainView).toBe("overview");
+    ws().openOverview();
+    expect(ws().overviewOpen).toBe(true);
+    expect(ws().mainView).toBe("overview");
+  });
+
+  it("closeOverview：正显示总览时回终端视图；显示其他视图时只关标签不动视图", () => {
+    const ws = () => useWorkspaceStore.getState();
+    ws().openOverview();
+    ws().openMainView("files"); // 标签开着但用户在看文件视图
+    ws().closeOverview();
+    expect(ws().overviewOpen).toBe(false);
+    expect(ws().mainView).toBe("files");
+    ws().openOverview();
+    ws().closeOverview();
+    expect(ws().overviewOpen).toBe(false);
+    expect(ws().mainView).toBe("terminal");
+  });
+
+  it("openOverview/closeOverview 均不触碰 SessionStore（终端保留不变量同源）", () => {
+    const sess = fakeSession();
+    useSessionStore.setState({ sessions: [sess], activeId: "sess-1" });
+    const before = useSessionStore.getState().sessions;
+    const ws = useWorkspaceStore.getState();
+    ws.openOverview();
+    ws.closeOverview();
+    expect(useSessionStore.getState().sessions).toBe(before);
   });
 });
 

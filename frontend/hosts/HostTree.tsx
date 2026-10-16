@@ -6,6 +6,33 @@ import { useTranslation } from "react-i18next";
 import { type Host } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 
+/** 分组折叠记忆（2026-10-16 用户需求：分组可折叠收起/展开）：值 = 折叠键数组
+ * （命名分组 = String(group.id)；未分组哨兵见下）。沿「侧栏宽度」同款
+ * localStorage 暂存口径（裁定 #2：settings 表落地后迁移）。 */
+export const COLLAPSED_GROUPS_KEY = "ottr.layout.hostTree.collapsedGroups";
+/** 未分组桶的折叠键（group_id=null 无 id 可用，哨兵字符串占位）。 */
+const UNGROUPED_KEY = "__ungrouped__";
+
+function loadCollapsed(): ReadonlySet<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v): v is string => typeof v === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsed(set: ReadonlySet<string>): void {
+  try {
+    localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...set]));
+  } catch {
+    // 持久化失败不阻塞折叠功能本身
+  }
+}
+
 export interface HostTreeProps {
   selectedId: number | null;
   /** 新建分组信号（2026-10-08 菜单栏启用批次）：File 菜单/汉堡 hosts.new_group
@@ -44,6 +71,20 @@ export function HostTree({
   const [activeTags, setActiveTags] = useState<ReadonlySet<string>>(new Set());
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [grouping, setGrouping] = useState(false);
+  // 分组折叠态（2026-10-16）：默认全展开——空分组「先建组后填内容」路径
+  // （BL-109 ①）不因折叠残留被吞；只记用户显式收起的组。
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(loadCollapsed);
+
+  function toggleGroup(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveCollapsed(next);
+      return next;
+    });
+  }
+
   // 菜单/汉堡「新建分组」信号：>0 即展开分组输入（外部入口复用树内同一表单）。
   useEffect(() => {
     if (newGroupSignal > 0) {
@@ -189,22 +230,36 @@ export function HostTree({
         // 空分组：默认浏览态必须渲染（先建组后填内容路径，BL-109 ①）；
         // 仅用户主动过滤（搜索/标签）时空分组无命中才隐藏。
         if (filtering && groupHosts.length === 0) return null;
+        const groupCollapsed = collapsed.has(String(group.id));
         return (
-          <section key={group.id} className="tree-group" data-testid={`group-${group.name}`}>
-            <GroupHead name={group.name} onAdd={() => onAdd(group.id)} />
-            <HostItems
-              hosts={groupHosts}
-              selectedId={selectedId}
-              onSelect={onSelect}
-              onOpen={onOpen}
-              onEdit={onEdit}
-              deletingId={deletingId}
-              setDeletingId={setDeletingId}
-              onDelete={handleDelete}
-              multiSelect={multiSelect}
-              selectedIds={selectedIds}
-              onToggle={onToggle}
+          <section
+            key={group.id}
+            className="tree-group"
+            data-testid={`group-${group.name}`}
+            data-collapsed={groupCollapsed ? "true" : undefined}
+          >
+            <GroupHead
+              name={group.name}
+              onAdd={() => onAdd(group.id)}
+              onToggle={() => toggleGroup(String(group.id))}
+              collapsed={groupCollapsed}
+              hostCount={groupHosts.length}
             />
+            {!groupCollapsed && (
+              <HostItems
+                hosts={groupHosts}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                onOpen={onOpen}
+                onEdit={onEdit}
+                deletingId={deletingId}
+                setDeletingId={setDeletingId}
+                onDelete={handleDelete}
+                multiSelect={multiSelect}
+                selectedIds={selectedIds}
+                onToggle={onToggle}
+              />
+            )}
           </section>
         );
       })}
@@ -212,22 +267,34 @@ export function HostTree({
       {(() => {
         const ungrouped = visibleByGroup.get(null);
         if (!ungrouped || ungrouped.length === 0) return null;
+        const ungroupedCollapsed = collapsed.has(UNGROUPED_KEY);
         return (
-          <section className="tree-group" data-testid="group-ungrouped">
-            <GroupHead name={t("hostTree.ungrouped")} />
-            <HostItems
-              hosts={ungrouped}
-              selectedId={selectedId}
-              onSelect={onSelect}
-              onOpen={onOpen}
-              onEdit={onEdit}
-              deletingId={deletingId}
-              setDeletingId={setDeletingId}
-              onDelete={handleDelete}
-              multiSelect={multiSelect}
-              selectedIds={selectedIds}
-              onToggle={onToggle}
+          <section
+            className="tree-group"
+            data-testid="group-ungrouped"
+            data-collapsed={ungroupedCollapsed ? "true" : undefined}
+          >
+            <GroupHead
+              name={t("hostTree.ungrouped")}
+              onToggle={() => toggleGroup(UNGROUPED_KEY)}
+              collapsed={ungroupedCollapsed}
+              hostCount={ungrouped.length}
             />
+            {!ungroupedCollapsed && (
+              <HostItems
+                hosts={ungrouped}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                onOpen={onOpen}
+                onEdit={onEdit}
+                deletingId={deletingId}
+                setDeletingId={setDeletingId}
+                onDelete={handleDelete}
+                multiSelect={multiSelect}
+                selectedIds={selectedIds}
+                onToggle={onToggle}
+              />
+            )}
           </section>
         );
       })()}
@@ -364,29 +431,70 @@ function HostItems({
   );
 }
 
-/** 分组头（区块锚点）：文件夹描边图标 + 分组名，弱化色不抢行内容的戏；
- * onAdd 给出时渲染悬停显现的「＋添加主机」（2026-10-09 用户要求：分组下
- * 直接加主机，分组自动预填）。按钮是 h3 的兄弟节点——heading 可访问名
- * 保持纯组名（getByRole("heading", { name }) 测试口径）。 */
-function GroupHead({ name, onAdd }: { name: string; onAdd?: () => void }) {
+/** 分组头（区块锚点）：折叠开关（chevron + 文件夹描边图标 + 组名）+ 悬停显现
+ * 的「＋添加主机」（2026-10-09 用户要求：分组下直接加主机，分组自动预填）。
+ * 开关是 h3 内的 button——heading 可访问名仍取自按钮文本 = 纯组名
+ * （getByRole("heading", { name }) 测试口径），折叠计数徽标 aria-hidden 不吃
+ * 可达名；「＋」按钮是 h3 的兄弟节点同前。折叠时组内主机行不渲染，计数徽标
+ * 显隐台数（2026-10-16 折叠需求）。 */
+function GroupHead({
+  name,
+  onAdd,
+  onToggle,
+  collapsed,
+  hostCount,
+}: {
+  name: string;
+  onAdd?: () => void;
+  onToggle?: () => void;
+  collapsed?: boolean;
+  hostCount?: number;
+}) {
   const { t } = useTranslation();
   return (
     <div className="tree-group-head">
       <h3 className="tree-group-title">
-        <svg
-          className="tree-group-icon"
-          width="14"
-          height="14"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.3"
-          strokeLinejoin="round"
-          aria-hidden="true"
+        <button
+          type="button"
+          className="tree-group-toggle"
+          data-testid={`group-toggle-${name}`}
+          aria-expanded={onToggle ? !collapsed : undefined}
+          onClick={() => onToggle?.()}
         >
-          <path d="M1.75 4.4c0-.63.5-1.15 1.13-1.15h3.05c.32 0 .63.14.85.38l1 1.1h5.34c.63 0 1.13.51 1.13 1.14v5.73c0 .63-.5 1.15-1.13 1.15H2.88c-.63 0-1.13-.52-1.13-1.15V4.4Z" />
-        </svg>
-        <span>{name}</span>
+          <svg
+            className="tree-group-chevron"
+            width="10"
+            height="10"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+          <svg
+            className="tree-group-icon"
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M1.75 4.4c0-.63.5-1.15 1.13-1.15h3.05c.32 0 .63.14.85.38l1 1.1h5.34c.63 0 1.13.51 1.13 1.14v5.73c0 .63-.5 1.15-1.13 1.15H2.88c-.63 0-1.13-.52-1.13-1.15V4.4Z" />
+          </svg>
+          <span>{name}</span>
+          {collapsed && (hostCount ?? 0) > 0 && (
+            <span className="tree-group-count" aria-hidden="true">
+              {hostCount}
+            </span>
+          )}
+        </button>
       </h3>
       {onAdd && (
         <button

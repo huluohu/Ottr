@@ -46,6 +46,7 @@ vi.mock("./notify/channelRegistry", () => ({ remountChannels: vi.fn(async () => 
 import "./i18n";
 import App from "./App";
 import { useVaultStore } from "./vault/store";
+import { useSessionStore, type Session } from "./session/SessionStore";
 import { useWorkspaceStore } from "./workspace/workspaceStore";
 import type { Host } from "./vault/api";
 
@@ -57,7 +58,7 @@ const web: Host = {
   group_id: null,
   tags: [],
   address: "10.0.0.1",
-  port: 2222,
+  port: 22,
   username: "deploy",
   protocol: "ssh",
   credential_id: null,
@@ -71,6 +72,31 @@ const web: Host = {
   updated_at: 1,
 };
 
+/** 会话夹具（关空标签回欢迎页用例）：只填渲染/计数消费的字段面。 */
+function fakeSession(over: Partial<Session> = {}): Session {
+  return {
+    id: "sess-1",
+    hostId: 1,
+    hostName: "web-01",
+    address: "10.0.0.1",
+    port: 22,
+    username: "deploy",
+    protocol: "ssh",
+    jumpChainId: null,
+    status: "connected",
+    rustId: null,
+    attempt: 0,
+    lastError: null,
+    nextRetryAt: null,
+    paneOf: null,
+    encoding: "utf-8",
+    encodingOverride: "utf-8",
+    encodingHint: null,
+    isProduction: false,
+    ...over,
+  };
+}
+
 beforeEach(() => {
   mockedInvoke.mockReset();
   vi.stubGlobal(
@@ -83,9 +109,20 @@ beforeEach(() => {
     })),
   );
   useVaultStore.setState({ hosts: [], hostGroups: [], credentials: [], loading: false, error: null });
+  useSessionStore.setState({ sessions: [], activeId: null });
   // workspaceStore 是模块级单例：上一用例经默认落地/动作切过的视图态必须
-  // 复位，否则泄漏成假失败（默认落总览逻辑 2026-10-14 起会真实切 mainView）。
-  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
+  // 复位，否则泄漏成假失败（默认落总览逻辑 2026-10-14 起会真实切 mainView；
+  // 总览标签态 overviewOpen 2026-10-16 起同源复位）。
+  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null, overviewOpen: false });
+  // 真终端组件（关空标签用例会挂会话）在 jsdom 需要 ResizeObserver stub
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 });
 
 afterEach(() => {
@@ -157,6 +194,47 @@ describe("App 主页布局（集成）", () => {
     await waitFor(() =>
       expect(screen.getByTestId("store-error").textContent).toContain("vault locked"),
     );
+  });
+
+  // 2026-10-16 用户需求④：关闭所有标签页后回到首屏（欢迎页）。此前两个残留
+  // 会截胡：mainView 停在总览等非终端视图、左树选中态顶着「已选中占位」面。
+  it("关闭最后一个会话标签：回欢迎页（视图与左树选中残留一并复位）；总览标签开则激活总览", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list") return Promise.resolve([web]);
+      if (cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") return Promise.resolve([]);
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    render(<App />);
+    // 启动默认落总览（总览标签在场）——先等树就绪，再收掉总览标签进纯终端态
+    await waitFor(() => expect(screen.getByTestId("overview-panel")).toBeTruthy());
+    act(() => {
+      useWorkspaceStore.getState().closeOverview();
+      useSessionStore.setState({ sessions: [fakeSession()], activeId: "sess-1" });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("main-area").className).toContain("terminal-mode"),
+    );
+    // 单击选中主机（双击开标签前的必经残留，会话已在场不影响选中语义）
+    fireEvent.click(
+      screen.getAllByText("web-01").find((el) => el.closest(".host-row"))!,
+    );
+    // 关掉最后一个标签（等价 closeTab 收尾后的会话清空）
+    act(() => {
+      useSessionStore.setState({ sessions: [], activeId: null });
+    });
+    await waitFor(() => expect(screen.getByTestId("home-greeting")).toBeTruthy());
+    // 不是「已选中占位」面：选中残留已随关空复位
+    expect(screen.getByTestId("main-area").textContent).not.toContain("Double-click a host");
+
+    // 总览标签在场时关空全部会话：激活总览标签（剩余标签自然顺位）
+    act(() => {
+      useWorkspaceStore.getState().openOverview();
+      useSessionStore.setState({ sessions: [fakeSession()], activeId: "sess-1" });
+    });
+    act(() => {
+      useSessionStore.setState({ sessions: [], activeId: null });
+    });
+    await waitFor(() => expect(screen.getByTestId("overview-panel")).toBeTruthy());
   });
 
   // 评审 M-4（fix round 1/5）终端聚焦守卫：target 在 [data-terminal] 容器内时

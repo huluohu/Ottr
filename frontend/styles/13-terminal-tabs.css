@@ -87,6 +87,16 @@
   border: none;
 }
 
+/* 总览置顶标签（2026-10-16 总览标签化）：无状态灯，四宫格图标占位；激活时
+ * 图标提亮主色，其余沿会话标签制式。 */
+.tab-overview .tab-overview-icon {
+  flex: none;
+  color: var(--fg-muted);
+}
+.tab-overview[data-active="true"] .tab-overview-icon {
+  color: var(--color-accent-text);
+}
+
 .term-area {
   flex: 1;
   min-height: 0;

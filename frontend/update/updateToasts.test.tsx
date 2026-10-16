@@ -140,4 +140,34 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
       expect(useToastStore.getState().toasts.some((t) => t.message === "network down")).toBe(true),
     );
   });
+
+  it("下载中再点「检查更新」：就地报下载进度而非静默（2026-10-16 用户反馈）", () => {
+    useUpdateStore.setState({
+      phase: { kind: "downloading", received: 1024, total: 2048 },
+    });
+    runUpdateCheckToasts();
+    // 单飞语义保持：不重复发起检查/下载，但必须有可感知的反馈
+    expect(checkMock).not.toHaveBeenCalled();
+    const msg = useToastStore.getState().toasts.map((t) => t.message).join("\n");
+    expect(msg).toContain("Downloading");
+    expect(msg).toContain("1/2");
+  });
+
+  it("下载中（未知总量）再点检查：提示正在下载而非静默", () => {
+    useUpdateStore.setState({
+      phase: { kind: "downloading", received: 512, total: null },
+    });
+    runUpdateCheckToasts();
+    expect(checkMock).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Downloading"))).toBe(
+      true,
+    );
+  });
+
+  it("检查中（他入口发起，如设置页）再点菜单检查：提示正在检查，不二次发起", () => {
+    useUpdateStore.setState({ phase: { kind: "checking" } });
+    runUpdateCheckToasts();
+    expect(checkMock).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(true);
+  });
 });

@@ -50,7 +50,24 @@ export function runUpdateCheckToasts(): void {
     showToast(i18n.t("update.portableHint"), "info");
     return;
   }
-  if (st.phase.kind === "checking" || st.phase.kind === "downloading") return;
+  if (st.phase.kind === "checking" || st.phase.kind === "downloading") {
+    // 进行中再触发：单飞语义保持（不重复发起），但不再静默（2026-10-16 用户
+    // 反馈「下载中再点检查更新啥也不显示」——设置页发起的下载屏上没有进度
+    // toast，此处是唯一反馈位）：就地报「正在检查/正在下载（含进度）」。
+    const t = i18n.t.bind(i18n);
+    if (st.phase.kind === "downloading" && st.phase.total != null && st.phase.total > 0) {
+      showToast(
+        t("update.downloadingOf", {
+          received: Math.round(st.phase.received / 1024),
+          total: Math.round(st.phase.total / 1024),
+        }),
+        "info",
+      );
+    } else {
+      showToast(t(st.phase.kind === "checking" ? "update.checking" : "update.downloading"), "info");
+    }
+    return;
+  }
   flowActive = true;
   const t = i18n.t.bind(i18n);
   const checkingToastId = showToast(t("update.checking"), "info");

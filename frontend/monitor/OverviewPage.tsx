@@ -21,8 +21,8 @@
 //   ssh 会话启停），按钮只在 ssh + off 态卡片出现；在途禁用防双击双发。
 // * 排序（sortForOverview 纯函数）：监控主机在前，组内按名称——总览的
 //   视线优先级是「有数据的机器」；
-// * 导航：头部「← 终端」返回按钮（承接原 MainViewSlot 的 slot-back-terminal
-//   语义，onClose = openMainView("terminal") 由 MainArea 注入）；
+// * 导航（2026-10-16 总览标签化）：头部「← 终端」返回按钮退役——总览是固定
+//   第一位的置顶标签（TabBar），点会话标签回终端、关总览标签 ✕ 收场；
 // * 主题/i18n 纪律：色板走 App.css 令牌，文案全走 t()（零新增键）。
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,8 +32,6 @@ import type { Host, HostInput } from "../vault/api";
 import { useMonitorStore, pickDiskPercent, type MonitorWindow } from "./monitorStore";
 
 export interface OverviewPageProps {
-  /** 返回终端（MainArea 注入 = openMainView("terminal")）。 */
-  onClose: () => void;
   /** 点击卡片：跳转该主机终端标签。 */
   onOpen: (host: Host) => void;
   /** 打开该主机终端标签并切到进程浏览器视图。 */
@@ -110,7 +108,7 @@ function MiniBar({ label, percent }: { label: string; percent: number }) {
   );
 }
 
-export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageProps) {
+export function OverviewPage({ onOpen, onOpenProcesses }: OverviewPageProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const sessions = useSessionStore((s) => s.sessions);
@@ -144,7 +142,8 @@ export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageP
   const sorted = sortForOverview(hosts);
 
   // 主区视图容器（UI 批次一 Task 3）：挂载即打开（MainArea 路由互斥），
-  // data-view 沿 MainViewSlot 槽位口径；返回按钮 testid 沿 slot-back-terminal。
+  // data-view 沿 MainViewSlot 槽位口径。2026-10-16 总览标签化：头部返回
+  // 按钮退役（slot-back-terminal 消亡）——导航统一走标签条（TabBar）。
   return (
     <section
       className="main-view overview-view"
@@ -154,9 +153,6 @@ export function OverviewPage({ onClose, onOpen, onOpenProcesses }: OverviewPageP
     >
       <div className="main-view-head">
         <h2>{t("overview.title")}</h2>
-        <button data-testid="slot-back-terminal" onClick={onClose}>
-          ← {t("files.viewTerminal")}
-        </button>
       </div>
 
       {sorted.length === 0 && (

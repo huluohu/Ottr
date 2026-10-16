@@ -61,6 +61,45 @@
 .tree-group-icon {
   flex: none;
 }
+/* 分组折叠开关（2026-10-16 需求）：组名本身即按钮（chevron + 文件夹 + 名），
+ * 继承组头的弱化色/字重；chevron 展开↔收起旋转过渡。 */
+.tree-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 1px 4px 1px 0;
+  margin: 0 0 0 -4px;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.tree-group-toggle:hover {
+  color: var(--color-fg);
+}
+.tree-group-chevron {
+  flex: none;
+  opacity: 0.7;
+  transition: transform var(--dur) var(--ease-out);
+}
+.tree-group-toggle[aria-expanded="false"] .tree-group-chevron {
+  transform: rotate(-90deg);
+}
+/* 折叠计数徽标：收起时显示组内隐藏台数（aria-hidden——heading 可访问名
+ * 保持纯组名，测试口径 getByRole("heading", { name })）。 */
+.tree-group-count {
+  flex: none;
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  color: var(--fg-muted);
+  background: var(--surface-raised);
+  border-radius: var(--radius-pill);
+  padding: 0 6px;
+}
 /* 分组头「＋添加主机」：悬停/键盘聚焦显现（同主机行操作按钮口径）；
  * margin-left:auto 推到行尾，不挤分组名。 */
 .tree-group-add {

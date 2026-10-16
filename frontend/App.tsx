@@ -110,6 +110,8 @@ function HomeLayout() {
   const openTab = useSessionStore((s) => s.openTab);
   // UI 批次一 Task 2：工作区视图/dock 动作（主区路由在 workspace/MainArea，
   // 弹框壳在 workspace/ToolDialog；单槽语义见 workspaceStore.ts）。
+  // 2026-10-16 总览标签化：总览入口统一走 openOverview（开置顶标签 + 激活）。
+  const openOverview = useWorkspaceStore((s) => s.openOverview);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
   const openToolDialog = useWorkspaceStore((s) => s.openToolDialog);
   // A12：面板动作需要当前主题/语言（toggle 循环用）
@@ -196,7 +198,7 @@ function HomeLayout() {
         case "plugins": openToolDialog("plugins"); break;
         case "forwards": openToolDialog("forwards"); break;
         case "jump-chains": openToolDialog("jumpchains"); break;
-        case "overview": openMainView("overview"); break;
+        case "overview": openOverview(); break;
         case "batch": openMainView("batch"); break;
         case "cron": openToolDialog("cron"); break;
         case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
@@ -274,7 +276,8 @@ function HomeLayout() {
       void remountChannels();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
       // 默认落地总览（2026-10-14 用户裁定「打开 app 默认进总览」）：库内有主机
-      // 且启动后无会话标签 → 打开即落总览页。空库保留欢迎页（首启引导更完整）；
+      // 且启动后无会话标签 → 打开即落总览页（2026-10-16 总览标签化：走
+      // openOverview，置顶标签同步在场）。空库保留欢迎页（首启引导更完整）；
       // restoreTabs 恢复了会话则留在终端面（用户要的是恢复的会话，不是总览）。
       const ws = useWorkspaceStore.getState();
       if (
@@ -282,7 +285,7 @@ function HomeLayout() {
         useSessionStore.getState().sessions.length === 0 &&
         ws.mainView === "terminal"
       ) {
-        ws.openMainView("overview");
+        ws.openOverview();
       }
     })();
   }, [initPhase]);
@@ -296,6 +299,17 @@ function HomeLayout() {
     const prev = prevSessionCount.current;
     prevSessionCount.current = sessionCount;
     if (prev === 0 && sessionCount > 0) openMainView("terminal");
+    // 对位不变量（2026-10-16 用户需求④「关闭所有标签页后回到首屏」）：会话
+    // 清零时复位两个会截胡欢迎页的残留——①mainView 停在总览等非终端视图
+    // （总览标签还开着则激活它：剩余标签的自然顺位；批量页不拽走，进行中的
+    // 批量执行不打断，关掉自然回欢迎页）；②左树选中态顶着「已选中占位」面
+    // （双击开标签前的单击选中残留）。
+    if (prev > 0 && sessionCount === 0) {
+      const ws = useWorkspaceStore.getState();
+      if (ws.overviewOpen) ws.openOverview();
+      else if (ws.mainView !== "batch") ws.openMainView("terminal");
+      setSelectedId(null);
+    }
   }, [sessionCount, openMainView]);
 
   // 融合式标题栏双击缩放（2026-10-16 用户反馈：拖拽面双击不放大/缩小）：

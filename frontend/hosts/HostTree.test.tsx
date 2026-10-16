@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 // 组件文案走真实词典（jsdom navigator.language = en-US → 英文断言）
 import "../i18n";
-import { HostTree } from "./HostTree";
+import { COLLAPSED_GROUPS_KEY, HostTree } from "./HostTree";
 import { useVaultStore } from "../vault/store";
 import type { Host, HostGroup } from "../vault/api";
 
@@ -255,5 +255,74 @@ describe("HostTree", () => {
     await waitFor(() =>
       expect(screen.getByTestId("group-name-error").textContent).toContain("already exists"),
     );
+  });
+});
+
+// 分组折叠/展开（2026-10-16 用户需求：侧栏目录分组支持折叠收起）。
+describe("HostTree 分组折叠", () => {
+  beforeEach(() => {
+    localStorage.removeItem(COLLAPSED_GROUPS_KEY);
+  });
+  afterEach(() => {
+    localStorage.removeItem(COLLAPSED_GROUPS_KEY);
+  });
+
+  it("点组头折叠：主机行隐藏、aria-expanded=false、计数徽标显示隐藏台数；再点恢复", () => {
+    renderTree();
+    const toggle = screen.getByRole("button", { name: "prod-group" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("web-01")).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(screen.queryByText("web-01")).toBeNull();
+    expect(screen.queryByText("db-01")).toBeNull();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // 组头仍在 + 折叠计数（不展开也知道组里有两台）
+    expect(screen.getByTestId("group-prod-group")).toBeTruthy();
+    expect(toggle.textContent).toContain("2");
+    fireEvent.click(toggle);
+    expect(screen.getByText("web-01")).toBeTruthy();
+    expect(screen.queryByText("2")).toBeNull();
+  });
+
+  it("未分组节同样可折叠", () => {
+    renderTree();
+    fireEvent.click(screen.getByRole("button", { name: "Ungrouped" }));
+    expect(screen.queryByText("solo")).toBeNull();
+    expect(screen.getByTestId("group-ungrouped")).toBeTruthy();
+  });
+
+  it("折叠态记忆 localStorage：重挂载后保持折叠，展开后记忆清除", () => {
+    const { unmount } = renderTree();
+    fireEvent.click(screen.getByRole("button", { name: "prod-group" }));
+    expect(localStorage.getItem(COLLAPSED_GROUPS_KEY)).toBeTruthy();
+    unmount();
+    renderTree();
+    expect(screen.queryByText("web-01")).toBeNull(); // 折叠保持
+    expect(screen.getByText("solo")).toBeTruthy(); // 其他组不受影响
+    fireEvent.click(screen.getByRole("button", { name: "prod-group" }));
+    expect(JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) ?? "[]")).toEqual([]);
+  });
+
+  it("localStorage 坏值容错：忽略并默认全展开", () => {
+    localStorage.setItem(COLLAPSED_GROUPS_KEY, "{not json");
+    renderTree();
+    expect(screen.getByText("web-01")).toBeTruthy();
+    expect(screen.getByText("solo")).toBeTruthy();
+  });
+
+  it("折叠不影响组内管理动作：折叠后组头「＋添加主机」仍可用", () => {
+    const onAdd = vi.fn();
+    render(
+      <HostTree
+        selectedId={null}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+        onAdd={onAdd}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "prod-group" }));
+    fireEvent.click(screen.getByTestId("group-add-prod-group"));
+    expect(onAdd).toHaveBeenCalledWith(3);
   });
 });

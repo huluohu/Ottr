@@ -131,7 +131,7 @@ describe("OverviewPage 卡片网格", () => {
     const onOpen = vi.fn();
     const onOpenProcesses = vi.fn();
     render(
-      <OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
+      <OverviewPage onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
     );
 
     const card = screen.getByTestId("overview-card-7");
@@ -158,7 +158,7 @@ describe("OverviewPage 卡片网格", () => {
     const onOpen = vi.fn();
     const onOpenProcesses = vi.fn();
     render(
-      <OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
+      <OverviewPage onOpen={onOpen} onOpenProcesses={onOpenProcesses} />,
     );
 
     const btn = screen.getByTestId("overview-proc-7");
@@ -173,7 +173,7 @@ describe("OverviewPage 卡片网格", () => {
       hosts: [host({ id: 1, name: "off-host", monitor_enabled: false }), host({ id: 2, name: "idle-host", monitor_enabled: true })],
     });
     render(
-      <OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />,
+      <OverviewPage onOpen={() => {}} onOpenProcesses={() => {}} />,
     );
 
     const offCard = screen.getByTestId("overview-card-1");
@@ -206,7 +206,7 @@ describe("OverviewPage 卡片网格", () => {
       },
     });
     const { unmount } = render(
-      <OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />,
+      <OverviewPage onOpen={() => {}} onOpenProcesses={() => {}} />,
     );
     expect(screen.getByTestId("overview-card-1").querySelector(".overview-light")?.getAttribute("data-state")).toBe("unsupported");
     expect(screen.getByTestId("overview-card-2").querySelector(".overview-light")?.getAttribute("data-state")).toBe("stopped");
@@ -229,7 +229,7 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
       monitor_enabled: true,
     }));
     useVaultStore.setState({ hosts: [off], updateHost });
-    render(<OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
+    render(<OverviewPage onOpen={() => {}} onOpenProcesses={() => {}} />);
 
     const btn = screen.getByTestId("overview-monitor-on-5");
     fireEvent.click(btn);
@@ -252,7 +252,7 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
       ],
     });
     const onOpen = vi.fn();
-    render(<OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={() => {}} />);
+    render(<OverviewPage onOpen={onOpen} onOpenProcesses={() => {}} />);
     expect(screen.getByTestId("overview-monitor-on-5")).toBeTruthy();
     expect(screen.queryByTestId("overview-monitor-on-6"), "监控面是 ssh 专属，ftp 不出开启入口").toBeNull();
     expect(screen.queryByTestId("overview-monitor-on-7"), "已开启主机非 off 态，不出开启入口").toBeNull();
@@ -275,7 +275,7 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
     });
     useMonitorStore.setState({ windows: { "pty-7": win() } });
     const onOpen = vi.fn();
-    render(<OverviewPage onClose={() => {}} onOpen={onOpen} onOpenProcesses={() => {}} />);
+    render(<OverviewPage onOpen={onOpen} onOpenProcesses={() => {}} />);
 
     expect(screen.getByTestId("overview-connect-5"), "未连接 ssh 卡出连接").toBeTruthy();
     expect(screen.queryByTestId("overview-connect-7"), "已连接卡不出连接").toBeNull();
@@ -294,7 +294,7 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
       throw new Error("vault is locked");
     });
     useVaultStore.setState({ hosts: [off], updateHost });
-    render(<OverviewPage onClose={() => {}} onOpen={() => {}} onOpenProcesses={() => {}} />);
+    render(<OverviewPage onOpen={() => {}} onOpenProcesses={() => {}} />);
 
     fireEvent.click(screen.getByTestId("overview-monitor-on-5"));
     const err = await screen.findByTestId("overview-enable-error");

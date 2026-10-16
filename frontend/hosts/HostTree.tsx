@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type Host } from "../vault/api";
 import { useVaultStore } from "../vault/store";
+import { useSessionStore } from "../session/SessionStore";
 
 /** 分组折叠记忆（2026-10-16 用户需求：分组可折叠收起/展开）：值 = 折叠键数组
  * （命名分组 = String(group.id)；未分组哨兵见下）。沿「侧栏宽度」同款
@@ -331,6 +332,25 @@ function HostItems({
   onToggle,
 }: HostItemsProps) {
   const { t } = useTranslation();
+  // 树内状态点（2026-10-16 视觉重设计 M3，报告 §4 P1「主机行状态」——仅页签
+  // 圆点显示连接态的遗留项收口）：hostId → 档位，connected 优先、其次进行中
+  // （connecting/reconnecting/waiting_host_key）；分屏 pane 不重复计。
+  const sessions = useSessionStore((s) => s.sessions);
+  const statusByHost = useMemo(() => {
+    const map = new Map<number, "connected" | "busy">();
+    for (const s of sessions) {
+      if (s.paneOf !== null) continue;
+      const prev = map.get(s.hostId);
+      if (s.status === "connected") map.set(s.hostId, "connected");
+      else if (
+        prev !== "connected" &&
+        (s.status === "connecting" || s.status === "reconnecting" || s.status === "waiting_host_key")
+      ) {
+        map.set(s.hostId, "busy");
+      }
+    }
+    return map;
+  }, [sessions]);
   return (
     <ul className="tree-hosts">
       {hosts.map((host) => {
@@ -384,6 +404,11 @@ function HostItems({
               onClick={() => onSelect(host)}
               onDoubleClick={() => onOpen(host)}
             >
+              <span
+                className="host-status-dot"
+                data-status={statusByHost.get(host.id) ?? "offline"}
+                aria-hidden
+              />
               <span className="host-name">{host.name}</span>
               {host.tags.length > 0 && (
                 <span className="host-tags">

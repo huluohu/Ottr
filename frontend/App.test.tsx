@@ -369,7 +369,7 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
 // theme-suite T1 → 2026-10-08 菜单栏启用批次：「导出主机 CSV」入口收敛到
 // 原生工具菜单（tool.export-hosts-csv → runToolAction 同一命令面）。状态条
 // 反馈（落盘路径/错误/6 秒自清）语义不变。
-describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）", () => {
+describe("App 工具菜单导出主机（2026-10-16 四格式对话框）", () => {
   // 菜单监听门卫（IS_TAURI）：jsdom 伪造运行时标记放行（先例 VaultInitGate.test）。
   beforeEach(() => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
@@ -393,7 +393,7 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
     });
   }
 
-  it("菜单动作先弹原生保存框，导出到所选路径并经 Toast 告知；6 秒后自动清除", async () => {
+  it("菜单动作打开导出对话框；CSV 导出到所选路径并经 Toast 告知；6 秒后自动清除", async () => {
     vi.useFakeTimers();
     try {
       listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
@@ -403,7 +403,12 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
       // 生效中，waitFor 的轮询定时器会被冻结——禁用 waitFor，防超时连锁）。
       await act(async () => {});
       expect(menuActionHandler).toBeTruthy();
-      act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
+      act(() => menuActionHandler!({ payload: "tool.export-hosts" }));
+      await act(async () => {});
+      // 对话框在册（四格式选单，缺省 CSV）
+      expect(screen.getByTestId("export-dialog")).toBeTruthy();
+      expect(screen.getByTestId("export-format-csv").getAttribute("aria-checked")).toBe("true");
+      fireEvent.click(screen.getByTestId("export-start"));
       // 冲刷动态 import + save + invoke promise 链（fake timers 不影响微任务）
       await act(async () => {});
       expect(saveDialog).toHaveBeenCalledWith(
@@ -426,29 +431,38 @@ describe("App 工具菜单导出主机 CSV（theme-suite T1，菜单栏入口）
     }
   });
 
-  it("保存框取消：不发起导出、无 Toast（静默返回）", async () => {
+  it("保存框取消：不发起导出、无 Toast（回到对话框选择态）", async () => {
     listMock(() => Promise.resolve("/tmp/ottr/hosts-2026.csv"));
     vi.mocked(saveDialog).mockResolvedValue(null);
     render(<App />);
     await act(async () => {});
-    act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
+    act(() => menuActionHandler!({ payload: "tool.export-hosts" }));
+    await act(async () => {});
+    expect(screen.getByTestId("export-dialog")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("export-start"));
     await act(async () => {});
     expect(mockedInvoke).not.toHaveBeenCalledWith(
       "export_hosts_csv",
       expect.anything(),
     );
+    // 取消 = 对话框回选择态（不关闭、无 toast）
+    expect(screen.getByTestId("export-dialog")).toBeTruthy();
     expect(screen.queryByTestId("toast-stack")).toBeNull();
   });
 
-  it("导出失败：同一 Toast 显示错误文本", async () => {
+  it("导出失败：对话框就地错误面 + 可重试", async () => {
     listMock(() => Promise.reject(new Error("vault locked")));
     vi.mocked(saveDialog).mockResolvedValue("/tmp/ottr/hosts-2026.csv");
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
-    act(() => menuActionHandler!({ payload: "tool.export-hosts-csv" }));
-    await waitFor(() => expect(screen.getByTestId("toast-stack")).toBeTruthy());
-    expect(screen.getByTestId("toast-stack").textContent).toContain("vault locked");
+    act(() => menuActionHandler!({ payload: "tool.export-hosts" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("export-start"));
+    await waitFor(() => expect(screen.getByTestId("export-failed")).toBeTruthy());
+    expect(screen.getByTestId("export-failed").textContent).toContain("vault locked");
+    // 重试入口在错误面同框（同一对话框内重跑，不重开菜单）
+    expect(screen.getByTestId("export-start")).toBeTruthy();
   });
 });
 ;

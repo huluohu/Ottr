@@ -1,0 +1,27 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ottr F5 TILT micro">
+  <title>F5 micro：撤涟漪与表情细节，保呆毛缺口 + 歪头不对称眼 + 头 + 水线</title>
+  <defs>
+    <linearGradient id="r_f5m" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2DD4BF"/><stop offset="1" stop-color="#0B7C6E"/>
+    </linearGradient>
+    <clipPath id="p_f5m"><rect x="16" y="16" width="480" height="480" rx="112"/></clipPath>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#r_f5m)"/>
+  <g clip-path="url(#p_f5m)">
+    <rect x="16" y="296" width="480" height="200" fill="#0B7C6E"/>
+    <rect x="16" y="296" width="480" height="200" fill="#065F55" opacity="0.5"/>
+    <rect x="118" y="200" width="40" height="96" rx="20" fill="#0F172A"/>
+    <rect x="354" y="200" width="40" height="96" rx="20" fill="#0F172A"/>
+    <path d="M 156 286 L 156 208 C 156 132 196 100 256 100 C 316 100 356 132 356 208 L 356 286 Z" fill="#0F172A"/>
+    <circle cx="182" cy="124" r="18" fill="#0F172A"/>
+    <circle cx="330" cy="124" r="18" fill="#0F172A"/>
+    <path d="M 248 108 C 242 92 244 80 258 74 C 252 86 254 96 261 104 Z" fill="#0F172A"/>
+    <rect x="180" y="214" width="152" height="50" rx="25" fill="#F6E7D4"/>
+    <rect x="228" y="204" width="56" height="26" rx="13" fill="#F59E0B"/>
+    <circle cx="210" cy="189" r="15" fill="#0F172A"/>
+    <circle cx="302" cy="184" r="15" fill="#0F172A"/>
+    <circle cx="206" cy="186" r="5" fill="#5EEAD4"/>
+    <circle cx="298" cy="181" r="5" fill="#5EEAD4"/>
+    <rect x="16" y="278" width="480" height="12" fill="#FFFFFF" opacity="0.95"/>
+  </g>
+</svg>

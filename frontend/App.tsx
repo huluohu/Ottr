@@ -11,10 +11,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sidebar } from "./app/Sidebar";
+import { IconRail } from "./app/IconRail";
 import { Toaster } from "./ui/Toaster";
+import { initRipple } from "./ui/ripple";
 import { useModalStore, type ModalId } from "./ui/modalStore";
 import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
-import { showToast } from "./ui/toastStore";
 import { runUpdateCheckToasts } from "./update/updateToasts";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
@@ -28,6 +29,7 @@ import { VaultInitGateOverlay } from "./security/VaultInitGateOverlay";
 import { syncLangFromVault, setLang, useLanguage } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
+import { ExportHostsDialog } from "./hosts/ExportHostsDialog";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
@@ -48,6 +50,8 @@ import { CommandPalette } from "./palette/CommandPalette";
 import { HistorySearch } from "./history/HistorySearch";
 import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
+import { OttyMoments } from "./ui/otty/OttyMoments";
+import { syncOttyFromVault } from "./ui/otty/ottyStore";
 // UI 批次一 Task 2/4：主区视图路由 + 右侧 dock 实体壳（workspaceStore 状态机）。
 // 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
 // 六工具面板实体渲染在 workspace/ToolDialog（2026-10-12 dock 退役改弹框）。
@@ -66,7 +70,7 @@ import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { createSplitDedupe } from "./shortcuts/splitDedupe";
 import { initAutoCheck } from "./update/autoCheck";
 import { useVaultStore } from "./vault/store";
-import { vaultApi, type Host } from "./vault/api";
+import { type Host } from "./vault/api";
 import "./theme/tokens.css";
 import "./styles/index.css";
 
@@ -94,8 +98,12 @@ type FormState = { mode: "new"; groupId: number | null } | { mode: "edit"; host:
 
 /** 左栏宽（裁定 #2：暂记 localStorage，settings 表落地后迁移）。 */
 const SIDEBAR_KEY = "ottr.layout.sidebarWidth";
+/** 主机面板折叠胶囊（2026-10-16 视觉重设计 M3 ⌘\）：同款 localStorage 口径。 */
+const SIDEBAR_COLLAPSED_KEY = "ottr.layout.sidebarCollapsed";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 560;
+/** 折叠胶囊恒定宽（可拖拽域之外；展开恢复记忆宽度）。 */
+const SIDEBAR_CAPSULE_WIDTH = 64;
 
 function clampSidebarWidth(w: number): number {
   return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
@@ -136,6 +144,8 @@ function HomeLayout() {
   const formView = useDelayedValue(form);
   const importOpen = activeModal === "importHosts";
   const importView = useDelayedUnmount(importOpen);
+  const exportOpen = activeModal === "exportHosts";
+  const exportView = useDelayedUnmount(exportOpen);
   const credentialsOpen = activeModal === "credentials";
   const credentialsView = useDelayedUnmount(credentialsOpen);
   // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认通用区。
@@ -174,6 +184,25 @@ function HomeLayout() {
     }
     return 280;
   });
+  // 折叠胶囊（⌘\，2026-10-16 M3）：折叠态恒 64px，resizer 隐藏（可拖拽域外）。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((cur) => {
+      const next = !cur;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // 持久化失败不阻塞切换
+      }
+      return next;
+    });
+  }, []);
   const resizing = useRef(false);
 
   // 新建分组信号（File 菜单/汉堡 hosts.new_group → HostTree 分组态；计数即触发）
@@ -187,7 +216,9 @@ function HomeLayout() {
    * 多入口永不分叉（用户口径：同类功能在多处必须同步）。
    * 2026-10-14 设置类收敛：mcp（单一家 = 设置页 MCP 分区）与 sync（单一家 =
    * 设置页同步分区）自工具清单退役——工具菜单不再有设置概念项，本表同步
-   * 删除对应 case（清单见 shortcuts/toolsRegistry.ts）。 */
+   * 删除对应 case（清单见 shortcuts/toolsRegistry.ts）。
+   * 2026-10-16 用户需求：导入/导出主机进工具面（原 import 只在文件菜单、
+   * export 只出 CSV）；导出升级为四格式对话框。 */
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
@@ -201,30 +232,13 @@ function HomeLayout() {
         case "overview": openOverview(); break;
         case "batch": openMainView("batch"); break;
         case "cron": openToolDialog("cron"); break;
-        case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
+        case "export-hosts": openModal("exportHosts"); break;
+        case "import-hosts": openModal("importHosts"); break;
       }
     },
-    // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定）+
-    // exportHostsCsvFromMenu（仅捕获稳定 setter），空数组无 staleness。
+    // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定），无 staleness。
     [],
   );
-
-  async function exportHostsCsvFromMenu() {
-    // 原生保存对话框选落盘路径（同 ImportDialog 的 plugin-dialog 动态引入
-    // 口径）；用户取消 = 静默返回；成功/失败经行内反馈条（6s）告知结果。
-    try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const target = await save({
-        defaultPath: "ottr-hosts.csv",
-        filters: [{ name: "CSV", extensions: ["csv"] }],
-      });
-      if (!target) return;
-      const path = await vaultApi.exportHostsCsv(target);
-      showToast(path);
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
 
   // Task 16.5 就绪门取数（仅 Tauri）：先挂事件监听、后查 vault_init_status
   // （两端夹逼无漏窗，见 VaultInitGate 模块文档）。
@@ -252,6 +266,9 @@ function HomeLayout() {
       // 自动检查更新（2026-10-13 用户需求）：vault 就绪后读 update.check_mode
       // （off 默认 / startup / interval 24h）；便携版在模块内整体禁用。
       void initAutoCheck();
+      // Otty 情感时刻开关（2026-10-16 M3）：vault 真源 ui.ottyMoments 对齐
+      // （默认开；设置页外观分区可一键关——报告红线②）。
+      void syncOttyFromVault();
       try {
         await useVaultStore.getState().refresh();
       } catch {
@@ -338,6 +355,10 @@ function HomeLayout() {
     return () => setAiSettingsOpener(null);
   }, [openSettingsToPane]);
 
+  // 涟漪反馈（2026-10-16 视觉重设计 M2）：document 级 pointerdown 委托，
+  // 目标三类见 ui/ripple.ts；卸载即解绑（App 是单例根，实际不卸）。
+  useEffect(() => initRipple(), []);
+
   // Phase 2 Task 7（B1 会话纪要）：会话收尾钩子注入——closeTab / disconnect /
   // 重连耗尽时异步生成纪要（onSessionEnded fire-and-forget，失败静默不反噬）。
   useEffect(() => {
@@ -375,6 +396,9 @@ function HomeLayout() {
           break;
         case "notify.center":
           openToolDialog("notifications");
+          break;
+        case "hosts.panelToggle":
+          toggleSidebarCollapsed();
           break;
         case "hosts.import":
           modal.open("importHosts");
@@ -426,9 +450,15 @@ function HomeLayout() {
             op: action === "view.zoomIn" ? "in" : action === "view.zoomOut" ? "out" : "reset",
           }).catch(() => {});
           break;
+        default:
+          // tool.* 工具命令（⌘K 工具组 / Win/Linux 汉堡 / 托盘同源清单）：
+          // 统一收口 runToolAction——此前未路由，两端入口是死点击（2026-10-16
+          // 用户反馈「⌘K 列表与全项目脱钩」的根因之一）。
+          if (action.startsWith("tool.")) runToolAction(action.slice("tool.".length));
+          break;
       }
     },
-    [themeMode, setMode, lang],
+    [themeMode, setMode, lang, toggleSidebarCollapsed, runToolAction],
   );
 
   // 原生菜单主题勾选跟随（2026-10-08 菜单栏启用批次）：mode 单一来源在此，
@@ -536,10 +566,19 @@ function HomeLayout() {
         />
       )}
       <div className="app-body">
-        {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树） +
-            功能导航 + 设置，单列三段式；宽度仍由 resizer 持有。 */}
+        {/* 48px 图标轨（2026-10-16 视觉重设计 M3「獭居·浮岛」）：高频入口恒驻
+            + Otty 球设置入口；mac 红绿灯随轨道移到窗口最左。 */}
+        <IconRail
+          titlebarInset={PLATFORM === "mac" && IS_TAURI}
+          onOpenCredentials={() => openModal("credentials")}
+          onOpenSettings={() => openSettingsToPane(null)}
+          onOpenMcpSettings={() => openSettingsToPane("mcp")}
+        />
+        {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树）；
+            功能导航与设置已迁图标轨（M3）。⌓\ 折叠胶囊 = 64px 恒宽。 */}
         <Sidebar
-          style={{ width: sidebarWidth }}
+          style={{ width: sidebarCollapsed ? SIDEBAR_CAPSULE_WIDTH : sidebarWidth }}
+          collapsed={sidebarCollapsed}
           titlebarInset={PLATFORM === "mac" && IS_TAURI}
           newGroupSignal={newGroupSignal}
           selectedId={selectedId}
@@ -554,18 +593,17 @@ function HomeLayout() {
             openModal("hostForm");
           }}
           onQuickConnect={() => openModal("palette")}
-          onOpenCredentials={() => openModal("credentials")}
           onNewGroup={() => setNewGroupSignal((n) => n + 1)}
-          onOpenSettings={() => openSettingsToPane(null)}
-          onOpenMcpSettings={() => openSettingsToPane("mcp")}
         />
-        <div
-          className="sidebar-resizer"
-          role="separator"
-          aria-orientation="vertical"
-          onPointerDown={startResize}
-          data-testid="sidebar-resizer"
-        />
+        {!sidebarCollapsed && (
+          <div
+            className="sidebar-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            onPointerDown={startResize}
+            data-testid="sidebar-resizer"
+          />
+        )}
         {/* 主区视图路由（UI 批次一 Task 2）：mainView 状态机五视图切换；终端
             隐藏常驻不变量在 MainArea 内执行（非 terminal 视图 visibility 隐藏，
             运行中会话不卸载）。 */}
@@ -588,6 +626,9 @@ function HomeLayout() {
       </div>
       {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
       <Toaster />
+      {/* Otty 情感时刻覆盖层（2026-10-16 M3）：连接/传输/解锁/更新四瞬间，
+          单槽队列 + 开关可关（ui/otty）；pointer-events:none 不挡交互。 */}
+      <OttyMoments />
 
       {/* 弹窗渲染门（modalStore 单实例，2026-10-14 用户裁定）：open 态 =
           owned(id)；`|| (closing && activeModal === null)` = 正常关闭播完
@@ -605,6 +646,11 @@ function HomeLayout() {
       )}
       {importView.shouldRender && (importOpen || (importView.closing && activeModal === null)) && (
         <ImportDialog closing={importView.closing} onClose={() => closeModal("importHosts")} />
+      )}
+      {/* 导出主机对话框（2026-10-16 四格式：CSV/Tabby JSON/Xshell 目录/OpenSSH
+          config）；结果经 toast（成功落盘路径 / 个数），失败就地重试。 */}
+      {exportView.shouldRender && (exportOpen || (exportView.closing && activeModal === null)) && (
+        <ExportHostsDialog closing={exportView.closing} onClose={() => closeModal("exportHosts")} />
       )}
       {credentialsView.shouldRender &&
         (credentialsOpen || (credentialsView.closing && activeModal === null)) && (

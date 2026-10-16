@@ -155,6 +155,50 @@ button[data-active="true"] {
   border-color: var(--color-accent-border);
   color: var(--color-accent-text);
 }
+/* 涟漪反馈（2026-10-16 视觉重设计 M2）：水品牌的按压反馈，叠加既有 scale
+ * 按压态。目标三类与 ui/ripple.ts RIPPLE_TARGET 同源同词（改一处必改两处）：
+ * 主按钮涟漪 = on-accent 色（实底上的白/墨随主题），行/次级 = accent 半透明；
+ * 圆心取真实触点（--ripple-x/y 由 ripple.ts 写入）。overflow:hidden 只服务
+ * 涟漪裁切——host-confirm 等行内浮层是 .host-row 的兄弟节点，不受裁。 */
+:is(.btn-accent, .host-row, .sidebar-flyout button) {
+  position: relative;
+  overflow: hidden;
+}
+:is(.btn-accent, .host-row, .sidebar-flyout button)::after {
+  content: "";
+  position: absolute;
+  left: var(--ripple-x, 50%);
+  top: var(--ripple-y, 50%);
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  background: color-mix(in srgb, var(--color-accent-border) 38%, transparent);
+  transform: scale(0);
+}
+.btn-accent::after {
+  background: color-mix(in srgb, var(--color-on-accent) 42%, transparent);
+}
+:is(.btn-accent, .host-row, .sidebar-flyout button).rippling::after {
+  animation: ripple-in var(--dur-ripple) var(--ease-out);
+}
+/* 列表行/次级用半程软档（后置覆写同特异性获胜）。 */
+.host-row.rippling::after,
+.sidebar-flyout button.rippling::after {
+  animation-duration: var(--dur-ripple-soft);
+}
+@keyframes ripple-in {
+  0% {
+    opacity: 0.9;
+    transform: scale(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(16);
+  }
+}
 /* 键盘焦点环（2026-10-10 原生一致性）：所有控件可见焦点态，
    与 macOS 系统焦点圈同构（accent 描边 35% 三环）。 */
 button:focus-visible,
@@ -254,6 +298,10 @@ textarea:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* 涟漪是纯装饰反馈（非理解性）：弱动效偏好下整体消失，不留残点。 */
+  :is(.btn-accent, .host-row, .sidebar-flyout button)::after {
+    display: none;
   }
 }
 /* 弱透明度偏好（评审 P1-12）：遮罩改近实底面板色，不透出下层内容。 */

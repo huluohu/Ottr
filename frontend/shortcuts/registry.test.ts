@@ -196,6 +196,20 @@ describe("终端聚焦守卫（matchActionEvent inTerminal）", () => {
     );
   });
 
+  it("Shift+符号键移位字形归一：Ctrl+Shift+|（Shift+\\ 的 e.key 产出）命中 hosts.panelToggle（真机 E2E 2026-10-16 实证回归）", () => {
+    // US 布局按 Ctrl+Shift+\ 实际产出的 e.key = "|"
+    expect(
+      matchActionEvent(keyEvent({ key: "|", ctrlKey: true, shiftKey: true }), "linux", true),
+    ).toBe("hosts.panelToggle");
+    expect(
+      matchActionEvent(keyEvent({ key: "|", ctrlKey: true, shiftKey: true }), "win", false),
+    ).toBe("hosts.panelToggle");
+    // mac ⌘\（无 Shift 移位问题）照常
+    expect(matchActionEvent(keyEvent({ key: "\\", metaKey: true }), "mac", false)).toBe(
+      "hosts.panelToggle",
+    );
+  });
+
   it("T15：⌘R/Ctrl+R（history.search）终端内放行 PTY，终端外命中面板", () => {
     // 终端内 Ctrl+R 是 shell 反向搜索：非 terminalSafe → null（不拦截不
     // preventDefault，击键原样到 shell）——三平台全一致

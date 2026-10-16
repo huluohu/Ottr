@@ -63,7 +63,7 @@ describe("渲染（空查询）", () => {
     expect(screen.queryByTestId("command-palette")).toBeNull();
   });
 
-  it("命令区（registry 全表 + 工具组 10 项）+ 主机区，键位提示为 Ctrl 系", () => {
+  it("命令区（registry 全表 + 工具组 12 项）+ 主机区，键位提示为 Ctrl 系", () => {
     const { items } = renderPalette();
     expect(screen.getByText("命令面板")).toBeTruthy();
     expect(screen.getByText("新建主机")).toBeTruthy();
@@ -76,8 +76,8 @@ describe("渲染（空查询）", () => {
     // 组节头（连接与会话等）承载结构；主机区头仍在。
     expect(screen.queryByText("命令")).toBeNull();
     expect(screen.getByText("主机")).toBeTruthy();
-    // Phase 2 B1（Task 6）：⌘K 面板的「NL 命令」条目（registry ai.nl2cmd）
-    expect(screen.getByText("NL 命令")).toBeTruthy();
+    // ⌘K 面板的 AI 生成命令条目（registry ai.nl2cmd；2026-10-16 文案通俗化）
+    expect(screen.getByText("AI 生成命令")).toBeTruthy();
     expect(screen.getByText("Ctrl+J")).toBeTruthy();
     expect(items().length).toBe(ACTIONS.length + FEATURE_COMMANDS.length + 2);
   });
@@ -107,7 +107,7 @@ describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", ()
     const importIdx = groupOf("导入主机");
     expect(importIdx).toBeGreaterThan(-1);
     // 系统组（设置）必须在连接组全部条目之后
-    expect(groupOf("设置")).toBeGreaterThan(groupOf("NL 命令"));
+    expect(groupOf("设置")).toBeGreaterThan(groupOf("AI 生成命令"));
     expect(newHostIdx).toBeGreaterThan(-1);
   });
 

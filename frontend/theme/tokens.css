@@ -68,6 +68,15 @@
   --dur-loop-blink: 4.4s;  /* 眨眼循环（与呼吸错拍） */
   --dur-loop-tap: 3.6s;    /* 扒沿爪轻拍/头顶草叶摇摆循环 */
   --ease-soft: ease-in-out; /* 往复循环的对称缓动（呼吸/摇摆类） */
+  /* 水系动效（2026-10-16 视觉重设计 M2「造浪」）：既有 token 全保留，只增不改。
+   * ease-float = 一切浮层入场（比 ease-out 多一点「浮起来」回弹）；
+   * ease-drift = 漂浮/呼吸循环（sin 对称近似，与 ease-soft 同族离散档）；
+   * 涟漪两档时长（主按钮/列表行）。 */
+  --ease-float: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-drift: cubic-bezier(0.45, 0, 0.55, 1);
+  --dur-ripple: 240ms;      /* 涟漪一圈（主按钮） */
+  --dur-ripple-soft: 200ms; /* 涟漪（列表行/次级按钮） */
+  --dur-otty-moment: 2.4s;  /* Otty 情感时刻单次在场（ui/otty OTTY_MOMENT_MS 同值，改两处同步） */
   --toast-ttl: 6s; /* 与 ui/toastStore.ts TOAST_TTL_MS 同源（进度条时长） */
   --toast-ttl-action: 15s; /* 操作型 toast（带按钮的决策窗）；29-toast 覆写用 */
   /* 阴影三级（评审 P0-1/P2-15）：黑基不随主题前景翻转（原 --shadow-overlay

@@ -50,6 +50,116 @@ fn csv_field(v: &str) -> String {
     }
 }
 
+// --- 多格式导出（2026-10-16 用户需求：导出对齐导入四类型）-------------------
+// Tabby JSON / Xshell 会话目录 / OpenSSH config 三格式与对应导入器解析面对表，
+// 与 CSV 同一口径：**只出元数据，不出凭据**（秘密不出库）。
+
+use crate::entities::HostProtocol;
+
+/// SSH 域主机过滤：Tabby/Xshell/OpenSSH 三格式是 SSH 生态，FTP/FTPS 不进
+/// （对应导入器同样只收 SSH）。
+fn ssh_hosts(vault: &Vault) -> Result<Vec<crate::entities::Host>> {
+    Ok(Hosts::list(vault)?
+        .into_iter()
+        .filter(|h| h.protocol == HostProtocol::Ssh)
+        .collect())
+}
+
+/// Tabby 配置 JSON（`{"profiles":[…]}`）。字段与 `importers::tabby` 解析面对表：
+/// name / type("ssh") / host / port / user（可空省略）；serde_json 端到端转义。
+pub fn tabby_json(vault: &Vault) -> Result<String> {
+    #[derive(serde::Serialize)]
+    struct Profile<'a> {
+        name: &'a str,
+        #[serde(rename = "type")]
+        kind: &'static str,
+        host: &'a str,
+        port: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        user: Option<&'a str>,
+    }
+    #[derive(serde::Serialize)]
+    struct Doc<'a> {
+        profiles: Vec<Profile<'a>>,
+    }
+    let hosts = ssh_hosts(vault)?;
+    let profiles = hosts
+        .iter()
+        .map(|h| Profile {
+            name: h.name.as_str(),
+            kind: "ssh",
+            host: h.address.as_str(),
+            port: h.port,
+            user: h.username.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let doc = Doc { profiles };
+    Ok(serde_json::to_string_pretty(&doc)?)
+}
+
+/// OpenSSH config 文本：每主机一个 Host 块（HostName/User/Port）。别名 = 主机
+/// 名（OpenSSH pattern 不容空白，空白替换为 `-`）；分组/标签以注释行保留上下文。
+pub fn ssh_config_text(vault: &Vault) -> Result<String> {
+    let groups: HashMap<i64, String> = HostGroups::list(vault)?
+        .into_iter()
+        .map(|g| (g.id, g.name))
+        .collect();
+    let mut out = String::from("# Exported from Ottr — OpenSSH compatible host entries\n");
+    for h in ssh_hosts(vault)? {
+        let alias = h.name.replace([' ', '\t'], "-");
+        let group = h
+            .group_id
+            .and_then(|id| groups.get(&id))
+            .map(String::as_str)
+            .unwrap_or("");
+        out.push_str(&format!(
+            "\n# {group}\nHost {alias}\n  HostName {}\n",
+            h.address
+        ));
+        if let Some(user) = h.username.as_deref().filter(|u| !u.is_empty()) {
+            out.push_str(&format!("  User {user}\n"));
+        }
+        out.push_str(&format!("  Port {}\n", h.port));
+    }
+    Ok(out)
+}
+
+/// Xshell 会话条目（每主机一个 .xsh）：返回 `(文件名, 内容)`；键面与
+/// `importers::xshell` 解析面对表（description/host/port/username 跨 section
+/// 大小写不敏感）。INI 是 Windows 血统：CRLF 行尾，UTF-8 BOM 由落盘方统一加。
+/// 文件名 sanitize：Windows 文件名保留字符与首尾空白替换为 `_`，防落盘失败。
+pub fn xshell_sessions(vault: &Vault) -> Result<Vec<(String, String)>> {
+    fn safe_name(name: &str) -> String {
+        let cleaned: String = name
+            .chars()
+            .map(|c| match c {
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+                _ => c,
+            })
+            .collect();
+        let trimmed = cleaned.trim();
+        if trimmed.is_empty() {
+            "_".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+    let mut out = Vec::new();
+    for h in ssh_hosts(vault)? {
+        let name = safe_name(&h.name);
+        let content = format!(
+            "[{}]\r\ndescription={}\r\nhost={}\r\nport={}\r\nprotocol=SSH\r\nusername={}\r\n",
+            name,
+            h.name,
+            h.address,
+            h.port,
+            h.username.as_deref().unwrap_or_default(),
+        );
+        out.push((format!("{name}.xsh"), content));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     /// 转义纯函数直测面（集成测试经 `hosts_csv` 间接覆盖行级转义）。

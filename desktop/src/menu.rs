@@ -214,16 +214,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "theme_light" => {
             if zh {
-                "亮色"
+                "浅滩"
             } else {
-                "Light"
+                "Shallows"
             }
         }
         "theme_dark" => {
             if zh {
-                "暗色"
+                "深河"
             } else {
-                "Dark"
+                "Deep Water"
             }
         }
         "theme_system" => {
@@ -235,30 +235,30 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "theme_oled" => {
             if zh {
-                "曜黑"
+                "深渊"
             } else {
-                "Dark OLED"
+                "Abyss"
             }
         }
         "theme_amethyst" => {
             if zh {
-                "幻紫"
+                "夜光河"
             } else {
-                "Amethyst"
+                "Bio River"
             }
         }
         "theme_verdant" => {
             if zh {
-                "青野"
+                "溪岸"
             } else {
-                "Verdant"
+                "Riverside"
             }
         }
         "theme_glass" => {
             if zh {
-                "雾镜"
+                "雨窗"
             } else {
-                "Frosted Glass"
+                "Rain Glass"
             }
         }
         "tools" => {
@@ -338,11 +338,11 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Scheduled Tasks"
             }
         }
-        "tool_export_csv" => {
+        "tool_export_hosts" => {
             if zh {
-                "导出主机 CSV…"
+                "导出主机…"
             } else {
-                "Export Hosts CSV…"
+                "Export Hosts…"
             }
         }
         "update_check" => {
@@ -415,7 +415,7 @@ pub enum MenuNode {
 /// 「跟随系统」首位（2026-10-14 用户反馈）：与设置网格/侧栏快切菜单一致——
 /// 系统推荐的缺省档排第一，具体主题跟在后。
 pub const THEME_IDS: [&str; 7] = [
-    "system", "light", "dark", "oled", "amethyst", "verdant", "glass",
+    "system", "light", "verdant", "dark", "oled", "amethyst", "glass",
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
@@ -424,7 +424,7 @@ pub const THEME_IDS: [&str; 7] = [
 /// 同批删除，13 → 11 项）。2026-10-16：overview 迁「视图」菜单首项（主区视图
 /// 归位，用户裁定）——**键保留在本表**（分派校验按 id 前缀不按所在菜单），
 /// 仅不再渲染进工具子菜单（镜像测试按 OVERVIEW_VIEW_MENU 标记排除）。
-pub const TOOL_KEYS: [&str; 11] = [
+pub const TOOL_KEYS: [&str; 12] = [
     "cron",
     "alerts",
     "monitor",
@@ -435,7 +435,8 @@ pub const TOOL_KEYS: [&str; 11] = [
     "credentials",
     "overview",
     "batch",
-    "export-hosts-csv",
+    "import-hosts",
+    "export-hosts",
 ];
 
 /// 已迁出工具菜单、改挂「视图」菜单首项的 key（2026-10-16）：镜像测试与
@@ -530,7 +531,9 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Sep,
                 // 主题七选子菜单（2026-10-08 菜单栏启用批次）：与顶栏快切/
                 // 设置网格同源同词；勾选态经 menu_set_theme 跟随前端 mode。
-                // 「跟随系统」首位（2026-10-14 用户反馈，与 THEME_IDS 同序）。
+                // 「跟随系统」首位（2026-10-14 用户反馈，与 THEME_IDS 同序）；
+                // 2026-10-16 水域家族更名 + 光量降序（浅滩→溪岸→深河→深渊→
+                // 夜光河→雨窗），action id 不变。
                 MenuNode::Sub {
                     label: text(lang, "theme"),
                     items: vec![
@@ -543,6 +546,10 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                             label: text(lang, "theme_light"),
                         },
                         MenuNode::Check {
+                            id: "theme.set.verdant",
+                            label: text(lang, "theme_verdant"),
+                        },
+                        MenuNode::Check {
                             id: "theme.set.dark",
                             label: text(lang, "theme_dark"),
                         },
@@ -553,10 +560,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                         MenuNode::Check {
                             id: "theme.set.amethyst",
                             label: text(lang, "theme_amethyst"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.verdant",
-                            label: text(lang, "theme_verdant"),
                         },
                         MenuNode::Check {
                             id: "theme.set.glass",
@@ -639,8 +642,13 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     accelerator: None,
                 },
                 MenuNode::Item {
-                    id: "tool.export-hosts-csv",
-                    label: text(lang, "tool_export_csv"),
+                    id: "tool.import-hosts",
+                    label: text(lang, "import_host"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.export-hosts",
+                    label: text(lang, "tool_export_hosts"),
                     accelerator: None,
                 },
             ],

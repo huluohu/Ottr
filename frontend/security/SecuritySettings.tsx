@@ -20,6 +20,7 @@ import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang } from "../i18n";
 import { Switch } from "../ui/Switch";
+import { setOttyEnabled, useOttyStore } from "../ui/otty/ottyStore";
 import { loadTerminalSettings, saveTerminalSettings } from "../terminal/ContextMenu";
 import { useEscClose } from "../ui/useEscClose";
 import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
@@ -68,7 +69,7 @@ const FONT_CHOICES = ["Menlo", "Monaco", "SF Mono", "JetBrains Mono", "Fira Code
 // 终端字号候选（pt）
 const FONT_SIZE_CHOICES = [10, 11, 12, 13, 14, 16, 18, 20] as const;
 // theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
-const THEME_CHOICES: ThemeMode[] = ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"];
+const THEME_CHOICES: ThemeMode[] = ["system", "light", "verdant", "dark", "oled", "amethyst", "glass"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 
 // 2026-10-09 设置页交互重构：左侧分区导航 + 右侧内容面板（原单列长滚动、
@@ -197,6 +198,10 @@ export function SecuritySettings({
     setHostkeyAuditRunning(false);
   }, []);
   const [sudoAutofill, setSudoAutofill] = useState<boolean | null>(null);
+  // Otty 情感时刻开关（2026-10-16 视觉重设计 M3，报告红线②「默认开但必须
+  // 可一键关」）：null = 读取中；镜像面 = ui/otty ottyStore（syncOttyFromVault
+  // 启动对齐），此处三态直读 store——设置页与运行面永不分叉。
+  const ottyEnabled = useOttyStore((s) => s.enabled);
   const [sudoConfirm, setSudoConfirm] = useState(false);
   const sudoConfirmRef = useRef<HTMLDivElement | null>(null);
   // 确认框可见性（2026-10-15 用户反馈「点击无反应」事故）：开关在长滚动页
@@ -900,9 +905,28 @@ export function SecuritySettings({
               </button>
             ))}
           </div>
-          {/* 幻紫/雾镜同为紫调暗色主题，选择卡看不出差别（2026-10-13 用户问询）：
-              网格下一行说明差异本体（实色 vs 真透明）。 */}
+          {/* 幻紫/雾镜（今夜光河/雨窗）同为暗色主题，选择卡看不出差别（2026-10-13
+              用户问询）：网格下一行说明差异本体（实色 vs 真透明）。 */}
           <p className="settings-hint">{t("settings.themeAmethystGlassHint")}</p>
+          {/* 水域家族更名映射提示（2026-10-16 视觉重设计）：旧名 → 新名 90 天
+              过渡（至 2027-01-14 后移除本行与 settings.themeRenameHint 双语键）。 */}
+          <p className="settings-hint" data-testid="theme-rename-hint">
+            {t("settings.themeRenameHint")}
+          </p>
+          {/* Otty 情感时刻开关（2026-10-16 M3，报告红线②：默认开但必须可一键关）。
+              div 包行沿 2026-10-16 用户反馈口径（label 包行命中面过大），可访问名
+              走 Switch label prop；镜像面 = ottyStore，vault 真源由 setOttyEnabled
+              异步落库（失败不回滚镜像，与 ui.theme 同口径）。 */}
+          <div className="settings-row" data-testid="otty-moments-row">
+            <span className="settings-label">{t("settings.ottyMoments")}</span>
+            <Switch
+              testid="otty-moments-toggle"
+              label={t("settings.ottyMoments")}
+              checked={ottyEnabled}
+              onChange={(e) => setOttyEnabled(e.currentTarget.checked)}
+            />
+          </div>
+          <p className="settings-hint">{t("settings.ottyMomentsHint")}</p>
           {/* --- 终端配色（B2 主题生态，Phase 2 Task 9）：auto 跟随界面 /
               内置画廊 / 自定义（iTerm2 .itermcolors 与 Windows Terminal .json
               导入，vault settings 持久化）--- */}

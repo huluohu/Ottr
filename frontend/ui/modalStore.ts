@@ -24,6 +24,7 @@ import { create } from "zustand";
 export type ModalId =
   | "hostForm"
   | "importHosts"
+  | "exportHosts"
   | "credentials"
   | "settings"
   | "sync"

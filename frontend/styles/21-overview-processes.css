@@ -49,6 +49,9 @@
 .overview-light[data-state="live"] {
   background: var(--color-success);
   border-color: var(--color-success);
+  /* 水滴语言同步（2026-10-16 M2）：live = 采样进行中，呼吸即「活着」；
+   * keyframes 与页签连接中同一组（13-terminal-tabs.css 定义）。 */
+  animation: dot-breathe var(--dur-loop-idle) var(--ease-drift) infinite;
 }
 .overview-light[data-state="unsupported"] {
   background: var(--color-warning);

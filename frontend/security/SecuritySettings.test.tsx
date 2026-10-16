@@ -632,14 +632,21 @@ describe("SecuritySettings 主题网格（theme-suite T2）", () => {
     localStorage.removeItem("ottr.settings.theme");
   });
 
-  it("主题名走 settings.themes.* 词典：中文环境显示「曜黑/青野/雾镜」（两字意象名）", async () => {
+  it("主题名走 settings.themes.* 词典：中文环境显示水域家族新名「深渊/溪岸/雨窗」（2026-10-16 更名）", async () => {
     seedMode("keyring");
     renderDialog();
     const grid = screen.getByTestId("theme-grid");
-    expect(grid.textContent).toContain("曜黑");
-    expect(grid.textContent).toContain("青野");
-    expect(grid.textContent).toContain("雾镜");
+    expect(grid.textContent).toContain("深渊");
+    expect(grid.textContent).toContain("溪岸");
+    expect(grid.textContent).toContain("雨窗");
     expect(grid.textContent).toContain("跟随系统");
+  });
+
+  it("水域家族更名映射提示：网格下方渲染旧名 → 新名（90 天过渡，2027-01-14 移除）", async () => {
+    seedMode("keyring");
+    renderDialog();
+    expect(screen.getByTestId("theme-rename-hint").textContent).toContain("原亮色");
+    expect(screen.getByTestId("theme-rename-hint").textContent).toContain("原雾镜");
   });
 
   it("迷你色板预览条：每卡 4 个色块（纯 CSS，aria-hidden）", async () => {

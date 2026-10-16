@@ -171,11 +171,9 @@
   stroke: var(--border-subtle);
   stroke-width: 1;
 }
+/* v6 定稿（C2-F5）：头/耳/爪 = 墨色（旧棕毛画法退役） */
 .ottr-fur {
-  fill: var(--ottr-fur-600);
-}
-.ottr-fur-dark {
-  fill: var(--ottr-fur-800);
+  fill: var(--ottr-ink-900);
 }
 .ottr-cream {
   fill: var(--ottr-cream-100);
@@ -186,6 +184,9 @@
 .ottr-glint {
   fill: var(--ottr-cream-100);
   opacity: 0.9;
+}
+.otter-nose {
+  fill: var(--ottr-amber-500);
 }
 .otter-blush {
   fill: var(--ottr-amber-500);
@@ -199,13 +200,6 @@
   stroke-linecap: round;
   opacity: 0.55;
 }
-.otter-whiskers path {
-  fill: none;
-  stroke: var(--ottr-ink-900);
-  stroke-width: 1;
-  stroke-linecap: round;
-  opacity: 0.3;
-}
 .otter-leaf-stem {
   fill: none;
   stroke: var(--color-success);
@@ -218,10 +212,10 @@
 }
 .otter-paw-line {
   fill: none;
-  stroke: var(--ottr-fur-800);
+  stroke: var(--ottr-cream-100);
   stroke-width: 1.2;
   stroke-linecap: round;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 /* 设置对话框（2026-10-09 交互重构）：左侧分区导航 + 右侧内容面板——四段

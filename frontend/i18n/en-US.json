@@ -61,18 +61,21 @@
     "sectionSync": "Sync",
     "themes": {
       "system": "System",
-      "light": "Light",
-      "dark": "Dark",
-      "oled": "Dark OLED",
-      "amethyst": "Amethyst",
-      "verdant": "Verdant",
-      "glass": "Frosted Glass"
+      "light": "Shallows",
+      "dark": "Deep Water",
+      "oled": "Abyss",
+      "amethyst": "Bio River",
+      "verdant": "Riverside",
+      "glass": "Rain Glass"
     },
-    "themeAmethystGlassHint": "Amethyst is a saturated violet opaque dark theme; Frosted Glass is a cool icy-blue theme whose translucent background shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",
+    "themeAmethystGlassHint": "Bio River is a saturated violet opaque dark theme; Rain Glass is a cool icy-blue theme whose translucent background shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",
+    "themeRenameHint": "Themes renamed (water family): Shallows (formerly Light) · Riverside (formerly Verdant) · Deep Water (formerly Dark) · Abyss (formerly OLED) · Bio River (formerly Amethyst) · Rain Glass (formerly Frosted Glass).",
     "terminalFont": "Terminal font",
     "terminalFontDefault": "System default",
     "terminalFontSize": "Terminal size",
-    "terminalFontSizePt": "{{n}} pt"
+    "terminalFontSizePt": "{{n}} pt",
+    "ottyMoments": "Otty moments",
+    "ottyMomentsHint": "Small animations when a connection succeeds, a transfer finishes, the vault unlocks, or an update is ready (on by default; turn off for a purely utilitarian interface)."
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -143,7 +146,7 @@
     "exportCsv": "Export CSV"
   },
   "importDialog": {
-    "title": "Import Host Configuration",
+    "title": "Import Hosts",
     "intro": "Parse an ssh config and import hosts: wildcard patterns are skipped, entries matching an existing host by address/port/user are deduplicated.",
     "running": "Parsing and importing…",
     "start": "Start import",
@@ -177,8 +180,9 @@
     "group_tools": "Tools",
     "group_system": "System",
     "newHost": "New Host",
-    "themeToggle": "Toggle Theme (Light / Dark / System)",
+    "themeToggle": "Toggle Theme",
     "langToggle": "Toggle Language (中文 / English)",
+    "sidebarCollapse": "Collapse/Expand Host Panel (⌘\\)",
     "quit": "Quit Ottr"
   },
   "history": {
@@ -436,7 +440,7 @@
       "explainTarget": "Explain this terminal content"
     },
     "nl2cmd": {
-      "title": "NL command",
+      "title": "AI Command",
       "placeholder": "Describe what you want in plain language, press Enter to generate…",
       "run": "Generate",
       "history": "Recent",
@@ -1268,6 +1272,28 @@
     "search": "Search"
   },
   "tools": {
-    "exportHostsCsv": "Export Hosts CSV…"
+    "exportHosts": "Export Hosts…"
+  },
+  "otty": {
+    "connect": "Connected — swim on!"
+  },
+  "exportDialog": {
+    "title": "Export Hosts",
+    "intro": "Pick an export format. All formats contain host metadata only (name, address, port, user, …) — credentials and secrets are never exported.",
+    "format": "Export format",
+    "formatCsv": "CSV",
+    "formatTabby": "Tabby (JSON)",
+    "formatXshell": "Xshell session folder",
+    "formatSshconfig": "OpenSSH config",
+    "csvIntro": "Universal spreadsheet format (8 columns); round-trips between Ottr and other tools.",
+    "tabbyIntro": "A Tabby-style profiles JSON you can merge straight into Tabby's config file.",
+    "xshellIntro": "One .xsh session file per host, written to the folder you pick — Xshell opens them directly.",
+    "sshconfigIntro": "Standard OpenSSH Host blocks; merge into ~/.ssh/config or use via Include.",
+    "pickFolder": "Choose export folder",
+    "start": "Export",
+    "running": "Exporting…",
+    "failed": "Export failed: {{message}}",
+    "donePath": "Exported: {{path}}",
+    "doneCount": "Exported {{count}} session files to {{path}}"
   }
 }

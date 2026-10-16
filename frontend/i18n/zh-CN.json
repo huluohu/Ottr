@@ -73,7 +73,9 @@
     "terminalFont": "终端字体",
     "terminalFontDefault": "系统默认",
     "terminalFontSize": "终端字号",
-    "terminalFontSizePt": "{{n}} pt"
+    "terminalFontSizePt": "{{n}} pt",
+    "ottyMoments": "Otty 情感时刻",
+    "ottyMomentsHint": "连接成功、传输完成、解锁、更新就绪时的小动画（默认开；关掉即回归纯工具界面）。"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -1270,5 +1272,8 @@
   },
   "tools": {
     "exportHostsCsv": "导出主机 CSV…"
+  },
+  "otty": {
+    "connect": "连上了，开游！"
   }
 }

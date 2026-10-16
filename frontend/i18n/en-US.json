@@ -73,7 +73,9 @@
     "terminalFont": "Terminal font",
     "terminalFontDefault": "System default",
     "terminalFontSize": "Terminal size",
-    "terminalFontSizePt": "{{n}} pt"
+    "terminalFontSizePt": "{{n}} pt",
+    "ottyMoments": "Otty moments",
+    "ottyMomentsHint": "Small animations when a connection succeeds, a transfer finishes, the vault unlocks, or an update is ready (on by default; turn off for a purely utilitarian interface)."
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -1271,5 +1273,8 @@
   },
   "tools": {
     "exportHostsCsv": "Export Hosts CSV…"
+  },
+  "otty": {
+    "connect": "Connected — swim on!"
   }
 }

@@ -1,0 +1,207 @@
+/* --- Otty 情感时刻（2026-10-16 视觉重设计 M3「疏渠」，报告 §5 提案 3）---
+ * 四时刻：连接成功（探头划水）/ 传输完成（星光滑行）/ 解锁成功（草叶飘落）/
+ * 更新就绪（冲浪板滑过）。同一时刻最多一个在场（ottyStore 单槽 + 队列）；
+ * 时长恒 --dur-otty-moment（tokens.css），循环/漂浮用 --dur-loop-idle +
+ * --ease-drift；开关关/弱动效偏好下 ottyStore.play 直接跳过（JS 门）。
+ * 配色 = 品牌保留色 token（brand.md 三色分工：Otty 在场必有 Amber 奖赏）。 */
+
+/* 品牌色板 class（SVG fill 专用；LockOtter 同纪律：token 引用不写死色值） */
+.otty-c-ink {
+  fill: var(--ottr-ink-900);
+}
+.otty-c-cream {
+  fill: var(--ottr-cream-100);
+}
+.otty-c-fur {
+  fill: var(--ottr-fur-600);
+}
+.otty-c-amber {
+  fill: var(--ottr-amber-500);
+}
+.otty-c-teal {
+  fill: var(--ottr-teal-300);
+}
+.otty-c-leaf {
+  fill: var(--color-success);
+}
+
+.otty-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-toast); /* 与 toast 同层：装饰性奖赏，不盖锁屏/弹窗语义 */
+  pointer-events: none;
+  overflow: hidden;
+}
+.otty-scene {
+  position: absolute;
+  animation: otty-moment var(--dur-otty-moment) var(--ease-float) both;
+}
+@keyframes otty-moment {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 共用：随波摇摆（漂浮呼吸） */
+.otty-bob {
+  animation: otty-bob var(--dur-loop-idle) var(--ease-drift) infinite;
+}
+@keyframes otty-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+/* ① 连接成功：终端右下角探头划水 + 爪子打招呼 + Amber 星点 */
+.otty-connect {
+  right: var(--space-5);
+  bottom: var(--space-5);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  animation-name: otty-peek;
+}
+@keyframes otty-peek {
+  0% {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+  18% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  82% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+}
+.otty-connect .otty-bob {
+  position: relative;
+}
+.otty-paw {
+  position: absolute;
+  top: -10px;
+  right: -4px;
+  transform-origin: bottom center;
+  animation: otty-wave calc(var(--dur-loop-idle) / 4) var(--ease-drift) infinite;
+}
+@keyframes otty-wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-24deg);
+  }
+}
+.otty-spark {
+  position: absolute;
+  top: -14px;
+  left: -10px;
+}
+.otty-caption {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-overlay);
+  color: var(--color-accent-text);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  margin-bottom: var(--space-2);
+}
+
+/* ② 传输完成：星光沿底沿左→右滑行，Amber 光晕尾 */
+.otty-transfer {
+  left: 0;
+  right: 0;
+  bottom: var(--space-2);
+  animation-name: otty-moment;
+}
+.otty-star {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--ottr-amber-500) 55%, transparent));
+  animation: otty-cross var(--dur-otty-moment) linear both;
+}
+@keyframes otty-cross {
+  from {
+    transform: translateX(-40px);
+  }
+  to {
+    transform: translateX(calc(100vw + 40px));
+  }
+}
+
+/* ③ 解锁成功：草叶从顶沿飘落（摆动下坠），Otty 屏角仰头（淡入） */
+.otty-unlock {
+  inset: 0;
+  animation-name: otty-moment;
+}
+.otty-leaf {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  animation: otty-fall var(--dur-otty-moment) var(--ease-drift) both;
+}
+@keyframes otty-fall {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-40px) rotate(-30deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(58vh) rotate(24deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(62vh) rotate(30deg);
+  }
+}
+.otty-unlock-face {
+  position: absolute;
+  left: var(--space-5);
+  bottom: var(--space-5);
+}
+
+/* ④ 更新就绪：冲浪板沿顶沿滑过（左→右 + 随浪摇摆） */
+.otty-update {
+  left: 0;
+  right: 0;
+  top: var(--space-4);
+  animation-name: otty-moment;
+}
+.otty-surf-bob {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  animation: otty-cross var(--dur-otty-moment) linear both;
+}
+.otty-surf-bob .otty-board {
+  margin-left: -14px;
+}
+
+/* 弱动效偏好：整层不渲染级别的静帧兜底（ottyStore.play 已 JS 跳过，此处
+ * 双保险防时序缝隙）——动画趋零即停在终态（opacity 0），视觉等同消失。 */

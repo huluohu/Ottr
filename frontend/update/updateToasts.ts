@@ -27,6 +27,11 @@ let availableToastId: number | null = null;
 /** 「发现新版本」toast（手动/自动两条路径共用）：内嵌「下载并安装」，15s 决策窗。 */
 function availableToast(version: string): void {
   const t = i18n.t.bind(i18n);
+  // Otty 时刻④「更新就绪」（2026-10-16 M3）：冲浪板滑过顶沿——奖赏瞬间与
+  // 决策窗同点触发；开关关/弱动效下 play 内部直接跳过。
+  void import("../ui/otty/ottyStore").then(({ useOttyStore }) =>
+    useOttyStore.getState().play("update"),
+  );
   availableToastId = showToast(t("update.available", { version }), "info", {
     label: t("update.downloadInstall"),
     run: startInstallToasts,

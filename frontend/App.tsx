@@ -50,6 +50,8 @@ import { CommandPalette } from "./palette/CommandPalette";
 import { HistorySearch } from "./history/HistorySearch";
 import { stripPromptPrefix } from "./history/format";
 import { TitleBar } from "./titlebar/TitleBar";
+import { OttyMoments } from "./ui/otty/OttyMoments";
+import { syncOttyFromVault } from "./ui/otty/ottyStore";
 // UI 批次一 Task 2/4：主区视图路由 + 右侧 dock 实体壳（workspaceStore 状态机）。
 // 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
 // 六工具面板实体渲染在 workspace/ToolDialog（2026-10-12 dock 退役改弹框）。
@@ -277,6 +279,9 @@ function HomeLayout() {
       // 自动检查更新（2026-10-13 用户需求）：vault 就绪后读 update.check_mode
       // （off 默认 / startup / interval 24h）；便携版在模块内整体禁用。
       void initAutoCheck();
+      // Otty 情感时刻开关（2026-10-16 M3）：vault 真源 ui.ottyMoments 对齐
+      // （默认开；设置页外观分区可一键关——报告红线②）。
+      void syncOttyFromVault();
       try {
         await useVaultStore.getState().refresh();
       } catch {
@@ -628,6 +633,9 @@ function HomeLayout() {
       </div>
       {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
       <Toaster />
+      {/* Otty 情感时刻覆盖层（2026-10-16 M3）：连接/传输/解锁/更新四瞬间，
+          单槽队列 + 开关可关（ui/otty）；pointer-events:none 不挡交互。 */}
+      <OttyMoments />
 
       {/* 弹窗渲染门（modalStore 单实例，2026-10-14 用户裁定）：open 态 =
           owned(id)；`|| (closing && activeModal === null)` = 正常关闭播完

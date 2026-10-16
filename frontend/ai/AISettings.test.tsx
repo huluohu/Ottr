@@ -198,6 +198,50 @@ describe("provider 列表与 CRUD", () => {
       expect(screen.getByTestId("ai-test-result-p1").textContent).toContain("bad key");
     });
   });
+
+  // provider 启用/禁用（2026-10-16 用户需求）：行内开关即时全量落库。
+  it("行内启用开关：点击禁用 → settings_set 全量含 enabled:false；再点恢复 true", async () => {
+    render(<AISettings open onClose={() => {}} />);
+    const sw = (await screen.findByTestId("ai-provider-enabled-p1")) as HTMLInputElement;
+    expect(sw.checked).toBe(true);
+    fireEvent.click(sw);
+    await waitFor(() => {
+      const setCall = mockedInvoke.mock.calls
+        .filter(([c, a]) => c === "settings_set" && (a as { key?: string })?.key === "ai_providers")
+        .pop();
+      expect(setCall?.[1].value[0]).toMatchObject({ id: "p1", enabled: false });
+    });
+    fireEvent.click(sw);
+    await waitFor(() => {
+      const setCall = mockedInvoke.mock.calls
+        .filter(([c, a]) => c === "settings_set" && (a as { key?: string })?.key === "ai_providers")
+        .pop();
+      expect(setCall?.[1].value[0]).toMatchObject({ id: "p1", enabled: true });
+    });
+  });
+
+  it("禁用行：显示「已禁用」徽标 + 开关 off；编辑保存不洗掉禁用态", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([{ ...EXISTING[0], enabled: false }]);
+      }
+      return backendInvoke(cmd, args);
+    });
+    render(<AISettings open onClose={() => {}} />);
+    await waitFor(() => {
+      expect((screen.getByTestId("ai-provider-enabled-p1") as HTMLInputElement).checked).toBe(false);
+    });
+    expect(screen.getByTestId("ai-disabled-badge-p1").textContent).toBe("已禁用");
+    // 编辑（key 留空 = 保留现值）保存 → enabled 随全量落库保留
+    fireEvent.click(screen.getByTestId("ai-provider-edit-p1"));
+    fireEvent.click(screen.getByTestId("ai-form-save"));
+    await waitFor(() => {
+      const setCall = mockedInvoke.mock.calls
+        .filter(([c, a]) => c === "settings_set" && (a as { key?: string })?.key === "ai_providers")
+        .pop();
+      expect(setCall?.[1].value[0]).toMatchObject({ id: "p1", enabled: false });
+    });
+  });
 });
 
 describe("脱敏配置", () => {

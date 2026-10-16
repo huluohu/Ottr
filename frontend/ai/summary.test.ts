@@ -300,6 +300,23 @@ describe("generateSessionSummary", () => {
     expect(insertedPayloads()).toHaveLength(0);
   });
 
+  // provider 全部禁用（2026-10-16）：与未配置同口径——静默跳过不出网。
+  it("provider 全部禁用：静默跳过（不出网不入库）", async () => {
+    mockBackend();
+    mockedInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "history_list_session") return HISTORY_ROWS;
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return [{ id: "p1", name: "DeepSeek", kind: "openai-compatible", baseURL: "https://x", model: "m", enabled: false }];
+      }
+      return null;
+    });
+    const ok = await generateSessionSummary(REQ, {
+      provider: new RecordingProvider(["x"]),
+    });
+    expect(ok).toBe(false);
+    expect(insertedPayloads()).toHaveLength(0);
+  });
+
   it("provider 抛错：恒不外抛（fire-and-forget 纪律），返回 false 不入库", async () => {
     mockBackend();
     const broken = {

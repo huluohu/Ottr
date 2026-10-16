@@ -23,6 +23,10 @@ export interface ProviderMeta {
   baseURL: string;
   /** 模型名（gpt-4o-mini / deepseek-chat / qwen2.5:7b …）。 */
   model: string;
+  /** 启用/禁用（2026-10-16 用户需求）：false = 不参与任何 AI 链路（诊断/
+   * NL→命令/纪要统一取「首个未禁用」的 provider）。缺省（旧数据无字段）=
+   * 启用——零迁移。列表位次语义不变：首位仍是默认，禁用只是旁路。 */
+  enabled?: boolean;
 }
 
 /** SSE 行切分缓冲上限（防无换行的病态流无限吃内存）。 */

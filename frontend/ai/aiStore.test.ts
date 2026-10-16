@@ -162,6 +162,47 @@ describe("诊断链路（onCommandFailed → run）", () => {
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
+  // provider 启用/禁用（2026-10-16）：诊断链取首个未禁用的，全禁用 = 无可用。
+  it("首个 provider 禁用、第二个可用 → 实际用第二个（列表序 = 默认优先序）", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([
+          { ...PROVIDERS[0], enabled: false },
+          { ...PROVIDERS[0], id: "p2", name: "Ollama", model: "qwen2.5:7b" },
+        ]);
+      }
+      if (cmd === "settings_get" && args?.key === "redaction") {
+        return Promise.resolve({ hostname: true, custom: [] });
+      }
+      if (cmd === "settings_get") return Promise.resolve(null);
+      if (cmd === "secret_get") return Promise.resolve("sk-test");
+      if (cmd === "session_tail") return Promise.resolve("ok\n");
+      if (cmd === "notify_insert") return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    useAiStore.getState().onCommandFailed(REQ);
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().status).toBe("done");
+    });
+    expect(chatFactory.mock.calls[0][0]).toMatchObject({ id: "p2", model: "qwen2.5:7b" });
+  });
+
+  it("全部 provider 禁用 → error/noProvider（不出网）", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([{ ...PROVIDERS[0], enabled: false }]);
+      }
+      if (cmd === "settings_get") return Promise.resolve(null);
+      return Promise.resolve(null);
+    });
+    useAiStore.getState().onCommandFailed(REQ);
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().status).toBe("error");
+    });
+    expect(useAiStore.getState().errorKind).toBe("noProvider");
+    expect(chatFactory).not.toHaveBeenCalled();
+  });
+
   it("免 key Ollama 全链：secrets 无存值 → 空 key 照常出结果（fix 1/5 I-1）", async () => {
     // openai-compatible 显式允许免 key（Ollama 本地）；此前 stored===null→noKey
     // 是自相矛盾面，修正为空串透传（不发 Authorization 的裁决在 provider 层）

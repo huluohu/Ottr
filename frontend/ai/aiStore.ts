@@ -20,6 +20,7 @@ import { createProvider, type ChatMessage } from "./provider";
 import { redact, type RedactFinding } from "./redact";
 import {
   TAIL_BYTES,
+  activeProvider,
   apiKeySecretKey,
   loadAiSettings,
   type AiSettings,
@@ -172,7 +173,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
       return;
     }
     set({ settingsUsed: settings });
-    const meta = settings.providers[0] ?? null;
+    // 首个未禁用的 provider（启用/禁用 2026-10-16）：禁用的默认项自动旁路，
+    // 无可用（未配置或全部禁用）→ noProvider 错误面（带去设置引导）。
+    const meta = activeProvider(settings.providers);
     if (!meta) {
       set({ status: "error", errorKind: "noProvider", error: null });
       return;

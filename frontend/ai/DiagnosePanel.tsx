@@ -12,6 +12,7 @@
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
 import { useTranslation } from "react-i18next";
 import { useAiStore } from "./aiStore";
+import { activeProvider } from "./settings";
 import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
 
 /** 从 markdown 形态的回复中提取 ``` 围栏代码块（位置 + 内容），供插终端按钮。 */
@@ -82,6 +83,9 @@ export function DiagnosePanel({
 
   if (!request) return null;
   const running = status === "running";
+  // 头部展示「实际生效」的 provider（首个未禁用，2026-10-16）——禁用的
+  // 默认项不再冒名出现在头部。
+  const active = settingsUsed ? activeProvider(settingsUsed.providers) : null;
 
   return (
     <aside className="ai-panel" data-testid="ai-panel" aria-label={t("ai.title")}>
@@ -90,8 +94,8 @@ export function DiagnosePanel({
           {request.kind === "diagnose" ? t("ai.panelDiagnose") : t("ai.panelExplain")}
         </span>
         <span className="ai-panel-meta">
-          {settingsUsed?.providers[0]?.name ?? ""}
-          {settingsUsed?.providers[0]?.model ? ` · ${settingsUsed.providers[0].model}` : ""}
+          {active?.name ?? ""}
+          {active?.model ? ` · ${active.model}` : ""}
         </span>
         <button
           className="ai-panel-close"

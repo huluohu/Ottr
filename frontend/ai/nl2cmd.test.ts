@@ -240,6 +240,44 @@ describe("nlStore 运行链（Mock provider）", () => {
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
+  // provider 启用/禁用（2026-10-16）：NL 链取首个未禁用的，全禁用 = 无可用。
+  it("全部 provider 禁用 → error/noProvider（不出网）", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([{ ...PROVIDERS[0], enabled: false }]);
+      }
+      return Promise.resolve(null);
+    });
+    useNlStore.getState().begin(null);
+    useNlStore.getState().setInput("ls");
+    await useNlStore.getState().submit();
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("error");
+    });
+    expect(useNlStore.getState().errorKind).toBe("noProvider");
+    expect(chatFactory).not.toHaveBeenCalled();
+  });
+
+  it("首个禁用、第二个可用 → 实际用第二个", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([
+          { ...PROVIDERS[0], enabled: false },
+          { ...PROVIDERS[0], id: "p2", name: "Ollama", model: "qwen2.5:7b" },
+        ]);
+      }
+      if (cmd === "secret_get") return Promise.resolve("sk-test");
+      return Promise.resolve(null);
+    });
+    useNlStore.getState().begin(null);
+    useNlStore.getState().setInput("ls");
+    await useNlStore.getState().submit();
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("done");
+    });
+    expect(chatFactory.mock.calls[0][0]).toMatchObject({ id: "p2", model: "qwen2.5:7b" });
+  });
+
   it("secrets 读取故障（非未存值）→ error/noKey；免 key（null 存储）→ 空串直连", async () => {
     mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
       if (cmd === "settings_get" && args?.key === "ai_providers") return Promise.resolve(PROVIDERS);

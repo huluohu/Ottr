@@ -28,7 +28,7 @@ import { notify } from "../notify/core";
 import { vaultApi } from "../vault/api";
 import { createProvider, type AIProvider, type ChatMessage } from "./provider";
 import { redact } from "./redact";
-import { apiKeySecretKey, loadAiSettings } from "./settings";
+import { activeProvider, apiKeySecretKey, loadAiSettings } from "./settings";
 import { stripPromptPrefix } from "../history/format";
 
 /** 生成门槛：会话命令数 ≥3（少于 3 条的会话没有纪要价值，也天然排除
@@ -109,7 +109,8 @@ export async function generateSessionSummary(
       console.warn("[summary] settings load failed:", e);
       return false;
     }
-    const meta = settings.providers[0] ?? null;
+    // 首个未禁用的 provider（启用/禁用 2026-10-16）：全禁用与未配置同口径静默跳过。
+    const meta = activeProvider(settings.providers);
     if (!meta) return false;
 
     // --- 2.4 独立开关闸门（BL-510④）：ai.summary.enabled 只管本链路（诊断链

@@ -953,6 +953,10 @@ fn on_app_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     let id = event.id().as_ref();
     match dispatch_of(id) {
         Some(Dispatch::Frontend) => {
+            // 主窗隐藏（收进托盘）时菜单动作弹的 UI 用户看不见——先把主窗
+            // 带回前台再转发（2026-10-16 用户反馈：托盘/菜单动作只有显示
+            // 主窗与退出有效，其余「没有触发效果」）。
+            show_main_window(app);
             if let Err(e) = app.emit(MENU_ACTION_EVENT, id.to_string()) {
                 eprintln!("[menu] emit {MENU_ACTION_EVENT} failed: {e}");
             }
@@ -1031,6 +1035,8 @@ pub(crate) fn tray_menu_action(app: &AppHandle<Wry>) -> crate::dock_menu::DockAc
         Some(Dispatch::TrayShow) => show_main_window(&handle),
         Some(Dispatch::Quit) => handle.exit(0),
         Some(Dispatch::Frontend) => {
+            // 同上：先唤回主窗再转发，避免「弹在隐藏窗口里 = 没效果」。
+            show_main_window(&handle);
             if let Err(e) = handle.emit(MENU_ACTION_EVENT, id) {
                 eprintln!("[tray] emit {MENU_ACTION_EVENT} failed: {e}");
             }
@@ -1238,6 +1244,8 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             // Frontend 族（新建主机/搜索/面板/检查更新/设置）：与 app 菜单同一
             // 分派（ottr://menu-action → App handleAction），托盘即第五入口。
             Some(Dispatch::Frontend) => {
+                // 同上：先唤回主窗再转发（2026-10-16 用户反馈）。
+                show_main_window(app);
                 if let Err(e) = app.emit(MENU_ACTION_EVENT, event.id().as_ref()) {
                     eprintln!("[tray] emit {MENU_ACTION_EVENT} failed: {e}");
                 }

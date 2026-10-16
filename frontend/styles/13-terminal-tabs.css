@@ -1,6 +1,8 @@
-/* --- 标签化终端主区（Task 7，A6）；2026-10-16 视觉重设计 M2「造浪」悬浮岛制式 ---
- * 每条会话是一根浮木：四角圆角岛浮在水面（tabbar 去底色），激活岛 = teal 描边 +
- * 阴影微升 + 提满不透明度；未激活岛半透明。微升用阴影表达而非 translateY——
+/* --- 标签化终端主区（Task 7，A6）；2026-10-16 视觉重设计 M2「造浪」悬浮岛制式 +
+ * M3「疏渠」主区去框化 ---
+ * 每条会话是一根浮木：四角圆角岛浮在水面（tabbar 去底色去底线——岛与内容区
+ * 靠底色深浅分区，报告 §2「主区即水面」），激活岛 = teal 描边 + 阴影微升 +
+ * 提满不透明度；未激活岛半透明。微升用阴影表达而非 translateY——
  * .tabbar overflow-x:auto 会剪纵向位移（规范：一轴 auto 另一轴亦 auto）。 */
 .main-area.terminal-mode {
   padding: 0;
@@ -13,7 +15,6 @@
   align-items: stretch;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-2) 0;
-  border-bottom: 1px solid var(--border-subtle);
   overflow-x: auto;
 }
 .tab {
@@ -162,7 +163,8 @@
   display: flex;
   gap: 6px;
   padding: 4px 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  /* 去框化（2026-10-16 M3「主区即水面」）：与内容区靠底色深浅（6% 差）
+     分区，不再画 1px 硬线。 */
   background: var(--surface-raised);
 }
 .term-toolbar button {

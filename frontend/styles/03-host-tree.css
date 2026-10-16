@@ -145,6 +145,28 @@
 .tree-host:focus-within .host-row {
   background: var(--surface-raised);
 }
+/* 主机行状态点（2026-10-16 视觉重设计 M3，报告 §4 P1「主机行状态」——
+ * 连接态此前只在页签圆点可见的遗留项收口）：8px，teal=已连接（弹跳一次
+ * 落定）/ Amber 呼吸=连接中 / 空心描边=离线（不抢行高亮）。keyframes 与
+ * 页签水滴语言同组（13-terminal-tabs.css dot-pop / dot-breathe）。 */
+.tree-host .host-status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+}
+.tree-host .host-status-dot[data-status="connected"] {
+  background: var(--color-success);
+  border-color: transparent;
+  animation: dot-pop var(--dur-otter-peek) var(--ease-float);
+}
+.tree-host .host-status-dot[data-status="busy"] {
+  background: var(--color-warning);
+  border-color: transparent;
+  animation: dot-breathe var(--dur-loop-idle) var(--ease-drift) infinite;
+}
 /* 行内三件套只作用于树行（.tree-host 前缀）——命令面板复用 .host-name/
    .host-subtitle 类名，不前缀会把新行制式泄进面板。 */
 .tree-host .host-name {

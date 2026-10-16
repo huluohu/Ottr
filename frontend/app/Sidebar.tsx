@@ -13,14 +13,14 @@ import { useNotifyStore } from "../notify/core";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n";
 
-/** 主题快捷循环顺序（与设置页七主题一致）。 */
+/** 主题快捷循环顺序（与设置页七主题一致；水域家族光量降序，见 ThemeContext THEME_IDS）。 */
 const THEME_CYCLE: readonly ThemeMode[] = [
   "system",
   "light",
+  "verdant",
   "dark",
   "oled",
   "amethyst",
-  "verdant",
   "glass",
 ];
 

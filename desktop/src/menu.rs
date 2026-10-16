@@ -214,16 +214,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "theme_light" => {
             if zh {
-                "亮色"
+                "浅滩"
             } else {
-                "Light"
+                "Shallows"
             }
         }
         "theme_dark" => {
             if zh {
-                "暗色"
+                "深河"
             } else {
-                "Dark"
+                "Deep Water"
             }
         }
         "theme_system" => {
@@ -235,30 +235,30 @@ fn text(lang: Lang, key: &str) -> &'static str {
         }
         "theme_oled" => {
             if zh {
-                "曜黑"
+                "深渊"
             } else {
-                "Dark OLED"
+                "Abyss"
             }
         }
         "theme_amethyst" => {
             if zh {
-                "幻紫"
+                "夜光河"
             } else {
-                "Amethyst"
+                "Bio River"
             }
         }
         "theme_verdant" => {
             if zh {
-                "青野"
+                "溪岸"
             } else {
-                "Verdant"
+                "Riverside"
             }
         }
         "theme_glass" => {
             if zh {
-                "雾镜"
+                "雨窗"
             } else {
-                "Frosted Glass"
+                "Rain Glass"
             }
         }
         "tools" => {
@@ -530,7 +530,9 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Sep,
                 // 主题七选子菜单（2026-10-08 菜单栏启用批次）：与顶栏快切/
                 // 设置网格同源同词；勾选态经 menu_set_theme 跟随前端 mode。
-                // 「跟随系统」首位（2026-10-14 用户反馈，与 THEME_IDS 同序）。
+                // 「跟随系统」首位（2026-10-14 用户反馈，与 THEME_IDS 同序）；
+                // 2026-10-16 水域家族更名 + 光量降序（浅滩→溪岸→深河→深渊→
+                // 夜光河→雨窗），action id 不变。
                 MenuNode::Sub {
                     label: text(lang, "theme"),
                     items: vec![
@@ -543,6 +545,10 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                             label: text(lang, "theme_light"),
                         },
                         MenuNode::Check {
+                            id: "theme.set.verdant",
+                            label: text(lang, "theme_verdant"),
+                        },
+                        MenuNode::Check {
                             id: "theme.set.dark",
                             label: text(lang, "theme_dark"),
                         },
@@ -553,10 +559,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                         MenuNode::Check {
                             id: "theme.set.amethyst",
                             label: text(lang, "theme_amethyst"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.verdant",
-                            label: text(lang, "theme_verdant"),
                         },
                         MenuNode::Check {
                             id: "theme.set.glass",

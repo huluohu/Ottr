@@ -33,14 +33,16 @@ export type ResolvedTheme = "light" | "dark";
 /** 主题 id 全集（theme-suite T2）。白名单单一来源——load/persist/syncThemeFromVault
  * 三处共用 isThemeId，新增主题只改这里；侧栏快切菜单（Sidebar THEME_CYCLE）与
  * 设置页主题网格（SecuritySettings THEME_CHOICES）同消费本全集且「跟随系统」
- * 首位（2026-10-14 用户口径：缺省档排第一，原生菜单同序）。 */
+ * 首位（2026-10-14 用户口径：缺省档排第一，原生菜单同序）。
+ * 2026-10-16 视觉重设计「水域家族」：其余六档按光量降序（浅滩→溪岸→深河→
+ * 深渊→夜光河→雨窗）；id 与持久化协议不变，只改显示名与排序。 */
 export const THEME_IDS: readonly ThemeMode[] = [
   "system",
   "light",
+  "verdant",
   "dark",
   "oled",
   "amethyst",
-  "verdant",
   "glass",
 ];
 

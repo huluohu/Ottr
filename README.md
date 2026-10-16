@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="brand/logo.svg" alt="Ottr" width="180" />
+<img src="brand/v5/lockup.svg" alt="Ottr — Swim through your servers" width="360" />
 
 # Ottr · 喔獭
 
@@ -24,7 +24,7 @@
 
 技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住，三端一套代码。
 
-![欢迎首页：时段问候 + 快捷卡 + 应用级侧栏（青野主题）](docs/screenshots/home-welcome.png)
+![欢迎首页：时段问候 + 快捷卡 + 应用级侧栏（溪岸主题）](docs/screenshots/home-welcome.png)
 
 ## ✨ 功能总览
 
@@ -87,7 +87,7 @@
 - **应用级侧栏**：主机树（分组、标签、搜索、悬停即加主机、导入 ssh config）一段式布局宽度可拖拽；
   底部**控制中心**一键弹出全部入口（主题 / 语言 / 定时任务 / 告警 / MCP / 通知中心带未读徽标 / 设置）
 - **欢迎首页**：时段问候 + 快捷卡（新建主机 / ⌘K 命令面板 / 导入配置）+ 最近连接，零会话也有归宿
-- **七套主题**：亮色 / 暗色 / 跟随系统 / 曜黑（OLED 纯黑）/ 幻紫 / 青野 / 雾镜（真透明毛玻璃），
+- **七套主题（水域家族）**：跟随系统 / 浅滩 / 溪岸 / 深河 / 深渊（OLED 纯黑）/ 夜光河 / 雨窗（真透明毛玻璃），
   控制中心「主题」子菜单一键切换，终端配色逐主题跟随；支持 iTerm2 主题导入（含二进制 plist）与自定义配色
 - **中文 / English 双语**：控制中心「语言」子菜单即点即切，原生菜单栏文案同步重建；
   macOS 原生菜单栏承载全部功能入口，Windows/Linux 自绘标题栏（Windows 最大化按钮悬停弹出**贴靠布局选择器**），三端托盘（彩色水獭徽章）

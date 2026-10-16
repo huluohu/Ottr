@@ -61,14 +61,15 @@
     "sectionSync": "Sync",
     "themes": {
       "system": "System",
-      "light": "Light",
-      "dark": "Dark",
-      "oled": "Dark OLED",
-      "amethyst": "Amethyst",
-      "verdant": "Verdant",
-      "glass": "Frosted Glass"
+      "light": "Shallows",
+      "dark": "Deep Water",
+      "oled": "Abyss",
+      "amethyst": "Bio River",
+      "verdant": "Riverside",
+      "glass": "Rain Glass"
     },
-    "themeAmethystGlassHint": "Amethyst is a saturated violet opaque dark theme; Frosted Glass is a cool icy-blue theme whose translucent background shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",
+    "themeAmethystGlassHint": "Bio River is a saturated violet opaque dark theme; Rain Glass is a cool icy-blue theme whose translucent background shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",
+    "themeRenameHint": "Themes renamed (water family): Shallows (formerly Light) · Riverside (formerly Verdant) · Deep Water (formerly Dark) · Abyss (formerly OLED) · Bio River (formerly Amethyst) · Rain Glass (formerly Frosted Glass).",
     "terminalFont": "Terminal font",
     "terminalFontDefault": "System default",
     "terminalFontSize": "Terminal size",

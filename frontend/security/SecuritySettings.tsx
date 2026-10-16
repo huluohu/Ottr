@@ -68,7 +68,7 @@ const FONT_CHOICES = ["Menlo", "Monaco", "SF Mono", "JetBrains Mono", "Fira Code
 // 终端字号候选（pt）
 const FONT_SIZE_CHOICES = [10, 11, 12, 13, 14, 16, 18, 20] as const;
 // theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
-const THEME_CHOICES: ThemeMode[] = ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"];
+const THEME_CHOICES: ThemeMode[] = ["system", "light", "verdant", "dark", "oled", "amethyst", "glass"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 
 // 2026-10-09 设置页交互重构：左侧分区导航 + 右侧内容面板（原单列长滚动、
@@ -900,9 +900,14 @@ export function SecuritySettings({
               </button>
             ))}
           </div>
-          {/* 幻紫/雾镜同为紫调暗色主题，选择卡看不出差别（2026-10-13 用户问询）：
-              网格下一行说明差异本体（实色 vs 真透明）。 */}
+          {/* 幻紫/雾镜（今夜光河/雨窗）同为暗色主题，选择卡看不出差别（2026-10-13
+              用户问询）：网格下一行说明差异本体（实色 vs 真透明）。 */}
           <p className="settings-hint">{t("settings.themeAmethystGlassHint")}</p>
+          {/* 水域家族更名映射提示（2026-10-16 视觉重设计）：旧名 → 新名 90 天
+              过渡（至 2027-01-14 后移除本行与 settings.themeRenameHint 双语键）。 */}
+          <p className="settings-hint" data-testid="theme-rename-hint">
+            {t("settings.themeRenameHint")}
+          </p>
           {/* --- 终端配色（B2 主题生态，Phase 2 Task 9）：auto 跟随界面 /
               内置画廊 / 自定义（iTerm2 .itermcolors 与 Windows Terminal .json
               导入，vault settings 持久化）--- */}

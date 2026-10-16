@@ -85,7 +85,7 @@ function seedSessions(list: Session[]) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null, overviewOpen: false });
+  useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
   useSessionStore.setState({ sessions: [], activeId: null });
   useVaultStore.setState({ hosts: [], hostGroups: [], credentials: [], loading: false, error: null });
 });

@@ -1,7 +1,6 @@
-// 监控面板连续性测试（2026-10-13 改造自「侧栏让位」套件）：监控/插件侧栏
-// 退役后，面板改经 ToolDialog 打开。连续性主张不变：数据真源 useMonitorStore
-// 挂模块作用域（事件驱动持续灌入，与视图/弹框挂载无关）——弹框关了再开，
-// 即读即显最新窗口，不重置、不丢窗口。
+// 监控面板连续性测试（2026-10-16 IA 重构随迁）：监控转为会话子页签后，
+// 连续性主张不变——数据真源 useMonitorStore 挂模块作用域（事件驱动持续
+// 灌入，与视图挂载无关）——切走子页签再切回，即读即显最新窗口，不重置。
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,9 +13,13 @@ vi.mock("../security/McpSettings", () => ({ McpSettings: () => <div data-testid=
 vi.mock("../notify/NotificationCenter", () => ({
   NotificationCenter: () => <div data-testid="nc" />,
 }));
+vi.mock("../terminal/Terminal", () => ({ TerminalArea: () => <div data-testid="term" /> }));
+vi.mock("../history/RecordToggle", () => ({ RecordToggle: () => <div data-testid="record" /> }));
+vi.mock("../ai/DiagnosePanel", () => ({ DiagnosePanel: () => <div data-testid="diag" /> }));
+vi.mock("../home/HomeWelcome", () => ({ HomeWelcome: () => <div data-testid="welcome" /> }));
 
 import "../i18n";
-import { ToolDialog } from "./ToolDialog";
+import { MainArea } from "./MainArea";
 import { useWorkspaceStore } from "./workspaceStore";
 import { useSessionStore, type Session } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
@@ -98,20 +101,36 @@ function cpuValue(): string {
   return screen.getAllByTestId("monitor-metric-value")[0].textContent ?? "";
 }
 
-function openMonitorDialog() {
+const noop = () => {};
+
+function renderMainArea() {
+  return render(
+    <MainArea
+      storeError={null}
+      selected={null}
+      onOpenAiSettings={noop}
+      onAddHost={noop}
+      onOpenPalette={noop}
+      onOpenImport={noop}
+      onOpenAlerts={noop}
+    />,
+  );
+}
+
+function openMonitorView() {
   act(() => {
-    useWorkspaceStore.setState({ toolDialog: "monitor" });
+    useWorkspaceStore.getState().openMainView("monitor");
   });
 }
 
-function closeDialog() {
+function closeMonitorView() {
   act(() => {
-    useWorkspaceStore.setState({ toolDialog: null });
+    useWorkspaceStore.getState().openMainView("terminal");
   });
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
+  useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
   useSessionStore.setState({ sessions: [fakeSession()], activeId: "sess-1" });
   useVaultStore.setState({ hosts: [fakeHost], hostGroups: [], credentials: [], loading: false, error: null });
   useMonitorStore.setState({ windows: { "pty-1": win(42, [40, 41, 42]) } });
@@ -119,22 +138,22 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-describe("监控面板（ToolDialog）指标连续性", () => {
-  it("打开即显当前窗口；关闭期间采样照常灌入；重开即显最新（不重置）", () => {
-    render(<ToolDialog />);
-    openMonitorDialog();
+describe("监控面板（会话子页签）指标连续性", () => {
+  it("子页签打开即显当前窗口；切走期间采样照常灌入；切回即显最新（不重置）", () => {
+    renderMainArea();
+    openMonitorView();
     expect(cpuValue()).toBe("42%");
     expect(screen.getAllByTestId("monitor-metric").length).toBe(5);
 
-    // 关弹框：面板卸载；数据源（store）仍在模块作用域持续更新
-    closeDialog();
-    expect(screen.queryByTestId("monitor-sidebar")).toBeNull();
+    // 切回终端子页签：面板卸载；数据源（store）仍在模块作用域持续更新
+    closeMonitorView();
+    expect(screen.queryByTestId("monitor-metric")).toBeNull();
     act(() => {
       useMonitorStore.setState({ windows: { "pty-1": win(77, [40, 41, 42, 60, 77]) } });
     });
 
-    // 重开：即显最新窗口（未丢未重置）
-    openMonitorDialog();
+    // 切回：即显最新窗口（未丢未重置）
+    openMonitorView();
     expect(cpuValue()).toBe("77%");
     expect(screen.getAllByTestId("monitor-metric").length).toBe(5);
   });
@@ -142,8 +161,8 @@ describe("监控面板（ToolDialog）指标连续性", () => {
   it("主机未开启监控 → off 指引面（非 live 窗口时 StatusFace 口径）", () => {
     useVaultStore.setState({ hosts: [{ ...fakeHost, monitor_enabled: false }], hostGroups: [], credentials: [], loading: false, error: null });
     useMonitorStore.setState({ windows: {} }); // off 面仅非 live 生效（live 压过状态面）
-    render(<ToolDialog />);
-    openMonitorDialog();
+    renderMainArea();
+    openMonitorView();
     expect(screen.getByTestId("monitor-off")).toBeTruthy();
   });
 });

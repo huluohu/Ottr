@@ -70,11 +70,11 @@ export function Sidebar({
   ...tree
 }: SidebarProps) {
   const { t } = useTranslation();
+  const openMainView = useWorkspaceStore((s) => s.openMainView);
   // 折叠胶囊数据面（hooks 恒定，分支只裁渲染）：组列表（组色圆点）+ 未读。
   const hostGroups = useVaultStore((s) => s.hostGroups);
   const hosts = useVaultStore((s) => s.hosts);
   const unread = useNotifyStore((s) => s.unread);
-  const toggleToolDialog = useWorkspaceStore((s) => s.toggleToolDialog);
   const hasUngrouped = hosts.some((h) => h.group_id == null);
 
   if (collapsed) {
@@ -118,7 +118,7 @@ export function Sidebar({
             data-testid="sidebar-unread"
             title={t("nav.notifications")}
             aria-label={t("nav.notifications")}
-            onClick={() => toggleToolDialog("notifications")}
+            onClick={() => openMainView("notifications")}
           >
             <BellIcon />
             <span className="capsule-unread-badge">{unread > 99 ? "99+" : unread}</span>

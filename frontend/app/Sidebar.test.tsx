@@ -45,7 +45,7 @@ function renderSidebar(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ toolDialog: null, mainView: "terminal" });
+  useWorkspaceStore.setState({ mainView: "terminal" });
   useNotifyStore.setState({ unread: 0 });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
   vi.stubGlobal(

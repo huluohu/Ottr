@@ -1,10 +1,11 @@
-// workspaceStore 单测（UI 批次一 Task 2 Step 1）：mainView 状态机互斥 /
-// toolDialog 单槽互斥 / toggleToolDialog 开关语义 / 终端保留不变量（store 动作
+// workspaceStore 单测（UI 批次一 Task 2 Step 1；2026-10-16 IA 重构随迁）：
+// mainView 状态机互斥（含监控/插件会话子页签）/ 终端保留不变量（store 动作
 // 永不触碰会话状态）/ 托盘关窗语义（store 活在模块作用域，窗口隐藏不重置）。
 import { beforeEach, describe, expect, it } from "vitest";
 import { useSessionStore, type Session } from "../session/SessionStore";
-import { DOCK_PANELS, MAIN_VIEWS, TOOL_DOCK_PANELS, type MainView } from "./types";
-import { useWorkspaceStore } from "./workspaceStore";
+import type { MainView } from "./types";
+
+import { MAIN_VIEWS, useWorkspaceStore } from "./workspaceStore";
 
 /** Session 测试夹具（只填必填面；store 不变量测试不触渲染字段）。 */
 function fakeSession(over: Partial<Session> = {}): Session {
@@ -33,7 +34,7 @@ function fakeSession(over: Partial<Session> = {}): Session {
 
 beforeEach(() => {
   // 回默认态：zustand 模块级单例，跨用例必须复位（防用例间互斥语义串扰）
-  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null, overviewOpen: false });
+  useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
   useSessionStore.setState({ sessions: [], activeId: null });
 });
 
@@ -58,58 +59,6 @@ describe("mainView 状态机", () => {
     useWorkspaceStore.getState().openMainView("overview");
     useWorkspaceStore.getState().openMainView("overview");
     expect(useWorkspaceStore.getState().mainView).toBe("overview");
-  });
-});
-
-describe("toolDialog 工具面板弹框（2026-10-12 dock 退役：单槽一次一个）", () => {
-  it("默认无弹框", () => {
-    expect(useWorkspaceStore.getState().toolDialog).toBeNull();
-  });
-
-  it("openToolDialog：打开；重复打开幂等；异值打开即替换（一次一个）", () => {
-    const ws = () => useWorkspaceStore.getState();
-    ws().openToolDialog("cron");
-    expect(ws().toolDialog).toBe("cron");
-    ws().openToolDialog("alerts");
-    expect(ws().toolDialog).toBe("alerts"); // 单槽替换
-    ws().openToolDialog("alerts");
-    expect(ws().toolDialog).toBe("alerts"); // 幂等
-  });
-
-  it("closeToolDialog 关闭；对已空状态幂等", () => {
-    const ws = () => useWorkspaceStore.getState();
-    ws().openToolDialog("alerts");
-    ws().closeToolDialog();
-    expect(ws().toolDialog).toBeNull();
-    ws().closeToolDialog();
-    expect(ws().toolDialog).toBeNull();
-  });
-
-  it("toggleToolDialog：同值关、异值开/换（侧栏导航行二态语义）", () => {
-    const ws = () => useWorkspaceStore.getState();
-    ws().toggleToolDialog("alerts");
-    expect(ws().toolDialog).toBe("alerts");
-    ws().toggleToolDialog("alerts");
-    expect(ws().toolDialog).toBeNull();
-    ws().toggleToolDialog("cron");
-    ws().toggleToolDialog("alerts"); // 异值 = 换内容
-    expect(ws().toolDialog).toBe("alerts");
-  });
-
-  it("工具面板七值集合与类型口径一致（防漂移；2026-10-14 mcp 改走设置单一家）", () => {
-    expect(TOOL_DOCK_PANELS).toEqual([
-      "forwards",
-      "jumpchains",
-      "cron",
-      "alerts",
-      "notifications",
-      "monitor",
-      "plugins",
-    ]);
-    // DockPanel 保留 mcp 枚举（历史），但工具壳不再承载——mcp 入口 = 设置分区
-    expect(DOCK_PANELS).toContain("mcp");
-    expect(TOOL_DOCK_PANELS).not.toContain("mcp");
-    for (const v of TOOL_DOCK_PANELS) expect(DOCK_PANELS).toContain(v);
   });
 });
 
@@ -161,10 +110,13 @@ describe("终端保留不变量（store 层）", () => {
     ws.openMainView("processes");
     ws.openMainView("overview");
     ws.openMainView("batch");
+    ws.openMainView("cron");
+    ws.openMainView("notifications");
+    ws.openMainView("forwards");
+    ws.openMainView("jumpchains");
+    ws.openMainView("monitor");
+    ws.openMainView("plugins");
     ws.openMainView("terminal");
-    ws.openToolDialog("forwards");
-    ws.toggleToolDialog("cron");
-    ws.closeToolDialog();
 
     // 同一数组引用 = 会话 store 零 mutation（渲染侧终端 DOM 保留的状态前提）
     expect(useSessionStore.getState().sessions).toBe(before);

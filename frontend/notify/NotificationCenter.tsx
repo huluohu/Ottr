@@ -8,7 +8,7 @@
 //   装饰器终败回执写入）→ 状态标签 + 渠道名 + 错误摘要 + 手动重发按钮
 //   （channelRegistry.resendNotification 重跑该渠道 send）。
 // * 空态引导（ui-batch2 T3，审计 A4）：「暂无通知」文案保留，补「查看告警
-//   规则」入口——openToolDialog("alerts")（toolDialog 单槽，弹框内容即换）。
+//   规则」入口——onOpenAlerts 回调（2026-10-16 IA 重构：告警归设置分区）。
 //   空态判定不变（items.length === 0 分支），非空列表不渲染引导块。
 // * 数据面全部在 useNotifyStore（core.ts）；本组件只渲染 + 调 action。
 // * 主题/i18n 纪律：severity 走语义令牌（--color-*），文案全走词典键。
@@ -19,7 +19,6 @@ import type { Notification } from "../vault/api";
 import i18n from "../i18n";
 import { readDeliveryFailures, useNotifyStore, type DeliveryFailure, type NotifyKind } from "./core";
 import { resendNotification } from "./channelRegistry";
-import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { Checkbox } from "../ui/Checkbox";
 import { EmptyState } from "../ui/EmptyState";
 
@@ -104,7 +103,7 @@ function NotificationRow({ item }: { item: Notification }) {
   );
 }
 
-export function NotificationCenter() {
+export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void }) {
   const { t } = useTranslation();
   const items = useNotifyStore((s) => s.items);
   const unread = useNotifyStore((s) => s.unread);
@@ -114,7 +113,6 @@ export function NotificationCenter() {
   const clear = useNotifyStore((s) => s.clear);
   const toggleMuted = useNotifyStore((s) => s.toggleMuted);
   // 空态引导入口（ui2 T3，A4）：告警规则面板走既有 dock 单槽动作。
-  const openToolDialog = useWorkspaceStore((s) => s.openToolDialog);
 
   // 挂载即对齐真源（多窗口/落库失败兜底）；未读数 → 原生菜单文案跟随。
   useEffect(() => {
@@ -156,7 +154,7 @@ export function NotificationCenter() {
                 hint={t("notify.emptyHint")}
                 action={{
                   label: t("notify.emptyAlertsCta"),
-                  onClick: () => openToolDialog("alerts"),
+                  onClick: () => onOpenAlerts?.(),
                   testid: "notify-empty-alerts",
                 }}
                 testid="notify-empty"

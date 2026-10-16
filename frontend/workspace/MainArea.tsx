@@ -70,6 +70,8 @@ interface MainAreaProps {
   /** 空态快捷卡「导入配置」入口（App 注入 = openModal("importHosts")；缺省 =
    * 入口不渲染）。 */
   onOpenImport?: () => void;
+  /** 通知中心空态「查看告警规则」→ 设置告警分区（App 注入）。 */
+  onOpenAlerts?: () => void;
 }
 
 /** 走查夹具端点（seed_vault 播种的 spike 主机；spike-sshd.sh 127.0.0.1:2222）。
@@ -94,6 +96,7 @@ export function MainArea({
   onAddHost,
   onOpenPalette,
   onOpenImport,
+  onOpenAlerts,
 }: MainAreaProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
@@ -167,7 +170,7 @@ export function MainArea({
     ) : slotView === "cron" ? (
       <CronPanel open />
     ) : slotView === "notifications" ? (
-      <NotificationCenter />
+      <NotificationCenter onOpenAlerts={onOpenAlerts} />
     ) : slotView === "forwards" ? (
       <ForwardPanel open />
     ) : (

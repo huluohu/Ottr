@@ -15,7 +15,6 @@ vi.mock("./channelRegistry", () => ({ resendNotification: vi.fn() }));
 
 import "../i18n";
 import { NotificationCenter } from "./NotificationCenter";
-import { useWorkspaceStore } from "../workspace/workspaceStore";
 import {
   clearDeliveryFailure,
   recordDeliveryFailure,
@@ -107,7 +106,6 @@ beforeEach(() => {
   mockedInvoke.mockReset();
   resetDeliveryLedger();
   mockedResend.mockReset();
-  useWorkspaceStore.setState({ toolDialog: null });
   seedBackend([], 0);
 });
 
@@ -132,8 +130,10 @@ async function openPanel() {
 }
 
 /** 渲染面板（2026-10-09 dock 页签形态：组件恒渲染，无 open/onClose）。 */
+const onOpenAlertsMock = vi.fn();
+
 function renderPanel() {
-  return render(<NotificationCenter />);
+  return render(<NotificationCenter onOpenAlerts={onOpenAlertsMock} />);
 }
 
 describe("NotificationCenter（铃铛 + 面板）", () => {
@@ -271,7 +271,6 @@ describe("通知空态引导（ui2 T3，审计 A4）", () => {
   it("空态：引导块 + 查看告警规则按钮；点击切换弹框至告警面板", async () => {
     // 前置：通知中心经弹框打开（toolDialog = notifications；renderPanel 直挂
     // 组件，store 前置在此显式给定）
-    useWorkspaceStore.setState({ toolDialog: "notifications" });
     renderPanel();
     await openPanel();
     expect(screen.getByTestId("notify-empty-guide")).toBeTruthy();
@@ -279,7 +278,7 @@ describe("通知空态引导（ui2 T3，审计 A4）", () => {
     expect(screen.getByTestId("notify-empty").textContent).toContain("No notifications");
 
     fireEvent.click(screen.getByTestId("notify-empty-alerts"));
-    expect(useWorkspaceStore.getState().toolDialog).toBe("alerts");
+    expect(onOpenAlertsMock).toHaveBeenCalledTimes(1);
   });
 
   it("非空列表不渲染引导块（空态判定不变）", async () => {

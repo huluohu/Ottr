@@ -7,10 +7,9 @@
 //
 // 接入面（渲染门 = `active === id`，同步互斥）：
 //   * App 根部九个弹窗（hostForm/importHosts/credentials/settings/sync/
-//     palette/history/nl2cmd/toolDialog）——App 以 active===id 作渲染条件，
+//     palette/history/nl2cmd）——App 以 active===id 作渲染条件，
 //     并保留「正常关闭播退场动画、被顶掉立即销毁」的口径（见 App 内
 //     `owned(id) || activeModal === null` 门）；
-//   * workspaceStore.toolDialog（面板 id 是载荷）——open/close 动作内聚在本
 //     store 的槽位认领上，且订阅外部弹窗开启即清槽（Sidebar 激活态不残留）；
 //   * SessionStore.hostKeyAsk（Rust 事件驱动）——置问询即认领 hostKey 槽；
 //   * McpApprovalDialog 审批队列、FilePanel 文件操作小对话框——事件/交互
@@ -31,7 +30,6 @@ export type ModalId =
   | "palette"
   | "history"
   | "nl2cmd"
-  | "toolDialog"
   | "hostKey"
   | "mcpApproval"
   | "filesDialog";

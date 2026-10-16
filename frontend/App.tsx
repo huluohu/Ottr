@@ -57,7 +57,6 @@ import { useTerminalFocus } from "./terminal/terminalFocus";
 // 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
 // 六工具面板实体渲染在 workspace/ToolDialog（2026-10-12 dock 退役改弹框）。
 import { MainArea } from "./workspace/MainArea";
-import { ToolDialog } from "./workspace/ToolDialog";
 import { useWorkspaceStore } from "./workspace/workspaceStore";
 import {
   isTerminalTarget,
@@ -122,7 +121,6 @@ function HomeLayout() {
   // 2026-10-16 总览标签化：总览入口统一走 openOverview（开置顶标签 + 激活）。
   const openOverview = useWorkspaceStore((s) => s.openOverview);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
-  const openToolDialog = useWorkspaceStore((s) => s.openToolDialog);
   // A12：面板动作需要当前主题/语言（toggle 循环用）
   const { mode: themeMode, setMode } = useTheme();
   const { lang } = useLanguage();
@@ -230,8 +228,8 @@ function HomeLayout() {
           // 归位设置）——图标轨/工具菜单改跳转，弹框副本退役。
           openSettingsToPane("alerts");
           break;
-        case "monitor": openToolDialog("monitor"); break;
-        case "plugins": openToolDialog("plugins"); break;
+        case "monitor": openMainView("monitor"); break;
+        case "plugins": openMainView("plugins"); break;
         case "forwards": openMainView("forwards"); break;
         case "jump-chains": openMainView("jumpchains"); break;
         case "overview": openOverview(); break;
@@ -400,7 +398,7 @@ function HomeLayout() {
           setNewGroupSignal((n) => n + 1);
           break;
         case "notify.center":
-          openToolDialog("notifications");
+          openMainView("notifications");
           break;
         case "hosts.panelToggle":
           toggleSidebarCollapsed();
@@ -626,9 +624,6 @@ function HomeLayout() {
           }}
           onOpenPalette={() => openModal("palette")}
         />
-        {/* 工具面板统一弹框（2026-10-12 dock 退役）：单槽 toolDialog，
-            一次一个；不占布局，终端常驻不变量由 overlay 语义天然保证。 */}
-        <ToolDialog />
       </div>
       {/* 应用内 Toast（2026-10-10 交互统一）：右下角堆叠，CSV 导出等结果反馈。 */}
       <Toaster />

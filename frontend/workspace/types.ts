@@ -33,25 +33,6 @@ export type MainView =
   | "monitor"
   | "plugins";
 
-/** 右侧停靠面板。monitor/plugins = 终端右栏自管侧栏（见上，并存语义沿现状）；
- * 其余五值为 dock 工具面板（T4 起实体渲染在 dock/DockPanel）。 */
-export type DockPanel =
-  | "monitor"
-  | "plugins"
-  | "forwards"
-  | "jumpchains"
-  | "cron"
-  | "alerts"
-  | "mcp"
-  | "notifications";
-
-/** dock 工具面板。2026-10-13 起 monitor/plugins 并入本壳（终端右栏折叠
- * 竖条退役——被当成滚动条、压住分屏关闭钮，用户三次反馈）。 */
-export type ToolDockPanel = Extract<
-  DockPanel,
-  "forwards" | "jumpchains" | "cron" | "alerts" | "notifications" | "monitor" | "plugins"
->;
-
 /** 全量取值表（测试枚举 + 防漂移：联合类型扩员时此表必须同步）。 */
 export const MAIN_VIEWS: readonly MainView[] = [
   "terminal",
@@ -66,33 +47,5 @@ export const MAIN_VIEWS: readonly MainView[] = [
   "monitor",
   "plugins",
 ];
-export const DOCK_PANELS: readonly DockPanel[] = [
-  "monitor",
-  "plugins",
-  "forwards",
-  "jumpchains",
-  "cron",
-  "alerts",
-  "mcp",
-  "notifications",
-];
-export const TOOL_DOCK_PANELS: readonly ToolDockPanel[] = [
-  "forwards",
-  "jumpchains",
-  "cron",
-  "alerts",
-  "notifications",
-  "monitor",
-  "plugins",
-];
 
-/** dock 工具面板标题 i18n 键（全部复用既有键——零新增文案键，双语守卫直接过）。 */
-export const DOCK_PANEL_TITLE_KEY: Record<ToolDockPanel, string> = {
-  forwards: "forward.title",
-  jumpchains: "jump.title",
-  cron: "cron.title",
-  alerts: "alert.sectionTitle",
-  notifications: "nav.notifications",
-  monitor: "monitor.title",
-  plugins: "plugins.title",
-};
+

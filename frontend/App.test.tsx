@@ -113,7 +113,7 @@ beforeEach(() => {
   // workspaceStore 是模块级单例：上一用例经默认落地/动作切过的视图态必须
   // 复位，否则泄漏成假失败（默认落总览逻辑 2026-10-14 起会真实切 mainView；
   // 总览标签态 overviewOpen 2026-10-16 起同源复位）。
-  useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null, overviewOpen: false });
+  useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
   // 真终端组件（关空标签用例会挂会话）在 jsdom 需要 ResizeObserver stub
   vi.stubGlobal(
     "ResizeObserver",
@@ -357,7 +357,7 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
   // 2026-10-16 IA 重构：工具面板升主区视图——tool.cron 打开定时任务宽幅视图
   it("tool.cron 打开定时任务主区视图", async () => {
     listMock();
-    useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
+    useWorkspaceStore.setState({ mainView: "terminal" });
     render(<App />);
     await act(async () => {});
     expect(menuActionHandler).toBeTruthy();
@@ -505,7 +505,7 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
   }
 
   beforeEach(() => {
-    useWorkspaceStore.setState({ mainView: "terminal", toolDialog: null });
+    useWorkspaceStore.setState({ mainView: "terminal" });
   });
 
   it("转发/定时任务 → 主区宽幅视图（互斥切换）", async () => {

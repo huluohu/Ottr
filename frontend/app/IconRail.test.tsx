@@ -1,5 +1,5 @@
 // IconRail 组件测试（2026-10-16 视觉重设计 M3「疏渠」）：48px 图标轨五钮 +
-// 空间锚点光点（toolDialog 在场 → data-active）+ 未读徽标 + Otty 球弹层
+// 空间锚点光点（主区视图在场 → data-active）+ 未读徽标 + Otty 球弹层
 // （自原侧栏快捷菜单整体收编：主题/语言/设置/凭据/MCP，机制断言随迁）。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +37,7 @@ function openOttyMenu() {
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({ toolDialog: null, mainView: "terminal", overviewOpen: false });
+  useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
   useNotifyStore.setState({ unread: 0 });
   useSessionStore.setState({ sessions: [] });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
@@ -98,7 +98,6 @@ describe("IconRail（48px 图标轨）", () => {
     fireEvent.click(screen.getByTestId("rail-overview"));
     expect(useWorkspaceStore.getState().overviewOpen).toBe(true);
     expect(useWorkspaceStore.getState().mainView).toBe("overview");
-    expect(useWorkspaceStore.getState().toolDialog).toBeNull(); // 不占工具弹框槽
   });
 
   it("定时任务钮：点击开主区视图 + data-active 锚点（2026-10-16 IA 重构）", () => {

@@ -269,7 +269,12 @@ export function matchesAccelerator(e: KeyboardEvent, accel: string): boolean {
   if (p.ctrl !== (e.ctrlKey || e.metaKey)) return false;
   if (e.shiftKey !== p.shift) return false;
   if (e.altKey !== p.alt) return false;
-  return e.key.toLowerCase() === p.key;
+  // Shift+符号键的 e.key 是移位后的字形（US 布局：Shift+\ = "|"，真机 E2E
+  // 2026-10-16 实证 Ctrl+Shift+\ 永不命中）——按别名归一后再比对。别名只收
+  // 本表用到的移位字形；新增 Shift 系符号键位时在此补表。
+  const SHIFTED_KEY_ALIASES: Record<string, string> = { "|": "\\" };
+  const actual = SHIFTED_KEY_ALIASES[e.key]?.toLowerCase() ?? e.key.toLowerCase();
+  return actual === p.key;
 }
 
 /** 遍历总表匹配键盘事件（全局监听入口）；命中返回 ActionId。

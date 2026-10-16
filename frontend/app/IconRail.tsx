@@ -10,7 +10,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
-import { useSessionStore } from "../session/SessionStore";
 import { useNotifyStore } from "../notify/core";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n";
@@ -29,14 +28,6 @@ function OverviewIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M1.8 8h2.6l1.8-4.4L9.8 12.4 11.2 8h3" />
-    </svg>
-  );
-}
-
-function FolderIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2 4.5c0-.8.7-1.5 1.5-1.5h2.6l1.4 1.6h5c.8 0 1.5.7 1.5 1.5v5.4c0 .8-.7 1.5-1.5 1.5h-9C2.7 13 2 12.3 2 11.5v-7Z" />
     </svg>
   );
 }
@@ -119,26 +110,42 @@ function PlugIcon() {
   );
 }
 
-/** Otty 球（图标轨设置入口）：C2-F5 呆毛歪头同构脸——墨色宽圆头 + 呆毛 +
- * 奶油宽吻 + 琥珀鼻 + 宽距豆豆眼（歪头不对称 0.5px）。26px 属缩略层：
- * 眉/w 嘴/腮红按三层制主动让位（48px 以上才全开）。品牌资产场景直引 brand
- * 色板（tokens.css 消费纪律的品牌资产豁免，同锁屏 Otty）。 */
+/** Otty 球（图标轨设置入口）：应用图标同构小样——teal 渐变底盘上墨色
+ * 呆毛獭头（奶油宽吻 + 琥珀鼻 + 宽距豆豆眼）。底盘恒为品牌 teal，任何主题
+ * 下与轨底都有对比（2026-10-16 用户反馈：墨色脸在深色主题撞色）。品牌资产
+ * 场景直引 brand 色板（tokens.css 消费纪律的品牌资产豁免）。 */
 function OttyBall() {
   return (
     <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
-      {/* 呆毛（斜上翘，头顶左偏） */}
-      <path d="M15.2 4.4 C 14.2 2.6 14.7 1.2 16.5 0.6 C 15.5 2.2 15.7 3.6 16.6 4.7 Z" fill="#0F172A" />
-      {/* 双耳 */}
-      <circle cx="8.4" cy="7.6" r="2.4" fill="#0F172A" />
-      <circle cx="23.6" cy="7.6" r="2.4" fill="#0F172A" />
-      {/* 宽圆头 */}
-      <path d="M 8.4 27 L 8.4 17.4 C 8.4 10.4 11.6 7.2 16 7.2 C 20.4 7.2 23.6 10.4 23.6 17.4 L 23.6 27 Z" fill="#0F172A" />
-      {/* 奶油宽吻 + 琥珀鼻 */}
-      <rect x="10.6" y="17.8" width="10.8" height="3.6" rx="1.8" fill="#F6E7D4" />
-      <rect x="14" y="17.1" width="4" height="1.9" rx="0.95" fill="#F59E0B" />
-      {/* 宽距豆豆眼（歪头：一高一低） */}
-      <circle cx="11.6" cy="14.6" r="1.15" fill="#0F172A" />
-      <circle cx="20.4" cy="14.1" r="1.15" fill="#0F172A" />
+      <defs>
+        <linearGradient id="otty-ball-plate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#2DD4BF" />
+          <stop offset="1" stop-color="#0B7C6E" />
+        </linearGradient>
+        <clipPath id="otty-ball-clip">
+          <circle cx="16" cy="16" r="14.5" />
+        </clipPath>
+      </defs>
+      <circle cx="16" cy="16" r="14.5" fill="url(#otty-ball-plate)" />
+      <g clipPath="url(#otty-ball-clip)">
+        {/* 呆毛 */}
+        <path d="M15.4 5.2 C 14.4 3.4 14.9 2 16.7 1.4 C 15.7 3 15.9 4.4 16.8 5.5 Z" fill="#0F172A" />
+        {/* 双耳 */}
+        <circle cx="8.2" cy="8.6" r="2.6" fill="#0F172A" />
+        <circle cx="23.8" cy="8.6" r="2.6" fill="#0F172A" />
+        {/* 宽圆头（微倾） */}
+        <g transform="rotate(-3 16 18)">
+          <path d="M 8.2 27.5 L 8.2 17.2 C 8.2 10 11.5 6.8 16 6.8 C 20.5 6.8 23.8 10 23.8 17.2 L 23.8 27.5 Z" fill="#0F172A" />
+          {/* 奶油宽吻 + 琥珀鼻 */}
+          <rect x="10.4" y="17.4" width="11.2" height="3.8" rx="1.9" fill="#F6E7D4" />
+          <rect x="13.9" y="16.6" width="4.2" height="2" rx="1" fill="#F59E0B" />
+          {/* 宽距豆豆眼（歪头一高一低） */}
+          <circle cx="11.4" cy="14" r="1.2" fill="#0F172A" />
+          <circle cx="20.6" cy="13.4" r="1.2" fill="#0F172A" />
+        </g>
+        {/* 白水线 */}
+        <rect x="1.5" y="24.2" width="29" height="1.6" fill="#FFFFFF" opacity="0.9" />
+      </g>
     </svg>
   );
 }
@@ -170,12 +177,9 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
   const { t } = useTranslation();
   const toggleToolDialog = useWorkspaceStore((s) => s.toggleToolDialog);
   const toolDialog = useWorkspaceStore((s) => s.toolDialog);
-  const mainView = useWorkspaceStore((s) => s.mainView);
   const overviewOpen = useWorkspaceStore((s) => s.overviewOpen);
   const openOverview = useWorkspaceStore((s) => s.openOverview);
-  const openMainView = useWorkspaceStore((s) => s.openMainView);
   const unread = useNotifyStore((s) => s.unread);
-  const sessionCount = useSessionStore((s) => s.sessions.length);
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
   // Otty 球弹层（原侧栏快捷菜单机制整体迁入）：底部锚定、子面板右并排。
@@ -235,19 +239,6 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
       >
         <span className="rail-light" aria-hidden />
         <OverviewIcon />
-      </button>
-      <button
-        type="button"
-        className="rail-btn"
-        data-testid="rail-files"
-        data-active={mainView === "files"}
-        disabled={sessionCount === 0}
-        title={sessionCount === 0 ? t("nav.filesNeedsSession") : t("files.viewFiles")}
-        aria-label={sessionCount === 0 ? t("nav.filesNeedsSession") : t("files.viewFiles")}
-        onClick={() => openMainView("files")}
-      >
-        <span className="rail-light" aria-hidden />
-        <FolderIcon />
       </button>
       <button
         type="button"

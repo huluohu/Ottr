@@ -81,8 +81,8 @@ export function LockScreen({ closing }: { closing?: boolean }) {
     >
       <form className="dialog lock-card" onSubmit={handleSubmit} noValidate>
         {/* 小水獭（2026-10-16 用户需求）：贪玩被拦在门外，等主人开门——纯装饰 */}
-        <LockOtter mood={unlocking ? "eager" : "idle"} errorNonce={otterNonce} />
-        <h2>{t("security.lockScreen.title")}</h2>
+        <LockOtter
+          title={t("security.lockScreen.title")} mood={unlocking ? "eager" : "idle"} errorNonce={otterNonce} />
         <p className="dialog-intro">{t("security.lockScreen.hint")}</p>
         <label>
           <span>{t("security.masterPassword")}</span>

@@ -22,10 +22,14 @@
 export function LockOtter({
   mood,
   errorNonce,
+  title,
 }: {
   mood: "idle" | "eager";
   /** 密码错误次数（含空密码本地拦截）：驱动 duck 重挂；0 = 首次挂载播 peek。 */
   errorNonce: number;
+  /** 门牌文案（渲染在门沿上，2026-10-16 用户裁定「已锁定」上门牌更协调）；
+   *  本组件整体 aria-hidden，读屏语义由锁屏对话框的 aria-label 承担。 */
+  title: string;
 }) {
   return (
     <div
@@ -80,11 +84,20 @@ export function LockOtter({
             <path d="M110 45.4 Q116 43.5 122 46" className="otter-brow" />
           </g>
         </g>
-        {/* 门沿墙（藏身处）：上缘圆角、延伸到画布底 */}
+        {/* 门沿墙（藏身处）：上缘圆角、延伸到画布底；2026-10-16 用户裁定
+            「已锁定」直接上牌——门沿即门牌（文字在爪下方，不互扰） */}
         <path
           className="otter-door-edge"
           d="M0 128 V92 Q0 86 6 86 H194 Q200 86 200 92 V128 Z"
         />
+        <text
+          x="100"
+          y="114"
+          textAnchor="middle"
+          className="otter-door-title"
+        >
+          {title}
+        </text>
         {/* 两爪扒沿（墙前层，各自轻拍节拍错开） */}
         <g className="otter-paw otter-paw-l">
           <rect x="64" y="76" width="19" height="22" rx="8.5" className="ottr-fur" />

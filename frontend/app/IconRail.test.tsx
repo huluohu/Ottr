@@ -64,12 +64,15 @@ describe("IconRail（48px 图标轨）", () => {
         <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} />
       </ThemeProvider>,
     );
-    for (const id of ["rail-overview", "rail-files", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty"]) {
+    for (const id of ["rail-overview", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty"]) {
       expect(screen.getByTestId(id), id).toBeTruthy();
     }
+    // 文件入口不进图标轨（2026-10-16 用户裁定：依赖已连接会话、禁用态体验差），
+    // 保留在连接后的视图切换（终端/文件/进程）
+    expect(screen.queryByTestId("rail-files")).toBeNull();
     // 锁定钮在 Otty 球之前（控制中心旁；2026-10-16 用户需求）
     const lockIdx = [
-      "rail-overview", "rail-files", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty",
+      "rail-overview", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty",
     ].indexOf("rail-lock");
     expect(lockIdx).toBeGreaterThan(-1);
     expect(document.querySelector(".titlebar-inset")).toBeTruthy();
@@ -89,25 +92,12 @@ describe("IconRail（48px 图标轨）", () => {
     lockSpy.mockRestore();
   });
 
-  it("总览钮 = openOverview（置顶标签语义）；文件钮零会话禁用", () => {
+  it("总览钮 = openOverview（置顶标签语义）", () => {
     renderRail();
     fireEvent.click(screen.getByTestId("rail-overview"));
     expect(useWorkspaceStore.getState().overviewOpen).toBe(true);
     expect(useWorkspaceStore.getState().mainView).toBe("overview");
     expect(useWorkspaceStore.getState().toolDialog).toBeNull(); // 不占工具弹框槽
-    expect((screen.getByTestId("rail-files") as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("文件钮有会话可用 = openMainView(files)；激活态跟 mainView", () => {
-    useSessionStore.setState({
-      sessions: [{ id: "s1", paneOf: null } as never],
-    });
-    useWorkspaceStore.setState({ mainView: "files" });
-    renderRail();
-    expect((screen.getByTestId("rail-files") as HTMLButtonElement).disabled).toBe(false);
-    expect(screen.getByTestId("rail-files").getAttribute("data-active")).toBe("true");
-    fireEvent.click(screen.getByTestId("rail-files"));
-    expect(useWorkspaceStore.getState().mainView).toBe("files");
   });
 
   it("工具钮开关二态 + 空间锚点：toolDialog 在场 = data-active（teal 光点）", () => {
@@ -124,21 +114,6 @@ describe("IconRail（48px 图标轨）", () => {
     fireEvent.click(screen.getByTestId("rail-alerts"));
     expect(useWorkspaceStore.getState().toolDialog).toBeNull();
     expect(screen.getByTestId("rail-alerts").getAttribute("data-active")).toBe("false");
-  });
-
-  it("文件钮禁用态提示原因；有会话可用且提示切回功能名", async () => {
-    await i18n.changeLanguage("zh-CN");
-    renderRail();
-    const btn = screen.getByTestId("rail-files") as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
-    expect(btn.getAttribute("title")).toBe("连接主机后可浏览文件");
-    // 有会话后可用且提示切回功能名
-    cleanup();
-    useSessionStore.setState({ sessions: [{ id: "s1", paneOf: null } as never] });
-    renderRail();
-    const btn2 = screen.getByTestId("rail-files") as HTMLButtonElement;
-    expect(btn2.disabled).toBe(false);
-    expect(btn2.getAttribute("title")).toBe("文件");
   });
 
   it("Otty 弹层背板：点击弹层外任意区域（含主区拖拽面）即收起", () => {

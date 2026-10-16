@@ -496,3 +496,14 @@
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   border-radius: var(--radius-lg);
 }
+
+/* 门牌文字（2026-10-16 用户裁定：「已锁定」直接放门沿上更协调）——
+ * 色随前景（门沿面 = surface-raised，明暗主题都可读），字重 700。 */
+.otter-door-title {
+  fill: var(--color-fg);
+  opacity: 0.9;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}

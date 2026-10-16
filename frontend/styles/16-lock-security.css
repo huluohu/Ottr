@@ -11,6 +11,13 @@
   flex-direction: column;
   gap: 10px;
 }
+/* 头部区（标题 + 说明）居中：与水獭、忘记密码的居中构图同轴——2026-10-16
+   用户反馈「Ottr 已锁定几个字居中」，原左对齐在水獭下方孤悬左缘。表单区
+   （标签/输入/按钮）保持表单惯例不随动，重置说明区另有 text-align:left。 */
+.lock-card > h2,
+.lock-card > .dialog-intro {
+  text-align: center;
+}
 /* 主密码字段标签（label.grow 同病修）：无规则时「主密码」与密码框内联同行、
    输入框不满宽。直接子选择器，不影响 lock-reset-panel 内结构。 */
 .lock-card > label {

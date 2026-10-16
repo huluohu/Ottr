@@ -31,7 +31,7 @@ pub use entities::{
     HostGroups, HostInput, HostProtocol, Hosts, KnownHost, KnownHostState, KnownHosts, SecretField,
     Snippet, SnippetInput, Snippets, host_endpoint_key, parse_endpoint_key,
 };
-pub use export::hosts_csv;
+pub use export::{hosts_csv, ssh_config_text, tabby_json, xshell_sessions};
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};
 pub use history::{
     HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT, History, HistoryEntry,

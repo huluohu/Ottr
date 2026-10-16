@@ -146,7 +146,7 @@
     "exportCsv": "导出 CSV"
   },
   "importDialog": {
-    "title": "导入主机配置",
+    "title": "导入主机",
     "intro": "解析 ssh config 并导入主机：通配模式跳过，与现有主机同地址/端口/用户的条目去重。",
     "running": "解析导入中…",
     "start": "开始导入",
@@ -180,7 +180,7 @@
     "group_tools": "工具",
     "group_system": "系统",
     "newHost": "新建主机",
-    "themeToggle": "切换主题（亮 / 暗 / 跟随系统）",
+    "themeToggle": "切换主题",
     "langToggle": "切换语言（中文 / English）",
     "sidebarCollapse": "折叠/展开主机面板（⌘\\）",
     "quit": "退出 Ottr"
@@ -439,7 +439,7 @@
       "explainTarget": "解释以下终端内容"
     },
     "nl2cmd": {
-      "title": "NL 命令",
+      "title": "AI 生成命令",
       "placeholder": "用自然语言描述你想做的事，回车生成命令…",
       "run": "生成",
       "history": "最近生成",
@@ -1271,9 +1271,28 @@
     "search": "搜索"
   },
   "tools": {
-    "exportHostsCsv": "导出主机 CSV…"
+    "exportHosts": "导出主机…"
   },
   "otty": {
     "connect": "连上了，开游！"
+  },
+  "exportDialog": {
+    "title": "导出主机",
+    "intro": "选择导出格式。所有格式只含主机元数据（名称/地址/端口/用户等），不包含凭据与机密。",
+    "format": "导出格式",
+    "formatCsv": "CSV",
+    "formatTabby": "Tabby (JSON)",
+    "formatXshell": "Xshell 会话目录",
+    "formatSshconfig": "OpenSSH config",
+    "csvIntro": "通用表格格式（8 列），可在本应用与其他工具间往返导入。",
+    "tabbyIntro": "Tabby 终端配置的 profiles JSON，可直接并入 Tabby 的配置文件。",
+    "xshellIntro": "每台主机一个 .xsh 会话文件，导出到所选目录后可被 Xshell 直接打开。",
+    "sshconfigIntro": "OpenSSH 标准格式的 Host 块，可并入 ~/.ssh/config 或配合 Include 使用。",
+    "pickFolder": "选择导出目录",
+    "start": "导出",
+    "running": "正在导出…",
+    "failed": "导出失败：{{message}}",
+    "donePath": "已导出：{{path}}",
+    "doneCount": "已导出 {{count}} 个会话文件到 {{path}}"
   }
 }

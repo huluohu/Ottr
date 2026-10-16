@@ -38,9 +38,12 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.jump-chains", labelKey: "jump.title", group: "panels" },
   { id: "tool.credentials", labelKey: "nav.credentials", group: "hosts" },
   { id: "tool.batch", labelKey: "batch.title", group: "hosts" },
-  // 导出主机 CSV（2026-10-12 跨平台审计补齐）：runToolAction 的 case 本就已
-  // 存在，清单缺项曾致 Win/Linux 无触达口。
-  { id: "tool.export-hosts-csv", labelKey: "tools.exportHostsCsv", group: "hosts" },
+  // 导入主机（2026-10-16 用户需求：工具面补齐——原先只有文件菜单/⌘K/欢迎页
+  // 三个入口，工具组缺席）。
+  { id: "tool.import-hosts", labelKey: "importDialog.title", group: "hosts" },
+  // 导出主机（2026-10-16 用户需求：四格式对话框，对齐导入类型；原「导出主机
+  // CSV」单格式退役）。
+  { id: "tool.export-hosts", labelKey: "tools.exportHosts", group: "hosts" },
   { id: "update.check", labelKey: "update.check", group: "system" },
 ];
 

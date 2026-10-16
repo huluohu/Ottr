@@ -600,6 +600,12 @@ export const vaultApi = {
     invoke<ImportReport>("import_hosts_csv", { path }),
   /** CSV 导出（path=null → 系统下载目录 ottr-hosts.csv），返回落盘路径。 */
   exportHostsCsv: (path: string | null) => invoke<string>("export_hosts_csv", { path }),
+  /** Tabby 配置 JSON 导出（2026-10-16 导出对齐导入类型；只出元数据不出凭据）。 */
+  exportHostsTabby: (path: string | null) => invoke<string>("export_hosts_tabby", { path }),
+  /** OpenSSH config 导出（单文件 Host 块文本）。 */
+  exportHostsSshConfig: (path: string | null) => invoke<string>("export_hosts_ssh_config", { path }),
+  /** Xshell 会话目录导出（dir 必传，每主机一个 .xsh），返回写入个数。 */
+  exportHostsXshell: (dir: string) => invoke<number>("export_hosts_xshell", { dir }),
   credentials: {
     list: () => invoke<Credential[]>("credentials_list"),
     get: (id: number) => invoke<Credential | null>("credentials_get", { id }),

@@ -105,6 +105,74 @@ pub fn export_hosts_csv(
     Ok(target.to_string_lossy().into_owned())
 }
 
+/// 导出落盘共用：缺省目录 = 系统下载目录（不可得回落应用数据目录）。
+fn export_target(app: &tauri::AppHandle, path: Option<String>, default_name: &str) -> PathBuf {
+    match path {
+        Some(p) => PathBuf::from(p),
+        None => app
+            .path()
+            .download_dir()
+            .or_else(|_| crate::paths::data_root(app))
+            .map(|dir| dir.join(default_name))
+            .unwrap_or_else(|_| PathBuf::from(default_name)),
+    }
+}
+
+/// Tabby 配置 JSON 导出（2026-10-16 用户需求：导出对齐导入类型）。单文件
+/// `ottr-tabby.json`；内容组装在 ottr-vault `tabby_json`（与导入器解析面对表，
+/// 集成测试钉住）。只出元数据，不出凭据。
+#[specta::specta]
+#[tauri::command]
+pub fn export_hosts_tabby(
+    app: tauri::AppHandle,
+    state: State<'_, VaultState>,
+    path: Option<String>,
+) -> CmdResult<String> {
+    ensure_unlocked(&state.0)?;
+    let target = export_target(&app, path, "ottr-tabby.json");
+    let json = ottr_vault::tabby_json(&state.0).map_err(|e| e.to_string())?;
+    std::fs::write(&target, json).map_err(|e| format!("write {}: {e}", target.display()))?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+/// OpenSSH config 导出。单文件 `ottr-ssh-config`（用户可改名并入
+/// `~/.ssh/config` 的 Include 面）；内容组装在 ottr-vault `ssh_config_text`。
+#[specta::specta]
+#[tauri::command]
+pub fn export_hosts_ssh_config(
+    app: tauri::AppHandle,
+    state: State<'_, VaultState>,
+    path: Option<String>,
+) -> CmdResult<String> {
+    ensure_unlocked(&state.0)?;
+    let target = export_target(&app, path, "ottr-ssh-config");
+    let text = ottr_vault::ssh_config_text(&state.0).map_err(|e| e.to_string())?;
+    std::fs::write(&target, text).map_err(|e| format!("write {}: {e}", target.display()))?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+/// Xshell 会话目录导出：`dir` 必传（会话 = 每主机一个 .xsh，没有单文件形态；
+/// 前端走目录选择对话框）。文件名 sanitize + CRLF 内容在 ottr-vault
+/// `xshell_sessions`；落盘时统一加 UTF-8 BOM（Xshell 老版本按 BOM 嗅探编码）。
+/// 返回写入的 .xsh 个数。
+#[specta::specta]
+#[tauri::command]
+pub fn export_hosts_xshell(state: State<'_, VaultState>, dir: String) -> CmdResult<usize> {
+    ensure_unlocked(&state.0)?;
+    let root = PathBuf::from(&dir);
+    std::fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
+    let entries = ottr_vault::xshell_sessions(&state.0).map_err(|e| e.to_string())?;
+    let mut written = 0usize;
+    for (filename, content) in &entries {
+        let target = root.join(filename);
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(content.as_bytes());
+        std::fs::write(&target, bytes).map_err(|e| format!("write {}: {e}", target.display()))?;
+        written += 1;
+    }
+    Ok(written)
+}
+
 // --- 同步分类快照（Phase 5 Task 3；ottr-vault sync_snapshot 模块）-------------
 // 分类快照导出/导入 = 同步编排（frontend/sync/SyncStore.ts）的数据面。两者都开封/
 // 重密封凭据与渠道密文（双层加密语义：信封口令保护传输面、本机主密码保护落盘

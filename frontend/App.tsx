@@ -16,7 +16,6 @@ import { Toaster } from "./ui/Toaster";
 import { initRipple } from "./ui/ripple";
 import { useModalStore, type ModalId } from "./ui/modalStore";
 import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
-import { showToast } from "./ui/toastStore";
 import { runUpdateCheckToasts } from "./update/updateToasts";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
@@ -30,6 +29,7 @@ import { VaultInitGateOverlay } from "./security/VaultInitGateOverlay";
 import { syncLangFromVault, setLang, useLanguage } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
+import { ExportHostsDialog } from "./hosts/ExportHostsDialog";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
@@ -70,7 +70,7 @@ import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { createSplitDedupe } from "./shortcuts/splitDedupe";
 import { initAutoCheck } from "./update/autoCheck";
 import { useVaultStore } from "./vault/store";
-import { vaultApi, type Host } from "./vault/api";
+import { type Host } from "./vault/api";
 import "./theme/tokens.css";
 import "./styles/index.css";
 
@@ -144,6 +144,8 @@ function HomeLayout() {
   const formView = useDelayedValue(form);
   const importOpen = activeModal === "importHosts";
   const importView = useDelayedUnmount(importOpen);
+  const exportOpen = activeModal === "exportHosts";
+  const exportView = useDelayedUnmount(exportOpen);
   const credentialsOpen = activeModal === "credentials";
   const credentialsView = useDelayedUnmount(credentialsOpen);
   // 定向打开设置分区（AI 跳转/检查更新入口）；null = 默认通用区。
@@ -214,7 +216,9 @@ function HomeLayout() {
    * 多入口永不分叉（用户口径：同类功能在多处必须同步）。
    * 2026-10-14 设置类收敛：mcp（单一家 = 设置页 MCP 分区）与 sync（单一家 =
    * 设置页同步分区）自工具清单退役——工具菜单不再有设置概念项，本表同步
-   * 删除对应 case（清单见 shortcuts/toolsRegistry.ts）。 */
+   * 删除对应 case（清单见 shortcuts/toolsRegistry.ts）。
+   * 2026-10-16 用户需求：导入/导出主机进工具面（原 import 只在文件菜单、
+   * export 只出 CSV）；导出升级为四格式对话框。 */
   const runToolAction = useCallback(
     (key: string) => {
       switch (key) {
@@ -228,30 +232,13 @@ function HomeLayout() {
         case "overview": openOverview(); break;
         case "batch": openMainView("batch"); break;
         case "cron": openToolDialog("cron"); break;
-        case "export-hosts-csv": void exportHostsCsvFromMenu(); break;
+        case "export-hosts": openModal("exportHosts"); break;
+        case "import-hosts": openModal("importHosts"); break;
       }
     },
-    // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定）+
-    // exportHostsCsvFromMenu（仅捕获稳定 setter），空数组无 staleness。
+    // 依赖面 = useState setter（恒稳定）+ zustand store 动作（恒稳定），无 staleness。
     [],
   );
-
-  async function exportHostsCsvFromMenu() {
-    // 原生保存对话框选落盘路径（同 ImportDialog 的 plugin-dialog 动态引入
-    // 口径）；用户取消 = 静默返回；成功/失败经行内反馈条（6s）告知结果。
-    try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const target = await save({
-        defaultPath: "ottr-hosts.csv",
-        filters: [{ name: "CSV", extensions: ["csv"] }],
-      });
-      if (!target) return;
-      const path = await vaultApi.exportHostsCsv(target);
-      showToast(path);
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
 
   // Task 16.5 就绪门取数（仅 Tauri）：先挂事件监听、后查 vault_init_status
   // （两端夹逼无漏窗，见 VaultInitGate 模块文档）。
@@ -463,9 +450,15 @@ function HomeLayout() {
             op: action === "view.zoomIn" ? "in" : action === "view.zoomOut" ? "out" : "reset",
           }).catch(() => {});
           break;
+        default:
+          // tool.* 工具命令（⌘K 工具组 / Win/Linux 汉堡 / 托盘同源清单）：
+          // 统一收口 runToolAction——此前未路由，两端入口是死点击（2026-10-16
+          // 用户反馈「⌘K 列表与全项目脱钩」的根因之一）。
+          if (action.startsWith("tool.")) runToolAction(action.slice("tool.".length));
+          break;
       }
     },
-    [themeMode, setMode, lang, toggleSidebarCollapsed],
+    [themeMode, setMode, lang, toggleSidebarCollapsed, runToolAction],
   );
 
   // 原生菜单主题勾选跟随（2026-10-08 菜单栏启用批次）：mode 单一来源在此，
@@ -653,6 +646,11 @@ function HomeLayout() {
       )}
       {importView.shouldRender && (importOpen || (importView.closing && activeModal === null)) && (
         <ImportDialog closing={importView.closing} onClose={() => closeModal("importHosts")} />
+      )}
+      {/* 导出主机对话框（2026-10-16 四格式：CSV/Tabby JSON/Xshell 目录/OpenSSH
+          config）；结果经 toast（成功落盘路径 / 个数），失败就地重试。 */}
+      {exportView.shouldRender && (exportOpen || (exportView.closing && activeModal === null)) && (
+        <ExportHostsDialog closing={exportView.closing} onClose={() => closeModal("exportHosts")} />
       )}
       {credentialsView.shouldRender &&
         (credentialsOpen || (credentialsView.closing && activeModal === null)) && (

@@ -338,11 +338,11 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Scheduled Tasks"
             }
         }
-        "tool_export_csv" => {
+        "tool_export_hosts" => {
             if zh {
-                "导出主机 CSV…"
+                "导出主机…"
             } else {
-                "Export Hosts CSV…"
+                "Export Hosts…"
             }
         }
         "update_check" => {
@@ -415,7 +415,7 @@ pub enum MenuNode {
 /// 「跟随系统」首位（2026-10-14 用户反馈）：与设置网格/侧栏快切菜单一致——
 /// 系统推荐的缺省档排第一，具体主题跟在后。
 pub const THEME_IDS: [&str; 7] = [
-    "system", "light", "dark", "oled", "amethyst", "verdant", "glass",
+    "system", "light", "verdant", "dark", "oled", "amethyst", "glass",
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
@@ -424,7 +424,7 @@ pub const THEME_IDS: [&str; 7] = [
 /// 同批删除，13 → 11 项）。2026-10-16：overview 迁「视图」菜单首项（主区视图
 /// 归位，用户裁定）——**键保留在本表**（分派校验按 id 前缀不按所在菜单），
 /// 仅不再渲染进工具子菜单（镜像测试按 OVERVIEW_VIEW_MENU 标记排除）。
-pub const TOOL_KEYS: [&str; 11] = [
+pub const TOOL_KEYS: [&str; 12] = [
     "cron",
     "alerts",
     "monitor",
@@ -435,7 +435,8 @@ pub const TOOL_KEYS: [&str; 11] = [
     "credentials",
     "overview",
     "batch",
-    "export-hosts-csv",
+    "import-hosts",
+    "export-hosts",
 ];
 
 /// 已迁出工具菜单、改挂「视图」菜单首项的 key（2026-10-16）：镜像测试与
@@ -641,8 +642,13 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     accelerator: None,
                 },
                 MenuNode::Item {
-                    id: "tool.export-hosts-csv",
-                    label: text(lang, "tool_export_csv"),
+                    id: "tool.import-hosts",
+                    label: text(lang, "import_host"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    id: "tool.export-hosts",
+                    label: text(lang, "tool_export_hosts"),
                     accelerator: None,
                 },
             ],

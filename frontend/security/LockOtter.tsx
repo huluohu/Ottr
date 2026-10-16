@@ -16,8 +16,9 @@
 //     头顶草叶缓摆；
 //   * 解锁在途（mood=eager）：呼吸加速一倍（期待感）。
 // 纯装饰（aria-hidden），不新增词典键；配色全走品牌保留色 token（brand.md：
-// 毛色 --ottr-fur-600/800、吻部 --ottr-cream-100、墨色五官 --ottr-ink-900，
-// 腮红用点缀色 --ottr-amber-500、草叶用主色系 --color-success）。
+// 2026-10-16 v6 定稿适配——头/耳/爪 = 墨色 --ottr-ink-900（旧棕毛画法退役，
+// 胡须按 f5 减法移除），吻部 --ottr-cream-100、鼻 = 琥珀 --ottr-amber-500，
+// 腮红同点缀色、草叶用主色系 --color-success）。
 export function LockOtter({
   mood,
   errorNonce,
@@ -44,11 +45,9 @@ export function LockOtter({
         {/* 头部（藏身层）：peek/duck 的 translateY 在 otter-lift 上，呼吸在内层 */}
         <g className="otter-lift">
           <g className="otter-body">
-            {/* 耳（外圈毛色 + 内耳暗部） */}
+            {/* 耳（墨色圆，v6 定稿基因） */}
             <circle cx="70" cy="34" r="9" className="ottr-fur" />
             <circle cx="130" cy="34" r="9" className="ottr-fur" />
-            <circle cx="70" cy="35" r="4.2" className="ottr-fur-dark" />
-            <circle cx="130" cy="35" r="4.2" className="ottr-fur-dark" />
             {/* 头顶草叶（贪玩的证物）：茎 + 叶，左右缓摆 */}
             <g className="otter-leaf">
               <path d="M118 28 Q117 20 113 15" className="otter-leaf-stem" />
@@ -62,9 +61,9 @@ export function LockOtter({
             {/* 腮红（点缀色轻敷） */}
             <ellipse cx="74" cy="66" rx="6" ry="3.6" className="otter-blush" />
             <ellipse cx="126" cy="66" rx="6" ry="3.6" className="otter-blush" />
-            {/* 吻部 + 鼻 + 「w」嘴 */}
-            <ellipse cx="100" cy="72" rx="18" ry="12.5" className="ottr-cream" />
-            <ellipse cx="100" cy="64" rx="4.6" ry="3.4" className="ottr-ink" />
+            {/* 吻部（宽扁奶油横带）+ 鼻（琥珀，f5 标志色）+ 「w」嘴 */}
+            <ellipse cx="100" cy="73" rx="20" ry="11" className="ottr-cream" />
+            <ellipse cx="100" cy="64" rx="5" ry="3.6" className="otter-nose" />
             <path
               d="M100 68 Q100 72 95.5 72.5 M100 68 Q100 72 104.5 72.5"
               className="otter-mouth"
@@ -79,13 +78,6 @@ export function LockOtter({
             {/* 眉毛两撇（静态可爱值；期待感由 eager 态呼吸加速承担） */}
             <path d="M78 46 Q84 43.5 90 45.4" className="otter-brow" />
             <path d="M110 45.4 Q116 43.5 122 46" className="otter-brow" />
-            {/* 胡须 */}
-            <g className="otter-whiskers">
-              <path d="M80 68 Q66 66 58 62" />
-              <path d="M80 72 Q66 72 57 71" />
-              <path d="M120 68 Q134 66 142 62" />
-              <path d="M120 72 Q134 72 143 71" />
-            </g>
           </g>
         </g>
         {/* 门沿墙（藏身处）：上缘圆角、延伸到画布底 */}

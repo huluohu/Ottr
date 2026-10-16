@@ -1,16 +1,16 @@
-// Sidebar 组件测试（2026-10-10 壳层重构）：三段式（快捷连接/主机区/导航+设置）
-// ——导航项点击开对应 dock 面板（workspaceStore 真店断言）、未读徽标、壳层
-// 动作回调（快速连接/设置/通知中心开关）、主题/语言快捷循环。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// Sidebar 组件测试（2026-10-10 壳层重构；2026-10-16 视觉重设计 M3 瘦身）：
+// 两段式（快捷连接/主机区）+ ⌓\ 折叠胶囊。功能导航/Otty 球弹层已迁
+// app/IconRail（断言随迁 IconRail.test.tsx，testid 前缀 rail-*）。
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThemeProvider } from "../theme/ThemeContext";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 
-import i18n from "../i18n";
 import { Sidebar } from "./Sidebar";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { useNotifyStore } from "../notify/core";
+import { useVaultStore } from "../vault/store";
 
 const noop = () => {};
 
@@ -29,10 +29,7 @@ function shellProps(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
   return {
     style: undefined,
     onQuickConnect: vi.fn(),
-    onOpenCredentials: vi.fn(),
     onNewGroup: vi.fn(),
-    onOpenSettings: vi.fn(),
-          onOpenMcpSettings: vi.fn(),
     ...overrides,
   };
 }
@@ -45,11 +42,6 @@ function renderSidebar(overrides?: Partial<Parameters<typeof Sidebar>[0]>) {
     </ThemeProvider>,
   );
   return { shell };
-}
-
-// 快捷菜单（2026-10-12 ZCode 式收合）：入口行收进弹层，先点按钮再点条目
-function openQuickMenu() {
-  fireEvent.click(screen.getByTestId("sidebar-quickmenu"));
 }
 
 beforeEach(() => {
@@ -74,128 +66,47 @@ afterEach(() => {
 });
 
 describe("Sidebar", () => {
-  it("三段式渲染：搜索/主机区（新建主机入口）/快捷菜单按钮；弹出含全部入口", () => {
+  it("两段式渲染：搜索/主机区（新建主机入口）；功能导航已迁图标轨（不再有快捷菜单按钮）", () => {
     renderSidebar();
     expect(screen.getByTestId("sidebar-search")).toBeTruthy();
     expect(screen.getByTestId("sidebar-add-host")).toBeTruthy(); // 主机区 = HostTree 原样嵌入
     expect(screen.getByTestId("sidebar-add-group")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-quickmenu")).toBeTruthy();
-    // ZCode 式收合：弹出前无入口行
-    expect(screen.queryByTestId("sidebar-nav-cron")).toBeNull();
-    openQuickMenu();
-    expect(screen.getByTestId("sidebar-nav-overview")).toBeTruthy(); // 总览首项（2026-10-14 用户裁定）
-    expect(screen.getByTestId("sidebar-nav-cron")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-nav-alerts")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-nav-mcp")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-nav-notifications")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-nav-credentials")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-nav-settings")).toBeTruthy();
+    expect(screen.queryByTestId("sidebar-quickmenu")).toBeNull();
   });
 
-  it("总览入口 = 主区实体视图切（openMainView），非工具弹框（2026-10-14 用户裁定）", () => {
-    useWorkspaceStore.setState({ mainView: "terminal" });
-    renderSidebar();
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-nav-overview"));
-    expect(useWorkspaceStore.getState().mainView).toBe("overview");
-    expect(useWorkspaceStore.getState().toolDialog).toBeNull(); // 不占工具弹框槽
-  });
-
-  it("导航点击开对应弹框；异值即替换（单槽一次一个）；再点同值关闭（开关二态）", () => {
-    renderSidebar();
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-nav-cron"));
-    expect(useWorkspaceStore.getState().toolDialog).toBe("cron");
-    // 选即关（原生菜单语义）：再次操作需重新打开快捷菜单
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-nav-alerts"));
-    expect(useWorkspaceStore.getState().toolDialog).toBe("alerts"); // 单槽替换
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-nav-alerts")); // 再点 = 关
-    expect(useWorkspaceStore.getState().toolDialog).toBeNull();
-  });
-
-  it("未读数徽标：unread=3 显示 3；归零消失（快捷菜单弹出态）", () => {
-    useNotifyStore.setState({ unread: 3 });
-    renderSidebar();
-    openQuickMenu();
-    expect(screen.getByTestId("sidebar-unread").textContent).toBe("3");
-    cleanup();
-    useNotifyStore.setState({ unread: 0 });
-    renderSidebar();
-    openQuickMenu();
-    expect(screen.queryByTestId("sidebar-unread")).toBeNull();
-  });
-
-  it("壳层动作：搜索/设置回调接线（通知中心行已收编 nav，走 dock 不再经壳回调）", () => {
-    const shell = shellProps({
-      onQuickConnect: vi.fn(),
-      onOpenSettings: vi.fn(),
-    });
+  it("壳层动作：搜索回调接线（⌓K 面板呼出）", () => {
+    const shell = shellProps({ onQuickConnect: vi.fn() });
     renderSidebar(shell);
     fireEvent.click(screen.getByTestId("sidebar-search"));
     expect(shell.onQuickConnect).toHaveBeenCalledTimes(1);
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-nav-settings"));
-    expect(shell.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("主题子菜单：快捷菜单内点主题弹七选项；选即应用且浮层保留（2026-10-14 裁定：连续预览/切换，点外/Esc 才收）", () => {
-    renderSidebar();
-    const hostsBefore = screen.getByTestId("app-sidebar").querySelector(".sidebar-hosts")?.textContent;
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-theme"));
-    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
-    for (const id of ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"]) {
-      expect(screen.getByTestId(`sidebar-theme-${id}`)).toBeTruthy();
-    }
-    fireEvent.click(screen.getByTestId("sidebar-theme-oled"));
-    expect(document.documentElement.dataset.theme).toBe("oled");
-    // 选中留场：浮层与子面板都不收，勾选态跟手（连续切换免重开）
-    expect(screen.getByTestId("sidebar-flyout-main")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
-    expect(screen.getByTestId("sidebar-theme-oled").getAttribute("data-checked")).toBe("true");
-    expect(screen.getByTestId("sidebar-theme-glass").getAttribute("data-checked")).toBe("false");
-    // 主机树区文本不变 = 布局未被顶动（弹层为 fixed，不占布局）
-    expect(screen.getByTestId("app-sidebar").querySelector(".sidebar-hosts")?.textContent).toBe(hostsBefore);
+  it("折叠胶囊：只渲染搜索圆钮 + 分组圆点 + 未读徽标；树/新建入口收起", () => {
+    // 组数据：两命名组（一带组色）+ 一台未分组主机
+    useVaultStore.setState({
+      hostGroups: [
+        { id: 1, name: "生产", parent_id: null, color: "#d92d20", created_at: 0, updated_at: 0 },
+        { id: 2, name: "测试", parent_id: null, color: null, created_at: 0, updated_at: 0 },
+      ],
+      hosts: [
+        { id: 1, name: "a", address: "1.1.1.1", port: 22, protocol: "ssh", group_id: 1, tags: [] },
+        { id: 2, name: "b", address: "2.2.2.2", port: 22, protocol: "ssh", group_id: null, tags: [] },
+      ] as never,
+    });
+    useNotifyStore.setState({ unread: 5 });
+    renderSidebar({ collapsed: true });
+    expect(screen.getByTestId("app-sidebar").getAttribute("data-collapsed")).toBe("true");
+    expect(screen.queryByTestId("sidebar-add-host")).toBeNull();
+    const dots = screen.getByTestId("sidebar-capsule-hosts").querySelectorAll(".capsule-dot");
+    expect(dots.length).toBe(3); // 两命名组 + 未分组桶
+    expect((dots[0] as HTMLElement).style.background).toContain("rgb(217, 45, 32)");
+    expect(screen.getByTestId("sidebar-unread").textContent).toContain("5");
+    useVaultStore.setState({ hostGroups: [], hosts: [] });
+    useNotifyStore.setState({ unread: 0 });
   });
 
-  // 回归（v0.5.0 实测「选择不生效」）：浮层渲染在 nav 之外，外点关闭监听
-  // mousedown——旧实现把面板内的 mousedown 误判为「点外」即刻卸载面板，
-  // 后续 click 永远不触发（真机事件序 = mousedown → click）。本用例按真实
-  // 事件序模拟：面板内 mousedown 不得卸载，随后 click 正常应用主题。
-  it("回归：面板内 mousedown 不卸载浮层，随后 click 正常应用（真实事件序）", () => {
-    renderSidebar();
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-theme"));
-    const option = screen.getByTestId("sidebar-theme-oled");
-    fireEvent.mouseDown(option); // 旧实现：面板在此被卸载 → click 落空
-    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
-    fireEvent.click(option);
-    expect(document.documentElement.dataset.theme).toBe("oled");
-    // 选中留场（2026-10-14）：面板继续在册
-    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
-  });
-
-  it("外点（面板外元素）mousedown 仍收起浮层", () => {
-    renderSidebar();
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-theme"));
-    expect(screen.getByTestId("sidebar-flyout-theme")).toBeTruthy();
-    fireEvent.mouseDown(document.body);
-    expect(screen.queryByTestId("sidebar-flyout-theme")).toBeNull();
-  });
-
-  it("语言子菜单：浮层展开中英选项，点选切换 i18n 实例语言且浮层保留", async () => {
-    renderSidebar();
-    openQuickMenu();
-    fireEvent.click(screen.getByTestId("sidebar-lang"));
-    expect(screen.getByTestId("sidebar-flyout-lang")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("sidebar-lang-zh-CN"));
-    await waitFor(() => expect(i18n.language).toBe("zh-CN"));
-    // 选中留场（2026-10-14），点外才收
-    expect(screen.getByTestId("sidebar-flyout-lang")).toBeTruthy();
-    fireEvent.mouseDown(document.body);
-    expect(screen.queryByTestId("sidebar-flyout-lang")).toBeNull();
+  it("折叠态未读为零：徽标不渲染", () => {
+    renderSidebar({ collapsed: true });
+    expect(screen.queryByTestId("sidebar-unread")).toBeNull();
   });
 });

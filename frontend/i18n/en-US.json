@@ -180,6 +180,7 @@
     "newHost": "New Host",
     "themeToggle": "Toggle Theme (Light / Dark / System)",
     "langToggle": "Toggle Language (中文 / English)",
+    "sidebarCollapse": "Collapse/Expand Host Panel (⌘\\)",
     "quit": "Quit Ottr"
   },
   "history": {

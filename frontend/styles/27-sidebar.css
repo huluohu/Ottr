@@ -200,3 +200,85 @@
   color: var(--color-accent-text);
   font-weight: 600;
 }
+
+/* --- 折叠胶囊（2026-10-16 视觉重设计 M3 ⌘\，报告 §2「主机面板可整列折叠」）---
+ * 64px 恒宽悬浮胶囊：搜索圆钮（呼出 ⌘K）+ 分组圆点列（组色）+ 未读徽标。 */
+.sidebar-capsule {
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 8px;
+}
+.capsule-search {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  color: var(--fg-muted);
+}
+.capsule-search:hover {
+  background: var(--surface-raised);
+  color: var(--color-fg);
+}
+.capsule-hosts {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.capsule-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  /* 组色直出（vault 数据面）；无色组 = 默认描边空心点 */
+  background: var(--fg-muted);
+}
+.capsule-dot-plain {
+  background: transparent;
+  border: 1.5px dashed var(--fg-muted);
+}
+.capsule-spacer {
+  flex: none;
+}
+.capsule-unread {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.capsule-unread:hover {
+  background: var(--surface-raised);
+  color: var(--color-fg);
+}
+.capsule-unread-badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+  font-size: var(--text-2xs);
+  line-height: 15px;
+  font-weight: 700;
+  text-align: center;
+}

@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sidebar } from "./app/Sidebar";
+import { IconRail } from "./app/IconRail";
 import { Toaster } from "./ui/Toaster";
 import { initRipple } from "./ui/ripple";
 import { useModalStore, type ModalId } from "./ui/modalStore";
@@ -95,8 +96,12 @@ type FormState = { mode: "new"; groupId: number | null } | { mode: "edit"; host:
 
 /** 左栏宽（裁定 #2：暂记 localStorage，settings 表落地后迁移）。 */
 const SIDEBAR_KEY = "ottr.layout.sidebarWidth";
+/** 主机面板折叠胶囊（2026-10-16 视觉重设计 M3 ⌘\）：同款 localStorage 口径。 */
+const SIDEBAR_COLLAPSED_KEY = "ottr.layout.sidebarCollapsed";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 560;
+/** 折叠胶囊恒定宽（可拖拽域之外；展开恢复记忆宽度）。 */
+const SIDEBAR_CAPSULE_WIDTH = 64;
 
 function clampSidebarWidth(w: number): number {
   return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
@@ -175,6 +180,25 @@ function HomeLayout() {
     }
     return 280;
   });
+  // 折叠胶囊（⌘\，2026-10-16 M3）：折叠态恒 64px，resizer 隐藏（可拖拽域外）。
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((cur) => {
+      const next = !cur;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // 持久化失败不阻塞切换
+      }
+      return next;
+    });
+  }, []);
   const resizing = useRef(false);
 
   // 新建分组信号（File 菜单/汉堡 hosts.new_group → HostTree 分组态；计数即触发）
@@ -381,6 +405,9 @@ function HomeLayout() {
         case "notify.center":
           openToolDialog("notifications");
           break;
+        case "hosts.panelToggle":
+          toggleSidebarCollapsed();
+          break;
         case "hosts.import":
           modal.open("importHosts");
           break;
@@ -433,7 +460,7 @@ function HomeLayout() {
           break;
       }
     },
-    [themeMode, setMode, lang],
+    [themeMode, setMode, lang, toggleSidebarCollapsed],
   );
 
   // 原生菜单主题勾选跟随（2026-10-08 菜单栏启用批次）：mode 单一来源在此，
@@ -541,10 +568,19 @@ function HomeLayout() {
         />
       )}
       <div className="app-body">
-        {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树） +
-            功能导航 + 设置，单列三段式；宽度仍由 resizer 持有。 */}
+        {/* 48px 图标轨（2026-10-16 视觉重设计 M3「獭居·浮岛」）：高频入口恒驻
+            + Otty 球设置入口；mac 红绿灯随轨道移到窗口最左。 */}
+        <IconRail
+          titlebarInset={PLATFORM === "mac" && IS_TAURI}
+          onOpenCredentials={() => openModal("credentials")}
+          onOpenSettings={() => openSettingsToPane(null)}
+          onOpenMcpSettings={() => openSettingsToPane("mcp")}
+        />
+        {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树）；
+            功能导航与设置已迁图标轨（M3）。⌓\ 折叠胶囊 = 64px 恒宽。 */}
         <Sidebar
-          style={{ width: sidebarWidth }}
+          style={{ width: sidebarCollapsed ? SIDEBAR_CAPSULE_WIDTH : sidebarWidth }}
+          collapsed={sidebarCollapsed}
           titlebarInset={PLATFORM === "mac" && IS_TAURI}
           newGroupSignal={newGroupSignal}
           selectedId={selectedId}
@@ -559,18 +595,17 @@ function HomeLayout() {
             openModal("hostForm");
           }}
           onQuickConnect={() => openModal("palette")}
-          onOpenCredentials={() => openModal("credentials")}
           onNewGroup={() => setNewGroupSignal((n) => n + 1)}
-          onOpenSettings={() => openSettingsToPane(null)}
-          onOpenMcpSettings={() => openSettingsToPane("mcp")}
         />
-        <div
-          className="sidebar-resizer"
-          role="separator"
-          aria-orientation="vertical"
-          onPointerDown={startResize}
-          data-testid="sidebar-resizer"
-        />
+        {!sidebarCollapsed && (
+          <div
+            className="sidebar-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            onPointerDown={startResize}
+            data-testid="sidebar-resizer"
+          />
+        )}
         {/* 主区视图路由（UI 批次一 Task 2）：mainView 状态机五视图切换；终端
             隐藏常驻不变量在 MainArea 内执行（非 terminal 视图 visibility 隐藏，
             运行中会话不卸载）。 */}

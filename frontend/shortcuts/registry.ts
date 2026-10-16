@@ -40,6 +40,7 @@ export type ActionId =
   | "hosts.new_group"
   | "hosts.import"
   | "notify.center"
+  | "hosts.panelToggle"
   | "app.quit"
   | "app.closeWindow"
   | "app.toggleFullscreen"
@@ -151,6 +152,16 @@ export const ACTIONS: readonly ActionDef[] = [
   { id: "hosts.import", labelKey: "importDialog.title" },
   // 通知中心（工具族）：mac 原生工具菜单 + win/linux 汉堡同源入口。
   { id: "notify.center", labelKey: "notify.centerTitle" },
+  // 主机面板折叠胶囊（2026-10-16 视觉重设计 M3「獭居·浮岛」）：⌘\ 一键把
+  // 主机面板折成 64px 悬浮胶囊。win/linux 不用裸 Ctrl+\（SIGQUIT 是终端
+  // 控制键）收敛为 Ctrl+Shift+\（带 Shift 满足终端守卫）；mac ⌘\ 走
+  // terminalSafeHit 呼出键例外（同 ⌘K 语义：布局开关必须随处可及）。
+  {
+    id: "hosts.panelToggle",
+    labelKey: "palette.sidebarCollapse",
+    keys: { mac: "CmdOrCtrl+\\", win: "Ctrl+Shift+\\", linux: "Ctrl+Shift+\\" },
+    terminalSafe: true,
+  },
   { id: "app.quit", labelKey: "palette.quit" },
   // --- 2026-10-12 跨平台审计补齐（此前 Win/Linux 整体不可达的 mac-only 面）---
   {
@@ -282,16 +293,18 @@ export function matchActionEvent(
   return null;
 }
 
-/** 终端内放行判定：terminalSafe 标记 + 键位带 Shift（⌘K/⌘J 面板呼出键例外）。
+/** 终端内放行判定：terminalSafe 标记 + 键位带 Shift（⌘K/⌘J/⌘\ 呼出键例外）。
  * 双条件缺一不可——标记防新增裸 Ctrl 键重蹈覆辙，Shift 条件把「带 Shift 的
- * 分屏键」语义钉在数据上而非注释里；palette.toggle / ai.nl2cmd 是唯一的
- * 无 Shift 例外：呼出键必须随处可及（终端内恰恰是主使用场景）。 */
+ * 分屏键」语义钉在数据上而非注释里；palette.toggle / ai.nl2cmd /
+ * hosts.panelToggle 是仅有的无 Shift 例外：呼出/布局开关必须随处可及
+ * （终端内恰恰是主使用场景；win/linux 的 hosts.panelToggle 本就带 Shift）。 */
 function terminalSafeHit(def: ActionDef, accel: string): boolean {
   if (!def.terminalSafe) return false;
   return (
     parseAccelerator(accel).shift ||
     def.id === "palette.toggle" ||
-    def.id === "ai.nl2cmd"
+    def.id === "ai.nl2cmd" ||
+    def.id === "hosts.panelToggle"
   );
 }
 

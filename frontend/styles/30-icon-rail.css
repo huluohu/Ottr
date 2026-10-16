@@ -1,0 +1,101 @@
+/* --- 48px 图标轨（2026-10-16 视觉重设计 M3「疏渠」，报告 §2「獭居·浮岛」）---
+ * 高频入口恒驻（总览/文件/定时任务/告警/通知中心）+ 底部 Otty 球设置入口。
+ * 弹层复用 .sidebar-flyout 制式（27-sidebar），仅锚定面不同。 */
+.icon-rail {
+  position: relative;
+  flex: none;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 10px 0;
+  border-right: 1px solid var(--border-subtle);
+}
+/* macOS 融合式标题栏：红绿灯随图标轨移到窗口最左——让位 + 拖拽面同侧栏旧制
+ * （--ottr-titlebar-inset 定义在 12-titlebar-theme.css）。 */
+.app-shell[data-titlebar="overlay"] .icon-rail {
+  padding-top: calc(var(--ottr-titlebar-inset) + 10px);
+}
+
+.rail-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.rail-btn:hover {
+  background: var(--surface-raised);
+  color: var(--color-fg);
+}
+.rail-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rail-btn:disabled:hover {
+  background: none;
+  color: var(--fg-muted);
+}
+
+/* 空间锚点（报告 §4 导航断点）：弹框制式下入口常驻痕迹——toolDialog 在场时
+ * 对应图标左缘 teal 光点常亮。 */
+.rail-light {
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-border);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.rail-btn[data-active="true"] {
+  background: var(--surface-raised);
+  color: var(--color-accent-text);
+}
+.rail-btn[data-active="true"] .rail-light {
+  opacity: 1;
+}
+
+.rail-badge {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+  font-size: var(--text-2xs);
+  line-height: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+.rail-spacer {
+  flex: 1;
+}
+
+/* Otty 球：设置入口圆钮（v5 同构脸）。 */
+.rail-otty {
+  margin-bottom: 2px;
+}
+.rail-otty:hover {
+  background: var(--surface-raised);
+}
+
+/* Otty 弹层：复用 .sidebar-flyout 基础制式（27-sidebar），阴影加深一档
+ * （浮在图标轨 + 主机面板两列之上）。 */
+.rail-flyout {
+  box-shadow: var(--shadow-3);
+}

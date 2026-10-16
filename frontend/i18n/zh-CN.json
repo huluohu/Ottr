@@ -180,6 +180,7 @@
     "newHost": "新建主机",
     "themeToggle": "切换主题（亮 / 暗 / 跟随系统）",
     "langToggle": "切换语言（中文 / English）",
+    "sidebarCollapse": "折叠/展开主机面板（⌘\\）",
     "quit": "退出 Ottr"
   },
   "history": {

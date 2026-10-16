@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="brand/f5-tilt/lockup.svg" alt="Ottr — Swim through your servers" width="360" />
+<img src="brand/f5-tilt/mark.svg" alt="Ottr — 如獭穿行于服务器之间" width="140" />
 
 # Ottr · 喔獭
 

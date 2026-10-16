@@ -94,7 +94,7 @@ v5 上线同日，logo 专项评审继续推进（round2/round3/round4 三轮，
 | `f5-tilt/mark.svg` | v6 主标源文件；**`icon.svg` 已由 v6 接管**（导出 icns/ico/png 唯一源） |
 | `f5-tilt/mark-micro.svg` | 16–32px 缩略层（favicon = `public/icon.svg` 取此层） |
 | `f5-tilt/tray-template.svg` | v6 单色托盘模板（currentColor） |
-| `f5-tilt/lockup.svg` | 横排锁牌 = v6 图标 + 深色字标 + slogan（README 头图） |
+| `f5-tilt/lockup.svg` | 横排锁牌 = v6 图标 + 深色字标 + slogan（**仅限浅色底**文档/海报；GitHub 等 dark-mode 场景头图用纯 mark——深色字标在暗底不可见，2026-10-16 实测） |
 
 ## 配色（同时是主题令牌的种子值）
 

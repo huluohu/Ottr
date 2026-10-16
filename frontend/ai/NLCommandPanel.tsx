@@ -9,7 +9,7 @@
 // * 错误面：noProvider/noKey → 「去设置」；request → 端点消息 + 重试；
 //   empty（sanitize 不可用，如 stop 截在围栏头）→ 说明 + 重试；
 //   aborted → 已取消。重试 = 原输入再发（input 不因提交清空）。
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { useEscClose } from "../ui/useEscClose";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ import { useSessionStore } from "../session/SessionStore";
 import { lastCwd } from "../terminal/CwdTracker";
 import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
 import { useNlStore } from "./nl2cmd";
+import { activeProvider, loadAiSettings } from "./settings";
 
 /** 聚焦 pane 解析（App handleAction 与面板共用；与 insertToFocusedPane 同口径）。 */
 export function focusedSessionId(s: Pick<
@@ -68,6 +69,27 @@ export function NLCommandPanel({
     if (open) queueMicrotask(() => inputRef.current?.focus());
   }, [open]);
 
+  // 无可用 provider 前置检查（2026-10-16 用户需求②）：打开即查（未配置或
+  // 全部禁用都算无可用）——不等输入提交失败才提示。读取失败按「有可用」
+  // 处理（fail-open 到既有错误面，前置提示不做第二道卡）。设置页保存后
+  // 重开面板（modal 单槽互斥）自然重查。
+  const [providerReady, setProviderReady] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setProviderReady(null);
+    void loadAiSettings()
+      .then((s) => {
+        if (!cancelled) setProviderReady(activeProvider(s.providers) !== null);
+      })
+      .catch(() => {
+        if (!cancelled) setProviderReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
   const mount = useDelayedUnmount(open);
   // Esc 关闭走全局栈（语义 = handleClose：在途请求 abort + 清场 + 关）。
@@ -102,32 +124,43 @@ export function NLCommandPanel({
         aria-label={t("ai.nl2cmd.title")}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="nl-input-row">
-          <input
-            ref={inputRef}
-            className="palette-input"
-            value={input}
-            placeholder={t("ai.nl2cmd.placeholder")}
-            aria-label={t("ai.nl2cmd.title")}
-            data-testid="nl2cmd-input"
-            onChange={(e) => setInput(e.currentTarget.value)}
-            onKeyDown={handleKeyDown}
-          />
-          {running ? (
-            <button className="ai-stop" data-testid="nl2cmd-stop" onClick={abort}>
-              {t("ai.stop")}
+        {providerReady === false ? (
+          // 无可用 provider：输入条让位，直接给提示 + 去设置引导
+          // （2026-10-16 用户需求②——不逼用户先打一段字再撞错误）。
+          <div className="ai-error" data-testid="nl2cmd-noprovider" role="alert">
+            <p>{t("ai.errNoProvider")}</p>
+            <button className="btn-accent" data-testid="nl2cmd-open-settings" onClick={onOpenSettings}>
+              {t("ai.openSettings")}
             </button>
-          ) : (
-            <button
-              className="btn-accent"
-              data-testid="nl2cmd-run"
-              disabled={!canRun}
-              onClick={() => void submit()}
-            >
-              {t("ai.nl2cmd.run")}
-            </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="nl-input-row">
+            <input
+              ref={inputRef}
+              className="palette-input"
+              value={input}
+              placeholder={t("ai.nl2cmd.placeholder")}
+              aria-label={t("ai.nl2cmd.title")}
+              data-testid="nl2cmd-input"
+              onChange={(e) => setInput(e.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+            />
+            {running ? (
+              <button className="ai-stop" data-testid="nl2cmd-stop" onClick={abort}>
+                {t("ai.stop")}
+              </button>
+            ) : (
+              <button
+                className="btn-accent"
+                data-testid="nl2cmd-run"
+                disabled={!canRun}
+                onClick={() => void submit()}
+              >
+                {t("ai.nl2cmd.run")}
+              </button>
+            )}
+          </div>
+        )}
 
         {running && answer === "" && (
           <p className="ai-thinking" data-testid="nl2cmd-thinking">

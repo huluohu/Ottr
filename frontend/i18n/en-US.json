@@ -422,7 +422,7 @@
     "insertConfirmRed": "Dangerous — click again to confirm",
     "inserted": "Inserted",
     "insertFailed": "Insert failed",
-    "errNoProvider": "No AI provider configured yet.",
+    "errNoProvider": "No AI provider available. Enable or add one in Settings.",
     "errNoKey": "Could not read the API key (vault locked or backend unreachable). openai-compatible connects with an empty key when none is saved (Ollama needs no auth); Anthropic requires a key.",
     "openSettings": "Open settings",
     "prompt": {
@@ -487,6 +487,8 @@
       "testOkEmpty": "Connected (empty reply)",
       "defaultBadge": "Default",
       "mockBadge": "For testing",
+      "disabledBadge": "Disabled",
+      "providerToggleLabel": "Enable {name}",
       "setDefault": "Set default",
       "redaction": "Redaction",
       "redactHostname": "Hostnames / domains",

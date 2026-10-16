@@ -6,10 +6,12 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import {
   DEFAULT_MAX_TOKENS,
+  activeProvider,
   apiKeySecretKey,
   loadAiSettings,
   saveAiSummaryEnabled,
 } from "./settings";
+import type { ProviderMeta } from "./openai";
 
 const mockedInvoke = invoke as unknown as Mock;
 
@@ -90,5 +92,38 @@ describe("loadAiSettings", () => {
 describe("apiKeySecretKey", () => {
   it("键名约定 ai.apikey.<id>", () => {
     expect(apiKeySecretKey("prov-1")).toBe("ai.apikey.prov-1");
+  });
+});
+
+// activeProvider（2026-10-16 用户需求：provider 启用/禁用）：可用性口径 =
+// enabled !== false（旧数据无字段视为启用）；列表序 = 默认优先序。
+describe("activeProvider（provider 启用/禁用选择器）", () => {
+  const mk = (id: string, enabled?: boolean): ProviderMeta => ({
+    id,
+    name: id,
+    kind: "openai-compatible",
+    baseURL: "https://example.com/v1",
+    model: "m",
+    ...(enabled !== undefined ? { enabled } : {}),
+  });
+
+  it("无 provider → null", () => {
+    expect(activeProvider([])).toBeNull();
+  });
+
+  it("无 enabled 字段（旧数据）→ 视为启用，取首个", () => {
+    expect(activeProvider([mk("p1"), mk("p2")])?.id).toBe("p1");
+  });
+
+  it("首个禁用 → 取首个未禁用的（列表序 = 默认优先序）", () => {
+    expect(activeProvider([mk("p1", false), mk("p2"), mk("p3")])?.id).toBe("p2");
+  });
+
+  it("全部禁用 → null", () => {
+    expect(activeProvider([mk("p1", false), mk("p2", false)])).toBeNull();
+  });
+
+  it("enabled: true 显式在场 → 启用", () => {
+    expect(activeProvider([mk("p1", true)])?.id).toBe("p1");
   });
 });

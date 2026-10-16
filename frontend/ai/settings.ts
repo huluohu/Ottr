@@ -89,6 +89,14 @@ export function saveProviders(providers: ProviderMeta[]): Promise<void> {
   return vaultApi.settings.set("ai_providers", providers);
 }
 
+/** 首个未禁用的 provider（2026-10-16 用户需求：provider 启用/禁用）。
+ * 可用性口径 = `enabled !== false`（旧数据无字段视为启用）；列表序 = 默认
+ * 优先序——诊断 / NL→命令 / 会话纪要三条 AI 链统一经此取「实际生效」的
+ * provider，无 provider 或全部禁用 = null（消费方走各自的 noProvider 面）。 */
+export function activeProvider(providers: ProviderMeta[]): ProviderMeta | null {
+  return providers.find((p) => p.enabled !== false) ?? null;
+}
+
 /** 保存脱敏配置。 */
 export function saveRedaction(redaction: RedactionConfig): Promise<void> {
   return vaultApi.settings.set("redaction", redaction);

@@ -421,7 +421,7 @@
     "insertConfirmRed": "危险命令——再点一次确认",
     "inserted": "已插入终端",
     "insertFailed": "插入失败",
-    "errNoProvider": "还没有配置 AI Provider。",
+    "errNoProvider": "没有可用的 AI Provider。请在设置中启用或添加一个。",
     "errNoKey": "无法读取 API Key（vault 锁定或后端不可达）。openai-compatible 未存 Key 时以空 Key 直连（Ollama 免鉴权）；Anthropic 必须配置 Key。",
     "openSettings": "去设置",
     "prompt": {
@@ -486,6 +486,8 @@
       "testOkEmpty": "连接成功（空回复）",
       "defaultBadge": "默认",
       "mockBadge": "测试用",
+      "disabledBadge": "已禁用",
+      "providerToggleLabel": "启用 {name}",
       "setDefault": "设为默认",
       "redaction": "脱敏",
       "redactHostname": "主机名 / 域名",

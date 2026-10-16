@@ -231,6 +231,21 @@
   border-radius: var(--radius-sm);
   padding: 0 6px;
 }
+/* 启用/禁用（2026-10-16）：行首开关 + 禁用行弱化 + 「已禁用」弱化徽标 */
+.ai-provider-row > .ui-switch {
+  flex: none;
+}
+.ai-provider-row[data-disabled="true"] .ai-provider-name,
+.ai-provider-row[data-disabled="true"] .ai-provider-meta {
+  opacity: 0.55;
+}
+.ai-disabled-badge {
+  font-size: var(--text-2xs);
+  border: 1px solid var(--fg-muted);
+  color: var(--fg-muted);
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
+}
 .ai-provider-meta {
   flex: 1 1 auto;
   min-width: 0;

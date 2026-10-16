@@ -153,12 +153,16 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
       return;
     }
     setFormError(null);
+    // 编辑态保留 enabled 现值（禁用中的 provider 改名/换端点不洗掉禁用）；
+    // 新建无该字段 = 默认启用。
+    const prev = providers.find((p) => p.id === draft.id);
     const meta: ProviderMeta = {
       id: draft.id,
       name: draft.name.trim(),
       kind: draft.kind,
       baseURL: draft.baseURL.trim(),
       model: draft.model.trim(),
+      ...(prev?.enabled !== undefined ? { enabled: prev.enabled } : {}),
     };
     try {
       if (draft.apiKey !== "") {
@@ -195,6 +199,12 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
     const target = providers.find((p) => p.id === id);
     if (!target) return;
     await persistProviders([target, ...providers.filter((p) => p.id !== id)]);
+  }
+
+  /** 行内启用/禁用（2026-10-16 用户需求①）：即时全量落库；禁用的 provider
+   * 不参与任何 AI 链路（消费方统一取「首个未禁用」），列表位次不动。 */
+  async function toggleProvider(id: string, on: boolean) {
+    await persistProviders(providers.map((p) => (p.id === id ? { ...p, enabled: on } : p)));
   }
 
   async function testConnection(meta: ProviderMeta) {
@@ -313,12 +323,28 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
           )}
           <ul className="ai-provider-list">
             {providers.map((p, idx) => (
-              <li key={p.id} className="ai-provider-row" data-testid={`ai-provider-${p.id}`}>
+              <li
+                key={p.id}
+                className="ai-provider-row"
+                data-testid={`ai-provider-${p.id}`}
+                data-disabled={p.enabled === false ? "true" : undefined}
+              >
+                <Switch
+                  testid={`ai-provider-enabled-${p.id}`}
+                  checked={p.enabled !== false}
+                  label={t("ai.settings.providerToggleLabel", { name: p.name })}
+                  onChange={(e) => void toggleProvider(p.id, e.currentTarget.checked)}
+                />
                 <span className="ai-provider-name">
                   {idx === 0 && <span className="ai-default-badge">{t("ai.settings.defaultBadge")}</span>}
                   {p.kind === "mock" && (
                     <span className="ai-mock-badge" data-testid={`ai-mock-badge-${p.id}`}>
                       {t("ai.settings.mockBadge")}
+                    </span>
+                  )}
+                  {p.enabled === false && (
+                    <span className="ai-disabled-badge" data-testid={`ai-disabled-badge-${p.id}`}>
+                      {t("ai.settings.disabledBadge")}
                     </span>
                   )}
                   {p.name}

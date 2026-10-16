@@ -7,7 +7,7 @@
 // 运行链（nlStore）在 nl2cmd.test.ts 已全覆盖，本文件用 store 播种驱动渲染面，
 // 另带一条 live 流（Mock provider）验证 input → submit → 结果渲染的接线。
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -197,6 +197,44 @@ describe("错误面", () => {
     renderPanel({ onOpenSettings });
     fireEvent.click(screen.getByTestId("nl2cmd-open-settings"));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  // 无可用 provider 前置提示（2026-10-16 用户需求②）：面板打开即检查
+  // （无 provider 或全部禁用），不等用户输入提交失败——提示 + 去设置引导。
+  it("打开且无可用 provider（全部禁用）→ 立即提示并引导去设置（无需输入提交）", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") {
+        return Promise.resolve([
+          {
+            id: "p1",
+            name: "DeepSeek",
+            kind: "openai-compatible",
+            baseURL: "https://api.deepseek.com",
+            model: "deepseek-chat",
+            enabled: false,
+          },
+        ]);
+      }
+      return Promise.resolve(null);
+    });
+    const onOpenSettings = vi.fn();
+    renderPanel({ onOpenSettings });
+    await waitFor(() => {
+      expect(screen.getByTestId("nl2cmd-noprovider")).toBeTruthy();
+    });
+    // 输入条让位（无可打的对象）
+    expect(screen.queryByTestId("nl2cmd-input")).toBeNull();
+    fireEvent.click(screen.getByTestId("nl2cmd-open-settings"));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("打开且有可用 provider → 正常渲染输入条（前置检查不误伤）", async () => {
+    backendWithProvider();
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByTestId("nl2cmd-input")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("nl2cmd-noprovider")).toBeNull();
   });
 });
 

@@ -17,7 +17,7 @@ import { create } from "zustand";
 import i18n from "../i18n";
 import { vaultApi } from "../vault/api";
 import { createProvider, type ChatMessage } from "./provider";
-import { apiKeySecretKey, loadAiSettings, type AiSettings } from "./settings";
+import { activeProvider, apiKeySecretKey, loadAiSettings, type AiSettings } from "./settings";
 import { classify, type TrafficLight } from "./danger";
 
 /** NL 生成请求的装配面（纯函数；nlStore 消费，测试直接断言）。 */
@@ -181,7 +181,9 @@ export const useNlStore = create<NlStore>((set, get) => ({
       return;
     }
     set({ settingsUsed: settings });
-    const meta = settings.providers[0] ?? null;
+    // 首个未禁用的 provider（启用/禁用 2026-10-16）：全禁用 = 无可用 →
+    // noProvider 错误面（带去设置引导）。
+    const meta = activeProvider(settings.providers);
     if (!meta) {
       set({ status: "error", errorKind: "noProvider", error: null });
       return;

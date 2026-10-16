@@ -12,6 +12,7 @@ import { IconRail } from "./IconRail";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { useNotifyStore } from "../notify/core";
 import { useSessionStore } from "../session/SessionStore";
+import { useVaultLockStore } from "../security/VaultLockStore";
 
 const noop = () => {};
 
@@ -57,15 +58,20 @@ afterEach(() => {
 });
 
 describe("IconRail（48px 图标轨）", () => {
-  it("五钮恒驻 + Otty 球；mac 标题栏让位面可注入", () => {
+  it("五钮恒驻 + 锁定钮 + Otty 球；mac 标题栏让位面可注入", () => {
     const { rerender } = render(
       <ThemeProvider>
         <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} />
       </ThemeProvider>,
     );
-    for (const id of ["rail-overview", "rail-files", "rail-cron", "rail-alerts", "rail-notifications", "rail-otty"]) {
+    for (const id of ["rail-overview", "rail-files", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty"]) {
       expect(screen.getByTestId(id), id).toBeTruthy();
     }
+    // 锁定钮在 Otty 球之前（控制中心旁；2026-10-16 用户需求）
+    const lockIdx = [
+      "rail-overview", "rail-files", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty",
+    ].indexOf("rail-lock");
+    expect(lockIdx).toBeGreaterThan(-1);
     expect(document.querySelector(".titlebar-inset")).toBeTruthy();
     rerender(
       <ThemeProvider>
@@ -73,6 +79,14 @@ describe("IconRail（48px 图标轨）", () => {
       </ThemeProvider>,
     );
     expect(document.querySelector(".titlebar-inset")).toBeNull();
+  });
+
+  it("锁定钮：点击触发 vault.lock（立即锁定，与原生菜单同一动作）", () => {
+    const lockSpy = vi.spyOn(useVaultLockStore.getState(), "lock").mockResolvedValue();
+    renderRail();
+    fireEvent.click(screen.getByTestId("rail-lock"));
+    expect(lockSpy).toHaveBeenCalledTimes(1);
+    lockSpy.mockRestore();
   });
 
   it("总览钮 = openOverview（置顶标签语义）；文件钮零会话禁用", () => {

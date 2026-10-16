@@ -14,6 +14,7 @@ import { useSessionStore } from "../session/SessionStore";
 import { useNotifyStore } from "../notify/core";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n";
+import { useVaultLockStore } from "../security/VaultLockStore";
 
 export interface IconRailProps {
   /** macOS 融合式标题栏（2026-10-14）：顶部让出红绿灯区并铺拖拽面。 */
@@ -136,6 +137,18 @@ function OttyBall() {
       <ellipse cx="18.6" cy="18.8" rx="1.5" ry="1.8" fill="#0F172A" />
       <circle cx="9.1" cy="18.7" r="0.55" fill="#5EEAD4" />
       <circle cx="18.1" cy="18.1" r="0.55" fill="#5EEAD4" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  // Lucide「lock」挂锁（16 viewBox 同族线宽）——锁定 = 立即锁库（同 ⌘ 菜单
+  // 「立即锁定」/vault.lock 语义），非「凭据」的钥匙语义（KeyIcon 留给凭据）。
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3.2" y="7" width="9.6" height="6.4" rx="1.6" />
+      <path d="M5.4 7V5.2a2.6 2.6 0 0 1 5.2 0V7" />
+      <circle cx="8" cy="10.2" r="1.1" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -276,6 +289,18 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
         )}
       </button>
       <div className="rail-spacer" aria-hidden />
+      {/* 锁定（2026-10-16 用户需求：控制中心旁的锁定入口）——立即锁库，
+          与原生菜单「立即锁定」同一动作（vault.lock）。 */}
+      <button
+        type="button"
+        className="rail-btn"
+        data-testid="rail-lock"
+        title={t("security.lockNow")}
+        aria-label={t("security.lockNow")}
+        onClick={() => void useVaultLockStore.getState().lock()}
+      >
+        <LockIcon />
+      </button>
       {/* Otty 球：设置入口（原侧栏快捷菜单收编），水獭脸圆钮。 */}
       <button
         type="button"

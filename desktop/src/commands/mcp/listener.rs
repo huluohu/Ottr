@@ -1,9 +1,10 @@
 //! UDS listener（std 阻塞面：连接专属线程处理整条连接，async 桥只在工具段）。
 //! 纯搬家拆分（原 commands/mcp.rs 单文件）。
 
+// 三个 trait 仅 unix conn_loop（read_line/take/write_all）消费；windows
+// conn_loop 走 tokio 异步 trait（函数内局部导入）。
 #[cfg(unix)]
-use std::io::Write;
-use std::io::{BufRead, Read};
+use std::io::{BufRead, Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;

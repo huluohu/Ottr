@@ -38,7 +38,9 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::vault::{CmdResult, VaultState, ensure_unlocked};
 
-/// UDS 文件名（app_data_dir 下；生产 listener 与设置页接入说明共用）。
+/// UDS 文件名（app_data_dir 下）。cfg(unix)：windows 编译无消费点
+/// （socket_path 的 unix 分支整支裁剪），与 MCP_PIPE_NAME 对偶。
+#[cfg(unix)]
 pub const MCP_SOCKET_NAME: &str = "mcp.sock";
 /// Windows 命名管道名（2026-10-13 命名管道形态）。安全 = 管道默认 DACL
 /// （创建者 token：仅当前用户与管理员可连）——与 UDS 0600 同级保证。

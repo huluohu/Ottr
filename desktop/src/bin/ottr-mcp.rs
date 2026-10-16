@@ -24,17 +24,24 @@
 //! 用法：路径/管道名由 Ottr 设置页的配置生成器给出，避免在 relay 里复刻
 //! 各平台 app_data_dir 逻辑造成双份事实源。
 
-use std::io::{BufRead, BufReader, Read, Write};
 use std::process::exit;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+// sync 泵形态（Transport/pump）unix 专属；windows 走 tokio pump_async，
+// 不经这些 trait/原子旗标。
+#[cfg(unix)]
+use std::io::{BufRead, BufReader, Read, Write};
+#[cfg(unix)]
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const RETRY_INTERVAL: Duration = Duration::from_millis(250);
 
-/// 双向传输抽象：unix UDS 与 windows 命名管道的公共面。半关默认 no-op
-/// （管道无对应概念，见文件头【传输面】）。
+/// unix UDS 的双向传输抽象（sync 泵专属；windows 走 tokio `pump_async`，
+/// 不经本 trait）。半关默认 no-op（管道无对应概念，见文件头【传输面】）。
+#[cfg(unix)]
 trait Transport: Read + Write {
     fn try_clone(&self) -> std::io::Result<Self>
     where
@@ -168,6 +175,7 @@ async fn pump_async(pipe: tokio::net::windows::named_pipe::NamedPipeClient) {
 
 // stdin → 传输（客户端 → 引擎）。stdin 收线 = 半关写端，让引擎的回包排空
 // 后再退（客户端关闭顺序的礼貌形态；管道侧 shutdown_write 为 no-op）。
+#[cfg(unix)]
 fn pump<T: Transport + Send + 'static>(stream: T) {
     let dead = Arc::new(AtomicBool::new(false));
     let mut writer = match stream.try_clone() {

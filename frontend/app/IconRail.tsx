@@ -242,8 +242,8 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
         data-testid="rail-files"
         data-active={mainView === "files"}
         disabled={sessionCount === 0}
-        title={t("files.viewFiles")}
-        aria-label={t("files.viewFiles")}
+        title={sessionCount === 0 ? t("nav.filesNeedsSession") : t("files.viewFiles")}
+        aria-label={sessionCount === 0 ? t("nav.filesNeedsSession") : t("files.viewFiles")}
         onClick={() => openMainView("files")}
       >
         <span className="rail-light" aria-hidden />
@@ -317,6 +317,16 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
       >
         <OttyBall />
       </button>
+      {menu === "main" && (
+        <div
+          className="rail-flyout-backdrop"
+          data-testid="rail-flyout-backdrop"
+          onMouseDown={() => {
+            setMenu(null);
+            setSub(null);
+          }}
+        />
+      )}
       {menu === "main" && (
         <div
           ref={flyoutRef}

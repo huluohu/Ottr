@@ -126,6 +126,29 @@ describe("IconRail（48px 图标轨）", () => {
     expect(screen.getByTestId("rail-alerts").getAttribute("data-active")).toBe("false");
   });
 
+  it("文件钮禁用态提示原因；有会话可用且提示切回功能名", async () => {
+    await i18n.changeLanguage("zh-CN");
+    renderRail();
+    const btn = screen.getByTestId("rail-files") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.getAttribute("title")).toBe("连接主机后可浏览文件");
+    // 有会话后可用且提示切回功能名
+    cleanup();
+    useSessionStore.setState({ sessions: [{ id: "s1", paneOf: null } as never] });
+    renderRail();
+    const btn2 = screen.getByTestId("rail-files") as HTMLButtonElement;
+    expect(btn2.disabled).toBe(false);
+    expect(btn2.getAttribute("title")).toBe("文件");
+  });
+
+  it("Otty 弹层背板：点击弹层外任意区域（含主区拖拽面）即收起", () => {
+    renderRail();
+    openOttyMenu();
+    expect(screen.getByTestId("rail-flyout-main")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByTestId("rail-flyout-backdrop"));
+    expect(screen.queryByTestId("rail-flyout-main")).toBeNull();
+  });
+
   it("未读徽标挂通知中心图标：unread=3 显示 3，归零消失", () => {
     useNotifyStore.setState({ unread: 3 });
     renderRail();

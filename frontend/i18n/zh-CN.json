@@ -1258,7 +1258,8 @@
     "theme": "主题",
     "themeCycle": "切换主题（循环七主题）",
     "language": "语言",
-    "langToggle": "切换中英文"
+    "langToggle": "切换中英文",
+    "filesNeedsSession": "连接主机后可浏览文件"
   },
   "menu": {
     "zoomIn": "放大",

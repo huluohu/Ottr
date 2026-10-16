@@ -38,7 +38,7 @@
 }
 .rail-btn:disabled {
   opacity: 0.4;
-  cursor: default;
+  cursor: not-allowed;
 }
 .rail-btn:disabled:hover {
   background: none;
@@ -98,4 +98,14 @@
  * （浮在图标轨 + 主机面板两列之上）。 */
 .rail-flyout {
   box-shadow: var(--shadow-3);
+}
+
+/* Otty 弹层背板（2026-10-16 用户反馈：主区空白点击收不起弹层——主区是
+ * macOS 融合标题栏/自绘拖拽区，其点击被系统层拦截做窗口拖拽，DOM 收不到
+ * mousedown）。弹层展开时铺透明遮罩：点背板即收；z 在弹层之下、锁屏之上
+ * （锁库优先），Toast 同层高暂被遮属可接受边缘态。 */
+.rail-flyout-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
 }

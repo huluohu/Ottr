@@ -1259,7 +1259,8 @@
     "theme": "Theme",
     "themeCycle": "Cycle through themes",
     "language": "Language",
-    "langToggle": "Toggle Chinese/English"
+    "langToggle": "Toggle Chinese/English",
+    "filesNeedsSession": "Connect to a host to browse files"
   },
   "menu": {
     "zoomIn": "Zoom In",

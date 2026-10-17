@@ -9,6 +9,7 @@
 import { useTranslation } from "react-i18next";
 import { useSessionStore, type Session } from "./SessionStore";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
+import { workspaceViewOf, WORKSPACE_VIEW_META, type WorkspaceView } from "../workspace/workspaceViews";
 
 export interface TabBarProps {
   /** 融合式标题栏拖拽面延伸（mac 注入，MainArea 透传）：标签容器 flex:1
@@ -27,13 +28,17 @@ export function TabBar({ dragRegion }: TabBarProps) {
   const max = useSessionStore((s) => s.settings.maxReconnectAttempts);
   const overviewOpen = useWorkspaceStore((s) => s.overviewOpen);
   const mainView = useWorkspaceStore((s) => s.mainView);
-  const openOverview = useWorkspaceStore((s) => s.openOverview);
-  const closeOverview = useWorkspaceStore((s) => s.closeOverview);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
+  const closeMainView = useWorkspaceStore((s) => s.closeMainView);
+  const closeOverview = useWorkspaceStore((s) => s.closeOverview);
 
   // 只渲染标签根会话（paneOf=null）：分屏 pane 属标签内部布局，不进标签条（Task 8）
   const tabs = sessions.filter((s) => s.paneOf === null);
-  if (tabs.length === 0 && !overviewOpen) return null;
+  // 工作区页签（2026-10-16 IA 重构）：镜像当前库级视图；总览标签「开着但正看
+  // 终端」时以非激活态保留（置顶语义不变）。
+  const workspaceView: WorkspaceView | null =
+    workspaceViewOf(mainView) ?? (overviewOpen ? "overview" : null);
+  if (tabs.length === 0 && workspaceView === null) return null;
 
   /** 激活会话标签：从总览视图点会话标签 = 离开总览回终端（文件/进程视图
    * 保持既有语义不拽走——只有总览是标签，需要让位）。 */
@@ -42,47 +47,34 @@ export function TabBar({ dragRegion }: TabBarProps) {
     if (useWorkspaceStore.getState().mainView === "overview") openMainView("terminal");
   };
 
-  const overviewActive = mainView === "overview";
 
   return (
     <div className="tabbar" role="tablist" aria-label={t("tabs.list")} {...dragRegion}>
-      {overviewOpen && (
+      {workspaceView !== null && (
         <div
           role="tab"
           tabIndex={0}
-          aria-selected={overviewActive}
-          data-active={overviewActive}
-          data-kind="overview"
-          data-testid="tab-overview"
-          className="tab tab-overview"
-          onClick={() => openOverview()}
+          aria-selected={mainView === workspaceView}
+          data-active={mainView === workspaceView}
+          data-testid={`tab-workspace-${workspaceView}`}
+          className="tab"
+          onClick={() => openMainView(workspaceView)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              openOverview();
+              openMainView(workspaceView);
             }
           }}
         >
-          <svg
-            className="tab-overview-icon"
-            width="12"
-            height="12"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.4" />
-            <rect x="9" y="1.5" width="5.5" height="5.5" rx="1.4" />
-            <rect x="1.5" y="9" width="5.5" height="5.5" rx="1.4" />
-            <rect x="9" y="9" width="5.5" height="5.5" rx="1.4" />
-          </svg>
-          <span className="tab-title">{t("overview.title")}</span>
+          <span className="tab-overview-icon" aria-hidden>{(() => { const I = WORKSPACE_VIEW_META[workspaceView].icon; return <I />; })()}</span>
+          <span className="tab-title">{t(WORKSPACE_VIEW_META[workspaceView].labelKey)}</span>
           <button
             className="tab-close"
-            aria-label={t("tabs.closeAria", { name: t("overview.title") })}
+            aria-label={t("tabs.closeAria", { name: t(WORKSPACE_VIEW_META[workspaceView].labelKey) })}
             onClick={(e) => {
               e.stopPropagation();
-              closeOverview();
+              if (workspaceView === "overview") closeOverview();
+              else closeMainView();
             }}
           >
             ✕

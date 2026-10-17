@@ -152,8 +152,9 @@ describe("TabBar 总览置顶标签", () => {
     useWorkspaceStore.setState({ overviewOpen: true });
     render(<TabBar />);
     const bar = screen.getByRole("tablist");
-    expect((bar.firstElementChild as HTMLElement).getAttribute("data-testid")).toBe("tab-overview");
-    const overviewTab = screen.getByTestId("tab-overview");
+    expect((bar.firstElementChild as HTMLElement).getAttribute("data-testid")).toBe("tab-workspace-overview");
+    const overviewTab = screen.getByTestId("tab-workspace-overview");
+    // 总览标签「开着但未激活」（正看终端）：非选中态
     expect(overviewTab.getAttribute("aria-selected")).toBe("false");
     fireEvent.click(overviewTab);
     expect(useWorkspaceStore.getState().mainView).toBe("overview");
@@ -182,7 +183,7 @@ describe("TabBar 总览置顶标签", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close tab Overview" }));
     expect(useWorkspaceStore.getState().overviewOpen).toBe(false);
     expect(useWorkspaceStore.getState().mainView).toBe("terminal");
-    expect(screen.queryByTestId("tab-overview")).toBeNull();
+    expect(screen.queryByTestId("tab-workspace-overview")).toBeNull();
     expect(screen.getByTestId("tab-web-01")).toBeTruthy();
   });
 
@@ -192,7 +193,24 @@ describe("TabBar 总览置顶标签", () => {
     render(<TabBar />);
     const bar = screen.getByRole("tablist");
     expect(bar.children).toHaveLength(1);
-    expect(screen.getByTestId("tab-overview")).toBeTruthy();
+    expect(screen.getByTestId("tab-workspace-overview")).toBeTruthy();
+  });
+
+  // 2026-10-16 IA 重构：库级宽幅视图页签镜像 mainView（定时任务/通知中心/
+  // 端口转发/跳板链），✕ = closeMainView 回终端。
+  it("宽幅视图页签镜像 mainView：label/icon 正确，✕ 关闭回终端", () => {
+    const cases = ["cron", "notifications", "forwards", "jumpchains"] as const;
+    for (const v of cases) {
+      cleanup();
+      useWorkspaceStore.setState({ overviewOpen: false, mainView: v });
+      const view = render(<TabBar />);
+      const tab = view.getByTestId(`tab-workspace-${v}`);
+      expect(tab.getAttribute("data-active")).toBe("true");
+      const closeBtn = tab.querySelector(".tab-close") as HTMLButtonElement;
+      fireEvent.click(closeBtn);
+      expect(useWorkspaceStore.getState().mainView).toBe("terminal");
+      view.unmount();
+    }
   });
 });
 

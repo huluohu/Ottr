@@ -1,20 +1,19 @@
-// WorkspaceViewShell（2026-10-16 IA 重构）：库级宽幅视图的统一页头外壳——
-// 图标徽章 + 大标题 + 描述 + 右侧主操作，面板实体挂 body。WorkBuddy 参照：
-// 页头定调、内容区满幅。视图元数据（label/icon）单源 workspaceViews.tsx。
-import type { ComponentType, ReactNode } from "react";
+// WorkspaceViewShell（2026-10-16 IA 重构）：库级宽幅视图的统一外壳。
+// 视图恒以页签在场（tabbar-row 已带图标+名称），页面不再重复大标题——
+// 只留一行工具栏式副标题：说明文字居左、主操作居右（WorkBuddy 参照：
+// 页签是唯一标题，页面顶部只补上下文）。面板实体挂 body。
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 export function WorkspaceViewShell({
   labelKey,
-  icon: Icon,
   description,
   action,
   children,
   testid,
 }: {
-  /** 标题词典键（与图标轨同源）。 */
+  /** 标题词典键（与图标轨/页签同源；仅作无障碍命名，不再渲染大标题）。 */
   labelKey: string;
-  icon: ComponentType<{ width?: number; height?: number; "aria-hidden"?: true }>;
   description?: string;
   /** 右上主操作（如 新建任务）。 */
   action?: { label: string; onClick: () => void; testid?: string };
@@ -23,15 +22,9 @@ export function WorkspaceViewShell({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="workspace-view" data-testid={testid ?? "workspace-view"}>
+    <section className="workspace-view" data-testid={testid ?? "workspace-view"} aria-label={t(labelKey)}>
       <header className="wv-head">
-        <span className="wv-chip" aria-hidden>
-          <Icon width={22} height={22} />
-        </span>
-        <div className="wv-head-text">
-          <h2 className="wv-title">{t(labelKey)}</h2>
-          {description && <p className="wv-desc">{description}</p>}
-        </div>
+        {description && <p className="wv-desc">{description}</p>}
         {action && (
           <button type="button" className="btn-accent wv-action" data-testid={action.testid} onClick={action.onClick}>
             {action.label}

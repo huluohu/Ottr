@@ -140,33 +140,15 @@
   overflow-y: auto;
 }
 .wv-head {
+  /* 页签已带图标+名称（唯一标题），页头只留副标题行：说明居左、操作居右 */
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
-}
-.wv-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  color: var(--color-accent-text);
-}
-.wv-head-text {
-  flex: 1;
-  min-width: 0;
-}
-.wv-title {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 750;
-  letter-spacing: -0.01em;
+  min-height: 32px;
 }
 .wv-desc {
-  margin: 2px 0 0;
+  margin: 0;
   color: var(--fg-muted);
   font-size: var(--text-sm);
 }

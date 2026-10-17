@@ -597,7 +597,7 @@
   },
   "forward": {
     "title": "Port forwards",
-    "empty": "No port forwards yet. Click \"Add\" to set up -L/-R/-D forwarding for any host.",
+    "empty": "No port forwards yet.",
     "add": "Add forward",
     "addTitle": "Add port forward",
     "editTitle": "Edit port forward",
@@ -632,7 +632,6 @@
   "notify": {
     "bellAria": "Notification center",
     "empty": "No notifications",
-    "emptyHint": "Alerts about transfers, sessions and hosts will show up here.",
     "emptyAlertsCta": "View alert rules",
     "markAllRead": "Mark all read",
     "clear": "Clear all",
@@ -786,7 +785,7 @@
   },
   "jump": {
     "title": "Jump chains",
-    "empty": "No jump chains yet. Click \"Add\" to create one, then bind it to a host in the host form.",
+    "empty": "No jump chains yet.",
     "add": "Add jump chain",
     "addTitle": "Add jump chain",
     "editTitle": "Edit jump chain",
@@ -1024,7 +1023,7 @@
   },
   "cron": {
     "title": "Scheduled Tasks",
-    "empty": "No tasks yet. Add a cron job to run a script on a schedule while the host session is online.",
+    "empty": "No scheduled tasks yet.",
     "add": "Add task",
     "addTitle": "Add scheduled task",
     "editTitle": "Edit scheduled task",
@@ -1300,7 +1299,7 @@
   "workspace": {
     "cron.desc": "Run scripts on schedule while a host session is online, with run history and output.",
     "notifications.desc": "Transfer, session and host alerts show up here.",
-    "forwards.desc": "Local / dynamic / remote forwards with auto-reconnect.",
+    "forwards.desc": "Local (-L) / dynamic (-D) / remote (-R) forwards with auto-reconnect.",
     "jumpchains.desc": "Visual multi-hop jump chain orchestration."
   }
 }

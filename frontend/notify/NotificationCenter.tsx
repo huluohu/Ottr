@@ -151,7 +151,6 @@ export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void
             <div data-testid="notify-empty-guide">
               <EmptyState
                 title={t("notify.empty")}
-                hint={t("notify.emptyHint")}
                 action={{
                   label: t("notify.emptyAlertsCta"),
                   onClick: () => onOpenAlerts?.(),

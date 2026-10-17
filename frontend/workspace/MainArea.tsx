@@ -46,7 +46,6 @@ import { NotificationCenter } from "../notify/NotificationCenter";
 import { ForwardPanel } from "../forward/ForwardPanel";
 import { JumpChainEditor } from "../hosts/JumpChainEditor";
 import { WorkspaceViewShell } from "./WorkspaceViewShell";
-import { WORKSPACE_VIEW_META } from "./workspaceViews";
 import { MonitorPanel } from "../monitor/MonitorSidebar";
 import { PluginPanel } from "../plugins/PluginSidebar";
 import { useSessionStore } from "../session/SessionStore";
@@ -170,19 +169,19 @@ export function MainArea({
     ) : slotView === "batch" ? (
       <BatchPanel onClose={() => openMainView("terminal")} />
     ) : slotView === "cron" ? (
-      <WorkspaceViewShell labelKey="nav.cron" icon={WORKSPACE_VIEW_META.cron.icon} description={t("workspace.cron.desc")}>
+      <WorkspaceViewShell labelKey="nav.cron" description={t("workspace.cron.desc")}>
         <CronPanel open />
       </WorkspaceViewShell>
     ) : slotView === "notifications" ? (
-      <WorkspaceViewShell labelKey="nav.notifications" icon={WORKSPACE_VIEW_META.notifications.icon} description={t("workspace.notifications.desc")}>
+      <WorkspaceViewShell labelKey="nav.notifications" description={t("workspace.notifications.desc")}>
         <NotificationCenter onOpenAlerts={onOpenAlerts} />
       </WorkspaceViewShell>
     ) : slotView === "forwards" ? (
-      <WorkspaceViewShell labelKey="forward.title" icon={WORKSPACE_VIEW_META.forwards.icon} description={t("workspace.forwards.desc")}>
+      <WorkspaceViewShell labelKey="forward.title" description={t("workspace.forwards.desc")}>
         <ForwardPanel open />
       </WorkspaceViewShell>
     ) : (
-      <WorkspaceViewShell labelKey="jump.title" icon={WORKSPACE_VIEW_META.jumpchains.icon} description={t("workspace.jumpchains.desc")}>
+      <WorkspaceViewShell labelKey="jump.title" description={t("workspace.jumpchains.desc")}>
         <JumpChainEditor open />
       </WorkspaceViewShell>
     );

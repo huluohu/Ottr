@@ -54,16 +54,17 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("rail 退役回归钉（2026-10-13）", () => {
-  it("无 rail 残留：折叠竖条已退役，面板即内容", () => {
+describe("rail 退役回归钉（2026-10-13）+ 批次三满幅视图（2026-10-17）", () => {
+  it("无 rail 残留：折叠竖条已退役，视图即内容（根 testid 随满幅形态改名）", () => {
     openPanel();
     expect(screen.queryByTestId("plugin-rail")).toBeNull();
-    expect(screen.getByTestId("plugin-sidebar")).toBeTruthy();
+    expect(screen.getByTestId("plugin-panel")).toBeTruthy();
   });
 
-  it("面板首行 = 插件机制说明（2026-10-14 用户反馈「插件怎么用」）", () => {
+  it("机制说明一句走页头（WorkspaceViewShell description），视图内不再渲染 intro 行", () => {
     openPanel();
-    expect(screen.getByTestId("plugin-intro")).toBeTruthy();
+    expect(screen.queryByTestId("plugin-intro")).toBeNull();
+    expect(screen.getByTestId("plugins-grid")).toBeTruthy();
   });
 });
 

@@ -1,67 +1,72 @@
-/* --- Phase 3 Task 1（B4 上半）：监控面板（2026-10-13 起 ToolDialog 内容） ---
- * 旧终端右栏折叠竖条（.monitor-rail）已退役：14px 握把条被当成滚动条、
- * 且压住分屏关闭钮（用户三次反馈），面板改经 工具菜单/⌘K → ToolDialog 打开。 */
+/* --- 监控视图（2026-10-17 批次三满幅重排） ---
+ * 形态沿革：终端右栏折叠竖条（.monitor-rail，压分屏钮/被当滚动条，退役）→
+ * ToolDialog 内容 → 满幅主区视图（会话子页签，与文件/进程同构）。页签是唯一
+ * 标题，页头由 WorkspaceViewShell 供给；本文件只管指标卡网格与状态面。 */
 
-/* 展开态：右栏面板（AI 面板同构：固定宽、独立滚动、表面色） */
-.monitor-sidebar {
-  flex: none;
-  width: 224px;
-  border-left: 1px solid var(--border-subtle);
-  overflow-y: auto;
-  padding: 10px 12px;
+/* 指标卡网格：五卡响应式换行（窄主区两列、宽主区三列起） */
+.monitor-view {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: var(--color-surface);
+  gap: var(--space-4);
 }
-.monitor-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
 }
-.monitor-title {
-  font-weight: 600;
-  flex: 1;
-}
-.monitor-close {
-  border: none;
-  background: none;
-  font-size: var(--text-md);
-  cursor: pointer;
-  line-height: 1;
-  color: var(--color-fg);
-}
-.monitor-body {
+.monitor-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-fg) 3%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
 }
-.monitor-metric-head {
+.monitor-card-head {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-bottom: 2px;
+  gap: var(--space-2);
 }
-.monitor-metric-label {
+.monitor-card-label {
   font-size: var(--text-sm);
   color: var(--fg-muted);
   flex: 1;
 }
-.monitor-metric-value {
-  font-size: var(--text-sm);
+.monitor-card-value {
+  font-size: var(--text-lg);
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* 非采样态：单张居中状态卡（五态文案 StatusFace） */
+.monitor-status-card {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--color-fg) 3%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
 }
 .monitor-state {
   color: var(--fg-muted);
   font-size: var(--text-sm);
-  margin: 4px 0;
+  margin: 0;
+}
+.monitor-view-hint {
+  margin: 0;
 }
 
-/* sparkline（零依赖 SVG）：色板全走主题令牌（暗/亮主题自跟随） */
+/* sparkline（零依赖 SVG）：色板全走主题令牌（暗/亮主题自跟随）；
+ * viewBox 280×56 + CSS 满宽 = 卡宽自适应（preserveAspectRatio="none"） */
 .monitor-spark {
   display: block;
   width: 100%;
-  height: 28px;
+  height: 56px;
 }
 .monitor-spark-line {
   stroke: var(--color-accent-border);
@@ -77,4 +82,3 @@
   stop-color: var(--color-accent-border);
   stop-opacity: 0.02;
 }
-

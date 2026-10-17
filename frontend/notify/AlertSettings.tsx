@@ -20,6 +20,7 @@ import { vaultApi, type AlertRule, type AlertRuleKind, type ChannelKind, type Ho
 import { useVaultStore } from "../vault/store";
 import { engine } from "./rules";
 import { remountChannels, testChannel } from "./channelRegistry";
+import { NotifyKindsSection } from "./NotifyKinds";
 import { Switch } from "../ui/Switch";
 import { Checkbox } from "../ui/Checkbox";
 import { SegmentedControl } from "../ui/SegmentedControl";
@@ -396,8 +397,10 @@ export function AlertSettings({ open }: AlertSettingsProps) {
 
   return (
     // dock 内容形态（T4）：标题/关闭由 dock 壳供给（底部关闭钮保留）；
-    // 渠道/规则分区独占切换（见头注分区化）。
+    // 渠道/规则分区独占切换（见头注分区化）。通知类型区（2026-10-17 自
+    // 通知中心迁入）常驻页顶：哪些事件产生通知 → 走什么通道/什么规则。
     <div className="dock-entity settings-dialog" role="region" aria-label={t("alert.settingsTitle")} data-testid="alert-settings">
+      <NotifyKindsSection />
       <SegmentedControl
         testid="alert-section-switch"
         ariaLabel={t("alert.settingsTitle")}

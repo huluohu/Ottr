@@ -1093,7 +1093,6 @@
     "title": "Plugins",
     "open": "Open plugin sidebar",
     "close": "Collapse plugin sidebar",
-    "intro": "Plugins extend the panel with cards and quick commands — built-in examples below.",
     "net": {
       "title": "Network",
       "waiting": "Connect a host with monitoring enabled to see current network throughput."
@@ -1300,6 +1299,8 @@
     "cron.desc": "Run scripts on schedule while a host session is online, with run history and output.",
     "notifications.desc": "Transfer, session and host alerts show up here.",
     "forwards.desc": "Local (-L) / dynamic (-D) / remote (-R) forwards with auto-reconnect.",
-    "jumpchains.desc": "Visual multi-hop jump chain orchestration."
+    "jumpchains.desc": "Visual multi-hop jump chain orchestration.",
+    "monitor.desc": "Resource sampling trends for the connected host: CPU / memory / disk / load / network.",
+    "plugins.desc": "Plugins extend the panel with cards and quick commands; built-in examples for now."
   }
 }

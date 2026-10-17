@@ -16,8 +16,9 @@
 // 文件视图、终端/进程按钮隐藏——原 HomeLayout 行为等价迁移（原 filesOpen 布尔
 // 换成 mainView==='files'）。
 //
-// 【视觉不变】term-main-row 的 AI 诊断/监控/插件三侧栏仍只在终端视图挂载
-// （原 `!filesVisible && !procsVisible` 域）；监控/插件竖条的自管折叠语义不动。
+// 【视觉不变】term-main-row 的 AI 诊断侧栏仍只在终端视图挂载；监控/插件自
+// 2026-10-17 批次三起为满幅主区视图（WorkspaceViewShell 外壳，与文件/进程
+// 平级渲染），侧栏形态退役。
 //
 // 【行让位（ui-batch2 T1，审计 48/49）】files/procs 两视图的面板与
 // term-main-row 平级渲染，行内内容已全部 out-of-flow（holder absolute 让位、
@@ -137,6 +138,8 @@ export function MainArea({
   const termViewActive = mainView === "terminal" && !filesOnly;
   // 监控/插件（2026-10-16 IA 重构批次 B）：会话级子页签——与文件/进程同域
   // （依赖已连接会话的 rustId；FTP/FTPS 无 PTY 不提供监控/插件）。
+  // 2026-10-17 批次三：满幅主区视图（WorkspaceViewShell 外壳，平级渲染同
+  // 文件/进程），侧栏同屏形态退役（224px 窄条 + 分屏钮遮挡）。
   const monitorVisible = mainView === "monitor" && rootSession != null && !filesOnly;
   const pluginsVisible = mainView === "plugins" && rootSession != null && !filesOnly;
   // overview/batch 实体视图（UI 批次一 Task 3 迁入；占位壳 MainViewSlot 消亡）。
@@ -329,7 +332,7 @@ export function MainArea({
         <div
           className="term-area-holder"
           data-testid="term-holder"
-          data-hidden={slotView !== null || !(termViewActive || monitorVisible || pluginsVisible)}
+          data-hidden={slotView !== null || !termViewActive}
           data-terminal=""
         >
           <TerminalArea />
@@ -340,10 +343,18 @@ export function MainArea({
           termViewActive && <DiagnosePanel onOpenSettings={onOpenAiSettings} />
         )}
       </div>
+      {/* 监控/插件（2026-10-17 批次三）：满幅视图 + 统一外壳，平级渲染同
+          文件/进程；终端 visibility 隐藏常驻（缓冲/滚动回看不丢）。 */}
       {monitorVisible && rootSession && (
-        <MonitorPanel rustId={rootSession.rustId} enabled={monitorEnabled} />
+        <WorkspaceViewShell labelKey="monitor.title" description={t("workspace.monitor.desc")}>
+          <MonitorPanel rustId={rootSession.rustId} enabled={monitorEnabled} />
+        </WorkspaceViewShell>
       )}
-      {pluginsVisible && rootSession && <PluginPanel rustId={rootSession.rustId} />}
+      {pluginsVisible && rootSession && (
+        <WorkspaceViewShell labelKey="plugins.title" description={t("workspace.plugins.desc")}>
+          <PluginPanel rustId={rootSession.rustId} />
+        </WorkspaceViewShell>
+      )}
       {filesVisible && rootSession && <FilePanel session={rootSession} />}
       {procsVisible && rootSession && <ProcessBrowser rustId={rootSession.rustId} />}
     </main>

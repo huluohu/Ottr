@@ -1,12 +1,14 @@
-// MonitorPanel（原 MonitorSidebar，2026-10-13 改造）：监控面板内容组件。
-// * 旧「终端右栏折叠竖条 + 开合记忆」形态退役（用户三次反馈竖条被当成
-//   滚动条、且压住分屏关闭钮）——现作为 ToolDialog 的 monitor 面板内容
-//   渲染（工具菜单/⌘K「监控」打开），入口与其余工具面板一致；
+// MonitorPanel（原 MonitorSidebar）：监控视图内容组件。
+// * 形态沿革：终端右栏折叠竖条（用户三次反馈被当成滚动条、压分屏钮）→
+//   ToolDialog 内容 → 2026-10-17 满幅主区视图（会话子页签，与文件/进程同构；
+//   侧栏定宽制式退役——右侧大片空黑 + 分屏钮遮挡，用户判词「简直是搞笑」）。
+//   页签是唯一标题；本组件 = 指标卡网格 + 状态面 + 机制说明，页头由
+//   WorkspaceViewShell 供给（MainArea 挂载）。
 // * 数据源 = useMonitorStore（rustId 分桶；rustId 变化 = 重连，窗口重来）；
 // * 状态面：未连接任何主机（disconnected）→ 说明前置条件；host 未开启监控
 //   （off）→ 指引主机表单/总览；远端非 Linux（unsupported）→「不支持」；
 //   采样终止（stopped）→ 提示重连。已连接且开启但无数据显示等待首采样；
-//   采样机制说明（只读/间隔/仅 Linux）常驻面板底部；
+//   采样机制说明（只读/间隔/仅 Linux）常驻视图底部；
 // * 主题/i18n 纪律：色板走 App.css 令牌，文案全走 t()。
 import { useTranslation } from "react-i18next";
 import { Sparkline } from "./Sparkline";
@@ -26,8 +28,8 @@ export function formatMemKB(kb: number): string {
   return `${mb.toFixed(0)} MB`;
 }
 
-/** 指标行：标签 + 当前值 + 迷你图。 */
-function MetricRow({
+/** 指标卡：标签 + 当前值 + 全宽迷你图（SVG viewBox 缩放，卡宽自适应）。 */
+function MetricCard({
   label,
   value,
   values,
@@ -39,14 +41,14 @@ function MetricRow({
   max?: number;
 }) {
   return (
-    <div className="monitor-metric" data-testid="monitor-metric">
-      <div className="monitor-metric-head">
-        <span className="monitor-metric-label">{label}</span>
-        <span className="monitor-metric-value" data-testid="monitor-metric-value">
+    <div className="monitor-card" data-testid="monitor-metric">
+      <div className="monitor-card-head">
+        <span className="monitor-card-label">{label}</span>
+        <span className="monitor-card-value" data-testid="monitor-metric-value">
           {value}
         </span>
       </div>
-      <Sparkline values={values} max={max} label={label} />
+      <Sparkline values={values} max={max} label={label} width={280} height={56} />
     </div>
   );
 }
@@ -100,7 +102,7 @@ function StatusFace({
   );
 }
 
-/** 面板内容（ToolDialog monitor 面板渲染；弹框壳提供标题与 ✕）。 */
+/** 视图内容（MainArea 经 WorkspaceViewShell 挂载；页签供给标题）。 */
 export function MonitorPanel({
   rustId,
   enabled,
@@ -115,48 +117,48 @@ export function MonitorPanel({
 
   const live = win?.status === "live" && win.latest != null;
   return (
-    <aside className="monitor-sidebar" data-testid="monitor-sidebar" aria-label={t("monitor.title")}>
+    <div className="monitor-view" data-testid="monitor-panel" role="region" aria-label={t("monitor.title")}>
       {live && win ? (
-        <div className="monitor-body" data-testid="monitor-body">
-          <MetricRow
+        <div className="monitor-grid" data-testid="monitor-body">
+          <MetricCard
             label={t("monitor.cpu")}
             value={`${win.latest!.cpu_percent.toFixed(0)}%`}
             values={win.cpu}
             max={100}
           />
-          <MetricRow
+          <MetricCard
             label={t("monitor.mem")}
             value={`${win.latest!.mem_used_percent.toFixed(0)}% · ${formatMemKB(win.latest!.mem_used_kb)}`}
             values={win.mem}
             max={100}
           />
-          <MetricRow
+          <MetricCard
             label={t("monitor.disk")}
             value={`${win.latest!.disk.length > 0 ? pickDiskOf(win).toFixed(0) : "0"}%`}
             values={win.disk}
             max={100}
           />
-          <MetricRow
+          <MetricCard
             label={t("monitor.load")}
             value={win.latest!.load_one.toFixed(2)}
             values={win.load1}
           />
-          <MetricRow
+          <MetricCard
             label={t("monitor.net")}
             value={`↓ ${formatRate(win.latest!.net_rx_bps)} ↑ ${formatRate(win.latest!.net_tx_bps)}`}
             values={win.netRx}
           />
         </div>
       ) : (
-        <div className="monitor-body">
+        <div className="monitor-status-card">
           <StatusFace status={win?.status ?? "idle"} enabled={enabled} connected={rustId !== null} />
         </div>
       )}
       {/* 机制说明常驻（2026-10-14 用户反馈「监控怎么用」）：采样口径一行说清。 */}
-      <p className="monitor-state" data-testid="monitor-hint">
+      <p className="monitor-state monitor-view-hint" data-testid="monitor-hint">
         {t("monitor.monitorHint")}
       </p>
-    </aside>
+    </div>
   );
 }
 

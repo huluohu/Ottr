@@ -17,15 +17,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import type { Notification } from "../vault/api";
 import i18n from "../i18n";
-import { readDeliveryFailures, useNotifyStore, type DeliveryFailure, type NotifyKind } from "./core";
+import { readDeliveryFailures, useNotifyStore, type DeliveryFailure } from "./core";
 import { resendNotification } from "./channelRegistry";
-import { Checkbox } from "../ui/Checkbox";
 import { EmptyState } from "../ui/EmptyState";
 
 // Phase 3 Task 3（B5）：告警事件独立静音位（规则引擎事件走 kind="alert"）。
 // Phase 3 Task 6（B9）：指纹巡检 changed 告警独立静音位（kind="security"）。
-const MUTABLE_KINDS: NotifyKind[] = ["transfer", "session", "ai", "alert", "security", "cron"];
-
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString(undefined, {
     month: "numeric",
@@ -107,11 +104,9 @@ export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void
   const { t } = useTranslation();
   const items = useNotifyStore((s) => s.items);
   const unread = useNotifyStore((s) => s.unread);
-  const muted = useNotifyStore((s) => s.muted);
   const refresh = useNotifyStore((s) => s.refresh);
   const markAllRead = useNotifyStore((s) => s.markAllRead);
   const clear = useNotifyStore((s) => s.clear);
-  const toggleMuted = useNotifyStore((s) => s.toggleMuted);
   // 空态引导入口（ui2 T3，A4）：告警规则面板走既有 dock 单槽动作。
 
   // 挂载即对齐真源（多窗口/落库失败兜底）；未读数 → 原生菜单文案跟随。
@@ -167,20 +162,8 @@ export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void
             </ul>
           )}
 
-          <div className="notify-mute" data-testid="notify-mute-section">
-            <span className="notify-mute-label">{t("notify.muteSection")}</span>
-            {MUTABLE_KINDS.map((kind) => (
-              <label key={kind} className="notify-mute-row">
-                <Checkbox
-                  testid={`notify-mute-${kind}`}
-                  checked={muted.includes(kind)}
-                  onChange={() => toggleMuted(kind)}
-                />
-                <span>{t(`notify.kind${kind[0].toUpperCase()}${kind.slice(1)}`)}</span>
-              </label>
-            ))}
-            <p className="notify-mute-hint">{t("notify.muteHint")}</p>
-          </div>
+          {/* 通知类型（静音）开关迁设置 → 告警分区（2026-10-17 用户需求）：
+              配置归设置，本视图只管消费（列表/已读/清空）。 */}
         </div>
     </>
   );

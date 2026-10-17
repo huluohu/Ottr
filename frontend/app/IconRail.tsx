@@ -289,16 +289,6 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
       <button
         type="button"
         className="rail-btn"
-        data-testid="rail-credentials"
-        title={t("nav.credentials")}
-        aria-label={t("nav.credentials")}
-        onClick={onOpenCredentials}
-      >
-        <KeyIcon />
-      </button>
-      <button
-        type="button"
-        className="rail-btn"
         data-testid="rail-notifications"
         data-active={mainView === "notifications"}
         title={t("nav.notifications")}

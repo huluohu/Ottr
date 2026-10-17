@@ -233,21 +233,12 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
     expect(screen.getByTestId("notify-empty").textContent).toContain("No notifications");
   });
 
-  it("按 kind 静音：勾选即写 settings 并入 muted 集；已静音的 kind 勾选态回显", async () => {
+  it("按 kind 静音的开关面已迁设置 → 告警（NotifyKinds.test.tsx）；本视图不再渲染类型区", async () => {
     seedBackend([], 0, ["session"]);
     renderPanel();
     await openPanel();
-    const sessionBox = screen.getByTestId("notify-mute-session") as HTMLInputElement;
-    expect(sessionBox.checked).toBe(true);
-
-    fireEvent.click(screen.getByTestId("notify-mute-transfer"));
-    await waitFor(() =>
-      expect(mockedInvoke).toHaveBeenCalledWith("settings_set", {
-        key: "notify.muted_kinds",
-        value: ["session", "transfer"],
-      }),
-    );
-    expect(useNotifyStore.getState().muted).toEqual(["session", "transfer"]);
+    expect(screen.queryByTestId("notify-mute-session")).toBeNull();
+    expect(screen.queryByTestId("notify-mute-section")).toBeNull();
   });
 
   it("空态：无通知时显示空态文案；打开面板触发 refresh 对齐真源（list+unread）", async () => {

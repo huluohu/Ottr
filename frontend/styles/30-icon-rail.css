@@ -128,6 +128,10 @@
 
 /* --- 工作区宽幅视图外壳（WorkspaceViewShell，2026-10-16 IA 重构）--- */
 .workspace-view {
+  /* .term-main-row 是横向 flex，视图壳作为子项必须自抢满宽（缺 flex:1 会
+   * 收缩到内容宽——卡片窄条根因）。 */
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -172,4 +176,40 @@
 .wv-body {
   flex: 1;
   min-height: 0;
+}
+
+/* --- 工作区宽幅视图内容容器（2026-10-16 IA 重构批次 A2）---
+ * 面板实体（dock-entity 系）从弹框窄壳迁入主区：满宽卡片化 + 空态成组居中。
+ * 作用域限定 .workspace-view 内，不影响弹框态同名类。 */
+.workspace-view .dock-entity {
+  width: 100%;
+  max-width: none;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: color-mix(in srgb, var(--color-fg) 3%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+/* 空态：hint 与 CTA 成组垂直居中（WorkBuddy 参照），不再提示居中、按钮沉底。
+ * 空态提示类名两源：forward-empty（定时/转发）与 jump-empty（跳板链）。 */
+.workspace-view .dock-entity:has(> .forward-empty, > .jump-empty) {
+  justify-content: center;
+  gap: var(--space-4);
+}
+.workspace-view .forward-empty,
+.workspace-view .jump-empty {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  color: var(--fg-muted);
+  text-align: center;
+}
+.workspace-view .dock-entity:has(> .forward-empty, > .jump-empty) .form-actions {
+  justify-content: center;
 }

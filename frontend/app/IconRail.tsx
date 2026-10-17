@@ -22,8 +22,6 @@ export interface IconRailProps {
   onOpenCredentials: () => void;
   onOpenSettings: () => void;
   onOpenMcpSettings: () => void;
-  /** 告警钮（2026-10-16 IA 重构）：跳设置「告警」分区（原弹框退役）。 */
-  onOpenAlerts: () => void;
   /** 更新钮点击：跳设置 → 关于（发现新版本时按钮才浮现）。 */
   onOpenUpdate: () => void;
 }
@@ -42,15 +40,6 @@ function ClockIcon() {
     <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
       <circle cx="8" cy="8" r="6.2" />
       <path d="M8 4.6V8l2.4 1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M8 2.2a4 4 0 0 0-4 4v2.6L2.8 11h10.4L12 8.8V6.2a4 4 0 0 0-4-4Z" />
-      <path d="M6.6 13a1.5 1.5 0 0 0 2.8 0" />
     </svg>
   );
 }
@@ -210,7 +199,7 @@ const THEME_CYCLE: readonly ThemeMode[] = [
   "glass",
 ];
 
-export function IconRail({ titlebarInset, onOpenAlerts, onOpenUpdate, onOpenCredentials, onOpenSettings, onOpenMcpSettings }: IconRailProps) {
+export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpenSettings, onOpenMcpSettings }: IconRailProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
@@ -274,7 +263,7 @@ export function IconRail({ titlebarInset, onOpenAlerts, onOpenUpdate, onOpenCred
         type="button"
         className="rail-btn"
         data-testid="rail-overview"
-        data-active={overviewOpen}
+        data-active={overviewOpen && mainView === "overview"}
         title={t("overview.title")}
         aria-label={t("overview.title")}
         onClick={openOverview}
@@ -293,16 +282,6 @@ export function IconRail({ titlebarInset, onOpenAlerts, onOpenUpdate, onOpenCred
       >
         <span className="rail-light" aria-hidden />
         <ClockIcon />
-      </button>
-      <button
-        type="button"
-        className="rail-btn"
-        data-testid="rail-alerts"
-        title={t("nav.alerts")}
-        aria-label={t("nav.alerts")}
-        onClick={onOpenAlerts}
-      >
-        <BellIcon />
       </button>
       <button
         type="button"

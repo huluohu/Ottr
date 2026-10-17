@@ -213,11 +213,11 @@ export function MainArea({
     </>
   );
 
-  // 零会话：总览置顶标签在场 → 标签条常驻（2026-10-16 总览标签化）；主区内容
-  // 跟随 mainView（总览/批量实体，或空态面）。批量独开（总览标签未开）时无
-  // 标签可渲染，实体独占主区（原对话框语义）。
+  // 零会话：库级宽幅视图（总览/定时任务/通知中心/端口转发/跳板链，2026-10-16
+  // IA 重构）任一在场 → 标签条常驻；主区内容跟随 mainView。批量独开（总览
+  // 标签未开）时无标签可渲染，实体独占主区（原对话框语义）。
   if (!terminalMode) {
-    if (!overviewOpen) {
+    if (!overviewOpen && slotView === null) {
       return (
         <main className="main-area" data-testid="main-area" {...dragRegion}>
           {slotView !== null ? slotPane : emptyBody}

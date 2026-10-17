@@ -22,7 +22,6 @@ function renderRail(overrides?: Partial<Parameters<typeof IconRail>[0]>) {
     onOpenCredentials: vi.fn(),
     onOpenSettings: vi.fn(),
     onOpenMcpSettings: vi.fn(),
-    onOpenAlerts: vi.fn(),
     onOpenUpdate: vi.fn(),
     ...overrides,
   };
@@ -64,10 +63,10 @@ describe("IconRail（48px 图标轨）", () => {
   it("五钮恒驻 + 锁定钮 + Otty 球；mac 标题栏让位面可注入", () => {
     const { rerender } = render(
       <ThemeProvider>
-        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} onOpenUpdate={noop} />
+        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenUpdate={noop} />
       </ThemeProvider>,
     );
-    for (const id of ["rail-overview", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty"]) {
+    for (const id of ["rail-overview", "rail-cron", "rail-notifications", "rail-lock", "rail-otty"]) {
       expect(screen.getByTestId(id), id).toBeTruthy();
     }
     // 文件入口不进图标轨（2026-10-16 用户裁定：依赖已连接会话、禁用态体验差），
@@ -75,13 +74,13 @@ describe("IconRail（48px 图标轨）", () => {
     expect(screen.queryByTestId("rail-files")).toBeNull();
     // 锁定钮在 Otty 球之前（控制中心旁；2026-10-16 用户需求）
     const lockIdx = [
-      "rail-overview", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty",
+      "rail-overview", "rail-cron", "rail-notifications", "rail-lock", "rail-otty",
     ].indexOf("rail-lock");
     expect(lockIdx).toBeGreaterThan(-1);
     expect(document.querySelector(".titlebar-inset")).toBeTruthy();
     rerender(
       <ThemeProvider>
-        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} onOpenUpdate={noop} />
+        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenUpdate={noop} />
       </ThemeProvider>,
     );
     expect(document.querySelector(".titlebar-inset")).toBeNull();

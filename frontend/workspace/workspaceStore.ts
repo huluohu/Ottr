@@ -11,24 +11,6 @@ import type { MainView } from "./types";
 
 export { MAIN_VIEWS } from "./types";
 
-export interface WorkspaceState {
-  /** 主区视图；terminal 恒为默认（冷启动/恢复都落在终端）。 */
-  mainView: MainView;
-    /** 总览置顶标签是否打开（2026-10-16 用户需求：总览标签化、固定第一位）。
-   * 标签是纯渲染层概念（TabBar 固定首项），不进 SessionStore——会话计数/
-   * openHostIds 持久化/终端挂载等「tab=主机会话」假设全部不受扰。会话级
-   * 状态：不持久化，重启后由启动默认落地逻辑按需重开。 */
-  overviewOpen: boolean;
-  /** 切主区视图（幂等；纯状态迁移，无副作用）。 */
-  openMainView: (v: MainView) => void;
-  /** 打开总览置顶标签并激活（幂等）。侧栏导航/菜单/启动落地统一走这里——
-   * 「显示总览」与「总览标签在场」由同一动作保证不分叉。 */
-  openOverview: () => void;
-  /** 关闭总览置顶标签（标签 ✕）；正显示总览时切回终端视图（零会话即欢迎页），
-   * 显示其他视图时只关标签不动视图（关闭 ≠ 跳走）。 */
-  closeOverview: () => void;
-      }
-
 export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
   mainView: "terminal",
   overviewOpen: false,
@@ -39,5 +21,26 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       overviewOpen: false,
       mainView: st.mainView === "overview" ? "terminal" : st.mainView,
     })),
+  /** 关闭当前工作区宽幅视图（页签 ✕，2026-10-16 IA 重构）：总览撤销置顶
+   * 标签，其余宽幅视图切回终端（内容状态保留，重开即恢复）。 */
+  closeMainView: () => set({ overviewOpen: false, mainView: "terminal" }),
 }));
 
+interface WorkspaceState {
+  /** 主区视图；terminal 恒为默认。 */
+  mainView: MainView;
+  /** 总览置顶标签是否打开（launch 默认落地；页签栏镜像 mainView）。 */
+  overviewOpen: boolean;
+  /** 切主区视图（幂等；纯状态迁移，无副作用）。 */
+  openMainView: (v: MainView) => void;
+  /** 打开总览置顶标签并激活（幂等）。 */
+  openOverview: () => void;
+  /** 关闭总览置顶标签（标签 ✕）。 */
+  closeOverview: () => void;
+  /** 关闭当前工作区宽幅视图（页签 ✕；总览走 closeOverview 语义）。 */
+  closeMainView: () => void;
+}
+
+// 工具面板弹框（toolDialog 单槽）已于 2026-10-16 IA 重构退役：定时任务/
+// 通知中心/端口转发/跳板链升主区宽幅视图，监控/插件转会话子页签，告警归
+// 设置分区——历史语义见 git（本文件 v1.0.1 版本）。

@@ -576,7 +576,6 @@ function HomeLayout() {
           onOpenCredentials={() => openModal("credentials")}
           onOpenSettings={() => openSettingsToPane(null)}
           onOpenMcpSettings={() => openSettingsToPane("mcp")}
-          onOpenAlerts={() => openSettingsToPane("alerts")}
           onOpenUpdate={() => openSettingsToPane("about")}
         />
         {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树）；

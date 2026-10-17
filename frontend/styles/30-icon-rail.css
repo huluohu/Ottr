@@ -125,3 +125,51 @@
   background: var(--ottr-amber-500);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ottr-amber-500) 25%, transparent);
 }
+
+/* --- 工作区宽幅视图外壳（WorkspaceViewShell，2026-10-16 IA 重构）--- */
+.workspace-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: var(--space-6) var(--space-7);
+  gap: var(--space-4);
+  overflow-y: auto;
+}
+.wv-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.wv-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent-text);
+}
+.wv-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.wv-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.wv-desc {
+  margin: 2px 0 0;
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.wv-action {
+  flex: none;
+}
+.wv-body {
+  flex: 1;
+  min-height: 0;
+}

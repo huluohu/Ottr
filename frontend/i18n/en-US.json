@@ -1296,5 +1296,11 @@
     "failed": "Export failed: {{message}}",
     "donePath": "Exported: {{path}}",
     "doneCount": "Exported {{count}} session files to {{path}}"
+  },
+  "workspace": {
+    "cron.desc": "Run scripts on schedule while a host session is online, with run history and output.",
+    "notifications.desc": "Transfer, session and host alerts show up here.",
+    "forwards.desc": "Local / dynamic / remote forwards with auto-reconnect.",
+    "jumpchains.desc": "Visual multi-hop jump chain orchestration."
   }
 }

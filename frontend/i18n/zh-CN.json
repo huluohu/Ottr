@@ -1295,5 +1295,11 @@
     "failed": "导出失败：{{message}}",
     "donePath": "已导出：{{path}}",
     "doneCount": "已导出 {{count}} 个会话文件到 {{path}}"
+  },
+  "workspace": {
+    "cron.desc": "在主机会话在线时按计划执行脚本，支持运行历史与输出查看。",
+    "notifications.desc": "传输、会话与主机的告警事件会显示在这里。",
+    "forwards.desc": "本地 / 动态 / 远程三类转发，断线自动重挂。",
+    "jumpchains.desc": "多级跳板可视化编排，主机表单中绑定使用。"
   }
 }

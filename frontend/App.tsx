@@ -577,6 +577,7 @@ function HomeLayout() {
           onOpenSettings={() => openSettingsToPane(null)}
           onOpenMcpSettings={() => openSettingsToPane("mcp")}
           onOpenAlerts={() => openSettingsToPane("alerts")}
+          onOpenUpdate={() => openSettingsToPane("about")}
         />
         {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树）；
             功能导航与设置已迁图标轨（M3）。⌓\ 折叠胶囊 = 64px 恒宽。 */}

@@ -109,3 +109,19 @@
   inset: 0;
   z-index: 199;
 }
+
+/* 更新钮（2026-10-17 用户需求：发现新版本在图标轨体现）——按钮仅在有
+ * 新版本待取时浮现；amber 圆点 = 奖赏信号（brand.md 三色分工）。 */
+.rail-update {
+  position: relative;
+}
+.rail-update-dot {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ottr-amber-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ottr-amber-500) 25%, transparent);
+}

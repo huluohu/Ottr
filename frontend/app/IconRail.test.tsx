@@ -13,6 +13,7 @@ import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { useNotifyStore } from "../notify/core";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultLockStore } from "../security/VaultLockStore";
+import { useUpdateStore } from "../update/updateStore";
 
 const noop = () => {};
 
@@ -22,6 +23,7 @@ function renderRail(overrides?: Partial<Parameters<typeof IconRail>[0]>) {
     onOpenSettings: vi.fn(),
     onOpenMcpSettings: vi.fn(),
     onOpenAlerts: vi.fn(),
+    onOpenUpdate: vi.fn(),
     ...overrides,
   };
   render(
@@ -62,7 +64,7 @@ describe("IconRail（48px 图标轨）", () => {
   it("五钮恒驻 + 锁定钮 + Otty 球；mac 标题栏让位面可注入", () => {
     const { rerender } = render(
       <ThemeProvider>
-        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} />
+        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} onOpenUpdate={noop} />
       </ThemeProvider>,
     );
     for (const id of ["rail-overview", "rail-cron", "rail-alerts", "rail-notifications", "rail-lock", "rail-otty"]) {
@@ -79,7 +81,7 @@ describe("IconRail（48px 图标轨）", () => {
     expect(document.querySelector(".titlebar-inset")).toBeTruthy();
     rerender(
       <ThemeProvider>
-        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} />
+        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenAlerts={noop} onOpenUpdate={noop} />
       </ThemeProvider>,
     );
     expect(document.querySelector(".titlebar-inset")).toBeNull();
@@ -110,6 +112,24 @@ describe("IconRail（48px 图标轨）", () => {
     expect(useWorkspaceStore.getState().mainView).toBe("overview");
     expect(screen.getByTestId("rail-cron").getAttribute("data-active")).toBe("false");
     expect(screen.getByTestId("rail-overview").getAttribute("data-active")).toBe("true");
+  });
+
+  it("更新钮：仅在有新版本时浮现，点击跳设置 → 关于", () => {
+    const { props } = renderRail();
+    expect(screen.queryByTestId("rail-update")).toBeNull(); // 闲置时轨道干净
+    cleanup();
+
+    useUpdateStore.setState({ phase: { kind: "available", update: {} as never, version: "9.9.9" } });
+    renderRail();
+    const btn = screen.getByTestId("rail-update");
+    expect(btn.getAttribute("title")).toContain("9.9.9");
+    fireEvent.click(btn);
+    expect(props.onOpenUpdate).toHaveBeenCalledTimes(1); // 跳设置 → 关于
+    // 下载开始（phase 离开 available）→ 按钮消失
+    cleanup();
+    useUpdateStore.setState({ phase: { kind: "downloading", received: 0, total: null } });
+    renderRail();
+    expect(screen.queryByTestId("rail-update")).toBeNull();
   });
 
   it("Otty 弹层背板：点击弹层外任意区域（含主区拖拽面）即收起", () => {

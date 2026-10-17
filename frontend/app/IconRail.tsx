@@ -14,6 +14,7 @@ import { useNotifyStore } from "../notify/core";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n";
 import { useVaultLockStore } from "../security/VaultLockStore";
+import { useUpdateStore } from "../update/updateStore";
 
 export interface IconRailProps {
   /** macOS 融合式标题栏（2026-10-14）：顶部让出红绿灯区并铺拖拽面。 */
@@ -23,6 +24,8 @@ export interface IconRailProps {
   onOpenMcpSettings: () => void;
   /** 告警钮（2026-10-16 IA 重构）：跳设置「告警」分区（原弹框退役）。 */
   onOpenAlerts: () => void;
+  /** 更新钮点击：跳设置 → 关于（发现新版本时按钮才浮现）。 */
+  onOpenUpdate: () => void;
 }
 
 function OverviewIcon() {
@@ -186,6 +189,16 @@ function NetworkIcon() {
   );
 }
 
+function UpdateIcon() {
+  // Lucide「arrow-down-to-line」下载落线——有新版本待取。
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 2.5v7.5M4.8 7l3.2 3.2L11.2 7" />
+      <path d="M3 13.5h10" />
+    </svg>
+  );
+}
+
 /** 主题快捷循环顺序（水域家族光量降序，与 THEME_IDS 同序）。 */
 const THEME_CYCLE: readonly ThemeMode[] = [
   "system",
@@ -197,13 +210,18 @@ const THEME_CYCLE: readonly ThemeMode[] = [
   "glass",
 ];
 
-export function IconRail({ titlebarInset, onOpenAlerts, onOpenCredentials, onOpenSettings, onOpenMcpSettings }: IconRailProps) {
+export function IconRail({ titlebarInset, onOpenAlerts, onOpenUpdate, onOpenCredentials, onOpenSettings, onOpenMcpSettings }: IconRailProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
   const overviewOpen = useWorkspaceStore((s) => s.overviewOpen);
   const openOverview = useWorkspaceStore((s) => s.openOverview);
   const unread = useNotifyStore((s) => s.unread);
+  // 更新可用（2026-10-17 用户需求：发现新版本在图标轨体现）——phase 驱动，
+  // 按钮仅在有新版本待取时浮现；点击跳设置 → 关于（唯一权威进度面）。
+  const updateAvailableVersion = useUpdateStore((s) =>
+    s.phase.kind === "available" ? s.phase.version : null,
+  );
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
   // Otty 球弹层（原侧栏快捷菜单机制整体迁入）：底部锚定、子面板右并排。
@@ -327,6 +345,22 @@ export function IconRail({ titlebarInset, onOpenAlerts, onOpenCredentials, onOpe
         <span className="rail-light" aria-hidden />
         <NetworkIcon />
       </button>
+      <div className="rail-spacer" aria-hidden />
+      {/* 更新钮（2026-10-17 用户需求）：发现新版本时浮现，点击跳设置 →
+          关于（完整进度面）；amber 圆点为奖赏色信号。闲置时轨道保持干净。 */}
+      {updateAvailableVersion !== null && (
+        <button
+          type="button"
+          className="rail-btn rail-update"
+          data-testid="rail-update"
+          title={t("nav.updateAvailable", { version: updateAvailableVersion })}
+          aria-label={t("nav.updateAvailable", { version: updateAvailableVersion })}
+          onClick={onOpenUpdate}
+        >
+          <UpdateIcon />
+          <span className="rail-update-dot" aria-hidden />
+        </button>
+      )}
       <div className="rail-spacer" aria-hidden />
       {/* 锁定（2026-10-16 用户需求：控制中心旁的锁定入口）——立即锁库，
           与原生菜单「立即锁定」同一动作（vault.lock）。 */}

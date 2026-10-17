@@ -501,6 +501,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const schedulePtyResize = () => {
       clearTimeout(ptyResizeTimer);
       ptyResizeTimer = setTimeout(() => {
+        // PTY 退化尺寸保护（2026-10-16 用户实测 P0：连接失败标签关闭的瞬时
+        // 重排把存活终端测成 1 列并下发——远端 shell 收到 1 列 SIGWINCH 后
+        // 提示符逐字符竖排且 RO 不再触发，终身卡死）。退化尺寸永不下发；
+        // 等下一次真实尺寸变化自然恢复（rAF 重测链会补发合法尺寸）。
+        if (term.cols < 4 || term.rows < 2) return;
         resizeSession(sessionId, term.cols, term.rows);
       }, 200);
     };

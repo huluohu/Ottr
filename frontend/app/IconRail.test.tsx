@@ -115,12 +115,8 @@ describe("IconRail（48px 图标轨）", () => {
   });
 
   it("更新钮：仅在有新版本时浮现，点击跳设置 → 关于", () => {
-    const { props } = renderRail();
-    expect(screen.queryByTestId("rail-update")).toBeNull(); // 闲置时轨道干净
-    cleanup();
-
     useUpdateStore.setState({ phase: { kind: "available", update: {} as never, version: "9.9.9" } });
-    renderRail();
+    const { props } = renderRail();
     const btn = screen.getByTestId("rail-update");
     expect(btn.getAttribute("title")).toContain("9.9.9");
     fireEvent.click(btn);

@@ -27,10 +27,13 @@ export interface IconRailProps {
 }
 
 function OverviewIcon() {
-  // Lucide「activity」脉搏线（与原侧栏总览同源）。
+  // 四宫格（与工作区页签 tab-overview-icon 同源，2026-10-16 用户裁定统一）。
   return (
-    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M1.8 8h2.6l1.8-4.4L9.8 12.4 11.2 8h3" />
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.4" />
+      <rect x="9" y="1.5" width="5.5" height="5.5" rx="1.4" />
+      <rect x="1.5" y="9" width="5.5" height="5.5" rx="1.4" />
+      <rect x="9" y="9" width="5.5" height="5.5" rx="1.4" />
     </svg>
   );
 }
@@ -282,6 +285,16 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
       >
         <span className="rail-light" aria-hidden />
         <ClockIcon />
+      </button>
+      <button
+        type="button"
+        className="rail-btn"
+        data-testid="rail-credentials"
+        title={t("nav.credentials")}
+        aria-label={t("nav.credentials")}
+        onClick={onOpenCredentials}
+      >
+        <KeyIcon />
       </button>
       <button
         type="button"

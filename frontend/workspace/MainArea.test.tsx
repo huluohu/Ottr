@@ -355,10 +355,10 @@ describe("MainArea：总览置顶标签（零会话形态）", () => {
     expect(screen.getByTestId("main-empty")).toBeTruthy();
   });
 
-  it("零会话 + 批量视图（总览标签未开）：无标签条，批量实体独占（原口径不变）", () => {
+  it("零会话 + 批量视图：宽幅视图随标签条呈现（2026-10-16 IA 重构统一）", () => {
     useWorkspaceStore.setState({ mainView: "batch" });
     render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
-    expect(screen.queryByTestId("tabbar")).toBeNull();
+    expect(screen.getByTestId("tabbar")).toBeTruthy();
     expect(screen.getByTestId("batch-panel").getAttribute("data-view")).toBe("batch");
   });
 });

@@ -1,46 +1,10 @@
-/* --- 主区视图槽位 + 工具面板弹框（2026-10-12 dock 侧栏退役）------------- *
- * 弹框：六工具面板统一模态壳（workspace/ToolDialog），复用全局 overlay/.dialog
- * 动效；不占布局——终端常驻不变量由 overlay 语义天然保证。宽度分档：通知
- * 中心 520（列表型），其余 640（表单/清单型）；高度内容自适应、上限 86vh
- * （.dialog 基类），滚动收进 body。 */
-.tool-dialog {
-  width: min(640px, 100%);
-  display: flex;
-  flex-direction: column;
-  padding: 0; /* 基类 20px 内边距交给 head/body 分治 */
-  overflow: hidden;
-}
-/* 列表/卡片型面板收窄到 520：监控/插件是竖排卡片流（19/20 侧栏遗产），
- * 640 宽会右侧大片留空（2026-10-14 用户反馈「颜色搭配是啥意思」的另一半）。 */
-.overlay[data-panel="notifications"] > .tool-dialog,
-.overlay[data-panel="monitor"] > .tool-dialog,
-.overlay[data-panel="plugins"] > .tool-dialog {
-  width: min(520px, 100%);
-}
-.tool-dialog-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.tool-dialog-head h2 {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 600;
-  flex: 1;
-}
-.tool-dialog-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
+/* --- 主区视图容器（2026-10-12 dock 侧栏退役；2026-10-17 弹框壳清理）------ *
+ * ToolDialog 弹框壳系（.tool-dialog*，IA 重构后无挂载方）已删除；面板内容
+ * 容器 .dock-entity 仍在用（设置分区/宽幅视图内容形态）。 */
+
 /* 面板内容容器（T4 沿旧）：原对话框体（.dialog）迁移后的内容形态——
-   自带留白与纵向流；宽度/滚动交给弹框壳。settings-dialog 系的定宽在壳内
-   解除。命名沿用 dock-entity（六面板组件根类，改名将牵连样式与测试面）。 */
+   自带留白与纵向流；宽度/滚动交给挂载环境（设置分区/宽幅视图壳）。
+   命名沿用 dock-entity（面板组件根类，改名将牵连样式与测试面）。 */
 .dock-entity {
   box-sizing: border-box;
   min-height: 100%;
@@ -103,7 +67,8 @@
 }
 .file-panel,
 .proc-panel,
-.main-view {
+.main-view,
+.workspace-view {
   animation: pane-fade-in var(--dur) var(--ease-out);
 }
 @keyframes dialog-in {

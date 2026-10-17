@@ -196,6 +196,46 @@ describe("TabBar 总览置顶标签", () => {
     expect(screen.getByTestId("tab-workspace-overview")).toBeTruthy();
   });
 
+  it("关库级宽幅页签（cron ✕）：只关该页签，总览标签保留（基线评审 P0 回归钉）", () => {
+    seedThreeTabs();
+    useWorkspaceStore.setState({ overviewOpen: true, mainView: "cron" });
+    render(<TabBar />);
+    fireEvent.click(screen.getByRole("button", { name: "Close tab Scheduled tasks" }));
+    const st = useWorkspaceStore.getState();
+    expect(st.mainView).toBe("terminal");
+    expect(st.overviewOpen).toBe(true); // 此前被 closeMainView 连带关掉
+    expect(screen.getByTestId("tab-workspace-overview")).toBeTruthy();
+  });
+
+  it("库级视图激活时会话标签非激活（aria-selected/data-active 双守卫，评审 P1 回归钉）", () => {
+    seedThreeTabs();
+    useWorkspaceStore.setState({ overviewOpen: true, mainView: "notifications" });
+    render(<TabBar />);
+    expect(screen.getByTestId("tab-workspace-notifications").getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId("tab-web-01").getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByTestId("tab-web-01").getAttribute("data-active")).toBe("false");
+  });
+
+  it("通知中心视图下点会话标签：离开库级视图回终端（此前只让位总览被卡住）", () => {
+    seedThreeTabs();
+    useWorkspaceStore.setState({ overviewOpen: true, mainView: "notifications" });
+    render(<TabBar />);
+    fireEvent.click(screen.getByTestId("tab-web-01"));
+    const st = useWorkspaceStore.getState();
+    expect(useSessionStore.getState().activeId).toBe("t1");
+    expect(st.mainView).toBe("terminal");
+    expect(st.overviewOpen).toBe(true); // 库级标签让位 ≠ 关闭
+  });
+
+  it("会话级子视图（files）下会话标签保持激活；点会话标签不拽走子视图", () => {
+    seedThreeTabs();
+    useWorkspaceStore.setState({ overviewOpen: false, mainView: "files" });
+    render(<TabBar />);
+    expect(screen.getByTestId("tab-web-01").getAttribute("data-active")).toBe("true");
+    fireEvent.click(screen.getByTestId("tab-web-01"));
+    expect(useWorkspaceStore.getState().mainView).toBe("files"); // 子视图不让位
+  });
+
   // 2026-10-16 IA 重构：库级宽幅视图页签镜像 mainView（定时任务/通知中心/
   // 端口转发/跳板链），✕ = closeMainView 回终端。
   it("宽幅视图页签镜像 mainView：label/icon 正确，✕ 关闭回终端", () => {

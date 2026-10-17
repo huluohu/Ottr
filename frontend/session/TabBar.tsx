@@ -4,8 +4,10 @@
 // 主题纪律：颜色只引用 --color-* 语义层（见 App.css .tab-dot）。
 //
 // 总览置顶标签（2026-10-16 用户需求）：总览打开后固定渲染在第一位（置顶，
-// 无状态灯/PROD 等会话徽标）；「总览标签激活」⟺ mainView === "overview"。
-// 点会话标签时若正处总览视图则切回终端——标签语义：点哪个标签看哪个内容。
+// 无状态灯/PROD 等会话徽标）。库级宽幅视图页签（2026-10-16 IA 重构）：定时
+// 任务/通知中心/端口转发/跳板链镜像 mainView，「正被查看」⟺ 激活；会话标签
+// 仅在会话级视图（终端/文件/进程/监控/插件/批量）下激活。点会话标签离开
+// 任一库级视图回终端——标签语义：点哪个标签看哪个内容。
 import { useTranslation } from "react-i18next";
 import { useSessionStore, type Session } from "./SessionStore";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
@@ -40,11 +42,13 @@ export function TabBar({ dragRegion }: TabBarProps) {
     workspaceViewOf(mainView) ?? (overviewOpen ? "overview" : null);
   if (tabs.length === 0 && workspaceView === null) return null;
 
-  /** 激活会话标签：从总览视图点会话标签 = 离开总览回终端（文件/进程视图
-   * 保持既有语义不拽走——只有总览是标签，需要让位）。 */
+  /** 激活会话标签：从任一库级视图（总览/定时任务/通知中心/端口转发/跳板链）
+   * 点会话标签 = 离开该视图回终端——库级页签都要让位（2026-10-17 基线评审：
+   * 此前只让位总览，其余四视图下点会话标签被卡住）；会话级子视图
+   * （文件/进程/监控/插件）保持既有语义不拽走。 */
   const activateSession = (id: string) => {
     setActive(id);
-    if (useWorkspaceStore.getState().mainView === "overview") openMainView("terminal");
+    if (workspaceViewOf(useWorkspaceStore.getState().mainView) !== null) openMainView("terminal");
   };
 
 
@@ -86,8 +90,8 @@ export function TabBar({ dragRegion }: TabBarProps) {
           key={session.id}
           role="tab"
           tabIndex={0}
-          aria-selected={session.id === activeId && mainView !== "overview"}
-          data-active={session.id === activeId && mainView !== "overview"}
+          aria-selected={session.id === activeId && workspaceViewOf(mainView) === null}
+          data-active={session.id === activeId && workspaceViewOf(mainView) === null}
           data-status={session.status}
           data-testid={`tab-${session.hostName}`}
           className="tab"

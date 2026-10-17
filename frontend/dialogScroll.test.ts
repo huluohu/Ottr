@@ -71,10 +71,11 @@ describe("对话框滚动语义守卫（BL-526 + T5 披露）", () => {
     const css = allAppCss();
     const barRule = ruleOf(css, ".dialog::-webkit-scrollbar,");
     expect(barRule).toContain(".settings-panes::-webkit-scrollbar");
-    expect(barRule).toContain(".tool-dialog-body::-webkit-scrollbar");
+    // 2026-10-17：工具弹框体退役，宽幅视图壳 .workspace-view 接棒滚动规格
+    expect(barRule).toContain(".workspace-view::-webkit-scrollbar");
     const thumbRule = ruleOf(css, ".dialog::-webkit-scrollbar-thumb,");
     expect(thumbRule).toContain(".settings-panes::-webkit-scrollbar-thumb");
-    expect(thumbRule).toContain(".tool-dialog-body::-webkit-scrollbar-thumb");
+    expect(thumbRule).toContain(".workspace-view::-webkit-scrollbar-thumb");
     const panes = ruleOf(css, ".settings-panes {");
     expect(panes).toContain("overflow-y: auto");
     expect(panes).toContain("padding-right: var(--space-4)");

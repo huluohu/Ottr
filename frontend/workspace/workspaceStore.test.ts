@@ -98,6 +98,31 @@ describe("总览置顶标签（2026-10-16 用户需求：总览标签化、打�
   });
 });
 
+describe("宽幅视图页签关闭（2026-10-17 基线评审 P0 回归钉）", () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
+  });
+
+  it("closeMainView：cron 页签 ✕ 切回终端，不动总览标签开关", () => {
+    const ws = useWorkspaceStore.getState();
+    ws.openOverview();
+    ws.openMainView("cron");
+    ws.closeMainView();
+    const st = useWorkspaceStore.getState();
+    expect(st.mainView).toBe("terminal");
+    expect(st.overviewOpen).toBe(true); // 总览标签保留（此前被连带关掉）
+  });
+
+  it("closeMainView：总览未开时关页签 = 纯切回终端", () => {
+    const ws = useWorkspaceStore.getState();
+    ws.openMainView("forwards");
+    ws.closeMainView();
+    const st = useWorkspaceStore.getState();
+    expect(st.mainView).toBe("terminal");
+    expect(st.overviewOpen).toBe(false);
+  });
+});
+
 describe("终端保留不变量（store 层）", () => {
   it("workspace 动作永不触碰 SessionStore：切视图/开关 dock 后会话原样保留", () => {
     const sess = fakeSession();

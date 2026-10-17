@@ -751,6 +751,10 @@ mod tests {
 
     // --- listener 进程内环回（无夹具的最小 E2E：UDS + relay 式客户端）--------
 
+    // UDS 与 spawn_listener 均 unix 专属（spawn_listener 只在 cfg(unix) 编译）：
+    // 不门控则 Windows cargo test/clippy 编译即炸（2026-10-17 基线评审补漏，
+    // 同文件 0600 权限测试是门的，本条属 d2fd6ae 漏网）。
+    #[cfg(unix)]
     #[test]
     fn listener_serves_protocol_over_uds() {
         let dir = tempfile::tempdir().unwrap();

@@ -41,19 +41,19 @@
    可滚性可见；无溢出的对话框不出现（仅滚动时占位），不破坏既有定宽/居中。
    2026-10-05 精修：8px→6px + thumb 圆角收窄 + 离边距（border 透明 + 背景
    裁切），滚动条更轻量不抢视觉。
-   2026-10-14 扩面：嵌套滚动容器（设置分区面板 .settings-panes / 工具弹框
-   体 .tool-dialog-body）同享本规格——原生宽滚动条在系统「滚动条常显」下
+   2026-10-14 扩面：嵌套滚动容器（设置分区面板 .settings-panes）同享本规格；
+   2026-10-17：工具弹框体退役，改挂工作区宽幅视图 .workspace-view——原生宽滚动条在系统「滚动条常显」下
    盖住内容右缘（用户反馈：设置页滚动条压住开关与按钮）。 */
 .dialog::-webkit-scrollbar,
 .host-form::-webkit-scrollbar,
 .settings-panes::-webkit-scrollbar,
-.tool-dialog-body::-webkit-scrollbar {
+.workspace-view::-webkit-scrollbar {
   width: 6px;
 }
 .dialog::-webkit-scrollbar-thumb,
 .host-form::-webkit-scrollbar-thumb,
 .settings-panes::-webkit-scrollbar-thumb,
-.tool-dialog-body::-webkit-scrollbar-thumb {
+.workspace-view::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
   border-radius: var(--radius-sm);
   border: 2px solid transparent;

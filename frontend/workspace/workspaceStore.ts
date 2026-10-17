@@ -21,9 +21,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set) => ({
       overviewOpen: false,
       mainView: st.mainView === "overview" ? "terminal" : st.mainView,
     })),
-  /** 关闭当前工作区宽幅视图（页签 ✕，2026-10-16 IA 重构）：总览撤销置顶
-   * 标签，其余宽幅视图切回终端（内容状态保留，重开即恢复）。 */
-  closeMainView: () => set({ overviewOpen: false, mainView: "terminal" }),
+  /** 关闭当前库级宽幅视图页签（页签 ✕，2026-10-16 IA 重构）：切回终端
+   * （内容状态保留，重开即恢复）。总览标签的开关独立走 closeOverview/
+   * openOverview——本动作不得触碰 overviewOpen，否则关 cron 等页签会连带
+   * 关掉总览标签（2026-10-17 基线评审 P0）。 */
+  closeMainView: () => set({ mainView: "terminal" }),
 }));
 
 interface WorkspaceState {
@@ -37,7 +39,7 @@ interface WorkspaceState {
   openOverview: () => void;
   /** 关闭总览置顶标签（标签 ✕）。 */
   closeOverview: () => void;
-  /** 关闭当前工作区宽幅视图（页签 ✕；总览走 closeOverview 语义）。 */
+  /** 关闭当前库级宽幅视图页签（页签 ✕；总览走 closeOverview 语义）。 */
   closeMainView: () => void;
 }
 

@@ -210,8 +210,11 @@ const THEME_CYCLE: readonly ThemeMode[] = [
   "system",
   "light",
   "verdant",
+  "sepia",
   "dark",
   "oled",
+  "ember",
+  "forest",
   "amethyst",
   "glass",
 ];

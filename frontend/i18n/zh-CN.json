@@ -62,10 +62,13 @@
     "themes": {
       "system": "跟随系统",
       "light": "浅滩",
+      "verdant": "溪岸",
+      "sepia": "沙洲",
       "dark": "深河",
       "oled": "深渊",
+      "ember": "河灯",
+      "forest": "松涛",
       "amethyst": "夜光河",
-      "verdant": "溪岸",
       "glass": "雨窗"
     },
     "themeAmethystGlassHint": "夜光河为饱和紫的实色暗底；雨窗为冷霜蓝调、背景半透明，透出窗口后的桌面模糊（Linux 无系统模糊时自动提近实底）。",

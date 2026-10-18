@@ -62,10 +62,13 @@
     "themes": {
       "system": "System",
       "light": "Shallows",
+      "verdant": "Riverside",
+      "sepia": "Sandbar",
       "dark": "Deep Water",
       "oled": "Abyss",
+      "ember": "River Lanterns",
+      "forest": "Pine Waves",
       "amethyst": "Bio River",
-      "verdant": "Riverside",
       "glass": "Rain Glass"
     },
     "themeAmethystGlassHint": "Bio River is a saturated violet opaque dark theme; Rain Glass is a cool icy-blue theme whose translucent background shows a blurred view of your desktop behind the window (falls back to near-opaque on Linux, where system blur is unavailable).",

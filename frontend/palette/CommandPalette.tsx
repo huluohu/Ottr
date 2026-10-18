@@ -94,7 +94,7 @@ function groupOf(action: ActionId): "connection" | "panels" | "system" {
  * theme.set.<id> 前缀直派 setMode；lang.set.<locale> 直派 setLang。
  * 标签复用设置页词典（settings.themes.* / settings.langZh/langEn）。 */
 const APPEARANCE_COMMANDS: readonly { key: string; labelKey: string; action: string }[] = [
-  ...(["system", "light", "verdant", "dark", "oled", "amethyst", "glass"] as const).map((id) => ({
+  ...(["system", "light", "verdant", "sepia", "dark", "oled", "ember", "forest", "amethyst", "glass"] as const).map((id) => ({
     key: `theme-${id}`,
     labelKey: `settings.themes.${id}`,
     action: `theme.set.${id}`,

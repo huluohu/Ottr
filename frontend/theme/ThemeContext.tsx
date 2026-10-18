@@ -26,7 +26,10 @@ export type ThemeMode =
   | "oled"
   | "amethyst"
   | "verdant"
-  | "glass";
+  | "glass"
+  | "sepia"
+  | "forest"
+  | "ember";
 /** 解析后的实际明暗（二级解析结果；terminal 旧亮暗链与 color-scheme 共用）。 */
 export type ResolvedTheme = "light" | "dark";
 
@@ -35,13 +38,18 @@ export type ResolvedTheme = "light" | "dark";
  * 设置页主题网格（SecuritySettings THEME_CHOICES）同消费本全集且「跟随系统」
  * 首位（2026-10-14 用户口径：缺省档排第一，原生菜单同序）。
  * 2026-10-16 视觉重设计「水域家族」：其余六档按光量降序（浅滩→溪岸→深河→
- * 深渊→夜光河→雨窗）；id 与持久化协议不变，只改显示名与排序。 */
+ * 深渊→夜光河→雨窗）；id 与持久化协议不变，只改显示名与排序。
+ * 2026-10-18 家族续编三档（用户需求「再增 3 个不同风格」）：沙洲（暖纸亮）、
+ * 松涛（深松绿暗）、河灯（暖褐暗+灯火琥珀）——亮族排 verdant 后、暗族插
+ * oled 后（暖暗邻纯黑），既有六档次序不动。 */
 export const THEME_IDS: readonly ThemeMode[] = [
   "system",
   "light",
   "verdant",
+  "sepia",
   "dark",
   "oled",
+  "ember",
   "amethyst",
   "glass",
 ];
@@ -50,17 +58,20 @@ function isThemeId(v: string | null | undefined): v is ThemeMode {
   return v != null && (THEME_IDS as readonly string[]).includes(v);
 }
 
-/** 二级解析：主题 id → 亮/暗。oled/amethyst/glass 暗底系；verdant 亮底；
- * system 跟随 prefers-color-scheme。 */
+/** 二级解析：主题 id → 亮/暗。oled/amethyst/glass/forest/ember 暗底系；
+ * verdant/sepia 亮底；system 跟随 prefers-color-scheme。 */
 function resolveMode(mode: ThemeMode, systemDark: boolean): ResolvedTheme {
   switch (mode) {
     case "light":
     case "verdant":
+    case "sepia":
       return "light";
     case "dark":
     case "oled":
     case "amethyst":
     case "glass":
+    case "forest":
+    case "ember":
       return "dark";
     case "system":
       return systemDark ? "dark" : "light";
@@ -75,7 +86,16 @@ export function terminalPaletteKey(mode: ThemeMode, resolved: ResolvedTheme): Te
 
 /** terminalPaletteKey 的返回（= terminalThemeStore.TerminalPaletteKey；此处
  * 字面量并集避免模块环 import）。 */
-type TerminalPaletteKeySource = "light" | "dark" | "oled" | "amethyst" | "verdant" | "glass";
+type TerminalPaletteKeySource =
+  | "light"
+  | "dark"
+  | "oled"
+  | "amethyst"
+  | "verdant"
+  | "glass"
+  | "sepia"
+  | "forest"
+  | "ember";
 
 const THEME_KEY = "ottr.settings.theme";
 const SETTING_KEY = "ui.theme"; // vault settings 键（T11 迁移目标，明文面锁定可读）

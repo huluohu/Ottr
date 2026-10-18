@@ -288,3 +288,68 @@
 [data-theme="glass"][data-platform="linux"] {
   --color-bg: rgba(16, 20, 32, 0.94);
 }
+
+/* ============================================================
+ * 水域家族续编（2026-10-18 用户需求「再增 3 个不同风格」）：沙洲/松涛/河灯。
+ * 口径同上：文字键实算 ≥4.5（bg/raised/overlay/surface；raised/overlay 由
+ * App.css color-mix(fg 6%/10%, bg) 自动派生），accent-border ≥3。
+ * ============================================================ */
+
+/* --- 沙洲 Sepia（暖纸亮底，阅读感）：bg 暖奶油、墨色偏褐，主色琥珀褐 ---
+ * accent(#A16207) vs bg 4.82 / accent-border 同值 ≥3；accent-text(#854D0E)
+ * 6.9+；on-accent 白字 5.36；沿用亮色校准档三色（sepia bg 较 light 略暗，更高）。 */
+[data-theme="sepia"] {
+  color-scheme: light;
+  --color-bg: #f7f2e9;
+  --color-fg: #2b2417;
+  --color-accent: #a16207;
+  --color-accent-text: #854d0e;
+  --color-danger: #b42318;
+  --color-warning: #92400e;
+  --color-success: var(--ottr-teal-800);
+  --color-on-danger: #ffffff;
+  --color-on-accent: #ffffff;
+  --color-surface: #ffffff;
+  --color-accent-border: var(--color-accent);
+  --fg-muted: color-mix(in srgb, var(--color-fg) 72%, transparent);
+  --scrim: rgba(43, 36, 23, 0.32);
+}
+
+/* --- 松涛 Forest（深松绿暗底）：bg 近黑松绿、前景绿偏白，主色翡翠 300 ---
+ * accent(#6EE7B7) vs bg ≈10；沿用暗色档三色（底较 water-900 更深，更高）。 */
+[data-theme="forest"] {
+  color-scheme: dark;
+  --color-bg: #0f1f18;
+  --color-fg: #e2ece5;
+  --color-accent: #6ee7b7;
+  --color-accent-text: var(--color-accent);
+  --color-danger: #f97066;
+  --color-warning: var(--ottr-amber-500);
+  --color-success: #2dd4bf;
+  --color-on-danger: var(--ottr-ink-900);
+  --color-on-accent: var(--ottr-ink-900);
+  --color-surface: rgba(226, 236, 229, 0.08);
+  --color-accent-border: var(--color-accent);
+  --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent);
+  --scrim: rgba(0, 0, 0, 0.5);
+}
+
+/* --- 河灯 Ember（暖褐暗底+灯火琥珀）：bg 河畔夜褐、主色灯火 amber-400，
+ * warning 提亮为 yellow-300 与主色拉开，success 用冷青在暖底上拉对比 ---
+ * accent(#FBBF24) vs bg ≈10；on-accent 墨色 ≈10；warning(#FDE047) 12+。 */
+[data-theme="ember"] {
+  color-scheme: dark;
+  --color-bg: #1f1510;
+  --color-fg: #f3e9dc;
+  --color-accent: #fbbf24;
+  --color-accent-text: var(--color-accent);
+  --color-danger: #f97066;
+  --color-warning: #fde047;
+  --color-success: #2dd4bf;
+  --color-on-danger: var(--ottr-ink-900);
+  --color-on-accent: var(--ottr-ink-900);
+  --color-surface: rgba(243, 233, 220, 0.08);
+  --color-accent-border: var(--color-accent);
+  --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent);
+  --scrim: rgba(0, 0, 0, 0.5);
+}

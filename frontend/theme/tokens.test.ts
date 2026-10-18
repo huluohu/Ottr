@@ -418,6 +418,9 @@ const TERMINAL_PALETTES: { id: string; theme: ITheme }[] = [
   { id: "amethyst", theme: themeTerminalThemes.amethyst },
   { id: "verdant", theme: themeTerminalThemes.verdant },
   { id: "glass", theme: themeTerminalThemes.glass },
+  { id: "sepia", theme: themeTerminalThemes.sepia },
+  { id: "forest", theme: themeTerminalThemes.forest },
+  { id: "ember", theme: themeTerminalThemes.ember },
 ];
 
 describe.each(TERMINAL_PALETTES.map((p) => [p.id, p.theme] as const))(

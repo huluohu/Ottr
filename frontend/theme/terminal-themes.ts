@@ -90,8 +90,15 @@ export const terminalThemes: Record<"light" | "dark", ITheme> = {
 //     合成参考桌面底 #1C2430 实算（与 tokens.test REF_DESKTOP 同一假设）。
 // ---------------------------------------------------------------------------
 
-/** 配套色板的四主题 id（= ThemeMode 新增四态；auto 解析键）。 */
-export type ThemedTerminalPaletteId = "oled" | "amethyst" | "verdant" | "glass";
+/** 配套色板的主题 id（= ThemeMode 非亮暗非系统态；auto 解析键）。 */
+export type ThemedTerminalPaletteId =
+  | "oled"
+  | "amethyst"
+  | "verdant"
+  | "glass"
+  | "sepia"
+  | "forest"
+  | "ember";
 
 /** OLED：纯黑底（省电屏），ANSI 全亮档；fg=E5E7EB（简报钉死）。 */
 export const oledTerminalTheme: ITheme = {
@@ -195,10 +202,91 @@ export const glassTerminalTheme: ITheme = {
   brightWhite: "#eceff5",
 };
 
+/** Sepia（沙洲）：暖纸亮底（bg #F7F2E9 同界面令牌），LIGHT_ANSI 深档纪律 +
+ * 暖色相偏移（olive 绿 / 暖褐白； verdant 深档基线整体右移暖调）。 */
+export const sepiaTerminalTheme: ITheme = {
+  foreground: "#2b2417",
+  background: "#f7f2e9",
+  cursor: "#a16207",
+  cursorAccent: "#f7f2e9",
+  selectionBackground: "#a1620744",
+  black: "#262015",
+  red: "#a03d35",
+  green: "#4a6b2a",
+  yellow: "#8a5a06",
+  blue: "#1d5a8a",
+  magenta: "#8a4276",
+  cyan: "#0c647c",
+  white: "#5c5240",
+  brightBlack: "#57492f",
+  brightRed: "#a83226",
+  brightGreen: "#3f6b0e",
+  brightYellow: "#8a6006",
+  brightBlue: "#1c6494",
+  brightMagenta: "#8f3b80",
+  brightCyan: "#0a5c74",
+  brightWhite: "#453b28",
+};
+
+/** Forest（松涛）：深松绿暗底（bg #0F1F18 同界面令牌），暗底口径；ANSI 标准
+ * 亮档（近黑底全槽高对比），black 族绿偏与底可区分。 */
+export const forestTerminalTheme: ITheme = {
+  foreground: "#e2ece5",
+  background: "#0f1f18",
+  cursor: "#6ee7b7",
+  cursorAccent: "#0f1f18",
+  selectionBackground: "#6ee7b766",
+  black: "#1a2e24",
+  red: "#ff6b6b",
+  green: "#34d399",
+  yellow: "#fbbf24",
+  blue: "#60a5fa",
+  magenta: "#e879f9",
+  cyan: "#22d3ee",
+  white: "#c9d6cd",
+  brightBlack: "#4e6a5b",
+  brightRed: "#ff9b9b",
+  brightGreen: "#6ee7b7",
+  brightYellow: "#fde047",
+  brightBlue: "#93c5fd",
+  brightMagenta: "#f0abfc",
+  brightCyan: "#67e8f9",
+  brightWhite: "#eef5f0",
+};
+
+/** Ember（河灯）：暖褐暗底（bg #1F1510 同界面令牌），灯火琥珀光标；ANSI 暖
+ * 偏（红橙前台 + 冷青蓝补），黑族褐偏与底可区分。 */
+export const emberTerminalTheme: ITheme = {
+  foreground: "#f3e9dc",
+  background: "#1f1510",
+  cursor: "#fbbf24",
+  cursorAccent: "#1f1510",
+  selectionBackground: "#fbbf2466",
+  black: "#2a201a",
+  red: "#ff7a6b",
+  green: "#6fbf73",
+  yellow: "#fbbf24",
+  blue: "#7aa2f7",
+  magenta: "#e879b3",
+  cyan: "#6fcfe0",
+  white: "#d8cbbc",
+  brightBlack: "#6b5a4a",
+  brightRed: "#ff9b8a",
+  brightGreen: "#8fd489",
+  brightYellow: "#fde047",
+  brightBlue: "#9fc0ff",
+  brightMagenta: "#f0abfc",
+  brightCyan: "#a4e0f8",
+  brightWhite: "#f6ede2",
+};
+
 /** 主题 id → 配套终端色板（auto 解析表；terminalThemeStore 消费）。 */
 export const themeTerminalThemes: Record<ThemedTerminalPaletteId, ITheme> = {
   oled: oledTerminalTheme,
   amethyst: amethystTerminalTheme,
   verdant: verdantTerminalTheme,
   glass: glassTerminalTheme,
+  sepia: sepiaTerminalTheme,
+  forest: forestTerminalTheme,
+  ember: emberTerminalTheme,
 };

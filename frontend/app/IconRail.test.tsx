@@ -163,7 +163,7 @@ describe("IconRail（48px 图标轨）", () => {
     expect(props.onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("主题子菜单：水域家族七档新序；选即应用且浮层保留（连续预览，点外/Esc 才收）", () => {
+  it("主题子菜单：水域家族九+1 档新序（续编沙洲/河灯/松涛）；选即应用且浮层保留（连续预览，点外/Esc 才收）", () => {
     renderRail();
     openOttyMenu();
     fireEvent.click(screen.getByTestId("rail-theme"));
@@ -174,8 +174,11 @@ describe("IconRail（48px 图标轨）", () => {
       "rail-theme-system",
       "rail-theme-light",
       "rail-theme-verdant",
+      "rail-theme-sepia",
       "rail-theme-dark",
       "rail-theme-oled",
+      "rail-theme-ember",
+      "rail-theme-forest",
       "rail-theme-amethyst",
       "rail-theme-glass",
     ]);

@@ -69,7 +69,7 @@ const FONT_CHOICES = ["Menlo", "Monaco", "SF Mono", "JetBrains Mono", "Fira Code
 // 终端字号候选（pt）
 const FONT_SIZE_CHOICES = [10, 11, 12, 13, 14, 16, 18, 20] as const;
 // theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
-const THEME_CHOICES: ThemeMode[] = ["system", "light", "verdant", "dark", "oled", "amethyst", "glass"];
+const THEME_CHOICES: ThemeMode[] = ["system", "light", "verdant", "sepia", "dark", "oled", "ember", "forest", "amethyst", "glass"];
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 
 // 2026-10-09 设置页交互重构：左侧分区导航 + 右侧内容面板（原单列长滚动、

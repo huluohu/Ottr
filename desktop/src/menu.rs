@@ -277,6 +277,27 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Tools"
             }
         }
+        "theme_sepia" => {
+            if zh {
+                "沙洲"
+            } else {
+                "Sandbar"
+            }
+        }
+        "theme_forest" => {
+            if zh {
+                "松涛"
+            } else {
+                "Pine Waves"
+            }
+        }
+        "theme_ember" => {
+            if zh {
+                "河灯"
+            } else {
+                "River Lanterns"
+            }
+        }
         "tool_notify_center" => {
             if zh {
                 "通知中心"
@@ -406,11 +427,12 @@ pub enum MenuNode {
     },
 }
 
-/// 主题七态 id（与前端 THEME_IDS 同序同值；快切菜单/设置网格/原生菜单三处共用）。
+/// 主题十态 id（与前端 THEME_IDS 同序同值；快切菜单/设置网格/原生菜单三处共用）。
+/// 2026-10-18 家族续编：+沙洲(sepia)/松涛(forest)/河灯(ember)。
 /// 「跟随系统」首位（2026-10-14 用户反馈）：与设置网格/侧栏快切菜单一致——
 /// 系统推荐的缺省档排第一，具体主题跟在后。
-pub const THEME_IDS: [&str; 7] = [
-    "system", "light", "verdant", "dark", "oled", "amethyst", "glass",
+pub const THEME_IDS: [&str; 10] = [
+    "system", "light", "verdant", "sepia", "dark", "oled", "ember", "forest", "amethyst", "glass",
 ];
 
 /// 原生「工具」菜单项 key（与前端 TopbarMenu 工具下拉同源，runToolAction 消费）。
@@ -543,12 +565,24 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                             label: text(lang, "theme_verdant"),
                         },
                         MenuNode::Check {
+                            id: "theme.set.sepia",
+                            label: text(lang, "theme_sepia"),
+                        },
+                        MenuNode::Check {
                             id: "theme.set.dark",
                             label: text(lang, "theme_dark"),
                         },
                         MenuNode::Check {
                             id: "theme.set.oled",
                             label: text(lang, "theme_oled"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.ember",
+                            label: text(lang, "theme_ember"),
+                        },
+                        MenuNode::Check {
+                            id: "theme.set.forest",
+                            label: text(lang, "theme_forest"),
                         },
                         MenuNode::Check {
                             id: "theme.set.amethyst",
@@ -1528,7 +1562,7 @@ mod tests {
     /// 主题子菜单（视图下）：七项 = 前端 THEME_IDS 同序（dispatch 前缀测试
     /// 另行覆盖 id 合法性）。2026-10-08 菜单栏启用批次起钉住。
     #[test]
-    fn theme_submenu_lists_all_seven_themes() {
+    fn theme_submenu_lists_all_themes() {
         let tree = menu_tree(Lang::En);
         let view = tree
             .iter()

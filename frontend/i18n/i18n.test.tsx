@@ -60,8 +60,16 @@ afterEach(() => {
 });
 
 describe("i18n", () => {
-  it("detectLang：navigator.language zh* → zh-CN，其余 → en-US", () => {
+  it("detectLang：繁体区标签 → zh-Hant；zh* 其余 → zh-CN；其余 → en-US", () => {
     setNavigatorLanguage("zh-TW");
+    expect(detectLang()).toBe("zh-Hant");
+    setNavigatorLanguage("zh-HK");
+    expect(detectLang()).toBe("zh-Hant");
+    setNavigatorLanguage("zh-Hant-MO");
+    expect(detectLang()).toBe("zh-Hant");
+    setNavigatorLanguage("zh-CN");
+    expect(detectLang()).toBe("zh-CN");
+    setNavigatorLanguage("zh-SG");
     expect(detectLang()).toBe("zh-CN");
     setNavigatorLanguage("en-GB");
     expect(detectLang()).toBe("en-US");
@@ -190,7 +198,7 @@ describe("i18n", () => {
 
     // 语言选择器的「语言自主名称」惯例（en 包里也用原文显示「中文」）——豁免；
     // 其余任何 CJK 都是语言包损坏（I-1 现场）。
-    const SELF_NAMED_LANG_KEYS = new Set(["settings.langZh", "palette.langToggle"]);
+    const SELF_NAMED_LANG_KEYS = new Set(["settings.langZh", "settings.langHant", "palette.langToggle"]);
     const cjk = enLeaves.filter(([k, v]) => !SELF_NAMED_LANG_KEYS.has(k) && hasCJK(v));
     expect(cjk, "en-US 值含中文（英文用户看到中文文案）").toEqual([]);
 
@@ -211,5 +219,45 @@ describe("i18n", () => {
       const ev = enFlat.get(k);
       expect(vars(String(ev)), `占位符不一致: ${k}`).toEqual(vars(zv));
     }
+  });
+
+  // 2026-10-18 +繁體中文：zh-Hant 与 zh-CN 键集双向对齐（OpenCC 打底 + 人工校，
+  // 键面必须与简体 1:1——fallback 只兜运行期缺键，不允许词典漂移）。
+  describe("zh-Hant 对齐（简繁双语守卫）", () => {
+    it("键集双向一致：zh-Hant 键 = zh-CN 键（无多无缺）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const zh = JSON.parse(read("zh-CN.json"));
+      const hant = JSON.parse(read("zh-Hant.json"));
+      const zhKeys = new Set(flatten(zh).map(([k]) => k));
+      const hantKeys = new Set(flatten(hant).map(([k]) => k));
+      const missing = [...zhKeys].filter((k) => !hantKeys.has(k));
+      const extra = [...hantKeys].filter((k) => !zhKeys.has(k));
+      expect(missing, "zh-Hant 缺键").toEqual([]);
+      expect(extra, "zh-Hant 多键").toEqual([]);
+    });
+
+    it("插值占位符与 zh-CN 一致（{{x}} 面对齐）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const zh = JSON.parse(read("zh-CN.json"));
+      const hant = JSON.parse(read("zh-Hant.json"));
+      const vars = (s: string) => [...s.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
+      const hantFlat = new Map(flatten(hant));
+      for (const [k, zv] of flatten(zh)) {
+        const hv = hantFlat.get(k);
+        expect(vars(String(hv)), `占位符不一致: ${k}`).toEqual(vars(zv));
+      }
+    });
+
+    it("确实是繁体：抽样值含繁体专形（防误拷简体文件占位）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const hant = JSON.parse(read("zh-Hant.json"));
+      const flat = new Map(flatten(hant));
+      expect(flat.get("settings.theme")).toBe("主題");
+      expect(flat.get("nav.credentials")).toBe("憑證");
+      expect(flat.get("nav.settings")).toBe("設定");
+    });
   });
 });

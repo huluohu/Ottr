@@ -1,15 +1,19 @@
 // i18n 脚手架（A11，Task 2 产出；全任务消费）：
-// i18next + react-i18next，单文件 translation 命名空间起步；词典 zh-CN/en-US JSON。
-// 语言 = 系统检测（navigator.language，zh* → zh-CN，其余 → en-US）+ 手动覆盖。
+// i18next + react-i18next，单文件 translation 命名空间起步；词典 zh-CN/zh-Hant/
+// en-US JSON（2026-10-18 +繁體中文：zh-Hant = 港澳台通用繁体，字形 OpenCC s2t
+// 打底 + 高频词人工校准）。
+// 语言 = 系统检测（navigator.language：zh-Hant/TW/HK/MO → zh-Hant，zh* 其余 →
+// zh-CN，其余 → en-US）+ 手动覆盖。
 // 持久化（T11 迁移完成）：真源 = vault settings `ui.language`（明文面，锁定可读，
 // syncLangFromVault 对齐/迁移）；localStorage 键降级为启动缓存镜像（防闪烁）。
-// fallback = en-US：词典缺键时回落英文，绝不让键名裸露给用户。
+// fallback：zh-Hant 缺键回落 zh-CN（繁体缺词不裸露），en-US 恒为最终兜底。
 import i18n from "i18next";
 import { initReactI18next, useTranslation } from "react-i18next";
 import zhCN from "./zh-CN.json";
+import zhHant from "./zh-Hant.json";
 import enUS from "./en-US.json";
 
-export const LANGS = ["zh-CN", "en-US"] as const;
+export const LANGS = ["zh-CN", "zh-Hant", "en-US"] as const;
 export type Lang = (typeof LANGS)[number];
 
 /** localStorage 缓存镜像键（真源 = vault settings，见文件头）。 */
@@ -34,26 +38,41 @@ function writeCache(lang: string): void {
 }
 
 /** 语言检测：缓存镜像优先（真源对齐前的首帧口径），其次 navigator.language
- * （zh* → zh-CN）。 */
+ * （繁体区标签 zh-hant/zh-tw/zh-hk/zh-mo → zh-Hant；zh* 其余 → zh-CN）。 */
 export function detectLang(): Lang {
   const stored = readCache();
   if (stored !== null && (LANGS as readonly string[]).includes(stored)) {
     return stored as Lang;
   }
-  return navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US";
+  const tag = navigator.language.toLowerCase();
+  if (/^(zh-hant|zh-tw|zh-hk|zh-mo)/.test(tag)) return "zh-Hant";
+  return tag.startsWith("zh") ? "zh-CN" : "en-US";
+}
+
+/** 语言 → <html lang> 同步（CSS :lang(zh-Hant) 繁体字体栈依赖；document.lang
+ * 变化在 jsdom 纯浏览器 dev 亦无害）。 */
+function syncDocumentLang(lang: string): void {
+  try {
+    document.documentElement.lang = lang;
+  } catch {
+    // 非常规环境（无 document）：忽略
+  }
 }
 
 // 资源内联、无异步 backend：init 同步完成，首次渲染即有译文。
 void i18n.use(initReactI18next).init({
   resources: {
     "zh-CN": { translation: zhCN },
+    "zh-Hant": { translation: zhHant },
     "en-US": { translation: enUS },
   },
   lng: detectLang(),
-  fallbackLng: "en-US",
+  // zh-Hant 缺键回落简体（同文种优先），en-US 恒为最终兜底
+  fallbackLng: { "zh-Hant": ["zh-CN"], default: ["en-US"] },
   // React 自带 XSS 转义；关闭 i18next 二次转义避免 &amp; 双重转义
   interpolation: { escapeValue: false },
 });
+syncDocumentLang(i18n.language);
 
 export default i18n;
 
@@ -63,6 +82,7 @@ export default i18n;
  * vault 写失败（非 Tauri 环境/纯浏览器 dev）不通知——开发环境本无原生菜单。 */
 export function setLang(lang: Lang): void {
   void i18n.changeLanguage(lang);
+  syncDocumentLang(lang);
   writeCache(lang);
   void import("../vault/api")
     .then(({ vaultApi }) => vaultApi.settings.set(LANG_SETTING_KEY, lang))
@@ -89,6 +109,7 @@ export async function syncLangFromVault(): Promise<void> {
     if (i18n.language !== stored) {
       await i18n.changeLanguage(stored);
     }
+    syncDocumentLang(stored);
     writeCache(stored);
     return;
   }

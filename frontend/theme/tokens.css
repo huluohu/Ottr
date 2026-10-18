@@ -353,3 +353,11 @@
   --fg-muted: color-mix(in srgb, var(--color-fg) 60%, transparent);
   --scrim: rgba(0, 0, 0, 0.5);
 }
+
+/* --- 繁体字体栈（2026-10-18 +zh-Hant）：html:lang(zh-Hant) 时 TC 字体优先，
+ * 繁体字形走地区正确形态（SC 字体的繁体覆盖偏大陆字形）；拉丁段不变。 --- */
+html:lang(zh-Hant) {
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Microsoft JhengHei",
+    "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+}

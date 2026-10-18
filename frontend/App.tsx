@@ -26,7 +26,7 @@ import { McpApprovalDialog } from "./security/McpApprovalDialog";
 import { useVaultLockStore } from "./security/VaultLockStore";
 import { useVaultInitGate } from "./security/VaultInitGate";
 import { VaultInitGateOverlay } from "./security/VaultInitGateOverlay";
-import { syncLangFromVault, setLang, useLanguage } from "./i18n";
+import { LANGS, syncLangFromVault, setLang, useLanguage, type Lang } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
 import { ExportHostsDialog } from "./hosts/ExportHostsDialog";
@@ -387,7 +387,7 @@ function HomeLayout() {
       }
       if (action.startsWith("lang.set.")) {
         const loc = action.slice("lang.set.".length);
-        if (loc === "zh-CN" || loc === "en-US") setLang(loc);
+        if ((LANGS as readonly string[]).includes(loc)) setLang(loc as Lang);
         return;
       }
       switch (action) {
@@ -434,7 +434,8 @@ function HomeLayout() {
           setMode(themeMode === "light" ? "dark" : themeMode === "dark" ? "system" : "light");
           break;
         case "lang.toggle":
-          setLang(lang === "zh-CN" ? "en-US" : "zh-CN");
+          // 三语循环（2026-10-18 +繁体）：简 → 繁 → EN → 简
+          setLang(lang === "zh-CN" ? "zh-Hant" : lang === "zh-Hant" ? "en-US" : "zh-CN");
           break;
         case "session.splitRight":
         case "session.splitDown": {

@@ -18,7 +18,7 @@ import {
 } from "../theme/gallery";
 import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
-import { useLanguage, type Lang } from "../i18n";
+import { useLanguage, type Lang , LANGS } from "../i18n";
 import { Switch } from "../ui/Switch";
 import { setOttyEnabled, useOttyStore } from "../ui/otty/ottyStore";
 import { loadTerminalSettings, saveTerminalSettings } from "../terminal/ContextMenu";
@@ -71,7 +71,8 @@ const FONT_SIZE_CHOICES = [10, 11, 12, 13, 14, 16, 18, 20] as const;
 // theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
 // 主题网格 = THEME_IDS 派生（registry 单源，手写清单已退役）。
 export const THEME_CHOICES: readonly ThemeMode[] = THEME_IDS;
-const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
+// 语言选项 = LANGS 派生（三语：简/繁/EN）。
+const LANG_CHOICES: readonly Lang[] = LANGS;
 
 // 2026-10-09 设置页交互重构：左侧分区导航 + 右侧内容面板（原单列长滚动、
 // 行为开关混进外观节）。未激活面板 hidden 隐藏但**保持挂载**——控件状态、
@@ -1062,7 +1063,11 @@ export function SecuritySettings({
                 >
                   {LANG_CHOICES.map((l) => (
                     <option key={l} value={l}>
-                      {l === "zh-CN" ? t("settings.langZh") : t("settings.langEn")}
+                      {l === "zh-CN"
+                        ? t("settings.langZh")
+                        : l === "zh-Hant"
+                          ? t("settings.langHant")
+                          : t("settings.langEn")}
                     </option>
                   ))}
                 </select>

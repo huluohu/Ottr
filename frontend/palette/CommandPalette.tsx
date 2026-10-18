@@ -102,6 +102,7 @@ const APPEARANCE_COMMANDS: readonly { key: string; labelKey: string; action: str
     action: `theme.set.${id}`,
   })),
   { key: "lang-zh", labelKey: "settings.langZh", action: "lang.set.zh-CN" },
+  { key: "lang-hant", labelKey: "settings.langHant", action: "lang.set.zh-Hant" },
   { key: "lang-en", labelKey: "settings.langEn", action: "lang.set.en-US" },
 ];
 

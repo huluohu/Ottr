@@ -83,13 +83,13 @@ describe("渲染（空查询）", () => {
     expect(screen.getByText("AI 生成命令")).toBeTruthy();
     expect(screen.getByText("Ctrl+J")).toBeTruthy();
     // 2026-10-18 入口审计：排除集（面板自指/退出/循环切换 ×2）+ 去重（通知
-    // 中心/导入主机两表并存）后，命令条目 = 全表面 - 排除 4 - 去重 2 + 外观 12
+    // 中心/导入主机两表并存）后，命令条目 = 全表面 - 排除 4 - 去重 2 + 外观 13
     //（三新主题 2026-10-18；ACTIONS 含 tabNext/tabPrev，无需单独加减）
     const excluded = ["palette.toggle", "app.quit", "theme.toggle", "lang.toggle"];
     const expected =
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
       (FEATURE_COMMANDS.length - 2) +
-      12;
+      13;
     expect(items().length).toBe(expected + 2);
   });
 
@@ -108,10 +108,11 @@ describe("渲染（空查询）", () => {
     expect(all.filter((l) => l.includes("导入主机"))).toHaveLength(1);
     // 循环切换条目退役
     expect(all.filter((l) => l.includes("切换主题") || l.includes("切换语言"))).toHaveLength(0);
-    // 外观组：主题十选（水域家族名，含续编沙洲/松涛/河灯）+ 语言二选
+    // 外观组：主题十选（水域家族名，含续编沙洲/松涛/河灯）+ 语言三选（autonym）
     expect(screen.getByText("外观")).toBeTruthy();
     for (const name of [
-      "跟随系统", "浅滩", "溪岸", "沙洲", "深河", "深渊", "河灯", "松涛", "夜光河", "雨窗", "中文", "English",
+      "跟随系统", "浅滩", "溪岸", "沙洲", "深河", "深渊", "河灯", "松涛", "夜光河", "雨窗",
+      "简体中文", "繁體中文", "English",
     ]) {
       expect(all.filter((l) => l === name)).toHaveLength(1);
     }
@@ -158,12 +159,12 @@ describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", ()
   it("每条目带类型图标（命令/主机两型 SVG，data-icon 区分）", () => {
     renderPalette();
     const icons = document.querySelectorAll<SVGElement>(".palette-icon");
-    // 命令（全表面 - 排除 4 - 去重 2 + 外观 12）+ 2 主机
+    // 命令（全表面 - 排除 4 - 去重 2 + 外观 13）+ 2 主机
     const excluded = ["palette.toggle", "app.quit", "theme.toggle", "lang.toggle"];
     expect(icons.length).toBe(
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
         (FEATURE_COMMANDS.length - 2) +
-        12 +
+        13 +
         2,
     );
     const cmdIcon = icons[0];
@@ -217,12 +218,12 @@ describe("键盘导航", () => {
     fireEvent.keyDown(input, { key: "ArrowUp" });
     expect(activeIndex()).toBe(0);
     fireEvent.keyDown(input, { key: "ArrowUp" });
-    // 循环到末尾（条目数 = 全表面 - 排除 4 - 去重 2 + 外观 12）
+    // 循环到末尾（条目数 = 全表面 - 排除 4 - 去重 2 + 外观 13）
     const excluded = ["palette.toggle", "app.quit", "theme.toggle", "lang.toggle"];
     expect(activeIndex()).toBe(
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
         (FEATURE_COMMANDS.length - 2) +
-        12 -
+        13 -
         1,
     );
   });

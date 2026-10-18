@@ -657,6 +657,7 @@ function HomeLayout() {
         <MainArea
           storeError={storeError}
           selected={selected}
+          onOpenAlerts={() => openSettingsToPane("alerts")}
           onOpenAiSettings={() => openSettingsToPane("ai")}
           onAddHost={() => {
             setForm({ mode: "new", groupId: null });

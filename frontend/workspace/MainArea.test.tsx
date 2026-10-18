@@ -195,6 +195,26 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
   });
 });
 
+describe("通知中心空态 CTA 接线（2026-10-19 用户反馈回归钉）", () => {
+  it("查看告警规则 → onOpenAlerts 被调用（此前 App 漏传 prop，按钮生而失效）", () => {
+    const onOpenAlerts = vi.fn();
+    render(
+      <MainArea
+        storeError={null}
+        selected={null}
+        onOpenAiSettings={() => {}}
+        onOpenAlerts={onOpenAlerts}
+      />,
+    );
+    act(() => {
+      useWorkspaceStore.getState().openMainView("notifications");
+    });
+    expect(screen.getByTestId("notify-empty-alerts")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("notify-empty-alerts"));
+    expect(onOpenAlerts).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("录制钮会话域划界（2026-10-18 用户裁定）", () => {
   beforeEach(() => {
     recordMock.anyRecording = false;

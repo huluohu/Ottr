@@ -318,6 +318,35 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
     });
   }
 
+  it("Ctrl+Tab/Ctrl+Shift+Tab 切换会话标签（2026-10-18 入口审计补齐）：根会话序循环 + 库级视图让位", async () => {
+    listMock();
+    render(<App />);
+    await act(async () => {});
+    const s1 = fakeSession({ id: "s1", hostName: "web-01", rustId: "pty-1" });
+    const s2 = fakeSession({ id: "s2", hostName: "db-01", rustId: "pty-2" });
+    useSessionStore.setState({ sessions: [s1, s2], activeId: "s1" });
+    // 库级视图（定时任务）激活时切标签 = 离开库级视图回终端
+    useWorkspaceStore.setState({ mainView: "cron", overviewOpen: true });
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true, bubbles: true }),
+      ),
+    );
+    expect(useSessionStore.getState().activeId).toBe("s2");
+    const ws = useWorkspaceStore.getState();
+    expect(ws.mainView).toBe("terminal");
+    expect(ws.overviewOpen).toBe(true); // 让位 ≠ 关闭
+    // 反向（Shift）回绕到前一个
+    act(() =>
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", ctrlKey: true, shiftKey: true, bubbles: true }),
+      ),
+    );
+    expect(useSessionStore.getState().activeId).toBe("s1");
+    useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
+    useSessionStore.setState({ sessions: [], activeId: null });
+  });
+
   it("theme.set.<id> 切主题 + menu_set_theme 同步勾选", async () => {
     listMock();
     render(<App />);

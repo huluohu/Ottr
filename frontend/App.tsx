@@ -59,6 +59,7 @@ import { useTerminalFocus } from "./terminal/terminalFocus";
 // 六工具面板实体渲染在 workspace/ToolDialog（2026-10-12 dock 退役改弹框）。
 import { MainArea } from "./workspace/MainArea";
 import { useWorkspaceStore } from "./workspace/workspaceStore";
+import { workspaceViewOf } from "./workspace/workspaceViews";
 import {
   isTerminalTarget,
   matchActionEvent,
@@ -384,6 +385,17 @@ function HomeLayout() {
     (action: string) => {
       // 开关二态动作读现值（getState 避免把 activeModal 拉进依赖面）。
       const modal = useModalStore.getState();
+      // ⌘K 外观区（2026-10-18 入口审计）：主题/语言具体项直派——与 mac 视图
+      // 菜单（theme.set.*）同一字面量，语言面此前仅设置页可达，此处收口。
+      if (action.startsWith("theme.set.")) {
+        setMode(action.slice("theme.set.".length) as Parameters<typeof setMode>[0]);
+        return;
+      }
+      if (action.startsWith("lang.set.")) {
+        const loc = action.slice("lang.set.".length);
+        if (loc === "zh-CN" || loc === "en-US") setLang(loc);
+        return;
+      }
       switch (action) {
         case "palette.toggle":
           modal.active === "palette" ? modal.close("palette") : modal.open("palette");
@@ -434,6 +446,24 @@ function HomeLayout() {
         case "session.splitDown": {
           const s = useSessionStore.getState();
           if (s.activeId) s.splitPane(s.activeId, action === "session.splitRight" ? "row" : "column");
+          break;
+        }
+        case "session.tabNext":
+        case "session.tabPrev": {
+          // Ctrl+Tab 切标签（2026-10-18 入口审计缺口补齐）：根会话序（与
+          // TabBar 展示同口径 paneOf=null）循环轮转；库级视图下切会话 = 离开
+          // 库级视图回终端（与会话页签点击同一语义，workspaceStore 判定）。
+          const st = useSessionStore.getState();
+          const tabs = st.sessions.filter((s) => s.paneOf === null);
+          if (tabs.length < 2) break;
+          const idx = tabs.findIndex((s) => s.id === st.activeId);
+          const next = tabs[(idx + (action === "session.tabNext" ? 1 : tabs.length - 1)) % tabs.length];
+          if (next && next.id !== st.activeId) {
+            st.setActive(next.id);
+            if (workspaceViewOf(useWorkspaceStore.getState().mainView) !== null) {
+              useWorkspaceStore.getState().openMainView("terminal");
+            }
+          }
           break;
         }
         case "vault.lock":

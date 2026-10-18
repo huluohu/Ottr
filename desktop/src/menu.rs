@@ -128,6 +128,15 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Split Down"
             }
         }
+        // 2026-10-18 入口审计：⌘\ 折叠主机面板此前 mac 菜单缺席（仅快捷键 +
+        // ⌘K），视图菜单补可见入口。
+        "toggle_sidebar" => {
+            if zh {
+                "折叠/展开主机面板"
+            } else {
+                "Toggle Host Panel"
+            }
+        }
         "edit" => {
             if zh {
                 "编辑"
@@ -584,6 +593,12 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                     accelerator: Some("CmdOrCtrl+0"),
                 },
                 MenuNode::Sep,
+                MenuNode::Item {
+                    id: "hosts.panelToggle",
+                    label: text(lang, "toggle_sidebar"),
+                    accelerator: Some("CmdOrCtrl+\\"),
+                },
+                MenuNode::Sep,
                 MenuNode::Predef(Predef::Fullscreen),
             ],
         },
@@ -806,7 +821,9 @@ pub fn dispatch_of(id: &str) -> Option<Dispatch> {
     }
     match id {
         "settings.open" | "hosts.new" | "hosts.new_group" | "hosts.import"
-        | "session.splitRight" | "session.splitDown" | "palette.toggle" => Some(Dispatch::Frontend),
+        | "session.splitRight" | "session.splitDown" | "palette.toggle" | "hosts.panelToggle" => {
+            Some(Dispatch::Frontend)
+        }
         "help.github" => Some(Dispatch::OpenGitHub),
         "update.check" | "tray.status" | "notify.center" => Some(Dispatch::Frontend),
         "app.quit" | "tray.quit" => Some(Dispatch::Quit),
@@ -1460,6 +1477,9 @@ mod tests {
                 ("view.zoom_in", "CmdOrCtrl+="),
                 ("view.zoom_out", "CmdOrCtrl+-"),
                 ("view.zoom_reset", "CmdOrCtrl+0"),
+                // 视图菜单折叠主机面板（2026-10-18 入口审计补齐；视图子菜单在
+                // 应用子菜单之前遍历，故排 palette.toggle 前）
+                ("hosts.panelToggle", "CmdOrCtrl+\\"),
                 ("palette.toggle", "CmdOrCtrl+K"),
             ]
         );

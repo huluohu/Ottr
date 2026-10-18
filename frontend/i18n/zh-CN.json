@@ -183,7 +183,8 @@
     "themeToggle": "切换主题",
     "langToggle": "切换语言（中文 / English）",
     "sidebarCollapse": "折叠/展开主机面板（⌘\\）",
-    "quit": "退出 Ottr"
+    "quit": "退出 Ottr",
+    "group_appearance": "外观"
   },
   "history": {
     "title": "历史搜索",
@@ -505,7 +506,9 @@
   "tabs": {
     "list": "会话标签",
     "closeAria": "关闭标签 {{name}}",
-    "prodBadge": "PROD"
+    "prodBadge": "PROD",
+    "nextTab": "下一个标签",
+    "prevTab": "上一个标签"
   },
   "files": {
     "viewSwitch": "主区视图",

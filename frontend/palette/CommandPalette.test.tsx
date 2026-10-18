@@ -65,12 +65,15 @@ describe("渲染（空查询）", () => {
 
   it("命令区（registry 全表 + 工具组 12 项）+ 主机区，键位提示为 Ctrl 系", () => {
     const { items } = renderPalette();
-    expect(screen.getByText("命令面板")).toBeTruthy();
+    // 2026-10-18 审计：面板不再列「命令面板」自指条目（见审计重整用例）
+    expect(screen.queryByText("命令面板")).toBeNull();
     expect(screen.getByText("新建主机")).toBeTruthy();
     expect(screen.getByText("设置")).toBeTruthy();
     expect(screen.getByText("web-01")).toBeTruthy();
     expect(screen.getByText("deploy@10.0.0.1:22")).toBeTruthy();
-    expect(screen.getByText("Ctrl+K")).toBeTruthy();
+    // palette.toggle 已排除（无 Ctrl+K 提示）；键位提示抽查现存两条
+    expect(screen.queryByText("Ctrl+K")).toBeNull();
+    expect(screen.getByText("Ctrl+R")).toBeTruthy();
     expect(screen.getByText("Ctrl+,")).toBeTruthy();
     // 浏览态无扁平「命令」总头（评审 P0-4：总头下无直属条目即空组头）——
     // 组节头（连接与会话等）承载结构；主机区头仍在。
@@ -79,7 +82,37 @@ describe("渲染（空查询）", () => {
     // ⌘K 面板的 AI 生成命令条目（registry ai.nl2cmd；2026-10-16 文案通俗化）
     expect(screen.getByText("AI 生成命令")).toBeTruthy();
     expect(screen.getByText("Ctrl+J")).toBeTruthy();
-    expect(items().length).toBe(ACTIONS.length + FEATURE_COMMANDS.length + 2);
+    // 2026-10-18 入口审计：排除集（面板自指/退出/循环切换 ×2）+ 去重（通知
+    // 中心/导入主机两表并存）后，命令条目 = 全表面 - 排除 4 - 去重 2 + 外观 9
+    //（ACTIONS 现含 tabNext/tabPrev 两条新动作，无需单独加减）
+    const excluded = ["palette.toggle", "app.quit", "theme.toggle", "lang.toggle"];
+    const expected =
+      ACTIONS.filter((a) => !excluded.includes(a.id)).length +
+      (FEATURE_COMMANDS.length - 2) +
+      9;
+    expect(items().length).toBe(expected + 2);
+  });
+
+  it("审计重整（2026-10-18）：无自指/无退出/无重复；主题语言列具体项（外观组）", () => {
+    renderPalette({ hosts: [] });
+    const labels = () =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".palette-item")).map(
+        (b) => b.textContent ?? "",
+      );
+    const all = labels();
+    // 自指与破坏性动作不入面板（菜单/托盘/汉堡仍可达）
+    expect(all.filter((l) => l === "命令面板")).toHaveLength(0);
+    expect(all.filter((l) => l.includes("退出"))).toHaveLength(0);
+    // 双表去重：通知中心/导入主机各只一份
+    expect(all.filter((l) => l.includes("通知中心"))).toHaveLength(1);
+    expect(all.filter((l) => l.includes("导入主机"))).toHaveLength(1);
+    // 循环切换条目退役
+    expect(all.filter((l) => l.includes("切换主题") || l.includes("切换语言"))).toHaveLength(0);
+    // 外观组：主题七选（水域家族名）+ 语言二选
+    expect(screen.getByText("外观")).toBeTruthy();
+    for (const name of ["跟随系统", "浅滩", "溪岸", "深河", "深渊", "夜光河", "雨窗", "中文", "English"]) {
+      expect(all.filter((l) => l === name)).toHaveLength(1);
+    }
   });
 
   it("空主机库只剩命令区（组节头承载），不渲染主机区头", () => {
@@ -123,8 +156,14 @@ describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", ()
   it("每条目带类型图标（命令/主机两型 SVG，data-icon 区分）", () => {
     renderPalette();
     const icons = document.querySelectorAll<SVGElement>(".palette-icon");
-    // 11 命令 + 2 主机 = 13 个图标
-    expect(icons.length).toBe(ACTIONS.length + FEATURE_COMMANDS.length + 2);
+    // 命令（全表面 - 排除 4 - 去重 2 + 外观 9）+ 2 主机
+    const excluded = ["palette.toggle", "app.quit", "theme.toggle", "lang.toggle"];
+    expect(icons.length).toBe(
+      ACTIONS.filter((a) => !excluded.includes(a.id)).length +
+        (FEATURE_COMMANDS.length - 2) +
+        9 +
+        2,
+    );
     const cmdIcon = icons[0];
     expect(cmdIcon.getAttribute("data-icon")).toBe("command");
     const hostIcon = Array.from(icons).find((el) => el.getAttribute("data-icon") === "host");
@@ -176,7 +215,14 @@ describe("键盘导航", () => {
     fireEvent.keyDown(input, { key: "ArrowUp" });
     expect(activeIndex()).toBe(0);
     fireEvent.keyDown(input, { key: "ArrowUp" });
-    expect(activeIndex()).toBe(ACTIONS.length + FEATURE_COMMANDS.length - 1); // 循环到末尾
+    // 循环到末尾（2026-10-18 审计：条目数 = 全表面 - 排除 4 - 去重 2 + 外观 9）
+    const excluded = ["palette.toggle", "app.quit", "theme.toggle", "lang.toggle"];
+    expect(activeIndex()).toBe(
+      ACTIONS.filter((a) => !excluded.includes(a.id)).length +
+        (FEATURE_COMMANDS.length - 2) +
+        9 -
+        1,
+    );
   });
 
   it("Enter 执行第 0 项命令（hosts.new——分组后连接组居首）", () => {
@@ -232,9 +278,10 @@ describe("键盘导航", () => {
 
 describe("动作注入（缩表）", () => {
   it("actions prop 覆盖默认表（汉堡菜单/测试面）", () => {
-    const mini: readonly ActionDef[] = [{ id: "app.quit" as ActionId, labelKey: "palette.quit" }];
+    // 缩表注入：用未被排除集过滤的动作（app.quit 2026-10-18 起不入面板）
+    const mini: readonly ActionDef[] = [{ id: "hosts.new" as ActionId, labelKey: "palette.newHost" }];
     renderPalette({ hosts: [], actions: mini });
-    expect(screen.getByText("退出 Ottr")).toBeTruthy();
-    expect(screen.queryByText("命令面板")).toBeNull();
+    expect(screen.getByText("新建主机")).toBeTruthy();
+    expect(screen.queryByText("设置")).toBeNull();
   });
 });

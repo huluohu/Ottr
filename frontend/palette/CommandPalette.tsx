@@ -54,17 +54,33 @@ interface PaletteItem {
   score: number;
 }
 
-/** 命令子组（批次三 T2）：语义三分——连接类（主机/会话操作）、面板类（三个
- * 呼出面板）、系统类（设置/外观/安全/退出）。组序 = 展示序；组内保持 registry
- * 顺序。未知 id（测试注入缩表/未来新增未归组）回落 system，不炸渲染。 */
+/** 命令子组（批次三 T2；2026-10-18 入口审计重整）：语义三分——连接类（主机/
+ * 会话操作）、面板类（呼出面板）、系统类（设置/安全/窗口）。组序 = 展示序；
+ * 组内保持 registry 顺序。未知 id（测试注入缩表/未来新增未归组）回落 system。
+ * 【2026-10-18 审计裁定】palette.toggle（面板列自己=自指噪音）与 app.quit
+ * （破坏性动作不进模糊搜索直达面；菜单/托盘/汉堡仍可达）不出现在面板。 */
 const COMMAND_GROUPS: readonly { id: "connection" | "panels" | "system"; ids: readonly ActionId[] }[] = [
-  { id: "connection", ids: ["hosts.new", "hosts.import", "session.splitRight", "session.splitDown"] },
-  { id: "panels", ids: ["palette.toggle", "history.search", "ai.nl2cmd"] },
+  {
+    id: "connection",
+    ids: [
+      "hosts.new",
+      "hosts.new_group",
+      "hosts.import",
+      "session.splitRight",
+      "session.splitDown",
+      "session.tabNext",
+      "session.tabPrev",
+    ],
+  },
+  { id: "panels", ids: ["history.search", "ai.nl2cmd", "notify.center"] },
   {
     id: "system",
-    ids: ["settings.open", "theme.toggle", "lang.toggle", "vault.lock", "app.quit"],
+    ids: ["settings.open", "vault.lock", "app.closeWindow", "app.toggleFullscreen", "view.zoomIn", "view.zoomOut", "view.zoomReset"],
   },
 ];
+
+/** 不入面板的注册表动作（审计裁定，见 COMMAND_GROUPS 注释）。 */
+const PALETTE_EXCLUDED: readonly ActionId[] = ["palette.toggle", "app.quit", "theme.toggle", "lang.toggle"];
 
 function groupOf(action: ActionId): "connection" | "panels" | "system" {
   for (const g of COMMAND_GROUPS) {
@@ -72,6 +88,24 @@ function groupOf(action: ActionId): "connection" | "panels" | "system" {
   }
   return "system";
 }
+
+/** 外观区（2026-10-18 审计：theme/lang 的「循环切换」语义与搜索期望错位——
+ * 列具体项让用户挑，不逼人轮播）。动作字面量与 mac 视图菜单/设置页同源：
+ * theme.set.<id> 前缀直派 setMode；lang.set.<locale> 直派 setLang。
+ * 标签复用设置页词典（settings.themes.* / settings.langZh/langEn）。 */
+const APPEARANCE_COMMANDS: readonly { key: string; labelKey: string; action: string }[] = [
+  ...(["system", "light", "verdant", "dark", "oled", "amethyst", "glass"] as const).map((id) => ({
+    key: `theme-${id}`,
+    labelKey: `settings.themes.${id}`,
+    action: `theme.set.${id}`,
+  })),
+  { key: "lang-zh", labelKey: "settings.langZh", action: "lang.set.zh-CN" },
+  { key: "lang-en", labelKey: "settings.langEn", action: "lang.set.en-US" },
+];
+
+/** FEATURE_COMMANDS 里与 ACTIONS 重复的条目（面板去重：同一动作只出现一次）。
+ * notify.center 两表都有；tool.import-hosts 与 hosts.import 打开同一对话框。 */
+const FEATURE_DUPLICATES: readonly string[] = ["notify.center", "tool.import-hosts"];
 
 /** 空查询（浏览态）的命令行模型：组节标题与条目交错，flat = 扁平导航下标。 */
 type CommandRow =
@@ -190,6 +224,7 @@ export function CommandPalette({
       // 浏览态：按组序展出（groupOf 全函数兜底——未知 id 落 system，条目恒齐全）
       for (const g of COMMAND_GROUPS) {
         for (const def of actions) {
+          if (PALETTE_EXCLUDED.includes(def.id)) continue;
           if (groupOf(def.id) !== g.id) continue;
           cmds.push({
             key: `cmd-${def.id}`,
@@ -202,8 +237,22 @@ export function CommandPalette({
           });
         }
       }
-      // 工具组（2026-10-10 IA 重构）：dock 面板/视图/对话框命令统一入面板
+      // 外观区（2026-10-18 审计）：主题七选 + 语言二选，列具体项不轮播
+      for (const a of APPEARANCE_COMMANDS) {
+        cmds.push({
+          key: `app-${a.key}`,
+          kind: "command",
+          label: t(a.labelKey),
+          hint: null,
+          match: null,
+          action: a.action,
+          score: 0,
+        });
+      }
+      // 工具组（2026-10-10 IA 重构）：dock 面板/视图/对话框命令统一入面板；
+      // 与 ACTIONS 重复的条目跳过（2026-10-18 审计：通知中心/导入主机曾双份）
       for (const f of FEATURE_COMMANDS) {
+        if (FEATURE_DUPLICATES.includes(f.id)) continue;
         cmds.push({
           key: `tool-${f.id}`,
           kind: "command",
@@ -216,6 +265,7 @@ export function CommandPalette({
       }
     } else {
       for (const def of actions) {
+        if (PALETTE_EXCLUDED.includes(def.id)) continue;
         const label = t(def.labelKey);
         const m = fuzzyBest(q, [
           { text: label, weight: 1 },
@@ -236,6 +286,7 @@ export function CommandPalette({
         }
       }
       for (const f of FEATURE_COMMANDS) {
+        if (FEATURE_DUPLICATES.includes(f.id)) continue;
         const label = t(f.labelKey);
         const m = fuzzyBest(q, [{ text: label, weight: 1 }]);
         if (m) {
@@ -246,6 +297,21 @@ export function CommandPalette({
             hint: null,
             match: m,
             action: f.id,
+            score: m.score,
+          });
+        }
+      }
+      for (const a of APPEARANCE_COMMANDS) {
+        const label = t(a.labelKey);
+        const m = fuzzyBest(q, [{ text: label, weight: 1 }]);
+        if (m) {
+          cmds.push({
+            key: `app-${a.key}`,
+            kind: "command",
+            label,
+            hint: null,
+            match: m,
+            action: a.action,
             score: m.score,
           });
         }
@@ -288,8 +354,14 @@ export function CommandPalette({
     if (q.length === 0) {
       let cursor = 0;
       for (const g of COMMAND_GROUPS) {
+        // registry 条目按组归拢；tool-/app- 前缀条目有专属组节（工具/外观），
+        // 不参与 registry 组匹配（groupOf 对 theme.set.* 回落 system 会双计）
         const inGroup = cmds.filter(
-          (c) => c.action !== undefined && groupOf(c.action as ActionId) === g.id && !c.key.startsWith("tool-"),
+          (c) =>
+            c.action !== undefined &&
+            !c.key.startsWith("tool-") &&
+            !c.key.startsWith("app-") &&
+            groupOf(c.action as ActionId) === g.id,
         );
         if (inGroup.length === 0) continue;
         rows.push({ kind: "section", key: `grp-${g.id}`, label: t(`palette.group_${g.id}`) });
@@ -301,6 +373,17 @@ export function CommandPalette({
       if (tools.length > 0) {
         rows.push({ kind: "section", key: "grp-tools", label: t("palette.group_tools") });
         for (const item of tools) {
+          rows.push({ kind: "item", key: item.key, item, flat: cursor++ });
+        }
+      }
+      const appearance = cmds.filter((c) => c.key.startsWith("app-"));
+      if (appearance.length > 0) {
+        rows.push({
+          kind: "section",
+          key: "grp-appearance",
+          label: t("palette.group_appearance"),
+        });
+        for (const item of appearance) {
           rows.push({ kind: "item", key: item.key, item, flat: cursor++ });
         }
       }

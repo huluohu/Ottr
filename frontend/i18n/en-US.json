@@ -183,7 +183,8 @@
     "themeToggle": "Toggle Theme",
     "langToggle": "Toggle Language (中文 / English)",
     "sidebarCollapse": "Collapse/Expand Host Panel (⌘\\)",
-    "quit": "Quit Ottr"
+    "quit": "Quit Ottr",
+    "group_appearance": "Appearance"
   },
   "history": {
     "title": "History Search",
@@ -506,7 +507,9 @@
   "tabs": {
     "list": "Session tabs",
     "closeAria": "Close tab {{name}}",
-    "prodBadge": "PROD"
+    "prodBadge": "PROD",
+    "nextTab": "Next tab",
+    "prevTab": "Previous tab"
   },
   "files": {
     "viewSwitch": "Main view",

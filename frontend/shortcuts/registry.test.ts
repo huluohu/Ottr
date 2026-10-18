@@ -150,6 +150,8 @@ describe("Rust 菜单镜像钉死", () => {
     "settings.open": "CmdOrCtrl+,",
     "session.splitRight": "CmdOrCtrl+D",
     "session.splitDown": "CmdOrCtrl+Shift+D",
+    // 2026-10-18 入口审计：视图菜单补 ⌘\ 折叠主机面板（此前 mac 仅快捷键）
+    "hosts.panelToggle": "CmdOrCtrl+\\",
   };
   it("注册表 mac 键位与 Rust 菜单字面量一致", () => {
     for (const [id, accel] of Object.entries(MIRRORED)) {
@@ -194,6 +196,16 @@ describe("终端聚焦守卫（matchActionEvent inTerminal）", () => {
     expect(matchActionEvent(keyEvent({ key: ",", ctrlKey: true }), "win", false)).toBe(
       "settings.open",
     );
+  });
+
+  it("Ctrl+Tab/Ctrl+Shift+Tab = 标签切换（2026-10-18 入口审计补齐；非 terminalSafe 终端内放行 PTY）", () => {
+    expect(matchActionEvent(keyEvent({ key: "Tab", ctrlKey: true }), "mac", false)).toBe("session.tabNext");
+    expect(matchActionEvent(keyEvent({ key: "Tab", ctrlKey: true }), "win", false)).toBe("session.tabNext");
+    expect(
+      matchActionEvent(keyEvent({ key: "Tab", ctrlKey: true, shiftKey: true }), "linux", false),
+    ).toBe("session.tabPrev");
+    // 终端聚焦：放行 PTY（同 ⌘R 口径——Ctrl+Tab 可能被远端程序占用）
+    expect(matchActionEvent(keyEvent({ key: "Tab", ctrlKey: true }), "win", true)).toBeNull();
   });
 
   it("Shift+符号键移位字形归一：Ctrl+Shift+|（Shift+\\ 的 e.key 产出）命中 hosts.panelToggle（真机 E2E 2026-10-16 实证回归）", () => {

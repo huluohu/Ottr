@@ -41,6 +41,8 @@ export type ActionId =
   | "hosts.import"
   | "notify.center"
   | "hosts.panelToggle"
+  | "session.tabNext"
+  | "session.tabPrev"
   | "app.quit"
   | "app.closeWindow"
   | "app.toggleFullscreen"
@@ -190,6 +192,20 @@ export const ACTIONS: readonly ActionDef[] = [
   { id: "view.zoomIn", labelKey: "menu.zoomIn", keys: { win: "Ctrl+=", linux: "Ctrl+=" } },
   { id: "view.zoomOut", labelKey: "menu.zoomOut", keys: { win: "Ctrl+-", linux: "Ctrl+-" } },
   { id: "view.zoomReset", labelKey: "menu.zoomReset", keys: { win: "Ctrl+0", linux: "Ctrl+0" } },
+  // 标签切换（2026-10-18 入口审计缺口补齐）：Ctrl+Tab / Ctrl+Shift+Tab 是
+  // 窗口级页签惯例，非 shell 控制键；刻意不标 terminalSafe——终端聚焦时
+  // 击键原样放行 PTY（同 ⌘R/F11 守卫口径，远端程序自会处理），面板/汉堡
+  // 恒可及。mac 无全局键惯例冲突（⌘Tab 是系统应用切换器，不注册）。
+  {
+    id: "session.tabNext",
+    labelKey: "tabs.nextTab",
+    keys: { mac: "Ctrl+Tab", win: "Ctrl+Tab", linux: "Ctrl+Tab" },
+  },
+  {
+    id: "session.tabPrev",
+    labelKey: "tabs.prevTab",
+    keys: { mac: "Ctrl+Shift+Tab", win: "Ctrl+Shift+Tab", linux: "Ctrl+Shift+Tab" },
+  },
 ];
 
 /** 平台判定（Navigator.userAgent；jsdom 默认走 win 分支，测试可 stub）。 */

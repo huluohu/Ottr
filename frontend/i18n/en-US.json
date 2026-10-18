@@ -1316,7 +1316,6 @@
     },
     "plugins": {
       "desc": "Plugins extend the panel with cards and quick commands; built-in examples for now."
-    },
-    "requiresSession": "Connect to a host first — Monitor and Plugins live inside a session."
+    }
   }
 }

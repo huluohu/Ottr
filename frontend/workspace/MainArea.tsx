@@ -54,7 +54,6 @@ import { useVaultStore } from "../vault/store";
 import type { Host } from "../vault/api";
 import { platform, shortcutLabel } from "../shortcuts/registry";
 import { useWorkspaceStore } from "./workspaceStore";
-import { useModalStore } from "../ui/modalStore";
 import { HomeWelcome } from "../home/HomeWelcome";
 
 interface MainAreaProps {
@@ -326,19 +325,6 @@ export function MainArea({
             )}
           </div>
         )}
-        {/* 历史/回放入口（2026-10-18 入口审计）：⌘R 面板（历史命令/会话纪要/
-            会话录制回放+导出）此前仅快捷键可达——录制旁常驻一钮，功能链路
-            （录制→回放）相邻；全局面，库级页签/零会话也在。 */}
-        <button
-          type="button"
-          className="history-open"
-          data-testid="history-open"
-          title={t("history.title")}
-          aria-label={t("history.title")}
-          onClick={() => useModalStore.getState().open("history")}
-        >
-          {t("history.title")}
-        </button>
         {!filesOnly && (
           <RecordToggle
             rustId={rootSession?.rustId ?? null}

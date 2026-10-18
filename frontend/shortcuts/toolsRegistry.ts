@@ -14,6 +14,9 @@
 // tool.ai（v0.9.12）、tool.mcp（单一家 = 设置页 MCP 分区）、tool.sync（单一家 =
 // 设置页同步分区）先后退役。此后新增功能先问安家：改配置的面进设置页分区，
 // 不进本表。
+// 【会话级收敛（2026-10-18 用户裁定）】tool.monitor/tool.plugins 退役：监控/
+// 插件自批次三起是会话子页签（终端/文件/进程/监控/插件切换器），与文件/进程
+// 同域——工具菜单是全局面，不放会话级入口（同视图切换器跟随会话页签口径）。
 export type FeatureGroup = "panels" | "hosts" | "system";
 
 export interface FeatureCommand {
@@ -32,8 +35,6 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.cron", labelKey: "nav.cron", group: "panels" },
   { id: "tool.alerts", labelKey: "nav.alerts", group: "panels" },
   { id: "notify.center", labelKey: "nav.notifications", group: "panels" },
-  { id: "tool.monitor", labelKey: "monitor.title", group: "panels" },
-  { id: "tool.plugins", labelKey: "plugins.title", group: "panels" },
   { id: "tool.forwards", labelKey: "forward.title", group: "panels" },
   { id: "tool.jump-chains", labelKey: "jump.title", group: "panels" },
   { id: "tool.credentials", labelKey: "nav.credentials", group: "hosts" },

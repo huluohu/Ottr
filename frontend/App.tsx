@@ -13,7 +13,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sidebar } from "./app/Sidebar";
 import { IconRail } from "./app/IconRail";
 import { Toaster } from "./ui/Toaster";
-import { showToast } from "./ui/toastStore";
 import { initRipple } from "./ui/ripple";
 import { useModalStore, type ModalId } from "./ui/modalStore";
 import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
@@ -27,7 +26,7 @@ import { McpApprovalDialog } from "./security/McpApprovalDialog";
 import { useVaultLockStore } from "./security/VaultLockStore";
 import { useVaultInitGate } from "./security/VaultInitGate";
 import { VaultInitGateOverlay } from "./security/VaultInitGateOverlay";
-import i18n, { syncLangFromVault, setLang, useLanguage } from "./i18n";
+import { syncLangFromVault, setLang, useLanguage } from "./i18n";
 import { HostForm } from "./hosts/HostForm";
 import { ImportDialog } from "./hosts/ImportDialog";
 import { ExportHostsDialog } from "./hosts/ExportHostsDialog";
@@ -233,16 +232,8 @@ function HomeLayout() {
           // 归位设置）——图标轨/工具菜单改跳转，弹框副本退役。
           openSettingsToPane("alerts");
           break;
-        case "monitor":
-        case "plugins":
-          // 会话级视图（依赖已连接会话的 rustId）：零会话给一句指引而非静默
-          // 无反应（2026-10-17 基线评审 P1——⌘K/菜单触发此前无任何可见效果）。
-          if (useSessionStore.getState().sessions.length === 0) {
-            showToast(i18n.t("workspace.requiresSession"));
-            break;
-          }
-          openMainView(key === "monitor" ? "monitor" : "plugins");
-          break;
+        // monitor/plugins 退役（2026-10-18 用户裁定）：会话子页签不进全局面
+        // 工具清单——入口 = 会话语境的视图切换器（MainArea）。
         case "forwards": openMainView("forwards"); break;
         case "jump-chains": openMainView("jumpchains"); break;
         case "overview": openOverview(); break;
@@ -618,6 +609,7 @@ function HomeLayout() {
           onOpenCredentials={() => openModal("credentials")}
           onOpenSettings={() => openSettingsToPane(null)}
           onOpenMcpSettings={() => openSettingsToPane("mcp")}
+          onOpenHistory={() => openModal("history")}
           onOpenUpdate={() => openSettingsToPane("about")}
         />
         {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树）；

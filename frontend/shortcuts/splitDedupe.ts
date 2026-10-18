@@ -12,14 +12,13 @@ const NON_IDEMPOTENT = new Set([
   "notify.center",
 ]);
 
-/** 工具菜单里的**翻转族**（openToolDialog 同值再点 = 关）——双发即闪。
- * 逐个点名不用前缀：tool.* 里混着非翻转成员（export-hosts-csv 连发两次是
- * 「同一 Toast 复用」的合法节奏，前缀一刀切会误杀——App.test 实测抓过）。 */
+/** 工具菜单里的**翻转族**（同值再点 = 关）——双发即闪。
+ * 逐个点名不用前缀：tool.* 里混着非翻转成员（export-hosts 连发两次是
+ * 「同一 Toast 复用」的合法节奏，前缀一刀切会误杀——App.test 实测抓过）。
+ * monitor/plugins 已退役（2026-10-18：会话子页签不进工具菜单）。 */
 const TOGGLE_TOOLS = new Set([
   "tool.cron",
   "tool.alerts",
-  "tool.monitor",
-  "tool.plugins",
   "tool.notify-center",
   "tool.forwards",
   "tool.jump-chains",

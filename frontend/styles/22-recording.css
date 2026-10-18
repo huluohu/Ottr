@@ -1,21 +1,5 @@
 /* --- Phase 3 Task 5（B3）：会话录制开关 + 回放器 --------------------------- */
 
-/* 历史/回放入口钮（2026-10-18 入口审计：⌘R 面板可见入口）——录制开关左侧
- * 同款尺寸语言；键位提示随平台（mainArea 注入 title）。 */
-.history-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-xs);
-  padding: 0.15em 0.6em;
-  margin-right: 6px;
-  color: var(--fg-muted);
-  box-shadow: none;
-}
-.history-open:hover {
-  color: var(--color-fg);
-}
-
 /* 工具栏录制开关（view-switch 同款尺寸语言；录制中红点亮起） */
 .record-toggle {
   display: inline-flex;

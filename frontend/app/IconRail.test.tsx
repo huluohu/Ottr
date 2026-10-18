@@ -22,6 +22,7 @@ function renderRail(overrides?: Partial<Parameters<typeof IconRail>[0]>) {
     onOpenCredentials: vi.fn(),
     onOpenSettings: vi.fn(),
     onOpenMcpSettings: vi.fn(),
+    onOpenHistory: vi.fn(),
     onOpenUpdate: vi.fn(),
     ...overrides,
   };
@@ -63,7 +64,7 @@ describe("IconRail（48px 图标轨）", () => {
   it("五钮恒驻 + 锁定钮 + Otty 球；mac 标题栏让位面可注入", () => {
     const { rerender } = render(
       <ThemeProvider>
-        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenUpdate={noop} />
+        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenHistory={noop} onOpenUpdate={noop} />
       </ThemeProvider>,
     );
     for (const id of ["rail-overview", "rail-cron", "rail-notifications", "rail-lock", "rail-otty"]) {
@@ -80,7 +81,7 @@ describe("IconRail（48px 图标轨）", () => {
     expect(document.querySelector(".titlebar-inset")).toBeTruthy();
     rerender(
       <ThemeProvider>
-        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenUpdate={noop} />
+        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenHistory={noop} onOpenUpdate={noop} />
       </ThemeProvider>,
     );
     expect(document.querySelector(".titlebar-inset")).toBeNull();
@@ -154,6 +155,9 @@ describe("IconRail（48px 图标轨）", () => {
     openOttyMenu();
     fireEvent.click(screen.getByTestId("rail-nav-mcp"));
     expect(props.onOpenMcpSettings).toHaveBeenCalledTimes(1);
+    openOttyMenu();
+    fireEvent.click(screen.getByTestId("rail-nav-history"));
+    expect(props.onOpenHistory).toHaveBeenCalledTimes(1);
     openOttyMenu();
     fireEvent.click(screen.getByTestId("rail-nav-settings"));
     expect(props.onOpenSettings).toHaveBeenCalledTimes(1);

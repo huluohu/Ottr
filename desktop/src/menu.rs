@@ -277,20 +277,6 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Tools"
             }
         }
-        "tool_monitor" => {
-            if zh {
-                "监控"
-            } else {
-                "Monitor"
-            }
-        }
-        "tool_plugins" => {
-            if zh {
-                "插件"
-            } else {
-                "Plugins"
-            }
-        }
         "tool_notify_center" => {
             if zh {
                 "通知中心"
@@ -433,11 +419,9 @@ pub const THEME_IDS: [&str; 7] = [
 /// 同批删除，13 → 11 项）。2026-10-16：overview 迁「视图」菜单首项（主区视图
 /// 归位，用户裁定）——**键保留在本表**（分派校验按 id 前缀不按所在菜单），
 /// 仅不再渲染进工具子菜单（镜像测试按 OVERVIEW_VIEW_MENU 标记排除）。
-pub const TOOL_KEYS: [&str; 12] = [
+pub const TOOL_KEYS: [&str; 10] = [
     "cron",
     "alerts",
-    "monitor",
-    "plugins",
     "notify-center",
     "forwards",
     "jump-chains",
@@ -618,16 +602,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.alerts",
                     label: text(lang, "tool_alerts"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.monitor",
-                    label: text(lang, "tool_monitor"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.plugins",
-                    label: text(lang, "tool_plugins"),
                     accelerator: None,
                 },
                 MenuNode::Item {
@@ -1587,7 +1561,7 @@ mod tests {
         assert_eq!(ids, expected);
     }
 
-    /// 工具菜单：11 项 = 前端 TopbarMenu 工具下拉同源（tool.<key>）。
+    /// 工具菜单：9 项 = 前端工具清单同源（tool.<key>；monitor/plugins 2026-10-18 退役——会话子页签不进全局面）。
     #[test]
     fn tools_submenu_mirrors_topbar_tools() {
         let tree = menu_tree(Lang::Zh);

@@ -22,6 +22,9 @@ export interface IconRailProps {
   onOpenCredentials: () => void;
   onOpenSettings: () => void;
   onOpenMcpSettings: () => void;
+  /** 历史/回放面板（⌘R 同一面板；2026-10-18 自会话区迁入 Otty 弹层——
+   * 历史命令/会话纪要/录制回放是全局功能，不属于会话面板）。 */
+  onOpenHistory: () => void;
   /** 更新钮点击：跳设置 → 关于（发现新版本时按钮才浮现）。 */
   onOpenUpdate: () => void;
 }
@@ -93,6 +96,17 @@ function GlobeIcon() {
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
       <circle cx="8" cy="8" r="6.2" />
       <path d="M1.8 8h12.4M8 1.8c1.8 1.7 2.8 3.9 2.8 6.2s-1 4.5-2.8 6.2C6.2 12.5 5.2 10.3 5.2 8S6.2 3.5 8 1.8Z" />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  // 时钟逆时针回绕（Lucide history 语义）：历史命令/会话纪要/录制回放共用面板。
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3.2 4.2A6 6 0 1 1 2 8" />
+      <path d="M2 3.4v2.8h2.8" />
+      <path d="M8 5.2V8l2 1.3" />
     </svg>
   );
 }
@@ -202,7 +216,7 @@ const THEME_CYCLE: readonly ThemeMode[] = [
   "glass",
 ];
 
-export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpenSettings, onOpenMcpSettings }: IconRailProps) {
+export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpenSettings, onOpenMcpSettings, onOpenHistory }: IconRailProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
@@ -410,6 +424,18 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
           >
             <PlugIcon />
             <span>{t("nav.mcp")}</span>
+          </button>
+          <button
+            type="button"
+            data-testid="rail-nav-history"
+            onClick={() => {
+              setMenu(null);
+              setSub(null);
+              onOpenHistory();
+            }}
+          >
+            <HistoryIcon />
+            <span>{t("history.title")}</span>
           </button>
           <div className="sidebar-flyout-sep" />
           <button

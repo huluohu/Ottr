@@ -8,6 +8,9 @@
   font-size: var(--text-xs);
   padding: 0.15em 0.6em;
   margin-right: 8px;
+  /* 上下呼吸（2026-10-18 用户反馈）：tabbar-row 是 align-items:stretch，
+   * 不给纵向 margin 按钮就顶满行高贴住上下缘。 */
+  margin-block: 4px;
   color: var(--fg-muted);
   box-shadow: none;
 }

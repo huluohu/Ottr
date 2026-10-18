@@ -114,7 +114,6 @@ function clampSidebarWidth(w: number): number {
 function HomeLayout() {
   // T11（A7）：安全底座——锁定遮罩盖全屏（password 模式）；设置入口在应用菜单（⌘,）。
   const hosts = useVaultStore((s) => s.hosts);
-  const storeError = useVaultStore((s) => s.error);
   // 会话面（Task 7）：HostTree 双击/面板连接开标签。标签条 + 终端主区的
   // 渲染面已随 UI 批次一 Task 2 迁入 workspace/MainArea（读 session store）。
   const openTab = useSessionStore((s) => s.openTab);
@@ -130,6 +129,10 @@ function HomeLayout() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const lockPhase = useVaultLockStore((s) => s.phase);
   const lockView = useDelayedUnmount(lockPhase === "locked");
+  // 锁定态不是失败（2026-10-18 用户反馈）：锁屏已在说明一切，vault 命令因
+  // 锁定报的错不该再以「数据加载失败」红横幅出现。锁定期间一律吞掉 store
+  // 错误；解锁后的 refresh 会清 error，无需回放历史错误。
+  const storeError = useVaultStore((s) => (lockPhase === "locked" ? null : s.error));
   const [form, setForm] = useState<FormState>(null);
   // 全局弹窗唯一槽位（2026-10-14 用户裁定「同时只能有一个弹框」）：开/关全走
   // modalStore，open(id) 顶掉当前弹窗；form/settingsPane 只是渲染载荷。

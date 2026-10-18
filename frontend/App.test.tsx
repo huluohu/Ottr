@@ -188,12 +188,29 @@ describe("App 主页布局（集成）", () => {
     expect(screen.queryByTestId("overview-panel")).toBeNull();
   });
 
-  it("refresh 失败：主区显示错误横幅", async () => {
-    mockedInvoke.mockRejectedValue(new Error("vault locked"));
+  it("refresh 失败（非锁定）：主区显示错误横幅", async () => {
+    // 锁定状态查询放行（unlocked），仅数据面失败——真失败仍要横幅
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_security_status") return Promise.resolve({ locked: false, mode: "password" });
+      return Promise.reject(new Error("db corrupted"));
+    });
     render(<App />);
     await waitFor(() =>
-      expect(screen.getByTestId("store-error").textContent).toContain("vault locked"),
+      expect(screen.getByTestId("store-error").textContent).toContain("db corrupted"),
     );
+  });
+
+  it("锁定态不显示「数据加载失败」横幅（2026-10-18 用户反馈：锁定不是失败）", async () => {
+    // fail-closed：状态查询失败按锁定收敛 → vault 数据命令随之报 locked 错，
+    // 锁屏已说明一切，红横幅不再叠加
+    mockedInvoke.mockRejectedValue(new Error("vault is locked; unlock with the master password to continue"));
+    render(<App />);
+    await act(async () => {});
+    await waitFor(() => {
+      // 数据 refresh 已发生（error 入 store），但锁定期间不外显
+      expect(useVaultStore.getState().error).not.toBeNull();
+      expect(screen.queryByTestId("store-error")).toBeNull();
+    });
   });
 
   // 2026-10-16 用户需求④：关闭所有标签页后回到首屏（欢迎页）。此前两个残留

@@ -337,6 +337,12 @@
   flex: 1 1 auto;
   font-weight: 500;
 }
+/* 更新状态行（2026-10-18 用户反馈）：状态文案弹性占满，动作钮右靠——
+ * 右缘与相邻行控件（自动检查 select）同栅格，不再悬在半空。 */
+.update-status-row > .settings-hint {
+  flex: 1 1 auto;
+  text-align: right;
+}
 .settings-row > label {
   display: inline-flex;
   align-items: center;

@@ -80,8 +80,10 @@ export function UpdateCheck() {
               </select>
             </label>
           )}
-          {/* 单行状态条：检查按钮 + 当前状态/动作（下载进度/已最新/装完重启/错误） */}
-          <div className="settings-row">
+          {/* 单行状态条：检查按钮 + 当前状态/动作（下载进度/已最新/装完重启/错误）。
+              状态文案弹性占满 → 动作钮右靠，与相邻行（自动检查 select 右缘）
+              同栅格（2026-10-18 用户反馈：立即重启悬在半空不对齐）。 */}
+          <div className="settings-row update-status-row">
             <button
               type="button"
               className="btn-accent"

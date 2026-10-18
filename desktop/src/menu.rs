@@ -441,6 +441,13 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "Scheduled Tasks"
             }
         }
+        "export_host" => {
+            if zh {
+                "导出主机…"
+            } else {
+                "Export Hosts…"
+            }
+        }
         "tool_export_hosts" => {
             if zh {
                 "导出主机…"
@@ -551,6 +558,11 @@ pub const TOOL_KEYS: [&str; 10] = [
 /// 工具子菜单构建按此排除，分派校验仍认它。
 pub const OVERVIEW_IN_VIEW: &str = "overview";
 
+/// 已迁出工具菜单、改挂「文件」菜单的 key（2026-10-19 用户裁定：导入/导出
+/// 主机是文件操作）。同 OVERVIEW_IN_VIEW 口径：键保留在 TOOL_KEYS（分派校验
+/// 按前缀），镜像测试与工具子菜单构建按此排除。
+pub const IMPORT_EXPORT_IN_FILE: [&str; 2] = ["import-hosts", "export-hosts"];
+
 /// 主题子菜单 Check 节点（THEME_IDS 循环生成；id/label 泄漏换取 'static——
 /// 重建仅发生在语言切换，频次极低，同托盘状态行先例）。
 fn theme_check_items(lang: Lang) -> Vec<MenuNode> {
@@ -611,6 +623,13 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "hosts.import",
                     label: text(lang, "import_host"),
+                    accelerator: None,
+                },
+                MenuNode::Item {
+                    // 2026-10-19 用户裁定：导入/导出归文件菜单（自工具菜单迁入；
+                    // id 走 tool.export-hosts——分派校验按 TOOL_KEYS 前缀仍认）。
+                    id: "tool.export-hosts",
+                    label: text(lang, "export_host"),
                     accelerator: None,
                 },
                 MenuNode::Sep,
@@ -731,16 +750,6 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 MenuNode::Item {
                     id: "tool.batch",
                     label: text(lang, "tool_batch"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.import-hosts",
-                    label: text(lang, "import_host"),
-                    accelerator: None,
-                },
-                MenuNode::Item {
-                    id: "tool.export-hosts",
-                    label: text(lang, "tool_export_hosts"),
                     accelerator: None,
                 },
             ],
@@ -1690,7 +1699,7 @@ mod tests {
         // 2026-10-16：overview 迁「视图」菜单首项——工具子菜单不再含它。
         let expected: Vec<String> = TOOL_KEYS
             .iter()
-            .filter(|k| **k != OVERVIEW_IN_VIEW)
+            .filter(|k| **k != OVERVIEW_IN_VIEW && !IMPORT_EXPORT_IN_FILE.contains(k))
             .map(|k| format!("tool.{k}"))
             .collect();
         assert_eq!(ids, expected);

@@ -239,7 +239,12 @@ function HomeLayout() {
         case "overview": openOverview(); break;
         case "batch": openMainView("batch"); break;
         case "cron": openMainView("cron"); break;
-        case "export-hosts": openModal("exportHosts"); break;
+        case "export-hosts":
+        case "hosts.export":
+          // hosts.export = 文件菜单/⌘K 正名（2026-10-19 归位文件菜单）；
+          // export-hosts 旧工具键保留兼容（Rust 侧历史事件）。
+          openModal("exportHosts");
+          break;
         case "import-hosts": openModal("importHosts"); break;
       }
     },

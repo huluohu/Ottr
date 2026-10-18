@@ -39,12 +39,8 @@ export const FEATURE_COMMANDS: readonly FeatureCommand[] = [
   { id: "tool.jump-chains", labelKey: "jump.title", group: "panels" },
   { id: "tool.credentials", labelKey: "nav.credentials", group: "hosts" },
   { id: "tool.batch", labelKey: "batch.title", group: "hosts" },
-  // 导入主机（2026-10-16 用户需求：工具面补齐——原先只有文件菜单/⌘K/欢迎页
-  // 三个入口，工具组缺席）。
-  { id: "tool.import-hosts", labelKey: "importDialog.title", group: "hosts" },
-  // 导出主机（2026-10-16 用户需求：四格式对话框，对齐导入类型；原「导出主机
-  // CSV」单格式退役）。
-  { id: "tool.export-hosts", labelKey: "tools.exportHosts", group: "hosts" },
+  // 导入/导出主机退役出工具清单（2026-10-19 用户裁定：归文件菜单——
+  // hosts.import/hosts.export 两 ActionId，⌘K 经 registry 可达）。
   { id: "update.check", labelKey: "update.check", group: "system" },
 ];
 

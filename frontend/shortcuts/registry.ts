@@ -39,6 +39,7 @@ export type ActionId =
   | "vault.lock"
   | "hosts.new_group"
   | "hosts.import"
+  | "hosts.export"
   | "notify.center"
   | "hosts.panelToggle"
   | "session.tabNext"
@@ -152,6 +153,9 @@ export const ACTIONS: readonly ActionDef[] = [
   { id: "hosts.new_group", labelKey: "hostTree.addGroup" },
   // 导入主机配置（2026-10-10 IA：自侧栏工具区移除，安家 文件菜单/⌘K/欢迎页卡）
   { id: "hosts.import", labelKey: "importDialog.title" },
+  // 导出主机（2026-10-19 用户裁定：导入导出归文件菜单——hosts.import 对称位；
+  // 工具清单同名条目同批退役，⌘K/汉堡经本条可达）
+  { id: "hosts.export", labelKey: "tools.exportHosts" },
   // 通知中心（工具族）：mac 原生工具菜单 + win/linux 汉堡同源入口。
   { id: "notify.center", labelKey: "notify.centerTitle" },
   // 主机面板折叠胶囊（2026-10-16 视觉重设计 M3「獭居·浮岛」）：⌘\ 一键把

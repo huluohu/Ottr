@@ -107,8 +107,8 @@ const APPEARANCE_COMMANDS: readonly { key: string; labelKey: string; action: str
 ];
 
 /** FEATURE_COMMANDS 里与 ACTIONS 重复的条目（面板去重：同一动作只出现一次）。
- * notify.center 两表都有；tool.import-hosts 与 hosts.import 打开同一对话框。 */
-const FEATURE_DUPLICATES: readonly string[] = ["notify.center", "tool.import-hosts"];
+ * notify.center 两表都有（2026-10-19 起 import/export 已自本表退役，无重复）。 */
+const FEATURE_DUPLICATES: readonly string[] = ["notify.center"];
 
 /** 空查询（浏览态）的命令行模型：组节标题与条目交错，flat = 扁平导航下标。 */
 type CommandRow =

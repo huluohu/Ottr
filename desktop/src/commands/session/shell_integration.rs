@@ -173,7 +173,11 @@ pub async fn inject_shell_integration(
     //   shell 的新提示符正好落在擦净的位置，净可见残留为零。
     //   stty 缺失的远端：第 1 步报错、回显不关，第 2 步退化为旧的可见行为
     //   （清理步骤仍会收敛大部分残留），功能不受影响。
-    let snippet_line = ottr_ssh::shell_integration::hidden_inject_line(kind);
+    //   sh 系例外（2026-10-19）：**三行下发**——片段行与恢复行拆开。shell 对
+    //   一行先解析后执行，片段若解析失败（未知 shell 语法差异），同行的
+    //   `stty echo` 会跟着不执行 = 回显永久关闭；拆行后恢复行必然执行，
+    //   回显必然恢复（用户硬约束：不支持也不得引起其他错误）。
+    let is_sh = kind == ottr_ssh::shell_integration::ShellKind::Sh;
     let result = (async {
         use tokio::io::AsyncWriteExt;
         let mut w = writer.lock().await;
@@ -182,7 +186,17 @@ pub async fn inject_shell_integration(
         w.write_all(b"\r").await?;
         w.flush().await?;
         wait_echo_off(text_tail).await;
-        w.write_all(snippet_line.as_bytes()).await?;
+        if is_sh {
+            w.write_all(ottr_ssh::shell_integration::sh_snippet_line().as_bytes())
+                .await?;
+            w.write_all(b"\r").await?;
+            w.flush().await?;
+            w.write_all(ottr_ssh::shell_integration::sh_echo_restore_line().as_bytes())
+                .await?;
+        } else {
+            let snippet_line = ottr_ssh::shell_integration::hidden_inject_line(kind);
+            w.write_all(snippet_line.as_bytes()).await?;
+        }
         w.write_all(b"\r").await?;
         w.flush().await?;
         Ok::<(), std::io::Error>(())

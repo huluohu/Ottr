@@ -56,20 +56,24 @@ pub const BASH_SNIPPET: &str = r#"export PROMPT_COMMAND='printf "\e]133;D;%s\a\e
 /// `precmd` 在每个提示符前发 `D`+`A`+`7`，`preexec` 在命令执行前发 `C`。
 pub const ZSH_SNIPPET: &str = r#"precmd(){ print -Pn "\e]133;D;$?\a\e]133;A\a\e]7;file://$HOST$PWD\a" }; preexec(){ print -Pn "\e]133;C\a" }"#;
 
-/// sh 系注入片段（busybox ash 容器实测，2026-10-19）。
+/// sh 系注入片段（busybox ash 容器实测 + sshd 夹具真 dash 端到端实测，2026-10-19）。
 ///
 /// ash/dash 没有 preexec 钩子与 PROMPT_COMMAND，唯一挂点 = PS1 展开时的
 /// 命令替换：每个提示符先发 `D;<exit>`（上一条命令的退出码）再发 `A`，
 /// 然后拼接用户原 PS1。不发 OSC 7（cwd 只喂历史/⌘J，sh 系历史已停用）。
 ///
 /// - `case` 护栏：PS1 已含 `133;D`（用户自带集成或重复注入）→ 原样跳过
-///   （bash/zsh 片段是覆盖式天然幂等，sh 是拼接式，必须显式防叠加）；
+///   （bash/zsh 片段是覆盖式天然幂等，sh 是拼接式，必须显式防叠加）。
+///   **模式里的 `133;` 必须单引号包裹**——`;` 是 shell 控制操作符，裸写
+///   `*133;D*` 整行解析失败（真 dash 实测 `-sh: Syntax error: ";" unexpected`
+///   ，片段一行都不执行；sh 的恢复行独立成行正是为此兜底，见
+///   [`sh_echo_restore_line`]）；
 /// - `__ottr_ps1` 备份原 PS1：桌面端注入后若窗口内未见标记（极端 shell 不做
 ///   PS1 命令替换），据此下发还原行，提示符回原样（fail-silent 保障）；
 /// - `${PS1-}` 防 `set -u` 下未绑定报错；
 /// - 用 `$()` 命令替换而非在注入行内嵌原始 ESC 字节：注入行保持纯 ASCII
-///   （原始字节在输入链路上有被中间层按 OSC 解析吞掉的风险，实测复现）。
-pub const SH_SNIPPET: &str = r#"case "${PS1-}" in *133;D*) : ;; *) __ottr_ps1="${PS1-}"; PS1='$(printf "\033]133;D;%s\007\033]133;A\007" "$?")'"${PS1-}" ;; esac"#;
+///   （原始字节经交互式行编辑器输入链有被按 ESC 序列吞掉的风险，实测复现）。
+pub const SH_SNIPPET: &str = r#"case "${PS1-}" in *'133;'D*) : ;; *) __ottr_ps1="${PS1-}"; PS1='$(printf "\033]133;D;%s\007\033]133;A\007" "$?")'"${PS1-}" ;; esac"#;
 
 /// sh 系验证失败后的还原行（__ottr_ps1 备份回填；无输出、无副作用，
 /// 回显已恢复故此行可见——失败路径本来就在修可见问题，可接受）。
@@ -88,18 +92,38 @@ pub fn inject_for(shell: ShellKind) -> &'static str {
 /// `stty` 执行生效后，后续下发的输入不再可见。
 pub const ECHO_OFF_LINE: &str = "stty -echo";
 
-/// 隐身注入第二步：把集成片段包进「执行后恢复回显 + 光标上移擦行」的
-/// 包装——净可见残留为零（擦掉第一步的回显行与其后的空提示行，shell 的
-/// 新提示符正好落在擦净的位置）。
+/// 隐身注入第二步（bash/zsh）：把集成片段包进「执行后恢复回显 + 光标上移
+/// 擦行」的包装——净可见残留为零（擦掉第一步的回显行与其后的空提示行，
+/// shell 的新提示符正好落在擦净的位置）。
 ///
 /// 仅适用于单行提示符的常规 shell：多行 PS1 下擦除行数会有 ±N 偏差，纯
 /// 外观无功能影响；`stty` 缺失的远端退化为旧的可见行为（清理步骤仍会
 /// 收敛大部分残留）。
+///
+/// **sh 系不走本函数**（走 [`sh_snippet_line`] + [`sh_echo_restore_line`]
+/// 两行下发）：bash/zsh 片段已在真机验证过整行语法，片段与 `stty echo`
+/// 同行没有解析风险；sh 片段要在未知 shell 上首跑，若整行解析失败，
+/// 行尾的 `stty echo` 会跟着不执行——**回显永久关闭，会话被打瞎**。
+/// 拆成两行后，片段行哪怕语法出错，恢复行照常执行，回显必然恢复。
 pub fn hidden_inject_line(shell: ShellKind) -> String {
     format!(
         "{}; stty echo; printf '\\e[2K\\r\\e[1A\\e[2K'",
         inject_for(shell)
     )
+}
+
+/// sh 系隐身注入第二行：片段本体（echo 关闭中，净可见残留为零的前提由
+/// [`sh_echo_restore_line`] 的擦行达成）。
+pub fn sh_snippet_line() -> String {
+    SH_SNIPPET.to_string()
+}
+
+/// sh 系隐身注入第三行：恢复回显 + 擦除第一步的回显行。**独立于片段行
+/// 下发**——shell 对整行先解析后执行，片段行若解析失败，同行的恢复逻辑
+/// 会一并失效；拆行保证无论片段成败，回显都恢复（用户硬约束：不支持
+/// 也不得引起其他错误）。
+pub fn sh_echo_restore_line() -> String {
+    "stty echo; printf '\\e[2K\\r\\e[1A\\e[2K'".to_string()
 }
 
 #[cfg(test)]
@@ -125,8 +149,11 @@ mod tests {
         // set -u 下未绑定变量不炸：一律 ${PS1-} 缺省展开
         assert!(!SH_SNIPPET.contains("$PS1"));
         assert!(SH_SNIPPET.contains("${PS1-}"));
-        // 幂等护栏：PS1 已含标记 → 空分支跳过（拼接式片段防叠加）
-        assert!(SH_SNIPPET.contains("*133;D*) : ;;"));
+        // 幂等护栏：PS1 已含标记 → 空分支跳过（拼接式片段防叠加）。
+        // 模式里的 `133;` 必须引号包裹——`;` 是控制操作符，裸写
+        // `*133;D*` 整行解析失败（真 dash 实测 Syntax error）。
+        assert!(SH_SNIPPET.contains("*'133;'D*) : ;;"));
+        assert!(!SH_SNIPPET.contains("*133;D*"));
         // 原样备份，供验证失败后还原（fail-silent 保障）
         assert!(SH_SNIPPET.contains(r#"__ottr_ps1="${PS1-}""#));
         // D+A 标记经 printf 命令替换发出；无 C（ash 无 preexec 挂点）
@@ -136,11 +163,27 @@ mod tests {
         // 不发 OSC 7：cwd 只喂历史/⌘J，sh 系历史已停用
         assert!(!SH_SNIPPET.contains("133;7"));
         assert!(!SH_SNIPPET.contains("file://"));
-        // 注入行纯 ASCII（原始字节有被输入链路按 OSC 吞掉的风险）
+        // 注入行纯 ASCII（原始字节有被行编辑器按 ESC 序列吞掉的风险）
         assert!(SH_SNIPPET.is_ascii());
         // 还原行：仅回填备份变量，无其他副作用
         assert_eq!(SH_REVERT_LINE, r#"PS1="${__ottr_ps1-}""#);
         assert!(SH_REVERT_LINE.is_ascii());
+    }
+
+    /// sh 系两行下发的解析故障隔离：片段行不含恢复逻辑，恢复行独立成行
+    /// （片段行解析失败时回显仍能恢复——真 dash 复现过整行同行的后果）。
+    #[test]
+    fn sh_two_line_delivery_isolates_parse_failure() {
+        let snippet = sh_snippet_line();
+        let restore = sh_echo_restore_line();
+        assert_eq!(snippet, SH_SNIPPET);
+        assert!(!snippet.contains("stty echo"), "片段行不得夹带恢复逻辑");
+        assert!(restore.starts_with("stty echo; printf"));
+        assert!(!restore.contains('\n'));
+        // bash/zsh 维持 T6 真机验证过的单行结构不动
+        assert!(hidden_inject_line(ShellKind::Bash).starts_with(BASH_SNIPPET));
+        assert!(hidden_inject_line(ShellKind::Zsh).starts_with(ZSH_SNIPPET));
+        assert!(hidden_inject_line(ShellKind::Bash).contains("; stty echo; printf"));
     }
 
     #[test]
@@ -190,21 +233,12 @@ mod tests {
         assert_eq!(inject_for(ShellKind::Sh), SH_SNIPPET);
     }
 
-    #[test]
-    fn hidden_line_wraps_snippet_restores_echo_and_cleans_up_sh() {
-        let line = hidden_inject_line(ShellKind::Sh);
-        assert!(line.starts_with(SH_SNIPPET));
-        // 片段含单引号，与尾部清理 printf 的单引号分属不同命令，整行可解析
-        assert!(line.contains("; stty echo; printf '\\e[2K\\r\\e[1A\\e[2K'"));
-        assert!(!line.contains('\n'));
-    }
-
     /// 片段在真实 ash 里的行为回归（容器实测口径，2026-10-19）：
     /// 首次执行 = 备份并拼接标记；再执行 = case 命中空分支，PS1 不二次叠加。
     #[test]
     fn sh_snippet_is_idempotent_by_case_guard() {
         let applied = r#"$(printf "\033]133;D;%s\007\033]133;A\007" "$?")old$ "#;
-        // 模拟 case 语句的匹配分支（与 SH_SNIPPET 同款模式）
+        // 模拟 case 语句的匹配分支（与 SH_SNIPPET 同款模式，引号包裹分号）
         let guard = |ps1: &str| ps1.contains("133;D");
         assert!(!guard("${PS1-}"));
         assert!(guard(applied));

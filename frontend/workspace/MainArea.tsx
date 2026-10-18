@@ -142,6 +142,17 @@ export function MainArea({
   // 文件/进程），侧栏同屏形态退役（224px 窄条 + 分屏钮遮挡）。
   const monitorVisible = mainView === "monitor" && rootSession != null && !filesOnly;
   const pluginsVisible = mainView === "plugins" && rootSession != null && !filesOnly;
+  // 视图切换器跟随会话页签显示（2026-10-18 用户反馈）：终端/文件/进程/监控/
+  // 插件是会话级子视图，只在会话语境（有活动会话且停在会话级视图）渲染——
+  // 库级页签（总览/定时任务/通知中心/端口转发/跳板链/批量）激活时整组隐藏，
+  // 点会话页签即回终端语境。零会话时同样不渲染（此前挂着也无意义）。
+  const sessionViewActive =
+    rootSession !== null &&
+    (mainView === "terminal" ||
+      mainView === "files" ||
+      mainView === "processes" ||
+      mainView === "monitor" ||
+      mainView === "plugins");
   // overview/batch 实体视图（UI 批次一 Task 3 迁入；占位壳 MainViewSlot 消亡）。
   // 2026-10-16 总览标签化：OverviewPage 的「← 终端」返回按钮退役（导航走
   // 标签条：点会话标签回终端、关总览标签 ✕ 收场）；onOpen/onOpenProcesses
@@ -262,56 +273,58 @@ export function MainArea({
         {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
             命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}
         <TabBar dragRegion={dragRegion} />
-        <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
-          {!filesOnly && (
+        {sessionViewActive && (
+          <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
+            {!filesOnly && (
+              <button
+                data-testid="view-terminal"
+                data-active={termViewActive}
+                aria-pressed={termViewActive}
+                onClick={() => openMainView("terminal")}
+              >
+                {t("files.viewTerminal")}
+              </button>
+            )}
             <button
-              data-testid="view-terminal"
-              data-active={termViewActive}
-              aria-pressed={termViewActive}
-              onClick={() => openMainView("terminal")}
+              data-testid="view-files"
+              data-active={filesVisible}
+              aria-pressed={filesVisible}
+              onClick={() => openMainView("files")}
             >
-              {t("files.viewTerminal")}
+              {t("files.viewFiles")}
             </button>
-          )}
-          <button
-            data-testid="view-files"
-            data-active={filesVisible}
-            aria-pressed={filesVisible}
-            onClick={() => openMainView("files")}
-          >
-            {t("files.viewFiles")}
-          </button>
-          {!filesOnly && (
-            <button
-              data-testid="view-processes"
-              data-active={procsVisible}
-              aria-pressed={procsVisible}
-              onClick={() => openMainView("processes")}
-            >
-              {t("process.title")}
-            </button>
-          )}
-          {!filesOnly && (
-            <button
-              data-testid="view-monitor"
-              data-active={monitorVisible}
-              aria-pressed={monitorVisible}
-              onClick={() => openMainView("monitor")}
-            >
-              {t("monitor.title")}
-            </button>
-          )}
-          {!filesOnly && (
-            <button
-              data-testid="view-plugins"
-              data-active={pluginsVisible}
-              aria-pressed={pluginsVisible}
-              onClick={() => openMainView("plugins")}
-            >
-              {t("plugins.title")}
-            </button>
-          )}
-        </div>
+            {!filesOnly && (
+              <button
+                data-testid="view-processes"
+                data-active={procsVisible}
+                aria-pressed={procsVisible}
+                onClick={() => openMainView("processes")}
+              >
+                {t("process.title")}
+              </button>
+            )}
+            {!filesOnly && (
+              <button
+                data-testid="view-monitor"
+                data-active={monitorVisible}
+                aria-pressed={monitorVisible}
+                onClick={() => openMainView("monitor")}
+              >
+                {t("monitor.title")}
+              </button>
+            )}
+            {!filesOnly && (
+              <button
+                data-testid="view-plugins"
+                data-active={pluginsVisible}
+                aria-pressed={pluginsVisible}
+                onClick={() => openMainView("plugins")}
+              >
+                {t("plugins.title")}
+              </button>
+            )}
+          </div>
+        )}
         {!filesOnly && (
           <RecordToggle
             rustId={rootSession?.rustId ?? null}

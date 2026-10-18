@@ -152,7 +152,7 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("true");
   });
 
-  it("切 overview/batch 实体视图（T3 迁入）：终端仍保留；总览标签化后导航走标签（返回按钮退役）", () => {
+  it("切 overview/batch 实体视图（T3 迁入）：终端仍保留；切换器跟随会话页签，库级视图隐藏（2026-10-18）", () => {
     seedSessions([fakeSession()]);
     render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
     act(() => {
@@ -161,16 +161,24 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
     // 容器 testid 自 T3 起为实体自带的 overview-panel/batch-panel（原 main-view-slot 消亡）
     expect(screen.getByTestId("overview-panel").getAttribute("data-view")).toBe("overview");
     expect(screen.getByTestId("terminal-area")).toBeTruthy(); // 未卸载
-    // 2026-10-16 总览标签化：返回按钮退役（导航 = 标签条），视图切换按钮恢复终端视图
+    // 2026-10-16 总览标签化：返回按钮退役（导航 = 标签条）
     expect(screen.queryByTestId("slot-back-terminal")).toBeNull();
-    fireEvent.click(screen.getByTestId("view-terminal"));
+    // 2026-10-18 用户反馈：视图切换器是会话级子视图，库级页签激活时整组隐藏
+    expect(screen.queryByTestId("view-terminal")).toBeNull();
+    expect(screen.queryByTestId("view-files")).toBeNull();
+    // 回终端语境（TabBar 本文件为哑 mock，交互语义在 TabBar.test 覆盖）
+    act(() => {
+      useWorkspaceStore.getState().openMainView("terminal");
+    });
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("false");
+    expect(screen.getByTestId("view-terminal")).toBeTruthy();
 
     act(() => {
       useWorkspaceStore.getState().openMainView("batch");
     });
     expect(screen.getByTestId("batch-panel").getAttribute("data-view")).toBe("batch");
     expect(screen.getByTestId("terminal-area")).toBeTruthy();
+    expect(screen.queryByTestId("view-files")).toBeNull(); // 批量同为库级，切换器隐藏
   });
 
   it("切走再切回：同一终端实例（缓冲承载 DOM 不重建）", () => {

@@ -7,7 +7,7 @@
 // 运行链（nlStore）在 nl2cmd.test.ts 已全覆盖，本文件用 store 播种驱动渲染面，
 // 另带一条 live 流（Mock provider）验证 input → submit → 结果渲染的接线。
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -101,6 +101,17 @@ function renderPanel(over: Partial<Parameters<typeof NLCommandPanel>[0]> = {}) {
 }
 
 describe("输入条渲染面", () => {
+  it("open 即落焦（WKWebView rAF 连帧重试口径，2026-10-18 用户反馈回归钉）", async () => {
+    // 有可用 provider：输入条常驻（providerReady 解析不换面，落焦不被拔）
+    backendWithProvider();
+    renderPanel({ open: true });
+    const input = await screen.findByTestId("nl2cmd-input");
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    });
+    expect(document.activeElement).toBe(input);
+  });
+
   it("open=false 不渲染", () => {
     const { container } = render(
       <NLCommandPanel open={false} onClose={() => {}} onOpenSettings={() => {}} />,

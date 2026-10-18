@@ -75,8 +75,21 @@ export function NLCommandPanel({
     onClose();
   };
 
+  // 打开即落焦（2026-10-18 用户反馈：呼出后光标不在输入框）。queueMicrotask
+  // 的一次性 focus() 在 WKWebView 会被吞（⌘K 面板 2026-10-13 同坑同修）——
+  // rAF 连帧重试，命中 activeElement 即停（至多 10 帧，正常 1-2 帧内命中）。
   useEffect(() => {
-    if (open) queueMicrotask(() => inputRef.current?.focus());
+    if (!open) return;
+    let raf = 0;
+    let tries = 0;
+    const tick = () => {
+      if (document.activeElement === inputRef.current) return;
+      inputRef.current?.focus();
+      tries += 1;
+      if (tries < 10) raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
   }, [open]);
 
   // 无可用 provider 前置检查（2026-10-16 用户需求②）：打开即查（未配置或

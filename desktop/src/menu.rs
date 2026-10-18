@@ -48,7 +48,10 @@ const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/32x32.png");
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Lang {
+    /// 简体中文（zh-CN）。
     Zh,
+    /// 繁體中文（zh-Hant，港澳台通用；2026-10-18 完整三语）。
+    ZhTw,
     En,
 }
 
@@ -60,6 +63,7 @@ pub fn lang_from_vault(vault: &ottr_vault::Vault) -> Lang {
         .as_deref()
     {
         Some("zh-CN") => Lang::Zh,
+        Some("zh-Hant") => Lang::ZhTw,
         _ => Lang::En,
     }
 }
@@ -75,13 +79,20 @@ fn menu_lang<R: Runtime>(app: &AppHandle<R>) -> Lang {
 }
 
 /// 菜单文案表（zh/en；PredefinedMenuItem 的系统项文案由系统自动本地化，不进表）。
+// if_same_then_else 豁免：三分支机械统一（zh/hant/en 各一臂），部分词条简繁
+// 同形（向右分屏类）触发同体告警——为保「每个词条三臂齐整、新增语言机械扩展」
+// 的结构不变性，豁免优于逐条去重（去重后词条升臂/降臂会漂）。
+#[allow(clippy::if_same_then_else)]
 fn text(lang: Lang, key: &str) -> &'static str {
     let zh = lang == Lang::Zh;
+    let hant = matches!(lang, Lang::ZhTw);
     match key {
         "app" => "Ottr",
         "settings" => {
             if zh {
                 "设置…"
+            } else if hant {
+                "設定…"
             } else {
                 "Settings…"
             }
@@ -89,6 +100,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "file" => {
             if zh {
                 "文件"
+            } else if hant {
+                "檔案"
             } else {
                 "File"
             }
@@ -96,6 +109,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "new_group" => {
             if zh {
                 "新建分组"
+            } else if hant {
+                "新建分組"
             } else {
                 "New Group"
             }
@@ -103,6 +118,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "new_host" => {
             if zh {
                 "新建主机"
+            } else if hant {
+                "新建主機"
             } else {
                 "New Host"
             }
@@ -110,6 +127,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "import_host" => {
             if zh {
                 "导入主机…"
+            } else if hant {
+                "匯入主機…"
             } else {
                 "Import Hosts…"
             }
@@ -117,12 +136,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "split_right" => {
             if zh {
                 "向右分屏"
+            } else if hant {
+                "向右分屏"
             } else {
                 "Split Right"
             }
         }
         "split_down" => {
             if zh {
+                "向下分屏"
+            } else if hant {
                 "向下分屏"
             } else {
                 "Split Down"
@@ -133,6 +156,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "toggle_sidebar" => {
             if zh {
                 "折叠/展开主机面板"
+            } else if hant {
+                "折疊/展開主機面板"
             } else {
                 "Toggle Host Panel"
             }
@@ -140,6 +165,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "edit" => {
             if zh {
                 "编辑"
+            } else if hant {
+                "編輯"
             } else {
                 "Edit"
             }
@@ -147,12 +174,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "view" => {
             if zh {
                 "视图"
+            } else if hant {
+                "視圖"
             } else {
                 "View"
             }
         }
         "zoom_in" => {
             if zh {
+                "放大"
+            } else if hant {
                 "放大"
             } else {
                 "Zoom In"
@@ -161,6 +192,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "zoom_out" => {
             if zh {
                 "缩小"
+            } else if hant {
+                "縮小"
             } else {
                 "Zoom Out"
             }
@@ -168,12 +201,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "zoom_reset" => {
             if zh {
                 "实际大小"
+            } else if hant {
+                "實際大小"
             } else {
                 "Actual Size"
             }
         }
         "window" => {
             if zh {
+                "窗口"
+            } else if hant {
                 "窗口"
             } else {
                 "Window"
@@ -182,12 +219,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "help" => {
             if zh {
                 "帮助"
+            } else if hant {
+                "幫助"
             } else {
                 "Help"
             }
         }
         "palette" => {
             if zh {
+                "命令面板…"
+            } else if hant {
                 "命令面板…"
             } else {
                 "Command Palette…"
@@ -196,6 +237,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "help_github" => {
             if zh {
                 "项目主页"
+            } else if hant {
+                "項目主頁"
             } else {
                 "Project Homepage"
             }
@@ -203,6 +246,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tray_show" => {
             if zh {
                 "显示主窗口"
+            } else if hant {
+                "顯示主窗口"
             } else {
                 "Show Main Window"
             }
@@ -210,6 +255,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tray_disconnect_all" => {
             if zh {
                 "断开全部连接"
+            } else if hant {
+                "斷開全部連接"
             } else {
                 "Disconnect All"
             }
@@ -217,6 +264,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "theme" => {
             if zh {
                 "主题"
+            } else if hant {
+                "主題"
             } else {
                 "Theme"
             }
@@ -224,12 +273,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "theme_light" => {
             if zh {
                 "浅滩"
+            } else if hant {
+                "淺灘"
             } else {
                 "Shallows"
             }
         }
         "theme_dark" => {
             if zh {
+                "深河"
+            } else if hant {
                 "深河"
             } else {
                 "Deep Water"
@@ -238,6 +291,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "theme_system" => {
             if zh {
                 "跟随系统"
+            } else if hant {
+                "跟隨系統"
             } else {
                 "System"
             }
@@ -245,12 +300,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "theme_oled" => {
             if zh {
                 "深渊"
+            } else if hant {
+                "深淵"
             } else {
                 "Abyss"
             }
         }
         "theme_amethyst" => {
             if zh {
+                "夜光河"
+            } else if hant {
                 "夜光河"
             } else {
                 "Bio River"
@@ -259,12 +318,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "theme_verdant" => {
             if zh {
                 "溪岸"
+            } else if hant {
+                "溪岸"
             } else {
                 "Riverside"
             }
         }
         "theme_glass" => {
             if zh {
+                "雨窗"
+            } else if hant {
                 "雨窗"
             } else {
                 "Rain Glass"
@@ -273,12 +336,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tools" => {
             if zh {
                 "工具"
+            } else if hant {
+                "工具"
             } else {
                 "Tools"
             }
         }
         "theme_sepia" => {
             if zh {
+                "沙洲"
+            } else if hant {
                 "沙洲"
             } else {
                 "Sandbar"
@@ -287,6 +354,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "theme_forest" => {
             if zh {
                 "松涛"
+            } else if hant {
+                "松濤"
             } else {
                 "Pine Waves"
             }
@@ -294,12 +363,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "theme_ember" => {
             if zh {
                 "河灯"
+            } else if hant {
+                "河燈"
             } else {
                 "River Lanterns"
             }
         }
         "tool_notify_center" => {
             if zh {
+                "通知中心"
+            } else if hant {
                 "通知中心"
             } else {
                 "Notification Center"
@@ -308,6 +381,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_credentials" => {
             if zh {
                 "凭据"
+            } else if hant {
+                "憑證"
             } else {
                 "Credentials"
             }
@@ -315,6 +390,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_alerts" => {
             if zh {
                 "告警规则"
+            } else if hant {
+                "告警規則"
             } else {
                 "Alert Rules"
             }
@@ -322,6 +399,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_forwards" => {
             if zh {
                 "端口转发"
+            } else if hant {
+                "端口轉發"
             } else {
                 "Port Forwards"
             }
@@ -329,6 +408,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_jump_chains" => {
             if zh {
                 "跳板链"
+            } else if hant {
+                "跳板鏈"
             } else {
                 "Jump Chains"
             }
@@ -336,6 +417,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_overview" => {
             if zh {
                 "总览"
+            } else if hant {
+                "總覽"
             } else {
                 "Overview"
             }
@@ -343,6 +426,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_batch" => {
             if zh {
                 "批量执行"
+            } else if hant {
+                "批量執行"
             } else {
                 "Batch Exec"
             }
@@ -350,6 +435,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_cron" => {
             if zh {
                 "定时任务"
+            } else if hant {
+                "定時任務"
             } else {
                 "Scheduled Tasks"
             }
@@ -357,6 +444,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "tool_export_hosts" => {
             if zh {
                 "导出主机…"
+            } else if hant {
+                "匯出主機…"
             } else {
                 "Export Hosts…"
             }
@@ -364,12 +453,16 @@ fn text(lang: Lang, key: &str) -> &'static str {
         "update_check" => {
             if zh {
                 "检查更新…"
+            } else if hant {
+                "檢查更新…"
             } else {
                 "Check for Updates…"
             }
         }
         "tray_quit" => {
             if zh {
+                "退出 Ottr"
+            } else if hant {
                 "退出 Ottr"
             } else {
                 "Quit Ottr"
@@ -693,11 +786,13 @@ pub fn tray_tree(lang: Lang, session_count: u64) -> Vec<MenuNode> {
     let status = if session_count == 0 {
         match lang {
             Lang::Zh => "无活动会话".to_string(),
+            Lang::ZhTw => "無活動工作階段".to_string(),
             Lang::En => "No active sessions".to_string(),
         }
     } else {
         match lang {
             Lang::Zh => format!("{session_count} 个会话在线"),
+            Lang::ZhTw => format!("{session_count} 個工作階段在線"),
             Lang::En => format!("{session_count} active session(s)"),
         }
     };

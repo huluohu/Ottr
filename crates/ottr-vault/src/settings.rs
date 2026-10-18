@@ -250,10 +250,13 @@ pub fn validate_known_setting(
             let s = value
                 .as_str()
                 .ok_or_else(|| "ui.language expects a string".to_string())?;
-            if matches!(s, "zh-CN" | "en-US") {
+            // 2026-10-18 完整三语：+zh-Hant（港澳台通用繁体）。
+            if matches!(s, "zh-CN" | "zh-Hant" | "en-US") {
                 Ok(())
             } else {
-                Err(format!("ui.language must be zh-CN|en-US, got {s:?}"))
+                Err(format!(
+                    "ui.language must be zh-CN|zh-Hant|en-US, got {s:?}"
+                ))
             }
         }
         _ => Ok(()), // 未注册键放行（settings 表是通用配置面）

@@ -101,6 +101,24 @@ function renderPanel(over: Partial<Parameters<typeof NLCommandPanel>[0]> = {}) {
 }
 
 describe("输入条渲染面", () => {
+  it("无聚焦终端：面板前置「没有已连接终端」提示（生成仍可用，2026-10-18 用户问询回归钉）", async () => {
+    // 有 provider（隔离前置检查变量）；无会话 → rustId = null → 提示在场
+    backendWithProvider();
+    useSessionStore.setState({ sessions: [], activeId: null });
+    renderPanel({ open: true });
+    await screen.findByTestId("nl2cmd-noterminal");
+    // 输入条仍在（生成/复制不受影响）
+    expect(screen.getByTestId("nl2cmd-input")).toBeTruthy();
+  });
+
+  it("有聚焦终端：不显示无终端提示", async () => {
+    backendWithProvider();
+    useSessionStore.setState({ sessions: [SESSION], activeId: "tab-1" });
+    renderPanel({ open: true });
+    await screen.findByTestId("nl2cmd-input");
+    expect(screen.queryByTestId("nl2cmd-noterminal")).toBeNull();
+  });
+
   it("open 即落焦（WKWebView rAF 连帧重试口径，2026-10-18 用户反馈回归钉）", async () => {
     // 有可用 provider：输入条常驻（providerReady 解析不换面，落焦不被拔）
     backendWithProvider();

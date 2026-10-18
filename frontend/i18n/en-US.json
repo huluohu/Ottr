@@ -452,7 +452,8 @@
       "thinking": "Generating…",
       "emptyAnswer": "The model returned no usable command.",
       "cwd": "Current directory",
-      "prompt": "You are a shell command generator. Convert the user's natural-language intent into one command runnable in a POSIX shell. Rules: output the command only — a single line, no explanation, no comments, no Markdown fences (```), no shell prompt prefix ($); if several intents are present satisfy the primary one; use the most common defaults for uncertain details (paths, package names); do not output echo or any explanatory text. If a \"current directory\" is given, interpret relative paths against it."
+      "prompt": "You are a shell command generator. Convert the user's natural-language intent into one command runnable in a POSIX shell. Rules: output the command only — a single line, no explanation, no comments, no Markdown fences (```), no shell prompt prefix ($); if several intents are present satisfy the primary one; use the most common defaults for uncertain details (paths, package names); do not output echo or any explanatory text. If a \"current directory\" is given, interpret relative paths against it.",
+      "noTerminal": "No connected terminal right now — connect to a host and the generated command can be inserted in one click; copy works too."
     },
     "summary": {
       "prompt": "You are an ops session chronicler. Given the commands run during one session (redacted, in chronological order), write a 3-5 sentence summary: what was done, what changed, and how it went (exit codes are clues). Rules: output the summary text only — no headings, numbered lists, or Markdown fences; do not restate the commands one by one; be conservative, never invent details beyond the commands; write in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",

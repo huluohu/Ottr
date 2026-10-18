@@ -147,6 +147,13 @@ export function NLCommandPanel({
         aria-label={t("ai.nl2cmd.title")}
         onMouseDown={(e) => e.stopPropagation()}
       >
+        {/* 无聚焦终端（2026-10-18 用户问询「插入到哪了」）：前置一句人话解释
+            ——插入钮禁用的原因与去处；生成/复制不受影响。 */}
+        {rustId === null && providerReady !== false && (
+          <p className="settings-hint" data-testid="nl2cmd-noterminal" role="status">
+            {t("ai.nl2cmd.noTerminal")}
+          </p>
+        )}
         {providerReady === false ? (
           // 无可用 provider：输入条让位，直接给提示 + 去设置引导
           // （2026-10-16 用户需求②——不逼用户先打一段字再撞错误）。

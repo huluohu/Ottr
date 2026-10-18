@@ -15,7 +15,8 @@ use crate::commands::state::{LANG_PROBE_TIMEOUT, TextTail};
 // 同源调用，asset = ottr_ssh::shell_integration::inject_for T6 真机验证终稿）。
 // 四要素：
 //   1. shell 探测：exec 通道 `echo $SHELL`（同 LANG 探测先例；bash→Bash、
-//      zsh→Zsh、其他（fish/sh/nushell…）→ 跳过不报错）；
+//      zsh→Zsh、sh/ash/dash→Sh（POSIX sh 系，2026-10-19）、其他（fish/nushell…）
+//      → 跳过不报错）；
 //   2. 幂等探测：等首输出（banner+首提示符）稳定后查 TextTail 原始头部是否
 //      已有 OSC 133——用户自带集成则跳过（防双标记双入库）。**已知盲区
 //      （挂账）**：首提示符晚于稳定窗的慢 shell 会漏判为未集成而重复注入；
@@ -27,6 +28,12 @@ use crate::commands::state::{LANG_PROBE_TIMEOUT, TextTail};
 // 关远端回显（此行自身回显一次，内容很短），第 2 步在静默中下发片段并恢复
 // 回显、顺带擦除第 1 步的回显残留——净可见残留为零。远端无 stty 时第 2 步
 // 退化为旧的可见行为（清理步骤仍会收敛大部分残留）。
+//
+// sh 系附加护栏「验证-回退」（2026-10-19，用户硬约束：不支持也不得引起其他
+// 错误）：sh 片段依赖「PS1 展开时做命令替换」这一 ash/dash 行为，极端 shell
+// 不做的话 PS1 会以字面量上屏（提示符永久污染）。故下发后开窗观察原始头部
+// 是否真出现 `133;D;` 标记：出现 = 注入成立；窗口内未出现 = 下发还原行把
+// PS1 回填为片段内备份的原值，提示符回到注入前模样，会话分毫无损。
 
 /// `echo $SHELL` 输出 → ShellKind（basename 判定；其他 shell 显式 None）。
 fn detect_shell_kind(shell_path: &str) -> Option<ottr_ssh::shell_integration::ShellKind> {
@@ -34,6 +41,7 @@ fn detect_shell_kind(shell_path: &str) -> Option<ottr_ssh::shell_integration::Sh
     match base {
         "bash" => Some(ottr_ssh::shell_integration::ShellKind::Bash),
         "zsh" => Some(ottr_ssh::shell_integration::ShellKind::Zsh),
+        "sh" | "ash" | "dash" => Some(ottr_ssh::shell_integration::ShellKind::Sh),
         _ => None,
     }
 }
@@ -60,12 +68,15 @@ pub enum ShellIntegrationOutcome {
     Injected(&'static str),
     /// settings 开关关（调用方门卫，本函数不重复判）。
     SkippedDisabled,
-    /// $SHELL 非 bash/zsh（fish/sh/…）——跳过不报错。
+    /// $SHELL 非 bash/zsh/sh 系（fish/nushell/…）——跳过不报错。
     SkippedNoShell,
     /// 首输出已见 OSC 133（用户自带集成，防双标记）。
     SkippedAlreadyIntegrated,
     /// exec 探测失败/超时（安全侧不注入，不打扰会话）。
     ProbeFailed,
+    /// sh 系片段下发后窗口内未见标记（PS1 命令替换不生效）——已下发还原行
+    /// 恢复原提示符（验证-回退护栏；会话无损，仅此一行在失败路径可见）。
+    RevertedNoMarker,
 }
 
 /// 首输出稳定窗参数：banner+首提示符落定后 400ms 无增长即稳定；至少观察
@@ -73,6 +84,11 @@ pub enum ShellIntegrationOutcome {
 const INJECT_STABLE_WINDOW: Duration = Duration::from_millis(400);
 const INJECT_MIN_OBSERVE: Duration = Duration::from_millis(500);
 const INJECT_MAX_WAIT: Duration = Duration::from_secs(6);
+
+/// sh 系验证窗：片段下发后等首个标记的最长时间。片段执行后 shell 立即绘
+/// 新提示符，标记正常在数百毫秒内到达；超窗按「不支持」处理回退原 PS1
+/// （慢链路假阴性的代价 = 本会话无注入，安全侧）。
+const INJECT_VERIFY_MAX_WAIT: Duration = Duration::from_millis(2500);
 
 /// 等首输出稳定（原始头部无增长达稳定窗），返回（是否已见 133）。
 async fn wait_initial_output(text_tail: &TextTail) -> bool {
@@ -110,6 +126,21 @@ async fn wait_echo_off(text_tail: &TextTail) {
     }
 }
 
+/// sh 系验证-回退护栏：等片段真正发标记（原始头部出现 `\x1b]133;D;`——
+/// 进入注入路径前已判过 raw_head_has_133()==false，此刻任何出现都来自
+/// 我们的片段）。max_wait 可注入（单测用短窗）。
+async fn wait_sh_marker(text_tail: &TextTail, max_wait: Duration) -> bool {
+    const MARKER: &str = "\x1b]133;D;";
+    let start = Instant::now();
+    while start.elapsed() < max_wait {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        if text_tail.raw_head_contains(MARKER) {
+            return true;
+        }
+    }
+    false
+}
+
 /// shell 集成注入（生产 attach 与 fixture example 共用同一实现）：
 /// 开关→shell 探测→幂等探测→片段下发。返回结果供打点/断言；失败不打扰
 /// 会话（注入是增强面，缺了只是历史/诊断不工作）。
@@ -142,7 +173,11 @@ pub async fn inject_shell_integration(
     //   shell 的新提示符正好落在擦净的位置，净可见残留为零。
     //   stty 缺失的远端：第 1 步报错、回显不关，第 2 步退化为旧的可见行为
     //   （清理步骤仍会收敛大部分残留），功能不受影响。
-    let snippet_line = ottr_ssh::shell_integration::hidden_inject_line(kind);
+    //   sh 系例外（2026-10-19）：**三行下发**——片段行与恢复行拆开。shell 对
+    //   一行先解析后执行，片段若解析失败（未知 shell 语法差异），同行的
+    //   `stty echo` 会跟着不执行 = 回显永久关闭；拆行后恢复行必然执行，
+    //   回显必然恢复（用户硬约束：不支持也不得引起其他错误）。
+    let is_sh = kind == ottr_ssh::shell_integration::ShellKind::Sh;
     let result = (async {
         use tokio::io::AsyncWriteExt;
         let mut w = writer.lock().await;
@@ -151,16 +186,51 @@ pub async fn inject_shell_integration(
         w.write_all(b"\r").await?;
         w.flush().await?;
         wait_echo_off(text_tail).await;
-        w.write_all(snippet_line.as_bytes()).await?;
+        if is_sh {
+            w.write_all(ottr_ssh::shell_integration::sh_snippet_line().as_bytes())
+                .await?;
+            w.write_all(b"\r").await?;
+            w.flush().await?;
+            w.write_all(ottr_ssh::shell_integration::sh_echo_restore_line().as_bytes())
+                .await?;
+        } else {
+            let snippet_line = ottr_ssh::shell_integration::hidden_inject_line(kind);
+            w.write_all(snippet_line.as_bytes()).await?;
+        }
         w.write_all(b"\r").await?;
+        w.flush().await?;
         Ok::<(), std::io::Error>(())
     })
     .await;
     match result {
-        Ok(()) => ShellIntegrationOutcome::Injected(match kind {
-            ottr_ssh::shell_integration::ShellKind::Bash => "bash",
-            ottr_ssh::shell_integration::ShellKind::Zsh => "zsh",
-        }),
+        Ok(()) => match kind {
+            ottr_ssh::shell_integration::ShellKind::Bash => {
+                ShellIntegrationOutcome::Injected("bash")
+            }
+            ottr_ssh::shell_integration::ShellKind::Zsh => ShellIntegrationOutcome::Injected("zsh"),
+            // sh 系：片段依赖 PS1 命令替换，窗口内未见标记即回填原 PS1
+            // （验证-回退护栏，模块注释「sh 系附加护栏」）。慢链路假阴性只是
+            // 退回注入前状态，安全侧。
+            ottr_ssh::shell_integration::ShellKind::Sh => {
+                if wait_sh_marker(text_tail, INJECT_VERIFY_MAX_WAIT).await {
+                    ShellIntegrationOutcome::Injected("sh")
+                } else {
+                    let revert = (async {
+                        use tokio::io::AsyncWriteExt;
+                        let mut w = writer.lock().await;
+                        w.write_all(ottr_ssh::shell_integration::SH_REVERT_LINE.as_bytes())
+                            .await?;
+                        w.write_all(b"\r").await?;
+                        w.flush().await
+                    })
+                    .await;
+                    if let Err(e) = revert {
+                        eprintln!("[shell-integration] sh revert write failed: {e}");
+                    }
+                    ShellIntegrationOutcome::RevertedNoMarker
+                }
+            }
+        },
         Err(e) => {
             eprintln!("[shell-integration] write failed: {e}");
             ShellIntegrationOutcome::ProbeFailed
@@ -175,21 +245,25 @@ mod tests {
 
     // --- shell 集成注入（Task 15 fix 1/5）：探测/决策/头部探针 ---------------
 
-    /// $SHELL basename 判定表：bash/zsh 识别，其他（fish/sh/nushell/空）显式跳过。
+    /// $SHELL basename 判定表：bash/zsh/sh 系识别，其他（fish/nushell/空）显式跳过。
     #[test]
-    fn detect_shell_kind_supports_bash_and_zsh_only() {
+    fn detect_shell_kind_supports_bash_zsh_and_sh_family() {
         use ottr_ssh::shell_integration::ShellKind;
         assert_eq!(detect_shell_kind("/bin/bash"), Some(ShellKind::Bash));
         assert_eq!(detect_shell_kind("/usr/bin/bash"), Some(ShellKind::Bash));
         assert_eq!(detect_shell_kind("bash"), Some(ShellKind::Bash));
         assert_eq!(detect_shell_kind("/bin/zsh"), Some(ShellKind::Zsh));
         assert_eq!(detect_shell_kind("/usr/bin/zsh\n"), Some(ShellKind::Zsh));
+        // sh 系：busybox ash（NAS 常见默认）与 dash（Debian /bin/sh）
+        assert_eq!(detect_shell_kind("/bin/sh"), Some(ShellKind::Sh));
+        assert_eq!(detect_shell_kind("/bin/ash"), Some(ShellKind::Sh));
+        assert_eq!(detect_shell_kind("/usr/bin/dash"), Some(ShellKind::Sh));
         for skip in [
-            "/bin/sh",
             "/usr/bin/fish",
             "/opt/homebrew/bin/nu",
             "",
-            "/bin/dash",
+            "/bin/csh",
+            "/bin/tcsh",
         ] {
             assert_eq!(detect_shell_kind(skip), None, "{skip:?} must be skipped");
         }
@@ -207,6 +281,10 @@ mod tests {
             integration_decision(true, Some(ShellKind::Zsh), false),
             Some(ShellKind::Zsh)
         );
+        assert_eq!(
+            integration_decision(true, Some(ShellKind::Sh), false),
+            Some(ShellKind::Sh)
+        );
         // 开关关 → 不注入（探测都省了）
         assert_eq!(
             integration_decision(false, Some(ShellKind::Bash), false),
@@ -219,6 +297,21 @@ mod tests {
             integration_decision(true, Some(ShellKind::Bash), true),
             None
         );
+        assert_eq!(integration_decision(true, Some(ShellKind::Sh), true), None);
+    }
+
+    /// sh 系验证-回退护栏：标记出现（即时）→ true；窗口内无标记 → false
+    /// （触发还原行）。等待函数参数化窗口，单测用 80ms 短窗不拖慢测试。
+    #[tokio::test]
+    async fn wait_sh_marker_reports_seen_and_timeout() {
+        let tail = TextTail::new();
+        // 未喂标记：短窗内到点返回 false（护栏的回退触发面）
+        let start = Instant::now();
+        assert!(!wait_sh_marker(&tail, Duration::from_millis(80)).await);
+        assert!(start.elapsed() >= Duration::from_millis(80));
+        // 喂入标记（模拟片段发标）：首轮轮询即命中
+        tail.push(b"\x1b]133;D;1\x07\x1b]133;A\x07");
+        assert!(wait_sh_marker(&tail, Duration::from_millis(80)).await);
     }
 
     /// TextTail 原始头部探针：OSC 133 完整保留（剥 ANSI 前）、截满即停。

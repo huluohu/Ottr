@@ -13,8 +13,10 @@
 // 的 D 落在下个提示符，lastCwd 已是 /x）。未上报（无集成/其他终端）= null。
 //
 // 边界与取舍：
-// * 远端 shell 未装 shell 集成时不发 133 → 无事件 → 不诊断/不入库（MVP 不做注入，
-//   注入与 prompt 正则兜底是文本层的后续任务，见 spec §5 与 Task 15 挂账）；
+// * 远端 shell 不发 133 → 无事件 → 不诊断/不入库。集成来源：bash/zsh/sh 系
+//   （ash/dash）由 attach 时自动注入（desktop session/shell_integration.rs；
+//   sh 系经 PS1 命令替换只发 D+A、无 C，诊断可用而历史停用，见下 integrated）；
+//   fish 等未识别 shell 不注入（sh 系失败还有验证-回退护栏兜底）；
 // * 命令文本含提示符原文（无法从流内得知提示符宽度）；提示符里的主机名由
 //   脱敏引擎 hostname 规则兜底；插入终端侧的提示符剥离是保守启发式
 //   （src/history/format.ts stripPromptPrefix，⌘R 面板消费）；

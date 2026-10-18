@@ -440,6 +440,7 @@ fn shell_kind_name(shell: ShellKind) -> &'static str {
     match shell {
         ShellKind::Bash => "bash",
         ShellKind::Zsh => "zsh",
+        ShellKind::Sh => "sh",
     }
 }
 

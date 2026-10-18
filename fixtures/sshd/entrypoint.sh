@@ -4,6 +4,10 @@ set -e
 # 保证「首建」与「重启」语义一致（T17 稳定性维 5 轮 stop/start 复测的前提）。
 useradd -m -s /bin/bash spike 2>/dev/null || true
 echo "spike:spike-pass" | chpasswd
+# sh 系（dash）登录用户：sh 集成注入 + AI 诊断面板 E2E 的第二 shell 夹具
+# （2026-10-19，sh/ash/dash → ShellKind::Sh 注入路径的真机验收面）
+useradd -m -s /bin/sh spike-sh 2>/dev/null || true
+echo "spike-sh:spike-pass" | chpasswd
 # BL-216 根因修复后镜像不再预建 /home/spike：首启路径 `useradd -m` 正常建家
 # 目录并拷 skel。下面的 cp + chown 保留为双保险——重启路径（useradd 已存在
 # 只告警）与历史镜像（预建 root 属主空 home）同样收敛到「home 归 spike、

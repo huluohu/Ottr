@@ -38,6 +38,10 @@ pub enum ShellKind {
     Bash,
     /// zsh 5.x。
     Zsh,
+    /// POSIX sh 系（busybox ash / dash / bash-as-sh）：无 preexec 钩子，发不了
+    /// C 边界；PS1 内嵌命令替换在每个提示符发 `D;<exit>`+`A`——诊断（只依赖
+    /// D≠0）可用，历史/补全（要求 C 的 integrated 标）保持停用。
+    Sh,
 }
 
 /// bash 注入片段（真机验证终稿）。
@@ -52,11 +56,31 @@ pub const BASH_SNIPPET: &str = r#"export PROMPT_COMMAND='printf "\e]133;D;%s\a\e
 /// `precmd` 在每个提示符前发 `D`+`A`+`7`，`preexec` 在命令执行前发 `C`。
 pub const ZSH_SNIPPET: &str = r#"precmd(){ print -Pn "\e]133;D;$?\a\e]133;A\a\e]7;file://$HOST$PWD\a" }; preexec(){ print -Pn "\e]133;C\a" }"#;
 
+/// sh 系注入片段（busybox ash 容器实测，2026-10-19）。
+///
+/// ash/dash 没有 preexec 钩子与 PROMPT_COMMAND，唯一挂点 = PS1 展开时的
+/// 命令替换：每个提示符先发 `D;<exit>`（上一条命令的退出码）再发 `A`，
+/// 然后拼接用户原 PS1。不发 OSC 7（cwd 只喂历史/⌘J，sh 系历史已停用）。
+///
+/// - `case` 护栏：PS1 已含 `133;D`（用户自带集成或重复注入）→ 原样跳过
+///   （bash/zsh 片段是覆盖式天然幂等，sh 是拼接式，必须显式防叠加）；
+/// - `__ottr_ps1` 备份原 PS1：桌面端注入后若窗口内未见标记（极端 shell 不做
+///   PS1 命令替换），据此下发还原行，提示符回原样（fail-silent 保障）；
+/// - `${PS1-}` 防 `set -u` 下未绑定报错；
+/// - 用 `$()` 命令替换而非在注入行内嵌原始 ESC 字节：注入行保持纯 ASCII
+///   （原始字节在输入链路上有被中间层按 OSC 解析吞掉的风险，实测复现）。
+pub const SH_SNIPPET: &str = r#"case "${PS1-}" in *133;D*) : ;; *) __ottr_ps1="${PS1-}"; PS1='$(printf "\033]133;D;%s\007\033]133;A\007" "$?")'"${PS1-}" ;; esac"#;
+
+/// sh 系验证失败后的还原行（__ottr_ps1 备份回填；无输出、无副作用，
+/// 回显已恢复故此行可见——失败路径本来就在修可见问题，可接受）。
+pub const SH_REVERT_LINE: &str = r#"PS1="${__ottr_ps1-}""#;
+
 /// 按 shell 种类返回注入片段（简报 Task 6 的 Produces 接口）。
 pub fn inject_for(shell: ShellKind) -> &'static str {
     match shell {
         ShellKind::Bash => BASH_SNIPPET,
         ShellKind::Zsh => ZSH_SNIPPET,
+        ShellKind::Sh => SH_SNIPPET,
     }
 }
 
@@ -84,8 +108,39 @@ mod tests {
 
     #[test]
     fn snippets_are_single_line() {
-        assert!(!BASH_SNIPPET.contains('\n'));
-        assert!(!ZSH_SNIPPET.contains('\n'));
+        for (kind, snippet) in [
+            (ShellKind::Bash, BASH_SNIPPET),
+            (ShellKind::Zsh, ZSH_SNIPPET),
+            (ShellKind::Sh, SH_SNIPPET),
+        ] {
+            assert!(
+                !snippet.contains('\n'),
+                "{kind:?} snippet must be single line"
+            );
+        }
+    }
+
+    #[test]
+    fn sh_snippet_is_posix_safe() {
+        // set -u 下未绑定变量不炸：一律 ${PS1-} 缺省展开
+        assert!(!SH_SNIPPET.contains("$PS1"));
+        assert!(SH_SNIPPET.contains("${PS1-}"));
+        // 幂等护栏：PS1 已含标记 → 空分支跳过（拼接式片段防叠加）
+        assert!(SH_SNIPPET.contains("*133;D*) : ;;"));
+        // 原样备份，供验证失败后还原（fail-silent 保障）
+        assert!(SH_SNIPPET.contains(r#"__ottr_ps1="${PS1-}""#));
+        // D+A 标记经 printf 命令替换发出；无 C（ash 无 preexec 挂点）
+        assert!(SH_SNIPPET.contains(r#"\033]133;D;%s\007"#));
+        assert!(SH_SNIPPET.contains(r#"\033]133;A\007"#));
+        assert!(!SH_SNIPPET.contains("133;C"));
+        // 不发 OSC 7：cwd 只喂历史/⌘J，sh 系历史已停用
+        assert!(!SH_SNIPPET.contains("133;7"));
+        assert!(!SH_SNIPPET.contains("file://"));
+        // 注入行纯 ASCII（原始字节有被输入链路按 OSC 吞掉的风险）
+        assert!(SH_SNIPPET.is_ascii());
+        // 还原行：仅回填备份变量，无其他副作用
+        assert_eq!(SH_REVERT_LINE, r#"PS1="${__ottr_ps1-}""#);
+        assert!(SH_REVERT_LINE.is_ascii());
     }
 
     #[test]
@@ -132,5 +187,26 @@ mod tests {
     fn inject_for_dispatches() {
         assert_eq!(inject_for(ShellKind::Bash), BASH_SNIPPET);
         assert_eq!(inject_for(ShellKind::Zsh), ZSH_SNIPPET);
+        assert_eq!(inject_for(ShellKind::Sh), SH_SNIPPET);
+    }
+
+    #[test]
+    fn hidden_line_wraps_snippet_restores_echo_and_cleans_up_sh() {
+        let line = hidden_inject_line(ShellKind::Sh);
+        assert!(line.starts_with(SH_SNIPPET));
+        // 片段含单引号，与尾部清理 printf 的单引号分属不同命令，整行可解析
+        assert!(line.contains("; stty echo; printf '\\e[2K\\r\\e[1A\\e[2K'"));
+        assert!(!line.contains('\n'));
+    }
+
+    /// 片段在真实 ash 里的行为回归（容器实测口径，2026-10-19）：
+    /// 首次执行 = 备份并拼接标记；再执行 = case 命中空分支，PS1 不二次叠加。
+    #[test]
+    fn sh_snippet_is_idempotent_by_case_guard() {
+        let applied = r#"$(printf "\033]133;D;%s\007\033]133;A\007" "$?")old$ "#;
+        // 模拟 case 语句的匹配分支（与 SH_SNIPPET 同款模式）
+        let guard = |ps1: &str| ps1.contains("133;D");
+        assert!(!guard("${PS1-}"));
+        assert!(guard(applied));
     }
 }

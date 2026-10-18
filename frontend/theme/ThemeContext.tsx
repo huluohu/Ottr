@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { THEME_ORDER, themeSchemeOf } from "./registry";
 
 export type ThemeMode =
   | "light"
@@ -40,42 +41,22 @@ export type ResolvedTheme = "light" | "dark";
  * 2026-10-16 视觉重设计「水域家族」：其余六档按光量降序（浅滩→溪岸→深河→
  * 深渊→夜光河→雨窗）；id 与持久化协议不变，只改显示名与排序。
  * 2026-10-18 家族续编三档（用户需求「再增 3 个不同风格」）：沙洲（暖纸亮）、
- * 松涛（深松绿暗）、河灯（暖褐暗+灯火琥珀）——亮族排 verdant 后、暗族插
- * oled 后（暖暗邻纯黑），既有六档次序不动。 */
-export const THEME_IDS: readonly ThemeMode[] = [
-  "system",
-  "light",
-  "verdant",
-  "sepia",
-  "dark",
-  "oled",
-  "ember",
-  "amethyst",
-  "glass",
-];
+ * 松涛（深松绿暗）、河灯（暖褐暗+灯火琥珀）。
+ * 2026-10-18 注册表单源化：清单与亮暗解析全部派生自 theme/registry.ts
+ * （THEME_IDS 此前漏 forest 致松涛无法持久化——清單漂移 bug 的结构性根治）。 */
+export const THEME_IDS: readonly ThemeMode[] = THEME_ORDER;
+export { THEMES, THEME_ORDER } from "./registry";
 
 function isThemeId(v: string | null | undefined): v is ThemeMode {
   return v != null && (THEME_IDS as readonly string[]).includes(v);
 }
 
-/** 二级解析：主题 id → 亮/暗。oled/amethyst/glass/forest/ember 暗底系；
- * verdant/sepia 亮底；system 跟随 prefers-color-scheme。 */
+/** 二级解析：主题 id → 亮/暗。注册表 scheme 派生（registry 单源，switch
+ * 手写清单已退役）；system 跟随 prefers-color-scheme。 */
 function resolveMode(mode: ThemeMode, systemDark: boolean): ResolvedTheme {
-  switch (mode) {
-    case "light":
-    case "verdant":
-    case "sepia":
-      return "light";
-    case "dark":
-    case "oled":
-    case "amethyst":
-    case "glass":
-    case "forest":
-    case "ember":
-      return "dark";
-    case "system":
-      return systemDark ? "dark" : "light";
-  }
+  const scheme = themeSchemeOf(mode);
+  if (scheme === "system") return systemDark ? "dark" : "light";
+  return scheme;
 }
 
 /** 终端 auto 色板键（theme-suite T2.3，terminalThemeStore 消费）：具体主题 id

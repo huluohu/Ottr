@@ -458,6 +458,21 @@ pub const TOOL_KEYS: [&str; 10] = [
 /// 工具子菜单构建按此排除，分派校验仍认它。
 pub const OVERVIEW_IN_VIEW: &str = "overview";
 
+/// 主题子菜单 Check 节点（THEME_IDS 循环生成；id/label 泄漏换取 'static——
+/// 重建仅发生在语言切换，频次极低，同托盘状态行先例）。
+fn theme_check_items(lang: Lang) -> Vec<MenuNode> {
+    THEME_IDS
+        .iter()
+        .map(|id| {
+            let key = format!("theme_{id}");
+            MenuNode::Check {
+                id: Box::leak(format!("theme.set.{id}").into_boxed_str()),
+                label: text(lang, &key),
+            }
+        })
+        .collect()
+}
+
 /// 应用菜单树（HIG：应用/文件/编辑/视图/窗口/帮助）。
 /// 带键位的条目与前端 registry 镜像（见模块文档）。
 /// allow(dead_code)：win/linux 构建不装原生菜单（自绘标题栏承担），仅测试消费。
@@ -551,48 +566,9 @@ pub fn menu_tree(lang: Lang) -> Vec<MenuNode> {
                 // 夜光河→雨窗），action id 不变。
                 MenuNode::Sub {
                     label: text(lang, "theme"),
-                    items: vec![
-                        MenuNode::Check {
-                            id: "theme.set.system",
-                            label: text(lang, "theme_system"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.light",
-                            label: text(lang, "theme_light"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.verdant",
-                            label: text(lang, "theme_verdant"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.sepia",
-                            label: text(lang, "theme_sepia"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.dark",
-                            label: text(lang, "theme_dark"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.oled",
-                            label: text(lang, "theme_oled"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.ember",
-                            label: text(lang, "theme_ember"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.forest",
-                            label: text(lang, "theme_forest"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.amethyst",
-                            label: text(lang, "theme_amethyst"),
-                        },
-                        MenuNode::Check {
-                            id: "theme.set.glass",
-                            label: text(lang, "theme_glass"),
-                        },
-                    ],
+                    // 2026-10-18 注册表单源化：Check 节点由 THEME_IDS 循环生成
+                    //（手写清单曾漏插新主题；leak 先例 = 托盘状态行，重建频次极低）。
+                    items: theme_check_items(lang),
                 },
                 MenuNode::Sep,
                 MenuNode::Item {

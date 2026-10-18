@@ -28,7 +28,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import "../i18n";
 import { ThemeProvider } from "../theme/ThemeContext";
-import { SecuritySettings } from "./SecuritySettings";
+import { SecuritySettings , THEME_CHOICES } from "./SecuritySettings";
 import { resetVaultLockStoreForTest, useVaultLockStore } from "./VaultLockStore";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -614,10 +614,10 @@ describe("SecuritySettings 降级向导（password → keyring）", () => {
 // theme-suite T2.4：主题选择从三选段控改网格卡片——七主题（含跟随系统卡），
 // 每卡主题名 + 迷你色板预览条 + radio 选中态 aria；点击即切换并持久化。
 describe("SecuritySettings 主题网格（theme-suite T2）", () => {
-  it("七张主题卡齐全；当前模式 aria-checked；点 OLED 即切（data-theme=oled）并写 vault", async () => {
+  it("主题卡齐全（= THEME_CHOICES 全集）；当前模式 aria-checked；点 OLED 即切（data-theme=oled）并写 vault", async () => {
     seedMode("keyring");
     renderDialog();
-    for (const id of ["system", "light", "dark", "oled", "amethyst", "verdant", "glass"]) {
+    for (const id of THEME_CHOICES) {
       expect(screen.getByTestId(`theme-card-${id}`)).toBeTruthy();
     }
     expect(screen.getByTestId("theme-card-system").getAttribute("aria-checked")).toBe("true");

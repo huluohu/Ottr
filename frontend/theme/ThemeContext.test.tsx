@@ -15,6 +15,7 @@ import {
   useTheme,
   syncThemeFromVault,
   type ThemeMode,
+  THEMES,
 } from "./ThemeContext";
 import { themeTerminalThemes, terminalThemes } from "./terminal-themes";
 import { resolveTerminalTheme } from "./terminalThemeStore";
@@ -49,13 +50,12 @@ function flipSystem(dark: boolean) {
 
 function Probe() {
   const { mode, setMode, resolved } = useTheme();
-  const ids: ThemeMode[] = ["oled", "amethyst", "verdant", "glass"];
+  // 探针按钮 = 注册表全集派生（此前手写四主题，新主题曾无按钮可点）
+  const ids: ThemeMode[] = THEMES.map((t) => t.id);
   return (
     <div>
       <span data-testid="mode">{mode}</span>
       <span data-testid="resolved">{resolved}</span>
-      <button onClick={() => setMode("light")}>set-light</button>
-      <button onClick={() => setMode("dark")}>set-dark</button>
       {ids.map((id) => (
         <button key={id} onClick={() => setMode(id)}>
           set-{id}
@@ -184,13 +184,10 @@ describe("ThemeContext", () => {
 
 // theme-suite T2：多主题模型——主题 id 扩到七态，二级解析 resolved（亮/暗），
 // data-theme 挂主题 id（system 挂解析结果）；白名单三处同步。
-describe("ThemeContext 多主题（theme-suite T2）", () => {
-  it.each([
-    ["oled", "dark"],
-    ["amethyst", "dark"],
-    ["glass", "dark"],
-    ["verdant", "light"],
-  ] as const)("二级解析：%s → resolved %s", async (id, want) => {
+describe("ThemeContext 多主题（theme-suite T2；注册表表驱动全集）", () => {
+  it.each(THEMES.map((t) => [t.id, t.scheme]) as [ThemeMode, "light" | "dark"][])(
+    "二级解析：%s → resolved %s",
+    async (id, want) => {
     renderThemed();
     fireEvent.click(screen.getByText(`set-${id}`));
     expect(screen.getByTestId("mode").textContent).toBe(id);
@@ -214,8 +211,8 @@ describe("ThemeContext 多主题（theme-suite T2）", () => {
     expect(themeTerminalThemes.oled).not.toBe(terminalThemes.dark);
   });
 
-  it.each(["oled", "amethyst", "verdant", "glass"] as const)(
-    "重新挂载从 localStorage 恢复新主题 id（%s）",
+  it.each(THEMES.map((t) => t.id) as ThemeMode[])(
+    "重新挂载从 localStorage 恢复主题 id（%s）",
     (id) => {
       localStorage.setItem("ottr.settings.theme", id);
       renderThemed();

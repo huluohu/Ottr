@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { useNotifyStore } from "../notify/core";
-import { useTheme, type ThemeMode } from "../theme/ThemeContext";
+import { useTheme, THEME_IDS, type ThemeMode } from "../theme/ThemeContext";
 import { useLanguage } from "../i18n";
 import { useVaultLockStore } from "../security/VaultLockStore";
 import { useUpdateStore } from "../update/updateStore";
@@ -206,18 +206,8 @@ function UpdateIcon() {
 }
 
 /** 主题快捷循环顺序（水域家族光量降序，与 THEME_IDS 同序）。 */
-const THEME_CYCLE: readonly ThemeMode[] = [
-  "system",
-  "light",
-  "verdant",
-  "sepia",
-  "dark",
-  "oled",
-  "ember",
-  "forest",
-  "amethyst",
-  "glass",
-];
+// 主题快切序 = THEME_IDS 派生（registry 单源，手写清单已退役——forest 曾漏插）。
+const THEME_CYCLE: readonly ThemeMode[] = THEME_IDS;
 
 export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpenSettings, onOpenMcpSettings, onOpenHistory }: IconRailProps) {
   const { t } = useTranslation();

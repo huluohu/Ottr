@@ -224,15 +224,25 @@ pub fn validate_known_setting(
             let s = value
                 .as_str()
                 .ok_or_else(|| "ui.theme expects a string".to_string())?;
-            // theme-suite T2：白名单与前端 ThemeMode 对齐（七主题 id）。
+            // 白名单与前端 THEME_IDS 对齐（2026-10-18 续编 +sepia/forest/ember；
+            // 此前仍旧七项——三新主题的持久化与同步导入全被拒）。
             if matches!(
                 s,
-                "light" | "dark" | "system" | "oled" | "amethyst" | "verdant" | "glass"
+                "light"
+                    | "dark"
+                    | "system"
+                    | "oled"
+                    | "amethyst"
+                    | "verdant"
+                    | "glass"
+                    | "sepia"
+                    | "forest"
+                    | "ember"
             ) {
                 Ok(())
             } else {
                 Err(format!(
-                    "ui.theme must be light|dark|system|oled|amethyst|verdant|glass, got {s:?}"
+                    "ui.theme must be light|dark|system|oled|amethyst|verdant|glass|sepia|forest|ember, got {s:?}"
                 ))
             }
         }
@@ -307,12 +317,13 @@ mod tests {
         );
     }
 
-    /// theme-suite T2（TDD 红）：ui.theme 白名单扩到七主题 id——四套新配色
-    /// （oled/amethyst/verdant/glass）与旧三值同等待遇；未知主题值仍拒绝。
+    /// ui.theme 白名单与前端 THEME_IDS 对齐（2026-10-18 续编 +sepia/forest/
+    /// ember）；未知主题值仍拒绝。
     #[test]
     fn ui_theme_whitelist_covers_new_theme_ids() {
         for id in [
-            "light", "dark", "system", "oled", "amethyst", "verdant", "glass",
+            "light", "dark", "system", "oled", "amethyst", "verdant", "glass", "sepia", "forest",
+            "ember",
         ] {
             assert!(
                 validate_known_setting("ui.theme", &serde_json::json!(id)).is_ok(),

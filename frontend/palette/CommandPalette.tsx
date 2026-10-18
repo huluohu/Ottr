@@ -26,6 +26,7 @@ import {
   type Platform,
 } from "../shortcuts/registry";
 import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
+import { THEME_IDS } from "../theme/ThemeContext";
 import { fuzzyBest, highlightRanges, type FuzzyResult } from "./fuzzy";
 
 export interface CommandPaletteProps {
@@ -94,7 +95,8 @@ function groupOf(action: ActionId): "connection" | "panels" | "system" {
  * theme.set.<id> 前缀直派 setMode；lang.set.<locale> 直派 setLang。
  * 标签复用设置页词典（settings.themes.* / settings.langZh/langEn）。 */
 const APPEARANCE_COMMANDS: readonly { key: string; labelKey: string; action: string }[] = [
-  ...(["system", "light", "verdant", "sepia", "dark", "oled", "ember", "forest", "amethyst", "glass"] as const).map((id) => ({
+  // 主题条目 = THEME_IDS 派生（registry 单源）；语言条目仍手写（两键固定）。
+  ...THEME_IDS.map((id) => ({
     key: `theme-${id}`,
     labelKey: `settings.themes.${id}`,
     action: `theme.set.${id}`,

@@ -170,43 +170,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 跟随系统：左亮右暗拼接底 + 中性 swatch */
-.tp-system .tp-bg { background: linear-gradient(90deg, #faf7f1 50%, #0b2b33 50%); }
-.tp-system .tp-surface { background: linear-gradient(90deg, #ffffff 50%, #1e3c43 50%); }
-.tp-system .tp-fg { background: #5a6b70; }
-.tp-system .tp-accent { background: #14b8a6; }
-/* 亮色 */
-.tp-light .tp-bg { background: #faf7f1; }
-.tp-light .tp-surface { background: #ffffff; }
-.tp-light .tp-fg { background: #0f172a; }
-.tp-light .tp-accent { background: #14b8a6; }
-/* 暗色（surface = 白 8% 叠 water-900 的合成面） */
-.tp-dark .tp-bg { background: #0b2b33; }
-.tp-dark .tp-surface { background: #1e3c43; }
-.tp-dark .tp-fg { background: #f6e7d4; }
-.tp-dark .tp-accent { background: #5eead4; }
-/* 曜黑 */
-.tp-oled .tp-bg { background: #000000; }
-.tp-oled .tp-surface { background: #0d0f12; }
-.tp-oled .tp-fg { background: #e5e7eb; }
-.tp-oled .tp-accent { background: #5eead4; }
-/* 幻紫（surface = fg 8% 叠 bg 合成面） */
-.tp-amethyst .tp-bg { background: #16102e; }
-.tp-amethyst .tp-surface { background: #2a2443; }
-.tp-amethyst .tp-fg { background: #e9e4f9; }
-.tp-amethyst .tp-accent { background: #a78bfa; }
-/* 青野 */
-.tp-verdant .tp-bg { background: #f4f7f1; }
-.tp-verdant .tp-surface { background: #ffffff; }
-.tp-verdant .tp-fg { background: #1c2b22; }
-.tp-verdant .tp-accent { background: #2f855a; }
-/* 雾镜（冷霜蓝调，2026-10-14 与幻紫拉开色相；半透明底示意，真效果见窗口
- * vibrancy/acrylic。surface = fg 10% 叠 bg 合成 ≈#272c37） */
-.tp-glass .tp-bg { background: rgba(16, 20, 32, 0.55); }
-.tp-glass .tp-surface { background: #272c37; }
-.tp-glass .tp-fg { background: #e6edf3; }
-.tp-glass .tp-accent { background: #7dd3fc; }
-
+/* 主题预览色块（2026-10-18 注册表单源化）：具体主题卡挂 data-theme 重定
+ * CSS 变量作用域，色块直读语义令牌——新主题零 CSS 成本，预览 = 真实令牌值
+ * （此前 7 组 .tp-<id> 静态字面值，三新主题曾漏配致色块无背景）。
+ * system 卡静态分屏渐变（亮/暗各半），不挂 data-theme。 */
+.theme-card-preview[data-theme] .tp-bg {
+  background: var(--color-bg);
+}
+.theme-card-preview[data-theme] .tp-surface {
+  background: var(--color-surface);
+}
+.theme-card-preview[data-theme] .tp-fg {
+  background: var(--color-fg);
+}
+.theme-card-preview[data-theme] .tp-accent {
+  background: var(--color-accent);
+}
+.tp-system .tp-bg {
+  background: linear-gradient(90deg, #faf7f1 50%, #0b2b33 50%);
+}
+.tp-system .tp-surface {
+  background: linear-gradient(90deg, #ffffff 50%, #1e3c43 50%);
+}
+.tp-system .tp-fg {
+  background: #5a6b70;
+}
+.tp-system .tp-accent {
+  background: #14b8a6;
+}
 
 /* --- 原语层补遗（2026-10-10 UI 重构一期）-------------------------------- */
 /* 中性次钮：表单/面板的取消与次要动作统一基（此前 254 钮仅 56 个有变体）。 */

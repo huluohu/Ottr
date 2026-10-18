@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { vaultApi, type HostKeyAuditStatus, type ReencryptProgress } from "../vault/api";
-import { useTheme, type ThemeMode } from "../theme/ThemeContext";
+import { useTheme, THEME_IDS, type ThemeMode } from "../theme/ThemeContext";
 import {
   AUTO_TERMINAL_THEME_ID,
   TERMINAL_THEME_GALLERY,
@@ -69,7 +69,8 @@ const FONT_CHOICES = ["Menlo", "Monaco", "SF Mono", "JetBrains Mono", "Fira Code
 // 终端字号候选（pt）
 const FONT_SIZE_CHOICES = [10, 11, 12, 13, 14, 16, 18, 20] as const;
 // theme-suite T2：主题 id 全集（= ThemeContext.ThemeMode；跟随系统保留为一卡）。
-const THEME_CHOICES: ThemeMode[] = ["system", "light", "verdant", "sepia", "dark", "oled", "ember", "forest", "amethyst", "glass"];
+// 主题网格 = THEME_IDS 派生（registry 单源，手写清单已退役）。
+export const THEME_CHOICES: readonly ThemeMode[] = THEME_IDS;
 const LANG_CHOICES: Lang[] = ["zh-CN", "en-US"];
 
 // 2026-10-09 设置页交互重构：左侧分区导航 + 右侧内容面板（原单列长滚动、
@@ -878,9 +879,10 @@ export function SecuritySettings({
             >
               <h3>{t("settings.sectionAppearance")}</h3>
           {/* theme-suite T2.4：主题网格卡片——每卡 = 主题名 + 迷你色板预览条
-              （4 色块纯 CSS，aria-hidden）+ radio 选中态；「跟随系统」保留为
-              一卡。radiogroup/radio 互斥单选语义（WAI-ARIA）。卡片缩略色块是
-              各主题静态预览（App.css .tp-* 值），不随当前主题走。 */}
+              （4 色块，aria-hidden）+ radio 选中态；「跟随系统」保留为一卡。
+              radiogroup/radio 互斥单选语义（WAI-ARIA）。预览色块读真实令牌：
+              预览条挂 data-theme 重定作用域（2026-10-18 注册表单源化）——
+              新主题零 CSS 成本；system 卡保留分屏渐变静态样式。 */}
           <div className="settings-row">
             <span className="settings-label">{t("settings.theme")}</span>
           </div>
@@ -895,7 +897,11 @@ export function SecuritySettings({
                 className="theme-card"
                 onClick={() => setMode(m)}
               >
-                <span className={`theme-card-preview tp-${m}`} aria-hidden="true">
+                <span
+                  className="theme-card-preview"
+                  data-theme={m === "system" ? undefined : m}
+                  aria-hidden="true"
+                >
                   <i className="tp-swatch tp-bg" />
                   <i className="tp-swatch tp-surface" />
                   <i className="tp-swatch tp-fg" />

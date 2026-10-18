@@ -39,7 +39,7 @@ import { TerminalArea } from "../terminal/Terminal";
 import { FilePanel } from "../files/FilePanel";
 import { ProcessBrowser } from "../monitor/ProcessBrowser";
 import { DiagnosePanel } from "../ai/DiagnosePanel";
-import { RecordToggle } from "../history/RecordToggle";
+import { RecordToggle, useAnyRecording } from "../history/RecordToggle";
 import { OverviewPage } from "../monitor/OverviewPage";
 import { BatchPanel } from "../batch/BatchPanel";
 import { CronPanel } from "../cron/CronPanel";
@@ -153,6 +153,8 @@ export function MainArea({
       mainView === "processes" ||
       mainView === "monitor" ||
       mainView === "plugins");
+  // 任一会话在录 → 库级页签保留录制指示/停止入口（见渲染处注释）。
+  const anyRecording = useAnyRecording();
   // overview/batch 实体视图（UI 批次一 Task 3 迁入；占位壳 MainViewSlot 消亡）。
   // 2026-10-16 总览标签化：OverviewPage 的「← 终端」返回按钮退役（导航走
   // 标签条：点会话标签回终端、关总览标签 ✕ 收场）；onOpen/onOpenProcesses
@@ -325,7 +327,10 @@ export function MainArea({
             )}
           </div>
         )}
-        {!filesOnly && (
+        {/* 录制钮属会话域（2026-10-18 用户裁定）：库级页签上不常驻——唯一例外
+            是「正在录」时保留指示+停止入口（红点状态，录制是敏感面，悄悄进行
+            比多一颗红点更糟）。 */}
+        {!filesOnly && (sessionViewActive || anyRecording) && (
           <RecordToggle
             rustId={rootSession?.rustId ?? null}
             hostId={rootSession?.hostId ?? null}

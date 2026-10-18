@@ -14,7 +14,10 @@ vi.mock("../notify/NotificationCenter", () => ({
   NotificationCenter: () => <div data-testid="nc" />,
 }));
 vi.mock("../terminal/Terminal", () => ({ TerminalArea: () => <div data-testid="term" /> }));
-vi.mock("../history/RecordToggle", () => ({ RecordToggle: () => <div data-testid="record" /> }));
+vi.mock("../history/RecordToggle", () => ({
+  RecordToggle: () => <div data-testid="record" />,
+  useAnyRecording: () => false,
+}));
 vi.mock("../ai/DiagnosePanel", () => ({ DiagnosePanel: () => <div data-testid="diag" /> }));
 vi.mock("../home/HomeWelcome", () => ({ HomeWelcome: () => <div data-testid="welcome" /> }));
 

@@ -22,8 +22,11 @@ vi.mock("../monitor/MonitorSidebar", () => ({
 vi.mock("../plugins/PluginSidebar", () => ({
   PluginSidebar: () => <div data-testid="plugin-sidebar" />,
 }));
+// 可状态化的录制 mock：anyRecording 开关供「库级页签录制指示保留」用例驱动。
+const recordMock = vi.hoisted(() => ({ anyRecording: false }));
 vi.mock("../history/RecordToggle", () => ({
   RecordToggle: () => <div data-testid="record-toggle" />,
+  useAnyRecording: () => recordMock.anyRecording,
 }));
 
 import "../i18n";
@@ -189,6 +192,38 @@ describe("MainArea：终端常驻不变量（visibility 制式）", () => {
     fireEvent.click(screen.getByTestId("view-terminal"));
     expect(screen.getByTestId("terminal-area")).toBe(before);
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("false");
+  });
+});
+
+describe("录制钮会话域划界（2026-10-18 用户裁定）", () => {
+  beforeEach(() => {
+    recordMock.anyRecording = false;
+  });
+
+  it("库级页签（定时任务）空闲时不显示录制钮", () => {
+    seedSessions([fakeSession()]);
+    render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    act(() => {
+      useWorkspaceStore.getState().openMainView("cron");
+    });
+    expect(screen.getByTestId("cron-panel")).toBeTruthy();
+    expect(screen.queryByTestId("record-toggle")).toBeNull();
+  });
+
+  it("正在录时库级页签保留录制钮（指示+停止入口）；回到终端语境照常", () => {
+    seedSessions([fakeSession()]);
+    const { rerender } = render(
+      <MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />,
+    );
+    act(() => {
+      useWorkspaceStore.getState().openMainView("cron");
+    });
+    recordMock.anyRecording = true;
+    rerender(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(screen.getByTestId("record-toggle")).toBeTruthy();
+    recordMock.anyRecording = false;
+    rerender(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(screen.queryByTestId("record-toggle")).toBeNull();
   });
 });
 

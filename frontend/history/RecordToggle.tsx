@@ -36,6 +36,21 @@ function useIsRecording(rustId: string | null): boolean {
   return rustId !== null && recordingIds.has(rustId);
 }
 
+/** 任一会话在录（2026-10-18 用户裁定）：录制钮属会话域，库级页签（通知中心/
+ * 定时任务等）不再常驻——但「正在录」时保留指示+停止入口（录制是敏感面，
+ * 走着悄无声息比多显示一颗红点更糟）。 */
+export function useAnyRecording(): boolean {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const listener = () => force((n) => n + 1);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+  return recordingIds.size > 0;
+}
+
 export function RecordToggle({ rustId, hostId }: RecordToggleProps) {
   const { t } = useTranslation();
   const recording = useIsRecording(rustId);

@@ -185,7 +185,7 @@
     "group_system": "系统",
     "newHost": "新建主机",
     "themeToggle": "切换主题",
-    "langToggle": "切换语言（中文 / English）",
+    "langToggle": "切换语言",
     "sidebarCollapse": "折叠/展开主机面板（⌘\\）",
     "quit": "退出 Ottr",
     "group_appearance": "外观"
@@ -1262,7 +1262,6 @@
     "settings": "设置",
     "quickMenu": "控制中心",
     "theme": "主题",
-    "themeCycle": "切换主题（循环七主题）",
     "language": "语言",
     "langToggle": "切换中英文",
     "updateAvailable": "发现新版本 v{{version}}，点击查看"

@@ -121,6 +121,26 @@ pub fn run() {
         // 访问零开销，`vault_init_status` 命令在初始化窗口期即可安全调用）。
         .manage(vault::VaultInit::default())
         .setup(|app| {
+            // 默认窗口尺寸对屏收缩（2026-10-18 多平台审计）：tauri.conf 的
+            // 1280×832 在小屏（1366×768 笔记本 / 1280×800 老 Air）会超出工作区，
+            // tauri 创建窗口不自动 clamp——按主显示器 work_area 收缩（三平台，
+            // Monitor::work_area 已有兜底语义）。失败静默：保留配置默认值。
+            if let Some(win) = app.get_webview_window("main")
+                && let Some(m) = app.primary_monitor().ok().flatten()
+            {
+                let wa = m.work_area();
+                let scale = win.scale_factor().unwrap_or(1.0);
+                let cur = win.outer_size().unwrap_or_default();
+                // 配置值 = 逻辑 px；work_area = 物理 px，先换算再比较
+                let oversized = (cur.width as f64 / scale) > (wa.size.width as f64 / scale)
+                    || (cur.height as f64 / scale) > (wa.size.height as f64 / scale);
+                if oversized {
+                    let w = ((wa.size.width as f64 / scale) * 0.92) as u32;
+                    let h = ((wa.size.height as f64 / scale) * 0.88) as u32;
+                    let _ = win.set_size(tauri::LogicalSize::new(w, h));
+                    let _ = win.center();
+                }
+            }
             // Task 5：vault 打开并托管（app_data_dir + 钥匙链 Master Key）。
             // T16 判别实验（task-16-report.md §3，Exp10/14 阳性）：setup 主线程
             // 的钥匙链 SecItem 访问在 macOS 27 + ad-hoc 每次重建签名（ACL 失配）

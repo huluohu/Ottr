@@ -185,7 +185,7 @@
     "group_system": "System",
     "newHost": "New Host",
     "themeToggle": "Toggle Theme",
-    "langToggle": "Toggle Language (中文 / English)",
+    "langToggle": "Toggle language",
     "sidebarCollapse": "Collapse/Expand Host Panel (⌘\\)",
     "quit": "Quit Ottr",
     "group_appearance": "Appearance"
@@ -1263,7 +1263,6 @@
     "settings": "Settings",
     "quickMenu": "Control Center",
     "theme": "Theme",
-    "themeCycle": "Cycle through themes",
     "language": "Language",
     "langToggle": "Toggle Chinese/English",
     "updateAvailable": "New version v{{version}} available — click to view"

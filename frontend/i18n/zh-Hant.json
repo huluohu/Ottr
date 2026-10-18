@@ -185,7 +185,7 @@
     "group_system": "系統",
     "newHost": "新建主機",
     "themeToggle": "切換主題",
-    "langToggle": "切換語言（中文 / English）",
+    "langToggle": "切換語言",
     "sidebarCollapse": "摺疊/展開主機面板（⌘\\）",
     "quit": "退出 Ottr",
     "group_appearance": "外觀"
@@ -1262,7 +1262,6 @@
     "settings": "設定",
     "quickMenu": "控制中心",
     "theme": "主題",
-    "themeCycle": "切換主題（循環七主題）",
     "language": "語言",
     "langToggle": "切換中英文",
     "updateAvailable": "發現新版本 v{{version}}，點擊查看"

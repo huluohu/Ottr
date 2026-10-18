@@ -243,7 +243,10 @@
   pointer-events: none;
 }
 /* 定宽列：行内容与列头同一宽度口径（宽度含 tabular-nums 数字），窄面板
- * 靠 .file-name min-width:0 弹性收缩，列本身不缩防错位。 */
+ * 靠 .file-name min-width:0 弹性收缩，列本身不缩防错位。
+ * 窄面板分级瘦身（2026-10-18 P0 修复，v0.9.32 起 Name 列被挤没）：容器查询
+ * 按面板实际宽度依次藏 权限列 → 时间列（权限列头是 aria-hidden 占位、信息
+ * 价值最低；名称列有 min-width 下限，任何宽度都不归零）。 */
 .file-size {
   width: 64px;
   text-align: right;
@@ -254,6 +257,24 @@
 .file-mtime {
   width: 88px;
   text-align: right;
+}
+.file-pane {
+  container-type: inline-size;
+}
+@container (max-width: 460px) {
+  .file-head .file-mode,
+  .file-row .file-mode {
+    display: none;
+  }
+}
+@container (max-width: 350px) {
+  .file-head .file-mtime,
+  .file-row .file-mtime {
+    display: none;
+  }
+  .file-size {
+    width: 56px;
+  }
 }
 .file-row[data-selected="true"],
 /* 选中压制悬停（2026-10-16 用户反馈：悬停选中行时高亮消失）——两选择器
@@ -319,7 +340,7 @@
 }
 .file-name {
   flex: 1;
-  min-width: 0;
+  min-width: 88px; /* P0 下限（2026-10-18）：任何面板宽度名称列不归零 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

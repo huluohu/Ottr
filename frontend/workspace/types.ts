@@ -1,21 +1,13 @@
-// workspace 类型（UI 批次一 Task 2）：主区视图 + 右侧停靠面板的联合类型与
-// 互斥语义口径。
+// workspace 类型：主区视图联合类型与互斥语义口径。
 //
-// 【互斥域裁定（本任务）】
-//  * mainView 单值互斥：五视图（terminal/files/processes/overview/batch）
-//    同一时刻只见其一。terminal 恒为默认；files/processes 自原 setState
-//    互斥体系迁入；overview/batch 自原顶栏对话框迁入（实体 T3 迁入）。
-//  * dock 多页签（2026-10-09 用户裁定「根治互相覆盖」）：面板以页签共存
-//    （dockTabs 保序），openDock 打开/激活、切换不卸载不互相关闭——
-//    旧「单槽 openDock 换值即替换」语义废除。
-//  * monitor/plugins **并存语义沿现状**：二者是终端右栏自管折叠侧栏
-//    （MonitorSidebar/PluginSidebar 内部 state + localStorage 记忆开合），
-//    现实现中两竖条常驻、两展开面可同开、且与 dock 工具面板不互斥——
-//    本任务保持该语义不动（视觉不变）。它们的值留在 DockPanel 联合里是
-//    为 T4 迁移预留同一单槽 API；在迁入前 store 接受这些值但无挂载面
-//    （DockPanel 对 monitor/plugins 渲染 null，见 dock/DockPanel.tsx）。
-//  * 挂载域互斥（沿现状）：monitor/plugins 侧栏只在 terminal 视图挂载
-//    （原 `!filesVisible && !procsVisible` 域）；overview/batch 视图下同让位。
+// 【互斥域（2026-10-18 现行口径，历史沿革见 git）】
+//  * mainView 单值互斥：terminal/files/processes/monitor/plugins（会话级
+//    子视图）+ overview/batch/cron/notifications/forwards/jumpchains（库级
+//    宽幅视图）共 11 值，同一时刻只见其一。terminal 恒为默认。
+//  * 库级视图在场时以页签形态镜像（workspaceViews WORKSPACE_VIEW_META），
+//    会话级视图以标签条右侧切换器呈现（跟随会话页签，2026-10-18 裁定）。
+//  * 终端常驻不变量：非 terminal 视图时终端 DOM 保留但隐藏（visibility
+//    制式），任何切换不卸载（MainArea 渲染侧执行）。
 
 /** 主区视图。terminal 恒为默认；overview/batch/cron/notifications/forwards/
  * jumpchains 为库级宽幅视图（图标轨一级入口）；monitor/plugins 为会话级

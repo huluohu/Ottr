@@ -8,16 +8,14 @@ import { useTranslation } from "react-i18next";
 export function WorkspaceViewShell({
   labelKey,
   description,
-  action,
   children,
   testid,
 }: {
   /** 标题词典键（与图标轨/页签同源；仅作无障碍命名，不再渲染大标题）。 */
   labelKey: string;
   description?: string;
-  /** 右上主操作（如 新建任务）。 */
-  action?: { label: string; onClick: () => void; testid?: string };
   children: ReactNode;
+  /** 视图专属 testid（默认 workspace-view；测试按视图定位时传入）。 */
   testid?: string;
 }) {
   const { t } = useTranslation();
@@ -25,11 +23,6 @@ export function WorkspaceViewShell({
     <section className="workspace-view" data-testid={testid ?? "workspace-view"} aria-label={t(labelKey)}>
       <header className="wv-head">
         {description && <p className="wv-desc">{description}</p>}
-        {action && (
-          <button type="button" className="btn-accent wv-action" data-testid={action.testid} onClick={action.onClick}>
-            {action.label}
-          </button>
-        )}
       </header>
       <div className="wv-body">{children}</div>
     </section>

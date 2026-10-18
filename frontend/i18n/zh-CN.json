@@ -37,7 +37,7 @@
     "themeDark": "暗色",
     "themeSystem": "跟随系统",
     "language": "语言",
-    "langZh": "中文",
+    "langZh": "简体中文",
     "langEn": "English",
     "sectionSecurity": "安全",
     "closeToTray": "关闭窗口时隐藏到托盘",
@@ -78,7 +78,8 @@
     "terminalFontSize": "终端字号",
     "terminalFontSizePt": "{{n}} pt",
     "ottyMoments": "Otty 情感时刻",
-    "ottyMomentsHint": "连接成功、传输完成、解锁、更新就绪时的小动画（默认开；关掉即回归纯工具界面）。"
+    "ottyMomentsHint": "连接成功、传输完成、解锁、更新就绪时的小动画（默认开；关掉即回归纯工具界面）。",
+    "langHant": "繁體中文"
   },
   "hostForm": {
     "newTitle": "新建主机",

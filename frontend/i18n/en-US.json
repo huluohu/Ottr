@@ -37,7 +37,7 @@
     "themeDark": "Dark",
     "themeSystem": "System",
     "language": "Language",
-    "langZh": "中文",
+    "langZh": "简体中文",
     "langEn": "English",
     "sectionSecurity": "Security",
     "closeToTray": "Hide to tray on close",
@@ -78,7 +78,8 @@
     "terminalFontSize": "Terminal size",
     "terminalFontSizePt": "{{n}} pt",
     "ottyMoments": "Otty moments",
-    "ottyMomentsHint": "Small animations when a connection succeeds, a transfer finishes, the vault unlocks, or an update is ready (on by default; turn off for a purely utilitarian interface)."
+    "ottyMomentsHint": "Small animations when a connection succeeds, a transfer finishes, the vault unlocks, or an update is ready (on by default; turn off for a purely utilitarian interface).",
+    "langHant": "繁體中文"
   },
   "hostForm": {
     "newTitle": "New Host",

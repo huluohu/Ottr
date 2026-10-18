@@ -119,52 +119,47 @@ export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void
   }, [unread]);
 
   return (
-    <>
-      <div className="notify-panel" data-testid="notify-panel">
-          <div className="notify-panel-head">
-            <div className="notify-actions">
-              <button
-                type="button"
-                data-testid="notify-mark-all"
-                disabled={unread === 0}
-                onClick={() => void markAllRead()}
-              >
-                {t("notify.markAllRead")}
-              </button>
-              <button
-                type="button"
-                data-testid="notify-clear"
-                disabled={items.length === 0}
-                onClick={() => void clear()}
-              >
-                {t("notify.clear")}
-              </button>
-            </div>
+    <div className="notify-panel" data-testid="notify-panel">
+        <div className="notify-panel-head">
+          <div className="notify-actions">
+            <button
+              type="button"
+              data-testid="notify-mark-all"
+              disabled={unread === 0}
+              onClick={() => void markAllRead()}
+            >
+              {t("notify.markAllRead")}
+            </button>
+            <button
+              type="button"
+              data-testid="notify-clear"
+              disabled={items.length === 0}
+              onClick={() => void clear()}
+            >
+              {t("notify.clear")}
+            </button>
           </div>
-
-          {items.length === 0 ? (
-            <div data-testid="notify-empty-guide">
-              <EmptyState
-                title={t("notify.empty")}
-                action={{
-                  label: t("notify.emptyAlertsCta"),
-                  onClick: () => onOpenAlerts?.(),
-                  testid: "notify-empty-alerts",
-                }}
-                testid="notify-empty"
-              />
-            </div>
-          ) : (
-            <ul className="notify-list">
-              {items.map((item) => (
-                <NotificationRow key={item.id} item={item} />
-              ))}
-            </ul>
-          )}
-
-          {/* 通知类型（静音）开关迁设置 → 告警分区（2026-10-17 用户需求）：
-              配置归设置，本视图只管消费（列表/已读/清空）。 */}
         </div>
-    </>
-  );
-}
+
+        {items.length === 0 ? (
+          <div data-testid="notify-empty-guide">
+            <EmptyState
+              title={t("notify.empty")}
+              action={{
+                label: t("notify.emptyAlertsCta"),
+                onClick: () => onOpenAlerts?.(),
+                testid: "notify-empty-alerts",
+              }}
+              testid="notify-empty"
+            />
+          </div>
+        ) : (
+          <ul className="notify-list">
+            {items.map((item) => (
+              <NotificationRow key={item.id} item={item} />
+            ))}
+          </ul>
+        )}
+
+    </div>
+  );}

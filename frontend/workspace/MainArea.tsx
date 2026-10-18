@@ -1,5 +1,5 @@
 // MainArea（UI 批次一 Task 2；Task 3 实体迁入）：主区视图路由——
-// workspaceStore.mainView 状态机驱动的五视图切换（terminal/files/processes/
+// workspaceStore.mainView 状态机驱动的主区视图切换（terminal/files/processes/
 // overview/batch）。
 //
 // 【终端常驻不变量】非 terminal 视图时终端 DOM **保留但隐藏**（visibility 制式，
@@ -185,19 +185,19 @@ export function MainArea({
     ) : slotView === "batch" ? (
       <BatchPanel onClose={() => openMainView("terminal")} />
     ) : slotView === "cron" ? (
-      <WorkspaceViewShell labelKey="nav.cron" description={t("workspace.cron.desc")}>
+      <WorkspaceViewShell labelKey="nav.cron" description={t("workspace.cron.desc")} testid="workspace-view-cron">
         <CronPanel open />
       </WorkspaceViewShell>
     ) : slotView === "notifications" ? (
-      <WorkspaceViewShell labelKey="nav.notifications" description={t("workspace.notifications.desc")}>
+      <WorkspaceViewShell labelKey="nav.notifications" description={t("workspace.notifications.desc")} testid="workspace-view-notifications">
         <NotificationCenter onOpenAlerts={onOpenAlerts} />
       </WorkspaceViewShell>
     ) : slotView === "forwards" ? (
-      <WorkspaceViewShell labelKey="forward.title" description={t("workspace.forwards.desc")}>
+      <WorkspaceViewShell labelKey="forward.title" description={t("workspace.forwards.desc")} testid="workspace-view-forwards">
         <ForwardPanel open />
       </WorkspaceViewShell>
     ) : (
-      <WorkspaceViewShell labelKey="jump.title" description={t("workspace.jumpchains.desc")}>
+      <WorkspaceViewShell labelKey="jump.title" description={t("workspace.jumpchains.desc")} testid="workspace-view-jumpchains">
         <JumpChainEditor open />
       </WorkspaceViewShell>
     );
@@ -265,7 +265,7 @@ export function MainArea({
     );
   }
 
-  // 有会话：标签条 + 视图切换 + 终端常驻区（五视图路由核心）。
+  // 有会话：标签条 + 视图切换 + 终端常驻区（主区视图路由核心）。
   // 【终端常驻不变量】五视图共用同一 term-main-row：overview/batch 实体视图
   // 渲染在让位的侧栏位置，终端 holder 恒在 DOM（data-hidden 切 visibility）——
   // 任何视图切换都不卸载终端（xterm 缓冲/滚动回看不丢，运行中会话保留）。

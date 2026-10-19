@@ -17,7 +17,10 @@
 #
 # 选项:
 #   --gate        打 tag 前等待「main 推送门全绿」（默认不等——发布流水线
-#                 本身就是全量验证，双跑约浪费 15-20 分钟；2026-10-12 用户裁定）
+#                 本身就是全量验证，双跑约浪费 15-20 分钟；2026-10-12 用户裁定。
+#                 2026-10-19 二次确认：走 PR 全绿流程的发布直接 tag，版本提交
+#                 带 [skip ci] 连 main 侧工作流也省掉；--gate 留给「直接推
+#                 main 未经 CI 的琐碎修」发布场景）
 #   --wait        打 tag 后阻塞等待 Release 创建并应用说明（默认不等——
 #                 不阻塞开发，2026-10-14 用户裁定；之后可用 --notes-only 补说明）
 #   --dry-run     演练：执行版本号修改并预览发布说明，最后自动还原，不改任何状态
@@ -198,11 +201,15 @@ if [ ! -f "$NOTES_PATH" ]; then
 fi
 
 step "提交版本号与发布正文并推送 main"
+# 版本提交带 [skip ci]（2026-10-19 用户裁定：发版不再先跑 main 工作流）——
+# 该树与 tag 树仅差发布正文文本，release.yml 的 verify job 自带版本三处对齐
+# 校验、build 失败则 release job 不执行（无坏 Release 风险）；main 侧全量
+# 验证由 merge 前的 PR CI 或本地门禁承担。
 git add desktop/tauri.conf.json package.json desktop/Cargo.toml package-lock.json Cargo.lock "$NOTES_PATH"
 if git diff --cached --quiet; then
   echo "  版本号无变化，跳过提交（断点重跑）"
 else
-  git commit -m "chore(release): v$VERSION 版本号三处对齐 + 锁文件同步 + 发布正文"
+  git commit -m "chore(release): v$VERSION 版本号三处对齐 + 锁文件同步 + 发布正文 [skip ci]"
 fi
 git push origin main
 SHA=$(git rev-parse HEAD)

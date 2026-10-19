@@ -24,6 +24,11 @@ on:
       - "Cargo.lock"
       - ".github/workflows/windows-mcp-test.yml"
 
+# 同 ref 连发只跑最新（2026-10-19 与 spike-build 同批加的防叠罗汉，见其头注）
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   pipe-e2e:
     runs-on: windows-latest

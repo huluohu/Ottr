@@ -25,6 +25,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 同分支连发只跑最新（2026-10-19 用户反馈「一次提交触发 3 次 action 浪费」）：
+# 发布链 merge→版本提交连发时，旧 run 自动取消（约省一轮 8 分钟全矩阵）；
+# PR 连推同理。release.yml（tag 触发）不同 workflow 不同组，不受影响。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

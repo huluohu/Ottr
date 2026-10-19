@@ -37,6 +37,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 import { registerSink, unregisterSink, resizeSession, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
+import { localList } from "../files/api";
 import { useTerminalFocus } from "./terminalFocus";
 import { useVaultStore } from "../vault/store";
 import { vaultApi } from "../vault/api";
@@ -51,6 +52,7 @@ import {
 import type { ITheme } from "@xterm/xterm";
 import { assessPaste, InputDangerWatch, type DangerFinding } from "../ai/danger";
 import { shouldAutoDiagnose, useAiStore } from "../ai/aiStore";
+import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
 import { noteCwd, forgetCwd } from "./CwdTracker";
@@ -883,8 +885,16 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           onUpload={() => {
             const paths = pendingDrop;
             setPendingDrop(null);
-            // 拖拽路径无对话框，授权在此登记；上传结束（含失败）即撤销
-            void grantTrzsz(paths, "file")
+            // 拖拽路径无对话框，授权在此登记；上传结束（含失败）即撤销。
+            // 目录递归（2026-10-19 用户需求）：含目录的拖拽用 dir 授权——
+            // Grant::Dir 前缀语义下文件路径恰好只授自身（混合拖拽安全），
+            // trzsz 协议对目录条目自动整棵递归。类型判定走 local_list
+            // （拖来的路径只有字符串，无 entry 类型）。
+            void droppedPathsGrantKind(paths, async (parent, name) => {
+              const siblings = await localList(parent);
+              return siblings.find((s) => s.name === name)?.is_dir === true;
+            })
+              .then((kind) => grantTrzsz(paths, kind))
               .then(() => trzszRef.current?.uploadFiles(paths))
               .finally(() => {
                 void revokeTrzsz();

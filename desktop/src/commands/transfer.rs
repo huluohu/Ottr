@@ -176,6 +176,25 @@ pub(crate) async fn sftp_mkdir(
     client.mkdir(&path).await.map_err(|e| e.to_string())
 }
 
+/// 幂等建目录（递归上传用，2026-10-19）：已存在且是目录 → Ok（不报错）；
+/// 不存在 → mkdir。单层语义（调用方逐级建），与 `sftp_mkdir` 的区别仅此。
+#[tauri::command]
+pub(crate) async fn sftp_mkdir_all(
+    state: State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<(), String> {
+    let client = file_client_for(&state, &id).await?;
+    let exists = match &client {
+        FileClient::Sftp(c) => c.stat(&path).await.is_ok(),
+        FileClient::Ftp(c) => c.stat(&path).await.is_ok(),
+    };
+    if exists {
+        return Ok(()); // 已存在（目录或同名文件）：交给后续传输报同名文件错误
+    }
+    client.mkdir(&path).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub(crate) async fn sftp_rename(
     state: State<'_, AppState>,

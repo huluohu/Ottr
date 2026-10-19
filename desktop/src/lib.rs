@@ -343,6 +343,7 @@ pub fn run() {
             commands::transfer::sftp_list,
             commands::transfer::sftp_realpath,
             commands::transfer::sftp_mkdir,
+            commands::transfer::sftp_mkdir_all,
             commands::transfer::sftp_rename,
             commands::transfer::sftp_remove,
             commands::transfer::sftp_chmod,

@@ -352,15 +352,22 @@ describe("智能补全开关（Task 8 B8）", () => {
       term.input("c");
     });
     expect(writes.map((w) => text(w.bytes))).toEqual(["d", "o", "c"]);
-    // Tab：ghost 拦截采纳——write_session 收补全剩余文本，\t 不进 PTY
+    // Tab 语义修订（2026-10-19）：Tab 透传 \t 给 shell 原生前缀补全——
+    // write_session 收原始 \t 字节，历史建议不再整条补上
     await act(async () => {
       term.input("\t");
     });
     expect(writes).toHaveLength(4);
-    expect(text(writes[3].bytes)).toBe("ker ps -a");
+    expect(text(writes[3].bytes)).toBe("\t");
     expect(writes[3].id).toBe("pty-b8");
-    // 全程无任何 \t 字节落 PTY
-    for (const w of writes) expect(text(w.bytes)).not.toContain("\t");
+    // → 才是历史建议的采纳键：write_session 收剩余文本
+    await act(async () => {
+      // Tab 已清态；重打触发新建议后按 →（ghost 可见时）
+      term.input("\x1b[C");
+    });
+    // → 无建议（Tab 后清态）→ 原样透传，不写补全文本
+    expect(writes).toHaveLength(5);
+    expect(text(writes[4].bytes)).toBe("\x1b[C");
   });
 });
 

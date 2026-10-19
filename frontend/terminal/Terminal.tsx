@@ -50,7 +50,7 @@ import {
 } from "../theme/terminalThemeStore";
 import type { ITheme } from "@xterm/xterm";
 import { assessPaste, InputDangerWatch, type DangerFinding } from "../ai/danger";
-import { useAiStore } from "../ai/aiStore";
+import { shouldAutoDiagnose, useAiStore } from "../ai/aiStore";
 import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
 import { noteCwd, forgetCwd } from "./CwdTracker";
@@ -138,6 +138,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const trzszRef = useRef<TrzszController | null>(null);
   const ghostRef = useRef<GhostController | null>(null);
   const prevStatus = useRef<string | null>(null);
+  // 中断记账（见 writeToSession 处注释）：本条命令执行期间用户发过 Ctrl+C
+  const interruptedRef = useRef(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
@@ -180,10 +182,13 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   // 变化时触发（首挂载早于 rustId 落地，attach 拿到的可能是未布局的退化尺寸
   // 2×1），没有这条「connected 转换下发」，退化 PTY 会终身保持（提示符/回显
   // 缺失的另一半根因）。重连（disconnected→connected）同样经此重发。
+  // 退化尺寸不下发（2026-10-19 页签伪影治理）：2 列宽的 SIGWINCH 会让远端
+  // readline/ash 在退化宽度上重绘提示符（碎片伪影源），等 fit 链送来真实尺寸。
   useEffect(() => {
     if (status !== "connected") return;
     const term = termRef.current;
     if (!term) return;
+    if (term.cols < 4 || term.rows < 2) return;
     resizeSession(sessionId, term.cols, term.rows);
   }, [status, sessionId]);
 
@@ -250,7 +255,13 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // trzsz 过滤器（B10 下半）：先于 sink 装配——PTY 出口与击键都经它中转。
     // write_session 沿用原 onData 体（rustId 实时读 store；重连自动跟随）。
     // 击键出口单点化：trzsz 透传与 ghost Tab 采纳共用同一写入闭包。
+    // 中断记账：命令执行期间用户发过 \x03（Ctrl+C）= 主动取消——sudo 场景以
+    // exit 1 退出、普通命令报 130，单看退出码都不全；击键是本质信号。
+    // （interruptedRef 声明在组件顶层；A 边界 onPromptStart 清零。）
     const writeToSession = (input: string | Uint8Array): void => {
+      if (typeof input === "string" ? input.includes("\x03") : input.includes(0x03)) {
+        interruptedRef.current = true;
+      }
       const session = useSessionStore
         .getState()
         .sessions.find((x) => x.id === sessionId);
@@ -373,6 +384,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         } catch {
           // 尺寸不可测（隐藏/未布局）→ xterm 默认值仍有效
         }
+        // 退化尺寸兜底（2026-10-19 页签伪影治理，Q1 缓解 1）：attach 期容器
+        // 未布局会量出 2×1，shell 的**首个提示符**就画在 2 列上（碎片伪影源，
+        // busybox ash 尤甚）；兜底为经典 80×24，等 fit 链送来真实尺寸再
+        // window_change 一次（健康宽度下的 SIGWINCH 重绘实测干净）。
+        if (term.cols < 4 || term.rows < 2) return { cols: 80, rows: 24 };
         return { cols: term.cols, rows: term.rows };
       },
     });
@@ -389,13 +405,20 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     let watch: IDisposable | null = null;
     try {
       watch = createCommandWatch(term, {
-        // B8：新提示符 = 旧输入行消失，ghost 全量清态
-        onPromptStart: () => ghostRef.current?.reset(),
+        // B8：新提示符 = 旧输入行消失，ghost 全量清态；中断标记随新命令清零
+        onPromptStart: () => {
+          ghostRef.current?.reset();
+          interruptedRef.current = false;
+        },
         onCommandDone: ({ exitCode, command }) => {
           const session = useSessionStore
             .getState()
             .sessions.find((x) => x.id === sessionId);
           if (!session) return;
+          // 用户主动取消不弹自动诊断：本条命令期间发过 Ctrl+C（sudo 场景以
+          // exit 1 退出、普通命令报 130，击键记账是本质信号）或退出码即 130。
+          // 历史照记（onCommandFinished）、手动「解释」不受限。
+          if (interruptedRef.current || !shouldAutoDiagnose(exitCode)) return;
           useAiStore.getState().onCommandFailed({
             kind: "diagnose",
             sessionId,
@@ -514,6 +537,12 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
       ensureObserved();
       try {
+        // 本地退化守卫（P0「字符乱飞」家族，真机复现 2026-10-19）：页签切换/
+        // AI 面板重挂的布局过渡瞬间容器可能被量成极窄——一旦 fit 进去，buffer
+        // 以 1 列 rewrap **不可逆**（历史永久竖排，reflow 无法还原）。预判退化
+        // 直接跳过本次 fit，等 RO/rAF 下一拍到健康尺寸再 fit。
+        const dim = fit.proposeDimensions();
+        if (!dim || dim.cols < 4 || dim.rows < 2) return;
         fit.fit();
       } catch {
         return; // 退化尺寸抛错：留待延迟/焦点重测
@@ -879,8 +908,14 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
 
 /** 分屏终端主区（App.tsx 挂载）。bounds 驱动纯布局（split.ts），分隔条拖拽
- * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。 */
-export function TerminalArea() {
+ * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。
+ * toolbarExtra（2026-10-19 方案 B）：主区视图切换器+录制钮挂进 term-toolbar
+ *（分屏同行）——页签行独占会话页签，两组不再打架。 */
+export function TerminalArea({
+  toolbarExtra = null,
+}: {
+  toolbarExtra?: React.ReactNode;
+} = {}) {
   const { t } = useTranslation();
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
@@ -971,6 +1006,7 @@ export function TerminalArea() {
         >
           {t("terminal.splitDown")}
         </button>
+        {toolbarExtra}
         {activeEncoding != null && (
           <button
             className="encoding-badge"

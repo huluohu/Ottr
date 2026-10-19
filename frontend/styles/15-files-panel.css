@@ -18,6 +18,13 @@
   gap: 4px;
   padding: 0 8px 0 8px;
 }
+/* 方案 B（2026-10-19）：切换器住进终端工具行——左侧留分隔线与分屏组区分，
+   右推（margin-left:auto）与编码徽标/录制钮聚成右侧组。 */
+.term-toolbar .view-switch {
+  margin-left: auto;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-subtle);
+}
 .view-switch button {
   font-size: var(--text-xs);
   padding: 0.15em 0.6em;

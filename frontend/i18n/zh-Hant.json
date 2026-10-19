@@ -512,6 +512,7 @@
     "list": "會話標籤",
     "closeAria": "關閉標籤 {{name}}",
     "prodBadge": "PROD",
+    "aiPendingBadge": "有 AI 診斷待查看",
     "nextTab": "下一個標籤",
     "prevTab": "上一個標籤"
   },

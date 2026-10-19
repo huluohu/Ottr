@@ -326,3 +326,65 @@ describe("HostTree 分组折叠", () => {
     expect(onAdd).toHaveBeenCalledWith(3);
   });
 });
+
+describe("HostTree 拖拽换组（2026-10-19，仅组间移动）", () => {
+  /** 组装 DataTransfer 假件（jsdom 无）：setData/getData/dropEffect。 */
+  function fakeDataTransfer() {
+    const data = new Map<string, string>();
+    return {
+      setData: (type: string, value: string) => data.set(type, value),
+      getData: (type: string) => data.get(type) ?? "",
+      get dropEffect() {
+        return "move" as const;
+      },
+      set dropEffect(_: string) {},
+      effectAllowed: "move",
+    };
+  }
+
+  it("拖未分组主机到分组放下 → updateHost 改 group_id（持久化面）", () => {
+    seedStore();
+    renderTree();
+    const updateSpy = vi.spyOn(useVaultStore.getState(), "updateHost").mockResolvedValue(web);
+    const row = screen.getByText("solo").closest("li")!;
+    const target = screen.getByTestId("group-prod-group");
+    fireEvent.dragStart(row, { dataTransfer: fakeDataTransfer() });
+    fireEvent.dragOver(target, { dataTransfer: fakeDataTransfer() });
+    // 拖拽中目标组高亮
+    expect(target.getAttribute("data-drop-target")).toBe("true");
+    fireEvent.drop(target, { dataTransfer: fakeDataTransfer() });
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy.mock.calls[0][0]).toBe(4);
+    expect(updateSpy.mock.calls[0][1]).toMatchObject({ group_id: 3, name: "solo" });
+    expect(target.getAttribute("data-drop-target")).toBeNull();
+    updateSpy.mockRestore();
+  });
+
+  it("同组放下是 no-op（不发 hosts_update）", () => {
+    seedStore();
+    renderTree();
+    const updateSpy = vi.spyOn(useVaultStore.getState(), "updateHost").mockResolvedValue(web);
+    const row = screen.getByText("web-01").closest("li")!;
+    const target = screen.getByTestId("group-prod-group");
+    fireEvent.dragStart(row, { dataTransfer: fakeDataTransfer() });
+    fireEvent.dragOver(target, { dataTransfer: fakeDataTransfer() });
+    // 同组不认作目标（不高亮）
+    expect(target.getAttribute("data-drop-target")).toBeNull();
+    fireEvent.drop(target, { dataTransfer: fakeDataTransfer() });
+    expect(updateSpy).not.toHaveBeenCalled();
+    updateSpy.mockRestore();
+  });
+
+  it("拖分组主机回未分组桶 → group_id=null", () => {
+    seedStore();
+    renderTree();
+    const updateSpy = vi.spyOn(useVaultStore.getState(), "updateHost").mockResolvedValue(web);
+    const row = screen.getByText("web-01").closest("li")!;
+    const target = screen.getByTestId("group-ungrouped");
+    fireEvent.dragStart(row, { dataTransfer: fakeDataTransfer() });
+    fireEvent.dragOver(target, { dataTransfer: fakeDataTransfer() });
+    fireEvent.drop(target, { dataTransfer: fakeDataTransfer() });
+    expect(updateSpy.mock.calls[0][1]).toMatchObject({ group_id: null });
+    updateSpy.mockRestore();
+  });
+});

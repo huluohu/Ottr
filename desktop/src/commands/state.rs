@@ -171,7 +171,9 @@ impl SessionResizeSlot {
     }
 
     /// 投递一次尺寸变更（覆盖未消费的旧值；非正值忽略）并唤醒转发循环。
-    pub(crate) fn set(&self, cols: u32, rows: u32) {
+    /// pub = fixture example 与命令面同一投递口（resize_artifact_probe 复现
+    /// 「页签切换/面板开合伪影」必须走产线同一机制）。
+    pub fn set(&self, cols: u32, rows: u32) {
         if cols == 0 || rows == 0 {
             return;
         }

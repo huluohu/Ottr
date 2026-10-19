@@ -385,3 +385,35 @@ describe("HostForm 内联凭据创建（Phase 5 T1）", () => {
     );
   });
 });
+
+describe("HostForm 吸底壳层（2026-10-19，表单过高修复）", () => {
+  it("结构契约：.host-form-body 滚动区包裹三段；.host-form-footer 吸底含按钮", () => {
+    render(<HostForm host={null} defaultGroupId={null} onClose={() => {}} />);
+    const form = document.querySelector("form.host-form")!;
+    // 壳层三件套在位
+    expect(form.querySelector(".host-form-body")).toBeTruthy();
+    expect(form.querySelector(".host-form-footer")).toBeTruthy();
+    // 三段都在滚动区里；取消/保存都在吸底条里
+    const body = form.querySelector(".host-form-body")!;
+    expect(body.querySelector("[data-testid=form-name]")).toBeTruthy();
+    expect(body.querySelector("[data-testid=form-credential]")).toBeTruthy();
+    expect(body.querySelector("[data-testid=form-notes]")).toBeTruthy();
+    const footer = form.querySelector(".host-form-footer")!;
+    expect(footer.querySelector("[data-testid=form-submit]")).toBeTruthy();
+    expect(footer.textContent).toContain("Cancel");
+  });
+
+  it("submitError 展示在吸底条（不随内容区滚动）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_create") return Promise.reject(new Error("boom"));
+      return Promise.resolve(null);
+    });
+    render(<HostForm host={null} defaultGroupId={null} onClose={() => {}} />);
+    fireEvent.change(screen.getByTestId("form-address"), { target: { value: "10.1.1.1" } });
+    fireEvent.click(screen.getByTestId("form-submit"));
+    await waitFor(() => {
+      const footer = document.querySelector(".host-form-footer")!;
+      expect(footer.querySelector("[data-testid=form-submit-error]")).toBeTruthy();
+    });
+  });
+});

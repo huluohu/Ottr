@@ -33,7 +33,7 @@ import { ExportHostsDialog } from "./hosts/ExportHostsDialog";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
-import { setAiSettingsOpener } from "./ai/aiStore";
+import { setAiSettingsOpener, useAiStore } from "./ai/aiStore";
 import { onSessionEnded } from "./ai/summary";
 import { setSessionEndHook, useSessionStore } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
@@ -373,8 +373,13 @@ function HomeLayout() {
 
   // Phase 2 Task 7（B1 会话纪要）：会话收尾钩子注入——closeTab / disconnect /
   // 重连耗尽时异步生成纪要（onSessionEnded fire-and-forget，失败静默不反噬）。
+  // 搭车（2026-10-19 方案 A）：AI 面板状态按会话作用域，会话收尾时一并清理
+  // （abort 在途流 + 摘切片；store 不反向依赖 session 链路的既有惯例不变）。
   useEffect(() => {
-    setSessionEndHook(onSessionEnded);
+    setSessionEndHook((info) => {
+      onSessionEnded(info);
+      useAiStore.getState().dropSession(info.id);
+    });
     return () => setSessionEndHook(null);
   }, []);
 
@@ -607,7 +612,10 @@ function HomeLayout() {
           onSnap={(layout) => invoke("window_snap", { layout }).catch(() => {})}
         />
       )}
-      <div className="app-body">
+      {/* 锁定态背景虚化（2026-10-19 用户三次反馈：隐私/防窥）：data-locked
+          驱动 16-lock-security.css 的 filter 虚化——本层与锁屏遮罩是兄弟节点，
+          filter 不会破坏遮罩的 fixed 定位；解锁相位撤销属性，模糊随过渡消退。 */}
+      <div className="app-body" data-locked={lockPhase === "locked" ? "true" : undefined}>
         {/* 48px 图标轨（2026-10-16 视觉重设计 M3「獭居·浮岛」）：高频入口恒驻
             + Otty 球设置入口；mac 红绿灯随轨道移到窗口最左。 */}
         <IconRail

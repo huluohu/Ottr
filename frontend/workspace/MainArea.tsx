@@ -265,77 +265,19 @@ export function MainArea({
     );
   }
 
-  // 有会话：标签条 + 视图切换 + 终端常驻区（主区视图路由核心）。
+  // 有会话：标签条（独占一行，2026-10-19 用户裁定方案 B：会话页签多时不再
+  // 与右侧常驻组打架）+ 终端常驻区（主区视图路由核心）。
   // 【终端常驻不变量】五视图共用同一 term-main-row：overview/batch 实体视图
   // 渲染在让位的侧栏位置，终端 holder 恒在 DOM（data-hidden 切 visibility）——
   // 任何视图切换都不卸载终端（xterm 缓冲/滚动回看不丢，运行中会话保留）。
+  // 视图切换器 + 录制钮移入终端工具行（TerminalArea toolbarExtra），与分屏
+  // 按钮同行——页签行只剩会话页签，视觉边界一条线。
   return (
     <main className="main-area terminal-mode" data-testid="main-area">
       <div className="tabbar-row" {...dragRegion}>
         {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
             命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}
         <TabBar dragRegion={dragRegion} />
-        {sessionViewActive && (
-          <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
-            {!filesOnly && (
-              <button
-                data-testid="view-terminal"
-                data-active={termViewActive}
-                aria-pressed={termViewActive}
-                onClick={() => openMainView("terminal")}
-              >
-                {t("files.viewTerminal")}
-              </button>
-            )}
-            <button
-              data-testid="view-files"
-              data-active={filesVisible}
-              aria-pressed={filesVisible}
-              onClick={() => openMainView("files")}
-            >
-              {t("files.viewFiles")}
-            </button>
-            {!filesOnly && (
-              <button
-                data-testid="view-processes"
-                data-active={procsVisible}
-                aria-pressed={procsVisible}
-                onClick={() => openMainView("processes")}
-              >
-                {t("process.title")}
-              </button>
-            )}
-            {!filesOnly && (
-              <button
-                data-testid="view-monitor"
-                data-active={monitorVisible}
-                aria-pressed={monitorVisible}
-                onClick={() => openMainView("monitor")}
-              >
-                {t("monitor.title")}
-              </button>
-            )}
-            {!filesOnly && (
-              <button
-                data-testid="view-plugins"
-                data-active={pluginsVisible}
-                aria-pressed={pluginsVisible}
-                onClick={() => openMainView("plugins")}
-              >
-                {t("plugins.title")}
-              </button>
-            )}
-          </div>
-        )}
-        {/* 录制钮属会话域（2026-10-18 用户裁定）：库级页签上不常驻——唯一例外
-            是「正在录」时保留指示+停止入口（红点状态，录制是敏感面，悄悄进行
-            比多一颗红点更糟）。 */}
-        {!filesOnly && (sessionViewActive || anyRecording) && (
-          <RecordToggle
-            rustId={rootSession?.rustId ?? null}
-            hostId={rootSession?.hostId ?? null}
-          />
-        )}
       </div>
       {/* 终端隐藏常驻：visibility 而非卸载（见头注不变量）。
           data-terminal = 终端聚焦守卫判定容器（评审 M-4），恒在 DOM。
@@ -353,12 +295,89 @@ export function MainArea({
           data-hidden={slotView !== null || !termViewActive}
           data-terminal=""
         >
-          <TerminalArea />
+          <TerminalArea
+            toolbarExtra={
+              // 录制钮属会话域但「正在录」时在库级页签也保留指示+停止入口
+              // （2026-10-18 裁定：悄悄进行比红点消失更糟）；视图切换器只在
+              // 会话语境渲染（2026-10-18 划界不变）。
+              sessionViewActive || anyRecording ? (
+                <>
+                  {/* 视图切换器（2026-10-19 方案 B：自页签行迁入终端工具行） */}
+                  <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
+                    {!filesOnly && (
+                      <button
+                        data-testid="view-terminal"
+                        data-active={termViewActive}
+                        aria-pressed={termViewActive}
+                        onClick={() => openMainView("terminal")}
+                      >
+                        {t("files.viewTerminal")}
+                      </button>
+                    )}
+                    <button
+                      data-testid="view-files"
+                      data-active={filesVisible}
+                      aria-pressed={filesVisible}
+                      onClick={() => openMainView("files")}
+                    >
+                      {t("files.viewFiles")}
+                    </button>
+                    {!filesOnly && (
+                      <button
+                        data-testid="view-processes"
+                        data-active={procsVisible}
+                        aria-pressed={procsVisible}
+                        onClick={() => openMainView("processes")}
+                      >
+                        {t("process.title")}
+                      </button>
+                    )}
+                    {!filesOnly && (
+                      <button
+                        data-testid="view-monitor"
+                        data-active={monitorVisible}
+                        aria-pressed={monitorVisible}
+                        onClick={() => openMainView("monitor")}
+                      >
+                        {t("monitor.title")}
+                      </button>
+                    )}
+                    {!filesOnly && (
+                      <button
+                        data-testid="view-plugins"
+                        data-active={pluginsVisible}
+                        aria-pressed={pluginsVisible}
+                        onClick={() => openMainView("plugins")}
+                      >
+                        {t("plugins.title")}
+                      </button>
+                    )}
+                  </div>
+                  {/* 录制钮（会话域，2026-10-18 裁定不常驻；「正在录」例外保留
+                      指示+停止入口——悄悄进行比红点消失更糟） */}
+                  {!filesOnly && (sessionViewActive || anyRecording) && (
+                    <RecordToggle
+                      rustId={rootSession?.rustId ?? null}
+                      hostId={rootSession?.hostId ?? null}
+                    />
+                  )}
+                </>
+              ) : null
+            }
+          />
         </div>
         {slotView !== null ? (
           slotPane
         ) : (
-          termViewActive && <DiagnosePanel onOpenSettings={onOpenAiSettings} />
+          termViewActive && (
+            // 方案 A 会话作用域（2026-10-19）：面板读写都落 active 会话自己的
+            // 切片；key=sessionId 保证切会话即重挂（markSeen 徽标口径随之正确）。
+            <DiagnosePanel
+              key={activeSession?.id ?? "none"}
+              sessionId={activeSession?.id ?? ""}
+              onOpenSettings={onOpenAiSettings}
+            />
+          )
         )}
       </div>
       {/* 监控/插件（2026-10-17 批次三）：满幅视图 + 统一外壳，平级渲染同

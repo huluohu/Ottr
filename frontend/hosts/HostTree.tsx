@@ -1,11 +1,17 @@
 // HostTree（Task 5 Step 1）：分组树 + 标签过滤。
 // （2026-10-10 树内搜索框移除：查找统一走侧栏顶部「搜索」⌘K 命令面板，
 // 备注/标签匹配已并入其字段权重——见 palette/CommandPalette hostMatch。）
+// 拖拽换组（2026-10-19 用户需求，仅组间移动）：主机行 HTML5 draggable，
+// 分组头/未分组桶为放下目标——放下调 updateHost 改 group_id 持久化
+// （hosts_update 现成接口；同组放下是 no-op 不发请求；拖拽中目标组高亮）。
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type Host } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { useSessionStore } from "../session/SessionStore";
+
+/** 拖拽数据 MIME 类型（dragover 判定「是不是我们的主机」的唯一依据）。 */
+const HOST_DRAG_MIME = "application/x-ottr-host";
 
 /** 分组折叠记忆（2026-10-16 用户需求：分组可折叠收起/展开）：值 = 折叠键数组
  * （命名分组 = String(group.id)；未分组哨兵见下）。沿「侧栏宽度」同款
@@ -68,10 +74,40 @@ export function HostTree({
   const hostGroups = useVaultStore((s) => s.hostGroups);
   const deleteHost = useVaultStore((s) => s.deleteHost);
   const createGroup = useVaultStore((s) => s.createGroup);
+  const updateHost = useVaultStore((s) => s.updateHost);
 
   const [activeTags, setActiveTags] = useState<ReadonlySet<string>>(new Set());
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [grouping, setGrouping] = useState(false);
+  // 拖拽换组（2026-10-19）：正在拖的主机 id + 悬停目标组（高亮）；同组放下
+  // no-op。dropEffect=move；失败静默（store.refresh 收口全局 error 的先例）。
+  const [dragHost, setDragHost] = useState<Host | null>(null);
+  const [dropGroup, setDropGroup] = useState<number | null | undefined>(undefined);
+
+  /** 放下：同组 no-op；否则 updateHost 持久化（input 全量重建——hosts_update
+   * 语义是整行更新，拖拽只改 group_id 一字段，其余取现值）。 */
+  function handleDropToGroup(targetGroupId: number | null) {
+    setDropGroup(undefined);
+    const host = dragHost;
+    setDragHost(null);
+    if (!host || host.group_id === targetGroupId) return;
+    void updateHost(host.id, {
+      protocol: host.protocol,
+      name: host.name,
+      group_id: targetGroupId,
+      tags: host.tags,
+      address: host.address,
+      port: host.port,
+      username: host.username,
+      credential_id: host.credential_id,
+      jump_chain_id: host.jump_chain_id,
+      encoding_override: host.encoding_override,
+      theme_override: host.theme_override,
+      monitor_enabled: host.monitor_enabled,
+      is_production: host.is_production,
+      notes: host.notes,
+    }).catch(() => {});
+  }
   // 分组折叠态（2026-10-16）：默认全展开——空分组「先建组后填内容」路径
   // （BL-109 ①）不因折叠残留被吞；只记用户显式收起的组。
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(loadCollapsed);
@@ -238,6 +274,21 @@ export function HostTree({
             className="tree-group"
             data-testid={`group-${group.name}`}
             data-collapsed={groupCollapsed ? "true" : undefined}
+            data-drop-target={dropGroup === group.id ? "true" : undefined}
+            onDragOver={(e) => {
+              if (dragHost == null || dragHost.group_id === group.id) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDropGroup(group.id);
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+              setDropGroup((prev) => (prev === group.id ? undefined : prev));
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDropToGroup(group.id);
+            }}
           >
             <GroupHead
               name={group.name}
@@ -259,6 +310,11 @@ export function HostTree({
                 multiSelect={multiSelect}
                 selectedIds={selectedIds}
                 onToggle={onToggle}
+                onDragStart={setDragHost}
+                onDragEnd={() => {
+                  setDragHost(null);
+                  setDropGroup(undefined);
+                }}
               />
             )}
           </section>
@@ -274,6 +330,21 @@ export function HostTree({
             className="tree-group"
             data-testid="group-ungrouped"
             data-collapsed={ungroupedCollapsed ? "true" : undefined}
+            data-drop-target={dropGroup === null ? "true" : undefined}
+            onDragOver={(e) => {
+              if (dragHost == null || dragHost.group_id === null) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDropGroup(null);
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+              setDropGroup((prev) => (prev === null ? undefined : prev));
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDropToGroup(null);
+            }}
           >
             <GroupHead
               name={t("hostTree.ungrouped")}
@@ -294,6 +365,11 @@ export function HostTree({
                 multiSelect={multiSelect}
                 selectedIds={selectedIds}
                 onToggle={onToggle}
+                onDragStart={setDragHost}
+                onDragEnd={() => {
+                  setDragHost(null);
+                  setDropGroup(undefined);
+                }}
               />
             )}
           </section>
@@ -316,6 +392,9 @@ interface HostItemsProps {
   multiSelect?: boolean;
   selectedIds?: ReadonlySet<number>;
   onToggle?: (host: Host) => void;
+  /** 拖拽换组（2026-10-19）：行 dragstart 上报主机；dragend 清态。 */
+  onDragStart?: (host: Host) => void;
+  onDragEnd?: () => void;
 }
 
 function HostItems({
@@ -330,6 +409,8 @@ function HostItems({
   multiSelect = false,
   selectedIds,
   onToggle,
+  onDragStart,
+  onDragEnd,
 }: HostItemsProps) {
   const { t } = useTranslation();
   // 树内状态点（2026-10-16 视觉重设计 M3，报告 §4 P1「主机行状态」——仅页签
@@ -398,6 +479,16 @@ function HostItems({
             className="tree-host"
             data-selected={selectedId === host.id}
             data-confirming={confirming || undefined}
+            // 拖拽换组：多选模式让位（批量选择面不混拖拽）；draggable 与行内
+            // 文本选择并存由浏览器默认裁决（拖起即拖拽，不进入选择）。
+            draggable={onDragStart != null}
+            onDragStart={(e) => {
+              if (onDragStart == null) return;
+              e.dataTransfer.setData(HOST_DRAG_MIME, String(host.id));
+              e.dataTransfer.effectAllowed = "move";
+              onDragStart(host);
+            }}
+            onDragEnd={onDragEnd}
           >
             <button
               className="host-row"

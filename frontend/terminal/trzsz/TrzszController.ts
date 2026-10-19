@@ -126,7 +126,28 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 export function createTrzszController(options: TrzszControllerOptions): TrzszController {
   let disposed = false;
   let pending: Uint8Array | null = null; // 空闲态留验的魔串部分后缀
+  let holdTimer: ReturnType<typeof setTimeout> | null = null;
   let sawTransfer = false; // 观测到传输活动（onTransfersSettled 的翻转检测）
+
+  // 留验超时（2026-10-19 用户报告：macOS 裸 sudo 提示符「Password:」结尾的
+  // `:` 恰是魔串 1 字节真前缀 → 被扣进 pending，人输密码的等待期里冒号不
+  // 渲染，直到下一批输出才带出来）。真魔串只随 trzsz 启动的同 burst 到达
+  // （服务端握手前不发协议数据，横幅与魔串毫秒级连发），50ms 无后继 = 流
+  // 已空闲 = 扣住的是普通输出（正是交互提示符场景）→ 冲刷；50ms 对人眼
+  // 无感，也不可能在真魔串的连发窗内误触发。
+  const HOLD_FLUSH_MS = 50;
+
+  const flushPending = (): void => {
+    if (holdTimer !== null) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+    if (pending !== null) {
+      const out = pending;
+      pending = null;
+      if (out.length > 0) filter.processServerOutput(out);
+    }
+  };
 
   const filter = new TrzszFilter({
     writeToTerminal: (output) => {
@@ -155,6 +176,8 @@ export function createTrzszController(options: TrzszControllerOptions): TrzszCon
       const transferring = filter.isTransferringFiles();
       if (transferring) {
         sawTransfer = true;
+        // 传输态不产生新扣留（魔串已在库内）；先放行历史尾巴保证字节顺序
+        flushPending();
         // 传输态：整块交库（内部缓冲协议帧，进度条经 writeToTerminal 渲染）
         filter.processServerOutput(output);
         return;
@@ -169,10 +192,18 @@ export function createTrzszController(options: TrzszControllerOptions): TrzszCon
         combined = concatBytes(pending, output);
         pending = null;
       }
+      if (holdTimer !== null) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
       const hold = magicHoldLength(combined);
       if (hold > 0) {
         pending = combined.slice(combined.length - hold);
         combined = combined.slice(0, combined.length - hold);
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          flushPending();
+        }, HOLD_FLUSH_MS);
       }
       if (combined.length > 0) filter.processServerOutput(combined);
     },
@@ -205,6 +236,10 @@ export function createTrzszController(options: TrzszControllerOptions): TrzszCon
     dispose(): void {
       if (disposed) return;
       disposed = true;
+      if (holdTimer !== null) {
+        clearTimeout(holdTimer);
+        holdTimer = null;
+      }
       pending = null;
       if (filter.isTransferringFiles()) filter.stopTransferringFiles();
     },

@@ -8,6 +8,12 @@ echo "spike:spike-pass" | chpasswd
 # （2026-10-19，sh/ash/dash → ShellKind::Sh 注入路径的真机验收面）
 useradd -m -s /bin/sh spike-sh 2>/dev/null || true
 echo "spike-sh:spike-pass" | chpasswd
+# zsh 登录用户：sudo 提示符冒号调查（sudo_prompt_probe）与 zsh 集成路径夹具
+# （.zshrc 预置空文件跳过 zsh 首启向导，否则交互首启会卡 newuser 菜单）
+useradd -m -s /bin/zsh spike-zsh 2>/dev/null || true
+echo "spike-zsh:spike-pass" | chpasswd
+touch /home/spike-zsh/.zshrc
+chown -R spike-zsh:spike-zsh /home/spike-zsh
 # BL-216 根因修复后镜像不再预建 /home/spike：首启路径 `useradd -m` 正常建家
 # 目录并拷 skel。下面的 cp + chown 保留为双保险——重启路径（useradd 已存在
 # 只告警）与历史镜像（预建 root 属主空 home）同样收敛到「home 归 spike、

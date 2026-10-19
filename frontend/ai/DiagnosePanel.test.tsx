@@ -1,9 +1,9 @@
-// DiagnosePanel 组件测试（T13）：流式渲染、代码块插终端三档确认状态机、
-// 错误面（noProvider/noKey → 去设置）。
+// DiagnosePanel 组件测试（T13；2026-10-19 方案 A 会话作用域）：流式渲染、
+// 代码块插终端三档确认状态机、错误面（noProvider/noKey → 去设置）。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import i18n from "../i18n";
-import { useAiStore, type DiagnoseRequest } from "./aiStore";
+import { useAiStore, type DiagnoseRequest, type SessionAiState } from "./aiStore";
 import { DiagnosePanel, extractCodeBlocks } from "./DiagnosePanel";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -23,8 +23,9 @@ const REQ: DiagnoseRequest = {
   command: "$ df -h",
 };
 
-function reset(req: DiagnoseRequest | null, patch: Partial<ReturnType<typeof useAiStore.getState>> = {}) {
-  useAiStore.setState({
+/** 方案 A：面板状态在 sessions["tab-1"] 切片下；req=null = 无切片。 */
+function reset(req: DiagnoseRequest | null, patch: Partial<SessionAiState> = {}) {
+  const slice: SessionAiState = {
     request: req,
     status: req ? "running" : "idle",
     answer: "",
@@ -32,8 +33,10 @@ function reset(req: DiagnoseRequest | null, patch: Partial<ReturnType<typeof use
     error: null,
     redactions: [],
     settingsUsed: null,
+    seen: false,
     ...patch,
-  });
+  };
+  useAiStore.setState({ sessions: req ? { "tab-1": slice } : {} });
 }
 
 beforeEach(() => {
@@ -53,7 +56,7 @@ describe("extractCodeBlocks", () => {
 describe("面板渲染", () => {
   it("诊断请求头：exit 徽标 + 命令 + 思考中", () => {
     reset(REQ, { status: "running", answer: "" });
-    render(<DiagnosePanel onOpenSettings={() => {}} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(screen.getByTestId("ai-exit-code").textContent).toContain("1");
     expect(screen.getByTestId("ai-request-cmd").textContent).toContain("df -h");
     expect(screen.getByTestId("ai-thinking")).toBeTruthy();
@@ -69,13 +72,13 @@ describe("面板渲染", () => {
         { name: "password", count: 1 },
       ],
     });
-    render(<DiagnosePanel onOpenSettings={() => {}} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(screen.getByTestId("ai-redactions").textContent).toContain("3");
   });
 
   it("流式答案渲染文本 + 代码块（插终端按钮在位）", () => {
     reset(REQ, { status: "done", answer: "原因是磁盘满。\n```bash\ndf -h\n```" });
-    render(<DiagnosePanel onOpenSettings={() => {}} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(screen.getByTestId("ai-answer").textContent).toContain("原因是磁盘满。");
     expect(screen.getByTestId("ai-code-text").textContent).toBe("df -h");
     expect(screen.getByTestId("ai-insert")).toBeTruthy();
@@ -83,25 +86,38 @@ describe("面板渲染", () => {
 
   it("abort 态显示已取消；无请求返回 null", () => {
     reset(null);
-    const first = render(<DiagnosePanel onOpenSettings={() => {}} />);
+    const first = render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(first.container.firstChild).toBeNull();
     first.unmount();
     reset(REQ, { status: "aborted" });
-    render(<DiagnosePanel onOpenSettings={() => {}} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(screen.getByText("已取消")).toBeTruthy();
   });
 
   it("noProvider 错误面：去设置按钮回调", () => {
     reset(REQ, { status: "error", errorKind: "noProvider" });
     const onOpenSettings = vi.fn();
-    render(<DiagnosePanel onOpenSettings={onOpenSettings} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={onOpenSettings} />);
     fireEvent.click(screen.getByTestId("ai-open-settings"));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
+  // markSeen 时序（真机验收 2026-10-19 抓到的漏标记）：组件先于失败挂载
+  // （内部渲染 null），request 从无到有时 effect 必须重跑——否则页签「待看」
+  // 徽标在面板已可见时仍常驻。
+  it("request 后到（面板先挂载为 null）也触发 markSeen", async () => {
+    reset(null); // 无切片：组件挂载渲染 null
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    expect(useAiStore.getState().sessions["tab-1"]).toBeUndefined();
+    reset(REQ, { status: "done" }); // 失败发生：切片出现
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().sessions["tab-1"]?.seen).toBe(true);
+    });
+  });
+
   it("request 错误面：端点消息 + 重试", () => {
     reset(REQ, { status: "error", errorKind: "request", error: "HTTP 401: bad key" });
-    render(<DiagnosePanel onOpenSettings={() => {}} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(screen.getByTestId("ai-error-message").textContent).toContain("HTTP 401");
     expect(screen.getByTestId("ai-retry")).toBeTruthy();
   });
@@ -116,7 +132,7 @@ describe("插终端三档确认状态机", () => {
 
   it("green：一键直插（rustId 在位）", async () => {
     reset(REQ, { status: "done", answer: "```bash\ndf -h\n```" });
-    render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} inserter={inserter} />);
     fireEvent.click(screen.getByTestId("ai-insert"));
     await vi.waitFor(() => {
       expect(inserter).toHaveBeenCalledWith("pty-9", "df -h");
@@ -126,7 +142,7 @@ describe("插终端三档确认状态机", () => {
 
   it("yellow：第一击确认文案，第二击才插", async () => {
     reset(REQ, { status: "done", answer: "```bash\nsudo reboot\n```" });
-    render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} inserter={inserter} />);
     const btn = screen.getByTestId("ai-insert");
     fireEvent.click(btn);
     expect(inserter).not.toHaveBeenCalled();
@@ -139,7 +155,7 @@ describe("插终端三档确认状态机", () => {
 
   it("red：两击（armed 红字）才插", async () => {
     reset(REQ, { status: "done", answer: "```bash\nrm -rf /tmp/build\n```" });
-    render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} inserter={inserter} />);
     const btn = screen.getByTestId("ai-insert");
     fireEvent.click(btn);
     expect(inserter).not.toHaveBeenCalled();
@@ -152,13 +168,13 @@ describe("插终端三档确认状态机", () => {
 
   it("rustId 为空（未连接）：按钮禁用", () => {
     reset({ ...REQ, rustId: null }, { status: "done", answer: "```bash\ndf -h\n```" });
-    render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} inserter={inserter} />);
     expect((screen.getByTestId("ai-insert") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("危险等级徽标随命令分档", () => {
     reset(REQ, { status: "done", answer: "```bash\nrm -rf /\n```" });
-    render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} inserter={inserter} />);
     expect(screen.getByTestId("ai-code-level").textContent).toBe("危险");
   });
 });
@@ -166,7 +182,7 @@ describe("插终端三档确认状态机", () => {
 it.each(["\n", "\r\n", "\r", "\t", "\x1b", "\x7f"])("diagnosis refuses embedded control %j", (separator) => {
   const inserter = vi.fn();
   reset(REQ, { status: "done", answer: `\`\`\`bash\necho one${separator}echo two\n\`\`\`` });
-  render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+  render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} inserter={inserter} />);
   expect((screen.getByTestId("ai-insert") as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByTestId("ai-insert"));
   expect(inserter).not.toHaveBeenCalled();
@@ -174,7 +190,7 @@ it.each(["\n", "\r\n", "\r", "\t", "\x1b", "\x7f"])("diagnosis refuses embedded 
 
 it("does not insert a partial streamed diagnosis", () => {
   reset(REQ, { status: "running", answer: "```bash\nsudo reboot" });
-  render(<DiagnosePanel onOpenSettings={() => {}} />);
+  render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
   expect((screen.getByTestId("ai-insert") as HTMLButtonElement).disabled).toBe(true);
 });
 
@@ -183,7 +199,7 @@ it("CRLF fenced single-line commands remain usable without sending Enter", async
   const answer = "```sh\r\necho ok\r\n```";
   expect(extractCodeBlocks(answer)).toEqual([{ code: "echo ok" }]);
   reset(REQ, { status: "done", answer });
-  render(<DiagnosePanel onOpenSettings={() => {}} inserter={inserter} />);
+  render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} inserter={inserter} />);
   fireEvent.click(screen.getByTestId("ai-insert"));
   await vi.waitFor(() => expect(inserter).toHaveBeenCalledWith("pty-9", "echo ok"));
 });

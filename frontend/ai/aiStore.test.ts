@@ -28,6 +28,7 @@ import i18n from "../i18n";
 import {
   buildUserMessage,
   commandExcerpt,
+  shouldAutoDiagnose,
   useAiStore,
   type DiagnoseRequest,
   type SessionAiState,
@@ -399,5 +400,12 @@ describe("纯函数", () => {
   it("commandExcerpt：首行 + 80 字符截断", () => {
     expect(commandExcerpt("a\nb")).toBe("a");
     expect(commandExcerpt("x".repeat(100))).toHaveLength(81);
+  });
+  it("shouldAutoDiagnose：Ctrl+C（130）不触发，其余失败照常", () => {
+    // 2026-10-19 用户反馈：Ctrl+C 是主动取消不是失败
+    expect(shouldAutoDiagnose(130)).toBe(false);
+    expect(shouldAutoDiagnose(127)).toBe(true);
+    expect(shouldAutoDiagnose(1)).toBe(true);
+    expect(shouldAutoDiagnose(143)).toBe(true);
   });
 });

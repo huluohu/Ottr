@@ -219,4 +219,43 @@ describe("TrzszController 数据面", () => {
     expect(opts.__written.length).toBe(0);
     expect(opts.__sent.length).toBe(0);
   });
+
+  // macOS 裸 sudo 提示符「Password:」（无尾空格）结尾的 `:` 恰是魔串真前缀
+  // （2026-10-19 用户报告：冒号被扣住不渲染，回车后才随下一批输出出现）。
+  // 修复契约：空闲态扣留必须有时限（50ms）——超时即冲刷，交互提示符不再
+  // 缺尾字符；真魔串劈块场景（服务端同 burst 后继字节毫秒级到达）不受影响。
+  it("尾冒号扣留有时限：50ms 超时冲刷，交互提示符不缺字符", () => {
+    vi.useFakeTimers();
+    const opts = makeOpts();
+    const ctrl = createTrzszController(opts);
+    ctrl.processServerOutput(encoder.encode("Password:"));
+    // 扣留窗口内：`:` 仍未透传（防劈语义保留）
+    expect(opts.__written.map((w) => decoder.decode(w as Uint8Array)).join("")).toBe("Password");
+    vi.advanceTimersByTime(60);
+    const written = opts.__written.map((w) => decoder.decode(w as Uint8Array)).join("");
+    expect(written).toBe("Password:");
+    // 超时冲刷后新输出照常透传（无重复、无滞留）
+    ctrl.processServerOutput(encoder.encode("ok"));
+    expect(opts.__written.map((w) => decoder.decode(w as Uint8Array)).join("")).toBe("Password:ok");
+    ctrl.dispose();
+    vi.useRealTimers();
+  });
+
+  it("扣留期间后续字节到达：按时并流判定（真魔串劈块不受超时影响）", async () => {
+    vi.useFakeTimers();
+    const chooseSaveDirectory = vi.fn(async () => undefined);
+    const opts = makeOpts({ chooseSaveDirectory });
+    const ctrl = createTrzszController(opts);
+    const magic = "::TRZSZ:TRANSFER:S:1.2.0:17000000000200";
+    // 首块以单 `:` 结尾（魔串真前缀）→ 触发扣留
+    ctrl.processServerOutput(encoder.encode("x:"));
+    expect(opts.__written.map((w) => decoder.decode(w as Uint8Array)).join("")).toBe("x");
+    // 40ms 后（< 50ms 超时）魔串其余部分到达 → 并流后整串交 filter（劈块不漏检）
+    vi.advanceTimersByTime(40);
+    ctrl.processServerOutput(encoder.encode(magic.slice(1) + "\r\n"));
+    await vi.advanceTimersByTimeAsync(60); // 库内 10ms 异步检测
+    expect(chooseSaveDirectory).toHaveBeenCalledTimes(1);
+    ctrl.dispose();
+    vi.useRealTimers();
+  });
 });

@@ -50,7 +50,7 @@ import {
 } from "../theme/terminalThemeStore";
 import type { ITheme } from "@xterm/xterm";
 import { assessPaste, InputDangerWatch, type DangerFinding } from "../ai/danger";
-import { useAiStore } from "../ai/aiStore";
+import { shouldAutoDiagnose, useAiStore } from "../ai/aiStore";
 import { recordCommand } from "../history/record";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
 import { noteCwd, forgetCwd } from "./CwdTracker";
@@ -138,6 +138,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const trzszRef = useRef<TrzszController | null>(null);
   const ghostRef = useRef<GhostController | null>(null);
   const prevStatus = useRef<string | null>(null);
+  // 中断记账（见 writeToSession 处注释）：本条命令执行期间用户发过 Ctrl+C
+  const interruptedRef = useRef(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
@@ -253,7 +255,13 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // trzsz 过滤器（B10 下半）：先于 sink 装配——PTY 出口与击键都经它中转。
     // write_session 沿用原 onData 体（rustId 实时读 store；重连自动跟随）。
     // 击键出口单点化：trzsz 透传与 ghost Tab 采纳共用同一写入闭包。
+    // 中断记账：命令执行期间用户发过 \x03（Ctrl+C）= 主动取消——sudo 场景以
+    // exit 1 退出、普通命令报 130，单看退出码都不全；击键是本质信号。
+    // （interruptedRef 声明在组件顶层；A 边界 onPromptStart 清零。）
     const writeToSession = (input: string | Uint8Array): void => {
+      if (typeof input === "string" ? input.includes("\x03") : input.includes(0x03)) {
+        interruptedRef.current = true;
+      }
       const session = useSessionStore
         .getState()
         .sessions.find((x) => x.id === sessionId);
@@ -397,13 +405,20 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     let watch: IDisposable | null = null;
     try {
       watch = createCommandWatch(term, {
-        // B8：新提示符 = 旧输入行消失，ghost 全量清态
-        onPromptStart: () => ghostRef.current?.reset(),
+        // B8：新提示符 = 旧输入行消失，ghost 全量清态；中断标记随新命令清零
+        onPromptStart: () => {
+          ghostRef.current?.reset();
+          interruptedRef.current = false;
+        },
         onCommandDone: ({ exitCode, command }) => {
           const session = useSessionStore
             .getState()
             .sessions.find((x) => x.id === sessionId);
           if (!session) return;
+          // 用户主动取消不弹自动诊断：本条命令期间发过 Ctrl+C（sudo 场景以
+          // exit 1 退出、普通命令报 130，击键记账是本质信号）或退出码即 130。
+          // 历史照记（onCommandFinished）、手动「解释」不受限。
+          if (interruptedRef.current || !shouldAutoDiagnose(exitCode)) return;
           useAiStore.getState().onCommandFailed({
             kind: "diagnose",
             sessionId,

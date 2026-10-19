@@ -150,6 +150,13 @@ export function commandExcerpt(command: string): string {
   return first.length > 80 ? `${first.slice(0, 80)}…` : first;
 }
 
+/** 自动诊断触发门槛（2026-10-19 用户反馈）：Ctrl+C（SIGINT → 130）是用户
+ * 主动取消，不是需要诊断的失败——不弹面板（历史入库不受影响，onCommandFinished
+ * 照记；手动「解释」也不受限）。仅 130：SIGTERM/SIGKILL 等仍照常诊断。 */
+export function shouldAutoDiagnose(exitCode: number | null): boolean {
+  return exitCode !== null && exitCode !== 130;
+}
+
 export const useAiStore = create<AiStore>((set, get) => {
   /** 切片更新（不存在则落入空切片底上合并；调用方保证 id 非空）。 */
   const patch = (sessionId: string, partial: Partial<SessionAiState>): void => {

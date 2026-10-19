@@ -603,7 +603,8 @@
       "name": "Name",
       "size": "Size",
       "mtime": "Modified"
-    }
+    },
+    "dropDownloadQueued": "Queued {{count}} file(s) for download"
   },
   "forward": {
     "title": "Port forwards",

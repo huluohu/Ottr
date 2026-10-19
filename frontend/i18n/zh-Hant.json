@@ -602,7 +602,8 @@
       "name": "名稱",
       "size": "大小",
       "mtime": "時間"
-    }
+    },
+    "dropDownloadQueued": "已加入下載佇列 {{count}} 個檔案"
   },
   "forward": {
     "title": "端口轉發",

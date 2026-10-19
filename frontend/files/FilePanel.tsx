@@ -638,7 +638,7 @@ export function FilePanel({ session }: { session: Session }) {
     if (files.length === 1) {
       showNotice(t("files.downloadToDownloads", { name: files[0].name }));
     } else if (files.length > 1) {
-      showNotice(t("files.dropQueued", { count: files.length }));
+      showNotice(t("files.dropDownloadQueued", { count: files.length }));
     }
     if (skipped > 0 && files.length === 0) {
       showNotice(t("files.dropDirsSkipped", { count: skipped }));

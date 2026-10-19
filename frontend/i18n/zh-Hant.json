@@ -1029,7 +1029,13 @@
     "exportHint": "匯出預設按脫敏規則替換 IP/密碼/郵箱/主機名；原文匯出需二次確認。",
     "searchPlaceholder": "搜尋錄製內容…",
     "searchAria": "搜尋錄製內容",
-    "exportCancelled": "已取消匯出（未寫出檔案）"
+    "exportCancelled": "已取消匯出（未寫出檔案）",
+    "deleteLabel": "刪除這條錄製",
+    "confirmDelete": "確認刪除",
+    "revealDir": "在檔案管理員裡顯示錄製檔案",
+    "saved": "已儲存錄製：{{path}}",
+    "deleteFailed": "刪除錄製失敗：{{message}}",
+    "revealFailed": "無法定位錄製檔案：{{message}}"
   },
   "cron": {
     "title": "定時任務",

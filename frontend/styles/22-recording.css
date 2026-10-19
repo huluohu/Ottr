@@ -49,6 +49,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 行内动作（2026-10-19：显示文件 / 删除）：行是回放入口，动作钮不要触发播放 */
+.recording-item-row {
+  position: relative;
+}
+.recording-actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.recording-item-row:hover .recording-actions,
+.recording-actions:focus-within {
+  opacity: 1;
+}
+.recording-confirm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* 回放器对话框 */
 .player-overlay {

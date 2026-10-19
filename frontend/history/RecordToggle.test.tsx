@@ -9,9 +9,16 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("../files/api", () => ({
+  revealLocalFile: vi.fn().mockResolvedValue(undefined),
+  openLocalFile: vi.fn().mockResolvedValue(undefined),
+}));
 import { RecordToggle } from "./RecordToggle";
+import { revealLocalFile } from "../files/api";
+import { useToastStore } from "../ui/toastStore";
 
 const mockedInvoke = invoke as unknown as Mock;
+const mockedReveal = vi.mocked(revealLocalFile);
 
 beforeAll(async () => {
   await i18n.changeLanguage("zh-CN");
@@ -59,5 +66,32 @@ describe("RecordToggle", () => {
     // 重连 = 新 rustId：旧录制已由 Rust auto-finalize，按钮回 idle
     rerender(<RecordToggle rustId="pty-2" hostId={3} />);
     expect(screen.getByTestId("record-toggle").dataset.active).toBe("false");
+  });
+});
+
+describe("录制完成 toast 的「打开所在目录」（2026-10-19 用户需求）", () => {
+  it("stop 返回 saved_path → toast 带动作；点动作 reveal 该路径", async () => {
+    useToastStore.setState({ toasts: [] });
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "recording_stop")
+        return Promise.resolve({ id: 1, saved_path: "/data/recordings/saved.cast" });
+      return Promise.resolve(null);
+    });
+    render(<RecordToggle rustId="pty-9" hostId={1} />);
+    const btn = screen.getByTestId("record-toggle");
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    await act(async () => {
+      fireEvent.click(btn); // 第二次 = stop
+    });
+    const list = useToastStore.getState().toasts;
+    const toast = list[list.length - 1];
+    expect(toast?.message).toContain("/data/recordings/saved.cast");
+    expect(toast?.action?.label).toBeTruthy();
+    await act(async () => {
+      toast?.action?.run();
+    });
+    expect(mockedReveal).toHaveBeenCalledWith("/data/recordings/saved.cast");
   });
 });

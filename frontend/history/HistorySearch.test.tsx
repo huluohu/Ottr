@@ -7,14 +7,20 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, t
 import { invoke } from "@tauri-apps/api/core";
 import i18n from "../i18n";
 
+vi.mock("../files/api", () => ({
+  revealLocalFile: vi.fn().mockResolvedValue(undefined),
+  openLocalFile: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
 import { HistorySearch, exitBadgeClass, queryHitIndices } from "./HistorySearch";
+import { revealLocalFile } from "../files/api";
 import type { HistoryEntry } from "../vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
+const mockedReveal = vi.mocked(revealLocalFile);
 
 const hosts = [
   { id: 1, name: "web-01" },
@@ -423,5 +429,50 @@ describe("HistorySearch 录制页签（Phase 3 Task 5，B3）", () => {
     const items = screen.getAllByTestId("recording-item");
     expect(items).toHaveLength(1);
     vi.useRealTimers();
+  });
+});
+
+describe("录制页签：删除 / 显示文件（2026-10-19 用户需求）", () => {
+  const hit = {
+    id: 21,
+    host_id: 1,
+    path: "/data/recordings/rec-21.cast",
+    duration: 5,
+    text_index_path: "recordings_fts:21",
+    created_at: 1_760_000_100,
+    snippet: "root@web:~$ ls",
+  };
+
+  it("删除两段式：首击出确认、确认后 recording_delete + 列表重查", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "recording_search") return Promise.resolve([hit]);
+      return Promise.resolve([]);
+    });
+    renderPanel();
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("recording-tab"));
+    await act(async () => {});
+    const searchesBefore = mockedInvoke.mock.calls.filter(([c]) => c === "recording_search").length;
+    fireEvent.click(screen.getByTestId("recording-delete"));
+    expect(mockedInvoke).not.toHaveBeenCalledWith("recording_delete", expect.anything());
+    fireEvent.click(screen.getByTestId("recording-delete-confirm"));
+    await act(async () => {});
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_delete", { id: 21 });
+    // 删除成功后列表重查
+    const searchesAfter = mockedInvoke.mock.calls.filter(([c]) => c === "recording_search").length;
+    expect(searchesAfter).toBeGreaterThan(searchesBefore);
+  });
+
+  it("行内「显示文件」→ revealLocalFile(录制原档路径)", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "recording_search" ? Promise.resolve([hit]) : Promise.resolve([]),
+    );
+    renderPanel();
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("recording-tab"));
+    await act(async () => {});
+    fireEvent.click(screen.getByTestId("recording-reveal"));
+    await act(async () => {});
+    expect(mockedReveal).toHaveBeenCalledWith("/data/recordings/rec-21.cast");
   });
 });

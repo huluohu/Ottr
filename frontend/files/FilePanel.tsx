@@ -601,6 +601,12 @@ export function FilePanel({ session }: { session: Session }) {
     local: null,
     remote: null,
   });
+  const clearSelection = (side: Side) => {
+    const cur = side === "local" ? local : remote;
+    if (cur.selected.size === 0) return;
+    selectAnchor.current[side] = null;
+    applySelection(side, new Set());
+  };
   const applySelection = (side: Side, next: ReadonlySet<string>) => {
     if (side === "local") setLocal((p) => ({ ...p, selected: next }));
     else setRemote((p) => ({ ...p, selected: next }));
@@ -981,7 +987,18 @@ export function FilePanel({ session }: { session: Session }) {
           onToggle={() => toggleSort(side, "mtime")}
         />
       </div>
-      <div className="file-list" data-testid={`file-list-${side}`} role="listbox" aria-multiselectable={false}>
+      <div
+        className="file-list"
+        data-testid={`file-list-${side}`}
+        role="listbox"
+        // 多选语义：aria-multiselectable 与集合选中一致
+        aria-multiselectable
+        onClick={(ev) => {
+          // 点列表空白清除选中（2026-10-19 用户需求）：落在行上的点击不清。
+          if ((ev.target as HTMLElement).closest('[role="option"]')) return;
+          clearSelection(side);
+        }}
+      >
         {state.loading && <p className="file-status">{t("common.loading")}</p>}
         {state.error && (
           <p className="file-status file-error" data-testid={`file-error-${side}`}>

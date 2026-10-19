@@ -1029,7 +1029,13 @@
     "exportHint": "导出默认按脱敏规则替换 IP/密码/邮箱/主机名；原文导出需二次确认。",
     "searchPlaceholder": "搜索录制内容…",
     "searchAria": "搜索录制内容",
-    "exportCancelled": "已取消导出（未写出文件）"
+    "exportCancelled": "已取消导出（未写出文件）",
+    "deleteLabel": "删除这条录制",
+    "confirmDelete": "确认删除",
+    "revealDir": "在文件管理器里显示录制文件",
+    "saved": "已保存录制：{{path}}",
+    "deleteFailed": "删除录制失败：{{message}}",
+    "revealFailed": "无法定位录制文件：{{message}}"
   },
   "cron": {
     "title": "定时任务",

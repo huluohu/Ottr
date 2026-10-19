@@ -12,6 +12,7 @@ import type { Host, RecordingData, RecordingHit } from "../vault/api";
 import { vaultApi } from "../vault/api";
 import { historyTime } from "./format";
 import { RecordingPlayer } from "./RecordingPlayer";
+import { revealLocalFile } from "../files/api";
 
 export interface RecordingPanelProps {
   /** host 过滤（⌘R 面板共享的下拉值；null = 全部）。 */
@@ -33,6 +34,10 @@ export function RecordingPanel({ hostId, hosts, query }: RecordingPanelProps) {
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState<RecordingData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 删除两段式（2026-10-19 用户需求）：首击进入确认、二击执行；换行/失焦复位。
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
+  // 列表刷新触发器（删除成功后重查）。
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -58,7 +63,7 @@ export function RecordingPanel({ hostId, hosts, query }: RecordingPanelProps) {
     return () => {
       alive = false;
     };
-  }, [query, hostId]);
+  }, [query, hostId, reloadKey]);
 
   async function openRecording(id: number) {
     setError(null);
@@ -67,6 +72,27 @@ export function RecordingPanel({ hostId, hosts, query }: RecordingPanelProps) {
       setPlaying(data);
     } catch (e) {
       setError(String(e));
+    }
+  }
+
+  async function deleteRecording(id: number) {
+    setConfirmingId(null);
+    setError(null);
+    try {
+      await vaultApi.recordings.remove(id);
+      setReloadKey((n) => n + 1);
+    } catch (e) {
+      setError(t("recording.deleteFailed", { message: String(e) }));
+    }
+  }
+
+  async function revealRecording(path: string) {
+    setError(null);
+    try {
+      // 录制原档在应用数据目录（明文 .cast）——在系统文件管理器中定位
+      await revealLocalFile(path);
+    } catch (e) {
+      setError(t("recording.revealFailed", { message: String(e) }));
     }
   }
 
@@ -88,7 +114,7 @@ export function RecordingPanel({ hostId, hosts, query }: RecordingPanelProps) {
         <li className="palette-empty">{loading ? t("recording.loading") : t("recording.empty")}</li>
       )}
       {hits.map((hit) => (
-        <li key={hit.id}>
+        <li key={hit.id} className="recording-item-row">
           <button
             className="palette-item history-item recording-item"
             data-testid="recording-item"
@@ -110,6 +136,48 @@ export function RecordingPanel({ hostId, hosts, query }: RecordingPanelProps) {
               </span>
             </span>
           </button>
+          <span className="recording-actions">
+            <button
+              type="button"
+              className="icon-btn"
+              data-testid="recording-reveal"
+              title={t("recording.revealDir")}
+              aria-label={t("recording.revealDir")}
+              onClick={() => void revealRecording(hit.path)}
+            >
+              ⌸
+            </button>
+            {confirmingId === hit.id ? (
+              <span className="recording-confirm">
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  data-testid="recording-delete-confirm"
+                  onClick={() => void deleteRecording(hit.id)}
+                >
+                  {t("common.confirm")}
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setConfirmingId(null)}
+                >
+                  {t("common.cancel")}
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="icon-btn danger"
+                data-testid="recording-delete"
+                title={t("recording.deleteLabel")}
+                aria-label={t("recording.deleteLabel")}
+                onClick={() => setConfirmingId(hit.id)}
+              >
+                ✕
+              </button>
+            )}
+          </span>
         </li>
       ))}
     </ul>

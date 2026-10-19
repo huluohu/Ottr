@@ -1152,3 +1152,25 @@ describe("多选拖拽（2026-10-19 用户反馈：拖拽只传一个）", () =>
     });
   });
 });
+
+describe("点空白清除选中（2026-10-19 用户需求）", () => {
+  it("选中文件后点击列表空白：本栏选中清空；点行不清", async () => {
+    mockListings();
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"),
+    );
+    const rows = Array.from(
+      (screen.getByTestId("file-list-local") as HTMLElement).querySelectorAll('[role="option"]'),
+    ) as HTMLElement[];
+    const notes = rows.find((r) => r.textContent?.includes("notes.txt"))!;
+    fireEvent.click(notes);
+    expect(notes.getAttribute("aria-selected")).toBe("true");
+    // 点行本身（再点一次同一行）不清
+    fireEvent.click(notes);
+    expect(notes.getAttribute("aria-selected")).toBe("true");
+    // 点列表空白 → 清空
+    fireEvent.click(screen.getByTestId("file-list-local"));
+    expect(notes.getAttribute("aria-selected")).toBe("false");
+  });
+});

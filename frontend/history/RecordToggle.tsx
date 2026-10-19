@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { showToast } from "../ui/toastStore";
+import { revealLocalFile } from "../files/api";
 
 export interface RecordToggleProps {
   /** 当前 Rust 会话 id（null = 无活动连接 → 禁用）。 */
@@ -66,7 +67,22 @@ export function RecordToggle({ rustId, hostId }: RecordToggleProps) {
         };
         recordingIds.delete(rustId);
         if (stop.saved_path) {
-          showToast(`已保存录制：${stop.saved_path}`);
+          // 「点击到达文件所在目录」（2026-10-19 用户需求）：toast 内直接
+          // 提供操作按钮，点它在系统文件管理器中定位 .cast 原档。
+          const savedPath = stop.saved_path;
+          showToast(
+            t("recording.saved", { path: savedPath }),
+            "info",
+            {
+              label: t("recording.revealDir"),
+              run: () => {
+                void revealLocalFile(savedPath).catch((e) =>
+                  showToast(t("recording.revealFailed", { message: String(e) }), "error"),
+                );
+              },
+            },
+            15000,
+          );
         }
       } else {
         await invoke("recording_start", { rustId, hostId });

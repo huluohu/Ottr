@@ -612,7 +612,10 @@ function HomeLayout() {
           onSnap={(layout) => invoke("window_snap", { layout }).catch(() => {})}
         />
       )}
-      <div className="app-body">
+      {/* 锁定态背景虚化（2026-10-19 用户三次反馈：隐私/防窥）：data-locked
+          驱动 16-lock-security.css 的 filter 虚化——本层与锁屏遮罩是兄弟节点，
+          filter 不会破坏遮罩的 fixed 定位；解锁相位撤销属性，模糊随过渡消退。 */}
+      <div className="app-body" data-locked={lockPhase === "locked" ? "true" : undefined}>
         {/* 48px 图标轨（2026-10-16 视觉重设计 M3「獭居·浮岛」）：高频入口恒驻
             + Otty 球设置入口；mac 红绿灯随轨道移到窗口最左。 */}
         <IconRail

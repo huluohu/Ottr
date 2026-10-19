@@ -5,6 +5,27 @@
   z-index: var(--z-lock);
   align-items: center;
 }
+/* 锁屏背景虚化（2026-10-19 用户三次反馈：隐私/防窥——背后内容不能可读）。
+   双保险：
+   ① 遮罩本体 backdrop-filter：盖住即虚化（毛玻璃），WKWebView 带 -webkit-
+      前缀；老 WebKitGTK 不支持时优雅退化 = 仅 scrim（不劣于旧行为）；
+   ② 底层内容自身 filter 虚化（.app-body 与遮罩是兄弟节点，filter 不会把
+      遮罩的 fixed 定位拖进自己的包含块）——即使 backdrop-filter 整个失效，
+      背后内容也不可读。data-locked 只在 locked 相位存在（boot 防闪烁口径
+      不变），解锁撤销属性、模糊随过渡消退与遮罩退场同步。 */
+.lock-screen {
+  backdrop-filter: blur(14px) saturate(0.9);
+  -webkit-backdrop-filter: blur(14px) saturate(0.9);
+}
+.app-body {
+  transition: filter var(--dur) var(--ease-out);
+}
+.app-body[data-locked="true"] {
+  filter: blur(18px);
+  /* 锁定期间内容不可交互（遮罩盖住已兜底），禁用指针事件防 filter 层
+     意外接收拖拽；过渡期（解锁退场）内容渐显但仍在遮罩之下，无碍。 */
+  pointer-events: none;
+}
 .lock-card {
   width: min(360px, 100%);
   display: flex;

@@ -192,6 +192,8 @@ export function FilePanel({ session }: { session: Session }) {
     side: Side;
     name: string;
     isDir: boolean;
+    /** 拖起时按选中集合算好的传输项数（浮标展示 + 多选拖拽判定）。 */
+    count: number;
     startX: number;
     startY: number;
     active: boolean;
@@ -200,6 +202,8 @@ export function FilePanel({ session }: { session: Session }) {
     side: Side;
     name: string;
     isDir: boolean;
+    /** 多选拖拽时的项数（>1 时浮标显示「N 项」）。 */
+    count?: number;
     x: number;
     y: number;
   } | null>(null);
@@ -497,32 +501,37 @@ export function FilePanel({ session }: { session: Session }) {
     () => {},
   );
   dropRowRef.current = (d, target) => {
-    if (d.isDir) {
-      // 目录拖到远端 = 递归上传（2026-10-19）；拖到本地仍需远端遍历（未做）
-      if (d.side === "local" && target === "remote" && rustId) {
-        void uploadLocalTree(joinLocalPath(local.path, d.name), remote.path, {
-          list: localList,
-          mkdir: (rp) => sftpMkdirAll(rustId, rp),
-          uploadFile: (f, dir) => startUpload(rustId, f, dir),
-          joinLocal: joinLocalPath,
-          joinRemote,
-        })
-          .then((r) => showNotice(t("files.dropQueued", { count: r.files })))
-          .catch((e) => showNotice(t("files.uploadFailed", { message: String(e) })));
-      } else {
-        showNotice(t("files.dropDirsSkipped", { count: 1 }));
-      }
+    // 多选拖拽（2026-10-19 用户反馈「多选拖拽只传了一个」）：拖起的行若在
+    // 当前选中集合内且集合非空 → 传输整个集合；否则只传该行。
+    const sourceState = d.side === "local" ? local : remote;
+    const dragged = sourceState.entries.filter((e) => e.name === d.name);
+    const picked = sourceState.selected.has(d.name)
+      ? sourceState.entries.filter((e) => sourceState.selected.has(e.name))
+      : dragged;
+    const items = picked.length > 0 ? picked : dragged;
+    if (!rustId) return;
+
+    if (d.side === "local" && target === "remote") {
+      void uploadLocalSelection(items);
       return;
     }
-    if (!rustId) return;
-    if (d.side === "local" && target === "remote") {
-      void startUpload(rustId, joinLocalPath(local.path, d.name), remote.path).catch((e) =>
-        showNotice(t("files.uploadFailed", { message: String(e) })),
-      );
-    } else if (d.side === "remote" && target === "local") {
-      void startDownload(rustId, joinRemote(remote.path, d.name), joinLocalPath(local.path, d.name))
-        .then(() => showNotice(t("files.menu.downloadToLocal", { name: d.name })))
-        .catch((err) => showNotice(t("files.downloadFailed", { message: String(err) })));
+    if (d.side === "remote" && target === "local") {
+      const files = items.filter((e) => !e.is_dir);
+      const skipped = items.length - files.length;
+      for (const e of files) {
+        void startDownload(
+          rustId,
+          joinRemote(remote.path, e.name),
+          joinLocalPath(local.path, e.name),
+        ).catch((err) => showNotice(t("files.downloadFailed", { message: String(err) })));
+      }
+      if (files.length === 1 && skipped === 0) {
+        showNotice(t("files.menu.downloadToLocal", { name: files[0].name }));
+      } else if (files.length > 1) {
+        showNotice(t("files.dropDownloadQueued", { count: files.length }));
+      } else if (skipped > 0) {
+        showNotice(t("files.dropDirsSkipped", { count: skipped }));
+      }
     }
   };
 
@@ -540,7 +549,14 @@ export function FilePanel({ session }: { session: Session }) {
         if (Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < DRAG_THRESHOLD) return;
         d.active = true;
       }
-      setRowDragView({ side: d.side, name: d.name, isDir: d.isDir, x: ev.clientX, y: ev.clientY });
+      setRowDragView({
+        side: d.side,
+        name: d.name,
+        isDir: d.isDir,
+        count: d.count,
+        x: ev.clientX,
+        y: ev.clientY,
+      });
       const target = hitSide(ev.clientX, ev.clientY);
       setDropTarget(target !== null && target !== d.side ? target : null);
     };
@@ -997,10 +1013,12 @@ export function FilePanel({ session }: { session: Session }) {
                 // 指针拖拽源（2026-10-16 重写）：仅记录，移动超阈值才成拖拽；
                 // 左键之外（右键菜单）不进入拖拽流程。
                 if (ev.button !== 0) return;
+                const paneSel = side === "local" ? local.selected : remote.selected;
                 rowDragRef.current = {
                   side,
                   name: e.name,
                   isDir: e.is_dir,
+                  count: paneSel.has(e.name) && paneSel.size > 1 ? paneSel.size : 1,
                   startX: ev.clientX,
                   startY: ev.clientY,
                   active: false,
@@ -1145,6 +1163,7 @@ export function FilePanel({ session }: { session: Session }) {
             <FileIcon kind={fileIconKind({ name: rowDragView.name, is_dir: rowDragView.isDir })} />
           </span>
           {rowDragView.name}
+          {(rowDragView.count ?? 1) > 1 ? ` （${rowDragView.count} 项）` : ""}
         </div>
       )}
       {menu && (

@@ -155,12 +155,15 @@ async function dufsUp(): Promise<void> {
 
 beforeAll(async () => {
   await dufsUp();
-  // Rust 桥即编即用（增量；lib 已被开发/测试构建缓存，通常仅编译 example 本体）
+  // Rust 桥即编即用（增量；lib 已被开发/测试构建缓存，通常仅编译 example 本体）。
+  // 超时 600s（2026-10-20）：CI 冷缓存下 tauri 依赖树全量编译曾超 240s
+  // 触发 spawnSync ETIMEDOUT（v1.4.4 Linux 构建失败实例）——测试设备空闲时
+  // 只编 example 本体，超时只会命中 CI 冷构建。
   const build = spawnSync("cargo", ["build", "-q", "-p", "ottr", "--example", "sync_bridge_fixture"], {
     cwd: repoRoot,
     env: cargoEnv,
     encoding: "utf8",
-    timeout: 240_000,
+    timeout: 600_000,
   });
   if (build.error ?? build.status !== 0) {
     throw new Error(

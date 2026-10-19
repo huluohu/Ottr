@@ -15,7 +15,7 @@ use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tokio::sync::Notify;
 
-use ottr_lib::{SessionCounters, ShellIntegrationOutcome, TextTail, forward_pty_loop, inject_shell_integration};
+use ottr_lib::{SessionCounters, TextTail, forward_pty_loop, inject_shell_integration};
 use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
 
 const HOST: &str = "127.0.0.1";
@@ -63,8 +63,14 @@ async fn run(user: &str, pass: &str, shell: &str, inject: bool) -> Result<(), St
     )
     .await
     .map_err(|e| format!("connect: {e}"))?;
-    let mut channel = session.open_pty(120, 40).await.map_err(|e| format!("open_pty: {e}"))?;
-    channel.request_shell(true).await.map_err(|e| format!("request_shell: {e}"))?;
+    let channel = session
+        .open_pty(120, 40)
+        .await
+        .map_err(|e| format!("open_pty: {e}"))?;
+    channel
+        .request_shell(true)
+        .await
+        .map_err(|e| format!("request_shell: {e}"))?;
 
     let decoded: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let captured = Arc::clone(&decoded);
@@ -120,20 +126,26 @@ async fn run(user: &str, pass: &str, shell: &str, inject: bool) -> Result<(), St
     {
         use tokio::io::AsyncWriteExt;
         let mut w = writer.lock().await;
-        w.write_all(b"sudo -k\r").await.map_err(|e| format!("{e}"))?;
+        w.write_all(b"sudo -k\r")
+            .await
+            .map_err(|e| format!("{e}"))?;
     }
     settle(900).await;
     {
         use tokio::io::AsyncWriteExt;
         let mut w = writer.lock().await;
-        w.write_all(b"sudo -S true\r").await.map_err(|e| format!("{e}"))?;
+        w.write_all(b"sudo -S true\r")
+            .await
+            .map_err(|e| format!("{e}"))?;
     }
     settle(1200).await;
     for _ in 0..3 {
         {
             use tokio::io::AsyncWriteExt;
             let mut w = writer.lock().await;
-            w.write_all(b"wrongpass\r").await.map_err(|e| format!("{e}"))?;
+            w.write_all(b"wrongpass\r")
+                .await
+                .map_err(|e| format!("{e}"))?;
         }
         settle(900).await;
     }
@@ -156,7 +168,14 @@ async fn run(user: &str, pass: &str, shell: &str, inject: bool) -> Result<(), St
     }
     if hits == 0 {
         println!("[probe] no sudo prompt found in stream (sudo may have failed)");
-        let tail: String = buf.chars().rev().take(600).collect::<Vec<_>>().into_iter().rev().collect();
+        let tail: String = buf
+            .chars()
+            .rev()
+            .take(600)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
         println!("[tail] {tail:?}");
     } else {
         println!("[PASS] {shell} inject={inject}: {hits} prompt segment(s) dumped — 目检冒号");

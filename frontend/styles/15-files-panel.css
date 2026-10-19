@@ -19,7 +19,9 @@
   padding: 0 8px 0 8px;
 }
 /* 方案 B（2026-10-19）：切换器住进终端工具行——左侧留分隔线与分屏组区分，
-   右推（margin-left:auto）与编码徽标/录制钮聚成右侧组。 */
+   右推（margin-left:auto，工具行唯一的 auto——整组靠右的推手）与录制钮/
+   编码徽标聚成右侧组。2026-10-19 用户反馈修：此前编码徽标另有内联
+   margin-left:auto，两个 auto 平分剩余空间 → 右侧组悬空三段不靠右。 */
 .term-toolbar .view-switch {
   margin-left: auto;
   padding-left: 10px;
@@ -34,6 +36,18 @@
 .view-switch button[data-active="true"] {
   color: var(--color-accent-text);
   border-color: var(--color-accent-border);
+}
+/* 切换器 | 录制 分隔线（2026-10-19 用户反馈）+ 编码徽标间距（CSS 单源，
+   取代原内联 margin auto） */
+.toolbar-sep {
+  flex: none;
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 4px;
+  background: var(--border-subtle);
+}
+.term-toolbar .encoding-badge {
+  margin-left: 4px;
 }
 
 /* 终端隐藏常驻（Task 10）：visibility 而非卸载——xterm 缓冲不丢。

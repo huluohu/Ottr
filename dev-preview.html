@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ottr dev preview（纯前端布局验证，不经 Tauri）</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script>
+      // 模块级错误采集（布局预览的调试面；module 脚本求值失败时 root 为空，
+      // 从页面侧无法回看——集中到此数组，浏览器自动化直接读 DOM 取错误）
+      window.__errs = [];
+      window.addEventListener("error", (e) => window.__errs.push(String(e.message)));
+      window.addEventListener("unhandledrejection", (e) =>
+        window.__errs.push("rej: " + String(e.reason?.message ?? e.reason)),
+      );
+    </script>
+    <script type="module" src="/frontend/dev/preview-main.tsx"></script>
+  </body>
+</html>

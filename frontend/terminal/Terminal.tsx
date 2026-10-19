@@ -952,7 +952,9 @@ export function TerminalToolbar({
           data-encoding={activeEncoding}
           aria-label={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
           title={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
-          style={{ marginLeft: "auto" }}
+          // 间距走 .term-toolbar .encoding-badge（CSS 单源）——此前的内联
+          // margin-left:auto 与 view-switch 的 auto 平分剩余空间，造成右侧
+          // 组悬空三段（2026-10-19 用户反馈「不靠右」的根因之一）。
           onClick={() =>
             useSessionStore
               .getState()

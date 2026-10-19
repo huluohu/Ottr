@@ -343,12 +343,16 @@ export function MainArea({
                     )}
                   </div>
                   {/* 录制钮（会话域，2026-10-18 裁定不常驻；「正在录」例外保留
-                      指示+停止入口——悄悄进行比红点消失更糟） */}
+                      指示+停止入口——悄悄进行比红点消失更糟）；前置分隔线与
+                      切换器组区隔（2026-10-19 用户反馈） */}
                   {!filesOnly && (sessionViewActive || anyRecording) && (
-                    <RecordToggle
-                      rustId={rootSession?.rustId ?? null}
-                      hostId={rootSession?.hostId ?? null}
-                    />
+                    <>
+                      <span className="toolbar-sep" aria-hidden="true" />
+                      <RecordToggle
+                        rustId={rootSession?.rustId ?? null}
+                        hostId={rootSession?.hostId ?? null}
+                      />
+                    </>
                   )}
                 </>
               ) : null

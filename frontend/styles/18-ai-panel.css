@@ -8,6 +8,11 @@
   flex: none;
   display: flex;
 }
+/* 行内工具条占满行宽——view-switch 的 margin-left:auto 才有空间把右侧
+   组推到行右缘（缺此规则时工具条收缩为内容宽，右侧组悬在中间）。 */
+.term-toolbar-row .term-toolbar {
+  flex: 1;
+}
 
 .term-main-row {
   flex: 1;

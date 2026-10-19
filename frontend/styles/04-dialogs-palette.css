@@ -35,6 +35,37 @@
   overflow-y: auto;
   box-shadow: var(--shadow-3);
 }
+/* HostForm 壳层（2026-10-19 用户反馈「表单过高、内联凭据展开把取消/保存顶出
+   视口」）：定高弹窗 + 内容区滚动 + 吸底操作条——.host-form 自身不滚（flex 列），
+   .host-form-body 滚动，.host-form-footer 固定底部。宽沿用 min(640px,100%)，
+   高 86vh 封顶、min-height 防「矮内容弹窗跳变」。 */
+.host-form {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: auto;
+  min-height: 0;
+  max-height: 86vh;
+}
+.host-form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -20px;
+  padding: 0 20px;
+}
+.host-form-footer {
+  flex: none;
+  margin: 12px -20px -20px;
+  padding: 12px 20px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.host-form-footer .form-error {
+  margin: 0 0 8px;
+}
+.host-form-footer .form-actions {
+  margin: 0;
+}
 /* 矮窗滚动 affordance（BL-526 / T5 披露清偿）：max-height+内滚自 P1 既有，
    但 macOS overlay 滚动条**静止期不可见**——600px 级矮窗下内容截断毫无可滚
    提示（T5 走查 03 号截图「danger 按钮被裁」的缺陷本体）。常显细滚动条让

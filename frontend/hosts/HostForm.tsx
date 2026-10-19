@@ -191,9 +191,14 @@ export function HostForm({ host, defaultGroupId, onClose, closing }: HostFormPro
       aria-modal="true"
       aria-label={host ? t("hostForm.editTitle") : t("hostForm.newTitle")}
     >
+      {/* 2026-10-19 用户反馈（表单过高，内联凭据展开把按钮顶出视口）：壳层改
+          「定高弹窗 + 内容区滚动 + 吸底操作条」——.host-form 只做壳（flex 列、
+          自身不滚），h2 与 .form-actions 固定两端，中间 .host-form-body 滚动；
+          取消/保存任何情况下都在视口内。submitError 在操作条上方固定展示。 */}
       <form className="host-form" onSubmit={(e) => void handleSubmit(e)} noValidate>
         <h2>{host ? t("hostForm.editTitle") : t("hostForm.newTitle")}</h2>
 
+        <div className="host-form-body">
         {/* 段一：连接信息（名称 + 协议同行；地址/端口/用户名同行） */}
         <div className="form-section">
           <div className="form-section-title">{t("hostForm.sectionConnection")}</div>
@@ -401,25 +406,29 @@ export function HostForm({ host, defaultGroupId, onClose, closing }: HostFormPro
               data-testid="form-notes"
               value={notes}
               placeholder={t("hostForm.notesPlaceholder")}
-              rows={3}
+              rows={2}
               onChange={(e) => setNotes(e.currentTarget.value)}
             />
           </label>
         </div>
+        </div>
 
-        {submitError && (
-          <p className="form-error" data-testid="form-submit-error">
-            {submitError}
-          </p>
-        )}
-
-        <div className="form-actions">
-          <button type="button" onClick={onClose}>
-            {t("common.cancel")}
-          </button>
-          <button type="submit" className="btn-accent" disabled={submitting} data-testid="form-submit">
-            {host ? t("common.save") : t("hostForm.save")}
-          </button>
+        {/* 吸底操作条：固定于壳层底部（不随内容区滚动）；submitError 常驻位
+            （有错才显高，不挤压内容区）。 */}
+        <div className="host-form-footer">
+          {submitError && (
+            <p className="form-error" data-testid="form-submit-error">
+              {submitError}
+            </p>
+          )}
+          <div className="form-actions">
+            <button type="button" onClick={onClose}>
+              {t("common.cancel")}
+            </button>
+            <button type="submit" className="btn-accent" disabled={submitting} data-testid="form-submit">
+              {host ? t("common.save") : t("hostForm.save")}
+            </button>
+          </div>
         </div>
       </form>
     </div>

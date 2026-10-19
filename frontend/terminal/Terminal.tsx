@@ -893,8 +893,14 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 
 
 /** 分屏终端主区（App.tsx 挂载）。bounds 驱动纯布局（split.ts），分隔条拖拽
- * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。 */
-export function TerminalArea() {
+ * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。
+ * toolbarExtra（2026-10-19 方案 B）：主区视图切换器+录制钮挂进 term-toolbar
+ *（分屏同行）——页签行独占会话页签，两组不再打架。 */
+export function TerminalArea({
+  toolbarExtra = null,
+}: {
+  toolbarExtra?: React.ReactNode;
+} = {}) {
   const { t } = useTranslation();
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
@@ -985,6 +991,7 @@ export function TerminalArea() {
         >
           {t("terminal.splitDown")}
         </button>
+        {toolbarExtra}
         {activeEncoding != null && (
           <button
             className="encoding-badge"

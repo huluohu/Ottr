@@ -42,6 +42,17 @@
 .tree-group {
   margin-top: 14px;
 }
+/* 拖拽换组（2026-10-19）：悬停目标组高亮——虚线描边 + 轻底色，data-drop-target
+   由 HostTree 的 dragover/drop 状态驱动；含未分组桶（同一 section 形态）。 */
+.tree-group[data-drop-target="true"] {
+  outline: 1.5px dashed var(--color-accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+.tree-host[draggable="true"] .host-row {
+  cursor: grab;
+}
 .tree-group-head {
   display: flex;
   align-items: center;

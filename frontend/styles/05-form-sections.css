@@ -66,6 +66,11 @@
   gap: 10px;
   margin-top: 12px;
 }
+/* HostForm 吸底操作条（2026-10-19）：footer 内已由 .host-form-footer 定位，
+   不再吃全局 12px 顶距（分隔线上方留白由 footer padding 提供）。 */
+.host-form-footer .form-actions {
+  margin-top: 0;
+}
 .import-report p {
   margin: 4px 0;
 }

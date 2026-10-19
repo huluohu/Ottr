@@ -7,8 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // T3：batch 视图挂载即拉 snippets_list——jsdom 无 Tauri runtime，stub 掉
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
+// 方案 B（2026-10-19）：视图切换器/录制钮住进 TerminalArea 的 toolbarExtra——
+// mock 渲染 children 以便本套件照旧断言路由态（view-* testid 不变）。
 vi.mock("../terminal/Terminal", () => ({
-  TerminalArea: () => <div data-testid="terminal-area" />,
+  TerminalArea: ({ toolbarExtra }: { toolbarExtra?: React.ReactNode }) => (
+    <div data-testid="terminal-area">{toolbarExtra}</div>
+  ),
 }));
 vi.mock("../session/TabBar", () => ({ TabBar: () => <div data-testid="tabbar" /> }));
 vi.mock("../files/FilePanel", () => ({ FilePanel: () => <div data-testid="file-panel" /> }));

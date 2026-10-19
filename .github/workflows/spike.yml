@@ -88,6 +88,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   build:
+    if: ${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):') }}
     strategy:
       fail-fast: false
       matrix:

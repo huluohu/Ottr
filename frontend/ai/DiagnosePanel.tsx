@@ -96,10 +96,13 @@ export function DiagnosePanel({
 
   // 「待看」徽标口径：面板渲染 = 用户已看到（MainArea 只在所属会话激活时
   // 挂载本组件，key=sessionId——切走再切回会重挂并再次 markSeen，无害）。
+  // 依赖必须含 request：本组件在终端视图无条件挂载（内部才判 null）——
+  // 同会话首失败时 request 从无到有，依赖不变则 effect 不重跑，徽标常驻
+  // （真机验收 2026-10-19 抓到的漏标记时序）。
   const markSeen = useAiStore((s) => s.markSeen);
   useEffect(() => {
-    if (sessionId) markSeen(sessionId);
-  }, [sessionId, markSeen]);
+    if (sessionId && request) markSeen(sessionId);
+  }, [sessionId, request, markSeen]);
 
   const abort = useAiStore((s) => s.abort);
   const run = useAiStore((s) => s.run);

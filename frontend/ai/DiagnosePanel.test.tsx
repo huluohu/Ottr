@@ -102,6 +102,19 @@ describe("面板渲染", () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
+  // markSeen 时序（真机验收 2026-10-19 抓到的漏标记）：组件先于失败挂载
+  // （内部渲染 null），request 从无到有时 effect 必须重跑——否则页签「待看」
+  // 徽标在面板已可见时仍常驻。
+  it("request 后到（面板先挂载为 null）也触发 markSeen", async () => {
+    reset(null); // 无切片：组件挂载渲染 null
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    expect(useAiStore.getState().sessions["tab-1"]).toBeUndefined();
+    reset(REQ, { status: "done" }); // 失败发生：切片出现
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().sessions["tab-1"]?.seen).toBe(true);
+    });
+  });
+
   it("request 错误面：端点消息 + 重试", () => {
     reset(REQ, { status: "error", errorKind: "request", error: "HTTP 401: bad key" });
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);

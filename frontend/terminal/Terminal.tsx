@@ -522,6 +522,12 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
       ensureObserved();
       try {
+        // 本地退化守卫（P0「字符乱飞」家族，真机复现 2026-10-19）：页签切换/
+        // AI 面板重挂的布局过渡瞬间容器可能被量成极窄——一旦 fit 进去，buffer
+        // 以 1 列 rewrap **不可逆**（历史永久竖排，reflow 无法还原）。预判退化
+        // 直接跳过本次 fit，等 RO/rAF 下一拍到健康尺寸再 fit。
+        const dim = fit.proposeDimensions();
+        if (!dim || dim.cols < 4 || dim.rows < 2) return;
         fit.fit();
       } catch {
         return; // 退化尺寸抛错：留待延迟/焦点重测

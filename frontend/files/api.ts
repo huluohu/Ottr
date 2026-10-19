@@ -37,6 +37,11 @@ export function sftpRealpath(id: string, path: string): Promise<string> {
   return invoke("sftp_realpath", { id, path });
 }
 
+/** 幂等建目录（递归上传用）：已存在不报错。 */
+export function sftpMkdirAll(id: string, path: string): Promise<void> {
+  return invoke("sftp_mkdir_all", { id, path });
+}
+
 export function sftpMkdir(id: string, path: string): Promise<void> {
   return invoke("sftp_mkdir", { id, path });
 }

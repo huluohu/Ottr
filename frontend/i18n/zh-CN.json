@@ -532,6 +532,7 @@
     "rename": "重命名",
     "chmod": "权限",
     "download": "下载",
+    "upload": "上传",
     "toolbarHint": "拖文件到远端栏上传 · 双栏可互拖传输 · 右键更多操作",
     "menu": {
       "refresh": "刷新",

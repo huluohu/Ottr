@@ -734,8 +734,30 @@ describe("文件面板增强·第二轮", () => {
     act(() => useTransferStore.setState({ items: [] }));
   });
 
-  it("目录行拖拽到对侧：不传输，出「已跳过」提示", async () => {
-    mockListings();
+  it("目录行拖拽到远端：递归上传（幂等建目录 + 逐文件入队）；拖到本地仍跳过", async () => {
+    // 2026-10-19 用户需求：面板拖拽目录不再整体跳过——本地目录拖到远端栏
+    // 建远端目录树并逐文件入队（uploadLocalTree 编排，本用例验接入面）。
+    mockedInvoke.mockImplementation((cmd: string, args?: { path?: string; local?: string }) => {
+      if (cmd === "local_home") return Promise.resolve("/Users/me");
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/spike");
+      if (cmd === "local_list") {
+        if (args?.path === "/Users/me") return Promise.resolve(localEntries);
+        if (args?.path === "/Users/me/Downloads")
+          return Promise.resolve([
+            { name: "inner.txt", is_dir: false, size: 3, mode: 0o100644, mtime: 1 },
+          ]);
+        return Promise.resolve([]);
+      }
+      if (cmd === "sftp_mkdir_all") return Promise.resolve(null);
+      if (cmd === "sftp_upload")
+        return Promise.resolve({
+          transfer_id: "xfer-test",
+          local_path: args?.local ?? "",
+          remote_path: "/home/spike/Downloads/inner.txt",
+          total: 3,
+        });
+      return Promise.resolve(null);
+    });
     render(<FilePanel session={makeSession()} />);
     await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
     const remotePane = screen
@@ -748,11 +770,27 @@ describe("文件面板增强·第二轮", () => {
     fireEvent.pointerDown(row, { button: 0, clientX: 100, clientY: 200 });
     fireEvent.pointerMove(window, { clientX: 160, clientY: 260 });
     fireEvent.pointerUp(window, { clientX: 160, clientY: 260 });
-    expect(mockedInvoke).not.toHaveBeenCalledWith(
-      "sftp_upload",
-      expect.objectContaining({ local: expect.stringContaining("Downloads") }),
+    await waitFor(
+      () =>
+        expect(mockedInvoke).toHaveBeenCalledWith("sftp_mkdir_all", {
+          id: "pty-0",
+          path: "/home/spike/Downloads",
+        }),
+      { timeout: 3000 },
     );
-    await waitFor(() => expect(screen.getByTestId("file-notice").textContent).toContain("Skipped"));
+    await waitFor(
+      () =>
+        expect(
+          mockedInvoke.mock.calls.some(
+            ([cmd, a]) =>
+              cmd === "sftp_upload" &&
+              (a as { local?: string; remoteDir?: string }).local ===
+                "/Users/me/Downloads/inner.txt" &&
+              (a as { remoteDir?: string }).remoteDir === "/home/spike/Downloads",
+          ),
+        ).toBe(true),
+      { timeout: 3000 },
+    );
     restore();
   });
 
@@ -845,5 +883,132 @@ describe("FilePanel 目录记忆（2026-10-19 用户需求）", () => {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
     // 初载 home 已被持久化（浏览成功即写）
     expect(saved["1"].remote ?? saved["1"].local).toBeTruthy();
+  });
+});
+
+describe("文件面板多选与批量传输（2026-10-19 用户需求）", () => {
+  const rowsOf = (listTestId: string) =>
+    Array.from(
+      (screen.getByTestId(listTestId) as HTMLElement).querySelectorAll('[role="option"]'),
+    ) as HTMLElement[];
+
+  it("Ctrl 点选多项；批量下载逐个入队（目录不计）", async () => {
+    mockListings();
+    mockedInvoke.mockImplementation((cmd: string, args?: { path?: string; id?: string }) => {
+      if (cmd === "local_home") return Promise.resolve("/Users/me");
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/spike");
+      if (cmd === "local_list") return Promise.resolve(localEntries);
+      if (cmd === "sftp_list")
+        return Promise.resolve([
+          { name: "a.txt", is_dir: false, size: 1, mode: 0o100644, mtime: 1 },
+          { name: "b.txt", is_dir: false, size: 2, mode: 0o100644, mtime: 1 },
+          { name: "sub", is_dir: true, size: 0, mode: 0o40755, mtime: 1 },
+        ]);
+      if (cmd === "sftp_download")
+        return Promise.resolve({
+          transfer_id: `t-${String(args?.path ?? "")}`,
+          local_path: "/d/x",
+          remote_path: String(args?.path ?? ""),
+          total: 1,
+        });
+      return Promise.resolve(null);
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("a.txt"),
+    );
+    const rows = rowsOf("file-list-remote");
+    const a = rows.find((r) => r.textContent?.includes("a.txt"))!;
+    const b = rows.find((r) => r.textContent?.includes("b.txt"))!;
+    fireEvent.click(a);
+    fireEvent.click(b, { ctrlKey: true });
+    expect(a.getAttribute("aria-selected")).toBe("true");
+    expect(b.getAttribute("aria-selected")).toBe("true");
+    // 批量下载按钮带计数并逐个入队
+    const dl = screen.getByTestId("fb-download");
+    expect(dl.textContent).toContain("(2)");
+    fireEvent.click(dl);
+    await waitFor(() => {
+      const downloads = mockedInvoke.mock.calls.filter(([c]) => c === "sftp_download");
+      expect(downloads).toHaveLength(2);
+    });
+  });
+
+  it("Shift 范围选：锚点到最后一项之间全选", async () => {
+    mockListings();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "local_home") return Promise.resolve("/Users/me");
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/spike");
+      if (cmd === "local_list") return Promise.resolve(localEntries);
+      if (cmd === "sftp_list")
+        return Promise.resolve([
+          { name: "a.txt", is_dir: false, size: 1, mode: 0o100644, mtime: 1 },
+          { name: "b.txt", is_dir: false, size: 2, mode: 0o100644, mtime: 1 },
+          { name: "c.txt", is_dir: false, size: 3, mode: 0o100644, mtime: 1 },
+        ]);
+      return Promise.resolve(null);
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("c.txt"),
+    );
+    const rows = rowsOf("file-list-remote");
+    const a = rows.find((r) => r.textContent?.includes("a.txt"))!;
+    const c = rows.find((r) => r.textContent?.includes("c.txt"))!;
+    fireEvent.click(a);
+    fireEvent.click(c, { shiftKey: true });
+    for (const r of rows) expect(r.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("本地栏多选（文件 + 目录）→ 上传：文件直传、目录递归建远端树", async () => {
+    mockedInvoke.mockImplementation((cmd: string, args?: { path?: string; id?: string; local?: string }) => {
+      if (cmd === "local_home") return Promise.resolve("/Users/me");
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/spike");
+      if (cmd === "local_list") {
+        if (args?.path === "/Users/me") return Promise.resolve(localEntries);
+        if (args?.path === "/Users/me/Downloads")
+          return Promise.resolve([
+            { name: "inner.txt", is_dir: false, size: 1, mode: 0o100644, mtime: 1 },
+          ]);
+        return Promise.resolve([]);
+      }
+      if (cmd === "sftp_list") return Promise.resolve([]);
+      if (cmd === "sftp_mkdir_all") return Promise.resolve(null);
+      if (cmd === "sftp_upload")
+        return Promise.resolve({
+          transfer_id: `u-${String(args?.local ?? "")}`,
+          local_path: String(args?.local ?? ""),
+          remote_path: "/home/spike/x",
+          total: 1,
+        });
+      return Promise.resolve(null);
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"),
+    );
+    const rows = rowsOf("file-list-local");
+    const notes = rows.find((r) => r.textContent?.includes("notes.txt"))!;
+    const dir = rows.find((r) => r.textContent?.includes("Downloads"))!;
+    // 焦点侧切到本地（工具栏「上传」按 focus 渲染）；jsdom click 不触发 pointerdown
+    fireEvent.pointerDown(notes, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.click(notes);
+    fireEvent.pointerDown(dir, { button: 0, clientX: 10, clientY: 40 });
+    fireEvent.click(dir, { ctrlKey: true });
+    fireEvent.pointerUp(window, { clientX: 10, clientY: 40 });
+    fireEvent.click(screen.getByTestId("fb-upload"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("sftp_mkdir_all", {
+        id: "pty-0",
+        path: "/home/spike/Downloads",
+      }),
+    );
+    await waitFor(() => {
+      const uploads = mockedInvoke.mock.calls
+        .filter(([c]) => c === "sftp_upload")
+        .map(([, a]) => (a as { local?: string }).local);
+      expect(uploads).toContain("/Users/me/notes.txt");
+      expect(uploads).toContain("/Users/me/Downloads/inner.txt");
+    });
   });
 });

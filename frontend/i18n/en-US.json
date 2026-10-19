@@ -533,6 +533,7 @@
     "rename": "Rename",
     "chmod": "Permissions",
     "download": "Download",
+    "upload": "Upload",
     "toolbarHint": "Drop onto remote pane to upload · drag across panes to transfer · right-click for more",
     "menu": {
       "refresh": "Refresh",

@@ -33,6 +33,7 @@ import {
   sftpChmod,
   sftpList,
   sftpMkdir,
+  sftpMkdirAll,
   sftpRealpath,
   sftpRemove,
   sftpRename,
@@ -40,6 +41,7 @@ import {
   type LocalEntry,
 } from "./api";
 import { TransferQueue } from "./TransferQueue";
+import { uploadLocalTree } from "./uploadTree";
 import { remoteEdits } from "./RemoteEdit";
 import { useTransferStore, type TransferStatus } from "./TransferStore";
 
@@ -119,11 +121,13 @@ interface PaneState {
   entries: (DirEntry & { is_dir: boolean })[] | (LocalEntry & { is_dir: boolean })[];
   error: string | null;
   loading: boolean;
-  selected: string | null;
+  /** 多选（2026-10-19 用户需求）：本栏选中的条目名集合；Ctrl/⌘ 点选切换、
+   *  Shift 范围选、普通点击单选。跨栏各自独立。 */
+  selected: ReadonlySet<string>;
 }
 
 function emptyPane(path: string): PaneState {
-  return { path, entries: [], error: null, loading: false, selected: null };
+  return { path, entries: [], error: null, loading: false, selected: new Set() };
 }
 
 /** 拖拽事件载荷（@tauri-apps/api/webview onDragDropEvent；宽松类型）。 */
@@ -292,7 +296,7 @@ export function FilePanel({ session }: { session: Session }) {
 
   // 返回是否加载成功（目录记忆初载的回退判定面；其余调用方 void 忽略）。
   const loadLocal = useCallback(async (path: string): Promise<boolean> => {
-    setLocal((p) => ({ ...p, path, loading: true, error: null, selected: null }));
+    setLocal((p) => ({ ...p, path, loading: true, error: null, selected: new Set() }));
     try {
       const list = await localList(path);
       const entries = Array.isArray(list) ? list : [];
@@ -307,7 +311,7 @@ export function FilePanel({ session }: { session: Session }) {
   const loadRemote = useCallback(
     async (path: string): Promise<boolean> => {
       if (!rustId) return false;
-      setRemote((p) => ({ ...p, path, loading: true, error: null, selected: null }));
+      setRemote((p) => ({ ...p, path, loading: true, error: null, selected: new Set() }));
       try {
         const list = await sftpListFor(rustId, path);
         const entries = Array.isArray(list) ? list : [];
@@ -437,16 +441,31 @@ export function FilePanel({ session }: { session: Session }) {
     let queued = 0;
     let skippedDirs = 0;
     for (const p of paths) {
-      // 目录过滤：查父目录列表判定 is_dir（MVP 无 stat 命令；一次 invoke 足够）
+      // 目录判定：查父目录列表判定 is_dir（一次 invoke 足够）。
+      let isDir = false;
       try {
         const siblings = await localList(parentOf(p));
         const name = fileNameOf(p);
-        if (siblings.find((s) => s.name === name)?.is_dir) {
-          skippedDirs++;
-          continue;
-        }
+        isDir = siblings.find((s) => s.name === name)?.is_dir === true;
       } catch {
-        // 判定不了就尝试（Rust 侧打开失败会进队列 failed 态 / copy 报错提示）
+        // 判定不了按文件尝试（Rust 侧打开失败会进队列 failed 态）
+      }
+      if (isDir) {
+        if (target === "remote") {
+          // 递归上传（2026-10-19）：建远端目录树 + 逐文件入队
+          const r = await uploadLocalTree(p, remote.path, {
+            list: localList,
+            mkdir: (rp) => sftpMkdirAll(rustId, rp),
+            uploadFile: (f, d) => startUpload(rustId, f, d),
+            joinLocal: joinLocalPath,
+            joinRemote,
+          });
+          queued += r.files;
+          skippedDirs += r.skipped;
+        } else {
+          skippedDirs++; // 递归下载不在本期（远端侧遍历另行排期）
+        }
+        continue;
       }
       if (target === "remote") {
         queued++;
@@ -479,7 +498,20 @@ export function FilePanel({ session }: { session: Session }) {
   );
   dropRowRef.current = (d, target) => {
     if (d.isDir) {
-      showNotice(t("files.dropDirsSkipped", { count: 1 }));
+      // 目录拖到远端 = 递归上传（2026-10-19）；拖到本地仍需远端遍历（未做）
+      if (d.side === "local" && target === "remote" && rustId) {
+        void uploadLocalTree(joinLocalPath(local.path, d.name), remote.path, {
+          list: localList,
+          mkdir: (rp) => sftpMkdirAll(rustId, rp),
+          uploadFile: (f, dir) => startUpload(rustId, f, dir),
+          joinLocal: joinLocalPath,
+          joinRemote,
+        })
+          .then((r) => showNotice(t("files.dropQueued", { count: r.files })))
+          .catch((e) => showNotice(t("files.uploadFailed", { message: String(e) })));
+      } else {
+        showNotice(t("files.dropDirsSkipped", { count: 1 }));
+      }
       return;
     }
     if (!rustId) return;
@@ -540,9 +572,117 @@ export function FilePanel({ session }: { session: Session }) {
   // --- 操作（全部作用于 focus 侧；本地侧仅刷新——本地写操作不进 MVP） ------------
 
   const pane = focus === "local" ? local : remote;
-  const selectedEntry = pane.entries.find((e) => e.name === pane.selected) ?? null;
+  // 单选面操作（重命名/权限/删除/编辑）仅在恰好选中一项时可用；
+  // 批量面（下载/上传）走 selectedNames / selectedEntries。
+  const selectedEntries = pane.entries.filter((e) => pane.selected.has(e.name));
+  const selectedEntry = selectedEntries.length === 1 ? selectedEntries[0] : null;
   const selectedRemotePath =
     focus === "remote" && selectedEntry ? joinRemote(remote.path, selectedEntry.name) : null;
+
+  // --- 多选（2026-10-19）：普通点击单选 / Ctrl·⌘ 切换 / Shift 范围 ----------
+  // anchor 记录上次单选锚点（范围选起点），按栏各存一个。
+  const selectAnchor = useRef<{ local: string | null; remote: string | null }>({
+    local: null,
+    remote: null,
+  });
+  const applySelection = (side: Side, next: ReadonlySet<string>) => {
+    if (side === "local") setLocal((p) => ({ ...p, selected: next }));
+    else setRemote((p) => ({ ...p, selected: next }));
+  };
+  const toggleSelect = (side: Side, name: string) => {
+    const cur = side === "local" ? local : remote;
+    const next = new Set(cur.selected);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    selectAnchor.current[side] = name;
+    applySelection(side, next);
+  };
+  const selectRow = (
+    side: Side,
+    name: string,
+    ev: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean },
+  ) => {
+    const cur = side === "local" ? local : remote;
+    if (ev.shiftKey && selectAnchor.current[side]) {
+      const ordered = sortFileEntries(cur.entries, sorts[side]).map((e) => e.name);
+      const a = ordered.indexOf(selectAnchor.current[side] as string);
+      const b = ordered.indexOf(name);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        applySelection(side, new Set(ordered.slice(lo, hi + 1)));
+        return;
+      }
+    }
+    if (ev.metaKey || ev.ctrlKey) {
+      const next = new Set(cur.selected);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      selectAnchor.current[side] = name;
+      applySelection(side, next);
+      return;
+    }
+    selectAnchor.current[side] = name;
+    applySelection(side, new Set([name]));
+  };
+
+  /** 批量下载（远端选中项 → 本地；目录跳过并提示）。 */
+  async function downloadSelected() {
+    if (!rustId) return;
+    const files = selectedEntries.filter((e) => !e.is_dir);
+    const skipped = selectedEntries.length - files.length;
+    for (const e of files) {
+      void startDownload(rustId, joinRemote(remote.path, e.name)).catch((err) =>
+        showNotice(t("files.downloadFailed", { message: String(err) })),
+      );
+    }
+    if (files.length === 1) {
+      showNotice(t("files.downloadToDownloads", { name: files[0].name }));
+    } else if (files.length > 1) {
+      showNotice(t("files.dropQueued", { count: files.length }));
+    }
+    if (skipped > 0 && files.length === 0) {
+      showNotice(t("files.dropDirsSkipped", { count: skipped }));
+    }
+  }
+
+  /** 批量上传（本地选中项 → 远端当前目录）：文件直接入队；目录递归建远端
+   *  目录树后逐文件入队（2026-10-19 用户需求）。统计进提示。 */
+  async function uploadLocalSelection(entries: Array<{ name: string; is_dir: boolean }>) {
+    if (!rustId) return;
+    let files = 0;
+    let dirs = 0;
+    let skipped = 0;
+    for (const e of entries) {
+      const abs = joinLocalPath(local.path, e.name);
+      if (e.is_dir) {
+        try {
+          const r = await uploadLocalTree(abs, remote.path, {
+            list: localList,
+            mkdir: (p) => sftpMkdirAll(rustId, p),
+            uploadFile: (f, d) => startUpload(rustId, f, d),
+            joinLocal: joinLocalPath,
+            joinRemote,
+          });
+          files += r.files;
+          dirs += r.dirs;
+          skipped += r.skipped;
+        } catch (err) {
+          skipped++;
+          showNotice(t("files.uploadFailed", { message: String(err) }));
+        }
+      } else {
+        await startUpload(rustId, abs, remote.path);
+        files++;
+      }
+    }
+    if (files > 0) {
+      showNotice(t("files.dropQueued", { count: files }));
+    }
+    if (skipped > 0) {
+      showNotice(t("files.dropDirsSkipped", { count: skipped }));
+    }
+    void dirs;
+  }
 
   function navigate(side: Side, path: string) {
     if (side === "local") void loadLocal(path);
@@ -838,9 +978,9 @@ export function FilePanel({ session }: { session: Session }) {
             <div
               key={e.name}
               role="option"
-              aria-selected={state.selected === e.name}
+              aria-selected={state.selected.has(e.name)}
               className="file-row"
-              data-selected={state.selected === e.name}
+              data-selected={state.selected.has(e.name)}
               tabIndex={0}
               onKeyDown={(ev) => {
                 // 键盘可达（2026-10-16 全面评审 frontend-ui-3）：Enter=打开/
@@ -850,8 +990,7 @@ export function FilePanel({ session }: { session: Session }) {
                   openEntry(side, e);
                 } else if (ev.key === " ") {
                   ev.preventDefault();
-                  if (side === "local") setLocal((p) => ({ ...p, selected: e.name }));
-                  else setRemote((p) => ({ ...p, selected: e.name }));
+                  toggleSelect(side, e.name);
                 }
               }}
               onPointerDown={(ev) => {
@@ -867,16 +1006,17 @@ export function FilePanel({ session }: { session: Session }) {
                   active: false,
                 };
               }}
-              onClick={() =>
-                side === "local"
-                  ? setLocal((p) => ({ ...p, selected: e.name }))
-                  : setRemote((p) => ({ ...p, selected: e.name }))
-              }
+              onClick={(ev) => selectRow(side, e.name, ev)}
               onDoubleClick={() => openEntry(side, e)}
               onContextMenu={(ev) => {
                 ev.preventDefault();
                 setFocus(side);
-                if (side === "remote") setRemote((p) => ({ ...p, selected: e.name }));
+                const cur = side === "local" ? local : remote;
+                if (!cur.selected.has(e.name)) {
+                  const only = new Set([e.name]);
+                  if (side === "local") setLocal((p) => ({ ...p, selected: only }));
+                  else setRemote((p) => ({ ...p, selected: only }));
+                }
                 // 视口钳位（2026-10-16 全面评审 frontend-ui-2）：窗口右/下边缘
                 // 右键时菜单不再被裁出视口。
                 const menuW = 220;
@@ -936,6 +1076,14 @@ export function FilePanel({ session }: { session: Session }) {
             >
               {t("common.delete")}
             </button>
+            <button
+              data-testid="fb-upload"
+              disabled={selectedEntries.length === 0}
+              onClick={() => void uploadLocalSelection(selectedEntries)}
+            >
+              {t("files.upload")}
+              {selectedEntries.length > 1 ? ` (${selectedEntries.length})` : ""}
+            </button>
           </>
         )}
         {focus === "remote" && (
@@ -964,10 +1112,13 @@ export function FilePanel({ session }: { session: Session }) {
             </button>
             <button
               data-testid="fb-download"
-              disabled={!selectedEntry || selectedEntry.is_dir}
-              onClick={() => selectedEntry && openEntry("remote", selectedEntry)}
+              disabled={!selectedEntries.some((e) => !e.is_dir)}
+              onClick={() => void downloadSelected()}
             >
               {t("files.download")}
+              {selectedEntries.filter((e) => !e.is_dir).length > 1
+                ? ` (${selectedEntries.filter((e) => !e.is_dir).length})`
+                : ""}
             </button>
           </>
         )}

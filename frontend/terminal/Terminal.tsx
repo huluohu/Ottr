@@ -180,10 +180,13 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   // 变化时触发（首挂载早于 rustId 落地，attach 拿到的可能是未布局的退化尺寸
   // 2×1），没有这条「connected 转换下发」，退化 PTY 会终身保持（提示符/回显
   // 缺失的另一半根因）。重连（disconnected→connected）同样经此重发。
+  // 退化尺寸不下发（2026-10-19 页签伪影治理）：2 列宽的 SIGWINCH 会让远端
+  // readline/ash 在退化宽度上重绘提示符（碎片伪影源），等 fit 链送来真实尺寸。
   useEffect(() => {
     if (status !== "connected") return;
     const term = termRef.current;
     if (!term) return;
+    if (term.cols < 4 || term.rows < 2) return;
     resizeSession(sessionId, term.cols, term.rows);
   }, [status, sessionId]);
 
@@ -373,6 +376,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
         } catch {
           // 尺寸不可测（隐藏/未布局）→ xterm 默认值仍有效
         }
+        // 退化尺寸兜底（2026-10-19 页签伪影治理，Q1 缓解 1）：attach 期容器
+        // 未布局会量出 2×1，shell 的**首个提示符**就画在 2 列上（碎片伪影源，
+        // busybox ash 尤甚）；兜底为经典 80×24，等 fit 链送来真实尺寸再
+        // window_change 一次（健康宽度下的 SIGWINCH 重绘实测干净）。
+        if (term.cols < 4 || term.rows < 2) return { cols: 80, rows: 24 };
         return { cols: term.cols, rows: term.rows };
       },
     });

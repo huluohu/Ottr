@@ -358,7 +358,15 @@ export function MainArea({
         {slotView !== null ? (
           slotPane
         ) : (
-          termViewActive && <DiagnosePanel onOpenSettings={onOpenAiSettings} />
+          termViewActive && (
+            // 方案 A 会话作用域（2026-10-19）：面板读写都落 active 会话自己的
+            // 切片；key=sessionId 保证切会话即重挂（markSeen 徽标口径随之正确）。
+            <DiagnosePanel
+              key={activeSession?.id ?? "none"}
+              sessionId={activeSession?.id ?? ""}
+              onOpenSettings={onOpenAiSettings}
+            />
+          )
         )}
       </div>
       {/* 监控/插件（2026-10-17 批次三）：满幅视图 + 统一外壳，平级渲染同

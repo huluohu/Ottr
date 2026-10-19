@@ -513,6 +513,7 @@
     "list": "Session tabs",
     "closeAria": "Close tab {{name}}",
     "prodBadge": "PROD",
+    "aiPendingBadge": "AI diagnosis ready to review",
     "nextTab": "Next tab",
     "prevTab": "Previous tab"
   },

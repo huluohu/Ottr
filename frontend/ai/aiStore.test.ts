@@ -1,6 +1,7 @@
-// 诊断链路测试（T13 Step 4）：exit_code≠0 → 面板开 → tail 取数 → 脱敏 →
-// provider 流式 → 通知落库（notify kind="ai"）。provider 层 mock（MockProvider
-// 记录请求），invoke 全量 mock（真后端命令已在 desktop 接线）。
+// 诊断链路测试（T13 Step 4；2026-10-19 方案 A 会话作用域更新）：exit_code≠0 →
+// 面板开（只写所属会话切片）→ tail 取数 → 脱敏 → provider 流式 → 通知落库
+// （notify kind="ai"）。provider 层 mock（MockProvider 记录请求），invoke 全量
+// mock（真后端命令已在 desktop 接线）。
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -29,6 +30,7 @@ import {
   commandExcerpt,
   useAiStore,
   type DiagnoseRequest,
+  type SessionAiState,
 } from "./aiStore";
 import { setNotifyPorts } from "../notify/core";
 import { resetRateLimiter } from "../notify/core";
@@ -89,11 +91,36 @@ const REQ: DiagnoseRequest = {
   command: "mkdir -p /data && password=hunter2 10.1.2.3",
 };
 
+/** 会话切片读取（方案 A：一切状态在 sessions[id] 下）。 */
+function aiState(id = REQ.sessionId): SessionAiState | undefined {
+  return useAiStore.getState().sessions[id];
+}
+
+/** 直塞一个切片（abort 徽标等纯状态测试的种子面）。 */
+function seedSlice(id: string, over: Partial<SessionAiState>): void {
+  useAiStore.setState((st) => ({
+    sessions: {
+      ...st.sessions,
+      [id]: {
+        request: null,
+        status: "idle",
+        answer: "",
+        errorKind: null,
+        error: null,
+        redactions: [],
+        settingsUsed: null,
+        seen: false,
+        ...over,
+      },
+    },
+  }));
+}
+
 beforeEach(async () => {
   mockedInvoke.mockReset();
   chatFactory.mockClear();
   createdProviders.length = 0;
-  useAiStore.getState().close();
+  useAiStore.setState({ sessions: {} });
   resetRateLimiter();
   setNotifyPorts({ now: () => 1_000, focused: () => true, system: async () => {} });
   await i18n.changeLanguage("zh-CN"); // 断言面向 zh 词典键
@@ -104,9 +131,9 @@ describe("诊断链路（onCommandFailed → run）", () => {
     mockBackend();
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("done");
+      expect(aiState()?.status).toBe("done");
     });
-    const st = useAiStore.getState();
+    const st = aiState()!;
     expect(st.request?.kind).toBe("diagnose");
     expect(st.answer).toContain("原因是磁盘已满。");
     expect(st.answer).toContain("df -h /data");
@@ -132,7 +159,7 @@ describe("诊断链路（onCommandFailed → run）", () => {
     mockBackend();
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("done");
+      expect(aiState()?.status).toBe("done");
     });
     const provider = createdProviders[0];
     expect(provider.requests[0].system).toContain("运维");
@@ -143,7 +170,7 @@ describe("诊断链路（onCommandFailed → run）", () => {
     mockBackend({ enabled: false });
     useAiStore.getState().onCommandFailed(REQ);
     await new Promise((r) => setTimeout(r, 20));
-    expect(useAiStore.getState().request).toBeNull();
+    expect(aiState()).toBeUndefined();
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
@@ -156,9 +183,9 @@ describe("诊断链路（onCommandFailed → run）", () => {
     });
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("error");
+      expect(aiState()?.status).toBe("error");
     });
-    expect(useAiStore.getState().errorKind).toBe("noProvider");
+    expect(aiState()?.errorKind).toBe("noProvider");
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
@@ -182,7 +209,7 @@ describe("诊断链路（onCommandFailed → run）", () => {
     });
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("done");
+      expect(aiState()?.status).toBe("done");
     });
     expect(chatFactory.mock.calls[0][0]).toMatchObject({ id: "p2", model: "qwen2.5:7b" });
   });
@@ -197,9 +224,9 @@ describe("诊断链路（onCommandFailed → run）", () => {
     });
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("error");
+      expect(aiState()?.status).toBe("error");
     });
-    expect(useAiStore.getState().errorKind).toBe("noProvider");
+    expect(aiState()?.errorKind).toBe("noProvider");
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
@@ -229,9 +256,9 @@ describe("诊断链路（onCommandFailed → run）", () => {
     });
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("done");
+      expect(aiState()?.status).toBe("done");
     });
-    const st = useAiStore.getState();
+    const st = aiState()!;
     expect(st.errorKind).toBeNull();
     expect(st.answer).toContain("原因是磁盘已满。");
     expect(chatFactory.mock.calls[0][1]).toBe("");
@@ -246,10 +273,10 @@ describe("诊断链路（onCommandFailed → run）", () => {
     });
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("error");
+      expect(aiState()?.status).toBe("error");
     });
-    expect(useAiStore.getState().errorKind).toBe("noKey");
-    expect(useAiStore.getState().error).toContain("vault is locked");
+    expect(aiState()?.errorKind).toBe("noKey");
+    expect(aiState()?.error).toContain("vault is locked");
   });
 
   it("session_tail 失败（会话已关）：空输出照发诊断", async () => {
@@ -264,17 +291,18 @@ describe("诊断链路（onCommandFailed → run）", () => {
     });
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("done");
+      expect(aiState()?.status).toBe("done");
     });
     const provider = createdProviders[0];
     expect(provider.requests[0].messages[0].content).toContain("mkdir");
   });
 
-  it("abort：在途中止 → aborted 态（非 error）", async () => {
-    mockBackend();
-    useAiStore.setState({ status: "running" });
-    useAiStore.getState().abort();
-    expect(useAiStore.getState().status).toBe("aborted");
+  it("abort：在途中止 → aborted 态（非 error）", () => {
+    seedSlice(REQ.sessionId, { request: REQ, status: "running" });
+    useAiStore.getState().abort(REQ.sessionId);
+    expect(aiState()?.status).toBe("aborted");
+    // 面板保留（close 才摘切片）
+    expect(aiState()?.request).not.toBeNull();
   });
 });
 
@@ -289,7 +317,7 @@ describe("openExplain（右键解释）", () => {
       text: "E5: spdif underline error 10.1.2.3",
     });
     await vi.waitFor(() => {
-      expect(useAiStore.getState().status).toBe("done");
+      expect(aiState()?.status).toBe("done");
     });
     expect(mockedInvoke.mock.calls.some(([c]) => c === "session_tail")).toBe(false);
     const provider = createdProviders[0];
@@ -297,6 +325,67 @@ describe("openExplain（右键解释）", () => {
     expect(provider.requests[0].messages[0].content).toContain("[REDACTED_IPV4_1]");
     const notifyCall = mockedInvoke.mock.calls.find(([c]) => c === "notify_insert");
     expect(notifyCall?.[1].input.title_key).toBe("notify.title.aiExplain");
+  });
+});
+
+describe("方案 A 会话作用域（2026-10-19）", () => {
+  it("后台会话失败只写自己的切片，不碰他会在看的面板", async () => {
+    mockBackend();
+    // A 会话（tab-1）已有完成的面板
+    useAiStore.getState().onCommandFailed(REQ);
+    await vi.waitFor(() => {
+      expect(aiState()?.status).toBe("done");
+    });
+    const aBefore = { ...aiState()! };
+    // B 会话（tab-2）失败
+    useAiStore.getState().onCommandFailed({
+      ...REQ,
+      sessionId: "tab-2",
+      rustId: "pty-10",
+      hostName: "db-01",
+      command: "systemctl restart db",
+    });
+    await vi.waitFor(() => {
+      expect(aiState("tab-2")?.status).toBe("done");
+    });
+    // A 的面板分毫不动（旧全局单槽会被 B 取代）
+    const aAfter = aiState("tab-1")!;
+    expect(aAfter).toEqual(aBefore);
+    expect(aAfter.request?.hostName).toBe("web-01");
+    expect(aiState("tab-2")!.request?.hostName).toBe("db-01");
+  });
+
+  it("待看徽标口径：失败 → seen=false，markSeen → true，close → 切片摘除", async () => {
+    mockBackend();
+    useAiStore.getState().onCommandFailed(REQ);
+    await vi.waitFor(() => {
+      expect(aiState()?.status).toBe("done");
+    });
+    expect(aiState()?.seen).toBe(false);
+    useAiStore.getState().markSeen(REQ.sessionId);
+    expect(aiState()?.seen).toBe(true);
+    // close 后切片不存在（页签徽标随之消失）
+    useAiStore.getState().close(REQ.sessionId);
+    expect(aiState()).toBeUndefined();
+  });
+
+  it("markSeen 无面板时是 no-op（不产生幽灵切片）", () => {
+    useAiStore.getState().markSeen("ghost-tab");
+    expect(useAiStore.getState().sessions["ghost-tab"]).toBeUndefined();
+  });
+
+  it("close 单会话不影响他会话切片", () => {
+    seedSlice("tab-1", { request: REQ });
+    seedSlice("tab-2", { request: { ...REQ, sessionId: "tab-2" } });
+    useAiStore.getState().close("tab-1");
+    expect(aiState("tab-1")).toBeUndefined();
+    expect(aiState("tab-2")).toBeDefined();
+  });
+
+  it("dropSession = close 语义（会话收尾钩子消费面）", () => {
+    seedSlice("tab-1", { request: REQ, status: "running" });
+    useAiStore.getState().dropSession("tab-1");
+    expect(aiState("tab-1")).toBeUndefined();
   });
 });
 

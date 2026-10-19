@@ -10,6 +10,7 @@
 // 任一库级视图回终端——标签语义：点哪个标签看哪个内容。
 import { useTranslation } from "react-i18next";
 import { useSessionStore, type Session } from "./SessionStore";
+import { useAiStore } from "../ai/aiStore";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { workspaceViewOf, WORKSPACE_VIEW_META, type WorkspaceView } from "../workspace/workspaceViews";
 
@@ -33,6 +34,9 @@ export function TabBar({ dragRegion }: TabBarProps) {
   const openMainView = useWorkspaceStore((s) => s.openMainView);
   const closeMainView = useWorkspaceStore((s) => s.closeMainView);
   const closeOverview = useWorkspaceStore((s) => s.closeOverview);
+  // AI 诊断「待看」徽标（2026-10-19 方案 A 会话作用域）：该会话有面板且用户
+  // 未看过（seen=false）→ 页签琥珀点；markSeen（面板挂载）/close 后消失。
+  const aiSessions = useAiStore((s) => s.sessions);
 
   // 只渲染标签根会话（paneOf=null）：分屏 pane 属标签内部布局，不进标签条（Task 8）
   const tabs = sessions.filter((s) => s.paneOf === null);
@@ -107,6 +111,20 @@ export function TabBar({ dragRegion }: TabBarProps) {
           <span className="tab-title" title={session.lastError ?? undefined}>
             {session.hostName}
           </span>
+          {/* AI 诊断待看（方案 A）：后台失败不再抢当前视图，页签引导 */}
+          {(() => {
+            const ai = aiSessions[session.id];
+            return ai?.request != null && !ai.seen ? (
+              <span
+                className="tab-ai-pending"
+                data-testid={`tab-ai-pending-${session.hostName}`}
+                aria-label={t("tabs.aiPendingBadge")}
+                title={t("tabs.aiPendingBadge")}
+              >
+                AI
+              </span>
+            ) : null;
+          })()}
           {/* 生产环境主机（Phase 2 Task 11，B11）：PROD 徽标（红 pill，防呆一眼辨） */}
           {session.isProduction && (
             <span

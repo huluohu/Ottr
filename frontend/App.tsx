@@ -33,7 +33,7 @@ import { ExportHostsDialog } from "./hosts/ExportHostsDialog";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { HostKeyDialog } from "./session/HostKeyDialog";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
-import { setAiSettingsOpener } from "./ai/aiStore";
+import { setAiSettingsOpener, useAiStore } from "./ai/aiStore";
 import { onSessionEnded } from "./ai/summary";
 import { setSessionEndHook, useSessionStore } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
@@ -373,8 +373,13 @@ function HomeLayout() {
 
   // Phase 2 Task 7（B1 会话纪要）：会话收尾钩子注入——closeTab / disconnect /
   // 重连耗尽时异步生成纪要（onSessionEnded fire-and-forget，失败静默不反噬）。
+  // 搭车（2026-10-19 方案 A）：AI 面板状态按会话作用域，会话收尾时一并清理
+  // （abort 在途流 + 摘切片；store 不反向依赖 session 链路的既有惯例不变）。
   useEffect(() => {
-    setSessionEndHook(onSessionEnded);
+    setSessionEndHook((info) => {
+      onSessionEnded(info);
+      useAiStore.getState().dropSession(info.id);
+    });
     return () => setSessionEndHook(null);
   }, []);
 

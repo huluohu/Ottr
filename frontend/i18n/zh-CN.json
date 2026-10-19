@@ -512,6 +512,7 @@
     "list": "会话标签",
     "closeAria": "关闭标签 {{name}}",
     "prodBadge": "PROD",
+    "aiPendingBadge": "有 AI 诊断待查看",
     "nextTab": "下一个标签",
     "prevTab": "上一个标签"
   },

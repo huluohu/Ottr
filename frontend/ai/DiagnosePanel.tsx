@@ -10,8 +10,9 @@
 //   messages——见 aiStore 步骤 3），面板以「已脱敏 N 处」标注外发侧命中；
 // * 错误面：noProvider/noKey → 「去设置」按钮（App 注入 openSettings）；
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useAiStore } from "./aiStore";
+import { useAiStore, useSessionAi } from "./aiStore";
 import { activeProvider } from "./settings";
 import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
 import { useTerminalFocus } from "../terminal/terminalFocus";
@@ -72,9 +73,12 @@ export function AnswerView({
 }
 
 export function DiagnosePanel({
+  sessionId,
   onOpenSettings,
   inserter = defaultInserter,
 }: {
+  /** 面板所属会话（方案 A 会话作用域：读写都落自己那份切片）。 */
+  sessionId: string;
   onOpenSettings: () => void;
   inserter?: TerminalInserter;
 }) {
@@ -82,21 +86,29 @@ export function DiagnosePanel({
   // 插入成功：焦点交还 xterm——2026-10-16 用户反馈「插完还得再点一下才能执行」
   const onInserted = () => useTerminalFocus.getState().request();
   const { t } = useTranslation();
-  const request = useAiStore((s) => s.request);
-  const status = useAiStore((s) => s.status);
-  const answer = useAiStore((s) => s.answer);
-  const errorKind = useAiStore((s) => s.errorKind);
-  const error = useAiStore((s) => s.error);
-  const redactions = useAiStore((s) => s.redactions);
-  const settingsUsed = useAiStore((s) => s.settingsUsed);
+  const request = useSessionAi(sessionId).request;
+  const status = useSessionAi(sessionId).status;
+  const answer = useSessionAi(sessionId).answer;
+  const errorKind = useSessionAi(sessionId).errorKind;
+  const error = useSessionAi(sessionId).error;
+  const redactions = useSessionAi(sessionId).redactions;
+  const settingsUsed = useSessionAi(sessionId).settingsUsed;
+
+  // 「待看」徽标口径：面板渲染 = 用户已看到（MainArea 只在所属会话激活时
+  // 挂载本组件，key=sessionId——切走再切回会重挂并再次 markSeen，无害）。
+  const markSeen = useAiStore((s) => s.markSeen);
+  useEffect(() => {
+    if (sessionId) markSeen(sessionId);
+  }, [sessionId, markSeen]);
+
   const abort = useAiStore((s) => s.abort);
   const run = useAiStore((s) => s.run);
   const close = useAiStore((s) => s.close);
 
-  if (!request) return null;
+  if (!sessionId || !request) return null;
   const running = status === "running";
   // 头部展示「实际生效」的 provider（首个未禁用，2026-10-16）——禁用的
-  // 默认项不再冒名出现在头部。
+  // 默认项不再冒名出现在头部；主机名居首（多会话方案 A 的归属标注）。
   const active = settingsUsed ? activeProvider(settingsUsed.providers) : null;
 
   return (
@@ -106,6 +118,7 @@ export function DiagnosePanel({
           {request.kind === "diagnose" ? t("ai.panelDiagnose") : t("ai.panelExplain")}
         </span>
         <span className="ai-panel-meta">
+          {request.hostName ? `${request.hostName} · ` : ""}
           {active?.name ?? ""}
           {active?.model ? ` · ${active.model}` : ""}
         </span>
@@ -113,7 +126,7 @@ export function DiagnosePanel({
           className="ai-panel-close"
           data-testid="ai-close"
           aria-label={t("common.close")}
-          onClick={close}
+          onClick={() => close(sessionId)}
         >
           ✕
         </button>
@@ -135,7 +148,7 @@ export function DiagnosePanel({
           </span>
         )}
         {running && (
-          <button className="ai-stop" data-testid="ai-stop" onClick={abort}>
+          <button className="ai-stop" data-testid="ai-stop" onClick={() => abort(sessionId)}>
             {t("ai.stop")}
           </button>
         )}
@@ -163,7 +176,7 @@ export function DiagnosePanel({
           {errorKind === "request" && (
             <>
               <p data-testid="ai-error-message">{error ?? t("ai.failed")}</p>
-              <button className="btn-accent" data-testid="ai-retry" onClick={() => void run()}>
+              <button className="btn-accent" data-testid="ai-retry" onClick={() => void run(sessionId)}>
                 {t("ai.retry")}
               </button>
             </>

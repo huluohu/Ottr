@@ -106,6 +106,11 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
   startDownload: async (rustId, remote, local) => {
     const fallback = local ?? null;
     const started: TransferStarted = await sftpDownload(rustId, remote, fallback ?? undefined);
+    // 防御：后端回执缺 transfer_id（协议异常/测试桩晚期兑现）不炸 UI 队列
+    if (!started?.transfer_id) {
+      console.warn("[transfer] start_download returned no transfer_id:", started);
+      return;
+    }
     // 竞态容错：begin 事件可能先于命令回执落地（onBegin 已建占位）→ 合并不覆盖。
     const existing = get().items.find((it) => it.transferId === started.transfer_id);
     if (existing) {
@@ -139,6 +144,11 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
 
   startUpload: async (rustId, local, remoteDir) => {
     const started: TransferStarted = await sftpUpload(rustId, local, remoteDir);
+    // 防御：同 startDownload（2026-10-20 CI 实例：Mock 复位后晚期兑现 undefined）
+    if (!started?.transfer_id) {
+      console.warn("[transfer] start_upload returned no transfer_id:", started);
+      return;
+    }
     const existing = get().items.find((it) => it.transferId === started.transfer_id);
     if (existing) {
       set((st) => ({

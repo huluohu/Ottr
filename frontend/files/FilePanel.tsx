@@ -72,6 +72,48 @@ export function sortFileEntries<
   );
 }
 
+// --- 目录记忆（2026-10-19 用户需求）：per-host localStorage 持久化上次浏览
+// 目录——面板重开/会话重连恢复上次位置；纯函数 + try/catch（localStorage
+// 不可用/损坏 JSON 时静默退化为无记忆，不阻塞面板）。
+const CWD_MEMORY_KEY = "ottr.files.cwdMemory";
+
+type SavedCwd = { local?: string; remote?: string };
+
+function loadSavedCwd(hostId: number): SavedCwd {
+  try {
+    const all: unknown = JSON.parse(localStorage.getItem(CWD_MEMORY_KEY) ?? "{}");
+    const entry = (all as Record<string, SavedCwd>)[String(hostId)];
+    return entry && typeof entry === "object" ? entry : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSavedCwd(hostId: number, side: "local" | "remote", path: string): void {
+  try {
+    const all: Record<string, SavedCwd> = JSON.parse(
+      localStorage.getItem(CWD_MEMORY_KEY) ?? "{}",
+    );
+    all[String(hostId)] = { ...all[String(hostId)], [side]: path };
+    localStorage.setItem(CWD_MEMORY_KEY, JSON.stringify(all));
+  } catch {
+    // 持久化失败不阻塞浏览
+  }
+}
+
+function clearSavedCwd(hostId: number, side: "local" | "remote"): void {
+  try {
+    const all: Record<string, SavedCwd> = JSON.parse(
+      localStorage.getItem(CWD_MEMORY_KEY) ?? "{}",
+    );
+    const entry = all[String(hostId)];
+    if (entry) delete entry[side];
+    localStorage.setItem(CWD_MEMORY_KEY, JSON.stringify(all));
+  } catch {
+    // 清理失败无碍（下次加载失败还会再清）
+  }
+}
+
 interface PaneState {
   path: string;
   entries: (DirEntry & { is_dir: boolean })[] | (LocalEntry & { is_dir: boolean })[];
@@ -248,43 +290,54 @@ export function FilePanel({ session }: { session: Session }) {
 
   // --- 列目录 ----------------------------------------------------------------
 
-  const loadLocal = useCallback(async (path: string) => {
+  // 返回是否加载成功（目录记忆初载的回退判定面；其余调用方 void 忽略）。
+  const loadLocal = useCallback(async (path: string): Promise<boolean> => {
     setLocal((p) => ({ ...p, path, loading: true, error: null, selected: null }));
     try {
       const list = await localList(path);
       const entries = Array.isArray(list) ? list : [];
       setLocal((p) => ({ ...p, entries, loading: false }));
+      return true;
     } catch (e) {
       setLocal((p) => ({ ...p, loading: false, error: String(e) }));
+      return false;
     }
   }, []);
 
   const loadRemote = useCallback(
-    async (path: string) => {
-      if (!rustId) return;
+    async (path: string): Promise<boolean> => {
+      if (!rustId) return false;
       setRemote((p) => ({ ...p, path, loading: true, error: null, selected: null }));
       try {
         const list = await sftpListFor(rustId, path);
         const entries = Array.isArray(list) ? list : [];
         setRemote((p) => ({ ...p, entries, loading: false }));
+        return true;
       } catch (e) {
         setRemote((p) => ({ ...p, loading: false, error: String(e) }));
+        return false;
       }
     },
     [rustId],
   );
 
-  // 初载：本地 = home；远端 = realpath(".")（= home）。会话切换（含重连换
-  // rustId）整体重置——面板随会话生命周期，不做跨会话路径记忆。
+  // 初载：本地 = home；远端 = realpath(".")（= home）。**目录记忆（2026-10-19
+  // 用户需求）**：按主机持久化上次浏览目录（localStorage，键 = hostId）——
+  // 面板重开/会话重连恢复上次位置；保存的路径已不存在（远端被删/本地移动）
+  // 时回退 home 并清掉该侧记忆，防永久坏状态。会话切换 = 换主机时各用各的
+  // 记忆，互不串扰。
   useEffect(() => {
     void (async () => {
-      try {
-        await loadLocal(await localHome());
-      } catch {
+      const saved = loadSavedCwd(session.hostId).local;
+      if (saved && (await loadLocal(saved))) return;
+      // 记忆路径已失效（或无记忆）：清掉该侧记忆，回 home
+      clearSavedCwd(session.hostId, "local");
+      if (!(await loadLocal(await localHome()))) {
         setLocal((p) => ({ ...p, error: "cannot resolve home" }));
       }
     })();
-  }, [loadLocal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 初载一次；hostId 变化 = 组件随会话重挂
+  }, []);
 
   useEffect(() => {
     if (!rustId) {
@@ -292,14 +345,21 @@ export function FilePanel({ session }: { session: Session }) {
       return;
     }
     void (async () => {
-      try {
-        const home = await sftpRealpath(rustId, ".");
-        void loadRemote(home);
-      } catch (e) {
-        setRemote((p) => ({ ...p, error: String(e) }));
-      }
+      const saved = loadSavedCwd(session.hostId).remote;
+      if (saved && (await loadRemote(saved))) return;
+      clearSavedCwd(session.hostId, "remote");
+      const home = await sftpRealpath(rustId, ".");
+      void loadRemote(home);
     })();
   }, [rustId, loadRemote]);
+
+  // 目录记忆写入：浏览成功（path 变化即成功加载过的结果）即持久化
+  useEffect(() => {
+    if (local.path) saveSavedCwd(session.hostId, "local", local.path);
+  }, [session.hostId, local.path]);
+  useEffect(() => {
+    if (remote.path) saveSavedCwd(session.hostId, "remote", remote.path);
+  }, [session.hostId, remote.path]);
 
   // 传输完成 → 对应侧自动刷新（上传=远端，下载=本地）：用户不用手动点刷新
   // 才能看到传输结果。用状态迁移判定（前值非 done、现值 done）——初挂载时

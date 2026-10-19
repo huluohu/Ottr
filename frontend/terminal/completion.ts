@@ -6,14 +6,18 @@
 //      依赖，TDD 钉死前缀匹配/两段式回退/排序/去重/空输入/超长行。
 //   2. GhostController：xterm 6 decoration 渲染 + onData 按键语义。xterm 6 无
 //      原生 ghost text——用 registerDecoration 自绘灰字，**纯视觉层，绝不污染
-//      PTY 流**：除「Tab 采纳时把补全剩余文本写入 write_session」外，一切按键
+//      PTY 流**：除「→ 采纳时把补全剩余文本写入 write_session」外，一切按键
+//      原样透传（Tab 永远给 shell 原生前缀补全）。
+//  Tab 语义修正（2026-10-19 用户反馈）：终端内 Tab 本是 shell 前缀补全——
+//   历史建议（灰字）只作展示，整条补上会盖掉 shell 的命令/路径/名称补全；
+//   采纳键 = →（光标在行尾且有建议时），Esc 忽略，其余按键照旧。
 //      原样透传（PTY 纯净性测试钉死）。
 //
-// Tab 语义（registry 守卫 T14 的产品裁定）：终端内 Tab 本是 shell 补全——
-//   有 ghost = 拦截 Tab，写补全剩余文本（不发 \t）；
-//   无 ghost = 放行 \t 给 shell。
-// Esc = 忽略本次建议（吞掉，下次击键恢复）；Enter/Ctrl-C/Ctrl-D = 行已消失，
-// 清态；方向键等控制序列 = 光标位移不可追，保守清态。
+// Tab 语义（2026-10-19 修订，替代 T14 旧裁定「有 ghost = 拦 Tab 采纳」）：
+//   Tab 永远透传 \t 给 shell（原生命令/路径/名称前缀补全优先于历史建议）；
+//   →（行尾且有建议）= 采纳历史建议尾巴（fish 同款）；Esc = 忽略本次建议
+//   （吞掉，下次击键恢复）；Enter/Ctrl-C/Ctrl-D = 行已消失，清态；
+//   方向键等控制序列 = 光标位移不可追，保守清态。
 //
 // 远端回显时差：onData 时本地回显未必到达，控制器维护 pending 增量（乐观击键
 // 影子），refresh 时与缓冲现值对账（endsWith 即丢弃）。引擎数据源 = 当前行
@@ -367,13 +371,11 @@ export class GhostController {
       return false;
     }
     if (data === TAB) {
-      if (this.suffix !== null) {
-        const accepted = this.suffix;
-        this.reset();
-        this.hooks.onAccept(accepted);
-        return true; // 拦截：\t 不进 shell
-      }
-      return false; // 无 ghost：放行 shell 补全
+      // Tab 语义修正（2026-10-19 用户反馈）：Tab 永远透传 shell 原生前缀
+      // 补全——命令/路径/名称补全是 readline 的职责，把历史建议整条补上去
+      // 会盖掉它。历史建议的采纳键改为 →（见下）。
+      this.reset();
+      return false;
     }
     if (data === ESC) {
       if (this.suffix !== null) {
@@ -382,6 +384,17 @@ export class GhostController {
         return true; // Esc 忽略建议：吞掉，不惊动 shell
       }
       return false;
+    }
+    if (data === "\x1b[C") {
+      // →（右方向键）：ghost 可见时采纳整条建议尾巴（fish 同款语义）。
+      // suffix 非 null 即建议可见（refresh 仅在光标行尾语义下生成建议）。
+      if (this.suffix !== null) {
+        const accepted = this.suffix;
+        this.reset();
+        this.hooks.onAccept(accepted);
+        return true; // 拦截：→ 不进 shell（行尾无移动语义）
+      }
+      return false; // 无建议：放行（正常光标右移）
     }
     if (data.includes("\r") || data.includes("\n") || data === "\x03" || data === "\x04") {
       this.reset(); // Enter/Ctrl-C/Ctrl-D：行不复存在（命令执行即清）

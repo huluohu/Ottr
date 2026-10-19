@@ -290,26 +290,30 @@ describe("GhostController：渲染与按键语义", () => {
     expect(liveDecorations(term)).toHaveLength(0);
   });
 
-  it("Tab 三态①有 ghost：拦截采纳——写剩余文本、\t 不透传、ghost 清除", () => {
+  it("Tab 语义修订（2026-10-19）：Tab 永远透传 \t 给 shell 原生前缀补全", () => {
     const { term, controller, onAccept } = setup();
     type(controller, ["d", "o", "c"]);
+    expect(liveDecorations(term)).toHaveLength(1); // 历史建议可见
     const passed = type(controller, ["\t"]);
-    expect(passed).toEqual([]); // \t 被拦截
+    expect(passed).toEqual(["\t"]); // \t 原样放行（shell 前缀补全优先）
+    expect(onAccept).not.toHaveBeenCalled();
+    // 透传即清态（光标语义不可追）
+    expect(liveDecorations(term)).toHaveLength(0);
+  });
+
+  it("→（行尾且有建议）：采纳历史建议尾巴；无建议时放行", () => {
+    const { term, controller, onAccept } = setup();
+    type(controller, ["d", "o", "c"]);
+    expect(liveDecorations(term)).toHaveLength(1);
+    const passed = type(controller, ["\x1b[C"]);
+    expect(passed).toEqual([]); // → 被拦截（采纳）
     expect(onAccept).toHaveBeenCalledWith("ker ps -a");
     expect(liveDecorations(term)).toHaveLength(0); // 采纳后清除
-    // 采纳后再 Tab（无 ghost）→ 放行
-    expect(controller.handleData("\t")).toBe(false);
+    // 无建议时 → 放行（正常光标右移）
+    expect(controller.handleData("\x1b[C")).toBe(false);
   });
 
-  it("Tab 三态②无 ghost：放行 shell（\t 原样透传、不写 PTY）", () => {
-    const { term, controller, onAccept } = setup([]);
-    const passed = type(controller, ["\t"]);
-    expect(passed).toEqual(["\t"]);
-    expect(onAccept).not.toHaveBeenCalled();
-    expect(term.decorations).toHaveLength(0);
-  });
-
-  it("Tab 三态③Esc 忽略：吞掉 Esc、ghost 清除、下次击键恢复", () => {
+  it("Esc 忽略：吞掉 Esc、ghost 清除、下次击键恢复", () => {
     const { term, controller, onAccept } = setup();
     type(controller, ["d", "o", "c"]);
     expect(controller.handleData("\x1b")).toBe(true); // Esc 被吞
@@ -329,8 +333,8 @@ describe("GhostController：渲染与按键语义", () => {
     expect(liveDecorations(term)).toHaveLength(0);
   });
 
-  it("PTY 纯净性：可打印字节全量透传，被拦截的只有 Tab/Esc，采纳走 onAccept", () => {
-    const keys = ["l", "s", "\t", " ", "-", "l", "\x7f", "a", "\t", "\r"];
+  it("PTY 纯净性：可打印字节全量透传，被拦截的只有 →/Esc，采纳走 onAccept", () => {
+    const keys = ["l", "s", "\x1b[C", "\t", " ", "-", "l", "\x7f", "a", "\r"];
     const term = fakeTerm({ rows: ["root@h:~$ "], cursorX: 10, cols: 80 });
     const onAccept = vi.fn();
     const ghosted = new GhostController(term, {
@@ -341,11 +345,11 @@ describe("GhostController：渲染与按键语义", () => {
     const consumed: string[] = [];
     const forwarded: string[] = [];
     for (const k of keys) (ghosted.handleData(k) ? consumed : forwarded).push(k);
-    // ghost 显示期间：被拦截的键只允许是 Tab（采纳）——其余一切原样透传
-    expect(consumed).toEqual(["\t"]);
+    // ghost 显示期间：被拦截的键只允许是 →（采纳）——其余一切原样透传
+    expect(consumed).toEqual(["\x1b[C"]);
     expect(onAccept).toHaveBeenCalledTimes(1);
     expect(onAccept).toHaveBeenCalledWith(" -la");
-    expect(forwarded.join("")).toBe("ls -l\u007fa\t\r"); // 第二个 \t 无 ghost → 放行 shell
+    expect(forwarded.join("")).toBe("ls\t -l\u007fa\r"); // \t 无条件放行 shell
     // A/B 对照：同一击键流在开关关闭（无 ghost 路径）下逐字节一致
     const offTerm = fakeTerm({ rows: ["root@h:~$ "], cursorX: 10, cols: 80 });
     const off = new GhostController(offTerm, {
@@ -353,7 +357,7 @@ describe("GhostController：渲染与按键语义", () => {
       enabled: () => false,
       onAccept: vi.fn(),
     });
-    const printableKeys = keys.slice(0, 8); // l s \t 空 - l \x7f a
+    const printableKeys = ["l", "s", "\t", " ", "-", "l", "\x7f", "a"]; // 可打印+Tab（→/\r 为控制键不入对照）
     const passedOff = type(off, printableKeys);
     const passedOn = (() => {
       const out: string[] = [];
@@ -387,7 +391,7 @@ describe("GhostController：渲染与按键语义", () => {
     type(controller, ["d", "o", "c"]);
     type(controller, ["\x7f"]); // "do"
     expect(liveDecorations(term)).toHaveLength(1);
-    type(controller, ["\t"]);
+    type(controller, ["\x1b[C"]);
     expect(onAccept).toHaveBeenCalledWith("cker ps -a");
   });
 

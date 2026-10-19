@@ -35,7 +35,7 @@
 // 卡片引导语；两 prop 缺省时对应入口不渲染（组件可独立挂载，行为可裁剪）。
 import { useTranslation } from "react-i18next";
 import { TabBar } from "../session/TabBar";
-import { TerminalArea } from "../terminal/Terminal";
+import { TerminalArea, TerminalToolbar } from "../terminal/Terminal";
 import { FilePanel } from "../files/FilePanel";
 import { ProcessBrowser } from "../monitor/ProcessBrowser";
 import { DiagnosePanel } from "../ai/DiagnosePanel";
@@ -279,28 +279,17 @@ export function MainArea({
             命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}
         <TabBar dragRegion={dragRegion} />
       </div>
-      {/* 终端隐藏常驻：visibility 而非卸载（见头注不变量）。
-          data-terminal = 终端聚焦守卫判定容器（评审 M-4），恒在 DOM。
-          data-yield = files/procs 视图时折叠本行（ui-batch2 T1，审计 48/49）：
-          此时行内内容全部 out-of-flow（holder absolute 让位、侧栏卸载），行若
-          仍 flex:1 会与平级渲染的 FilePanel/ProcessBrowser 50/50 均分主区——
-          面板被压半高。overview/batch 的实体视图渲染在行内，保持 flex:1。 */}
-      <div
-        className="term-main-row"
-        data-yield={filesVisible || procsVisible || monitorVisible || pluginsVisible}
-      >
-        <div
-          className="term-area-holder"
-          data-testid="term-holder"
-          data-hidden={slotView !== null || !termViewActive}
-          data-terminal=""
-        >
-          <TerminalArea
-            toolbarExtra={
-              // 录制钮属会话域但「正在录」时在库级页签也保留指示+停止入口
-              // （2026-10-18 裁定：悄悄进行比红点消失更糟）；视图切换器只在
-              // 会话语境渲染（2026-10-18 划界不变）。
-              sessionViewActive || anyRecording ? (
+      {/* 终端工具行（2026-10-19 热修）：分屏钮 + 视图切换器 + 录制 + 编码。
+          必须渲染在 data-hidden 的 term-area-holder **之外**——holder 在非
+          终端视图时 visibility:hidden，切换器住里面会跟着消失（v1.4.0 发布
+          回归：切到文件/监控后找不到「终端」按钮回不去）。本行常驻可见。 */}
+      <div className="term-toolbar-row">
+        <TerminalToolbar
+          toolbarExtra={
+            // 录制钮属会话域但「正在录」时在库级页签也保留指示+停止入口
+            // （2026-10-18 裁定：悄悄进行比红点消失更糟）；视图切换器只在
+            // 会话语境渲染（2026-10-18 划界不变）。
+            sessionViewActive || anyRecording ? (
                 <>
                   {/* 视图切换器（2026-10-19 方案 B：自页签行迁入终端工具行） */}
                   <div className="view-switch" role="group" aria-label={t("files.viewSwitch")}>
@@ -365,6 +354,25 @@ export function MainArea({
               ) : null
             }
           />
+      </div>
+      {/* 终端隐藏常驻：visibility 而非卸载（见头注不变量）。
+          data-terminal = 终端聚焦守卫判定容器（评审 M-4），恒在 DOM。
+          data-yield = files/procs 视图时折叠本行（ui-batch2 T1，审计 48/49）：
+          此时行内内容全部 out-of-flow（holder absolute 让位、侧栏卸载），行若
+          仍 flex:1 会与平级渲染的 FilePanel/ProcessBrowser 50/50 均分主区——
+          面板被压半高。overview/batch 的实体视图渲染在行内，保持 flex:1。
+          （工具行已迁出本 holder——2026-10-19 热修，见上方注释。） */}
+      <div
+        className="term-main-row"
+        data-yield={filesVisible || procsVisible || monitorVisible || pluginsVisible}
+      >
+        <div
+          className="term-area-holder"
+          data-testid="term-holder"
+          data-hidden={slotView !== null || !termViewActive}
+          data-terminal=""
+        >
+          <TerminalArea />
         </div>
         {slotView !== null ? (
           slotPane

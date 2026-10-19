@@ -13,7 +13,12 @@ vi.mock("../security/McpSettings", () => ({ McpSettings: () => <div data-testid=
 vi.mock("../notify/NotificationCenter", () => ({
   NotificationCenter: () => <div data-testid="nc" />,
 }));
-vi.mock("../terminal/Terminal", () => ({ TerminalArea: () => <div data-testid="term" /> }));
+vi.mock("../terminal/Terminal", () => ({
+  TerminalArea: () => <div data-testid="term" />,
+  TerminalToolbar: ({ toolbarExtra }: { toolbarExtra?: React.ReactNode }) => (
+    <div data-testid="terminal-toolbar">{toolbarExtra}</div>
+  ),
+}));
 vi.mock("../history/RecordToggle", () => ({
   RecordToggle: () => <div data-testid="record" />,
   useAnyRecording: () => false,

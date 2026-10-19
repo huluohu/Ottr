@@ -1,5 +1,14 @@
 /* --- T13：AI 诊断面板（右侧栏） + AI 设置 ---------------------------------- */
 
+/* 终端工具行（2026-10-19 热修）：分屏 + 视图切换器 + 录制 + 编码常驻行。
+   必须位于 term-main-row 之上、data-hidden 的 holder 之外——切换器住进
+   隐藏容器会在非终端视图跟着消失（v1.4.0 发布回归）。样式沿用 .term-toolbar
+   （surface-raised 底、flex 行），外面再包一层 flex:none 行容器。 */
+.term-toolbar-row {
+  flex: none;
+  display: flex;
+}
+
 .term-main-row {
   flex: 1;
   min-height: 0;

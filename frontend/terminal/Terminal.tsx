@@ -907,15 +907,70 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
 // ---------------------------------------------------------------------------
 
 
-/** 分屏终端主区（App.tsx 挂载）。bounds 驱动纯布局（split.ts），分隔条拖拽
- * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。
- * toolbarExtra（2026-10-19 方案 B）：主区视图切换器+录制钮挂进 term-toolbar
- *（分屏同行）——页签行独占会话页签，两组不再打架。 */
-export function TerminalArea({
+/** 终端工具行（2026-10-19 热修）：分屏钮 + 视图切换器/录制（toolbarExtra）+
+ * 编码徽标。**必须渲染在 data-hidden 的 term-area-holder 之外**——holder 在
+ * 非终端视图时 visibility:hidden（画布隐藏常驻制式），切换器住里面会跟着
+ * 消失，用户切到文件/监控后就找不到「终端」按钮回不去了（v1.4.0 发布回归）。
+ * MainArea 在 tabbar-row 与 term-main-row 之间的独立行渲染本组件。 */
+export function TerminalToolbar({
   toolbarExtra = null,
 }: {
   toolbarExtra?: React.ReactNode;
 } = {}) {
+  const { t } = useTranslation();
+  const activeId = useSessionStore((s) => s.activeId);
+  const activePaneMap = useSessionStore((s) => s.activePane);
+  const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
+  // 编码徽标（Task 9）：聚焦 pane 的当前会话编码，点击循环 utf-8→gbk→gb18030。
+  const activeEncoding = useSessionStore((s) =>
+    focusedPane != null
+      ? (s.sessions.find((x) => x.id === focusedPane)?.encoding ?? null)
+      : null,
+  );
+
+  return (
+    <div className="term-toolbar" data-testid="term-toolbar">
+      <button
+        data-testid="split-right"
+        disabled={activeId == null}
+        onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
+      >
+        {t("terminal.splitRight")}
+      </button>
+      <button
+        data-testid="split-down"
+        disabled={activeId == null}
+        onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
+      >
+        {t("terminal.splitDown")}
+      </button>
+      {toolbarExtra}
+      {activeEncoding != null && focusedPane != null && (
+        <button
+          className="encoding-badge"
+          data-testid="encoding-badge"
+          data-encoding={activeEncoding}
+          aria-label={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
+          title={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
+          style={{ marginLeft: "auto" }}
+          onClick={() =>
+            useSessionStore
+              .getState()
+              .setSessionEncoding(focusedPane as string, nextEncoding(activeEncoding))
+          }
+        >
+          {encodingName(activeEncoding)}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** 分屏终端主区（App.tsx 挂载）。bounds 驱动纯布局（split.ts），分隔条拖拽
+ * 回写 setPaneRatio。活动标签之外的会话窗格隐藏但常驻（缓冲不丢）。
+ * 工具行已抽为 TerminalToolbar（2026-10-19 热修）——本组件只负责画布面，
+ * 随 term-area-holder 的 data-hidden 隐藏/显形。 */
+export function TerminalArea() {
   const { t } = useTranslation();
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
@@ -941,13 +996,6 @@ export function TerminalArea({
   const rects = activeTree ? layout(activeTree, bounds) : new Map<string, Rect>();
   const dividerList = activeTree ? dividers(activeTree, bounds) : [];
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
-
-  // 编码徽标（Task 9）：聚焦 pane 的当前会话编码，点击循环 utf-8→gbk→gb18030。
-  const activeEncoding = useSessionStore((s) =>
-    focusedPane != null
-      ? (s.sessions.find((x) => x.id === focusedPane)?.encoding ?? null)
-      : null,
-  );
 
   // ⌘F / Ctrl+F 呼出聚焦 pane 的搜索；Esc 由搜索栏自处理
   useEffect(() => {
@@ -991,40 +1039,6 @@ export function TerminalArea({
 
   return (
     <div className="term-area">
-      <div className="term-toolbar">
-        <button
-          data-testid="split-right"
-          disabled={activeId == null}
-          onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
-        >
-          {t("terminal.splitRight")}
-        </button>
-        <button
-          data-testid="split-down"
-          disabled={activeId == null}
-          onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
-        >
-          {t("terminal.splitDown")}
-        </button>
-        {toolbarExtra}
-        {activeEncoding != null && (
-          <button
-            className="encoding-badge"
-            data-testid="encoding-badge"
-            data-encoding={activeEncoding}
-            aria-label={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
-            title={t("terminal.encodingBadgeAria", { encoding: encodingName(activeEncoding) })}
-            style={{ marginLeft: "auto" }}
-            onClick={() =>
-              useSessionStore
-                .getState()
-                .setSessionEncoding(focusedPane as string, nextEncoding(activeEncoding))
-            }
-          >
-            {encodingName(activeEncoding)}
-          </button>
-        )}
-      </div>
       <div className="term-stack" ref={stackRef} data-testid="term-stack">
         {sessions.map((session) => {
           const rect = rects.get(session.id);

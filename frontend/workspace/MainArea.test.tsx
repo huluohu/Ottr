@@ -7,11 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // T3：batch 视图挂载即拉 snippets_list——jsdom 无 Tauri runtime，stub 掉
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
-// 方案 B（2026-10-19）：视图切换器/录制钮住进 TerminalArea 的 toolbarExtra——
-// mock 渲染 children 以便本套件照旧断言路由态（view-* testid 不变）。
+// 方案 B（2026-10-19）+ 热修（切换器迁出隐藏容器）：TerminalArea 只剩画布、
+// TerminalToolbar 独立组件承载 toolbarExtra——mock 渲染 children 以便本套件
+// 照旧断言路由态（view-* testid 不变）。
 vi.mock("../terminal/Terminal", () => ({
-  TerminalArea: ({ toolbarExtra }: { toolbarExtra?: React.ReactNode }) => (
-    <div data-testid="terminal-area">{toolbarExtra}</div>
+  TerminalArea: () => <div data-testid="terminal-area" />,
+  TerminalToolbar: ({ toolbarExtra }: { toolbarExtra?: React.ReactNode }) => (
+    <div data-testid="terminal-toolbar">{toolbarExtra}</div>
   ),
 }));
 vi.mock("../session/TabBar", () => ({ TabBar: () => <div data-testid="tabbar" /> }));
@@ -279,6 +281,16 @@ describe("MainArea：面板视图行让位契约（ui2 T1，审计 48/49）", ()
     expect(row()).toBeTruthy();
     fireEvent.click(screen.getByTestId("view-files"));
     expect(row().getAttribute("data-yield")).toBe("true");
+    // 结构契约（v1.4.0 发布回归守卫，2026-10-19）：视图切换器渲染在
+    // term-toolbar-row（常驻行），**不得**出现在 data-hidden 的
+    // term-area-holder 内——hidden 是 visibility 制式，住进去切换器会跟着
+    // 消失，用户切到文件/监控后就回不去终端。
+    const holder = container.querySelector<HTMLElement>('[data-testid="term-holder"]')!;
+    expect(holder.getAttribute("data-hidden")).toBe("true");
+    expect(holder.contains(screen.getByTestId("view-terminal"))).toBe(false);
+    expect(container.querySelector('[data-testid="terminal-toolbar"]')).toBeTruthy();
+    fireEvent.click(screen.getByTestId("view-terminal"));
+    expect(holder.contains(screen.getByTestId("view-terminal"))).toBe(false);
     fireEvent.click(screen.getByTestId("view-processes"));
     expect(row().getAttribute("data-yield")).toBe("true");
   });

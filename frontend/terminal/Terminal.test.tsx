@@ -59,7 +59,7 @@ import { ThemeProvider } from "../theme/ThemeContext";
 import { terminalThemes } from "../theme/terminal-themes";
 import { findGalleryTheme } from "../theme/gallery";
 import { resetTerminalThemeStoreForTest, useTerminalThemeStore } from "../theme/terminalThemeStore";
-import { applyTermTheme, ContextMenuView, PasteConfirmDialog, SessionTerminal, TerminalArea } from "./Terminal";
+import { applyTermTheme, ContextMenuView, PasteConfirmDialog, SessionTerminal, TerminalArea, TerminalToolbar } from "./Terminal";
 import { buildContextMenu, DEFAULT_TERMINAL_FONT_FAMILY, loadTerminalSettings, saveTerminalSettings } from "./ContextMenu";
 import { completionHistory } from "../history/cache";
 import { useSessionStore, type Session } from "../session/SessionStore";
@@ -491,7 +491,7 @@ describe("终端配色选择（Phase 2 Task 9，B2 主题生态）", () => {
   });
 });
 
-describe("TerminalArea（分屏主区）", () => {
+describe("TerminalToolbar（终端工具行）", () => {
   it("编码徽标：聚焦 pane 的当前编码，点击循环 utf-8→gbk→gb18030 并下发 Rust", () => {
     useSessionStore.setState({
       sessions: [sess({ id: "t-a" })],
@@ -501,7 +501,8 @@ describe("TerminalArea（分屏主区）", () => {
     });
     render(
       <ThemeProvider>
-        <TerminalArea />
+        {/* 徽标自 2026-10-19 热修起住在 TerminalToolbar（独立常驻行组件） */}
+        <TerminalToolbar />
       </ThemeProvider>,
     );
     const badge = screen.getByTestId("encoding-badge");

@@ -201,15 +201,15 @@ if [ ! -f "$NOTES_PATH" ]; then
 fi
 
 step "提交版本号与发布正文并推送 main"
-# 版本提交带 [skip ci]（2026-10-19 用户裁定：发版不再先跑 main 工作流）——
-# 该树与 tag 树仅差发布正文文本，release.yml 的 verify job 自带版本三处对齐
-# 校验、build 失败则 release job 不执行（无坏 Release 风险）；main 侧全量
-# 验证由 merge 前的 PR CI 或本地门禁承担。
+# 版本提交不带 [skip ci]（v1.4.2 实证：tag 指向该提交时，tag push 事件同样
+# 命中 [skip ci]，release.yml 会一起哑火）。main 侧的重复全矩阵由 spike.yml
+# 的 job 级守卫兜住：release 提交（chore(release): 前缀）的 push 触发时
+# 所有 job 秒级 skipped，run 出现但不占 runner；发版只花 release.yml 一轮。
 git add desktop/tauri.conf.json package.json desktop/Cargo.toml package-lock.json Cargo.lock "$NOTES_PATH"
 if git diff --cached --quiet; then
   echo "  版本号无变化，跳过提交（断点重跑）"
 else
-  git commit -m "chore(release): v$VERSION 版本号三处对齐 + 锁文件同步 + 发布正文 [skip ci]"
+  git commit -m "chore(release): v$VERSION 版本号三处对齐 + 锁文件同步 + 发布正文"
 fi
 git push origin main
 SHA=$(git rev-parse HEAD)

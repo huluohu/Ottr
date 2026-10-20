@@ -31,12 +31,10 @@
 | `logo.svg` | 通用锁牌 = 河水底盘装版，任意明暗背景直接用（README/官网/文档） |
 | `logo-dark.svg` | 深色背景无底盘反白变体（深色海报/ 片头） |
 | `icon.svg` | App 图标源文件（= logo.svg 同构图），导出 icns/ico/png 的唯一源（`npx tauri icon brand/icon.svg`） |
-| `tray-template.svg` | 菜单栏/托盘单色模板图标（macOS Template Image 自动适配明暗）——剪影 = 耳 + 多边形头，眼/吻部镂空；胡须在 16px 下省略 |
 
 **使用规范**
-- 安全边距 ≥ 獭体宽度的 12%；最小尺寸：彩色 24px、托盘 16px
+- 安全边距 ≥ 獭体宽度的 12%；最小尺寸：彩色 24px
 - 不拉伸、不描边、不加阴影；仰漂姿态与举终端是识别关键，禁止删减
-- 单色场景只用 `tray-template.svg` 的剪影结构（横躺体 + 头圆 + 尾弯，肚皮终端镂空）
 - 字标用系统无衬线 900 字重渲染（SF Pro Display / Helvetica Neue / Arial 回退链）
 
 ## Logo v5（2026-10-16，双轨制几何标——**已被 v6 取代**，本节降为历史档）

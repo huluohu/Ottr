@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="brand/f5-tilt/mark.svg" alt="Ottr — 如獭穿行于服务器之间" width="140" />
+<img src="brand/mark.svg" alt="Ottr — 如獭穿行于服务器之间" width="140" />
 
 # Ottr · 喔獭
 

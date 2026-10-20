@@ -36,14 +36,14 @@
   48px 起才用 mark；表情细节不许下探到缩略层
 - 托盘剪影三档（44/22/16）单块连通、水线缺口可读（macOS Template Image 自动适配明暗）
 - 不拉伸、不描边、不加阴影；呆毛与歪头不对称眼是识别关键，禁止删改
-- 字标只出现在锁牌（`f5-tilt/lockup.svg`）
+- 字标只出现在锁牌（`lockup.svg`）
 
 | 文件 | 用途 |
 |---|---|
-| `f5-tilt/mark.svg` | 主标源文件；根目录 `icon.svg` 与之同源，导出 icns/ico/png 唯一源 |
-| `f5-tilt/mark-micro.svg` | 16–32px 缩略层（favicon = `public/icon.svg` 取此层） |
-| `f5-tilt/tray-template.svg` | 单色托盘模板（currentColor） |
-| `f5-tilt/lockup.svg` | 横排锁牌 = 图标 + 深色字标 + slogan（**仅限浅色底**文档/海报；GitHub 等 dark-mode 场景头图用纯 mark，深色字标在暗底不可见） |
+| `mark.svg` | 主标源文件；根目录 `icon.svg` 与之同源，导出 icns/ico/png 唯一源 |
+| `mark-micro.svg` | 16–32px 缩略层（favicon = `public/icon.svg` 取此层） |
+| `tray-template.svg` | 单色托盘模板（currentColor） |
+| `lockup.svg` | 横排锁牌 = 图标 + 深色字标 + slogan（**仅限浅色底**文档/海报；GitHub 等 dark-mode 场景头图用纯 mark，深色字标在暗底不可见） |
 
 ## 配色（同时是主题令牌的种子值）
 

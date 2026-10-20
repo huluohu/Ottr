@@ -33,6 +33,8 @@ const recMode = new URLSearchParams(location.search).get("rec") === "1";
 const hostsMode = new URLSearchParams(location.search).get("hosts") === "1";
 const ftpMode = new URLSearchParams(location.search).get("ftp") === "1";
 const lockMode = new URLSearchParams(location.search).get("lock") === "1";
+const formMode = new URLSearchParams(location.search).get("form") === "1";
+const sideMode = new URLSearchParams(location.search).get("side") === "1";
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -156,6 +158,55 @@ setInterval(() => {
 }, 3000);
 
 async function render() {
+  if (formMode) {
+    // 新建主机关闭钮/底部留白目检（2026-10-20 用户反馈）
+    const { HostForm } = await import("./../hosts/HostForm");
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <HostForm host={null} defaultGroupId={null} onClose={() => {}} />
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
+  if (sideMode) {
+    // 胶囊态展开钮目检
+    const { Sidebar } = await import("./../app/Sidebar");
+    const { useVaultStore } = await import("./../vault/store");
+    useVaultStore.setState({
+      hosts: [
+        { id: 1, name: "web-01", group_id: 9, tags: [], address: "10.0.0.1", port: 22, username: "root",
+          protocol: "ssh", credential_id: null, jump_chain_id: null, encoding_override: null,
+          theme_override: null, monitor_enabled: false, is_production: false, notes: null,
+          created_at: 1, updated_at: 1 } as never,
+      ],
+      hostGroups: [{ id: 9, name: "Servers", parent_id: null, color: "#d92d20", created_at: 1, updated_at: 1 }] as never,
+      loading: false,
+      error: null,
+    });
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <div style={{ height: "100vh", display: "flex" }}>
+            <Sidebar
+              style={{ width: 64 }}
+              collapsed
+              onExpand={() => {}}
+              selectedId={null}
+              onSelect={() => {}}
+              onOpen={() => {}}
+              onEdit={() => {}}
+              onAdd={() => {}}
+              onQuickConnect={() => {}}
+              onNewGroup={() => {}}
+            />
+          </div>
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
   if (lockMode) {
     // 锁屏毛玻璃目检：主界面应用内层 + 锁屏遮罩/卡片（与 App 结构同构）
     const { MainArea } = await import("./../workspace/MainArea");

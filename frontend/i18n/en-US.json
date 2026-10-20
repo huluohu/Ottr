@@ -1286,7 +1286,8 @@
     "fullscreen": "Toggle Full Screen"
   },
   "sidebar": {
-    "search": "Search"
+    "search": "Search",
+    "expand": "Expand host panel"
   },
   "tools": {
     "exportHosts": "Export Hosts…"

@@ -631,6 +631,7 @@ function HomeLayout() {
         <Sidebar
           style={{ width: sidebarCollapsed ? SIDEBAR_CAPSULE_WIDTH : sidebarWidth }}
           collapsed={sidebarCollapsed}
+          onExpand={toggleSidebarCollapsed}
           titlebarInset={PLATFORM === "mac" && IS_TAURI}
           newGroupSignal={newGroupSignal}
           selectedId={selectedId}

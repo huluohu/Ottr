@@ -248,6 +248,24 @@
 .capsule-spacer {
   flex: none;
 }
+/* 胶囊态展开钮（2026-10-20 用户反馈：折叠后无任何可点展开入口） */
+.capsule-expand {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  color: var(--fg-muted);
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+.capsule-expand:hover {
+  background: var(--surface-raised);
+  color: var(--color-fg);
+}
 .capsule-unread {
   position: relative;
   flex: none;

@@ -1285,7 +1285,8 @@
     "fullscreen": "切換全屏"
   },
   "sidebar": {
-    "search": "搜尋"
+    "search": "搜尋",
+    "expand": "展開主機面板"
   },
   "tools": {
     "exportHosts": "匯出主機…"

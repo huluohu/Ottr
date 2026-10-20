@@ -16,6 +16,9 @@ export interface SidebarProps extends HostTreeProps {
   style?: CSSProperties;
   /** 折叠胶囊（⌘\）：只显示搜索圆钮 + 分组圆点 + 未读徽标。 */
   collapsed?: boolean;
+  /** 折叠态「展开」按钮回调（2026-10-20 用户反馈：胶囊态此前无任何可点的
+   *  展开入口，只能记快捷键/翻菜单）。 */
+  onExpand?: () => void;
   /** macOS 融合式标题栏（2026-10-14）：顶部让出红绿灯区并铺拖拽面。
    * Win/Linux 自绘标题栏承担窗口壳，不注入。 */
   titlebarInset?: boolean;
@@ -63,6 +66,7 @@ function BellIcon() {
 export function Sidebar({
   style,
   collapsed = false,
+  onExpand,
   titlebarInset,
   onQuickConnect,
   onNewGroup,
@@ -111,6 +115,18 @@ export function Sidebar({
           {hasUngrouped && <span className="capsule-dot capsule-dot-plain" title={t("hostTree.ungrouped")} />}
         </div>
         <div className="capsule-spacer" aria-hidden />
+        {onExpand && (
+          <button
+            type="button"
+            className="capsule-expand"
+            data-testid="sidebar-expand"
+            title={t("sidebar.expand")}
+            aria-label={t("sidebar.expand")}
+            onClick={onExpand}
+          >
+            »
+          </button>
+        )}
         {unread > 0 && (
           <button
             type="button"

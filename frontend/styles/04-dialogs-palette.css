@@ -57,7 +57,9 @@
 .host-form-footer {
   flex: none;
   margin: 12px -20px -20px;
-  padding: 12px 20px 0;
+  /* 底部留白（2026-10-20 用户反馈「按钮贴底边」）：负 margin 抵消壳层
+     20px 内边距后，底部 padding 提供实际空隙。 */
+  padding: 12px 20px 16px;
   border-top: 1px solid var(--border-subtle);
 }
 .host-form-footer .form-error {

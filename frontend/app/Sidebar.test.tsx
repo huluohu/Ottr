@@ -110,3 +110,15 @@ describe("Sidebar", () => {
     expect(screen.queryByTestId("sidebar-unread")).toBeNull();
   });
 });
+
+describe("胶囊态展开入口（2026-10-20 用户反馈）", () => {
+  it("折叠态渲染展开钮；点击回调 onExpand；展开态不渲染", () => {
+    const onExpand = vi.fn();
+    renderSidebar({ collapsed: true, onExpand });
+    fireEvent.click(screen.getByTestId("sidebar-expand"));
+    expect(onExpand).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderSidebar({ collapsed: false, onExpand });
+    expect(screen.queryByTestId("sidebar-expand")).toBeNull();
+  });
+});

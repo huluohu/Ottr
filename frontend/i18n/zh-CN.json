@@ -1285,7 +1285,8 @@
     "fullscreen": "切换全屏"
   },
   "sidebar": {
-    "search": "搜索"
+    "search": "搜索",
+    "expand": "展开主机面板"
   },
   "tools": {
     "exportHosts": "导出主机…"

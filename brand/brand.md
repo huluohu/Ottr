@@ -18,14 +18,13 @@
 - zh: *灵巧如獭，连接无界。*
 - zh: *AI 原生 SSH 客户端——灵巧、聪明、免费。*（功能向副标）
 
-## Logo v6（2026-10-16 定稿：C2-F5「呆毛歪头」，三层制）
+## Logo v6（「呆毛歪头」，三层制）
 
-用户裁定 **C2-F5「呆毛歪头」为最终标识**：C2 托腮基座（宽圆深色头 + 双爪从
-水里扒沿 + 浅色宽扁吻 + 白水线横条）叠 F5 表情（头顶呆毛 + 整头微倾 3° +
-无辜下弯眉 + w 小嘴 + 双腮红）。16px 走查实测：呆毛缺口与歪头不对称眼双
-信号存活。`icon.svg` 已由 v6 接管。（评审过程与未采纳稿存档：`~/workspace/ottr-logo-redesign/`）
+最终标识「呆毛歪头」：宽圆深色头 + 双爪从水里扒沿 + 浅色宽扁吻 + 白水线横条，
+头顶呆毛、整头微倾 3°、无辜下弯眉、w 小嘴、双腮红。16px 实测呆毛缺口与
+歪头不对称眼仍可辨。
 
-**三层职责（v6 核心纪律）**
+**三层职责（核心纪律）**
 
 | 层 | 尺寸域 | 内容 |
 |---|---|---|
@@ -36,18 +35,18 @@
 **使用规范**
 - 选层即纪律：≤32px 一律 micro（favicon、小列表位、icns/ico 的小切片），
   48px 起才用 mark；表情细节不许下探到缩略层
-- 托盘剪影三档（44/22/16）单块连通、水线缺口可读；macOS Template 机制不变
+- 托盘剪影三档（44/22/16）单块连通、水线缺口可读（macOS Template Image 自动适配明暗）
 - 不拉伸、不描边、不加阴影；呆毛与歪头不对称眼是识别关键，禁止删改
 - 字标只出现在锁牌（`f5-tilt/lockup.svg`）
 
 | 文件 | 用途 |
 |---|---|
-| `f5-tilt/mark.svg` | v6 主标源文件；**`icon.svg` 已由 v6 接管**（导出 icns/ico/png 唯一源） |
+| `f5-tilt/mark.svg` | 主标源文件；根目录 `icon.svg` 与之同源，导出 icns/ico/png 唯一源 |
 | `f5-tilt/mark-micro.svg` | 16–32px 缩略层（favicon = `public/icon.svg` 取此层） |
-| `f5-tilt/tray-template.svg` | v6 单色托盘模板（currentColor） |
-| `f5-tilt/lockup.svg` | 横排锁牌 = v6 图标 + 深色字标 + slogan（**仅限浅色底**文档/海报；GitHub 等 dark-mode 场景头图用纯 mark——深色字标在暗底不可见，2026-10-16 实测） |
+| `f5-tilt/tray-template.svg` | 单色托盘模板（currentColor） |
+| `f5-tilt/lockup.svg` | 横排锁牌 = 图标 + 深色字标 + slogan（**仅限浅色底**文档/海报；GitHub 等 dark-mode 场景头图用纯 mark，深色字标在暗底不可见） |
 
-## Logo v4 插画（2026-10-08 仰漂獭定稿——保留为插画资产）
+## Logo v4 插画（仰漂獭，≥128px 大尺寸专用）
 
 **River Teal 渐变圆角方底**（`#2DD4BF→#0B7C6E`）+ **仰漂的水獭** + **两爪举一台
 圆角小终端**（`>_` 提示符 + 琥珀圆点——「会用工具的獭」精神图腾的画面化）。
@@ -70,7 +69,7 @@ Helvetica Neue / Arial 回退链）。
 |---|---|---|
 | `--ottr-teal-500` | `#14B8A6` | 主色 River Teal（连接、主按钮、非文字 accent：按钮底/边框/选中底；logo 耳/瞳） |
 | `--ottr-teal-700` | `#0F766E` | 主色深（hover、标题强调） |
-| `--ottr-teal-800` | `#115E59` | 主色深·文字对比专用（亮色主题 accent 文字色；fix 2 备案，见下） |
+| `--ottr-teal-800` | `#115E59` | 主色深·文字对比专用（亮色主题 accent 文字色，见下） |
 | `--ottr-teal-300` | `#5EEAD4` | 主色浅（暗色主题主色；logo 虹膜） |
 | `--ottr-amber-500` | `#F59E0B` | 点缀 Otter Amber（收藏星标、AI 提示、logo 鼻） |
 | `--ottr-fur-600` | `#A9714B` | 毛色 Riverbank Brown（品牌插画保留色） |
@@ -79,37 +78,37 @@ Helvetica Neue / Arial 回退链）。
 | `--ottr-ink-900` | `#0F172A` | 墨色（五官、正文标题） |
 | `--ottr-water-900` | `#0B2B33` | Deep Water（暗色主题背景基调） |
 
-### 三色分工（2026-10-16 视觉重设计裁定：Amber 升格「Otty 时刻」专属色）
+### 三色分工（Amber =「Otty 时刻」专属色）
 
-品牌三色各司其职，情感价值不再只活在插画里：
+品牌三色各司其职：
 
 - **Teal = 工作**：系统/连接/主操作（按钮、选中态、连接状态、进度）
 - **Ink · Cream = 介质**：内容本体（正文、表面、獭体与吻部）
 - **Amber = 奖赏**：情感时刻专属——**凡有 Otty 在场必有 Amber**（星光、草叶、
-  腮红、光晕），加上既有出场位（收藏星标、AI 提示、logo 鼻）。色彩心理学口径：
+  腮红、光晕），以及固定出场位（收藏星标、AI 提示、logo 鼻）。色彩心理学口径：
   暖色 = 反馈奖赏，克制使用（同一时刻至多一个 Otty 在场）。落地见 Otty 情感时刻
-  四件套（连接成功/传输完成/解锁成功/更新就绪，v1.0.0 起）。
+  四件套（连接成功/传输完成/解锁成功/更新就绪）。
 
-### 语义层派生键备案（T1 M-5 闭环；Fix round 2，2026-09-30）
+### 语义层派生键与对比度合规
 
-来源：Task 8 目检（WCAG 对比度审查）裁定项——accent/danger 实底与亮底上作**文字**时
-不达 AA 4.5:1，语义层拆分「面」与「字」两类键。数字为 WCAG 2.x 相对亮度法，
-落面含 color-mix 派生面（raised = fg6%/bg，overlay = fg10%/bg）。
+accent/danger 实底与亮底上作**文字**时原值不达 AA 4.5:1，语义层拆分「面」与「字」
+两类键。数字为 WCAG 2.x 相对亮度法，落面含 color-mix 派生面（raised = fg6%/bg，
+overlay = fg10%/bg）。
 
 | 语义键 | 亮色值 | 暗色值 | 语义 | 对比度（改前 → 改后） |
 |---|---|---|---|---|
-| `--color-accent-text` | `var(--ottr-teal-800)` #115E59 | `var(--ottr-teal-300)` #5EEAD4 | accent 作**文字色**专用（链接、激活态文字、徽标文字、菜单勾选） | 亮 teal-500 on bg **2.33** → teal-800 on bg/raised/overlay **7.09/6.31/5.80**；暗 teal-300 **10.09/8.68/7.72**（原值即达标的键值等价） |
+| `--color-accent-text` | `var(--ottr-teal-800)` #115E59 | `var(--ottr-teal-300)` #5EEAD4 | accent 作**文字色**专用（链接、激活态文字、徽标文字、菜单勾选） | 亮 teal-500 on bg **2.33** → teal-800 on bg/raised/overlay **7.09/6.31/5.80**；暗 teal-300 **10.09/8.68/7.72**（原值即达标） |
 | `--color-on-accent` | `var(--ottr-ink-900)` #0F172A | `var(--ottr-water-900)` #0B2B33 | accent 实底（主按钮）上的文字 | 亮 cream-bg 字 on teal-500 **2.33** → 墨色字 **7.17**；暗 water-900 on teal-300 **10.09**（不变） |
 | `--color-on-danger` | `#FFFFFF` | `var(--ottr-ink-900)` #0F172A | danger 实底（危险按钮）上的文字 | 亮 #fff on #d92d20 **4.83**（不变）；暗 #fff on #f97066 **2.79** → 墨色字 **6.41** |
 
-裁定说明：
-* 亮色 accent-text 取 teal-800 而非 teal-700（#0F766E on overlay 仅 4.18，右键菜单/
-  对话框底不达标；teal-800 全落面 ≥4.5），新增品牌种子一档，色相与 500/700/300 同族。
-* 暗色 danger 保持 #F97066 不动（作文字色 on bg 5.35 达标）；「加深底色到 #d92d20」
-  的备选方案会把暗色 danger 文字对比拖到 3.09，弃。
+说明：
+* 亮色 accent-text 取 teal-800 而非 teal-700：#0F766E on overlay 仅 4.18，右键菜单/
+  对话框底不达标；teal-800 全落面 ≥4.5，色相与 500/700/300 同族。
+* 暗色 danger 保持 #F97066 不动（作文字色 on bg 5.35 达标）；加深底色到 #d92d20
+  会把暗色 danger 文字对比拖到 3.09，弃。
 * `#FFFFFF` 作为亮色 on-danger 值与 `--color-surface` 同为语义层白（cream-100 对
   #d92d20 仅 3.98，不可用）。
-* 回归钉：`frontend/theme/tokens.test.ts`（解析 tokens.css 实算对比度，退回即红）。
+* 回归测试：`frontend/theme/tokens.test.ts`（解析 tokens.css 实算对比度，退回即红）。
 
 **终端默认主题映射建议**（ANSI 16 色）：normal 色取品牌同色系低饱和值（red→#D97066 系、green→teal 系、yellow→amber 系、blue→水色系），bright 色取同色相高饱和值；前景 `--ottr-cream-100` 偏暖白，背景 `--ottr-water-900`。生产环境主机红色边框（B11）复用 ANSI red bright。
 

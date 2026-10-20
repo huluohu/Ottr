@@ -116,6 +116,7 @@ function HomeLayout() {
   // 会话面（Task 7）：HostTree 双击/面板连接开标签。标签条 + 终端主区的
   // 渲染面已随 UI 批次一 Task 2 迁入 workspace/MainArea（读 session store）。
   const openTab = useSessionStore((s) => s.openTab);
+  const openLocalTab = useSessionStore((s) => s.openLocalTab);
   // UI 批次一 Task 2：工作区视图/dock 动作（主区路由在 workspace/MainArea，
   // 弹框壳在 workspace/ToolDialog；单槽语义见 workspaceStore.ts）。
   // 2026-10-16 总览标签化：总览入口统一走 openOverview（开置顶标签 + 激活）。
@@ -474,6 +475,11 @@ function HomeLayout() {
         case "vault.lock":
           void useVaultLockStore.getState().lock();
           break;
+        case "local.terminal":
+          // 本地终端（2026-10-20）：⌘K 入口与图标轨同一动作（开标签 + 回终端面）。
+          openLocalTab();
+          openMainView("terminal");
+          break;
         case "app.quit":
           // 真退出（不走 close-to-tray 拦截路径）；非 Tauri 环境静默。
           invoke("quit_app").catch(() => {});
@@ -640,6 +646,11 @@ function HomeLayout() {
           // 监控/插件）里双击另一台主机也回终端面——连接入口的语义是「看终端」。
           onOpen={(host) => {
             openTab(host);
+            openMainView("terminal");
+          }}
+          onConnect={(host) => {
+            // 右键「连接主机」（2026-10-20）：同主机多开——forceNew 跳过去重。
+            openTab(host, { forceNew: true });
             openMainView("terminal");
           }}
           onEdit={(host) => {

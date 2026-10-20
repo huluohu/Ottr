@@ -47,7 +47,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 21;
+pub const LATEST_SCHEMA_VERSION: u32 = 22;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -181,6 +181,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     // 明文标签（非敏感，不参与加密域），NULL = 未命名（UI 按 kind 兜底）。
     // 明文面，无 *_enc 列，不动 scan_registry（见迁移文件头）。
     (21, include_str!("../migrations/0021_credential_name.sql")),
+    (
+        22,
+        include_str!("../migrations/0022_recordings_host_nullable.sql"),
+    ),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。

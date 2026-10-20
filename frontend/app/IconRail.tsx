@@ -14,6 +14,7 @@ import { useNotifyStore } from "../notify/core";
 import { useTheme, THEME_IDS, type ThemeMode } from "../theme/ThemeContext";
 import { LANGS, useLanguage } from "../i18n";
 import { useVaultLockStore } from "../security/VaultLockStore";
+import { useSessionStore } from "../session/SessionStore";
 import { useUpdateStore } from "../update/updateStore";
 
 export interface IconRailProps {
@@ -37,6 +38,17 @@ function OverviewIcon() {
       <rect x="9" y="1.5" width="5.5" height="5.5" rx="1.4" />
       <rect x="1.5" y="9" width="5.5" height="5.5" rx="1.4" />
       <rect x="9" y="9" width="5.5" height="5.5" rx="1.4" />
+    </svg>
+  );
+}
+
+/** 本地终端图标：>_ 提示符方框（与会话/终端语义直连）。 */
+function LocalTerminalIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="1.2" y="2.2" width="13.6" height="11.6" rx="2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M4 5.8L6.4 8L4 10.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.8 10.4H12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -335,6 +347,21 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
       >
         <span className="rail-light" aria-hidden />
         <NetworkIcon />
+      </button>
+      {/* 本地终端（2026-10-20 用户需求）：连接本机 shell 的标签，第二入口在
+          ⌘K（local.terminal）。开标签即回终端面（同主机双击语义）。 */}
+      <button
+        type="button"
+        className="rail-btn"
+        data-testid="rail-local"
+        title={t("nav.localTerminal")}
+        aria-label={t("nav.localTerminal")}
+        onClick={() => {
+          useSessionStore.getState().openLocalTab();
+          openMainView("terminal");
+        }}
+      >
+        <LocalTerminalIcon />
       </button>
       <div className="rail-spacer" aria-hidden />
       {/* 更新钮（2026-10-17 用户需求）：发现新版本时浮现，点击跳设置 →

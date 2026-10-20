@@ -907,3 +907,52 @@ describe("会话结束钩子（Task 7 会话纪要）", () => {
     }).not.toThrow();
   });
 });
+
+// --- 本地终端（2026-10-20）：openLocalTab 开标签即连 local_term_open；--------
+// 不持久化（restoreTabs 按 hostId 反查主机，本地无主机行）；shell_exit 不重连
+// 的语义天然复用（store 侧对 shell_exit 本就提前返回）。
+describe("SessionStore 本地终端", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    localStorage.removeItem(OPEN_TABS_KEY);
+    resetStore();
+  });
+
+  it("openLocalTab：开 kind=local 标签并立即连 local_term_open（携 onData 通道与尺寸）；不落持久化", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "local_term_open") return Promise.resolve("local-1");
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    const store = useSessionStore.getState();
+    const id = store.openLocalTab();
+    await vi.waitFor(() => {
+      const session = useSessionStore.getState().sessions.find((s) => s.id === id);
+      expect(session?.status).toBe("connected");
+      expect(session?.rustId).toBe("local-1");
+      expect(session?.kind).toBe("local");
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith(
+      "local_term_open",
+      expect.objectContaining({ cols: expect.any(Number), rows: expect.any(Number) }),
+    );
+    // 不持久化：本地标签不进 open_host_ids（恢复语义属主机标签）
+    expect(JSON.parse(localStorage.getItem(OPEN_TABS_KEY) ?? "[]")).toEqual([]);
+  });
+
+  it("本地终端敲 exit（session-closed shell_exit）→ 不触发重连、标签保留", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "local_term_open") return Promise.resolve("local-2");
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    const store = useSessionStore.getState();
+    const id = store.openLocalTab();
+    await vi.waitFor(() => {
+      expect(useSessionStore.getState().sessions.find((s) => s.id === id)?.rustId).toBe("local-2");
+    });
+    useSessionStore.getState().onSessionClosed({ id: "local-2", reason: "shell_exit" });
+    const session = useSessionStore.getState().sessions.find((s) => s.id === id);
+    expect(session).toBeTruthy(); // 标签保留
+    expect(session?.attempt).toBe(0); // 没有安排重连
+    expect(session?.status).toBe("connected");
+  });
+});

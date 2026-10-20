@@ -154,7 +154,7 @@ async fn recording_full_chain_fixture() {
     // 同一挂法）。
     let cast_path = rec_dir.join("e2e.cast");
     let started = Instant::now();
-    let handle = RecordingHandle::start(cast_path.clone(), 80, 24, host_id).expect("start");
+    let handle = RecordingHandle::start(cast_path.clone(), 80, 24, Some(host_id)).expect("start");
     assert!(started.elapsed() < Duration::from_secs(5), "开录即时返回");
     let recorder: RecorderSlot = Arc::new(Mutex::new(Some(handle)));
 

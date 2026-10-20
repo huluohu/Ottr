@@ -8,6 +8,7 @@
 // 分享导出默认脱敏（T13 redact），入口在回放器内。
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import type { Host, RecordingData, RecordingHit } from "../vault/api";
 import { vaultApi } from "../vault/api";
 import { historyTime } from "./format";
@@ -96,8 +97,11 @@ export function RecordingPanel({ hostId, hosts, query }: RecordingPanelProps) {
     }
   }
 
-  const hostName = (id: number): string =>
-    hosts.find((h) => h.id === id)?.name ?? t("history.unknownHost");
+  // host_id null = 本地终端录制（0022 起）；hostId -1 哨兵同义兜底
+  const hostName = (id: number | null): string => {
+    if (id === null || id === -1) return i18n.t("nav.localTerminal");
+    return hosts.find((h) => h.id === id)?.name ?? t("history.unknownHost");
+  };
 
   if (playing) {
     return <RecordingPlayer data={playing} onClose={() => setPlaying(null)} />;

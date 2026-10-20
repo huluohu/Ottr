@@ -30,6 +30,7 @@ export type ActionId =
   | "palette.toggle"
   | "history.search"
   | "hosts.new"
+  | "local.terminal"
   | "settings.open"
   | "theme.toggle"
   | "lang.toggle"
@@ -148,6 +149,8 @@ export const ACTIONS: readonly ActionDef[] = [
     terminalSafe: true,
   },
   { id: "vault.lock", labelKey: "security.lockNow" },
+  // 本地终端（2026-10-20）：⌘K 可达的第二个入口（第一入口 = 图标轨 rail-local）。
+  { id: "local.terminal", labelKey: "nav.localTerminal" },
   // 新建分组（2026-10-08 菜单栏启用批次）：File 菜单/汉堡可及（无快捷键——
   // ⌘G 是浏览器查找下一语义，不抢占）；App 直派 HostTree 分组态。
   { id: "hosts.new_group", labelKey: "hostTree.addGroup" },

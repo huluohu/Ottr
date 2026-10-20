@@ -48,6 +48,10 @@ export interface HostTreeProps {
   onSelect: (host: Host) => void;
   /** 双击主机行：打开会话标签并连接（Task 7 A6）。 */
   onOpen: (host: Host) => void;
+  /** 右键菜单「连接主机」（2026-10-20 用户需求：主机支持打开多个）——
+   * 跳过同主机去重，每次开新标签（与双击的复用语义互补）。可选：缺省
+   * （批量选择面等）不渲染该菜单项。 */
+  onConnect?: (host: Host) => void;
   onEdit: (host: Host) => void;
   onAdd: (groupId: number | null) => void;
   /** 多选模式（Phase 3 Task 4，B6 批量执行）：行点击 = 切换勾选；双击打开/
@@ -62,6 +66,7 @@ export function HostTree({
   selectedId,
   onSelect,
   onOpen,
+  onConnect,
   onEdit,
   onAdd,
   multiSelect = false,
@@ -303,6 +308,7 @@ export function HostTree({
                 selectedId={selectedId}
                 onSelect={onSelect}
                 onOpen={onOpen}
+                onConnect={onConnect}
                 onEdit={onEdit}
                 deletingId={deletingId}
                 setDeletingId={setDeletingId}
@@ -358,6 +364,7 @@ export function HostTree({
                 selectedId={selectedId}
                 onSelect={onSelect}
                 onOpen={onOpen}
+                onConnect={onConnect}
                 onEdit={onEdit}
                 deletingId={deletingId}
                 setDeletingId={setDeletingId}
@@ -386,6 +393,7 @@ interface HostItemsProps {
   onSelect: (host: Host) => void;
   onOpen: (host: Host) => void;
   onEdit: (host: Host) => void;
+  onConnect?: (host: Host) => void;
   deletingId: number | null;
   setDeletingId: (id: number | null) => void;
   onDelete: (id: number) => void;
@@ -402,6 +410,7 @@ function HostItems({
   selectedId,
   onSelect,
   onOpen,
+  onConnect,
   onEdit,
   deletingId,
   setDeletingId,
@@ -582,6 +591,20 @@ function HostItems({
             style={{ left: menu.x, top: menu.y }}
             data-testid="host-ctx-menu"
           >
+            {onConnect && (
+              <button
+                role="menuitem"
+                className="ctx-menu-item"
+                data-testid="host-ctx-connect"
+                onClick={() => {
+                  const h = menu.host;
+                  setMenu(null);
+                  onConnect(h);
+                }}
+              >
+                {t("hostTree.menuConnect")}
+              </button>
+            )}
             <button
               role="menuitem"
               className="ctx-menu-item"

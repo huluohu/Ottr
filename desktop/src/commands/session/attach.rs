@@ -272,6 +272,15 @@ pub(crate) async fn drop_session(state: State<'_, AppState>, id: String) -> Resu
         });
         return Ok(());
     }
+    // 本地终端（2026-10-20）：置取消标志 + 杀子进程——读线程 EOF、批量线程
+    // 按 cancel 分派 Cancelled 并清表发 session-closed（前端不重连）。
+    if let Some(entry) = state.local_sessions.lock().unwrap().remove(&id) {
+        entry
+            .cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = entry.killer.lock().unwrap().kill();
+        return Ok(());
+    }
     Err(format!("no such session: {id}"))
 }
 

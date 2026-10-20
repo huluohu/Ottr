@@ -41,6 +41,7 @@ pub mod remote_edit;
 // FTP/FTPS 会话域（Phase 2 Task 5，B10 下半第二后端）：ftp_attach_host_session
 // + 会话表分派支撑（面板命令面在 transfer.rs 按 id 路由，命令名不变）。
 pub mod ftp;
+pub mod local_term;
 // 同步通道宿主桥（Phase 5 Task 4）：git 通道白名单 exec 桥（argv 形态钉死，
 // 清偿 task-2-report 披露的「webview 生产 exec 桥未落」）+ 信封口令钥匙链
 // （task-2 裁定「存钥匙链归 Task 4」）。模块文档见本文件。

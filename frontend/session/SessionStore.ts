@@ -71,6 +71,7 @@ import {
 import { loadDismissedEncodingHosts } from "./encoding";
 import type { SessionClosedPayload } from "./types";
 import { useModalStore } from "../ui/modalStore";
+import i18n from "../i18n";
 
 export * from "./types";
 export * from "./encoding";
@@ -97,7 +98,15 @@ interface SessionStore {
   searchSessionId: string | null;
 
   /** 双击主机树/⌘K 选中：开新标签并立即连接（同主机已开则只激活）。返回标签 id。 */
-  openTab: (host: Host, opts?: { autoConnect?: boolean; restored?: boolean }) => string;
+  openTab: (
+    host: Host,
+    opts?: { autoConnect?: boolean; restored?: boolean; forceNew?: boolean },
+  ) => string;
+  /** 本地终端（2026-10-20）：开一个连**本机** shell 的标签（可多开——每个
+   * 标签独立 PTY 会话；无主机绑定，hostId = -1 哨兵）。返回标签 id。 */
+  openLocalTab: () => string;
+  /** 页签改名（2026-10-20）：空串 = 恢复默认名；会话级不持久化。 */
+  renameTab: (id: string, title: string) => void;
   /** 关标签 = drop_session（主动断开不重连）；分屏 pane 一并收尾。 */
   closeTab: (id: string) => void;
   /** 激活标签（不触发连接）。 */
@@ -240,17 +249,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   loadSettings: () => set({ settings: loadSettings() }),
 
   openTab: (host, opts) => {
-    const existing = get().sessions.find((s) => s.hostId === host.id);
-    if (existing) {
-      set({ activeId: existing.id });
-      if (opts?.autoConnect !== false && existing.status === "disconnected") {
-        // 同款 deferConnect（评审 I-1，fix 1/5）：set({activeId}) 后同任务同步
-        // connect 与钉死触发面（同步 set → 同任务 invoke）同构——⌘K 再点已断线
-        // 标签即真实路径。scheduleReconnect 的 connect 本就在 retry timer
-        // （宏任务）里，不受影响；此处是漏网之鱼。
-        deferConnect(existing.id);
+    // forceNew（2026-10-20 用户需求「主机支持打开多个」）：跳过同主机去重，
+    // 每次都开新标签（双击/⌘K 语义不变 = 复用已开标签）。
+    if (opts?.forceNew !== true) {
+      const existing = get().sessions.find((s) => s.hostId === host.id);
+      if (existing) {
+        set({ activeId: existing.id });
+        if (opts?.autoConnect !== false && existing.status === "disconnected") {
+          // 同款 deferConnect（评审 I-1，fix 1/5）：set({activeId}) 后同任务同步
+          // connect 与钉死触发面（同步 set → 同任务 invoke）同构——⌘K 再点已断线
+          // 标签即真实路径。scheduleReconnect 的 connect 本就在 retry timer
+          // （宏任务）里，不受影响；此处是漏网之鱼。
+          deferConnect(existing.id);
+        }
+        return existing.id;
       }
-      return existing.id;
     }
     const id = newSessionId();
     const session: Session = {
@@ -287,6 +300,50 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     });
     if (opts?.autoConnect !== false) deferConnect(id);
     return id;
+  },
+
+  openLocalTab: () => {
+    const id = newSessionId();
+    const session: Session = {
+      id,
+      kind: "local",
+      hostId: -1, // 哨兵：本地无主机行（消费面按 kind === "local" 分流）
+      hostName: i18n.t("nav.localTerminal"),
+      address: "127.0.0.1",
+      port: 0,
+      username: null,
+      protocol: "ssh",
+      jumpChainId: null,
+      status: "disconnected",
+      rustId: null,
+      attempt: 0,
+      lastError: null,
+      nextRetryAt: null,
+      paneOf: null,
+      encodingOverride: "utf-8",
+      encoding: "utf-8",
+      encodingHint: null,
+      isProduction: false,
+    };
+    set((st) => ({
+      sessions: [...st.sessions, session],
+      activeId: id,
+      trees: { ...st.trees, [id]: leaf(id) },
+      activePane: { ...st.activePane, [id]: id },
+    }));
+    deferConnect(id);
+    return id;
+  },
+
+  /** 页签改名（2026-10-20 用户需求）：非空覆盖 hostName 展示、空 = 恢复默认。
+   * 会话级（不持久化）。 */
+  renameTab: (id, title) => {
+    const trimmed = title.trim();
+    set((st) => ({
+      sessions: st.sessions.map((s) =>
+        s.id === id ? { ...s, titleOverride: trimmed === "" ? undefined : trimmed } : s,
+      ),
+    }));
   },
 
   closeTab: (id) => {
@@ -390,6 +447,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // FTP/FTPS 会话（Phase 2 Task 5）：纯文件面——无 PTY、无 on_data 通道、
     // 无 host key TOFU（Rust 侧 ftp_attach 直接连，不产生 host-key-ask 事件）。
     const isFtp = session.protocol === "ftp" || session.protocol === "ftps";
+    // 本地终端（2026-10-20）：无 host key/凭据/编码/监控面——open 即连。
+    // 会话收尾走同一 ottr://session-closed（shell_exit 不重连语义天然适用：
+    // 用户敲 exit = 本地会话结束）。
+    const isLocal = session.kind === "local";
     const chan = new Channel<unknown>();
     chan.onmessage = (m) => {
       try {
@@ -403,7 +464,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const size = sinks.get(id)?.getSize() ?? { cols: 80, rows: 24 };
 
     try {
-      const rustId = isFtp
+      const rustId = isLocal
+        ? await invoke<string>("local_term_open", {
+            cols: size.cols,
+            rows: size.rows,
+            onData: chan,
+          })
+        : isFtp
         ? await invoke<string>("ftp_attach_host_session", { hostId: session.hostId })
         : await invoke<string>("attach_host_session", {
             hostId: session.hostId,
@@ -444,12 +511,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           encoding: override,
         }),
       }));
-      void invoke("set_session_encoding", { id: rustId, encoding: override }).catch(() => {});
+      if (!isLocal) {
+        void invoke("set_session_encoding", { id: rustId, encoding: override }).catch(() => {});
+      }
       // 监控采样启动（Phase 3 Task 1，B4 上半）：host 开了监控的标签根会话
       // attach 成功即开（仅根——分屏 pane 与根同主机，多份采样纯浪费）。
       // 会话收尾（关标签/断开）由 Rust 侧 session_down 摘除采样任务，前端
       // 无需对位 stop；重连 = 新 rustId = 新采样窗口。
-      if (session.monitorEnabled && session.paneOf === null) {
+      if (session.monitorEnabled && session.paneOf === null && !isLocal) {
         void invoke("monitor_start", { id: rustId }).catch(() => {});
       }
     } catch (e) {

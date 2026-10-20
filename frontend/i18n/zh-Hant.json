@@ -131,6 +131,7 @@
     "productionHint": "終端邊框標紅、頁籤帶 PROD 徽標；輸入危險命令時給行內提醒。"
   },
   "hostTree": {
+    "menuConnect": "連接主機",
     "sectionTitle": "主機",
     "addHost": "新建主機",
     "addGroup": "新建分組",
@@ -511,6 +512,9 @@
     }
   },
   "tabs": {
+    "copyConnectionDone": "已複製連接資訊：{{target}}",
+    "copyConnection": "複製連接",
+    "rename": "重新命名頁籤",
     "list": "會話標籤",
     "closeAria": "關閉標籤 {{name}}",
     "prodBadge": "PROD",
@@ -1265,6 +1269,7 @@
     }
   },
   "nav": {
+    "localTerminal": "本地終端",
     "aria": "功能導航",
     "cron": "定時任務",
     "alerts": "告警",

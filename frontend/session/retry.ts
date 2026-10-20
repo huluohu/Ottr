@@ -57,7 +57,13 @@ export function persistOpenTabs(sessions: Session[]): void {
   try {
     localStorage.setItem(
       OPEN_TABS_KEY,
-      JSON.stringify(sessions.filter((s) => s.paneOf === null).map((s) => s.hostId)),
+      // 本地终端不持久化（restoreTabs 按 hostId 反查主机，本地无主机行；
+      // 也符合「恢复不自动连接」的安全口径——本地终端由用户随手开）
+      JSON.stringify(
+        sessions
+          .filter((s) => s.paneOf === null && s.kind !== "local")
+          .map((s) => s.hostId),
+      ),
     );
   } catch {
     // 持久化失败不阻塞会话管理

@@ -68,7 +68,9 @@ export function RecordToggle({
   const [busy, setBusy] = useState(false);
 
   async function toggle() {
-    if (!rustId || hostId === null || busy) return;
+    // hostId null = SSH 会话未带主机（旧测试夹具）——本地终端 hostId = -1
+    // 哨兵 + kind=local，录制合法（Rust 侧 host_id None 落 NULL 行）。
+    if (!rustId || busy) return;
     setBusy(true);
     try {
       if (recording) {
@@ -127,7 +129,7 @@ export function RecordToggle({
       className="record-toggle"
       data-testid="record-toggle"
       data-active={recording}
-      disabled={!rustId || hostId === null}
+      disabled={!rustId}
       aria-pressed={recording}
       title={
         recording ? t("recording.stopTitle") : t("recording.startTitle")

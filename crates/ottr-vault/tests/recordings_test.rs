@@ -36,7 +36,7 @@ fn host(vault: &Vault, name: &str) -> i64 {
 
 fn input(host_id: i64, path: &str, duration: f64, text: Option<&str>) -> RecordingInput {
     RecordingInput {
-        host_id,
+        host_id: Some(host_id),
         path: path.into(),
         duration,
         text: text.map(String::from),

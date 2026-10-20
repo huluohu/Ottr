@@ -337,7 +337,8 @@ export interface SummaryInput {
  * path 指向的 .cast 文件，不入库；明文面）。 */
 export interface RecordingEntry {
   id: number;
-  host_id: number;
+  /** 归属主机（null = 本地终端会话录制，2026-10-20；0022 起可空）。 */
+  host_id: number | null;
   path: string;
   /** 秒（浮点；空录制 = 0）。 */
   duration: number;
@@ -786,7 +787,8 @@ export const vaultApi = {
    * list/search/read/delete/export = vault 明文面 + .cast 文件面（同 history
    * 锁定语义）。导出经前端 redact（T13），原文导出需二次确认。 */
   recordings: {
-    start: (rustId: string, hostId: number) => invoke<string>("recording_start", { rustId, hostId }),
+    start: (rustId: string, hostId: number | null) =>
+      invoke<string>("recording_start", { rustId, hostId }),
     stop: (rustId: string) => invoke<RecordingEntry>("recording_stop", { rustId }),
     list: (hostId: number | null, limit?: number) =>
       invoke<RecordingEntry[]>("recording_list", { hostId, limit: limit ?? null }),

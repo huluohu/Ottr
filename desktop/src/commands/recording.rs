@@ -58,7 +58,7 @@ pub struct RecordingHandle {
     tx: Option<mpsc::SyncSender<(f64, Vec<u8>)>>,
     worker: Option<std::thread::JoinHandle<WorkerOutcome>>,
     path: PathBuf,
-    host_id: i64,
+    host_id: Option<i64>,
     started: Instant,
     /// tee 丢弃的批数（队列满/接收端已停）——finalize 时留痕日志。
     dropped: Arc<AtomicU64>,
@@ -69,7 +69,12 @@ impl RecordingHandle {
     /// （fix round 1/5 M-2：`File::create` 以 0666&!umask 落盘再 chmod 收紧，
     /// 中间有宽权限窗口——改 `OpenOptions::mode(0o600)` 创建即按 0600 落盘，
     /// 原子收紧；finalize 的 restrict_permissions 保留作非 unix/兜底面。）
-    pub fn start(path: PathBuf, cols: u16, rows: u16, host_id: i64) -> std::io::Result<Self> {
+    pub fn start(
+        path: PathBuf,
+        cols: u16,
+        rows: u16,
+        host_id: Option<i64>,
+    ) -> std::io::Result<Self> {
         let mut file = open_private_new(&path)?;
         writeln!(
             file,
@@ -105,7 +110,7 @@ impl RecordingHandle {
 
     /// 收尾：断开发送端（线程排空队列后退出）→ join → 复紧 0600。
     /// 返回（host_id, path, duration, text）供入库；调用方负责 `Recordings::insert`。
-    pub fn finalize(mut self) -> (i64, PathBuf, f64, String) {
+    pub fn finalize(mut self) -> (Option<i64>, PathBuf, f64, String) {
         self.tx.take(); // drop sender → worker recv 断开 → 排空退出
         let outcome = self
             .worker
@@ -240,24 +245,43 @@ fn unix_now() -> i64 {
 /// 返回落盘路径。录制目录不存在则创建（0700 语义由 app 数据目录继承）。
 pub(crate) fn start_recording_on(
     sessions: &SessionMap,
+    local_sessions: &crate::commands::local_term::LocalTermMap,
     dir: &Path,
     vault: &Vault,
     rust_id: &str,
-    host_id: i64,
+    host_id: Option<i64>,
 ) -> Result<PathBuf, String> {
+    // 双表回退（2026-10-20 本地终端）：本地会话无主机行——host_id None =
+    // 归属「本机」，跳过 Hosts::get 校验（0022 起 recordings.host_id 可空）。
     let slot = {
         let sessions = sessions.lock().unwrap();
-        let entry = sessions
-            .get(rust_id)
-            .ok_or_else(|| format!("no such session: {rust_id}"))?;
-        if entry.recorder.lock().unwrap().is_some() {
-            return Err(format!("session {rust_id} is already recording"));
+        match sessions.get(rust_id) {
+            Some(entry) => {
+                if entry.recorder.lock().unwrap().is_some() {
+                    return Err(format!("session {rust_id} is already recording"));
+                }
+                Some(Arc::clone(&entry.recorder))
+            }
+            None => None,
         }
-        Arc::clone(&entry.recorder)
     };
-    if Hosts::get(vault, host_id)
-        .map_err(|e| e.to_string())?
-        .is_none()
+    let slot = match slot {
+        Some(slot) => slot,
+        None => {
+            let local = local_sessions.lock().unwrap();
+            let entry = local
+                .get(rust_id)
+                .ok_or_else(|| format!("no such session: {rust_id}"))?;
+            if entry.recorder.lock().unwrap().is_some() {
+                return Err(format!("session {rust_id} is already recording"));
+            }
+            Arc::clone(&entry.recorder)
+        }
+    };
+    if let Some(host_id) = host_id
+        && Hosts::get(vault, host_id)
+            .map_err(|e| e.to_string())?
+            .is_none()
     {
         return Err(format!("host id={host_id} not found"));
     }
@@ -269,11 +293,21 @@ pub(crate) fn start_recording_on(
     let seq = RECORDING_SEQ.fetch_add(1, Ordering::Relaxed);
     let path = dir.join(format!("rec-{ms}-{seq:04}.cast"));
     let (cols, rows) = {
-        let sessions = sessions.lock().unwrap();
-        sessions
+        let ssh = sessions
+            .lock()
+            .unwrap()
             .get(rust_id)
-            .map(|e| (e.cols, e.rows))
-            .ok_or_else(|| format!("no such session: {rust_id}"))?
+            .map(|e| (e.cols, e.rows));
+        match ssh {
+            Some(size) => size,
+            None => {
+                let local = local_sessions.lock().unwrap();
+                local
+                    .get(rust_id)
+                    .map(|e| (e.cols, e.rows))
+                    .ok_or_else(|| format!("no such session: {rust_id}"))?
+            }
+        }
     };
     let handle = RecordingHandle::start(path.clone(), cols, rows, host_id)
         .map_err(|e| format!("create recording file: {e}"))?;
@@ -284,15 +318,24 @@ pub(crate) fn start_recording_on(
 /// 录制收尾核：从会话槽位取 handle → finalize → 入库（recordings + FTS）。
 pub(crate) fn stop_recording_on(
     sessions: &SessionMap,
+    local_sessions: &crate::commands::local_term::LocalTermMap,
     vault: &Vault,
     rust_id: &str,
 ) -> Result<RecordingEntry, String> {
+    // 双表回退（本地终端同享录制停止）
     let slot = {
         let sessions = sessions.lock().unwrap();
-        let entry = sessions
-            .get(rust_id)
-            .ok_or_else(|| format!("no such session: {rust_id}"))?;
-        Arc::clone(&entry.recorder)
+        sessions.get(rust_id).map(|e| Arc::clone(&e.recorder))
+    };
+    let slot = match slot {
+        Some(slot) => slot,
+        None => {
+            let local = local_sessions.lock().unwrap();
+            local
+                .get(rust_id)
+                .map(|e| Arc::clone(&e.recorder))
+                .ok_or_else(|| format!("no such session: {rust_id}"))?
+        }
     };
     let Some(handle) = slot.lock().unwrap().take() else {
         return Err(format!("session {rust_id} is not recording"));
@@ -460,11 +503,18 @@ pub(crate) fn recording_start(
     vault: tauri::State<'_, VaultState>,
     app: tauri::AppHandle,
     rust_id: String,
-    host_id: i64,
+    host_id: Option<i64>,
 ) -> Result<String, String> {
     let dir = recordings_dir(&app)?;
-    start_recording_on(&state.sessions, &dir, &vault.0, &rust_id, host_id)
-        .map(|p| p.to_string_lossy().into_owned())
+    start_recording_on(
+        &state.sessions,
+        &state.local_sessions,
+        &dir,
+        &vault.0,
+        &rust_id,
+        host_id,
+    )
+    .map(|p| p.to_string_lossy().into_owned())
 }
 
 /// 停录结果：库行 + 保存目录副本路径（未启用目录 = None）。
@@ -486,7 +536,7 @@ pub(crate) fn recording_stop(
     app: tauri::AppHandle,
     rust_id: String,
 ) -> Result<RecordingStopOutcome, String> {
-    let entry = stop_recording_on(&state.sessions, &vault.0, &rust_id)?;
+    let entry = stop_recording_on(&state.sessions, &state.local_sessions, &vault.0, &rust_id)?;
     let saved_path = save_cast_copy(&vault.0, &app, &entry);
     Ok(RecordingStopOutcome { entry, saved_path })
 }
@@ -638,12 +688,12 @@ mod tests {
         let rec_dir = dir.path().join("recordings");
         std::fs::create_dir_all(&rec_dir).unwrap();
         let path = rec_dir.join("x.cast");
-        let handle = RecordingHandle::start(path.clone(), 100, 30, host_id).unwrap();
+        let handle = RecordingHandle::start(path.clone(), 100, 30, Some(host_id)).unwrap();
         handle.send(b"\x1b]133;A\x07root@web:~$ ");
         handle.send(b"echo \xe9\x83\xa8\xe7\xbd\xb2"); // 部署（UTF-8）
         handle.send(b"\r\ndone\r\n");
         let (hid, fpath, duration, text) = handle.finalize();
-        assert_eq!(hid, host_id);
+        assert_eq!(hid, Some(host_id));
         assert_eq!(fpath, path);
         assert!(duration > 0.0, "末事件时间推进");
         // 文件 v2 合法：header + 3 事件，输出原文（含 OSC/ANSI）逐批保序
@@ -658,7 +708,7 @@ mod tests {
         let entry = Recordings::insert(
             &v,
             &RecordingInput {
-                host_id,
+                host_id: Some(host_id),
                 path: path.to_string_lossy().into_owned(),
                 duration,
                 text: Some(text),
@@ -685,7 +735,7 @@ mod tests {
         let host_id = mk_host(&v);
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("e.cast");
-        let handle = RecordingHandle::start(path.clone(), 80, 24, host_id).unwrap();
+        let handle = RecordingHandle::start(path.clone(), 80, 24, Some(host_id)).unwrap();
         let (_, _, duration, text) = handle.finalize();
         assert_eq!(duration, 0.0);
         assert_eq!(text, "");
@@ -694,7 +744,7 @@ mod tests {
         let entry = Recordings::insert(
             &v,
             &RecordingInput {
-                host_id,
+                host_id: Some(host_id),
                 path: path.to_string_lossy().into_owned(),
                 duration,
                 text: Some(text),
@@ -705,18 +755,21 @@ mod tests {
         assert_eq!(Recordings::list(&v, None, 10).unwrap(), vec![entry]);
     }
 
-    /// start/stop 命令核对不存在会话的显式报错（空会话表）。
+    /// start/stop 命令核对不存在会话的显式报错（SSH 表与本地表均空——
+    /// 双表回退的两条都走到底才算收敛）。
     #[test]
     fn start_stop_on_unknown_session_errors() {
         let v = vault();
         let sessions: SessionMap = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let local: crate::commands::local_term::LocalTermMap =
+            Arc::new(Mutex::new(std::collections::HashMap::new()));
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(
-            start_recording_on(&sessions, dir.path(), &v, "ghost", 1).unwrap_err(),
+            start_recording_on(&sessions, &local, dir.path(), &v, "ghost", Some(1)).unwrap_err(),
             "no such session: ghost"
         );
         assert_eq!(
-            stop_recording_on(&sessions, &v, "ghost").unwrap_err(),
+            stop_recording_on(&sessions, &local, &v, "ghost").unwrap_err(),
             "no such session: ghost"
         );
     }
@@ -728,7 +781,7 @@ mod tests {
         let host_id = mk_host(&v);
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("src.cast");
-        let handle = RecordingHandle::start(path.clone(), 120, 40, host_id).unwrap();
+        let handle = RecordingHandle::start(path.clone(), 120, 40, Some(host_id)).unwrap();
         handle.send(b"password=hunter2 token=abc");
         handle.finalize();
 
@@ -741,7 +794,7 @@ mod tests {
                 let entry = Recordings::insert(
                     &v,
                     &RecordingInput {
-                        host_id,
+                        host_id: Some(host_id),
                         path: path.to_string_lossy().into_owned(),
                         duration: 1.0,
                         text: Some("password=hunter2".into()),

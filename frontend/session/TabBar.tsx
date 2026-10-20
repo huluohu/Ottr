@@ -9,10 +9,13 @@
 // 仅在会话级视图（终端/文件/进程/监控/插件/批量）下激活。点会话标签离开
 // 任一库级视图回终端——标签语义：点哪个标签看哪个内容。
 import { useTranslation } from "react-i18next";
+import { useState } from "react";
 import { useSessionStore, type Session } from "./SessionStore";
 import { useAiStore } from "../ai/aiStore";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { workspaceViewOf, WORKSPACE_VIEW_META, type WorkspaceView } from "../workspace/workspaceViews";
+import { copyText } from "../ui/clipboard";
+import { showToast } from "../ui/toastStore";
 
 export interface TabBarProps {
   /** 融合式标题栏拖拽面延伸（mac 注入，MainArea 透传）：标签容器 flex:1
@@ -37,9 +40,20 @@ export function TabBar({ dragRegion }: TabBarProps) {
   // AI 诊断「待看」徽标（2026-10-19 方案 A 会话作用域）：该会话有面板且用户
   // 未看过（seen=false）→ 页签琥珀点；markSeen（面板挂载）/close 后消失。
   const aiSessions = useAiStore((s) => s.sessions);
+  // 页签右键菜单（2026-10-20 用户需求：重命名 + 复制连接）
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; sessionId: string } | null>(
+    null,
+  );
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const renameTab = useSessionStore((s) => s.renameTab);
 
   // 只渲染标签根会话（paneOf=null）：分屏 pane 属标签内部布局，不进标签条（Task 8）
-  const tabs = sessions.filter((s) => s.paneOf === null);
+  // 排序（2026-10-20 用户需求）：本地终端固定排最前（主机标签之前）；同组内
+  // 保持创建序。展示层排序——store 顺序（创建序）不动，激活/持久化不受影响。
+  const tabs = sessions
+    .filter((s) => s.paneOf === null)
+    .sort((a, b) => Number(a.kind === "local" ? 0 : 1) - Number(b.kind === "local" ? 0 : 1));
   // 工作区页签（2026-10-16 IA 重构）：镜像当前库级视图；总览标签「开着但正看
   // 终端」时以非激活态保留（置顶语义不变）。
   const workspaceView: WorkspaceView | null =
@@ -100,6 +114,14 @@ export function TabBar({ dragRegion }: TabBarProps) {
           data-testid={`tab-${session.hostName}`}
           className="tab"
           onClick={() => activateSession(session.id)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setTabMenu({
+              x: Math.min(e.clientX, window.innerWidth - 170),
+              y: Math.min(e.clientY, window.innerHeight - 96),
+              sessionId: session.id,
+            });
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -108,9 +130,37 @@ export function TabBar({ dragRegion }: TabBarProps) {
           }}
         >
           <span className="tab-dot" data-testid={`tab-dot-${session.hostName}`} aria-hidden />
-          <span className="tab-title" title={session.lastError ?? undefined}>
-            {session.hostName}
-          </span>
+          {renamingId === session.id ? (
+            <input
+              className="tab-rename-input"
+              data-testid={`tab-rename-${session.id}`}
+              autoFocus
+              value={renameDraft}
+              placeholder={session.hostName}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setRenameDraft(e.currentTarget.value)}
+              onBlur={() => {
+                renameTab(session.id, renameDraft);
+                setRenamingId(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  renameTab(session.id, renameDraft);
+                  setRenamingId(null);
+                } else if (e.key === "Escape") {
+                  setRenamingId(null);
+                }
+                e.stopPropagation();
+              }}
+            />
+          ) : (
+            <span
+              className="tab-title"
+              title={session.titleOverride ?? session.lastError ?? undefined}
+            >
+              {session.titleOverride ?? session.hostName}
+            </span>
+          )}
           {/* AI 诊断待看（方案 A）：后台失败不再抢当前视图，页签引导 */}
           {(() => {
             const ai = aiSessions[session.id];
@@ -153,6 +203,59 @@ export function TabBar({ dragRegion }: TabBarProps) {
           </button>
         </div>
       ))}
+      {tabMenu &&
+        (() => {
+          const menuSession = sessions.find((s) => s.id === tabMenu.sessionId);
+          if (!menuSession) return null;
+          const isLocalTab = menuSession.kind === "local";
+          const connTarget = `${menuSession.username ? `${menuSession.username}@` : ""}${menuSession.address}:${menuSession.port}`;
+          return (
+            <>
+              <div
+                className="ctx-overlay"
+                onMouseDown={() => setTabMenu(null)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setTabMenu(null);
+                }}
+              />
+              <div
+                className="ctx-menu"
+                role="menu"
+                style={{ left: tabMenu.x, top: tabMenu.y }}
+                data-testid="tab-ctx-menu"
+              >
+                <button
+                  role="menuitem"
+                  className="ctx-menu-item"
+                  data-testid="tab-ctx-rename"
+                  onClick={() => {
+                    setRenameDraft(menuSession.titleOverride ?? "");
+                    setRenamingId(menuSession.id);
+                    setTabMenu(null);
+                  }}
+                >
+                  {t("tabs.rename")}
+                </button>
+                {!isLocalTab && (
+                  <button
+                    role="menuitem"
+                    className="ctx-menu-item"
+                    data-testid="tab-ctx-copy"
+                    onClick={() => {
+                      setTabMenu(null);
+                      void copyText(connTarget).then(() =>
+                        showToast(t("tabs.copyConnectionDone", { target: connTarget }), "info"),
+                      );
+                    }}
+                  >
+                    {t("tabs.copyConnection")}
+                  </button>
+                )}
+              </div>
+            </>
+          );
+        })()}
     </div>
   );
 }

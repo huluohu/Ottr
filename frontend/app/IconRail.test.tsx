@@ -5,7 +5,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThemeProvider } from "../theme/ThemeContext";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(async () => []),
+  // 本地终端 openLocalTab 的 connect 面会构造 Channel（deferConnect 宏任务）
+  Channel: class {
+    onmessage: ((m: unknown) => void) | null = null;
+  },
+}));
 
 import i18n from "../i18n";
 import { IconRail } from "./IconRail";
@@ -107,6 +113,17 @@ describe("IconRail（48px 图标轨）", () => {
     useVaultLockStore.setState({ mode: "password" });
     renderRail();
     expect(screen.getByTestId("rail-lock")).toBeTruthy();
+  });
+
+  it("本地终端钮：点击开 kind=local 标签并回终端面（2026-10-20）", () => {
+    const sessionsBefore = useSessionStore.getState().sessions.length;
+    renderRail();
+    fireEvent.click(screen.getByTestId("rail-local"));
+    const st = useSessionStore.getState();
+    expect(st.sessions.length).toBe(sessionsBefore + 1);
+    const created = st.sessions[st.sessions.length - 1];
+    expect(created.kind).toBe("local");
+    expect(useWorkspaceStore.getState().mainView).toBe("terminal");
   });
 
   it("总览钮 = openOverview（置顶标签语义）", () => {

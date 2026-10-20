@@ -131,6 +131,7 @@
     "productionHint": "终端边框标红、页签带 PROD 徽标；输入危险命令时给行内提醒。"
   },
   "hostTree": {
+    "menuConnect": "连接主机",
     "sectionTitle": "主机",
     "addHost": "新建主机",
     "addGroup": "新建分组",
@@ -511,6 +512,9 @@
     }
   },
   "tabs": {
+    "copyConnectionDone": "已复制连接信息：{{target}}",
+    "copyConnection": "复制连接",
+    "rename": "重命名页签",
     "list": "会话标签",
     "closeAria": "关闭标签 {{name}}",
     "prodBadge": "PROD",
@@ -1265,6 +1269,7 @@
     }
   },
   "nav": {
+    "localTerminal": "本地终端",
     "aria": "功能导航",
     "cron": "定时任务",
     "alerts": "告警",

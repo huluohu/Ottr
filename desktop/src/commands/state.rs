@@ -337,6 +337,9 @@ pub(crate) struct AppState {
     pub(crate) sessions: SessionMap,
     /// FTP/FTPS 文件会话表（Phase 2 Task 5，commands/ftp.rs 注册）。
     pub(crate) ftp_sessions: FtpSessionMap,
+    /// 本地终端会话表（2026-10-20，commands/local_term.rs）：与 SSH 表独立
+    /// （SFTP/转发/cron 深度耦合 Arc<SshSession>），数据面命令双表回退。
+    pub(crate) local_sessions: super::local_term::LocalTermMap,
     pub(crate) host_key_asks: HostKeyAsks,
     /// 在途传输的取消令牌（Task 10）：键 = transfer_id；传输结束由任务自清。
     pub(crate) transfers: TransferMap,

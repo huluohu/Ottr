@@ -11,6 +11,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 
 use ottr_ssh::{PtyChannel, PtyEvent};
 use ottr_term::encoding::StreamDecoder;
+use portable_pty::PtySize;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Notify;
 
@@ -26,20 +27,46 @@ pub(crate) async fn write_session(
     id: String,
     bytes: Vec<u8>,
 ) -> Result<(), String> {
-    let (writer, counters) = {
-        let sessions = state.sessions.lock().unwrap();
-        let entry = sessions
-            .get(&id)
-            .ok_or_else(|| format!("no such session: {id}"))?;
-        (Arc::clone(&entry.writer), Arc::clone(&entry.counters))
-    };
+    // 双表回退（2026-10-20 本地终端）：SSH 表未命中再查本地终端表——前端
+    // 命令面零新增，击键对两类会话同一入口。writer 类型不同（SSH = russh
+    // 通道 AsyncWrite / 本地 = pty master 同步 Write），分支各自持锁写；
+    // 本地写入走 spawn_blocking（pty master 缓冲满时同步 write 会阻塞）。
     let n = bytes.len();
-    writer
-        .lock()
-        .await
-        .write_all(&bytes)
-        .await
-        .map_err(|e| format!("pty write failed: {e}"))?;
+    // 守卫在独立块内落锁放锁（MutexGuard !Send——drop() 语义不足以让
+    // 编译器认可「await 前已释放」，作用域收束才是它认的形式）。
+    let ssh = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions
+            .get(&id)
+            .map(|e| (Arc::clone(&e.writer), Arc::clone(&e.counters)))
+    };
+    if let Some((writer, counters)) = ssh {
+        writer
+            .lock()
+            .await
+            .write_all(&bytes)
+            .await
+            .map_err(|e| format!("pty write failed: {e}"))?;
+        counters.input_bytes.fetch_add(n as u64, Ordering::Relaxed);
+        counters.writes.fetch_add(1, Ordering::Relaxed);
+        return Ok(());
+    }
+    let (writer, counters) = {
+        let local = state.local_sessions.lock().unwrap();
+        local
+            .get(&id)
+            .map(|e| (Arc::clone(&e.writer), Arc::clone(&e.counters)))
+            .ok_or_else(|| format!("no such session: {id}"))?
+    };
+    tokio::task::spawn_blocking(move || {
+        writer
+            .lock()
+            .unwrap()
+            .write_all(&bytes)
+            .map_err(|e| format!("pty write failed: {e}"))
+    })
+    .await
+    .map_err(|e| format!("pty write join: {e}"))??;
     counters.input_bytes.fetch_add(n as u64, Ordering::Relaxed);
     counters.writes.fetch_add(1, Ordering::Relaxed);
     Ok(())
@@ -51,11 +78,21 @@ pub(crate) fn session_stats(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<SessionStats, String> {
-    let sessions = state.sessions.lock().unwrap();
-    sessions
+    let ssh = state
+        .sessions
+        .lock()
+        .unwrap()
         .get(&id)
-        .map(|e| snapshot(&e.counters))
-        .ok_or_else(|| format!("no such session: {id}"))
+        .map(|e| snapshot(&e.counters));
+    ssh.or_else(|| {
+        state
+            .local_sessions
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|e| snapshot(&e.counters))
+    })
+    .ok_or_else(|| format!("no such session: {id}"))
 }
 
 /// `session_tail` 单次取尾上限（1 MiB；诊断面 8KB，上限只防误传爆内存）。
@@ -69,11 +106,22 @@ pub(crate) fn session_tail(
     id: String,
     bytes: u32,
 ) -> Result<String, String> {
-    let sessions = state.sessions.lock().unwrap();
-    let entry = sessions
-        .get(&id)
-        .ok_or_else(|| format!("no such session: {id}"))?;
-    Ok(entry.text_tail.tail(bytes.min(TAIL_MAX_BYTES) as usize))
+    // 双表回退（本地终端同享 AI 诊断尾部）
+    let tail = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions.get(&id).map(|e| Arc::clone(&e.text_tail))
+    };
+    let tail = match tail {
+        Some(t) => t,
+        None => state
+            .local_sessions
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|e| Arc::clone(&e.text_tail))
+            .ok_or_else(|| format!("no such session: {id}"))?,
+    };
+    Ok(tail.tail(bytes.min(TAIL_MAX_BYTES) as usize))
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +383,8 @@ pub(crate) fn resize_session(
     cols: u32,
     rows: u32,
 ) -> Result<(), String> {
+    // SSH：投挂起槽（转发循环 select 唤醒下发 window_change）；本地终端：
+    // 直达 master.resize（无转发循环，portable-pty resize 即时生效 SIGWINCH）。
     let entry = state
         .sessions
         .lock()
@@ -346,7 +396,27 @@ pub(crate) fn resize_session(
             resize.set(cols, rows);
             Ok(())
         }
-        None => Err(format!("no such session: {id}")),
+        None => {
+            let master = state
+                .local_sessions
+                .lock()
+                .unwrap()
+                .get(&id)
+                .map(|e| Arc::clone(&e.master));
+            match master {
+                Some(master) => master
+                    .lock()
+                    .unwrap()
+                    .resize(PtySize {
+                        rows: rows as u16,
+                        cols: cols as u16,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    })
+                    .map_err(|e| format!("local resize failed: {e}")),
+                None => Err(format!("no such session: {id}")),
+            }
+        }
     }
 }
 

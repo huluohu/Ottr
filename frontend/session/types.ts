@@ -34,9 +34,16 @@ export interface SessionClosedPayload {
   reason: "cancelled" | "closed" | "ipc_failed" | "shell_exit";
 }
 
+/** 会话种类（2026-10-20 本地终端）："local" = 连接本机 shell 的终端
+ * （hostId 固定 -1 哨兵——Session.hostId 保留 number 类型避免全消费面
+ * 加 null 分支；本地会话不参与监控/批量/cron 等一切按 hostId 的功能面）。 */
+export type SessionKind = "ssh" | "local";
+
 export interface Session {
   /** 标签 id（uuid，跨重连稳定）；Rust 会话 id 另存 rustId。 */
   id: string;
+  /** 会话种类（缺省 "ssh"——存量测试夹具/旧构造点不必逐个补字段）。 */
+  kind?: SessionKind;
   hostId: number;
   hostName: string;
   address: string;
@@ -77,6 +84,9 @@ export interface Session {
   /** 生产环境主机标记（Phase 2 Task 11，B11）：终端 pane 红框 + TabBar PROD
    * 徽标的依据；host.is_production 的会话内拷贝（分屏 pane 与标签同源）。 */
   isProduction: boolean;
+  /** 页签改名（2026-10-20 用户需求）：非空 = TabBar 显示它（覆盖 hostName）。
+   * 会话级（不持久化——标签 id 跨启动不稳定，恢复后回到默认名）。 */
+  titleOverride?: string;
   /** 监控开关（Phase 3 Task 1，B4 上半）：host.monitor_enabled 的会话内拷贝。
    * attach 成功后按它决定是否 monitor_start（仅标签根会话——分屏 pane 与根
    * 同主机，多份采样是纯浪费；面板消费面在 MonitorSidebar）。可选 = 存量测试

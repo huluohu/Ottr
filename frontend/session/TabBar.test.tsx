@@ -327,3 +327,91 @@ describe("TabBar 生产徽标（Phase 2 Task 11，B11）", () => {
     expect(screen.queryByTestId("tab-prod-cache-01")).toBeNull();
   });
 });
+
+// --- 页签右键菜单（2026-10-20 用户需求）：重命名 + 复制连接 -----------------
+describe("TabBar 页签右键菜单", () => {
+  afterEach(() => {
+    cleanup();
+    localStorage.removeItem(OPEN_TABS_KEY);
+  });
+
+  function seedLocalAndHost() {
+    useSessionStore.setState({
+      sessions: [
+        makeSession({ id: "h1", hostId: 1, hostName: "web-01", username: "deploy", status: "connected" }),
+        makeSession({ id: "loc", hostId: -1, hostName: "本地终端", kind: "local", status: "connected" }),
+      ],
+      activeId: "loc",
+      settings: { maxReconnectAttempts: 5 },
+    });
+  }
+
+  it("右键主机页签：菜单含重命名 + 复制连接；改名后展示名跟随（store 序不动）", async () => {
+    seedLocalAndHost();
+    render(<TabBar />);
+    fireEvent.contextMenu(screen.getByTestId("tab-web-01"));
+    expect(screen.getByTestId("tab-ctx-menu")).toBeTruthy();
+    expect(screen.getByTestId("tab-ctx-rename")).toBeTruthy();
+    expect(screen.getByTestId("tab-ctx-copy")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("tab-ctx-rename"));
+    // 内联输入出现：输入新名回车 → 展示名跟随，testid（hostName 基准）不动
+    const input = screen.getByTestId("tab-rename-h1");
+    fireEvent.change(input, { target: { value: "生产 web" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByTestId("tab-web-01").textContent).toContain("生产 web");
+    expect(useSessionStore.getState().sessions.find((s) => s.id === "h1")?.titleOverride).toBe(
+      "生产 web",
+    );
+    expect(useSessionStore.getState().sessions.map((s) => s.id)).toEqual(["h1", "loc"]);
+  });
+
+  it("右键本地页签：只有重命名（无连接信息可复制）", () => {
+    seedLocalAndHost();
+    render(<TabBar />);
+    fireEvent.contextMenu(screen.getByTestId("tab-本地终端"));
+    expect(screen.getByTestId("tab-ctx-rename")).toBeTruthy();
+    expect(screen.queryByTestId("tab-ctx-copy")).toBeNull();
+  });
+
+  it("重命名空串 = 恢复默认名（titleOverride 清除）", () => {
+    seedLocalAndHost();
+    render(<TabBar />);
+    fireEvent.contextMenu(screen.getByTestId("tab-web-01"));
+    fireEvent.click(screen.getByTestId("tab-ctx-rename"));
+    const input = screen.getByTestId("tab-rename-h1");
+    fireEvent.change(input, { target: { value: "  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(useSessionStore.getState().sessions.find((s) => s.id === "h1")?.titleOverride).toBeUndefined();
+    expect(screen.getByTestId("tab-web-01").textContent).toContain("web-01");
+  });
+});
+
+// --- 本地终端排位（2026-10-20 用户需求）：本地标签固定排最前（主机标签前）---
+describe("TabBar 本地终端排位", () => {
+  afterEach(() => {
+    cleanup();
+    localStorage.removeItem(OPEN_TABS_KEY);
+  });
+
+  it("本地标签（后创建）排在所有主机标签之前（展示序，store 序不动）", () => {
+    useSessionStore.setState({
+      sessions: [
+        makeSession({ id: "h1", hostId: 1, hostName: "web-01", status: "connected" }),
+        makeSession({ id: "h2", hostId: 2, hostName: "db-01", status: "connected" }),
+        makeSession({ id: "loc", hostId: -1, hostName: "本地终端", kind: "local", status: "connected" }),
+      ],
+      activeId: "loc",
+      settings: { maxReconnectAttempts: 5 },
+    });
+    render(<TabBar />);
+    // tab-testid = tab-${hostName}；断言本地标签渲染在两个主机标签之前
+    // 只取标签本体（role=tab 的按钮；圆点/PROD/待看徽标是子 span，testid
+    // 同前缀但不带 role，排除）。断言：本地标签在最前，主机标签保持创建序。
+    const titles = [...document.querySelectorAll('div[role="tab"]')]
+      .map((el) => el.getAttribute("data-testid"))
+      .filter((t): t is string => t !== null);
+    expect(titles).toEqual(["tab-本地终端", "tab-web-01", "tab-db-01"]);
+    // store 顺序不被排序改动（创建序保留）
+    expect(useSessionStore.getState().sessions.map((s) => s.id)).toEqual(["h1", "h2", "loc"]);
+  });
+});

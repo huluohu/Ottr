@@ -574,3 +574,18 @@
   color: var(--color-fg);
   border-color: var(--border-subtle);
 }
+
+/* 页签改名内联输入（2026-10-20 用户需求）：与 tab-title 同行高，覆写态。 */
+.tab-rename-input {
+  flex: 1 1 auto;
+  min-width: 60px;
+  max-width: 160px;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  outline: none;
+}

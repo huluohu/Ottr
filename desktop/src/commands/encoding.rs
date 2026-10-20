@@ -2,6 +2,7 @@
 //! `ottr://encoding-hint` 事件载荷（发出点在 session::open_and_register 的
 //! LANG 探测内，消费见 session.rs）。
 use ottr_term::encoding::Encoding;
+use std::sync::Arc;
 use tauri::State;
 
 use super::state::AppState;
@@ -42,11 +43,22 @@ pub(crate) fn set_session_encoding(
 ) -> Result<String, String> {
     let enc = encoding_from_str(&encoding)
         .ok_or_else(|| format!("unsupported encoding: {encoding} (utf-8/gbk/gb18030)"))?;
-    let sessions = state.sessions.lock().unwrap();
-    let entry = sessions
-        .get(&id)
-        .ok_or_else(|| format!("no such session: {id}"))?;
-    let flushed = entry.decoder.lock().unwrap().set_encoding(enc);
+    // 双表回退（本地终端同享会话编码切换）
+    let decoder = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions.get(&id).map(|e| Arc::clone(&e.decoder))
+    };
+    let decoder = match decoder {
+        Some(d) => d,
+        None => state
+            .local_sessions
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|e| Arc::clone(&e.decoder))
+            .ok_or_else(|| format!("no such session: {id}"))?,
+    };
+    let flushed = decoder.lock().unwrap().set_encoding(enc);
     Ok(flushed)
 }
 

@@ -21,6 +21,7 @@
 //! Windows 共用自绘标题栏 + 汉堡菜单（前端 TitleBar），原生菜单仅 macOS 构建。
 
 use tauri::menu::{AboutMetadata, CheckMenuItem, MenuBuilder, MenuEvent, MenuItem, SubmenuBuilder};
+#[cfg_attr(target_os = "windows", allow(unused_imports))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Listener, Manager, Runtime, Wry};
 
@@ -1164,7 +1165,10 @@ pub(crate) fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
 /// 托盘左键：主窗显示/隐藏切换。已显示 → 隐藏；否则显示+聚焦。
 /// 仅 Win/Linux（mac 左键 2026-10-14 起改弹与右键相同的菜单，本函数随之
 /// 不再参与 mac 构建——差异显式声明于 on_tray_icon_event 注释）。
+/// Windows：左/右键均走内建菜单（vanilla 修复裁定），本函数仅 Linux 参与
+/// （Windows 构建下 dead_code，cfg_attr 压告警保 CI clippy -D warnings）。
 #[cfg(not(target_os = "macos"))]
+#[cfg_attr(target_os = "windows", allow(dead_code))]
 fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(w) = app.get_webview_window("main") {
         if w.is_visible().unwrap_or(false) {
@@ -1329,16 +1333,41 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     app.manage(ZoomState::default());
     app.on_menu_event(on_app_menu_event);
 
-    // 托盘（三端）：模板图标 + 右键菜单 + 左键切换主窗。
+    // 托盘（三端）：模板图标 + 菜单。**Windows 走最平庸的社区验证配置**
+    // （2026-10-20 第二次修复裁定）：不设 show_menu_on_left_click(false)、
+    // 不注册任何 Click 处理器——左/右键的菜单弹出完全交给 tray-icon 内建
+    // 路径（v1.4.10 的显式 show_menu + 内建关闭两路都实测不弹，说明该机
+    // 环境下自定义路径不可信；vanilla 配置是万千 tauri 应用验证过的）。
+    // 窗口恢复改走菜单「显示主窗」（菜单项本就在）。Linux：左键切换主窗
+    // （show_menu_on_left_click 在 Linux 无实现，不干扰）+ 菜单经
+    // AppIndicator 由桌面环境弹出。macOS：原生 NSMenu 弹窗（见 dock_menu）。
     let lang = menu_lang(app);
     let tray_menu = build_menu(app, &tray_tree(lang, 0))?;
     let icon = tauri::image::Image::from_bytes(TRAY_ICON_BYTES)?;
-    let tray = TrayIconBuilder::with_id(TRAY_ID)
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .icon_as_template(false)
         .tooltip("Ottr")
-        .menu(&tray_menu)
-        .show_menu_on_left_click(false)
+        .menu(&tray_menu);
+    #[cfg(not(target_os = "windows"))]
+    {
+        builder = builder.show_menu_on_left_click(false);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // 诊断面（OTTR_TRAY_DEBUG=1 落盘 data_root/tray-debug.log）：托盘
+        // 构建与菜单替换全链留痕——「菜单不弹」的环境层定位面。
+        if std::env::var_os("OTTR_TRAY_DEBUG").is_some() {
+            tray_debug(
+                app,
+                &format!("setup: menu built ({} items), vanilla mode", 1),
+            );
+        }
+    }
+    // 构建返回值仅 Windows 消费（set_menu 二次钉菜单）；mac/linux 的菜单/
+    // 事件路径用的都是闭包参数——绑定按平台可能闲置，压告警。
+    #[allow(unused_variables)]
+    let tray = builder
         .on_menu_event(|app, event| match dispatch_of(event.id().as_ref()) {
             Some(Dispatch::TrayShow) => show_main_window(app),
             Some(Dispatch::TrayDisconnectAll) => {
@@ -1384,15 +1413,7 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
                     tray_menu_action(app),
                 );
             }
-            #[cfg(not(target_os = "macos"))]
-            TrayIconEvent::Click {
-                button: MouseButton::Right,
-                button_state: MouseButtonState::Up,
-                ..
-            } => {
-                let _ = tray.with_inner_tray_icon(|t| t.show_menu());
-            }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
             TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
@@ -1401,9 +1422,12 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
-    // 内建右键弹路径关闭（见上：右键改显式 `show_menu()`，两者同开会双弹）。
-    #[cfg(not(target_os = "macos"))]
-    tray.with_inner_tray_icon(|t| t.set_show_menu_on_right_click(false))?;
+    #[cfg(target_os = "windows")]
+    if let Err(e) = tray.set_menu(Some(tray_menu)) {
+        // 重建式挂菜单（诊断面：内建 builder 挂菜单后若环境吞掉 hpopupmenu，
+        // 显式 set_menu 二次钉一次——两路都留痕）
+        tray_debug(app, &format!("set_menu after build failed: {e}"));
+    }
 
     // Dock 右键菜单（仅 macOS）：与托盘同源树；动作分派同一匹配表。
     #[cfg(target_os = "macos")]
@@ -1448,10 +1472,37 @@ fn rebuild_menus(handle: &AppHandle<Wry>) {
             Ok(menu) => {
                 if let Err(e) = tray.set_menu(Some(menu)) {
                     eprintln!("[tray] set_menu failed: {e}");
+                    tray_debug(handle, &format!("rebuild set_menu failed: {e}"));
+                } else {
+                    tray_debug(handle, "rebuild set_menu ok");
                 }
             }
             Err(e) => eprintln!("[tray] rebuild build failed: {e}"),
         }
+    }
+}
+
+/// 托盘诊断日志（OTTR_TRAY_DEBUG=1 时启用）：追加写 data_root/tray-debug.log。
+/// 「Windows 托盘菜单不弹」两轮修复均无法本地复现——本日志是环境层定位面
+/// （用户跑一次安装版 + 设环境变量，把文件发回来即可看到死在哪一步）。
+fn tray_debug(app: &AppHandle<Wry>, msg: &str) {
+    if std::env::var_os("OTTR_TRAY_DEBUG").is_none() {
+        return;
+    }
+    use crate::paths::data_root;
+    let Ok(dir) = data_root(app) else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("tray-debug.log"))
+    {
+        let _ = writeln!(f, "{ts} {msg}");
     }
 }
 

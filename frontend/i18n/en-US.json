@@ -131,6 +131,7 @@
     "productionHint": "Marks the terminal border red and the tab with a PROD badge; dangerous input gets an inline reminder."
   },
   "hostTree": {
+    "menuConnect": "Connect host",
     "sectionTitle": "Hosts",
     "addHost": "New Host",
     "addGroup": "New Group",
@@ -512,6 +513,9 @@
     }
   },
   "tabs": {
+    "copyConnectionDone": "Copied connection: {{target}}",
+    "copyConnection": "Copy connection",
+    "rename": "Rename tab",
     "list": "Session tabs",
     "closeAria": "Close tab {{name}}",
     "prodBadge": "PROD",
@@ -1266,6 +1270,7 @@
     }
   },
   "nav": {
+    "localTerminal": "Local Terminal",
     "aria": "Navigation",
     "cron": "Scheduled tasks",
     "alerts": "Alerts",

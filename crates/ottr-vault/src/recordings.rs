@@ -35,7 +35,8 @@ fn now_ts() -> i64 {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct RecordingEntry {
     pub id: i64,
-    pub host_id: i64,
+    /// 归属主机（None = 本地终端会话录制；0022 起可空）。
+    pub host_id: Option<i64>,
     /// .cast 文件绝对路径（文件本体不入库）。
     pub path: String,
     /// 秒（浮点，asciinema 事件时间精度；空录制 = 0）。
@@ -58,7 +59,8 @@ pub struct RecordingHit {
 /// 新建录制行的输入（id/created_at/text_index_path 由存储层定）。
 #[derive(Debug, Clone, Deserialize)]
 pub struct RecordingInput {
-    pub host_id: i64,
+    /// 归属主机（None = 本地终端会话，2026-10-20；无主机行，host_id 落 NULL）。
+    pub host_id: Option<i64>,
     pub path: String,
     pub duration: f64,
     /// 剥离 ANSI 后的录制纯文本（空录制 = None/空串——只入元数据不进 FTS）。

@@ -264,6 +264,9 @@ pub fn run() {
             commands::ftp::ftp_attach_host_session,
             commands::session::host_key_decision,
             commands::session::write_session,
+            // 本地终端（2026-10-20）：连接本机 shell 的会话；写/缩放/尾部/
+            // 关闭复用上方同名单命令（双表回退，见 commands/local_term.rs）。
+            commands::local_term::local_term_open,
             commands::encoding::set_session_encoding,
             commands::session::drop_session,
             commands::session::quit_app,

@@ -38,7 +38,10 @@ export function isIntegrationNoise(command: string): boolean {
     command.includes("PROMPT_COMMAND") ||
     command.includes("__osc133_preexec") ||
     command.includes("precmd(){") ||
-    command.includes("file://%s")
+    command.includes("file://%s") ||
+    // sh 系注入行（2026-10-20）：钩子本体经 exec 落盘，交互行只剩
+    // `. /tmp/.ottr-xxxx.sh`——固定前缀即哨兵。
+    command.includes(".ottr-")
   );
 }
 

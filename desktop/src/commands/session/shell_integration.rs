@@ -1,47 +1,48 @@
 //! shell 集成自动注入（Task 15 fix 1/5，⌘R 历史入库的数据源前提）。
 //! 纯搬家拆分（原 session.rs 单文件）。
+//!
+//! # 历史不干扰（2026-10-20 用户硬约束：「不能干扰用户快速切换历史命令」）
+//!
+//! 注入行作为交互输入下发时会进 shell 历史——回显关闭只瞒眼睛。三种 shell
+//! 的最优解见 [`ottr_ssh::shell_integration`] 模块注释；本文件的编排职责：
+//!
+//! * bash/zsh：探测 stty → 有则隐身两/三步（首行关回显，等其落地再发后续行），
+//!   无则跳过 stty 舞步（`stty` 报错不再上屏）；
+//! * sh 系：**钩子本体经 exec 通道落盘**（不进交互历史），交互行只剩一条
+//!   固定的短 source 行；exec 落盘失败才退化回「整行片段直发」。
+//!
+//! 其余四要素不变：
+//!   1. shell 探测：exec 通道 `echo $SHELL`（同 LANG 探测先例；bash→Bash、
+//!      zsh→Zsh、sh/ash/dash→Sh（POSIX sh 系，2026-10-19）、其他（fish/nushell…）
+//!      → 跳过不报错）；
+//!   2. 幂等探测：等首输出（banner+首提示符）稳定后查 TextTail 原始头部是否
+//!      已有 OSC 133——用户自带集成则跳过（防双标记双入库）。**已知盲区
+//!      （挂账）**：首提示符晚于稳定窗的慢 shell 会漏判为未集成而重复注入；
+//!      前端 record.ts 的同秒去重兜底双 D（评审裁定 MVP 接受）；
+//!   3. 用户开关：settings `shell.integration`（缺省开，validate_setting 注册）；
+//!   4. 片段本身带 PROMPT_COMMAND/DEBUG 护栏（T6 终稿），重复注入天然幂等
+//!      （覆盖式 export / 重定义 precmd）。
+//!
+//! sh 系附加护栏「验证-回退」（2026-10-19，用户硬约束：不支持也不得引起其他
+//! 错误）：sh 片段依赖「PS1 展开时做命令替换」这一 ash/dash 行为，极端 shell
+//! 不做的话 PS1 会以字面量上屏（提示符永久污染）。故下发后开窗观察原始头部
+//! 是否真出现 `133;D;` 标记：出现 = 注入成立；窗口内未出现 = 下发还原行把
+//! PS1 回填为片段内备份的原值，提示符回到注入前模样，会话分毫无损。
 
 use std::time::{Duration, Instant};
 
 use ottr_ssh::SshSession;
+use ottr_ssh::shell_integration as si;
 
 use crate::commands::state::{LANG_PROBE_TIMEOUT, TextTail};
 
-// ---------------------------------------------------------------------------
-// shell 集成自动注入（Task 15 fix 1/5，⌘R 历史入库的数据源前提）
-// ---------------------------------------------------------------------------
-// 接线点 = attach_host_session 的 request_shell 成功后、首提示符消费前：注入
-// 片段经 PTY writer 下发（作为一行命令发给交互 shell 执行，Phase 0 T6 spike
-// 同源调用，asset = ottr_ssh::shell_integration::inject_for T6 真机验证终稿）。
-// 四要素：
-//   1. shell 探测：exec 通道 `echo $SHELL`（同 LANG 探测先例；bash→Bash、
-//      zsh→Zsh、sh/ash/dash→Sh（POSIX sh 系，2026-10-19）、其他（fish/nushell…）
-//      → 跳过不报错）；
-//   2. 幂等探测：等首输出（banner+首提示符）稳定后查 TextTail 原始头部是否
-//      已有 OSC 133——用户自带集成则跳过（防双标记双入库）。**已知盲区
-//      （挂账）**：首提示符晚于稳定窗的慢 shell 会漏判为未集成而重复注入；
-//      前端 record.ts 的同秒去重兜底双 D（评审裁定 MVP 接受）；
-//   3. 用户开关：settings `shell.integration`（缺省开，validate_setting 注册）；
-//   4. 片段本身带 PROMPT_COMMAND/DEBUG 护栏（T6 终稿），重复注入天然幂等
-//      （覆盖式 export / 重定义 precmd）。
-// 注入走**两步隐身通道**（2026-10-09，T6 挂账「隐身注入」清偿）：第 1 步先
-// 关远端回显（此行自身回显一次，内容很短），第 2 步在静默中下发片段并恢复
-// 回显、顺带擦除第 1 步的回显残留——净可见残留为零。远端无 stty 时第 2 步
-// 退化为旧的可见行为（清理步骤仍会收敛大部分残留）。
-//
-// sh 系附加护栏「验证-回退」（2026-10-19，用户硬约束：不支持也不得引起其他
-// 错误）：sh 片段依赖「PS1 展开时做命令替换」这一 ash/dash 行为，极端 shell
-// 不做的话 PS1 会以字面量上屏（提示符永久污染）。故下发后开窗观察原始头部
-// 是否真出现 `133;D;` 标记：出现 = 注入成立；窗口内未出现 = 下发还原行把
-// PS1 回填为片段内备份的原值，提示符回到注入前模样，会话分毫无损。
-
 /// `echo $SHELL` 输出 → ShellKind（basename 判定；其他 shell 显式 None）。
-fn detect_shell_kind(shell_path: &str) -> Option<ottr_ssh::shell_integration::ShellKind> {
+fn detect_shell_kind(shell_path: &str) -> Option<si::ShellKind> {
     let base = shell_path.trim().rsplit('/').next().unwrap_or("");
     match base {
-        "bash" => Some(ottr_ssh::shell_integration::ShellKind::Bash),
-        "zsh" => Some(ottr_ssh::shell_integration::ShellKind::Zsh),
-        "sh" | "ash" | "dash" => Some(ottr_ssh::shell_integration::ShellKind::Sh),
+        "bash" => Some(si::ShellKind::Bash),
+        "zsh" => Some(si::ShellKind::Zsh),
+        "sh" | "ash" | "dash" => Some(si::ShellKind::Sh),
         _ => None,
     }
 }
@@ -52,9 +53,9 @@ fn detect_shell_kind(shell_path: &str) -> Option<ottr_ssh::shell_integration::Sh
 #[cfg(test)]
 fn integration_decision(
     enabled: bool,
-    kind: Option<ottr_ssh::shell_integration::ShellKind>,
+    kind: Option<si::ShellKind>,
     already_integrated: bool,
-) -> Option<ottr_ssh::shell_integration::ShellKind> {
+) -> Option<si::ShellKind> {
     if !enabled || already_integrated {
         return None;
     }
@@ -90,6 +91,28 @@ const INJECT_MAX_WAIT: Duration = Duration::from_secs(6);
 /// （慢链路假阴性的代价 = 本会话无注入，安全侧）。
 const INJECT_VERIFY_MAX_WAIT: Duration = Duration::from_millis(2500);
 
+/// 辅助 exec 探测（stty 可用性 / sh 钩子落盘）的超时：这两步只是优化面，
+/// 失败即降级；不能用 `$SHELL` 探测的 10s 上限——那会让注入在用户已经开始
+/// 输入后才发生（键序交错）。
+const INJECT_AUX_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// 向 PTY 写一行交互输入（`\r` 提交）。锁只在写入期间持有——等回显/等标记
+/// 期间必须释放，否则用户键入会被注入流程阻塞。
+async fn send_line(
+    writer: &tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>,
+    line: &str,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    let mut w = writer.lock().await;
+    w.write_all(line.as_bytes())
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    w.write_all(b"\r")
+        .await
+        .map_err(|e| format!("write: {e}"))?;
+    w.flush().await.map_err(|e| format!("flush: {e}"))
+}
+
 /// 等首输出稳定（原始头部无增长达稳定窗），返回（是否已见 133）。
 async fn wait_initial_output(text_tail: &TextTail) -> bool {
     let start = Instant::now();
@@ -111,19 +134,28 @@ async fn wait_initial_output(text_tail: &TextTail) -> bool {
     text_tail.raw_head_has_133()
 }
 
-/// 等第 1 步的 `stty -echo` 执行生效：判定面 = 远端回显（"stty -echo" 出现
-/// 在 TextTail 原始头部）落地后再缓冲 150ms（让 stty 真正执行完，而非仅被
-/// 行纪律回显）；封顶 1.5s——超时按已生效处理，最坏退化为旧的可见行为。
+/// 等首行（stty -echo / zsh 首行）被远端回显：判定面 = 哨兵
+/// [`si::ECHO_OFF_MARKER`] 出现在 TextTail 原始头部，而后缓冲 150ms（让
+/// stty 真正执行完，而非仅被行纪律回显）；封顶 1.5s——超时按已生效处理，
+/// 最坏退化为旧的可见行为。
 async fn wait_echo_off(text_tail: &TextTail) {
-    const MARKER: &str = ottr_ssh::shell_integration::ECHO_OFF_LINE;
     let start = Instant::now();
     while start.elapsed() < Duration::from_millis(1500) {
         tokio::time::sleep(Duration::from_millis(50)).await;
-        if text_tail.raw_head_contains(MARKER) {
+        if text_tail.raw_head_contains(si::ECHO_OFF_MARKER) {
             tokio::time::sleep(Duration::from_millis(150)).await;
             return;
         }
     }
+}
+
+/// stty 可用性探测（exec 通道，不进历史）。失败/超时按「无」处理：最坏是
+/// 少走一轮隐身步骤，注入本身不受影响（所有 stty 行都带 `2>/dev/null`）。
+async fn probe_has_stty(session: &SshSession) -> bool {
+    matches!(
+        tokio::time::timeout(INJECT_AUX_TIMEOUT, session.exec("command -v stty")).await,
+        Ok(Ok(out)) if out.exit_status == Some(0) && !out.stdout.is_empty()
+    )
 }
 
 /// sh 系验证-回退护栏：等片段真正发标记（原始头部出现 `\x1b]133;D;`——
@@ -139,6 +171,90 @@ async fn wait_sh_marker(text_tail: &TextTail, max_wait: Duration) -> bool {
         }
     }
     false
+}
+
+/// bash/zsh：隐身通道逐行下发（首行关回显 → 等落地 → 其余行静默下发）。
+async fn inject_hidden(
+    writer: &tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>,
+    probe_session: &SshSession,
+    text_tail: &TextTail,
+    kind: si::ShellKind,
+) -> ShellIntegrationOutcome {
+    // stty 探测只对 bash 有意义：zsh 的 zle 自己回显输入，stty 隐身无效
+    // （真夹具实测），zsh 三行不夹 stty，也无需等待。
+    let has_stty = kind == si::ShellKind::Bash && probe_has_stty(probe_session).await;
+    let lines = si::hidden_inject_lines(kind, has_stty);
+    for (i, line) in lines.iter().enumerate() {
+        if let Err(e) = send_line(writer, line).await {
+            eprintln!("[shell-integration] write failed: {e}");
+            return ShellIntegrationOutcome::ProbeFailed;
+        }
+        // 首行关回显：等它真正生效再发后续行，否则后续行会被回显。
+        // 无 stty 时不关回显，也就没有等待的必要（后续行照常可见）。
+        if i == 0 && has_stty {
+            wait_echo_off(text_tail).await;
+        }
+    }
+    match kind {
+        si::ShellKind::Bash => ShellIntegrationOutcome::Injected("bash"),
+        si::ShellKind::Zsh => ShellIntegrationOutcome::Injected("zsh"),
+        si::ShellKind::Sh => ShellIntegrationOutcome::Injected("sh"),
+    }
+}
+
+/// sh 系：钩子本体经 exec 通道落盘（不进交互历史），交互行只发一条短
+/// source 行；落盘失败才退化回整行片段直发（功能优先，可见残留为旧行为）。
+async fn inject_sh(
+    writer: &tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>,
+    probe_session: &SshSession,
+    text_tail: &TextTail,
+) -> ShellIntegrationOutcome {
+    let path = si::sh_hook_temp_path();
+    let write_cmd = si::sh_hook_write_command(&path);
+    let file_ready = matches!(
+        tokio::time::timeout(INJECT_AUX_TIMEOUT, probe_session.exec(&write_cmd)).await,
+        Ok(Ok(out)) if String::from_utf8_lossy(&out.stdout).contains("OTTR_HOOK_OK")
+    );
+    if file_ready {
+        if let Err(e) = send_line(writer, &si::sh_hook_source_line(&path)).await {
+            eprintln!("[shell-integration] write failed: {e}");
+            return ShellIntegrationOutcome::ProbeFailed;
+        }
+    } else {
+        // 落盘失败（只读 /tmp、无 cat、exec 通道异常）：退回旧的整行片段
+        // 直发。stty 可用时仍走「关回显 → 片段 → 恢复/擦行」三步，避免
+        // 整行片段被回显（夹具断言「防提示符污染」）；stty 缺失才退化为
+        // 可见长行（旧行为，功能不受影响）。
+        eprintln!("[shell-integration] sh hook file unavailable; falling back to inline snippet");
+        let has_stty = probe_has_stty(probe_session).await;
+        if has_stty {
+            if let Err(e) = send_line(writer, si::ECHO_OFF_LINE).await {
+                eprintln!("[shell-integration] write failed: {e}");
+                return ShellIntegrationOutcome::ProbeFailed;
+            }
+            wait_echo_off(text_tail).await;
+        }
+        if let Err(e) = send_line(writer, si::SH_SNIPPET).await {
+            eprintln!("[shell-integration] write failed: {e}");
+            return ShellIntegrationOutcome::ProbeFailed;
+        }
+        if has_stty {
+            let restore = "stty echo 2>/dev/null; printf '\\e[2K\\r\\e[1A\\e[2K'";
+            if let Err(e) = send_line(writer, restore).await {
+                eprintln!("[shell-integration] write failed: {e}");
+                return ShellIntegrationOutcome::ProbeFailed;
+            }
+        }
+    }
+    // 片段依赖 PS1 命令替换，窗口内未见标记即回填原 PS1（验证-回退护栏）
+    if wait_sh_marker(text_tail, INJECT_VERIFY_MAX_WAIT).await {
+        ShellIntegrationOutcome::Injected("sh")
+    } else {
+        if let Err(e) = send_line(writer, si::SH_REVERT_LINE).await {
+            eprintln!("[shell-integration] sh revert write failed: {e}");
+        }
+        ShellIntegrationOutcome::RevertedNoMarker
+    }
 }
 
 /// shell 集成注入（生产 attach 与 fixture example 共用同一实现）：
@@ -166,74 +282,10 @@ pub async fn inject_shell_integration(
     if wait_initial_output(text_tail).await {
         return ShellIntegrationOutcome::SkippedAlreadyIntegrated;
     }
-    // 片段下发（**隐身注入两步**，2026-10-09 T6 挂账清偿）：
-    //   第 1 步 `stty -echo`——此行自身回显一次（很短），执行后进入静默；
-    //   等回显落在 TextTail 后再下发第 2 步（否则第 2 步会被回显）。
-    //   第 2 步 静默下发集成片段 + 恢复回显 + 光标上移擦除第 1 步残留——
-    //   shell 的新提示符正好落在擦净的位置，净可见残留为零。
-    //   stty 缺失的远端：第 1 步报错、回显不关，第 2 步退化为旧的可见行为
-    //   （清理步骤仍会收敛大部分残留），功能不受影响。
-    //   sh 系例外（2026-10-19）：**三行下发**——片段行与恢复行拆开。shell 对
-    //   一行先解析后执行，片段若解析失败（未知 shell 语法差异），同行的
-    //   `stty echo` 会跟着不执行 = 回显永久关闭；拆行后恢复行必然执行，
-    //   回显必然恢复（用户硬约束：不支持也不得引起其他错误）。
-    let is_sh = kind == ottr_ssh::shell_integration::ShellKind::Sh;
-    let result = (async {
-        use tokio::io::AsyncWriteExt;
-        let mut w = writer.lock().await;
-        w.write_all(ottr_ssh::shell_integration::ECHO_OFF_LINE.as_bytes())
-            .await?;
-        w.write_all(b"\r").await?;
-        w.flush().await?;
-        wait_echo_off(text_tail).await;
-        if is_sh {
-            w.write_all(ottr_ssh::shell_integration::sh_snippet_line().as_bytes())
-                .await?;
-            w.write_all(b"\r").await?;
-            w.flush().await?;
-            w.write_all(ottr_ssh::shell_integration::sh_echo_restore_line().as_bytes())
-                .await?;
-        } else {
-            let snippet_line = ottr_ssh::shell_integration::hidden_inject_line(kind);
-            w.write_all(snippet_line.as_bytes()).await?;
-        }
-        w.write_all(b"\r").await?;
-        w.flush().await?;
-        Ok::<(), std::io::Error>(())
-    })
-    .await;
-    match result {
-        Ok(()) => match kind {
-            ottr_ssh::shell_integration::ShellKind::Bash => {
-                ShellIntegrationOutcome::Injected("bash")
-            }
-            ottr_ssh::shell_integration::ShellKind::Zsh => ShellIntegrationOutcome::Injected("zsh"),
-            // sh 系：片段依赖 PS1 命令替换，窗口内未见标记即回填原 PS1
-            // （验证-回退护栏，模块注释「sh 系附加护栏」）。慢链路假阴性只是
-            // 退回注入前状态，安全侧。
-            ottr_ssh::shell_integration::ShellKind::Sh => {
-                if wait_sh_marker(text_tail, INJECT_VERIFY_MAX_WAIT).await {
-                    ShellIntegrationOutcome::Injected("sh")
-                } else {
-                    let revert = (async {
-                        use tokio::io::AsyncWriteExt;
-                        let mut w = writer.lock().await;
-                        w.write_all(ottr_ssh::shell_integration::SH_REVERT_LINE.as_bytes())
-                            .await?;
-                        w.write_all(b"\r").await?;
-                        w.flush().await
-                    })
-                    .await;
-                    if let Err(e) = revert {
-                        eprintln!("[shell-integration] sh revert write failed: {e}");
-                    }
-                    ShellIntegrationOutcome::RevertedNoMarker
-                }
-            }
-        },
-        Err(e) => {
-            eprintln!("[shell-integration] write failed: {e}");
-            ShellIntegrationOutcome::ProbeFailed
+    match kind {
+        si::ShellKind::Sh => inject_sh(writer, probe_session, text_tail).await,
+        si::ShellKind::Bash | si::ShellKind::Zsh => {
+            inject_hidden(writer, probe_session, text_tail, kind).await
         }
     }
 }

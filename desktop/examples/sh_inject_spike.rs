@@ -227,6 +227,8 @@ fn is_noise(command: &str) -> bool {
         || command.contains("osc133_preexec")
         || command.contains("precmd(){")
         || command.contains("stty -echo")
+        // sh 系注入行（2026-10-20）：交互行只剩 `. /tmp/.ottr-xxxx.sh`
+        || command.contains(".ottr-")
     {
         return true;
     }

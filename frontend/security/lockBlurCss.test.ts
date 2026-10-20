@@ -13,19 +13,35 @@ import { allAppCss } from "../styles/all-css";
 const css = allAppCss();
 
 describe("锁屏背景虚化 CSS 契约（隐私防窥守卫）", () => {
-  it("遮罩本体带 backdrop-filter（含 -webkit- 前缀面）", () => {
-    const rule = css.slice(css.indexOf(".lock-screen {\n  backdrop-filter"));
-    expect(rule.length).toBeGreaterThan(0);
-    expect(rule.slice(0, 300)).toContain("backdrop-filter: blur(");
-    expect(rule.slice(0, 300)).toContain("-webkit-backdrop-filter: blur(");
+  it("遮罩本体带毛玻璃 backdrop-filter（含 -webkit- 前缀面）", () => {
+    const idx = css.indexOf(".lock-screen {\n  background: color-mix");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const rule = css.slice(idx, idx + 420);
+    expect(rule).toContain("backdrop-filter: blur(");
+    expect(rule).toContain("-webkit-backdrop-filter: blur(");
+    // 毛玻璃口径：高模糊 + 提饱和（不是单纯变暗）
+    expect(rule).toContain("saturate(");
   });
 
-  it("内容层 data-locked 虚化 + 指针禁用（backdrop 失效保底）", () => {
-    expect(css).toContain('.app-body[data-locked="true"]');
-    const rule = css.slice(css.indexOf('.app-body[data-locked="true"]'));
-    expect(rule.slice(0, 200)).toContain("filter: blur(");
-    expect(rule.slice(0, 300)).toContain("pointer-events: none");
-    // 解锁回程：filter 过渡在 .app-body 基类上（模糊随属性撤销消退）
-    expect(css).toContain(".app-body {\n  transition: filter ");
+  it("霜面存在（深色下纯模糊=黑玻璃，需白色薄雾才读得出磨砂）", () => {
+    const idx = css.indexOf(".lock-screen::before");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(css.slice(idx, idx + 300)).toContain("linear-gradient(");
+    expect(css.slice(idx, idx + 300)).toContain("color-mix(");
+  });
+
+  it("卡片是第二层玻璃；内容层仅兜底时重糊", () => {
+    // 卡片：半透明 + 自身 backdrop blur
+    const cardIdx = css.indexOf(".lock-screen .lock-card {");
+    expect(cardIdx).toBeGreaterThanOrEqual(0);
+    expect(css.slice(cardIdx, cardIdx + 420)).toContain("backdrop-filter: blur(");
+    expect(css.slice(cardIdx, cardIdx + 420)).toContain("color-mix(");
+    // 内容层：默认只禁指针；重糊放在 @supports not(backdrop-filter) 兜底里
+    const bodyIdx = css.indexOf('.app-body[data-locked="true"]');
+    expect(bodyIdx).toBeGreaterThanOrEqual(0);
+    expect(css.slice(bodyIdx, bodyIdx + 200)).toContain("pointer-events: none");
+    const supportsIdx = css.indexOf("@supports not ((backdrop-filter");
+    expect(supportsIdx).toBeGreaterThanOrEqual(0);
+    expect(css.slice(supportsIdx, supportsIdx + 300)).toContain("filter: blur(");
   });
 });

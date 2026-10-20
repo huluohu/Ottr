@@ -32,6 +32,7 @@ const filesMode = new URLSearchParams(location.search).get("files") === "1";
 const recMode = new URLSearchParams(location.search).get("rec") === "1";
 const hostsMode = new URLSearchParams(location.search).get("hosts") === "1";
 const ftpMode = new URLSearchParams(location.search).get("ftp") === "1";
+const lockMode = new URLSearchParams(location.search).get("lock") === "1";
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -155,6 +156,41 @@ setInterval(() => {
 }, 3000);
 
 async function render() {
+  if (lockMode) {
+    // 锁屏毛玻璃目检：主界面应用内层 + 锁屏遮罩/卡片（与 App 结构同构）
+    const { MainArea } = await import("./../workspace/MainArea");
+    const { LockScreen } = await import("./../security/LockScreen");
+    const { useSessionStore } = await import("./../session/SessionStore");
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: "preview-tab", hostId: 1, hostName: "preview-host", address: "127.0.0.1",
+          port: 22, username: "preview", protocol: "ssh", jumpChainId: null,
+          status: "connected", restored: true, rustId: "pty-preview", attempt: 0,
+          lastError: null, nextRetryAt: null, paneOf: null, encodingOverride: "utf-8",
+          encoding: "utf-8", encodingHint: null, isProduction: false,
+        },
+      ],
+      activeId: "preview-tab",
+      trees: { "preview-tab": { kind: "leaf", id: "preview-tab" } },
+      activePane: { "preview-tab": "preview-tab" },
+    });
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <div className="app-shell" data-titlebar={undefined}>
+            <div className="app-body" data-locked="true">
+              <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+                <MainArea storeError={null} selected={seedHost} onOpenAiSettings={() => {}} />
+              </div>
+            </div>
+            <LockScreen />
+          </div>
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
   if (ftpMode) {
     // FTP/FTPS 能力矩阵目检：会话 protocol=ftp → 只应有「文件」子页签
     const { MainArea } = await import("./../workspace/MainArea");

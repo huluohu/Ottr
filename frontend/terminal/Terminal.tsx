@@ -239,6 +239,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       fontSize: termSettings.fontSize ?? 13,
       fontFamily: termSettings.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY,
       allowProposedApi: true,
+      // 前景动态对比度（2026-10-20 用户反馈：`ls` 目录蓝在深底上看不清）：
+      // xterm 逐字符把前景色提到对所在单元格背景 ≥4.5（WCAG AA）——远端
+      // `LS_COLORS`（目录蓝/可写绿底）、导入主题、九套内置色板全部覆盖，
+      // 主题层不用再逐槽追。饱和蓝等低对比前景会被提亮，视觉上更浅但可读。
+      minimumContrastRatio: 4.5,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

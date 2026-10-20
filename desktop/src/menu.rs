@@ -1333,7 +1333,7 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     let lang = menu_lang(app);
     let tray_menu = build_menu(app, &tray_tree(lang, 0))?;
     let icon = tauri::image::Image::from_bytes(TRAY_ICON_BYTES)?;
-    TrayIconBuilder::with_id(TRAY_ID)
+    let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .icon_as_template(false)
         .tooltip("Ottr")
@@ -1365,8 +1365,12 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             // dock_menu.rs popup_tray_menu），两键都走原生弹出；弹出位置 =
             // 当前光标位置（popup_tray_menu 内读 NSEvent::mouseLocation——
             // 状态栏图标可能被重排/折叠，事件坐标不可信，光标必然在图标上）。
-            // Win/Linux：右键 muda 内建菜单正常（builder on_menu_event 分派），
-            // 左键维持切换主窗（平台差异显式声明，见 PR 审计表）。
+            // Win/Linux：左键维持切换主窗（平台差异显式声明，见 PR 审计表）；
+            // **右键改走显式弹菜单**（2026-10-20 Windows 用户实测：内建右键
+            // 路径不弹）。tray-icon 的 `show_menu()` 在光标处弹当前菜单，不
+            // 依赖 `menu_on_right_click` 内建路径（builder 侧已把内建右键关
+            // 掉，防双弹）。Linux：`show_menu` 无实现（no-op），菜单经
+            // AppIndicator 由桌面环境自行弹出，不受影响。
             #[cfg(target_os = "macos")]
             TrayIconEvent::Click {
                 button: MouseButton::Left | MouseButton::Right,
@@ -1382,6 +1386,14 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             }
             #[cfg(not(target_os = "macos"))]
             TrayIconEvent::Click {
+                button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
+                ..
+            } => {
+                let _ = tray.with_inner_tray_icon(|t| t.show_menu());
+            }
+            #[cfg(not(target_os = "macos"))]
+            TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
@@ -1389,6 +1401,9 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
+    // 内建右键弹路径关闭（见上：右键改显式 `show_menu()`，两者同开会双弹）。
+    #[cfg(not(target_os = "macos"))]
+    tray.with_inner_tray_icon(|t| t.set_show_menu_on_right_click(false))?;
 
     // Dock 右键菜单（仅 macOS）：与托盘同源树；动作分派同一匹配表。
     #[cfg(target_os = "macos")]

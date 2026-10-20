@@ -95,3 +95,31 @@ describe("录制完成 toast 的「打开所在目录」（2026-10-19 用户需�
     expect(mockedReveal).toHaveBeenCalledWith("/data/recordings/saved.cast");
   });
 });
+
+describe("canStart 语义（2026-10-19 用户质疑：子页签录制入口误导）", () => {
+  it("canStart=false 且未在录：不渲染按钮", () => {
+    render(<RecordToggle rustId="pty-1" hostId={1} canStart={false} />);
+    expect(screen.queryByTestId("record-toggle")).toBeNull();
+  });
+
+  it("canStart=false 且正在录：保留红点与停止入口", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "recording_stop"
+        ? Promise.resolve({ id: 1, saved_path: null })
+        : Promise.resolve(null),
+    );
+    // 先以允许态启动录制
+    const { rerender } = render(<RecordToggle rustId="pty-7" hostId={1} />);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("record-toggle"));
+    });
+    // 切到子页签语义（canStart=false）：按钮仍在（可停止）
+    rerender(<RecordToggle rustId="pty-7" hostId={1} canStart={false} />);
+    const btn = screen.getByTestId("record-toggle");
+    expect(btn.dataset.active).toBe("true");
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(mockedInvoke).toHaveBeenCalledWith("recording_stop", { rustId: "pty-7" });
+  });
+});

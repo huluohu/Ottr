@@ -352,6 +352,11 @@ export function MainArea({
                       <RecordToggle
                         rustId={rootSession?.rustId ?? null}
                         hostId={rootSession?.hostId ?? null}
+                        // 仅在终端视图可开始录制；子页签（文件/进程/监控/
+                        // 插件）里录制只捕获终端输出，与眼前操作无关——
+                        // 已在录时仍显示红点与停止入口（组件内按 recording
+                        // 自行渲染），不提供误导性的开始按钮。
+                        canStart={mainView === "terminal" || anyRecording}
                       />
                     </>
                   )}

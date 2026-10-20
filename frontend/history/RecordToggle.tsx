@@ -52,7 +52,17 @@ export function useAnyRecording(): boolean {
   return recordingIds.size > 0;
 }
 
-export function RecordToggle({ rustId, hostId }: RecordToggleProps) {
+export function RecordToggle({
+  rustId,
+  hostId,
+  canStart = true,
+}: RecordToggleProps & {
+  /** 是否允许从当前视图「开始录制」（默认允许）。子页签（文件/进程/监控/
+   *  插件）里录制只捕获终端输出、与眼前操作无关（2026-10-19 用户质疑
+   *  「不能录还让点」）——那些视图只保留「正在录」的红点与停止入口，
+   *  不提供开始入口（与库级页签的既有裁定同款：悄悄进行比没有停止入口更糟）。 */
+  canStart?: boolean;
+}) {
   const { t } = useTranslation();
   const recording = useIsRecording(rustId);
   const [busy, setBusy] = useState(false);
@@ -107,6 +117,9 @@ export function RecordToggle({ rustId, hostId }: RecordToggleProps) {
       notifyAll();
     }
   }, [rustId]);
+
+  // 子页签且未在录：不给「开始」假入口（录制与当前视图操作无关）
+  if (!canStart && !recording) return null;
 
   return (
     <button

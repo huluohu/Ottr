@@ -79,7 +79,9 @@ export function McpSettings({ open }: McpSettingsProps) {
   async function copySnippet() {
     if (!snippet) return;
     try {
-      await navigator.clipboard.writeText(snippet);
+      // 全局剪贴板语义（2026-10-20）：统一走 copyText（按配置自动清空）
+      const { copyText } = await import("../ui/clipboard");
+      await copyText(snippet);
       setSnippetCopied(true);
       if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
       copiedTimer.current = window.setTimeout(() => setSnippetCopied(false), 1500);

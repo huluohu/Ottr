@@ -241,6 +241,19 @@ pub fn clipboard_copy_with_autoclear(
     Ok(())
 }
 
+/// 清空系统剪贴板（前端「全局剪贴板自动清空」定时器调用，2026-10-20）。
+///
+/// 为什么不走前端 navigator.clipboard.writeText("")：WebKitGTK 要求用户激活
+/// （transient activation），定时器回调里调用会被拒且无提示（真机实测：
+/// 5 秒后剪贴板仍可粘贴）。arboard 无此限制，且与凭据复制的清空同一引擎。
+#[tauri::command]
+pub fn clipboard_clear() -> Result<(), String> {
+    let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard open: {e}"))?;
+    cb.clear().map_err(|e| format!("clipboard clear: {e}"))?;
+    eprintln!("[security] clipboard cleared (frontend timer)");
+    Ok(())
+}
+
 /// `vault_copy_credential_secret`：凭据密文复制命令（Rust 侧解密 → 剪贴板，
 /// 明文不过前端）。清空秒数在服务端现读配置（前端无需知道，也改不了语义）。
 #[tauri::command]

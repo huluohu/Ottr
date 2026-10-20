@@ -458,6 +458,7 @@ pub fn run() {
             commands::recording::recording_delete,
             commands::recording::recording_export,
             security::vault_copy_credential_secret,
+            security::clipboard_clear,
             // vault（Task 5 接线，命令名契约见 frontend/vault/api.ts 文件头）
             vault::hosts_list,
             vault::hosts_get,

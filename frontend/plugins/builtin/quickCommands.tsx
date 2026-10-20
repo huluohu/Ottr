@@ -17,7 +17,9 @@ export const QUICK_COMMANDS: readonly PluginQuickCommand[] = [
 ];
 
 async function copyText(text: string): Promise<void> {
-  await navigator.clipboard.writeText(text);
+  // 全局剪贴板语义（2026-10-20）：统一走 copyText（按配置自动清空）
+  const { copyText } = await import("../../ui/clipboard");
+  await copyText(text);
 }
 
 export function QuickCommandsCard({ commands }: { commands: readonly PluginQuickCommand[] }) {

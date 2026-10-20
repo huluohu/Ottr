@@ -54,6 +54,7 @@ import { assessPaste, InputDangerWatch, type DangerFinding } from "../ai/danger"
 import { shouldAutoDiagnose, useAiStore } from "../ai/aiStore";
 import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
+import { copyText } from "../ui/clipboard";
 import { createCommandWatch, type IDisposable } from "./CommandWatch";
 import { noteCwd, forgetCwd } from "./CwdTracker";
 import {
@@ -503,7 +504,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const onSelectionChange = term.onSelectionChange(() => {
       if (!loadTerminalSettings().copyOnSelect) return;
       if (term.hasSelection()) {
-        void navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+        void copyText(term.getSelection()).catch(() => {});
       }
     });
 
@@ -754,7 +755,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     switch (id) {
       case "copy":
         if (term?.hasSelection()) {
-          void navigator.clipboard?.writeText(term.getSelection()).catch(() => {});
+          void copyText(term.getSelection()).catch(() => {});
         }
         break;
       case "explain":

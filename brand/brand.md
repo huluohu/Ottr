@@ -2,8 +2,7 @@
 
 ## 命名
 
-**Ottr** — 发音同 *Otter* /ˈɒtər/。海獭是少数会使用工具的哺乳动物（仰面躺在水面上，用石块砸开贝壳）——「会用工具的动物」正是这款工具的精神图腾：灵巧、聪明、亲水（数据如水，Ottr 在其中穿行）。
-去元音拼写（flickr/tumblr 传统）便于获得 ottr.app 等域名与各平台同名账号。
+**Ottr** — 发音同 *Otter* /ˈɒtər/。海獭是少数会使用工具的哺乳动物（仰面躺在水面上，用石块砸开贝壳）——「会用工具的动物」正是这款工具的精神图腾：灵巧、聪明、亲水（数据如水，Ottr 在其中穿行）。拼写取 *Otter* 去元音（flickr/tumblr 传统）。
 
 ## Slogan
 
@@ -110,7 +109,7 @@ overlay = fg10%/bg）。
   #d92d20 仅 3.98，不可用）。
 * 回归测试：`frontend/theme/tokens.test.ts`（解析 tokens.css 实算对比度，退回即红）。
 
-**终端默认主题映射建议**（ANSI 16 色）：normal 色取品牌同色系低饱和值（red→#D97066 系、green→teal 系、yellow→amber 系、blue→水色系），bright 色取同色相高饱和值；前景 `--ottr-cream-100` 偏暖白，背景 `--ottr-water-900`。生产环境主机红色边框（B11）复用 ANSI red bright。
+**终端默认主题映射建议**（ANSI 16 色）：normal 色取品牌同色系低饱和值（red→#D97066 系、green→teal 系、yellow→amber 系、blue→水色系），bright 色取同色相高饱和值；前景 `--ottr-cream-100` 偏暖白，背景 `--ottr-water-900`。生产环境主机红色边框复用 ANSI red bright。
 
 ## 字体
 
@@ -120,4 +119,4 @@ overlay = fg10%/bg）。
 
 ## 吉祥物
 
-水獭名字 **Otty**（备用，用于空状态插画、错误页彩蛋、更新日志口吻）。
+水獭名字 **Otty**（空状态插画、错误页彩蛋、更新日志口吻）。

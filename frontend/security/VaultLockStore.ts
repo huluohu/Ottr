@@ -55,7 +55,8 @@ interface VaultLockStore {
    * （与 init 同语义）。 */
   refreshStatus: () => Promise<void>;
   unlock: (password: string) => Promise<boolean>;
-  /** 手动锁定（password 模式；keyring 模式 Rust 侧 no-op）。 */
+  /** 手动锁定（password 模式）。keyring 模式 Rust 侧 no-op 且不发事件，
+   * 本地也不得翻锁——否则造出无解锁路径的幽灵锁屏（见实现处注释）。 */
   lock: () => Promise<void>;
 }
 
@@ -140,9 +141,15 @@ export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
     try {
       await vaultApi.security.lock();
     } catch {
-      // 命令失败不阻塞本地状态翻转（keyring 模式 Rust no-op 也成功）。
+      // 命令失败不阻塞本地状态翻转（password 模式事件丢失兜底仍要生效）。
     }
-    set({ phase: "locked", error: null });
+    // keyring 模式不本地翻锁：Rust 侧 no-op 且不发事件（security.rs fix 1/5
+    // M-1，注释言明「发了事件会弹永远解不开的锁屏」），前端自行翻 phase 等于
+    // 绕开这道防线——首装钥匙链模式点锁定即弹出输什么密码都解不开的幽灵锁屏
+    //（2026-10-20 用户实测踩中）。mode 未知（null）维持 fail-closed 照旧翻锁。
+    if (get().mode !== "keyring") {
+      set({ phase: "locked", error: null });
+    }
   },
 }));
 

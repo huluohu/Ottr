@@ -22,6 +22,8 @@ export function LockScreen({ closing }: { closing?: boolean }) {
   const unlock = useVaultLockStore((s) => s.unlock);
   const storeError = useVaultLockStore((s) => s.error);
   const unlocking = useVaultLockStore((s) => s.unlocking);
+  const lockMode = useVaultLockStore((s) => s.mode);
+  const refreshStatus = useVaultLockStore((s) => s.refreshStatus);
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   // 忘记密码引导（T5/BL-537）：面板展开态 + armed 二击确认 + 重置在途/错误。
@@ -37,6 +39,13 @@ export function LockScreen({ closing }: { closing?: boolean }) {
   useEffect(() => {
     if (error) setOtterNonce((n) => n + 1);
   }, [error]);
+
+  // 防御纵深（2026-10-20 幽灵锁屏修复）：钥匙链模式无锁概念，锁屏若因任何
+  // 路径误现，挂载即重查 status 自愈——keyring 恒 unlocked，refreshStatus
+  // 把 phase 拉回 unlocked，App 的渲染门随即卸载本屏。
+  useEffect(() => {
+    if (lockMode === "keyring") void refreshStatus();
+  }, [lockMode, refreshStatus]);
 
   function handleToggleHelp() {
     setHelpOpen((v) => !v);
@@ -70,6 +79,9 @@ export function LockScreen({ closing }: { closing?: boolean }) {
   }
 
   const wrongPassword = storeError?.includes("master password is incorrect") ?? false;
+  // 钥匙链模式误入锁屏、自愈生效前的窗口内提交了解锁：Rust InvalidInput 原串
+  // 不裸奔，映射成语义文案（正常路径不可达，纯兜底）。
+  const noLockToRelease = storeError?.includes("vault is in keychain mode") ?? false;
 
   return (
     <div
@@ -97,7 +109,11 @@ export function LockScreen({ closing }: { closing?: boolean }) {
         </label>
         {error && (
           <p className="form-error" data-testid="lock-error">
-            {wrongPassword ? t("security.lockScreen.errWrongPassword") : error}
+            {wrongPassword
+              ? t("security.lockScreen.errWrongPassword")
+              : noLockToRelease
+                ? t("security.lockScreen.errNoLock")
+                : error}
           </p>
         )}
         <div className="form-actions">

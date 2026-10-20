@@ -71,6 +71,37 @@ describe("LockScreen", () => {
     expect(mockedInvoke).toHaveBeenCalledWith("vault_unlock", { password: "correct horse" });
     expect(useVaultLockStore.getState().error).toBeNull();
   });
+
+  // 幽灵锁屏防御纵深（2026-10-20）：钥匙链模式无锁概念，锁屏误现时挂载即
+  // 重查 status 自愈（keyring 恒 unlocked → phase 拉回 → App 渲染门卸载）。
+  it("钥匙链模式误现锁屏：挂载即重查 status 自愈（phase 回 unlocked）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_security_status")
+        return Promise.resolve({ mode: "keyring", locked: false });
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    useVaultLockStore.setState({ phase: "locked", mode: "keyring" });
+    render(<LockScreen />);
+    await waitFor(() => expect(useVaultLockStore.getState().phase).toBe("unlocked"));
+  });
+
+  // 兜底文案：自愈生效前的窗口内提交解锁，Rust InvalidInput 原串不裸奔英文。
+  it("钥匙链模式解锁报错：InvalidInput 原串映射为语义文案", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_unlock")
+        return Promise.reject("invalid input: vault is in keychain mode; lock/unlock does not apply");
+      return Promise.reject(new Error(cmd));
+    });
+    useVaultLockStore.setState({ phase: "locked", mode: "password" });
+    render(<LockScreen />);
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "whatever" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() =>
+      expect(screen.getByTestId("lock-error").textContent).toBe(
+        "当前库使用钥匙链免密模式，没有主密码，无需解锁。",
+      ),
+    );
+  });
 });
 
 // --- 锁屏小水獭（2026-10-16 用户需求：贪玩被拦在门外的形象动画） -----------------
@@ -191,6 +222,7 @@ describe("LockScreen 忘记密码引导", () => {
     const en = JSON.parse(read("en-US.json")) as Record<string, unknown>;
     const keys = [
       "security.lockScreen.forgot",
+      "security.lockScreen.errNoLock",
       "security.lockScreen.resetTitle",
       "security.lockScreen.resetNoRecover",
       "security.lockScreen.resetExplain",

@@ -748,6 +748,7 @@
       "unlock": "解鎖",
       "errEmpty": "請輸入主密碼",
       "errWrongPassword": "主密碼不正確",
+      "errNoLock": "當前庫使用鑰匙鏈免密模式，沒有主密碼，無需解鎖。",
       "forgot": "忘記密碼？",
       "resetTitle": "主密碼無法找回",
       "resetNoRecover": "祕密字段使用主密碼派生的密鑰加密（AES-256-GCM）。主密碼不存儲，無法找回；主機元數據和命令歷史不在此加密保護範圍內。",

@@ -42,6 +42,8 @@ beforeEach(() => {
   useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
   useNotifyStore.setState({ unread: 0 });
   useSessionStore.setState({ sessions: [] });
+  // 锁定钮渲染门（2026-10-20）：默认 password 模式（keychain 隐藏有专测）。
+  useVaultLockStore.setState({ phase: "unlocked", mode: "password" });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
   vi.stubGlobal(
     "matchMedia",
@@ -93,6 +95,18 @@ describe("IconRail（48px 图标轨）", () => {
     fireEvent.click(screen.getByTestId("rail-lock"));
     expect(lockSpy).toHaveBeenCalledTimes(1);
     lockSpy.mockRestore();
+  });
+
+  // 幽灵锁屏修复第一层（2026-10-20）：keychain 模式无锁概念，锁定钮不渲染
+  // ——显示一个点了没有任何效果的按钮本身就是误导（用户实测反馈）。
+  it("锁定钮渲染门：password 模式显示，keychain 模式不渲染", () => {
+    useVaultLockStore.setState({ mode: "keyring" });
+    renderRail();
+    expect(screen.queryByTestId("rail-lock")).toBeNull();
+    cleanup();
+    useVaultLockStore.setState({ mode: "password" });
+    renderRail();
+    expect(screen.getByTestId("rail-lock")).toBeTruthy();
   });
 
   it("总览钮 = openOverview（置顶标签语义）", () => {

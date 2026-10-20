@@ -113,9 +113,21 @@ describe("VaultLockStore 状态机", () => {
     expect(useVaultLockStore.getState().phase).toBe("locked");
   });
 
-  it("lock：手动锁定落 locked", async () => {
+  it("lock：password 模式落 locked（兜底）；keyring 模式不翻锁（幽灵锁屏防线）", async () => {
+    // keyring：Rust 侧 no-op 且不发事件（security.rs fix 1/5 M-1），前端本地
+    // 翻 phase 会造出无解锁路径的幽灵锁屏（2026-10-20 用户首装实测踩中）——
+    // phase 必须保持 unlocked。
     mockStatus("keyring", false);
     await useVaultLockStore.getState().init();
+    mockedInvoke.mockClear();
+    await useVaultLockStore.getState().lock();
+    expect(mockedInvoke).toHaveBeenCalledWith("vault_lock");
+    expect(useVaultLockStore.getState().phase).toBe("unlocked");
+
+    // password：命令成功即本地兜底落锁（事件照常到达时幂等）。
+    mockStatus("password", false);
+    await useVaultLockStore.getState().init();
+    expect(useVaultLockStore.getState().phase).toBe("unlocked");
     await useVaultLockStore.getState().lock();
     expect(useVaultLockStore.getState().phase).toBe("locked");
   });

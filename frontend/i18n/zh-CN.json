@@ -748,6 +748,7 @@
       "unlock": "解锁",
       "errEmpty": "请输入主密码",
       "errWrongPassword": "主密码不正确",
+      "errNoLock": "当前库使用钥匙链免密模式，没有主密码，无需解锁。",
       "forgot": "忘记密码？",
       "resetTitle": "主密码无法找回",
       "resetNoRecover": "秘密字段使用主密码派生的密钥加密（AES-256-GCM）。主密码不存储，无法找回；主机元数据和命令历史不在此加密保护范围内。",

@@ -749,6 +749,7 @@
       "unlock": "Unlock",
       "errEmpty": "Enter your master password",
       "errWrongPassword": "Master password is incorrect",
+      "errNoLock": "This vault uses keychain mode — there is no master password and nothing to unlock.",
       "forgot": "Forgot password?",
       "resetTitle": "The master password cannot be recovered",
       "resetNoRecover": "Secret fields are encrypted with a key derived from your master password (AES-256-GCM). The password is not stored and cannot be recovered. Host metadata and command history are not encrypted by this protection.",

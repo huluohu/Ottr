@@ -216,6 +216,8 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
   const overviewOpen = useWorkspaceStore((s) => s.overviewOpen);
   const openOverview = useWorkspaceStore((s) => s.openOverview);
   const unread = useNotifyStore((s) => s.unread);
+  // 锁定按钮渲染门（2026-10-20）：仅 password 模式显示（keychain 无锁概念）。
+  const lockMode = useVaultLockStore((s) => s.mode);
   // 更新可用（2026-10-17 用户需求：发现新版本在图标轨体现）——phase 驱动，
   // 按钮仅在有新版本待取时浮现；点击跳设置 → 关于（唯一权威进度面）。
   const updateAvailableVersion = useUpdateStore((s) =>
@@ -352,17 +354,24 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
       )}
       <div className="rail-spacer" aria-hidden />
       {/* 锁定（2026-10-16 用户需求：控制中心旁的锁定入口）——立即锁库，
-          与原生菜单「立即锁定」同一动作（vault.lock）。 */}
-      <button
-        type="button"
-        className="rail-btn"
-        data-testid="rail-lock"
-        title={t("security.lockNow")}
-        aria-label={t("security.lockNow")}
-        onClick={() => void useVaultLockStore.getState().lock()}
-      >
-        <LockIcon />
-      </button>
+          与原生菜单「立即锁定」同一动作（vault.lock）。
+          仅 password 模式渲染（2026-10-20 幽灵锁屏修复第一层）：keychain
+          模式无锁概念，显示一个点了没有任何效果的按钮本身就是误导。
+          等价性说明：password 模式「未设主密码」时 is_locked 恒 true（无
+          salt/verifier，首启锁屏盖住图标轨，首输即设密）——故本渲染门在
+          一切可达 UI 状态下严格等于「已设主密码」。 */}
+      {lockMode === "password" && (
+        <button
+          type="button"
+          className="rail-btn"
+          data-testid="rail-lock"
+          title={t("security.lockNow")}
+          aria-label={t("security.lockNow")}
+          onClick={() => void useVaultLockStore.getState().lock()}
+        >
+          <LockIcon />
+        </button>
+      )}
       {/* Otty 球：设置入口（原侧栏快捷菜单收编），水獭脸圆钮。 */}
       <button
         type="button"

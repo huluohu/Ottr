@@ -155,7 +155,7 @@ gen_notes() { # $1=prev_tag  $2=head_or_tag  $3=输出文件
     echo "- Linux：AppImage 需 \`chmod +x\` 后运行；deb/rpm 按发行版安装。"
   } >> "$3"
 }
-NOTES_FILE=$(mktemp -t ottr-notes)
+NOTES_FILE=$(mktemp -t ottr-notes-XXXXXX)
 
 # ---------------------------------------------------------------- 模式分派
 if [ "$MODE" = "notes" ]; then

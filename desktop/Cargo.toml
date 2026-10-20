@@ -1,7 +1,7 @@
 [package]
 name = "ottr"
 license = "MIT"
-version = "1.4.5"
+version = "1.4.6"
 description = "Ottr - cross-platform SSH client"
 authors = ["Ottr contributors"]
 edition = "2024"

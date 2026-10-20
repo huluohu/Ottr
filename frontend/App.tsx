@@ -635,7 +635,12 @@ function HomeLayout() {
           newGroupSignal={newGroupSignal}
           selectedId={selectedId}
           onSelect={(host) => setSelectedId(host.id)}
-          onOpen={(host) => openTab(host)}
+          // 打开主机默认进终端（2026-10-19 用户需求）：在子视图（文件/进程/
+          // 监控/插件）里双击另一台主机也回终端面——连接入口的语义是「看终端」。
+          onOpen={(host) => {
+            openTab(host);
+            openMainView("terminal");
+          }}
           onEdit={(host) => {
             setForm({ mode: "edit", host });
             openModal("hostForm");

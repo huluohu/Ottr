@@ -30,6 +30,7 @@ class MockChannel {
 // 文件面板验证模式（?files=1）：假 sftp/local 数据 + 调用记录（浏览器断言面）
 const filesMode = new URLSearchParams(location.search).get("files") === "1";
 const recMode = new URLSearchParams(location.search).get("rec") === "1";
+const hostsMode = new URLSearchParams(location.search).get("hosts") === "1";
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -153,6 +154,41 @@ setInterval(() => {
 }, 3000);
 
 async function render() {
+  if (hostsMode) {
+    const { HostTree } = await import("./../hosts/HostTree");
+    const { useVaultStore } = await import("./../vault/store");
+    useVaultStore.setState({
+      hosts: [
+        { id: 1, name: "web-01", group_id: 9, tags: [], address: "10.0.0.1", port: 22, username: "root",
+          protocol: "ssh", credential_id: null, jump_chain_id: null, encoding_override: null,
+          theme_override: null, monitor_enabled: false, is_production: false, notes: null,
+          created_at: 1, updated_at: 1 },
+        { id: 2, name: "db-01", group_id: null, tags: [], address: "10.0.0.2", port: 22, username: "root",
+          protocol: "ssh", credential_id: null, jump_chain_id: null, encoding_override: null,
+          theme_override: null, monitor_enabled: false, is_production: false, notes: null,
+          created_at: 1, updated_at: 1 },
+      ],
+      hostGroups: [{ id: 9, name: "Servers", parent_id: null, color: null, created_at: 1, updated_at: 1 }],
+      loading: false,
+      error: null,
+    });
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <div style={{ padding: 20, width: 320 }}>
+            <HostTree
+              selectedId={null}
+              onSelect={() => {}}
+              onOpen={() => {}}
+              onEdit={() => {}}
+              onAdd={() => {}}
+            />
+          </div>
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
   if (recMode) {
     const { RecordingPanel } = await import("./../history/RecordingPanel");
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

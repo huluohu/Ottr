@@ -147,7 +147,9 @@
     "editAria": "编辑主机 {{name}}",
     "deleteAria": "删除主机 {{name}}",
     "confirmDelete": "再次点击确认删除",
-    "exportCsv": "导出 CSV"
+    "exportCsv": "导出 CSV",
+    "menuEdit": "编辑主机",
+    "menuDelete": "删除主机"
   },
   "importDialog": {
     "title": "导入主机",

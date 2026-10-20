@@ -147,7 +147,9 @@
     "editAria": "編輯主機 {{name}}",
     "deleteAria": "刪除主機 {{name}}",
     "confirmDelete": "再次點擊確認刪除",
-    "exportCsv": "匯出 CSV"
+    "exportCsv": "匯出 CSV",
+    "menuEdit": "編輯主機",
+    "menuDelete": "刪除主機"
   },
   "importDialog": {
     "title": "匯入主機",

@@ -413,6 +413,16 @@ function HostItems({
   onDragEnd,
 }: HostItemsProps) {
   const { t } = useTranslation();
+  // 右键菜单（2026-10-19 用户需求）：编辑 / 删除（删除走既有行内两段确认）。
+  const [menu, setMenu] = useState<{ x: number; y: number; host: Host } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menu]);
   // 树内状态点（2026-10-16 视觉重设计 M3，报告 §4 P1「主机行状态」——仅页签
   // 圆点显示连接态的遗留项收口）：hostId → 档位，connected 优先、其次进行中
   // （connecting/reconnecting/waiting_host_key）；分屏 pane 不重复计。
@@ -489,6 +499,19 @@ function HostItems({
               onDragStart(host);
             }}
             onDragEnd={onDragEnd}
+            onContextMenu={(e) => {
+              // 多选模式（批量执行选择面）不混管理菜单
+              if (multiSelect) return;
+              e.preventDefault();
+              onSelect(host); // 右键行 = 选中该行（菜单语义锚点）
+              const menuW = 160;
+              const menuH = 96;
+              setMenu({
+                x: Math.min(e.clientX, window.innerWidth - menuW),
+                y: Math.min(e.clientY, window.innerHeight - menuH),
+                host,
+              });
+            }}
           >
             <button
               className="host-row"
@@ -543,6 +566,49 @@ function HostItems({
           </li>
         );
       })}
+      {menu && (
+        <>
+          <div
+            className="ctx-overlay"
+            onMouseDown={() => setMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu(null);
+            }}
+          />
+          <div
+            className="ctx-menu"
+            role="menu"
+            style={{ left: menu.x, top: menu.y }}
+            data-testid="host-ctx-menu"
+          >
+            <button
+              role="menuitem"
+              className="ctx-menu-item"
+              data-testid="host-ctx-edit"
+              onClick={() => {
+                const h = menu.host;
+                setMenu(null);
+                onEdit(h);
+              }}
+            >
+              {t("hostTree.menuEdit")}
+            </button>
+            <button
+              role="menuitem"
+              className="ctx-menu-item danger"
+              data-testid="host-ctx-delete"
+              onClick={() => {
+                const h = menu.host;
+                setMenu(null);
+                setDeletingId(h.id); // 复用行内两段确认
+              }}
+            >
+              {t("hostTree.menuDelete")}
+            </button>
+          </div>
+        </>
+      )}
     </ul>
   );
 }

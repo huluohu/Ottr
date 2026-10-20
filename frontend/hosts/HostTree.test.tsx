@@ -388,3 +388,42 @@ describe("HostTree 拖拽换组（2026-10-19，仅组间移动）", () => {
     updateSpy.mockRestore();
   });
 });
+
+describe("主机行右键菜单（2026-10-19 用户需求）", () => {
+  it("右键出菜单：编辑回调 / 删除走行内两段确认", async () => {
+    seedStore();
+    const onEdit = vi.fn();
+    render(
+      <HostTree
+        selectedId={null}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onEdit={onEdit}
+        onAdd={vi.fn()}
+      />,
+    );
+    const row = screen.getByText("web-01").closest("li")!;
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    const menu = await screen.findByTestId("host-ctx-menu");
+    expect(menu.textContent).toContain("Edit");
+    // 编辑
+    fireEvent.click(screen.getByTestId("host-ctx-edit"));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("host-ctx-menu")).toBeNull();
+    // 删除：菜单收回 + 行内进入确认态（不直接删）
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    fireEvent.click(screen.getByTestId("host-ctx-delete"));
+    expect(row.getAttribute("data-confirming")).toBe("true");
+    expect(screen.queryByTestId("host-ctx-menu")).toBeNull();
+  });
+
+  it("Esc 关闭菜单", async () => {
+    seedStore();
+    renderTree();
+    const row = screen.getByText("web-01").closest("li")!;
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    expect(await screen.findByTestId("host-ctx-menu")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("host-ctx-menu")).toBeNull());
+  });
+});

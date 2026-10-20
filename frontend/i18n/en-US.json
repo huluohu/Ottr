@@ -147,7 +147,9 @@
     "editAria": "Edit host {{name}}",
     "deleteAria": "Delete host {{name}}",
     "confirmDelete": "Click again to confirm",
-    "exportCsv": "Export CSV"
+    "exportCsv": "Export CSV",
+    "menuEdit": "Edit host",
+    "menuDelete": "Delete host"
   },
   "importDialog": {
     "title": "Import Hosts",

@@ -285,6 +285,7 @@ export function MainArea({
           回归：切到文件/监控后找不到「终端」按钮回不去）。本行常驻可见。 */}
       <div className="term-toolbar-row">
         <TerminalToolbar
+          terminalControls={!filesOnly}
           toolbarExtra={
             // 录制钮属会话域但「正在录」时在库级页签也保留指示+停止入口
             // （2026-10-18 裁定：悄悄进行比红点消失更糟）；视图切换器只在

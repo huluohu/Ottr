@@ -924,8 +924,12 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
  * MainArea 在 tabbar-row 与 term-main-row 之间的独立行渲染本组件。 */
 export function TerminalToolbar({
   toolbarExtra = null,
+  terminalControls = true,
 }: {
   toolbarExtra?: React.ReactNode;
+  /** FTP/FTPS 无 PTY（2026-10-19）：分屏与编码徽标均无意义，整组隐藏。
+   *  子页签切换器（toolbarExtra）照常渲染。 */
+  terminalControls?: boolean;
 } = {}) {
   const { t } = useTranslation();
   const activeId = useSessionStore((s) => s.activeId);
@@ -940,22 +944,26 @@ export function TerminalToolbar({
 
   return (
     <div className="term-toolbar" data-testid="term-toolbar">
-      <button
-        data-testid="split-right"
+      {terminalControls && (
+        <button
+          data-testid="split-right"
         disabled={activeId == null}
         onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
       >
-        {t("terminal.splitRight")}
-      </button>
-      <button
-        data-testid="split-down"
-        disabled={activeId == null}
-        onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
-      >
-        {t("terminal.splitDown")}
-      </button>
+          {t("terminal.splitRight")}
+        </button>
+      )}
+      {terminalControls && (
+        <button
+          data-testid="split-down"
+          disabled={activeId == null}
+          onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
+        >
+          {t("terminal.splitDown")}
+        </button>
+      )}
       {toolbarExtra}
-      {activeEncoding != null && focusedPane != null && (
+      {terminalControls && activeEncoding != null && focusedPane != null && (
         <button
           className="encoding-badge"
           data-testid="encoding-badge"

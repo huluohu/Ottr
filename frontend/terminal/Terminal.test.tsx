@@ -748,3 +748,23 @@ describe("分屏 pane 关闭（2026-10-13 用户反馈「分屏后怎么关闭�
     expect(useSessionStore.getState().sessions).toEqual([]);
   });
 });
+
+describe("TerminalToolbar：FTP/FTPS 无终端控件（2026-10-19 用户需求）", () => {
+  it("terminalControls=false：分屏钮与编码徽标均不渲染；toolbarExtra 照常", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-ftp", encoding: "utf-8" })],
+      activeId: "t-ftp",
+      trees: { "t-ftp": { kind: "leaf", id: "t-ftp" } },
+      activePane: { "t-ftp": "t-ftp" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalToolbar terminalControls={false} toolbarExtra={<span data-testid="extra" />} />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId("split-right")).toBeNull();
+    expect(screen.queryByTestId("split-down")).toBeNull();
+    expect(screen.queryByTestId("encoding-badge")).toBeNull();
+    expect(screen.getByTestId("extra")).toBeTruthy();
+  });
+});

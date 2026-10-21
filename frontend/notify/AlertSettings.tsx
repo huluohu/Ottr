@@ -424,7 +424,7 @@ export function AlertSettings({ open }: AlertSettingsProps) {
 
       {section === "channels" && (
         <section aria-label={t("alert.channelSection")} data-testid="alert-channels-section">
-          <h3>{t("alert.channelSection")}</h3>
+          {/* 分段控已是标题（2026-10-21 用户反馈重复），区块不再重复 h3 */}
           <p className="settings-hint">{t("alert.channelHint")}</p>
           {channels.length === 0 && !channelDraft && (
             <p className="settings-hint" data-testid="alert-channels-empty">
@@ -545,7 +545,6 @@ export function AlertSettings({ open }: AlertSettingsProps) {
       {/* --- 规则 --- */}
       {section === "rules" && (
         <section aria-label={t("alert.ruleSection")} data-testid="alert-rules-section">
-          <h3>{t("alert.ruleSection")}</h3>
           <p className="settings-hint">{t("alert.ruleHint")}</p>
           {rules.length === 0 && !ruleDraft && (
             <p className="settings-hint" data-testid="alert-rules-empty">

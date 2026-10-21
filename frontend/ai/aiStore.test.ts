@@ -48,7 +48,7 @@ const PROVIDERS = [
   },
 ];
 
-function mockBackend(over: { secret?: string | null; enabled?: unknown } = {}) {
+function mockBackend(over: { secret?: string | null; enabled?: unknown; sessionTail?: string } = {}) {
   mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
     switch (cmd) {
       case "settings_get":
@@ -63,7 +63,11 @@ function mockBackend(over: { secret?: string | null; enabled?: unknown } = {}) {
       case "secret_contains":
         return Promise.resolve(true);
       case "session_tail":
-        return Promise.resolve("mkdir: cannot create directory '/data': No space left on device\nIP 10.1.2.3\n");
+        return Promise.resolve(
+          over.sessionTail === undefined
+            ? "mkdir: cannot create directory '/data': No space left on device\nIP 10.1.2.3\n"
+            : over.sessionTail,
+        );
       case "notify_insert":
         return Promise.resolve({
           id: 1,
@@ -278,6 +282,20 @@ describe("诊断链路（onCommandFailed → run）", () => {
     });
     expect(aiState()?.errorKind).toBe("noKey");
     expect(aiState()?.error).toContain("vault is locked");
+  });
+
+  // 2026-10-21 AI 层第二道防线（用户裁定「收到空内容也没必要触发诊断」）：
+  // 命令与输出尾都为空 = 无从诊断——面板切片摘除、请求不出网（watch 层已有
+  // 首道门卫，这里兜其余路径）。
+  it("空内容不诊断：命令空 + tail 空 → 切片摘除、provider 不调用", async () => {
+    mockBackend({ sessionTail: "" });
+    useAiStore.getState().onCommandFailed({ ...REQ, command: "" });
+    await vi.waitFor(() => {
+      expect(aiState()).toBeUndefined();
+    });
+    expect(chatFactory).not.toHaveBeenCalled();
+    const notifyCall = mockedInvoke.mock.calls.find(([c]) => c === "notify_insert");
+    expect(notifyCall).toBeUndefined();
   });
 
   it("session_tail 失败（会话已关）：空输出照发诊断", async () => {

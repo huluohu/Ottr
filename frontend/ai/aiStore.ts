@@ -307,6 +307,25 @@ export const useAiStore = create<AiStore>((set, get) => {
         redactions: [...subject.findings, ...outputRedactions],
       });
 
+      // 空内容不诊断（2026-10-21 用户裁定，AI 层的第二道防线）：命令与输出
+      // 尾都为空 = 无从诊断（模型只能回复「内容为空」，纯烧 token）——摘除
+      // 本会话面板切片，请求不发。watch 层已有首道门卫（首个 D + 空命令文本），
+      // 这里兜住其余路径（迟到的空 tail、未来新入口）。手动「解释」不受限
+      // （选区非空才可达菜单）。
+      if (
+        req.kind === "diagnose" &&
+        subject.text.trim() === "" &&
+        outputTail.trim() === ""
+      ) {
+        controllers.delete(sessionId);
+        useAiStore.setState((s0) => {
+          const next = { ...s0.sessions };
+          delete next[sessionId];
+          return { sessions: next };
+        });
+        return;
+      }
+
       // --- 4. 流式（BYOK 直连；取消器按会话隔离）---
       const messages: ChatMessage[] = [
         { role: "user", content: buildUserMessage(req, subject.text, outputTail) },

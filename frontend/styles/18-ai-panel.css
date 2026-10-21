@@ -590,3 +590,12 @@
   opacity: 0.85;
 }
 
+
+/* Provider 标题行（2026-10-21 用户反馈）：「添加 Provider」从列表下方移到
+ * 标题右侧——添加入口与所添加的目标同位，滚动到脱敏区不再被按钮打断。 */
+.ai-providers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}

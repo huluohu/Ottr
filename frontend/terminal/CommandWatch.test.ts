@@ -325,6 +325,24 @@ describe("parseOsc7Cwd", () => {
     expect(onCommandFinished).toHaveBeenCalledTimes(1);
   });
 
+  it("空命令文本的失败不诊断（双集成/多次提示符重绘的空提取）——finished 照发", () => {
+    const onCommandDone = vi.fn();
+    const onCommandFinished = vi.fn();
+    const { term, fire, active } = fakeTerm(["", ""]);
+    createCommandWatch(term, { onCommandDone, onCommandFinished });
+    fire(133, "D"); // 启动 D（吞）
+    active.cursorY = 1;
+    fire(133, "A");
+    fire(133, "D;1"); // 又一个启动态 D：光标上一行是空行 → 命令文本空
+    expect(onCommandDone).not.toHaveBeenCalled();
+    expect(onCommandFinished).toHaveBeenCalledWith({
+      exitCode: 1,
+      command: "",
+      cwd: null,
+      integrated: false,
+    });
+  });
+
   it("resetCycle（重连/重开新 shell）后重新门卫", () => {
     const onCommandDone = vi.fn();
     const { term, fire, active } = fakeTerm(["$ echo hi", ""]);

@@ -167,6 +167,11 @@ export function createCommandWatch(
       });
       if (exitCode === null || exitCode === 0) {
         // 无退出码（shell 未上报）或成功（exit 0）：不触发诊断，安全侧不打扰
+      } else if (lastCommand.trim() === "") {
+        // 命令文本为空的失败不诊断（2026-10-21 用户二次实测：自有集成/多次
+        // 提示符重绘会让启动期出现第二个 D，回退提取拿到的常是空行——本来
+        // 也无从诊断，AI 只能回复「命令内容为空」）。真实敲下的命令必有
+        // C 边界、文本非空；sh 系 D-only 回退提取的是提示符+命令行，非空。
       } else {
         handlers.onCommandDone({ exitCode, command: lastCommand });
       }

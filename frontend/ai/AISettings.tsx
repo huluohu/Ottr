@@ -314,7 +314,18 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
 
         {/* --- Provider 列表 --- */}
         <section aria-label={t("ai.settings.providers")} data-testid="ai-providers-section">
-          <h3>{t("ai.settings.providers")}</h3>
+          <h3 className="ai-providers-head">
+            <span>{t("ai.settings.providers")}</span>
+            {!draft && (
+              <button
+                className="btn-accent btn-compact"
+                data-testid="ai-add-provider"
+                onClick={() => setDraft(emptyDraft())}
+              >
+                {t("ai.settings.addProvider")}
+              </button>
+            )}
+          </h3>
           <p className="settings-hint">{t("ai.settings.byokHint")}</p>
           {providers.length === 0 && !draft && (
             <p className="settings-hint" data-testid="ai-providers-empty">
@@ -393,12 +404,6 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
               </li>
             ))}
           </ul>
-          {!draft && (
-            <button className="btn-accent btn-compact" data-testid="ai-add-provider" onClick={() => setDraft(emptyDraft())}>
-              {t("ai.settings.addProvider")}
-            </button>
-          )}
-
           {draft && (
             <form className="wizard-step" onSubmit={(e) => void saveDraft(e)} noValidate data-testid="ai-provider-form">
               <p className="dialog-intro">{t("ai.settings.formTitle")}</p>

@@ -47,3 +47,8 @@ docs/*
 /.zcodeignore
 /.vscode/extensions.json
 /.zcode/
+
+# 品牌资产与代理工作指引——本地保留，不公开（2026-10-21 用户裁定）
+/brand/
+/CLAUDE.md
+/AGENTS.md

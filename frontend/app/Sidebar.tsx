@@ -5,6 +5,7 @@
 // 折叠胶囊（⌘\，2026-10-16 M3）：整列折叠成 64px 悬浮胶囊——只显示搜索圆钮 +
 // 分组圆点（组色）+ 未读徽标；折叠态不渲染 HostTree（树交互全收起）。
 import { type CSSProperties } from "react";
+import { platform, shortcutLabel } from "../shortcuts/registry";
 import { useTranslation } from "react-i18next";
 import { HostTree, type HostTreeProps } from "../hosts/HostTree";
 import { useVaultStore } from "../vault/store";
@@ -161,7 +162,9 @@ export function Sidebar({
         >
           <SearchIcon />
           <span className="sidebar-search-text">{t("sidebar.search")}</span>
-          <kbd className="sidebar-kbd">⌘K</kbd>
+          <kbd className="sidebar-kbd">
+            {shortcutLabel("palette.toggle", platform()) ?? "⌘K"}
+          </kbd>
         </button>
       </div>
       {/* 主机区头部：区段标签 + 安静图标钮（新建入口，2026-10-10 深夜布局

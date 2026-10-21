@@ -56,6 +56,7 @@ pub use cron_jobs::{
 pub use mcp_grants::{MCP_READ_PATHS_MAX, McpGrant, McpGrantInput, McpGrants};
 pub use secrets::Secrets;
 pub use settings::Settings;
+pub use settings::{SETTING_SHORTCUT_OVERRIDES, SHORTCUT_OVERRIDES_MAX_ENTRIES};
 // 同步分类快照导出/导入（Phase 5 Task 3；编排引擎在 frontend/sync/SyncStore.ts，
 // 本 crate 只供 vault ↔ 快照 JSON 的双向翻译——cron_jobs 同款分工）
 pub use store::{KeyMode, Vault};

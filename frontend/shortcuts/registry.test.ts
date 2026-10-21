@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ACTIONS,
+  applyOverrides,
+  findConflictGroups,
   findConflicts,
   formatAccelerator,
   isTerminalTarget,
@@ -345,5 +347,37 @@ describe("registry labelKey 双语守卫（BL-203）", () => {
     // 与 lookup 同判定的负样本：任何 ACTIONS 键都不允许落空（上一例已证），
     // 这里只钉「落空可被观察」——lookup 对幽灵键返回 undefined 而非抛错。
     expect(lookup(zh, "palette.title")).toBeTypeOf("string");
+  });
+});
+
+// 2026-10-21 改键设置：覆盖层——生效查询/匹配/提示/冲突全部跟随覆盖表。
+describe("键位覆盖层（applyOverrides）", () => {
+  afterEach(() => {
+    applyOverrides({}); // 逐用例复位：模块级表不得泄漏
+  });
+
+  it("覆盖后 matchActionEvent 命中新键位、不再命中旧键位", () => {
+    applyOverrides({ "palette.toggle": "CmdOrCtrl+Shift+K" });
+    const ev = { key: "K", metaKey: true, shiftKey: true, ctrlKey: false, altKey: false };
+    expect(matchActionEvent(ev as unknown as KeyboardEvent, "mac")).toBe("palette.toggle");
+    const oldEv = { key: "k", metaKey: true, shiftKey: false, ctrlKey: false, altKey: false };
+    expect(matchActionEvent(oldEv as unknown as KeyboardEvent, "mac")).toBeNull();
+  });
+
+  it("shortcutLabel 反映覆盖；无覆盖动作不变；清空恢复默认", () => {
+    applyOverrides({ "hosts.new": "CmdOrCtrl+Alt+N" });
+    expect(shortcutLabel("hosts.new", "mac")).toBe("⌘⌥N");
+    expect(shortcutLabel("hosts.new", "win")).toBe("Ctrl+Alt+N");
+    applyOverrides({});
+    expect(shortcutLabel("hosts.new", "mac")).toBe("⌘N");
+  });
+
+  it("findConflictGroups：覆盖与默认撞键可检出；空表无冲突", () => {
+    applyOverrides({});
+    expect(findConflictGroups({}, "mac")).toHaveLength(0);
+    // 把 hosts.new 改成 palette.toggle 的默认键 → 冲突组
+    const groups = findConflictGroups({ "hosts.new": "CmdOrCtrl+K" }, "mac");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].sort()).toEqual(["hosts.new", "palette.toggle"]);
   });
 });

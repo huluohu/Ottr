@@ -24,7 +24,7 @@
 //   EngineDeps 注入（时钟/notify/ps 采集/log 采样/vault 回写）——单测零 Tauri 面。
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import i18n from "../i18n";
-import { vaultApi, type AlertRule } from "../vault/api";
+import { LOCAL_HOST_FILTER, vaultApi, type AlertRule } from "../vault/api";
 import type { MonitorMetrics } from "../monitor/monitorStore";
 import { fetchProcesses, fetchLogTail, type LogTailSample } from "../monitor/api";
 import { useSessionStore } from "../session/SessionStore";
@@ -409,8 +409,14 @@ export class AlertEngine {
     }
   }
 
+  /** 规则匹配：会话层 hostId（本地会话 = -1 哨兵）对 DB host_id（NULL = 本机，
+   * 0024）。真实主机 id ≥ 1，-1 永不冲突（vault/api LOCAL_HOST_FILTER 同值）。 */
   rulesOf(hostId: number, kind: AlertRule["kind"]): AlertRule[] {
-    return this.rules.filter((r) => r.host_id === hostId && r.kind === kind);
+    return this.rules.filter(
+      (r) =>
+        r.kind === kind &&
+        (r.host_id === null ? hostId === LOCAL_HOST_FILTER : r.host_id === hostId),
+    );
   }
 
   /** ottr://monitor 采样入口（events 接线调用）：只吃 sample 帧的指标面。 */
@@ -446,9 +452,11 @@ export class AlertEngine {
       const byHost = new Map<number, AlertRule[]>();
       for (const rule of this.rules) {
         if (rule.kind !== "process") continue;
-        const list = byHost.get(rule.host_id) ?? [];
+        // NULL = 本机 → -1 哨兵键（sessionByHost(-1) 命中本地根会话）
+        const key = rule.host_id ?? LOCAL_HOST_FILTER;
+        const list = byHost.get(key) ?? [];
         list.push(rule);
-        byHost.set(rule.host_id, list);
+        byHost.set(key, list);
       }
       for (const [hostId, rules] of byHost) {
         const session = deps.sessionByHost(hostId);
@@ -487,9 +495,11 @@ export class AlertEngine {
         if (last !== undefined && nowMs - last < logIntervalSecs(rule.params as Record<string, unknown>) * 1000) {
           continue; // interval 门槛未到
         }
-        const list = byHost.get(rule.host_id) ?? [];
+        // NULL = 本机 → -1 哨兵键（sessionByHost(-1) 命中本地根会话）
+        const key = rule.host_id ?? LOCAL_HOST_FILTER;
+        const list = byHost.get(key) ?? [];
         list.push(rule);
-        byHost.set(rule.host_id, list);
+        byHost.set(key, list);
       }
       for (const [hostId, rules] of byHost) {
         const session = deps.sessionByHost(hostId);

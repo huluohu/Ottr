@@ -47,7 +47,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 23;
+pub const LATEST_SCHEMA_VERSION: u32 = 24;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -191,6 +191,12 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         23,
         include_str!("../migrations/0023_local_history_nullable.sql"),
+    ),
+    // 0024 alert_rules.host_id 改可空（本机告警规则：NULL = 本机）。表无含
+    // host_id 的唯一约束/触发器，四步重建后按原名重建索引即可。
+    (
+        24,
+        include_str!("../migrations/0024_alert_rules_host_nullable.sql"),
     ),
 ];
 

@@ -69,7 +69,7 @@ pub(crate) struct LocalSessionEntry {
 /// 登录参数（`-l`）白名单：bash/zsh/sh 系读 profile；其余（含测试假身
 /// `cat`、fish 等不支持或语义不同的）不加——`cat -l` 是非法选项。
 fn takes_login_flag(path: &str) -> bool {
-    let base = path.rsplit('/').next().unwrap_or(path);
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     matches!(base, "bash" | "zsh" | "sh" | "ash" | "dash" | "ksh")
 }
 
@@ -154,7 +154,8 @@ fn write_sh_env_file() -> Option<std::path::PathBuf> {
 }
 
 fn shell_kind(path: &str) -> Option<&'static str> {
-    let base = path.rsplit('/').next().unwrap_or(path);
+    // Windows 路径（C:\...\powershell.exe）同样按 \ 切 basename
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     match base {
         "bash" => Some("bash"),
         "zsh" => Some("zsh"),
@@ -163,6 +164,26 @@ fn shell_kind(path: &str) -> Option<&'static str> {
 }
 
 /// 本地登录 shell 路径：`$SHELL` → `/bin/bash` → `/bin/sh`（按存在性兜底）。
+/// Windows：`$SHELL`（git-bash 等用户自设）→ `powershell.exe`（系统盘固定
+/// 位置，Windows 必有）→ `ComSpec`（cmd.exe）——此前的实现会落到不存在的
+/// `/bin/sh`，Windows 本地终端根本起不来（2026-10-21 评估发现）。
+#[cfg(target_os = "windows")]
+fn pick_shell() -> String {
+    if let Ok(shell) = std::env::var("SHELL")
+        && !shell.trim().is_empty()
+        && std::path::Path::new(shell.trim()).exists()
+    {
+        return shell.trim().to_string();
+    }
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+    let powershell = format!("{system_root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    if std::path::Path::new(&powershell).exists() {
+        return powershell;
+    }
+    std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".into())
+}
+
+#[cfg(not(target_os = "windows"))]
 fn pick_shell() -> String {
     if let Ok(shell) = std::env::var("SHELL")
         && !shell.trim().is_empty()
@@ -241,8 +262,11 @@ pub(crate) fn local_term_open_with(
     // 能力下限口径。其余环境继承当前进程（CommandBuilder 默认行为）。
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // -NoLogo 是 PowerShell 旗标（powershell/pwsh 均支持）；cmd/git-bash 不加
     #[cfg(target_os = "windows")]
-    cmd.arg("-NoLogo");
+    if shell.to_ascii_lowercase().contains("powershell") {
+        cmd.arg("-NoLogo");
+    }
     // 启动文件注入（Unix，2026-10-20 敲入全面改型）：不往 PTY 写任何字节——
     // zsh 用 ZDOTDIR 指向生成目录（四启动文件先原样加载用户同名文件、.zshrc
     // 末尾追加集成钩子），sh 系用 ENV 钩子文件（先 source 用户 $ENV 再追加

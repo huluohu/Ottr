@@ -18,6 +18,7 @@ import { useEscClose } from "../ui/useEscClose";
 import { useModalStore } from "../ui/modalStore";
 import { useTranslation } from "react-i18next";
 import type { Session } from "../session/SessionStore";
+import { platform as detectPlatform } from "../shortcuts/registry";
 import {
   fileNameOf,
   joinLocalPath,
@@ -147,6 +148,9 @@ interface DialogState {
 export function FilePanel({ session }: { session: Session }) {
   const { t } = useTranslation();
   const rustId = session.rustId;
+  // Windows 本地会话没有 POSIX 权限位（Local 后端 chmod 显式报错）：入口直接
+  // 不出现——对用户比「点了报错」诚实（2026-10-21 Windows 本机能力补齐）。
+  const hideLocalChmod = session.kind === "local" && detectPlatform() === "win";
   const [remote, setRemote] = useState<PaneState>(emptyPane(""));
   const [local, setLocal] = useState<PaneState>(emptyPane(""));
   const [focus, setFocus] = useState<Side>("remote");
@@ -795,10 +799,15 @@ export function FilePanel({ session }: { session: Session }) {
                   action: () =>
                     openDialog({ kind: "rename", side: "remote", target: selectedEntry }),
                 },
-                {
-                  label: t("files.menu.chmod", { name: selectedEntry.name }),
-                  action: () => openDialog({ kind: "chmod", side: "remote", target: selectedEntry }),
-                },
+                ...(hideLocalChmod
+                  ? []
+                  : [
+                      {
+                        label: t("files.menu.chmod", { name: selectedEntry.name }),
+                        action: () =>
+                          openDialog({ kind: "chmod", side: "remote", target: selectedEntry }),
+                      },
+                    ]),
                 {
                   label: t("files.menu.delete", { name: selectedEntry.name }),
                   danger: true,
@@ -1143,12 +1152,14 @@ export function FilePanel({ session }: { session: Session }) {
             >
               {t("files.rename")}
             </button>
-            <button
-              disabled={!selectedEntry}
-              onClick={() => selectedEntry && openDialog({ kind: "chmod", side: "remote", target: selectedEntry })}
-            >
-              {t("files.chmod")}
-            </button>
+            {!hideLocalChmod && (
+              <button
+                disabled={!selectedEntry}
+                onClick={() => selectedEntry && openDialog({ kind: "chmod", side: "remote", target: selectedEntry })}
+              >
+                {t("files.chmod")}
+              </button>
+            )}
             <button
               disabled={!selectedEntry}
               className="icon-btn danger"

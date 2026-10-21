@@ -33,7 +33,7 @@ fn host_input(name: &str) -> HostInput {
 
 fn input(host_id: i64) -> AlertRuleInput {
     AlertRuleInput {
-        host_id,
+        host_id: Some(host_id),
         kind: "disk".into(),
         params: serde_json::json!({ "mount": "/", "threshold": 90 }),
         channels: vec![1, 2],
@@ -160,8 +160,7 @@ fn fk_rejects_dangling_host_and_cascades_on_host_delete() {
     let vault = open_vault(dir.path());
     let h = Hosts::create(&vault, host_input("web01")).unwrap();
 
-    let mut i = input(9999);
-    i.host_id = 9999;
+    let i = input(9999);
     assert!(
         AlertRules::create(&vault, &i).is_err(),
         "host 不存在 → FK 拒绝"
@@ -178,5 +177,47 @@ fn fk_rejects_dangling_host_and_cascades_on_host_delete() {
         AlertRules::get(&vault, rule.id).unwrap(),
         None,
         "级联删除后 get 落空"
+    );
+}
+
+/// 0024：本机规则（host_id NULL）建/读/改/水位回写全通，删主机不影响本机规则
+/// （NULL 行不属于任何主机，CASCADE 不波及）。
+#[test]
+fn local_rule_null_host_roundtrips_and_survives_host_delete() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let h = Hosts::create(&vault, host_input("web01")).unwrap();
+
+    let mut i = input(h.id);
+    i.host_id = None;
+    i.kind = "cpu".into();
+    let created = AlertRules::create(&vault, &i).unwrap();
+    assert_eq!(created.host_id, None, "本机规则 host_id 回读 None");
+    let got = AlertRules::get(&vault, created.id).unwrap().unwrap();
+    assert_eq!(got.host_id, None);
+
+    // 全量替换式更新到本机已有规则（改阈值）保持 NULL
+    let mut upd = input(h.id);
+    upd.host_id = None;
+    upd.kind = "cpu".into();
+    let updated = AlertRules::update(&vault, created.id, &upd).unwrap();
+    assert_eq!(updated.host_id, None);
+
+    // 主机侧规则 + 本机规则并存；删主机只级联主机侧
+    let _host_rule = AlertRules::create(&vault, &input(h.id)).unwrap();
+    Hosts::delete(&vault, h.id).unwrap();
+    let left = AlertRules::list(&vault).unwrap();
+    assert_eq!(left.len(), 1, "删主机只删主机侧规则");
+    assert_eq!(left[0].id, created.id);
+    assert_eq!(left[0].host_id, None);
+
+    // 水位回写照常
+    AlertRules::mark_fired(&vault, created.id, 1_700_000_000).unwrap();
+    assert_eq!(
+        AlertRules::get(&vault, created.id)
+            .unwrap()
+            .unwrap()
+            .last_fired,
+        Some(1_700_000_000)
     );
 }

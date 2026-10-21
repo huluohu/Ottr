@@ -58,7 +58,8 @@ fn valid_mute_window(w: &str) -> bool {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AlertRule {
     pub id: i64,
-    pub host_id: i64,
+    /// `None` = 本机（本地终端会话；0024 起可空，与 recordings/history 同口径）。
+    pub host_id: Option<i64>,
     /// "disk" | "cpu" | "process" | "log"（DB CHECK 同集）。
     pub kind: String,
     /// 类别参数（JSON 对象；字段面归引擎消费，存储层只保证合法 JSON）。
@@ -79,7 +80,8 @@ pub struct AlertRule {
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct AlertRuleInput {
-    pub host_id: i64,
+    /// `None` = 本机。
+    pub host_id: Option<i64>,
     pub kind: String,
     pub params: serde_json::Value,
     pub channels: Vec<i64>,
@@ -121,7 +123,8 @@ pub struct AlertRules;
 
 impl AlertRules {
     /// 落一条规则并返回完整行（id/created_at/updated_at 由存储层定；last_fired
-    /// 初值 NULL）。host 不存在 → FK 报错（sqlite FK on）。
+    /// 初值 NULL）。host_id `Some` 指向不存在的主机 → FK 报错（sqlite FK on）；
+    /// `None` = 本机（0024 起）。
     pub fn create(vault: &Vault, input: &AlertRuleInput) -> Result<AlertRule> {
         validate_input(input)?;
         let ts = now_ts();

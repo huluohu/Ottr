@@ -159,32 +159,98 @@ fn run_capture(program: &str, args: &[&str]) -> Result<String, MonitorError> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// 本机进程列表：`ps -eo …` → [`parse_ps_eo`]，空表再 `ps aux` →
-/// [`parse_ps_aux`] 兜底（与 [`crate::proc::collect_ps`] 同款两枪）；按 CPU% 降序。
-/// Windows 无 ps：显式 Unsupported（前端错误面可见，不假装空表）。
+/// 本机进程列表。unix：`ps -eo …` → [`parse_ps_eo`]，空表再 `ps aux` →
+/// [`parse_ps_aux`] 兜底（与 [`crate::proc::collect_ps`] 同款两枪）。
+/// Windows：sysinfo 枚举（system feature 自带 ToolHelp/ProcessStatus；本机
+/// 采样器同依赖）——`ps` 不存在，此前显式 Unsupported。按 CPU% 降序。
 pub async fn collect_ps_local() -> Result<Vec<ProcEntry>, MonitorError> {
     blocking(|| {
-        if cfg!(windows) {
-            return Err(MonitorError::Unsupported {
-                detail: "local process list is not available on Windows yet".into(),
+        #[cfg(windows)]
+        {
+            return collect_ps_local_windows();
+        }
+        #[cfg(unix)]
+        {
+            let mut rows = parse_ps_eo(&run_capture("ps", &PS_LOCAL_ARGS)?);
+            if rows.is_empty() {
+                let mut it = PS_AUX_CMD.split_whitespace();
+                let prog = it.next().unwrap_or("ps");
+                let args: Vec<&str> = it.collect();
+                rows = parse_ps_aux(&run_capture(prog, &args)?);
+            }
+            rows.sort_by(|a, b| {
+                b.cpu_percent
+                    .partial_cmp(&a.cpu_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.pid.cmp(&b.pid))
             });
+            Ok(rows)
         }
-        let mut rows = parse_ps_eo(&run_capture("ps", &PS_LOCAL_ARGS)?);
-        if rows.is_empty() {
-            let mut it = PS_AUX_CMD.split_whitespace();
-            let prog = it.next().unwrap_or("ps");
-            let args: Vec<&str> = it.collect();
-            rows = parse_ps_aux(&run_capture(prog, &args)?);
+        #[cfg(not(any(unix, windows)))]
+        {
+            Err(MonitorError::Unsupported {
+                detail: "local process list is not available on this platform".into(),
+            })
         }
-        rows.sort_by(|a, b| {
-            b.cpu_percent
-                .partial_cmp(&a.cpu_percent)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(a.pid.cmp(&b.pid))
-        });
-        Ok(rows)
     })
     .await
+}
+
+/// Windows 进程枚举（sysinfo）：两刷取 CPU%（两次 refresh 之间的差分，间隔
+/// ≥ MINIMUM_CPU_UPDATE_INTERVAL；进程列表场景 250ms 首刷延迟可接受）、
+/// `Users` 表映射 uid → 用户名、内存占比按总内存、`run_time()` 直接是秒。
+/// kill 不走这里（[`kill_process_local`] 的 taskkill 分支已覆盖）。
+#[cfg(windows)]
+fn collect_ps_local_windows() -> Result<Vec<ProcEntry>, MonitorError> {
+    use sysinfo::{ProcessesToUpdate, Users};
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+    let users = Users::new_with_refreshed_list();
+    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+    sys.refresh_memory();
+    let total_mem = sys.total_memory();
+    let mut rows: Vec<ProcEntry> = sys
+        .processes()
+        .values()
+        .map(|p| {
+            let user = p
+                .user_id()
+                .and_then(|uid| users.get_user_by_id(uid))
+                .map(|u| u.name().to_string())
+                .unwrap_or_default();
+            let run_time = p.run_time();
+            let (d, rem) = (run_time / 86_400, run_time % 86_400);
+            let (h, mi, sec) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+            let etime = if d > 0 {
+                format!("{d}-{:02}:{:02}:{:02}", h, mi, sec)
+            } else {
+                format!("{h:02}:{mi:02}:{sec:02}")
+            };
+            let mem_bytes = p.memory();
+            ProcEntry {
+                pid: p.pid().as_u32(),
+                ppid: p.parent().map(|p| p.as_u32()).unwrap_or(0),
+                user,
+                cpu_percent: p.cpu_usage(),
+                mem_percent: if total_mem == 0 {
+                    0.0
+                } else {
+                    (mem_bytes as f32 / total_mem as f32 * 100.0).clamp(0.0, 100.0)
+                },
+                etime_secs: run_time,
+                etime,
+                comm: p.name().to_string_lossy().into_owned(),
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        b.cpu_percent
+            .partial_cmp(&a.cpu_percent)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.pid.cmp(&b.pid))
+    });
+    Ok(rows)
 }
 
 /// 本机终止进程：unix `kill [-9] pid`；Windows `taskkill /PID pid [/F]`。

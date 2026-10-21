@@ -385,7 +385,8 @@ export type AlertRuleParams = Record<string, unknown>;
  * 出库即解析后形态）。 */
 export interface AlertRule {
   id: number;
-  host_id: number;
+  /** null = 本机（本地终端会话；0024 起，与 recordings/history 同口径）。 */
+  host_id: number | null;
   kind: AlertRuleKind;
   params: AlertRuleParams;
   /** 订阅渠道 id 数组（notify_channels.id；③外部渠道按此路由）。 */
@@ -402,7 +403,8 @@ export interface AlertRule {
 
 /** Rust `alert_rules::AlertRuleInput` 同构（create/update 全量替换式提交）。 */
 export interface AlertRuleInput {
-  host_id: number;
+  /** null = 本机。 */
+  host_id: number | null;
   kind: AlertRuleKind;
   params: AlertRuleParams;
   channels: number[];

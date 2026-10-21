@@ -127,7 +127,7 @@ fn seed_source(vault: &Vault) {
     let rule = AlertRules::create(
         vault,
         &AlertRuleInput {
-            host_id: h1.id,
+            host_id: Some(h1.id),
             kind: "cpu".into(),
             params: json!({ "threshold": 90, "consecutive": 3 }),
             channels: vec![ch1.id],
@@ -351,7 +351,7 @@ fn roundtrip_full_snapshot_into_fresh_vault() {
     // 规则/任务：host 与 channels 都重映射到新 id；last_fired 重置 NULL
     let rules = AlertRules::list(&vault_b).unwrap();
     assert_eq!(rules.len(), 1);
-    assert_eq!(rules[0].host_id, alpha.id);
+    assert_eq!(rules[0].host_id, Some(alpha.id));
     assert_eq!(rules[0].channels, vec![ch[0].id]);
     assert_eq!(rules[0].last_fired, None);
     assert_eq!(rules[0].mute_window.as_deref(), Some("22:00-08:00"));

@@ -172,6 +172,7 @@ struct SyncAlertRule {
     /// 源 id 仅作快照完整性面（反序列化要求字段齐全）；规则无被引用方，不消费。
     #[allow(dead_code)]
     id: i64,
+    /// 快照内恒为真实主机 id（本机规则在导出侧整体跳过，见 export）。
     host_id: i64,
     kind: String,
     params: Value,
@@ -323,6 +324,12 @@ pub fn export_categories(vault: &Vault, cats: &[String]) -> Result<Value> {
     if is_selected(&selected, "alert_rules") {
         let mut rows = Vec::new();
         for r in AlertRules::list(vault)? {
+            // 本机规则（host_id NULL，0024）是设备本地配置——同步到别的设备
+            // 就成了「那台设备的本机」，语义不成立：导出整体跳过，快照内
+            // alert_rules 恒为真实主机行（SyncAlertRule.host_id 保持 i64）。
+            if r.host_id.is_none() {
+                continue;
+            }
             let mut v = serde_json::to_value(&r)?;
             // 触发水位是本机运行态（防重复告警），不属于配置快照。
             v.as_object_mut()

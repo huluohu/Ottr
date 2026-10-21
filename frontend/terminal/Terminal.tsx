@@ -717,6 +717,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       }
       return;
     }
+    // 本地终端没有「侧栏主机」可双击：挂载瞬间经过 disconnected 态不写提示
+    // （否则一行灰字永久滞留回滚缓冲，2026-10-20 真机实测）。
+    const isLocalSession =
+      useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.kind === "local";
     switch (status) {
       case "connected":
         if (attempt === 0) break; // 首连成功：shell 输出即反馈，不打横幅
@@ -741,9 +745,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
               : `\x1b[31m[ottr] ${t("terminal.connectFailed", { message: lastError })}\x1b[0m`,
           );
         }
-        if (attempt === 0) {
+        if (attempt === 0 && !isLocalSession) {
           term.writeln(`\x1b[2m[ottr] ${t("terminal.reconnectHint")}\x1b[0m`);
-        } else {
+        } else if (attempt > 0) {
           term.writeln(
             `\x1b[31m[ottr] ${t("terminal.reconnectExhausted", {
               max: useSessionStore.getState().settings.maxReconnectAttempts,

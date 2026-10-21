@@ -14,6 +14,16 @@
 
 /** 分隔条留缝（px）：layout 在两孩子之间留出的空档，也是分隔条的可点厚度。 */
 export const SPLIT_GAP = 6;
+
+/** 每标签分屏上限（2026-10-21 用户问询后我拍板，可裁定）：4 = 2×2 网格，
+ * 小窗口下每块仍可用；每个 pane 是一条独立 PTY 会话，数量无界会既挤视图
+ * 又堆会话。到顶的交互 = 按钮置灰 + 悬停提示、右键菜单置灰、快捷键/⌘K
+ * 触发弹 toast（守卫在 SessionStore.splitPane 单点，入口全覆盖）。 */
+export const MAX_PANES = 4;
+
+/** 单块 pane 的最小可用像素（≈20 列 × 7 行 @默认字号）：分屏前预判目标
+ * 半区尺寸，不够就拒绝——大窗口下 4 块也放行，小窗口自动更早拦截。 */
+export const MIN_PANE_PX = { w: 160, h: 120 };
 /** first 孩子占比上下限（拖拽 clamp）。 */
 export const MIN_RATIO = 0.15;
 

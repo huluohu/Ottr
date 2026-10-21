@@ -31,6 +31,8 @@ import {
   type Session,
   type SessionEndInfo,
 } from "./SessionStore";
+import { leaves, MAX_PANES } from "../terminal/split";
+import { useToastStore } from "../ui/toastStore";
 import type { Host } from "../vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -979,5 +981,60 @@ describe("SessionStore 本地终端", () => {
       expect(p?.rustId).toBe("local-2");
     });
     expect(mockedInvoke).not.toHaveBeenCalledWith("attach_host_session", expect.anything());
+  });
+});
+
+// 2026-10-21 用户问询后定案：每标签上限 4 块 pane（2×2）+ 分屏前最小尺寸
+// 预判。守卫单点在 splitPane（工具行/右键菜单前置灰只是呈现，快捷键/⌘K 走
+// 这里弹 toast），测试钉行为不钉入口。
+describe("分屏上限与最小尺寸", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session") return Promise.resolve(`pty-${Math.random()}`);
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    localStorage.removeItem(OPEN_TABS_KEY);
+    resetStore();
+  });
+
+  function leafCount(tabId: string): number {
+    const tree = useSessionStore.getState().trees[tabId];
+    return tree ? leaves(tree).length : 0;
+  }
+
+  it("第 5 块 pane 拒绝：不新增会话、弹 toast", async () => {
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().setPaneBounds(tab, { x: 0, y: 0, w: 4000, h: 2000 });
+    while (leafCount(tab) < 4) {
+      useSessionStore.getState().splitPane(tab, leafCount(tab) % 2 === 0 ? "row" : "column");
+    }
+    expect(leafCount(tab)).toBe(MAX_PANES);
+    const before = useSessionStore.getState().sessions.length;
+    const showSpy = vi.spyOn(useToastStore.getState(), "show");
+    useSessionStore.getState().splitPane(tab, "row");
+    expect(leafCount(tab)).toBe(MAX_PANES);
+    expect(useSessionStore.getState().sessions.length).toBe(before);
+    expect(showSpy).toHaveBeenCalledTimes(1);
+    showSpy.mockRestore();
+  });
+
+  it("锚点 pane 对半后小于最小像素：拒绝并弹 toast", async () => {
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    // 画布 240px 宽：row 对半后 117px < MIN_PANE_PX.w(160)
+    useSessionStore.getState().setPaneBounds(tab, { x: 0, y: 0, w: 240, h: 900 });
+    const before = useSessionStore.getState().sessions.length;
+    const showSpy = vi.spyOn(useToastStore.getState(), "show");
+    useSessionStore.getState().splitPane(tab, "row");
+    expect(leafCount(tab)).toBe(1);
+    expect(showSpy).toHaveBeenCalledTimes(1);
+    // 画布足够宽时同方向放行
+    useSessionStore.getState().setPaneBounds(tab, { x: 0, y: 0, w: 4000, h: 900 });
+    useSessionStore.getState().splitPane(tab, "row");
+    expect(leafCount(tab)).toBe(2);
+    expect(useSessionStore.getState().sessions.length).toBe(before + 1);
+    showSpy.mockRestore();
   });
 });

@@ -360,6 +360,8 @@
     "clearScreen": "清屏",
     "encoding": "編碼",
     "splitRight": "向右分屏",
+    "splitMax": "最多 {{max}} 塊分屏",
+    "splitTooSmall": "空間不夠再分一塊了",
     "splitDown": "向下分屏",
     "closePane": "關閉此分屏",
     "menuAria": "終端右鍵菜單",

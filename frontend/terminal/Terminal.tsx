@@ -76,7 +76,7 @@ import {
   type ContextMenuItem,
   type MenuContext,
 } from "./ContextMenu";
-import { dividers, layout, leaf, type Divider, type Rect } from "./split";
+import { dividers, layout, leaf, leaves, MAX_PANES, type Divider, type Rect } from "./split";
 // 对话框/右键菜单/搜索栏组件自本文件拆出（2026-10-08 遗留项②）——
 // 公共 API 经下方再导出保持原路径（组件测试 import 零改动）。
 import { ContextMenuView } from "./ContextMenuView";
@@ -772,6 +772,13 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       copyOnSelect: loadTerminalSettings().copyOnSelect,
       completionEnabled: loadTerminalSettings().completionEnabled,
       encoding: useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.encoding ?? "utf-8",
+      // 分屏上限（数量守卫的另一入口呈现；守卫本体在 splitPane）
+      splitDisabled: (() => {
+        const st = useSessionStore.getState();
+        const tabId = st.sessions.find((x) => x.id === sessionId)?.paneOf ?? sessionId;
+        const tree = tabId != null ? st.trees[tabId] : undefined;
+        return tree != null && leaves(tree).length >= MAX_PANES;
+      })(),
     };
     const width = 220;
     setMenu({
@@ -969,7 +976,13 @@ export function TerminalToolbar({
   const { t } = useTranslation();
   const activeId = useSessionStore((s) => s.activeId);
   const activePaneMap = useSessionStore((s) => s.activePane);
+  const trees = useSessionStore((s) => s.trees);
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
+  // 分屏上限呈现（2026-10-21）：到顶按钮置灰 + 悬停提示；快捷键/⌘K 走 store
+  // 守卫弹 toast（splitPane 单点）。
+  const splitDisabled =
+    activeId == null ||
+    (trees[activeId] != null && leaves(trees[activeId]).length >= MAX_PANES);
   // 编码徽标（Task 9）：聚焦 pane 的当前会话编码，点击循环 utf-8→gbk→gb18030。
   const activeEncoding = useSessionStore((s) =>
     focusedPane != null
@@ -982,16 +995,18 @@ export function TerminalToolbar({
       {terminalControls && (
         <button
           data-testid="split-right"
-        disabled={activeId == null}
-        onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
-      >
+          disabled={splitDisabled}
+          title={splitDisabled && activeId != null ? t("terminal.splitMax", { max: MAX_PANES }) : undefined}
+          onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
+        >
           {t("terminal.splitRight")}
         </button>
       )}
       {terminalControls && (
         <button
           data-testid="split-down"
-          disabled={activeId == null}
+          disabled={splitDisabled}
+          title={splitDisabled && activeId != null ? t("terminal.splitMax", { max: MAX_PANES }) : undefined}
           onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
         >
           {t("terminal.splitDown")}
@@ -1036,7 +1051,8 @@ export function TerminalArea() {
   const dragRef = useRef<{ divider: Divider } | null>(null);
   const [bounds, setBounds] = useState<Rect>({ x: 0, y: 0, w: 0, h: 0 });
 
-  // 容器尺寸 → 布局输入（拖侧栏/窗口缩放都会触发）
+  // 容器尺寸 → 布局输入（拖侧栏/窗口缩放都会触发）；同步进 store 供
+  // splitPane 最小尺寸预判（不落库、随标签生命周期）
   useEffect(() => {
     const el = stackRef.current;
     if (!el) return;
@@ -1048,6 +1064,11 @@ export function TerminalArea() {
   }, []);
 
   const activeTree = activeId != null ? (trees[activeId] ?? leaf(activeId)) : null;
+  useEffect(() => {
+    if (activeId != null) {
+      useSessionStore.getState().setPaneBounds(activeId, bounds);
+    }
+  }, [activeId, bounds]);
   const rects = activeTree ? layout(activeTree, bounds) : new Map<string, Rect>();
   const dividerList = activeTree ? dividers(activeTree, bounds) : [];
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;

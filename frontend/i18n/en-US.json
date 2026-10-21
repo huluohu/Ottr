@@ -361,6 +361,8 @@
     "clearScreen": "Clear screen",
     "encoding": "Encoding",
     "splitRight": "Split right",
+    "splitMax": "Up to {{max}} panes",
+    "splitTooSmall": "Not enough room for another pane",
     "splitDown": "Split down",
     "closePane": "Close pane",
     "menuAria": "Terminal context menu",

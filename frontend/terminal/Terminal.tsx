@@ -56,7 +56,7 @@ import { shouldAutoDiagnose, useAiStore } from "../ai/aiStore";
 import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
 import { copyText } from "../ui/clipboard";
-import { createCommandWatch, type IDisposable } from "./CommandWatch";
+import { createCommandWatch } from "./CommandWatch";
 import { noteCwd, forgetCwd } from "./CwdTracker";
 import {
   SudoPromptDetector,
@@ -141,6 +141,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const fitRef = useRef<FitAddon | null>(null);
   const trzszRef = useRef<TrzszController | null>(null);
   const ghostRef = useRef<GhostController | null>(null);
+  // OSC133 watch 句柄：connected 转换时 resetCycle——重连后新 shell 的首个 D
+  // 重新受「无 A 不消费」启动门卫（否则旧 shell 的 promptRow 残留会放行）。
+  const watchRef = useRef<{ dispose(): void; resetCycle(): void } | null>(null);
   const prevStatus = useRef<string | null>(null);
   // 中断记账（见 writeToSession 处注释）：本条命令执行期间用户发过 Ctrl+C
   const interruptedRef = useRef(false);
@@ -192,6 +195,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     if (status !== "connected") return;
     const term = termRef.current;
     if (!term) return;
+    // 重连 = 新 shell 实例：OSC133 周期状态清零，新 shell 首个 D 重新受启动门卫
+    watchRef.current?.resetCycle();
     if (term.cols < 4 || term.rows < 2) return;
     resizeSession(sessionId, term.cols, term.rows);
   }, [status, sessionId]);
@@ -413,7 +418,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       .getState()
       .sessions.find((x) => x.id === sessionId);
     if (firstSession) void completionHistory.ensure(firstSession.hostId); // 补全历史冷启动拉取
-    let watch: IDisposable | null = null;
+    let watch: ReturnType<typeof createCommandWatch> | null = null;
     try {
       watch = createCommandWatch(term, {
         // B8：新提示符 = 旧输入行消失，ghost 全量清态；中断标记随新命令清零
@@ -453,6 +458,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           completionHistory.append(session.hostId, ev.command); // B8：MRU 喂缓存
         },
       });
+      watchRef.current = watch;
     } catch {
       // parser 不可用（测试环境极简 fake）不阻塞终端装配
     }
@@ -613,6 +619,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       onSelectionChange.dispose();
       onData.dispose();
       watch?.dispose();
+      watchRef.current = null;
       ghost.dispose();
       ghostRef.current = null;
       trzsz.dispose();

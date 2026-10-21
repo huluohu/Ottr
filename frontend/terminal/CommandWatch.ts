@@ -112,13 +112,16 @@ export function createCommandWatch(
     /** 全量命令完成（Task 15 历史入库；含 exit 0 与退出码缺失）。 */
     onCommandFinished?: (ev: CommandFinishedEvent) => void;
   },
-): IDisposable {
+): IDisposable & { resetCycle(): void } {
   let promptRow: number | null = null;
   let lastCommand = "";
   let lastCwd: string | null = null;
   // 当前命令是否见过 C 边界（缺陷 45）：C 是命令文本可信的唯一来源标志；
   // D 时刻据此打 integrated 标，随后复位（逐命令独立判定）。
   let commandFromBoundary = false;
+  // 首个 D 门卫（2026-10-21）：首 D 必为 shell 启动状态而非命令结束；
+  // resetCycle（重连/重开）复位重新门卫。
+  let sawFirstD = false;
 
   const osc133 = term.parser.registerOscHandler(OSC_133, (data) => {
     const buf = term.buffer.active;
@@ -138,6 +141,16 @@ export function createCommandWatch(
       return false;
     }
     if (/^D(?:;|$)/.test(data)) {
+      // 本 watch 的**第一个** D = shell 启动状态报告（precmd 报 rc 初始化的
+      // $?；用户 rc 以失败尾命令收尾时 = 1），不是用户命令的结束——不当命令
+      // 边界消费（否则每次打开本地终端即弹「exit 1」诊断，2026-10-21 用户
+      // 实测）。之后维持原语义：缺陷 45 的 D-only 集成（用户自带，永无 A/C）
+      // 从第二条起照常诊断；重连经 resetCycle 重新门卫。
+      if (!sawFirstD) {
+        sawFirstD = true;
+        lastCommand = "";
+        return false;
+      }
       const exitCode = parseExitCode(data);
       // C 缺失的 shell（只发 D 的集成形态）：回退取光标上一行（诊断/历史共用）。
       // 该提取是输出行/提示符行而非命令行 → integrated=false（缺陷 45）。
@@ -174,6 +187,15 @@ export function createCommandWatch(
     dispose: () => {
       osc133.dispose();
       osc7.dispose();
+    },
+    /** 会话重连/重开（新 shell 实例）：清周期状态——新 shell 的首个 D 依旧是
+     * 启动状态报告，须重新走「无 A 不消费」门卫（Terminal 在 connected 转换
+     * 时点调用，早于新 shell 的任何输出）。 */
+    resetCycle: () => {
+      promptRow = null;
+      lastCommand = "";
+      commandFromBoundary = false;
+      sawFirstD = false;
     },
   };
 }

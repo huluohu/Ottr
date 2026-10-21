@@ -515,9 +515,7 @@
       "errRuleInvalid": "Regex does not compile"
     }
   },
-  "tabs": {
-    "copyConnectionDone": "Copied connection: {{target}}",
-    "copyConnection": "Copy connection",
+  "tabs": {    "duplicate": "Duplicate Tab",
     "rename": "Rename tab",
     "list": "Session tabs",
     "closeAria": "Close tab {{name}}",

@@ -16,6 +16,8 @@ import "../i18n";
 import { TabBar } from "./TabBar";
 import { HostKeyDialog } from "./HostKeyDialog";
 import { OPEN_TABS_KEY, useSessionStore, type Session } from "./SessionStore";
+import { useVaultStore } from "../vault/store";
+import type { Host } from "../vault/api";
 import { useModalStore } from "../ui/modalStore";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 
@@ -140,8 +142,30 @@ describe("TabBar（3 会话：切换/关闭/状态灯）", () => {
 
 // 总览置顶标签（2026-10-16 用户需求：总览标签化、打开后始终显示在第一个）。
 describe("TabBar 总览置顶标签", () => {
+  const web01Host: Host = {
+    id: 1,
+    name: "web-01",
+    group_id: null,
+    tags: [],
+    address: "10.0.0.1",
+    port: 22,
+    username: "deploy",
+    protocol: "ssh",
+    credential_id: null,
+    jump_chain_id: null,
+    encoding_override: null,
+    theme_override: null,
+    monitor_enabled: false,
+    is_production: false,
+    notes: null,
+    created_at: 0,
+    updated_at: 0,
+  };
+
   beforeEach(() => {
     useWorkspaceStore.setState({ overviewOpen: false, mainView: "terminal" });
+    // 主机行：复制页签（forceNew 重开）依赖 vault 主机行解析
+    useVaultStore.setState({ hosts: [web01Host], hostGroups: [], credentials: [], loading: false, error: null });
   });
   afterEach(() => {
     useWorkspaceStore.setState({ overviewOpen: false, mainView: "terminal" });
@@ -346,13 +370,13 @@ describe("TabBar 页签右键菜单", () => {
     });
   }
 
-  it("右键主机页签：菜单含重命名 + 复制连接；改名后展示名跟随（store 序不动）", async () => {
+  it("右键主机页签：菜单含重命名 + 复制页签；改名后展示名跟随（store 序不动）", async () => {
     seedLocalAndHost();
     render(<TabBar />);
     fireEvent.contextMenu(screen.getByTestId("tab-web-01"));
     expect(screen.getByTestId("tab-ctx-menu")).toBeTruthy();
     expect(screen.getByTestId("tab-ctx-rename")).toBeTruthy();
-    expect(screen.getByTestId("tab-ctx-copy")).toBeTruthy();
+    expect(screen.getByTestId("tab-ctx-duplicate")).toBeTruthy();
     fireEvent.click(screen.getByTestId("tab-ctx-rename"));
     // 内联输入出现：输入新名回车 → 展示名跟随，testid（hostName 基准）不动
     const input = screen.getByTestId("tab-rename-h1");
@@ -365,12 +389,35 @@ describe("TabBar 页签右键菜单", () => {
     expect(useSessionStore.getState().sessions.map((s) => s.id)).toEqual(["h1", "loc"]);
   });
 
-  it("右键本地页签：只有重命名（无连接信息可复制）", () => {
+  it("右键本地页签：重命名 + 复制页签（复制=新开一个本地终端）", async () => {
     seedLocalAndHost();
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "local_term_open" ? Promise.resolve("local-new") : Promise.reject(new Error(cmd)),
+    );
     render(<TabBar />);
     fireEvent.contextMenu(screen.getByTestId("tab-本地终端"));
     expect(screen.getByTestId("tab-ctx-rename")).toBeTruthy();
-    expect(screen.queryByTestId("tab-ctx-copy")).toBeNull();
+    fireEvent.click(screen.getByTestId("tab-ctx-duplicate"));
+    await waitFor(() => {
+      const localTabs = useSessionStore
+        .getState()
+        .sessions.filter((x) => x.kind === "local");
+      expect(localTabs.length).toBe(2);
+    });
+  });
+
+  it("右键主机页签「复制页签」= forceNew 再开一条（不去重）", async () => {
+    seedLocalAndHost();
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session" ? Promise.resolve("pty-new") : Promise.reject(new Error(cmd)),
+    );
+    render(<TabBar />);
+    fireEvent.contextMenu(screen.getByTestId("tab-web-01"));
+    fireEvent.click(screen.getByTestId("tab-ctx-duplicate"));
+    await waitFor(() => {
+      const hostTabs = useSessionStore.getState().sessions.filter((x) => x.hostId === 1);
+      expect(hostTabs.length).toBe(2);
+    });
   });
 
   it("重命名空串 = 恢复默认名（titleOverride 清除）", () => {

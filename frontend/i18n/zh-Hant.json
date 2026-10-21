@@ -514,9 +514,7 @@
       "errRuleInvalid": "正則無法編譯"
     }
   },
-  "tabs": {
-    "copyConnectionDone": "已複製連接資訊：{{target}}",
-    "copyConnection": "複製連接",
+  "tabs": {    "duplicate": "複製頁籤",
     "rename": "重新命名頁籤",
     "list": "會話標籤",
     "closeAria": "關閉標籤 {{name}}",

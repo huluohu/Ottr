@@ -151,7 +151,9 @@ pub(crate) async fn monitor_start(
         match ssh {
             Some(s) => Collector::Ssh(s),
             None if state.local_sessions.lock().unwrap().contains_key(&id) => {
-                Collector::Local(Arc::new(std::sync::Mutex::new(LocalSampler::new())))
+                // 共享采样器（state.local_sampler）：N 个本地标签一份 sysinfo
+                // 表，CPU 差分跨会话连续（对本机指标语义无碍——本机就是一台机器）
+                Collector::Local(Arc::clone(&state.local_sampler))
             }
             None => return Err(format!("no such session: {id}")),
         }

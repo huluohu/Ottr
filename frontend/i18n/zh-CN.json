@@ -514,9 +514,7 @@
       "errRuleInvalid": "正则无法编译"
     }
   },
-  "tabs": {
-    "copyConnectionDone": "已复制连接信息：{{target}}",
-    "copyConnection": "复制连接",
+  "tabs": {    "duplicate": "复制页签",
     "rename": "重命名页签",
     "list": "会话标签",
     "closeAria": "关闭标签 {{name}}",

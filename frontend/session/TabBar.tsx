@@ -14,8 +14,7 @@ import { useSessionStore, type Session } from "./SessionStore";
 import { useAiStore } from "../ai/aiStore";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { workspaceViewOf, WORKSPACE_VIEW_META, type WorkspaceView } from "../workspace/workspaceViews";
-import { copyText } from "../ui/clipboard";
-import { showToast } from "../ui/toastStore";
+import { useVaultStore } from "../vault/store";
 
 export interface TabBarProps {
   /** 融合式标题栏拖拽面延伸（mac 注入，MainArea 透传）：标签容器 flex:1
@@ -32,6 +31,9 @@ export function TabBar({ dragRegion }: TabBarProps) {
   const setActive = useSessionStore((s) => s.setActive);
   const closeTab = useSessionStore((s) => s.closeTab);
   const max = useSessionStore((s) => s.settings.maxReconnectAttempts);
+  const hosts = useVaultStore((s) => s.hosts);
+  const openTab = useSessionStore((s) => s.openTab);
+  const openLocalTab = useSessionStore((s) => s.openLocalTab);
   const overviewOpen = useWorkspaceStore((s) => s.overviewOpen);
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
@@ -208,7 +210,6 @@ export function TabBar({ dragRegion }: TabBarProps) {
           const menuSession = sessions.find((s) => s.id === tabMenu.sessionId);
           if (!menuSession) return null;
           const isLocalTab = menuSession.kind === "local";
-          const connTarget = `${menuSession.username ? `${menuSession.username}@` : ""}${menuSession.address}:${menuSession.port}`;
           return (
             <>
               <div
@@ -237,19 +238,26 @@ export function TabBar({ dragRegion }: TabBarProps) {
                 >
                   {t("tabs.rename")}
                 </button>
-                {!isLocalTab && (
+                {/* 复制页签（2026-10-21 用户澄清：要的是「再开一个」，不是复制
+                    连接信息）：主机 = forceNew 绕过去重新开一条；本机 = 新开
+                    本地终端；主机行已删则不出现。 */}
+                {(isLocalTab ||
+                  hosts.some((h) => h.id === menuSession.hostId)) && (
                   <button
                     role="menuitem"
                     className="ctx-menu-item"
-                    data-testid="tab-ctx-copy"
+                    data-testid="tab-ctx-duplicate"
                     onClick={() => {
                       setTabMenu(null);
-                      void copyText(connTarget).then(() =>
-                        showToast(t("tabs.copyConnectionDone", { target: connTarget }), "info"),
-                      );
+                      if (isLocalTab) {
+                        openLocalTab();
+                        return;
+                      }
+                      const host = hosts.find((h) => h.id === menuSession.hostId);
+                      if (host) openTab(host, { forceNew: true });
                     }}
                   >
-                    {t("tabs.copyConnection")}
+                    {t("tabs.duplicate")}
                   </button>
                 )}
               </div>

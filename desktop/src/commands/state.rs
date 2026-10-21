@@ -340,6 +340,11 @@ pub(crate) struct AppState {
     /// 本地终端会话表（2026-10-20，commands/local_term.rs）：与 SSH 表独立
     /// （SFTP/转发/cron 深度耦合 Arc<SshSession>），数据面命令双表回退。
     pub(crate) local_sessions: super::local_term::LocalTermMap,
+    /// 本机监控采样器（2026-10-21 性能）：**全部本地会话共享一个实例**——
+    /// sysinfo 的三张表（CPU 差分/网络/磁盘）跨轮复用才有效，逐会话各建会让
+    /// N 个标签做 N 份每 5s 的全量刷新（含 IOKit/statfs I/O）。Mutex 串行化
+    /// 采样轮，持锁毫秒级。
+    pub(crate) local_sampler: Arc<Mutex<ottr_monitor::LocalSampler>>,
     pub(crate) host_key_asks: HostKeyAsks,
     /// 在途传输的取消令牌（Task 10）：键 = transfer_id；传输结束由任务自清。
     pub(crate) transfers: TransferMap,

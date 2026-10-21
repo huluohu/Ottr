@@ -73,6 +73,7 @@ describe("createCommandWatch", () => {
       "",
       "ls: /nonexistent: No such file or directory",
     ]);
+    fire(133, "D;1"); // 启动状态报告（watch 首个 D 恒为 rc 初始化的 $?，被门卫吞）
     active.cursorY = 1; // A：提示符行
     fire(133, "A");
     active.cursorY = 2; // C：光标已到下一行行首
@@ -87,6 +88,7 @@ describe("createCommandWatch", () => {
 
   it("exit 0 不触发诊断（成功不打扰）", () => {
     const { fire, onCommandDone } = setup(["$ true", ""]);
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     fire(133, "C");
     fire(133, "D;0");
@@ -95,6 +97,7 @@ describe("createCommandWatch", () => {
 
   it("D 无退出码不触发诊断（shell 未上报，安全侧）", () => {
     const { fire, onCommandDone } = setup(["$ x", ""]);
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     fire(133, "C");
     fire(133, "D");
@@ -104,6 +107,7 @@ describe("createCommandWatch", () => {
   it("多行命令：A..C 之间多行都提取", () => {
     const { fire, active, onCommandDone } = setup(["cmd1 \\", "  && cmd2", ""]);
     active.cursorY = 0;
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     active.cursorY = 2;
     fire(133, "C");
@@ -116,6 +120,7 @@ describe("createCommandWatch", () => {
 
   it("缺 C 事件（只发 D 的集成形态）回退取光标上一行，且标记 integrated=false（缺陷 45）", () => {
     const { fire, active, onCommandDone } = setup(["prev", "$ bad-command", ""]);
+    fire(133, "D"); // 首个 D = 启动状态报告（被门卫吞）
     active.cursorY = 2; // D 时光标在输出后
     fire(133, "D;127");
     expect(onCommandDone).toHaveBeenCalledWith({ exitCode: 127, command: "$ bad-command" });
@@ -126,6 +131,7 @@ describe("createCommandWatch", () => {
     // 「光标上一行」是输出行而非命令行——事件必须携带 integrated=false，
     // 供历史入库保守停用（宁缺勿污）。
     const { fire, active, onCommandFinished } = setup(["$ tail -f app.log", "12:00 INFO tick", ""]);
+    fire(133, "D"); // 首个 D = 启动状态报告（被门卫吞）
     active.cursorY = 2; // D 时上一行 = 输出行（污染源）
     fire(133, "D;0");
     expect(onCommandFinished).toHaveBeenCalledWith({
@@ -138,6 +144,7 @@ describe("createCommandWatch", () => {
 
   it("缺陷 45：A/C/D 全边界（Ottr 注入的完整集成）→ finished 事件 integrated=true", () => {
     const { fire, onCommandFinished } = setup(["$ git status", ""]);
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     fire(133, "C");
     fire(133, "D;0");
@@ -152,6 +159,7 @@ describe("createCommandWatch", () => {
   it("缺陷 45：C 边界标记逐命令复位（上轮 true 不泄漏到下轮 D-only）", () => {
     const { fire, active, onCommandFinished } = setup(["$ a", "", "$ b", "out", ""]);
     active.cursorY = 0;
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     active.cursorY = 1;
     fire(133, "C");
@@ -172,6 +180,7 @@ describe("createCommandWatch", () => {
     const lines = Array.from({ length: 13 }, (_, i) => `line-${i}`);
     const { fire, active, onCommandDone } = setup(lines, 10);
     active.cursorY = 0;
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A"); // promptRow = 10
     active.cursorY = 1;
     fire(133, "C"); // 提取 [10,11) = line-10
@@ -182,6 +191,7 @@ describe("createCommandWatch", () => {
   it("同一 watch 连续多轮：上一轮状态复位", () => {
     const { fire, active, onCommandDone } = setup(["$ a", "", "$ b", ""]);
     active.cursorY = 0;
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     active.cursorY = 1;
     fire(133, "C");
@@ -199,6 +209,7 @@ describe("createCommandWatch", () => {
 
   it("T15：exit 0 也发 onCommandFinished（历史全量入库，诊断仍不触发）", () => {
     const { fire, onCommandFinished, onCommandDone } = setup(["$ git status", ""]);
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     fire(133, "C");
     fire(133, "D;0");
@@ -213,6 +224,7 @@ describe("createCommandWatch", () => {
 
   it("T15：D 无退出码 → finished 带 exitCode=null（历史照记，诊断不触发）", () => {
     const { fire, onCommandFinished, onCommandDone } = setup(["$ x", ""]);
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     fire(133, "C");
     fire(133, "D");
@@ -230,6 +242,7 @@ describe("createCommandWatch", () => {
     // 提示符时点集成片段先发 7（当前目录）再 A：precmd 顺序 D→A→7 的稳态是
     // 「本条命令运行前 lastCwd 已就位」
     fire(7, "file://web01/srv/ottr");
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     fire(133, "C");
     fire(133, "D;0");
@@ -244,6 +257,7 @@ describe("createCommandWatch", () => {
   it("T15：OSC 7 percent 解码 + 非 file 前缀/坏序列不认", () => {
     const { fire, onCommandFinished } = setup(["$ ls", ""]);
     fire(7, "file://web01/my%20docs");
+    fire(133, "D"); // 启动状态报告（被门卫吞）
     fire(133, "A");
     fire(133, "C");
     fire(133, "D;0");
@@ -288,5 +302,44 @@ describe("parseOsc7Cwd", () => {
     expect(parseOsc7Cwd("file://web01/bad%ZZ")).toBe("/bad%ZZ");
     expect(parseOsc7Cwd("file://web01")).toBeNull();
     expect(parseOsc7Cwd("kitty-cwd:///x")).toBeNull();
+  });
+
+  // 2026-10-21 启动门卫：watch 的首个 D 恒为 shell 启动状态报告（rc 初始化的
+  // $?），只消费不触发——修「打开本地终端即弹 exit 1 诊断」（用户实测）。
+  it("首个 D（无论退出码）不触发诊断、不发 finished；第二个 D 恢复评估", () => {
+    const onCommandDone = vi.fn();
+    const onCommandFinished = vi.fn();
+    const { term, fire, active } = fakeTerm(["muniu@spock:~$", ""]);
+    createCommandWatch(term, { onCommandDone, onCommandFinished });
+    fire(133, "D;1"); // 启动状态报告（用户 rc 尾命令失败 → 1）
+    expect(onCommandDone).not.toHaveBeenCalled();
+    expect(onCommandFinished).not.toHaveBeenCalled();
+    // 首提示符：A 落定后门卫解除；zsh 每轮 precmd 先 D 后 A（命令 D 前必有上轮 A）
+    active.cursorY = 1;
+    fire(133, "A");
+    fire(133, "D;1"); // 用户命令失败（正常诊断路径；无 C → 回退提取，integrated=false）
+    expect(onCommandDone).toHaveBeenCalledWith({
+      exitCode: 1,
+      command: "muniu@spock:~$",
+    });
+    expect(onCommandFinished).toHaveBeenCalledTimes(1);
+  });
+
+  it("resetCycle（重连/重开新 shell）后重新门卫", () => {
+    const onCommandDone = vi.fn();
+    const { term, fire, active } = fakeTerm(["$ echo hi", ""]);
+    const watch = createCommandWatch(term, { onCommandDone });
+    fire(133, "D"); // 启动 D（吞）
+    active.cursorY = 0;
+    fire(133, "A");
+    active.cursorY = 1;
+    fire(133, "C");
+    fire(133, "D;2"); // 正常命令失败 → 门卫已解除
+    expect(onCommandDone).toHaveBeenCalledWith({ exitCode: 2, command: "$ echo hi" });
+    // 重连：新 shell 实例 → 周期状态清零 → 首个 D 重新受启动门卫
+    watch.resetCycle();
+    fire(133, "D;1");
+    expect(onCommandDone).toHaveBeenCalledTimes(1);
+    watch.dispose();
   });
 });

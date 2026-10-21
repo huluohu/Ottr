@@ -120,6 +120,96 @@ pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
 /// 消费方在前端 update/autoCheck.ts；Rust 侧只管写入校验（枚举白名单）。
 pub const SETTING_UPDATE_CHECK_MODE: &str = "update.check_mode";
 pub const UPDATE_CHECK_MODES: [&str; 3] = ["off", "startup", "interval"];
+/// 快捷键覆盖表（2026-10-21 改键设置）：动作 id → 加速串（平台中性
+/// `CmdOrCtrl+Shift+K` 形态，CmdOrCtrl 三平台同语义）。消费方在 frontend
+/// registry（生效查询）与 desktop menu.rs（mac 菜单重建）；Rust 只管写入
+/// 校验（对象形态 / 条数 / 键形 / 加速串形态与修饰键要求）。
+pub const SETTING_SHORTCUT_OVERRIDES: &str = "shortcuts.overrides";
+pub const SHORTCUT_OVERRIDES_MAX_ENTRIES: usize = 64;
+
+/// 加速串形态校验（shortcuts.overrides 值）：`修饰键(1-3 段) + 单键`；
+/// 修饰键白名单 {CmdOrCtrl, Ctrl, Shift, Alt}，**至少一个非 Shift 修饰键**
+/// （裸 Shift 键位在输入 anywhere 误触——frontend M-4 纪律同源）；
+/// 单键 ≤16 字符、非空（`+` 是分隔符，不可表达）。
+fn is_f_key(key: &str) -> bool {
+    let bytes = key.as_bytes();
+    bytes.len() >= 2
+        && (bytes[0] == b'f' || bytes[0] == b'F')
+        && bytes[1..].iter().all(|b| b.is_ascii_digit())
+        && key[1..]
+            .parse::<u8>()
+            .map(|n| (1..=24).contains(&n))
+            .unwrap_or(false)
+}
+
+fn validate_shortcut_accel(accel: &str) -> std::result::Result<(), String> {
+    let parts: Vec<&str> = accel.split('+').map(str::trim).collect();
+    if parts.is_empty() || parts.len() > 4 {
+        return Err(format!(
+            "accelerator must be 1-4 `+`-separated parts, got {accel:?}"
+        ));
+    }
+    // 单段 = 纯功能键（注册表先例：app.toggleFullscreen 的 F11）；必须 F 系，
+    // 裸字母/数字/符号单段无修饰键照样拒绝（下方 has_real_mod 兜底）。
+    // 单段 = 纯功能键（注册表先例：app.toggleFullscreen 的 F11）：F 系放行，
+    // 其余单段（裸字母/数字/符号）在下方无修饰键检查中拒绝。
+    if parts.len() == 1 && !is_f_key(parts[0]) {
+        return Err(format!(
+            "single-part accelerator must be an F-key, got {accel:?}"
+        ));
+    }
+    let key = parts[parts.len() - 1];
+    if key.is_empty() || key.len() > 16 {
+        return Err(format!("accelerator key must be 1-16 chars, got {key:?}"));
+    }
+    if parts.len() >= 2 {
+        let has_real_mod = parts[..parts.len() - 1]
+            .iter()
+            .any(|p| matches!(*p, "CmdOrCtrl" | "Ctrl" | "Alt"));
+        if !has_real_mod {
+            return Err(format!(
+                "accelerator requires CmdOrCtrl/Ctrl/Alt modifier, got {accel:?}"
+            ));
+        }
+    }
+    for part in &parts[..parts.len() - 1] {
+        if !matches!(*part, "CmdOrCtrl" | "Ctrl" | "Shift" | "Alt") {
+            return Err(format!("unknown accelerator modifier: {part:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// [`SETTING_SHORTCUT_OVERRIDES`] 值校验：JSON 对象、≤64 条、键为动作
+/// id 形态（大小写字母/数字/点/下划线）、值为合法加速串。未知动作 id 不在此层拒绝（动作表在前端，Rust
+/// 不持有副本——坏 id 只是永不命中的死条目，加载侧逐条净化）。
+fn validate_shortcut_overrides(value: &serde_json::Value) -> std::result::Result<(), String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| format!("{SETTING_SHORTCUT_OVERRIDES} must be a JSON object"))?;
+    if obj.len() > SHORTCUT_OVERRIDES_MAX_ENTRIES {
+        return Err(format!(
+            "{SETTING_SHORTCUT_OVERRIDES} exceeds {SHORTCUT_OVERRIDES_MAX_ENTRIES} entries"
+        ));
+    }
+    for (id, accel) in obj {
+        if id.is_empty()
+            || id.len() > 64
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+        {
+            return Err(format!(
+                "{SETTING_SHORTCUT_OVERRIDES}: bad action id {id:?}"
+            ));
+        }
+        let accel = accel.as_str().ok_or_else(|| {
+            format!("{SETTING_SHORTCUT_OVERRIDES}: {id} expects a string accelerator")
+        })?;
+        validate_shortcut_accel(accel).map_err(|e| format!("{SETTING_SHORTCUT_OVERRIDES}: {e}"))?;
+    }
+    Ok(())
+}
 
 /// 已知 settings 键的写入校验（越界/类型错显式拒绝，不静默收敛——写入侧拒绝
 /// 比读取侧收敛更能暴露 bug；读取侧仍收敛兜底，见 desktop security.rs *_from）。
@@ -189,6 +279,7 @@ pub fn validate_known_setting(
             )),
             _ => Err(format!("{SETTING_RECORDING_SAVE_DIR} expects a string")),
         },
+        SETTING_SHORTCUT_OVERRIDES => validate_shortcut_overrides(value),
         // B9（Phase 3 Task 6）：指纹巡检开关/间隔 + sudo 自动填充开关
         SETTING_HOSTKEY_AUDIT => bool_value(key, value),
         SETTING_HOSTKEY_AUDIT_INTERVAL => {
@@ -340,5 +431,94 @@ mod tests {
             );
         }
         assert!(validate_known_setting("ui.theme", &serde_json::json!(1)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod shortcut_overrides_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_well_formed_override_map() {
+        let v = serde_json::json!({
+            "palette.toggle": "CmdOrCtrl+Shift+K",
+            "session.splitDown": "Ctrl+Alt+D",
+            "view.zoom_in": "F2"
+        });
+        assert!(validate_known_setting(SETTING_SHORTCUT_OVERRIDES, &v).is_ok());
+    }
+
+    #[test]
+    fn rejects_bad_shapes_and_values() {
+        // 非对象
+        assert!(
+            validate_known_setting(SETTING_SHORTCUT_OVERRIDES, &serde_json::json!([])).is_err()
+        );
+        // 键形态（空串非法；大写驼峰是合法动作 id 形态）
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "": "CmdOrCtrl+K" })
+            )
+            .is_err()
+        );
+        // 值非串
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "palette.toggle": 3 })
+            )
+            .is_err()
+        );
+        // 裸 Shift（无非 Shift 修饰键）
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "palette.toggle": "Shift+K" })
+            )
+            .is_err()
+        );
+        // 裸字母（无修饰键）
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "palette.toggle": "K" })
+            )
+            .is_err()
+        );
+        // 未知修饰键
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "palette.toggle": "Hyper+K" })
+            )
+            .is_err()
+        );
+        // `+` 分隔符破碎（空键段）
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "palette.toggle": "CmdOrCtrl++" })
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn alt_and_fkey_are_valid_no_cmd_modifiers() {
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "palette.toggle": "Alt+K" })
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_known_setting(
+                SETTING_SHORTCUT_OVERRIDES,
+                &serde_json::json!({ "app.toggleFullscreen": "F11" })
+            )
+            .is_ok()
+        );
     }
 }

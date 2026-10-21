@@ -32,6 +32,7 @@ use crate::vault::VaultState;
 pub const MENU_ACTION_EVENT: &str = "ottr://menu-action";
 /// 前端语言切换通知（载荷为空，语义 = 「用 vault settings 现值重建菜单」）。
 pub const UI_LANG_EVENT: &str = "ottr://ui-language";
+const SHORTCUTS_CHANGED_EVENT: &str = "ottr://shortcuts-changed";
 /// 托盘 id（重建菜单文案时按 id 取回 TrayIcon）。
 pub const TRAY_ID: &str = "ottr-tray";
 /// 关窗到托盘开关（vault settings 键；0 = 关）。
@@ -77,6 +78,56 @@ fn menu_lang<R: Runtime>(app: &AppHandle<R>) -> Lang {
     app.try_state::<VaultState>()
         .map(|v| lang_from_vault(&v.0))
         .unwrap_or(Lang::En)
+}
+
+/// 快捷键改键（2026-10-21 改键设置）：从 vault settings 读覆盖表（动作 id →
+/// 加速串）。读取失败/坏条目 → 逐条跳过（错误恢复：覆盖只是增强面，任何
+/// 异常都回落默认键位，绝不让改键数据打断菜单）。menu_lang 的 try_state
+/// 同款兜底：vault 未就绪 → 空表（默认键位），vault-ready 重建时纠偏。
+/// mac 专属：原生 app 菜单只在 mac 构建（win/linux 汉堡菜单走前端
+/// shortcutLabel，覆盖天然生效）。
+#[cfg(target_os = "macos")]
+fn shortcut_overrides<R: Runtime>(app: &AppHandle<R>) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    if let Some(vault) = app.try_state::<VaultState>() {
+        let raw = ottr_vault::Settings::get(&vault.0, ottr_vault::SETTING_SHORTCUT_OVERRIDES)
+            .unwrap_or(None);
+        if let Some(obj) = raw.as_ref().and_then(|v| v.as_object()) {
+            for (id, accel) in obj {
+                if let Some(a) = accel.as_str() {
+                    out.insert(id.clone(), a.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// 把覆盖表写进菜单树（只改镜像动作的 accelerator；未知 id / 空串跳过——
+/// 错误恢复：坏条目回落默认键位）。就地修改。mac 专属（同上）。
+#[cfg(target_os = "macos")]
+fn apply_accel_overrides(
+    tree: &mut [MenuNode],
+    overrides: &std::collections::HashMap<String, String>,
+) {
+    for node in tree.iter_mut() {
+        match node {
+            MenuNode::Item {
+                id, accelerator, ..
+            } => {
+                if let Some(accel) = overrides.get(*id)
+                    && !accel.trim().is_empty()
+                {
+                    // MenuNode 持 &'static str：覆盖串 Box::leak 成 'static。
+                    // 刻意的小泄漏（几十字节/次）——重建只发生在启动/改键/语言
+                    // 切换这类稀有事件，量级有界。
+                    *accelerator = Some(accel.clone().leak());
+                }
+            }
+            MenuNode::Sub { items, .. } => apply_accel_overrides(items, overrides),
+            _ => {}
+        }
+    }
 }
 
 /// 菜单文案表（zh/en；PredefinedMenuItem 的系统项文案由系统自动本地化，不进表）。
@@ -1441,6 +1492,9 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
     // 语言切换 → 重建 app 菜单（mac）与托盘菜单文案（前端 setLang 发事件）。
     let handle = app.clone();
     app.listen(UI_LANG_EVENT, move |_| rebuild_menus(&handle));
+    // 快捷键改键（2026-10-21）：覆盖落库后前端发事件 → 重建（加速器换覆盖值）。
+    let handle = app.clone();
+    app.listen(SHORTCUTS_CHANGED_EVENT, move |_| rebuild_menus(&handle));
     Ok(())
 }
 
@@ -1456,15 +1510,26 @@ pub fn on_vault_ready(app: &AppHandle<Wry>) {
 fn rebuild_menus(handle: &AppHandle<Wry>) {
     let lang = menu_lang(handle);
     #[cfg(target_os = "macos")]
-    match build_menu_with_checks(handle, &menu_tree(lang)) {
-        Ok((menu, checks)) => {
-            if let Err(e) = handle.set_menu(menu) {
-                eprintln!("[menu] rebuild failed: {e}");
+    let overrides = shortcut_overrides(handle);
+    #[cfg(target_os = "macos")]
+    {
+        let mut tree = menu_tree(lang);
+        // 快捷键改键（2026-10-21）：覆盖表写进镜像动作的加速器；读失败/坏
+        // 条目在 shortcut_overrides/apply 层已回落默认。构建/set_menu 失败
+        // 保旧菜单（下方 match 的错误臂）。
+        apply_accel_overrides(&mut tree, &overrides);
+        match build_menu_with_checks(handle, &tree) {
+            Ok((menu, checks)) => {
+                if let Err(e) = handle.set_menu(menu) {
+                    eprintln!("[menu] rebuild failed: {e}");
+                }
+                register_theme_checks(handle, checks);
+                let mut tree2 = menu_tree(lang);
+                apply_accel_overrides(&mut tree2, &overrides);
+                register_notify_item(handle, &tree2);
             }
-            register_theme_checks(handle, checks);
-            register_notify_item(handle, &menu_tree(lang));
+            Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
         }
-        Err(e) => eprintln!("[menu] rebuild build failed: {e}"),
     }
     #[cfg(target_os = "macos")]
     crate::dock_menu::rebuild(handle, dock_tree(lang));
@@ -1603,6 +1668,51 @@ mod tests {
         assert!(ids.contains(&"tray.show"));
         assert!(ids.contains(&"hosts.new"));
         assert!(ids.contains(&"tray.quit"));
+    }
+
+    /// 快捷键改键（2026-10-21）：覆盖表写进镜像动作加速器；未知 id 不产生
+    /// 新条目、无覆盖的动作保持默认。（mac 专属函数，同 cfg。）
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn apply_accel_overrides_rewrites_mirror_accel_and_ignores_unknown() {
+        fn collect(tree: &[MenuNode], id: &str) -> Option<String> {
+            for node in tree {
+                match node {
+                    MenuNode::Item {
+                        id: nid,
+                        accelerator,
+                        ..
+                    } if *nid == id => {
+                        return accelerator.as_ref().map(|s| (*s).to_string());
+                    }
+                    MenuNode::Sub { items, .. } => {
+                        if let Some(a) = collect(items, id) {
+                            return Some(a);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        let mut tree = menu_tree(Lang::En);
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert(
+            "palette.toggle".to_string(),
+            "CmdOrCtrl+Shift+K".to_string(),
+        );
+        overrides.insert("no.such.action".to_string(), "CmdOrCtrl+X".to_string());
+        apply_accel_overrides(&mut tree, &overrides);
+        assert_eq!(
+            collect(&tree, "palette.toggle").as_deref(),
+            Some("CmdOrCtrl+Shift+K")
+        );
+        assert_eq!(
+            collect(&tree, "hosts.new").as_deref(),
+            Some("CmdOrCtrl+N"),
+            "无覆盖动作保持默认"
+        );
+        assert_eq!(collect(&tree, "no.such.action"), None);
     }
 
     #[test]

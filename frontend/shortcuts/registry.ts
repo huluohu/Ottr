@@ -256,8 +256,50 @@ export function formatAccelerator(accel: string, plat: Platform): string {
 /** id → 平台展示串（「⌘K」/「Ctrl+K」；无键位 → null）。提示三处引用的出口。 */
 export function shortcutLabel(id: ActionId, plat: Platform): string | null {
   const def = ACTIONS.find((a) => a.id === id);
-  const accel = def ? actionKeys(def, plat) : null;
+  const accel = def ? effectiveAccel(def, plat) : null;
   return accel ? formatAccelerator(accel, plat) : null;
+}
+
+// --- 键位覆盖（2026-10-21 快捷键改键设置）-------------------------------------
+// 覆盖表：动作 id → 加速串（平台中性，CmdOrCtrl 三平台同语义）。**空 = 出厂
+// 键位**，匹配/提示/菜单走的分支与无覆盖时逐字节一致；设置→快捷键写，App
+// 启动装载（装载完成前走默认值，无空窗态）。错误恢复纪律：装载逐条校验，
+// 坏条目单条丢弃（store 侧），本层只信拿到的表。
+
+export type OverrideMap = Partial<Record<ActionId, string>>;
+
+let OVERRIDES: OverrideMap = {};
+let overridesVersionCounter = 0;
+const overridesListeners = new Set<() => void>();
+
+/** 应用覆盖表（整表替换；调用方负责先校验与持久化）。 */
+export function applyOverrides(map: OverrideMap): void {
+  OVERRIDES = { ...map };
+  overridesVersionCounter += 1;
+  for (const fn of overridesListeners) fn();
+}
+
+/** 覆盖表快照（只读副本；设置页展示/同步面）。 */
+export function overridesSnapshot(): OverrideMap {
+  return { ...OVERRIDES };
+}
+
+/** 版本号（每次应用 +1）：提示组件订阅它以在覆盖变化时重渲染。 */
+export function overridesVersion(): number {
+  return overridesVersionCounter;
+}
+
+/** 订阅覆盖变化（useSyncExternalStore 消费面）。 */
+export function subscribeOverrides(fn: () => void): () => void {
+  overridesListeners.add(fn);
+  return () => {
+    overridesListeners.delete(fn);
+  };
+}
+
+/** 生效键位 = 覆盖优先、缺省兜底（该平台未注册 → null）。 */
+function effectiveAccel(def: ActionDef, plat: Platform): string | null {
+  return OVERRIDES[def.id] ?? actionKeys(def, plat);
 }
 
 // --- 键盘事件匹配 -------------------------------------------------------------
@@ -312,7 +354,7 @@ export function matchActionEvent(
   inTerminal = false,
 ): ActionId | null {
   for (const def of ACTIONS) {
-    const accel = actionKeys(def, plat);
+    const accel = effectiveAccel(def, plat);
     if (accel && matchesAccelerator(e, accel)) {
       if (inTerminal && !terminalSafeHit(def, accel)) return null;
       return def.id;
@@ -345,11 +387,12 @@ export function isTerminalTarget(target: EventTarget | null): boolean {
 
 // --- 开发期冲突检测 -----------------------------------------------------------
 
-/** 同平台下同键位被多个动作绑定 → 返回冲突描述（空 = 无冲突）。纯函数，测试直测。 */
-export function findConflicts(plat: Platform): string[] {
+/** 同平台下同键位被多个动作绑定 → 返回冲突描述（空 = 无冲突）。纯函数，测试直测。
+ * `overrides`（改键设置草稿/生效表）：冲突按「覆盖优先」的生效键位计算。 */
+export function findConflicts(plat: Platform, overrides: OverrideMap = {}): string[] {
   const byKey = new Map<string, string[]>();
   for (const def of ACTIONS) {
-    const accel = actionKeys(def, plat);
+    const accel = overrides[def.id] ?? actionKeys(def, plat);
     if (!accel) continue;
     const norm = accel.split("+").map((p) => p.trim().toLowerCase()).sort().join("+");
     byKey.set(norm, [...(byKey.get(norm) ?? []), def.id]);
@@ -359,10 +402,30 @@ export function findConflicts(plat: Platform): string[] {
     .map(([norm, ids]) => `${plat}: ${norm} -> ${ids.join(", ")}`);
 }
 
+/** 生效键位（覆盖优先）的冲突分组（改键设置校验面）：同平台同键位被 ≥2 个
+ * 动作绑定时返回这些动作 id 的分组；空 = 无冲突。纯函数，测试直测。 */
+export function findConflictGroups(
+  overrides: OverrideMap,
+  plat: Platform,
+): ActionId[][] {
+  const byKey = new Map<string, ActionId[]>();
+  for (const def of ACTIONS) {
+    const accel = overrides[def.id] ?? actionKeys(def, plat);
+    if (!accel) continue;
+    const norm = accel
+      .split("+")
+      .map((p) => p.trim().toLowerCase())
+      .sort()
+      .join("+");
+    byKey.set(norm, [...(byKey.get(norm) ?? []), def.id]);
+  }
+  return [...byKey.values()].filter((ids) => ids.length > 1);
+}
+
 /** 开发期哨兵（import.meta.env.DEV；构建期零开销）。 */
 export function warnShortcutConflicts(): void {
   if (import.meta.env.DEV) {
-    for (const c of (["mac", "win", "linux"] as const).flatMap(findConflicts)) {
+    for (const c of (["mac", "win", "linux"] as const).flatMap((plat) => findConflicts(plat))) {
       console.warn(`[shortcuts] conflict: ${c}`);
     }
   }

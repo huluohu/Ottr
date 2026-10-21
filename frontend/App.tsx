@@ -40,6 +40,7 @@ import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
 import { initAlertEngine } from "./notify/rules";
+import { initShortcutOverrides } from "./shortcuts/store";
 import { remountChannels } from "./notify/channelRegistry";
 import { initMonitorEvents } from "./monitor/events";
 import { initBatchEvents } from "./batch/events";
@@ -288,6 +289,7 @@ function HomeLayout() {
         // 失败由 store.error 驱动主区错误横幅；恢复跳过（无主机可查）
       }
       await initSessionEvents();
+      await initShortcutOverrides();
       await initTransferEvents();
       // T12（spec §7）：通知管线接线（transfer-end / session-closed → 中心）。
       // 在事件源初始化之后挂（管线订阅既有事件，顺序无依赖，晚挂只漏启动窗口期事件）。

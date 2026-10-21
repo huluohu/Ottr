@@ -30,6 +30,7 @@ import { SyncSettings } from "../sync/SyncSettings";
 import { AISettings } from "../ai/AISettings";
 import { getVersion } from "@tauri-apps/api/app";
 import { AlertSettings } from "../notify/AlertSettings";
+import { ShortcutSettings } from "./ShortcutSettings";
 import { McpSettings } from "./McpSettings";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { DialogClose } from "../ui/DialogClose";
@@ -85,6 +86,7 @@ export type SettingsPane =
   | "security"
   | "sync"
   | "alerts"
+  | "shortcuts"
   | "mcp"
   | "appearance"
   | "ai"
@@ -94,6 +96,7 @@ const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
   { id: "security", labelKey: "settings.sectionSecurity" },
   { id: "sync", labelKey: "settings.sectionSync" },
   { id: "alerts", labelKey: "settings.sectionAlerts" },
+  { id: "shortcuts", labelKey: "settings.sectionShortcuts" },
   { id: "mcp", labelKey: "settings.sectionMcp" },
   { id: "appearance", labelKey: "settings.sectionAppearance" },
   { id: "ai", labelKey: "settings.sectionAi" },
@@ -856,6 +859,18 @@ export function SecuritySettings({
             >
               <PaneErrorBoundary label="alerts" fallbackText={t("settings.panelError")}>
                 <AlertSettings open />
+              </PaneErrorBoundary>
+            </div>
+
+            {/* --- 快捷键（2026-10-21 改键设置：列表/捕获/冲突校验/恢复默认）--- */}
+            <div
+              role="tabpanel"
+              aria-label={t("settings.sectionShortcuts")}
+              hidden={pane !== "shortcuts"}
+              data-testid="shortcuts-pane"
+            >
+              <PaneErrorBoundary label="shortcuts" fallbackText={t("settings.panelError")}>
+                <ShortcutSettings />
               </PaneErrorBoundary>
             </div>
 

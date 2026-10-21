@@ -387,6 +387,26 @@
   position: absolute;
   z-index: 2;
   border-radius: var(--radius-sm);
+  /* 静止态细线（2026-10-21 用户反馈「屏之间加一个浅浅的分割线」）：命中面
+     整条 6px 保持透明可抓拽，视觉线 = 居中 1px 半透明前景——亮暗主题自适应。 */
+  color: var(--fg-muted);
+}
+.split-divider::before {
+  content: "";
+  position: absolute;
+  background: color-mix(in srgb, currentColor 28%, transparent);
+}
+.split-divider[data-dir="row"]::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+.split-divider[data-dir="column"]::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
 }
 .split-divider[data-dir="row"] {
   cursor: col-resize;

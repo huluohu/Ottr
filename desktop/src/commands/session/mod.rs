@@ -18,8 +18,8 @@ mod relay;
 mod shell_integration;
 
 pub(crate) use attach::{
-    app_restart, attach_host_session, attach_session, disconnect_all_inner, drop_session, quit_app,
-    session_disconnect_all,
+    app_restart, attach_host_session, attach_session, disconnect_all_inner, disconnect_all_local,
+    drop_session, quit_app, session_disconnect_all,
 };
 pub(crate) use hostkey::{host_key_decision, tofu_host_key_policy};
 pub use relay::{SessionCloseReason, forward_pty_loop};

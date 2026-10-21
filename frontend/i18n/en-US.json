@@ -198,6 +198,7 @@
     "placeholder": "Search commands you've run…",
     "empty": "No matching commands",
     "hostAll": "All hosts",
+    "hostLocal": "This machine",
     "hostFilter": "Filter by host",
     "insertHint": "Enter inserts into the current terminal",
     "unknownHost": "unknown host",
@@ -360,6 +361,8 @@
     "clearScreen": "Clear screen",
     "encoding": "Encoding",
     "splitRight": "Split right",
+    "splitMax": "Up to {{max}} panes",
+    "splitTooSmall": "Not enough room for another pane",
     "splitDown": "Split down",
     "closePane": "Close pane",
     "menuAria": "Terminal context menu",
@@ -529,6 +532,7 @@
     "viewFiles": "Files",
     "notConnected": "This tab is not connected. Connect to browse remote files.",
     "localPane": "Local files",
+    "localMachinePane": "This machine",
     "remotePane": "Remote files",
     "localPath": "Local path",
     "remotePath": "Remote path",
@@ -548,6 +552,7 @@
       "chmod": "Change permissions of \"{{name}}\"",
       "delete": "Delete \"{{name}}\"",
       "edit": "Edit \"{{name}}\"",
+      "openWith": "Open \"{{name}}\"",
       "stopEdit": "Stop editing \"{{name}}\"",
       "download": "Download \"{{name}}\"",
       "downloadToLocal": "Download to local folder",
@@ -841,6 +846,7 @@
     "waiting": "Waiting for the first sample… (read-only sampling every 5s while connected)",
     "stopped": "Sampling stopped (session lost?) — reconnect to resume.",
     "disconnected": "No host connected yet. The panel shows CPU / memory / disk / load / network for the current connection — connect to a host and enable monitoring in the host form or on the Overview page.",
+    "localHint": "Sampling this machine (CPU / memory / disk / load / network) every 5s by default.",
     "monitorHint": "Read-only sampling of the connected host (cat /proc, df -k), every 5s by default; Linux remotes only."
   },
   "overview": {
@@ -853,6 +859,7 @@
     "enabling": "Enabling…",
     "enableFailed": "Failed to enable monitoring for {{host}}: {{message}}",
     "notConnected": "Not connected",
+    "localMachine": "This machine",
     "procButton": "Processes"
   },
   "process": {

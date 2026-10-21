@@ -16,7 +16,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { showToast } from "../ui/toastStore";
-import { vaultApi, type AlertRule, type AlertRuleKind, type ChannelKind, type Host, type NotifyChannel } from "../vault/api";
+import {
+  LOCAL_HOST_FILTER,
+  vaultApi,
+  type AlertRule,
+  type AlertRuleKind,
+  type ChannelKind,
+  type Host,
+  type NotifyChannel,
+} from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { engine } from "./rules";
 import { remountChannels, testChannel } from "./channelRegistry";
@@ -323,7 +331,8 @@ export function AlertSettings({ open }: AlertSettingsProps) {
                 interval_secs: Math.max(5, Math.floor(Number(interval) || 10)),
               };
     const input = {
-      host_id: Number(ruleDraft.host_id),
+      // 本机哨兵 -1 → NULL（0024：alert_rules.host_id 可空，NULL = 本机）
+      host_id: Number(ruleDraft.host_id) === LOCAL_HOST_FILTER ? null : Number(ruleDraft.host_id),
       kind: ruleDraft.kind,
       params,
       channels: ruleDraft.channels,
@@ -347,7 +356,7 @@ export function AlertSettings({ open }: AlertSettingsProps) {
     const p = row.params as Record<string, unknown>;
     setRuleDraft({
       id: row.id,
-      host_id: String(row.host_id),
+      host_id: String(row.host_id ?? LOCAL_HOST_FILTER),
       kind: row.kind,
       params: {
         mount: String(p["mount"] ?? "/"),
@@ -384,7 +393,8 @@ export function AlertSettings({ open }: AlertSettingsProps) {
     });
   }
 
-  function hostName(id: number): string {
+  function hostName(id: number | null): string {
+    if (id === null) return t("nav.localTerminal");
     return hosts.find((h) => h.id === id)?.name ?? `#${id}`;
   }
 
@@ -575,6 +585,7 @@ export function AlertSettings({ open }: AlertSettingsProps) {
                 <span>{t("alert.fieldHost")}</span>
                 <select data-testid="alert-rule-host" value={ruleDraft.host_id} onChange={(e) => setRuleDraft({ ...ruleDraft, host_id: e.currentTarget.value })}>
                   <option value="">—</option>
+                  <option value={LOCAL_HOST_FILTER}>{t("nav.localTerminal")}</option>
                   {hosts.map((h: Host) => (
                     <option key={h.id} value={h.id}>
                       {h.name}

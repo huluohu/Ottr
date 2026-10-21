@@ -302,4 +302,34 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
     expect(err.textContent).toContain("vault is locked");
     expect((screen.getByTestId("overview-monitor-on-5") as HTMLButtonElement).disabled).toBe(false);
   });
+
+  it("本机卡片：已连接本地根会话出现在首位，读监控窗口；点击/进程钮走 onOpenLocal", () => {
+    const onOpenLocal = vi.fn();
+    useSessionStore.setState({
+      sessions: [
+        makeSession({ id: "loc", hostId: -1, kind: "local", rustId: "local-1" }),
+        makeSession({ id: "t1", hostId: 7, rustId: "pty-7" }),
+      ],
+    });
+    useVaultStore.setState({ hosts: [host({ id: 7, name: "web01", monitor_enabled: true })] });
+    useMonitorStore.setState({ windows: { "local-1": win() } });
+    render(<OverviewPage onOpen={vi.fn()} onOpenProcesses={vi.fn()} onOpenLocal={onOpenLocal} />);
+    const grid = screen.getByTestId("overview-grid").children;
+    expect((grid[0] as HTMLElement).dataset.testid).toBe("overview-card-local");
+    expect(screen.getByTestId("overview-card-local").textContent).toMatch(/本机|This machine/);
+    // live 指标来自 local-1 窗口
+    expect(screen.getByTestId("overview-card-local").textContent).toContain("42%");
+    fireEvent.click(screen.getByTestId("overview-proc-local"));
+    expect(onOpenLocal).toHaveBeenCalledWith("loc", "processes");
+  });
+
+  it("无已连接本地会话 → 不渲染本机卡", () => {
+    useSessionStore.setState({
+      sessions: [makeSession({ id: "t1", hostId: 7, rustId: "pty-7" })],
+    });
+    useVaultStore.setState({ hosts: [host({ id: 7, name: "web01", monitor_enabled: true })] });
+    useMonitorStore.setState({ windows: {} });
+    render(<OverviewPage onOpen={vi.fn()} onOpenProcesses={vi.fn()} onOpenLocal={vi.fn()} />);
+    expect(screen.queryByTestId("overview-card-local")).toBeNull();
+  });
 });

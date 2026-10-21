@@ -40,10 +40,10 @@ use tauri::{Emitter, Manager};
 // crate 根消费面（ottr_lib::{forward_pty_loop, SessionCounters, TextTail,
 // SessionCloseReason, inject_shell_integration, ShellIntegrationOutcome} /
 // crate::{AppState, disconnect_all_inner}）经一次 small re-export 保持原路径不变。
-pub(crate) use commands::session::disconnect_all_inner;
 pub use commands::session::{
     SessionCloseReason, ShellIntegrationOutcome, forward_pty_loop, inject_shell_integration,
 };
+pub(crate) use commands::session::{disconnect_all_inner, disconnect_all_local};
 pub(crate) use commands::state::AppState;
 pub use commands::state::{SessionCounters, SessionResizeSlot, SessionStats, TextTail, snapshot};
 // Phase 3 Task 6（B9）：指纹巡检面公开给夹具集成测试（tests/hostkey_fixture.rs：

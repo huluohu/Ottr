@@ -67,7 +67,8 @@ fn now_ts() -> i64 {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HistoryEntry {
     pub id: i64,
-    pub host_id: i64,
+    /// `None` = 本机（本地终端会话；0023 起可空，与 recordings 同口径）。
+    pub host_id: Option<i64>,
     pub command: String,
     pub cwd: Option<String>,
     pub exit_code: Option<i64>,
@@ -80,11 +81,29 @@ pub struct HistoryEntry {
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct HistoryInput {
-    pub host_id: i64,
+    /// `None` = 本机。
+    pub host_id: Option<i64>,
     pub command: String,
     pub cwd: Option<String>,
     pub exit_code: Option<i64>,
     pub session_id: Option<String>,
+}
+
+/// 按主机过滤的哨兵值：⌘R 面板「本机」选项传 `Some(LOCAL_HOST_FILTER)`，命中
+/// `host_id IS NULL` 行。真实主机 id 为 AUTOINCREMENT ≥ 1，-1 永不冲突；
+/// 与前端会话层的 `hostId: -1` 本地哨兵同值（types.ts）。
+pub const LOCAL_HOST_FILTER: i64 = -1;
+
+/// 列表/检索共用的主机过滤 SQL 片段（`:host` 绑定 `Option<i64>`，`col` 为
+/// 带表前缀的 host_id 列名）：`None` = 不过滤；`Some(-1)` = 只看本机
+/// （NULL 行）；`Some(id)` = 只看该主机。三态一处定义，history / summaries /
+/// recordings 三表同用，杜绝按表手抄漂移。
+pub(crate) fn host_filter_sql(col: &str) -> String {
+    format!(
+        "CASE WHEN :host IS NULL THEN 1 \
+              WHEN :host = {LOCAL_HOST_FILTER} THEN {col} IS NULL \
+              ELSE {col} = :host END"
+    )
 }
 
 /// [`HistoryEntry`] 的存储入口。
@@ -93,8 +112,9 @@ pub struct History;
 impl History {
     /// 落一条命令历史并返回完整行（id/ts 由存储层定）；随后顺手执行滚动清理
     /// （超上限的旧行一次删尽；上限 = `history.limit` 配置，未配置/坏值回落
-    /// [`HISTORY_KEEP_ROWS`]，见 [`history_limit_from`]）。host_id 必须指向
-    /// 存在的主机（FK 约束拒绝悬空插入——CASCADE 只管删主机联动删历史）。
+    /// [`HISTORY_KEEP_ROWS`]，见 [`history_limit_from`]）。host_id `Some` 必须指向
+    /// 存在的主机（FK 约束拒绝悬空插入——CASCADE 只管删主机联动删历史）；
+    /// `None` = 本机（本地终端，0023 起）。
     /// command 空白 → [`VaultError::InvalidInput`]（提示符噪声/纯回车在调用方
     /// 已滤，这里是兜底）。
     pub fn insert(vault: &Vault, input: &HistoryInput) -> Result<HistoryEntry> {
@@ -145,18 +165,18 @@ impl History {
 
     /// 统一搜索（⌘R 面板取数面）。
     ///
-    /// * `query` 空白 → 忽略（返回最近记录）；`host_id` Some → 附加主机过滤；
+    /// * `query` 空白 → 忽略（返回最近记录）；`host_id` 三态见 [`host_filter_sql`]
+    ///   （`None` 全部 / `Some(-1)` 本机 / `Some(id)` 该主机）；
     /// * ≥3 字符（按字符数，CJK 同权重）→ history_fts MATCH（短语引号包裹）；
     /// * <3 字符 → command LIKE 兜底（`%_\` 转义）；
     /// * 排序一律 id DESC（≈时间倒序，最近优先），`limit` 下限 1。
     ///
     /// 参数纪律：只有两条 SQL（FTS / LIKE），共用同一组具名占位符（`:match`
     /// `:host` `:limit`，两条全都出现）+ 同一组绑定——空查询 = LIKE `%%`（匹配
-    /// 全部，即「最近记录」初始态），`host_id = None` 走 `:host IS NULL` 恒假支。
-    /// 分支间只差 SQL 文本与 `:match` 取值，杜绝按分支手抄参数表的漂移面。
-    /// 代价是 host 过滤分支不走 idx_history_host_id（OR-IS NULL 形态挡住索引；
-    /// 5 万行全扫毫秒级，⌘R 是键入节流的交互查询——该索引的真消费方是 FK 级联
-    /// 删除路径）。
+    /// 全部，即「最近记录」初始态）。分支间只差 SQL 文本与 `:match` 取值，
+    /// 杜绝按分支手抄参数表的漂移面。代价是 host 过滤分支不走
+    /// idx_history_host_id（CASE 形态挡住索引；5 万行全扫毫秒级，⌘R 是键入
+    /// 节流的交互查询——该索引的真消费方是 FK 级联删除路径）。
     pub fn search(
         vault: &Vault,
         query: &str,
@@ -165,22 +185,27 @@ impl History {
     ) -> Result<Vec<HistoryEntry>> {
         let q = query.trim();
         let limit_i64 = limit.max(1) as i64;
+        let host_filter = host_filter_sql("history.host_id");
         // 分派（spec §3 + T4 同款）：≥3 字符走 FTS MATCH，其余（含空查询）LIKE 兜底
-        let (match_val, sql): (String, &str) = if q.chars().count() >= 3 {
+        let (match_val, sql): (String, String) = if q.chars().count() >= 3 {
             (
                 match_query(q),
-                "SELECT history.* FROM history, history_fts
-                 WHERE history.id = history_fts.rowid AND history_fts MATCH :match
-                   AND (:host IS NULL OR history.host_id = :host)
-                 ORDER BY history.id DESC LIMIT :limit",
+                format!(
+                    "SELECT history.* FROM history, history_fts
+                     WHERE history.id = history_fts.rowid AND history_fts MATCH :match
+                       AND {host_filter}
+                     ORDER BY history.id DESC LIMIT :limit"
+                ),
             )
         } else {
             (
                 format!("%{}%", escape_like(q)),
-                "SELECT * FROM history
-                 WHERE command LIKE :match ESCAPE '\\'
-                   AND (:host IS NULL OR history.host_id = :host)
-                 ORDER BY id DESC LIMIT :limit",
+                format!(
+                    "SELECT * FROM history
+                     WHERE command LIKE :match ESCAPE '\\'
+                       AND {host_filter}
+                     ORDER BY id DESC LIMIT :limit"
+                ),
             )
         };
         let args: [(&str, &dyn rusqlite::ToSql); 3] = [
@@ -189,7 +214,7 @@ impl History {
             (":limit", &limit_i64),
         ];
         let conn = vault.connection();
-        let mut stmt = conn.prepare(sql)?;
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt
             .query_map(args.as_slice(), row_to_entry)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -199,18 +224,19 @@ impl History {
     /// 会话维度的命令序列（Task 7 会话纪要的数据源契约）：某会话
     /// （host_id + session_id）最近 `limit` 条命令，**按 id 升序（≈ ts 时序）**
     /// 返回——纪要 prompt 按时间顺序装配。明文面：锁定可读（同 insert/search）。
+    /// `host_id = None` 匹配本机会话（`IS` 比较 NULL 安全）。
     /// limit 缺省 [`HISTORY_SESSION_LIMIT`]（超长会话只摘最近 N 条，prompt 体量
     /// 护栏；DELETE 路径不存在——history 只插入与滚动清理）。
     pub fn list_session(
         vault: &Vault,
-        host_id: i64,
+        host_id: Option<i64>,
         session_id: &str,
         limit: usize,
     ) -> Result<Vec<HistoryEntry>> {
         let conn = vault.connection();
         let mut stmt = conn.prepare(
             "SELECT * FROM history
-             WHERE host_id = ?1 AND session_id = ?2
+             WHERE host_id IS ?1 AND session_id = ?2
              ORDER BY id DESC LIMIT ?3",
         )?;
         let mut rows = stmt

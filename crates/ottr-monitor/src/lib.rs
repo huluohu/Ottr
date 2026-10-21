@@ -33,6 +33,7 @@
 //! ```
 
 pub mod collect;
+pub mod local;
 pub mod log;
 pub mod metrics;
 pub mod parse;
@@ -40,6 +41,7 @@ pub mod proc;
 pub mod task;
 
 pub use collect::{COMPOSITE_CMD, MonitorError, collect};
+pub use local::{LocalSampler, collect_log_tail_local, collect_ps_local, kill_process_local};
 pub use log::{LogTailSample, collect_log_tail, log_path_is_safe, log_stat_cmd, log_tail_cmd};
 pub use metrics::{Metrics, RawSample};
 pub use parse::{DiskEntry, LoadAvg, MemInfo, NetCounters, StatCounters};

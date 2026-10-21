@@ -32,12 +32,18 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type { Host } from "../vault/api";
 import {
   closeLeaf,
+  layout,
   leaf,
   leaves,
   splitLeaf,
   setRatioAt,
+  MAX_PANES,
+  MIN_PANE_PX,
+  SPLIT_GAP,
   type PaneTree,
+  type Rect,
 } from "../terminal/split";
+import { showToast } from "../ui/toastStore";
 // 以下四个模块自本文件拆出（2026-10-08 遗留项②，公共 API 经 export * 原样）：
 // types（状态机类型）/ encoding（编码纯函数）/ retry（退避与本地设置）/
 // terminal（终端 sink 注册表 + 收尾钩子）。store 动作面共享同一 set()，
@@ -92,6 +98,8 @@ interface SessionStore {
   settings: SessionSettings;
   /** 分屏 pane 树（Task 8）：键 = 标签根会话 id；树叶 id = 会话 id。 */
   trees: Record<string, PaneTree>;
+  /** 标签画布像素尺寸（分屏最小尺寸预判输入）。 */
+  paneBounds: Record<string, Rect>;
   /** 各标签的聚焦 pane（键 = 标签根 id；分屏/搜索/右键菜单的目标）。 */
   activePane: Record<string, string>;
   /** 搜索栏打开时目标会话 id（null = 关闭；右键菜单「搜索」/⌘F 置位）。 */
@@ -129,6 +137,8 @@ interface SessionStore {
 
   // --- 分屏（Task 8） -------------------------------------------------------
   /** 在标签的聚焦 pane 处分裂（dir 透传 split.ts），新 pane 连同一主机并聚焦。 */
+  /** 画布尺寸回写（TerminalArea 布局面；分屏最小尺寸预判的输入）。 */
+  setPaneBounds: (tabId: string, rect: Rect) => void;
   splitPane: (tabId: string, dir: "row" | "column") => void;
   /** 关闭单个 pane（根 pane = 关标签）；兄弟子树提升，聚焦移交给存活 pane。 */
   closePane: (sessionId: string) => void;
@@ -244,6 +254,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   settings: { maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS },
   trees: {},
   activePane: {},
+  /** 标签画布像素尺寸（TerminalArea 的 ResizeObserver 回写）：分屏前做最小
+   * 尺寸预判用。缺标签键 = 未知（跳过预判，放行）。 */
+  paneBounds: {} as Record<string, Rect>,
   searchSessionId: null,
 
   loadSettings: () => set({ settings: loadSettings() }),
@@ -324,6 +337,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encoding: "utf-8",
       encodingHint: null,
       isProduction: false,
+      // 本机监控无需主机行开关：连接即采样（与 connect 的 isLocal 分支同口径）
+      monitorEnabled: true,
     };
     set((st) => ({
       sessions: [...st.sessions, session],
@@ -518,7 +533,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // attach 成功即开（仅根——分屏 pane 与根同主机，多份采样纯浪费）。
       // 会话收尾（关标签/断开）由 Rust 侧 session_down 摘除采样任务，前端
       // 无需对位 stop；重连 = 新 rustId = 新采样窗口。
-      if (session.monitorEnabled && session.paneOf === null && !isLocal) {
+      // 本地终端连接即采样（本机无主机行/开关面，sysinfo 5s 一次成本可忽略——
+      // 2026-10-20 用户裁定「进程+监控都接本机」）；SSH 沿主机行开关。
+      if ((session.monitorEnabled || isLocal) && session.paneOf === null) {
         void invoke("monitor_start", { id: rustId }).catch(() => {});
       }
     } catch (e) {
@@ -685,11 +702,37 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   // --- 分屏（Task 8） -------------------------------------------------------
 
+  /** 画布尺寸回写（TerminalArea 布局面）。 */
+  setPaneBounds: (tabId, rect) => {
+    set((s0) => ({ paneBounds: { ...s0.paneBounds, [tabId]: rect } }));
+  },
+
   splitPane: (tabId, dir) => {
     const st = get();
     const root = st.sessions.find((s) => s.id === tabId && s.paneOf === null);
     const tree = st.trees[tabId];
     if (!root || !tree) return;
+    // 数量上限（入口全覆盖：工具行/右键菜单在此前置灰，快捷键/⌘K 走本守卫）
+    if (leaves(tree).length >= MAX_PANES) {
+      showToast(i18n.t("terminal.splitMax", { max: MAX_PANES }));
+      return;
+    }
+    // 最小尺寸预判：锚点 pane 对半后必须仍有可用宽/高（未知画布尺寸时放行）
+    const bounds = st.paneBounds[tabId];
+    if (bounds && bounds.w > 0 && bounds.h > 0) {
+      const anchor = st.activePane[tabId] ?? tabId;
+      const anchorRect = layout(tree, bounds).get(anchor);
+      if (anchorRect) {
+        const halfW = (anchorRect.w - SPLIT_GAP) / 2;
+        const halfH = (anchorRect.h - SPLIT_GAP) / 2;
+        const tooSmall =
+          dir === "row" ? halfW < MIN_PANE_PX.w : halfH < MIN_PANE_PX.h;
+        if (tooSmall) {
+          showToast(i18n.t("terminal.splitTooSmall"));
+          return;
+        }
+      }
+    }
     const from = st.activePane[tabId] ?? tabId;
     // 聚焦 pane 可能刚被关闭等竞态清掉：回退到树的第一个存活叶
     const anchor = leaves(tree).includes(from) ? from : leaves(tree)[0];
@@ -697,6 +740,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const newId = newSessionId();
     const paneSession: Session = {
       id: newId,
+      kind: root.kind, // pane 与标签同源：本地标签分屏 = 再开一个本地 PTY，不按 hostId 连主机
       hostId: root.hostId,
       hostName: root.hostName,
       address: root.address,

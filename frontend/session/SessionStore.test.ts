@@ -31,6 +31,8 @@ import {
   type Session,
   type SessionEndInfo,
 } from "./SessionStore";
+import { leaves, MAX_PANES } from "../terminal/split";
+import { useToastStore } from "../ui/toastStore";
 import type { Host } from "../vault/api";
 
 const mockedInvoke = invoke as unknown as Mock;
@@ -954,5 +956,85 @@ describe("SessionStore 本地终端", () => {
     expect(session).toBeTruthy(); // 标签保留
     expect(session?.attempt).toBe(0); // 没有安排重连
     expect(session?.status).toBe("connected");
+  });
+
+  // 2026-10-20 用户实测：本地标签分屏报「连接失败：host id=-1 not found」——
+  // splitPane 复制根会话字段时漏了 kind，pane 被当 SSH 会话拿哨兵 hostId 连主机。
+  it("本地标签分屏：pane 继承 kind=local，连接走 local_term_open 而非 attach_host_session", async () => {
+    let opens = 0;
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "local_term_open") return Promise.resolve(`local-${++opens}`);
+      if (cmd === "attach_host_session") return Promise.reject(new Error("host id=-1 not found"));
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    const store = useSessionStore.getState();
+    const tab = store.openLocalTab();
+    await vi.waitFor(() => {
+      expect(useSessionStore.getState().sessions.find((s) => s.id === tab)?.rustId).toBe("local-1");
+    });
+    useSessionStore.getState().splitPane(tab, "row");
+    const pane = useSessionStore.getState().sessions.find((s) => s.paneOf === tab);
+    expect(pane?.kind).toBe("local");
+    await vi.waitFor(() => {
+      const p = useSessionStore.getState().sessions.find((s) => s.paneOf === tab);
+      expect(p?.status).toBe("connected");
+      expect(p?.rustId).toBe("local-2");
+    });
+    expect(mockedInvoke).not.toHaveBeenCalledWith("attach_host_session", expect.anything());
+  });
+});
+
+// 2026-10-21 用户问询后定案：每标签上限 4 块 pane（2×2）+ 分屏前最小尺寸
+// 预判。守卫单点在 splitPane（工具行/右键菜单前置灰只是呈现，快捷键/⌘K 走
+// 这里弹 toast），测试钉行为不钉入口。
+describe("分屏上限与最小尺寸", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "attach_host_session") return Promise.resolve(`pty-${Math.random()}`);
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    localStorage.removeItem(OPEN_TABS_KEY);
+    resetStore();
+  });
+
+  function leafCount(tabId: string): number {
+    const tree = useSessionStore.getState().trees[tabId];
+    return tree ? leaves(tree).length : 0;
+  }
+
+  it("第 5 块 pane 拒绝：不新增会话、弹 toast", async () => {
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().setPaneBounds(tab, { x: 0, y: 0, w: 4000, h: 2000 });
+    while (leafCount(tab) < 4) {
+      useSessionStore.getState().splitPane(tab, leafCount(tab) % 2 === 0 ? "row" : "column");
+    }
+    expect(leafCount(tab)).toBe(MAX_PANES);
+    const before = useSessionStore.getState().sessions.length;
+    const showSpy = vi.spyOn(useToastStore.getState(), "show");
+    useSessionStore.getState().splitPane(tab, "row");
+    expect(leafCount(tab)).toBe(MAX_PANES);
+    expect(useSessionStore.getState().sessions.length).toBe(before);
+    expect(showSpy).toHaveBeenCalledTimes(1);
+    showSpy.mockRestore();
+  });
+
+  it("锚点 pane 对半后小于最小像素：拒绝并弹 toast", async () => {
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    // 画布 240px 宽：row 对半后 117px < MIN_PANE_PX.w(160)
+    useSessionStore.getState().setPaneBounds(tab, { x: 0, y: 0, w: 240, h: 900 });
+    const before = useSessionStore.getState().sessions.length;
+    const showSpy = vi.spyOn(useToastStore.getState(), "show");
+    useSessionStore.getState().splitPane(tab, "row");
+    expect(leafCount(tab)).toBe(1);
+    expect(showSpy).toHaveBeenCalledTimes(1);
+    // 画布足够宽时同方向放行
+    useSessionStore.getState().setPaneBounds(tab, { x: 0, y: 0, w: 4000, h: 900 });
+    useSessionStore.getState().splitPane(tab, "row");
+    expect(leafCount(tab)).toBe(2);
+    expect(useSessionStore.getState().sessions.length).toBe(before + 1);
+    showSpy.mockRestore();
   });
 });

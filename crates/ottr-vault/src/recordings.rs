@@ -112,17 +112,21 @@ impl Recordings {
         })
     }
 
-    /// 最近录制（⌘R「录制」页签初始态）：id DESC，`host_id` Some → 附加过滤，
-    /// `limit` 下限 1（缺省 [`RECORDINGS_SEARCH_LIMIT`]）。
+    /// 最近录制（⌘R「录制」页签初始态）：id DESC，`host_id` 三态见
+    /// [`crate::history::host_filter_sql`]，`limit` 下限 1（缺省
+    /// [`RECORDINGS_SEARCH_LIMIT`]）。
     pub fn list(vault: &Vault, host_id: Option<i64>, limit: usize) -> Result<Vec<RecordingEntry>> {
         let conn = vault.connection();
-        let mut stmt = conn.prepare(
+        let host_filter = crate::history::host_filter_sql("host_id");
+        let limit_i64 = limit.max(1) as i64;
+        let mut stmt = conn.prepare(&format!(
             "SELECT * FROM recordings
-             WHERE (?1 IS NULL OR host_id = ?1)
-             ORDER BY id DESC LIMIT ?2",
-        )?;
+             WHERE {host_filter}
+             ORDER BY id DESC LIMIT :limit"
+        ))?;
+        let args: [(&str, &dyn rusqlite::ToSql); 2] = [(":host", &host_id), (":limit", &limit_i64)];
         let rows = stmt
-            .query_map(params![host_id, limit.max(1) as i64], row_to_entry)?
+            .query_map(args.as_slice(), row_to_entry)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -148,6 +152,7 @@ impl Recordings {
         limit: usize,
     ) -> Result<Vec<RecordingHit>> {
         let q = query.trim();
+        let host_filter = crate::history::host_filter_sql("r.host_id");
         let like_snip = "substr(recordings_fts.content,
                      max(1, ifnull(instr(recordings_fts.content, :raw), 0) - 40), 120) AS snip";
         let (match_val, sql): (String, &str) = if q.chars().count() >= 3 {
@@ -157,7 +162,7 @@ impl Recordings {
                  snippet(recordings_fts, 0, '[', ']', '…', 24) AS snip
                  FROM recordings_fts JOIN recordings r ON r.id = recordings_fts.recording_id
                  WHERE recordings_fts MATCH :match
-                   AND (:host IS NULL OR r.host_id = :host)
+                   AND ({host_filter})
                  ORDER BY r.id DESC LIMIT :limit",
             )
         } else {
@@ -166,11 +171,12 @@ impl Recordings {
                 "SELECT r.*, {like_snip}
                  FROM recordings_fts JOIN recordings r ON r.id = recordings_fts.recording_id
                  WHERE recordings_fts.content LIKE :match ESCAPE '\\'
-                   AND (:host IS NULL OR r.host_id = :host)
+                   AND ({host_filter})
                  ORDER BY r.id DESC LIMIT :limit",
             )
         };
         let sql = sql.replace("{like_snip}", like_snip);
+        let sql = sql.replace("{host_filter}", &host_filter);
         let limit_i64 = limit.max(1) as i64;
         // 两分支参数面不同：FTS 分支的 snippet() 是列内函数，不吃 :raw
         // （rusqlite 对「绑定但未使用」的具名参数报 InvalidParameterName），

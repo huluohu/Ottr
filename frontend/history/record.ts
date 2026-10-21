@@ -21,7 +21,8 @@ import type { CommandFinishedEvent } from "../terminal/CommandWatch";
 
 /** 入库上下文（会话维度的归属字段，调用方从 SessionStore 现取）。 */
 export interface RecordContext {
-  hostId: number;
+  /** null = 本机（本地终端；见 session/types.ts vaultHostId）。 */
+  hostId: number | null;
   /** 前端会话 id（标签 uuid，跨重连稳定；rustId 每次重连都换，不用）。 */
   sessionId: string;
 }

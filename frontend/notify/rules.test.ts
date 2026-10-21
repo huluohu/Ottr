@@ -264,6 +264,38 @@ describe("接线面", () => {
     expect((notified[0] as { title_key: string }).title_key).toBe("alert.title.cpu");
   });
 
+  // 0024 本机规则：host_id NULL 规则只吃本地会话采样（hostId -1 哨兵），
+  // 主机规则不吃本地采样、本机规则也不吃主机采样。
+  it("本机规则：NULL host_id 命中 hostId -1 采样；主机规则不被本地采样触发", async () => {
+    const notified: NotificationEvent[] = [];
+    setAlertEngineDeps({
+      now: () => 1_700_000_000_000,
+      notify: async (e) => {
+        notified.push(e);
+        return true;
+      },
+      touchFired: async () => {},
+      fetchProcesses: async () => [],
+      fetchLogTail: async () => ({ inode: null, size: 0, data: "", data_bytes: 0 }),
+      hostByRustId: (rustId) =>
+        rustId === "local-1" ? { hostId: -1, hostName: "本地终端" } : { hostId: 7, hostName: "web-01" },
+      sessionByHost: (hostId) =>
+        hostId === -1 ? { rustId: "local-1", hostName: "本地终端" } : null,
+    });
+    const engine = new AlertEngine();
+    (engine as unknown as { rules: AlertRule[] }).rules = [
+      rule({ id: 8, host_id: null, kind: "cpu", params: { threshold: 80, consecutive: 2 } }),
+      rule({ id: 9, host_id: 7, kind: "cpu", params: { threshold: 80, consecutive: 1 } }),
+    ];
+    await engine.onMonitorSample("local-1", metrics({ cpu_percent: 90 }));
+    expect(notified).toHaveLength(0); // 本机规则 1/2；主机规则不吃本地采样
+    await engine.onMonitorSample("local-1", metrics({ cpu_percent: 90 }));
+    expect(notified).toHaveLength(1);
+    expect(
+      (notified[0] as { host_id: number | null }).host_id,
+    ).toBeNull();
+  });
+
   it("pollProcesses：按主机去重一次 ps；进程消失 fire；采集失败不动快照", async () => {
     const { deps: baseDeps, notified } = engineDeps();
     const engine = new AlertEngine();

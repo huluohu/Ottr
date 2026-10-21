@@ -22,7 +22,7 @@ import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { useEscClose } from "../ui/useEscClose";
 import { useTranslation } from "react-i18next";
 import type { Host, HistoryEntry, SummaryEntry } from "../vault/api";
-import { vaultApi } from "../vault/api";
+import { LOCAL_HOST_FILTER, vaultApi } from "../vault/api";
 import { useDebouncedValue } from "../hosts/useDebouncedValue";
 import { historyPreview, historyTime } from "./format";
 import { highlightRanges } from "../palette/fuzzy";
@@ -158,8 +158,11 @@ export function HistorySearch({
   useEscClose(open, onClose);
   if (!mount.shouldRender) return null;
 
-  const hostName = (id: number): string =>
-    hosts.find((h) => h.id === id)?.name ?? t("history.unknownHost");
+  // host_id null = 本机（本地终端会话，0023 起历史/纪要以 NULL 落库）
+  const hostName = (id: number | null): string =>
+    id === null
+      ? t("nav.localTerminal")
+      : (hosts.find((h) => h.id === id)?.name ?? t("history.unknownHost"));
 
   function runItem(entry: HistoryEntry | undefined) {
     if (!entry) return;
@@ -275,6 +278,7 @@ export function HistorySearch({
             }}
           >
             <option value="">{t("history.hostAll")}</option>
+            <option value={LOCAL_HOST_FILTER}>{t("history.hostLocal")}</option>
             {hosts.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.name}

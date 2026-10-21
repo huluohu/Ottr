@@ -26,9 +26,10 @@ use super::state::{
 
 /// 取会话的 SFTP 客户端（懒开 + 缓存；会话不存在/已死显式报错）。
 /// pub(crate)：remote_edit 域（Phase 2 Task 3）复用同一条懒开通道。
-/// **SFTP 专属**：FTP 会话（Phase 2 Task 5）在此显式报错——远端编辑依赖
-/// SFTP 的读写原语（open_remote_text/write_remote_text），FTP 面板本期
-/// 不提供编辑（FilePanel 菜单按协议隐藏，前端接线）。
+/// **SFTP 专属**：FTP 会话（Phase 2 Task 5）与本地终端会话（2026-10-20）在此
+/// 显式报错——远端编辑依赖 SFTP 的读写原语（open_remote_text/write_remote_text），
+/// FTP 面板本期不提供编辑；本地会话的「编辑」由前端直接用系统默辑器打开
+/// 本机文件（FilePanel 菜单按会话种类分流）。
 pub(crate) async fn sftp_for(
     state: &AppState,
     id: &str,
@@ -36,6 +37,11 @@ pub(crate) async fn sftp_for(
     if state.ftp_sessions.lock().unwrap().contains_key(id) {
         return Err(format!(
             "session {id} is an FTP/FTPS session: remote edit requires SSH (SFTP)"
+        ));
+    }
+    if state.local_sessions.lock().unwrap().contains_key(id) {
+        return Err(format!(
+            "session {id} is a local terminal: open the file directly instead of remote edit"
         ));
     }
     let (session, cached) = {
@@ -68,12 +74,98 @@ pub(crate) async fn sftp_for(
     Ok(client)
 }
 
-/// FilePanel 远端操作客户端的两态（Phase 2 Task 5）：SSH 会话 → SFTP，
-/// FTP/FTPS 会话 → FtpClient。命令面（sftp_* 命令名不变）按会话表分派，
-/// 前端零感知。
+/// FilePanel 远端操作客户端的三态：SSH 会话 → SFTP，FTP/FTPS 会话 → FtpClient
+/// （Phase 2 Task 5），本地终端会话 → 本机文件系统（2026-10-20：本地会话的
+/// 「远端栏」就是这台机器，双栏同源可浏览/整理/复制）。命令面（sftp_* 命令名
+/// 不变）按会话表分派，前端零感知。
 pub(crate) enum FileClient {
     Sftp(Arc<ottr_transfer::SftpClient>),
     Ftp(Arc<ottr_transfer::FtpClient>),
+    Local,
+}
+
+/// 本机文件系统操作统一下 spawn_blocking（网络盘/大目录可能秒级阻塞，不得
+/// 冻结 UI——与 local_list 同口径）；io 错误映射为传输层 `Error::Io`。
+async fn local_fs<T: Send + 'static>(
+    f: impl FnOnce() -> std::io::Result<T> + Send + 'static,
+) -> ottr_transfer::Result<T> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| ottr_transfer::Error::Protocol {
+            message: format!("local fs join error: {e}"),
+            source: None,
+        })?
+        .map_err(ottr_transfer::Error::Io)
+}
+
+/// 本机主目录（本地会话远端栏 `realpath(".")` 的落点；与 local_term 的 cwd
+/// 同源：HOME，Windows 回落 USERPROFILE）。
+fn local_home_dir() -> std::io::Result<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .ok_or_else(|| std::io::Error::other("home directory unavailable (HOME/USERPROFILE unset)"))
+}
+
+fn local_stat_sync(path: &str) -> std::io::Result<ottr_transfer::DirEntry> {
+    let meta = std::fs::metadata(path)?;
+    let name = Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string());
+    Ok(dir_entry_from_meta(name, &meta))
+}
+
+fn dir_entry_from_meta(name: String, meta: &std::fs::Metadata) -> ottr_transfer::DirEntry {
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs().min(u32::MAX as u64) as u32)
+        .unwrap_or(0);
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode()
+    };
+    #[cfg(not(unix))]
+    let mode = 0u32;
+    ottr_transfer::DirEntry {
+        name,
+        is_dir: meta.is_dir(),
+        size: meta.len(),
+        mode,
+        mtime,
+    }
+}
+
+fn local_list_dir_sync(path: &str) -> std::io::Result<Vec<ottr_transfer::DirEntry>> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(path)? {
+        let Ok(entry) = entry else { continue }; // 竞态删除等瞬时错误跳过（目录列表容忍）
+        let Ok(meta) = entry.metadata() else { continue };
+        out.push(dir_entry_from_meta(
+            entry.file_name().to_string_lossy().into_owned(),
+            &meta,
+        ));
+    }
+    out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+    Ok(out)
+}
+
+fn local_chmod_sync(path: &str, mode: u32) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, mode);
+        Err(std::io::Error::other(
+            "chmod is not supported on this platform",
+        ))
+    }
 }
 
 impl FileClient {
@@ -82,14 +174,46 @@ impl FileClient {
         match self {
             FileClient::Sftp(c) => c.stat(path).await,
             FileClient::Ftp(c) => c.stat(path).await,
+            FileClient::Local => {
+                let p = path.to_string();
+                local_fs(move || local_stat_sync(&p)).await
+            }
         }
     }
 
-    /// 路径解析（FTP 仅 `.` 展开，见 ftp.rs 模块文档）。
+    /// 路径解析（FTP 仅 `.` 展开，见 ftp.rs 模块文档；本机 `.`/空 = 主目录，
+    /// 其余 canonicalize）。
     pub(crate) async fn realpath(&self, path: &str) -> ottr_transfer::Result<String> {
         match self {
             FileClient::Sftp(c) => c.realpath(path).await,
             FileClient::Ftp(c) => c.realpath(path).await,
+            FileClient::Local => {
+                let p = path.to_string();
+                local_fs(move || {
+                    let resolved = if p.is_empty() || p == "." {
+                        local_home_dir()?
+                    } else {
+                        std::fs::canonicalize(&p)?
+                    };
+                    Ok(resolved.to_string_lossy().into_owned())
+                })
+                .await
+            }
+        }
+    }
+
+    /// 列目录。
+    pub(crate) async fn list_dir(
+        &self,
+        path: &str,
+    ) -> ottr_transfer::Result<Vec<ottr_transfer::DirEntry>> {
+        match self {
+            FileClient::Sftp(c) => c.list_dir(path).await,
+            FileClient::Ftp(c) => c.list_dir(path).await,
+            FileClient::Local => {
+                let p = path.to_string();
+                local_fs(move || local_list_dir_sync(&p)).await
+            }
         }
     }
 
@@ -98,6 +222,10 @@ impl FileClient {
         match self {
             FileClient::Sftp(c) => c.mkdir(path).await,
             FileClient::Ftp(c) => c.mkdir(path).await,
+            FileClient::Local => {
+                let p = path.to_string();
+                local_fs(move || std::fs::create_dir(&p)).await
+            }
         }
     }
 
@@ -106,6 +234,10 @@ impl FileClient {
         match self {
             FileClient::Sftp(c) => c.rename(from, to).await,
             FileClient::Ftp(c) => c.rename(from, to).await,
+            FileClient::Local => {
+                let (f, t) = (from.to_string(), to.to_string());
+                local_fs(move || std::fs::rename(&f, &t)).await
+            }
         }
     }
 
@@ -114,30 +246,46 @@ impl FileClient {
         match self {
             FileClient::Sftp(c) => c.remove_file(path).await,
             FileClient::Ftp(c) => c.remove_file(path).await,
+            FileClient::Local => {
+                let p = path.to_string();
+                local_fs(move || std::fs::remove_file(&p)).await
+            }
         }
     }
 
-    /// 删除空目录。
+    /// 删除空目录（本机同 SFTP 语义：非空目录由 remove_dir 拒绝，显式失败优于误删）。
     pub(crate) async fn remove_dir(&self, path: &str) -> ottr_transfer::Result<()> {
         match self {
             FileClient::Sftp(c) => c.remove_dir(path).await,
             FileClient::Ftp(c) => c.remove_dir(path).await,
+            FileClient::Local => {
+                let p = path.to_string();
+                local_fs(move || std::fs::remove_dir(&p)).await
+            }
         }
     }
 
-    /// chmod（`mode` 为完整 POSIX 权限位；FTP 走 SITE CHMOD，仅 9 位语义）。
+    /// chmod（`mode` 为完整 POSIX 权限位；FTP 走 SITE CHMOD，仅 9 位语义；
+    /// 本机仅 unix 支持，Windows 显式报错）。
     pub(crate) async fn chmod(&self, path: &str, mode: u32) -> ottr_transfer::Result<()> {
         match self {
             FileClient::Sftp(c) => c.chmod(path, mode).await,
             FileClient::Ftp(c) => c.chmod(path, mode & 0o777).await,
+            FileClient::Local => {
+                let p = path.to_string();
+                local_fs(move || local_chmod_sync(&p, mode)).await
+            }
         }
     }
 }
 
-/// 取会话的远端操作客户端（SSH 表优先，FTP 表兜底；都未命中显式报错）。
+/// 取会话的远端操作客户端（SSH 表 → 本地表 → FTP 表；都未命中显式报错）。
 async fn file_client_for(state: &AppState, id: &str) -> Result<FileClient, String> {
     if state.sessions.lock().unwrap().contains_key(id) {
         return Ok(FileClient::Sftp(sftp_for(state, id).await?));
+    }
+    if state.local_sessions.lock().unwrap().contains_key(id) {
+        return Ok(FileClient::Local);
     }
     super::ftp::ftp_for(state, id).await.map(FileClient::Ftp)
 }
@@ -149,11 +297,7 @@ pub(crate) async fn sftp_list(
     path: String,
 ) -> Result<Vec<ottr_transfer::DirEntry>, String> {
     let client = file_client_for(&state, &id).await?;
-    match client {
-        FileClient::Sftp(c) => c.list_dir(&path).await,
-        FileClient::Ftp(c) => c.list_dir(&path).await,
-    }
-    .map_err(|e| e.to_string())
+    client.list_dir(&path).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -185,11 +329,7 @@ pub(crate) async fn sftp_mkdir_all(
     path: String,
 ) -> Result<(), String> {
     let client = file_client_for(&state, &id).await?;
-    let exists = match &client {
-        FileClient::Sftp(c) => c.stat(&path).await.is_ok(),
-        FileClient::Ftp(c) => c.stat(&path).await.is_ok(),
-    };
-    if exists {
+    if client.stat(&path).await.is_ok() {
         return Ok(()); // 已存在（目录或同名文件）：交给后续传输报同名文件错误
     }
     client.mkdir(&path).await.map_err(|e| e.to_string())
@@ -538,8 +678,10 @@ fn spawn_transfer(
         // Fix round 1 C-1a：**done 即删 journal**——journal 只为「未完成、可续传」
         // 存在；完成后保留会让同身份重传全命中（0 chunk + 稀疏全零文件/远端旧
         // 内容）并报 done，即静默数据损坏。取消/失败保留（续传语义）。
+        // NotFound 不记错：本机复制（本地终端会话）不写 journal，文件本就不存在。
         if status == "done"
             && let Err(e) = std::fs::remove_file(&journal_path)
+            && e.kind() != std::io::ErrorKind::NotFound
         {
             eprintln!(
                 "[transfer:{transfer_id}] journal cleanup failed ({}): {e}",
@@ -561,6 +703,54 @@ fn spawn_transfer(
     });
 }
 
+/// 本地会话的「传输」= 本机文件复制（2026-10-20）：下载/上传在本地终端的
+/// 文件面板里都是同一台机器的两个目录之间搬文件。无分块/无 journal（std::fs::copy
+/// 一次到底，取消令牌在开始前检查一次），完成后发一帧满进度让进度条收口。
+/// **同文件守卫**：源与目标 canonicalize 相等时拒绝——`std::fs::copy` 把文件
+/// 复制到自身会先截断再读，等于清空该文件。
+async fn local_copy_transfer(
+    from: PathBuf,
+    to: PathBuf,
+    cancel: ottr_transfer::CancelToken,
+    hook: ottr_transfer::ProgressHook,
+) -> ottr_transfer::Result<ottr_transfer::TransferStats> {
+    if cancel.is_cancelled() {
+        return Err(ottr_transfer::Error::Cancelled);
+    }
+    let started = Instant::now();
+    let total = local_fs(move || {
+        let src = std::fs::canonicalize(&from)?;
+        if src.is_dir() {
+            return Err(std::io::Error::other(format!(
+                "{} is a directory (directory copy walks files one by one)",
+                from.display()
+            )));
+        }
+        if let Ok(dst) = std::fs::canonicalize(&to)
+            && dst == src
+        {
+            return Err(std::io::Error::other(format!(
+                "source and destination are the same file: {}",
+                src.display()
+            )));
+        }
+        std::fs::copy(&src, &to)
+    })
+    .await?;
+    hook(ottr_transfer::TransferProgress {
+        transferred: total,
+        total,
+        chunks_done: 1,
+        chunks_total: 1,
+    });
+    Ok(ottr_transfer::TransferStats {
+        total_bytes: total,
+        chunks_total: 1,
+        chunks_resumed: 0,
+        elapsed: started.elapsed(),
+    })
+}
+
 /// 下载（远端 → 本地）。`local` 缺省 = 下载目录/远端文件名（MVP 降级裁定：
 /// 「拖出到 Finder」不可行，以「下载到下载目录」+ 提示替代）。
 #[tauri::command]
@@ -573,11 +763,12 @@ pub(crate) async fn sftp_download(
     local: Option<String>,
 ) -> Result<TransferStarted, String> {
     // 传输后端分派（Phase 2 Task 5）：SSH 会话 → SshSession（SFTP 并行分块），
-    // FTP 会话 → FtpClient（线性 + REST）。端点为 journal scope 身份（两种
-    // 后端同语义：跨主机不共享续传）。
+    // FTP 会话 → FtpClient（线性 + REST），本地终端会话 → 本机复制。端点为
+    // journal scope 身份（跨主机不共享续传；本机复制不写 journal）。
     enum Backend {
         Ssh(Arc<ottr_ssh::SshSession>),
         Ftp(Arc<ottr_transfer::FtpClient>),
+        Local,
     }
     let ssh_lookup = state
         .sessions
@@ -585,8 +776,10 @@ pub(crate) async fn sftp_download(
         .unwrap()
         .get(&id)
         .map(|e| (Arc::clone(&e.session), e.endpoint.clone()));
+    let is_local = state.local_sessions.lock().unwrap().contains_key(&id);
     let (backend, endpoint) = match ssh_lookup {
         Some((session, endpoint)) => (Backend::Ssh(session), endpoint),
+        None if is_local => (Backend::Local, "local".to_string()),
         None => (
             Backend::Ftp(super::ftp::ftp_for(&state, &id).await?),
             super::ftp::ftp_endpoint(&state, &id)?,
@@ -657,6 +850,9 @@ pub(crate) async fn sftp_download(
                     )
                     .await
             }
+            Backend::Local => {
+                local_copy_transfer(PathBuf::from(remote_fut), local_fut, cancel_fut, hook).await
+            }
         }
     };
     spawn_transfer(
@@ -685,10 +881,12 @@ pub(crate) async fn sftp_upload(
     local: String,
     remote_dir: String,
 ) -> Result<TransferStarted, String> {
-    // 传输后端分派（与 sftp_download 同款）：SSH → SshSession，FTP → FtpClient。
+    // 传输后端分派（与 sftp_download 同款）：SSH → SshSession，FTP → FtpClient，
+    // 本地终端 → 本机复制。
     enum Backend {
         Ssh(Arc<ottr_ssh::SshSession>),
         Ftp(Arc<ottr_transfer::FtpClient>),
+        Local,
     }
     let ssh_lookup = state
         .sessions
@@ -696,8 +894,10 @@ pub(crate) async fn sftp_upload(
         .unwrap()
         .get(&id)
         .map(|e| Arc::clone(&e.session));
+    let is_local = state.local_sessions.lock().unwrap().contains_key(&id);
     let backend = match ssh_lookup {
         Some(session) => Backend::Ssh(session),
+        None if is_local => Backend::Local,
         None => Backend::Ftp(super::ftp::ftp_for(&state, &id).await?),
     };
     let local_path = PathBuf::from(&local);
@@ -758,6 +958,9 @@ pub(crate) async fn sftp_upload(
                         Some(hook),
                     )
                     .await
+            }
+            Backend::Local => {
+                local_copy_transfer(local_fut, PathBuf::from(remote_fut), cancel_fut, hook).await
             }
         }
     };
@@ -888,5 +1091,64 @@ mod local_write_tests {
             std::fs::read(dest_dir.join("pkg.deb")).unwrap(),
             b"v2-longer"
         );
+    }
+}
+
+/// 本地会话远端栏（FileClient::Local）的同步核单测：stat/list 往返、chmod
+/// unix 权限位。async 壳（local_fs）不在此测——tauri 异步运行时不在单测面。
+#[cfg(test)]
+mod local_file_client_tests {
+    use super::{local_chmod_sync, local_list_dir_sync, local_stat_sync};
+
+    struct TempDir(std::path::PathBuf);
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "ottr-local-fc-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn stat_and_list_roundtrip_dirs_first() {
+        let tmp = TempDir::new("roundtrip");
+        let sub = tmp.0.join("子目录");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(tmp.0.join("a.txt"), b"12345").unwrap();
+
+        let st = local_stat_sync(sub.to_str().unwrap()).unwrap();
+        assert_eq!(st.name, "子目录");
+        assert!(st.is_dir);
+
+        let rows = local_list_dir_sync(tmp.0.to_str().unwrap()).unwrap();
+        let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["子目录", "a.txt"], "目录在前，其余按名排序");
+        let file = rows.iter().find(|r| r.name == "a.txt").unwrap();
+        assert!(!file.is_dir);
+        assert_eq!(file.size, 5);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chmod_sets_permission_bits() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = TempDir::new("chmod");
+        let f = tmp.0.join("script.sh");
+        std::fs::write(&f, b"#!/bin/sh\n").unwrap();
+        local_chmod_sync(f.to_str().unwrap(), 0o755).unwrap();
+        let mode = std::fs::metadata(&f).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755);
     }
 }

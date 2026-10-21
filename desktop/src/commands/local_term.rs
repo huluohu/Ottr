@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -69,13 +69,93 @@ pub(crate) struct LocalSessionEntry {
 /// 登录参数（`-l`）白名单：bash/zsh/sh 系读 profile；其余（含测试假身
 /// `cat`、fish 等不支持或语义不同的）不加——`cat -l` 是非法选项。
 fn takes_login_flag(path: &str) -> bool {
-    let base = path.rsplit('/').next().unwrap_or(path);
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     matches!(base, "bash" | "zsh" | "sh" | "ash" | "dash" | "ksh")
 }
 
 /// shell 选择（可测纯函数）：basename 识别 bash/zsh（注入目标）；其余 None。
+/// zsh 启动目录（ZDOTDIR 注入）：四个启动文件都先还原用户 ZDOTDIR 再原样
+/// 加载用户同名文件，`.zshrc` 末尾追加集成钩子（覆盖用户自定义 precmd/preexec
+/// ——与远端注入同语义）。用户未设 ZDOTDIR 时回落 `$HOME`。
+fn write_zsh_startup_dir() -> Option<std::path::PathBuf> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!("ottr-zsh-{:x}-{:x}", std::process::id(), nanos));
+    std::fs::create_dir_all(&dir).ok()?;
+    let restore = |name: &str| {
+        let head = "# Ottr 本地终端集成（生成文件，勿手改）：还原用户启动文件链\n";
+        let branch = r#"case "$OTTR_USER_ZDOTDIR" in "") rc_dir="$HOME" ;; *) rc_dir="$OTTR_USER_ZDOTDIR" ;; esac
+"#;
+        let line = format!(
+            r#"[ -f "$rc_dir/{name}" ] && . "$rc_dir/{name}"
+"#,
+            name = name
+        );
+        format!("{head}{branch}{line}")
+    };
+    for name in [".zshenv", ".zprofile", ".zlogin"] {
+        std::fs::write(dir.join(name), restore(name)).ok()?;
+    }
+    let mut zshrc = restore(".zshrc");
+    zshrc.push_str(&format!("{}\n", ottr_ssh::shell_integration::ZSH_SNIPPET));
+    std::fs::write(dir.join(".zshrc"), zshrc).ok()?;
+    Some(dir)
+}
+
+/// bash 启动文件（--rcfile 注入）：bash 以**非 login 交互**启动时读 rcfile
+/// 代替 ~/.bashrc。生成文件复刻 bash 自身的 login 文件优先序（bash_profile →
+/// bash_login → profile；全缺才回落 .bashrc），末尾追加集成钩子——PATH/别名
+/// 等登录语义不丢，且全程零敲入。
+fn write_bash_rcfile() -> Option<std::path::PathBuf> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join(format!(
+        "ottr-bash-{:x}-{:x}/rcfile",
+        std::process::id(),
+        nanos
+    ));
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    let head = "# Ottr 本地终端集成（生成文件，勿手改）：复刻 login 文件链\n";
+    let chain = concat!(
+        "if [ -f \"$HOME/.bash_profile\" ]; then . \"$HOME/.bash_profile\";\n",
+        "elif [ -f \"$HOME/.bash_login\" ]; then . \"$HOME/.bash_login\";\n",
+        "elif [ -f \"$HOME/.profile\" ]; then . \"$HOME/.profile\";\n",
+        "elif [ -f \"$HOME/.bashrc\" ]; then . \"$HOME/.bashrc\"; fi\n"
+    );
+    let content = format!(
+        "{head}{chain}{}\n",
+        ottr_ssh::shell_integration::BASH_SNIPPET
+    );
+    std::fs::write(&path, content).ok()?;
+    Some(path)
+}
+
+/// sh 系（dash/ash/bash-as-sh）ENV 钩子文件：先 source 用户原 $ENV（非空且
+/// 存在时），再追加 PS1 包装片段（片段自带 `133;D` 幂等护栏）。dash/ash 对
+/// 交互式 shell 读 $ENV——不敲一字节即得 OSC 133。
+fn write_sh_env_file() -> Option<std::path::PathBuf> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path =
+        std::env::temp_dir().join(format!("ottr-sh-{:x}-{:x}/env", std::process::id(), nanos));
+    std::fs::create_dir_all(path.parent()?).ok()?;
+    let head = "# Ottr 本地终端集成（生成文件，勿手改）\n";
+    let chain = r#"[ -n "$OTTR_USER_ENV" ] && [ -f "$OTTR_USER_ENV" ] && . "$OTTR_USER_ENV"
+"#;
+    let content = format!("{head}{chain}{}\n", ottr_ssh::shell_integration::SH_SNIPPET);
+    std::fs::write(&path, content).ok()?;
+    Some(path)
+}
+
 fn shell_kind(path: &str) -> Option<&'static str> {
-    let base = path.rsplit('/').next().unwrap_or(path);
+    // Windows 路径（C:\...\powershell.exe）同样按 \ 切 basename
+    let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     match base {
         "bash" => Some("bash"),
         "zsh" => Some("zsh"),
@@ -84,6 +164,26 @@ fn shell_kind(path: &str) -> Option<&'static str> {
 }
 
 /// 本地登录 shell 路径：`$SHELL` → `/bin/bash` → `/bin/sh`（按存在性兜底）。
+/// Windows：`$SHELL`（git-bash 等用户自设）→ `powershell.exe`（系统盘固定
+/// 位置，Windows 必有）→ `ComSpec`（cmd.exe）——此前的实现会落到不存在的
+/// `/bin/sh`，Windows 本地终端根本起不来（2026-10-21 评估发现）。
+#[cfg(target_os = "windows")]
+fn pick_shell() -> String {
+    if let Ok(shell) = std::env::var("SHELL")
+        && !shell.trim().is_empty()
+        && std::path::Path::new(shell.trim()).exists()
+    {
+        return shell.trim().to_string();
+    }
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+    let powershell = format!("{system_root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    if std::path::Path::new(&powershell).exists() {
+        return powershell;
+    }
+    std::env::var("ComSpec").unwrap_or_else(|_| "cmd.exe".into())
+}
+
+#[cfg(not(target_os = "windows"))]
 fn pick_shell() -> String {
     if let Ok(shell) = std::env::var("SHELL")
         && !shell.trim().is_empty()
@@ -103,15 +203,24 @@ fn pick_shell() -> String {
 #[tauri::command]
 pub(crate) fn local_term_open(
     state: State<'_, AppState>,
+    vault: State<'_, crate::vault::VaultState>,
     app: AppHandle,
     cols: u32,
     rows: u32,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<String, String> {
+    // shell 集成开关（settings `shell.integration`，与 SSH 注入同一设置同一
+    // 收敛语义：缺省开、读取失败兜底开——attach.rs 同款现读）。
+    let integration = crate::security::shell_integration_enabled(
+        ottr_vault::Settings::get(&vault.0, crate::security::SETTING_SHELL_INTEGRATION)
+            .unwrap_or(None)
+            .as_ref(),
+    );
     local_term_open_with(
         Arc::clone(&state.local_sessions),
         Some(app),
         None,
+        integration,
         cols,
         rows,
         on_data,
@@ -124,6 +233,7 @@ pub(crate) fn local_term_open_with(
     local_sessions: LocalTermMap,
     app: Option<AppHandle>,
     shell_override: Option<&str>,
+    integration_enabled: bool,
     cols: u32,
     rows: u32,
     on_data: Channel<InvokeResponseBody>,
@@ -152,11 +262,59 @@ pub(crate) fn local_term_open_with(
     // 能力下限口径。其余环境继承当前进程（CommandBuilder 默认行为）。
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // -NoLogo 是 PowerShell 旗标（powershell/pwsh 均支持）；cmd/git-bash 不加
     #[cfg(target_os = "windows")]
-    cmd.arg("-NoLogo");
+    if shell.to_ascii_lowercase().contains("powershell") {
+        cmd.arg("-NoLogo");
+    }
+    // 启动文件注入（Unix，2026-10-20 敲入全面改型）：不往 PTY 写任何字节——
+    // zsh 用 ZDOTDIR 指向生成目录（四启动文件先原样加载用户同名文件、.zshrc
+    // 末尾追加集成钩子），sh 系用 ENV 钩子文件（先 source 用户 $ENV 再追加
+    // 片段），bash 用 --rcfile（生成文件复刻 login 文件链 bash_profile →
+    // bash_login → profile、无则 .bashrc，末尾追加钩子）。敲入法的根治面：
+    // 无回显竞速、零终端残留、不进历史、不吃 .zshrc 慢初始化（VS Code 终端
+    // 同法）。bash 在 rcfile 模式**不吃 -l**（login 调用会忽略 --rcfile），
+    // 登录语义由生成文件自己复刻。文件落系统临时目录，由 OS 临时目录策略回收。
     #[cfg(not(target_os = "windows"))]
-    if takes_login_flag(&shell) {
+    let bash_rcfile: Option<std::path::PathBuf> = if integration_enabled {
+        match shell_kind(&shell) {
+            Some("zsh") => {
+                if let Some(dir) = write_zsh_startup_dir() {
+                    cmd.env(
+                        "OTTR_USER_ZDOTDIR",
+                        std::env::var_os("ZDOTDIR").unwrap_or_default(),
+                    );
+                    cmd.env("ZDOTDIR", dir);
+                }
+                None
+            }
+            Some("sh") => {
+                if let Some(env_file) = write_sh_env_file() {
+                    cmd.env("OTTR_USER_ENV", std::env::var_os("ENV").unwrap_or_default());
+                    cmd.env("ENV", env_file);
+                }
+                None
+            }
+            Some("bash") => {
+                let rc = write_bash_rcfile();
+                if let Some(path) = &rc {
+                    cmd.arg("--rcfile");
+                    cmd.arg(path);
+                }
+                rc
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    #[cfg(target_os = "windows")]
+    let _ = integration_enabled;
+    #[cfg(not(target_os = "windows"))]
+    if takes_login_flag(&shell) && bash_rcfile.is_none() {
         // 登录 shell：读 profile（PATH/别名/homebrew 等）——本地终端的预期语义。
+        // bash rcfile 模式除外（见上：login 会忽略 --rcfile）。
         cmd.arg("-l");
     }
 
@@ -209,87 +367,6 @@ pub(crate) fn local_term_open_with(
             cancel: Arc::clone(&cancel),
         },
     );
-    // 注入（bash/zsh 且 Unix）：与 SSH 侧同一片段（历史清理自带），独立线程
-    // 免阻塞 open 命令返回。时序 = stty 行 → 等哨兵落地 → 钩子行；zsh 为
-    // 三行历史编排（无 stty 步）。写失败静默——注入是增强面。
-    #[cfg(not(target_os = "windows"))]
-    {
-        let kind = shell_kind(&shell);
-        let inject_writer = Arc::clone(&writer);
-        let inject_tail = Arc::clone(&text_tail);
-        let inject_cancel = Arc::clone(&cancel);
-        std::thread::spawn(move || {
-            use ottr_ssh::shell_integration as si;
-            use std::io::Write;
-            let write_line = |line: &str| -> bool {
-                if inject_cancel.load(Ordering::Relaxed) {
-                    return false;
-                }
-                let mut w = inject_writer.lock().unwrap();
-                w.write_all(line.as_bytes()).is_ok()
-                    && w.write_all(b"\r").is_ok()
-                    && w.flush().is_ok()
-            };
-            // 前置稳定窗（SSH 侧 wait_initial_output 同语义）：登录 shell 要
-            // 读 profile——行纪律的回显发生在**写入瞬间**，而 `stty -echo` 要等
-            // shell 读到该行才生效。不等首提示符就注入 = 注入行全部被回显
-            // （首跑实测踩中）。输出静默 400ms + 至少观察 500ms、封顶 6s。
-            let mut last_len = inject_tail.raw_head_len();
-            let mut stable_since: Option<Instant> = None;
-            let start = Instant::now();
-            loop {
-                if inject_cancel.load(Ordering::Relaxed) || start.elapsed() > Duration::from_secs(6)
-                {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-                let len = inject_tail.raw_head_len();
-                if len != last_len {
-                    last_len = len;
-                    stable_since = None;
-                    continue;
-                }
-                let stable_for = stable_since.get_or_insert_with(Instant::now).elapsed();
-                if start.elapsed() >= Duration::from_millis(500)
-                    && stable_for >= Duration::from_millis(400)
-                {
-                    break;
-                }
-            }
-
-            match kind {
-                Some("bash") => {
-                    if !write_line(si::ECHO_OFF_LINE) {
-                        return;
-                    }
-                    // 等回显关闭生效（哨兵上屏）；100ms×15 兜底超时 = 可见退化
-                    for _ in 0..15 {
-                        if inject_tail.raw_head_contains(si::ECHO_OFF_MARKER) {
-                            break;
-                        }
-                        std::thread::sleep(Duration::from_millis(100));
-                    }
-                    // 沉降：等 bash 执行完行 1 并重绘提示符——擦行（行 2 尾的
-                    // printf）落在提示符行才擦得干净（首跑实测差这一步留一行残迹）
-                    std::thread::sleep(Duration::from_millis(300));
-                    let _ = write_line(&format!(
-                        "{}; stty echo 2>/dev/null; printf '\\e[2K\\r\\e[1A\\e[2K'",
-                        si::BASH_SNIPPET
-                    ));
-                }
-                Some("zsh") => {
-                    for line in si::zsh_inject_lines() {
-                        if !write_line(&line) {
-                            return;
-                        }
-                        std::thread::sleep(Duration::from_millis(120));
-                    }
-                }
-                _ => {}
-            }
-        });
-    }
-
     // 读取线程（阻塞 64KB 块）→ mpsc；批量线程 recv_timeout 复刻 SSH 合批。
     // 线程边界理由：portable-pty 的 reader 是阻塞 std Read，无法 select；
     // recv_timeout 提供合批窗口需要的超时语义（std-only，不借 tokio）。
@@ -334,14 +411,18 @@ pub(crate) fn local_term_open_with(
         let recording = recorder_slot.lock().unwrap().take();
         local_sessions.lock().unwrap().remove(&loop_id);
         if let Some(app) = &app {
+            use tauri::Manager;
             if let Some(handle) = recording {
-                use tauri::Manager;
                 if let Some(vault_state) = app.try_state::<crate::vault::VaultState>() {
                     let _ = crate::commands::recording::insert_finalized(&vault_state.0, handle);
                 } else {
                     eprintln!("[local-term:{loop_id}] vault gone; recording lost");
                 }
             }
+            // 监控采样随会话消亡停表（SSH 路径 register.rs 的 session_down 钩子同款）
+            app.state::<crate::commands::state::AppState>()
+                .monitors
+                .session_down(&loop_id);
             let _ = app.emit(
                 "ottr://session-closed",
                 SessionClosedEvent {
@@ -521,6 +602,7 @@ fn flush_batch(
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     /// 真实 PTY 往返（Unix）：open（`cat` 作受控回声假身）→ 击键写入 →
     /// 批量线程转出 on_data → drop（cancel+killer，与 drop_session 同款两步）
@@ -543,6 +625,7 @@ mod tests {
             Arc::clone(&local_sessions),
             None,
             Some("cat"),
+            false,
             80,
             24,
             on_data,
@@ -594,6 +677,76 @@ mod tests {
         }
     }
 
+    /// 真机 zsh 注入改型验收（2026-10-20 截图四回归）：本地 zsh 首屏必须
+    /// **零敲入残留**（raw 输出里不得出现注入文本）且出现 OSC 133;A（ZDOTDIR
+    /// 启动文件链生效）。无 zsh 的环境（部分 CI）跳过。用户真实 ~/.zshrc 会
+    /// 被加载——测试只读 PTY 输出、不写任何字节，退出即清表。
+    #[test]
+    fn local_zsh_injects_via_startup_files_without_typing() {
+        if std::process::Command::new("zsh")
+            .arg("-f")
+            .arg("-c")
+            .arg(":")
+            .output()
+            .is_err()
+        {
+            eprintln!("skipped: zsh unavailable");
+            return;
+        }
+        let local_sessions: LocalTermMap = Default::default();
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = Arc::clone(&captured);
+        let on_data = Channel::new(move |body: InvokeResponseBody| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                sink.lock().unwrap().extend_from_slice(&bytes);
+            }
+            Ok(())
+        });
+        let id = local_term_open_with(
+            Arc::clone(&local_sessions),
+            None,
+            Some("zsh"),
+            true,
+            100,
+            30,
+            on_data,
+        )
+        .expect("open local zsh");
+        let marker = b"\x1b]133;A".to_vec();
+        let noise = b"precmd(){".to_vec();
+        let mut saw_133a = false;
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline {
+            {
+                let out = captured.lock().unwrap();
+                saw_133a = out.windows(marker.len()).any(|w| w == marker);
+                if saw_133a {
+                    assert!(
+                        !out.windows(noise.len()).any(|w| w == noise),
+                        "注入文本出现在 PTY 输出 = 敲入残留（启动文件链未生效）"
+                    );
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let (_writer, killer, cancel) = {
+            let m = local_sessions.lock().unwrap();
+            let e = m.get(&id).expect("entry");
+            (
+                Arc::clone(&e.writer),
+                Arc::clone(&e.killer),
+                Arc::clone(&e.cancel),
+            )
+        };
+        cancel.store(true, Ordering::Relaxed);
+        let _ = killer.lock().unwrap().kill();
+        assert!(
+            saw_133a,
+            "15s 内未见 OSC 133;A（ZDOTDIR 集成未生效；本机 zsh 环境请人工复核）"
+        );
+    }
+
     /// shell 判定面：-l 白名单与注入目标识别（`cat` 两者皆否——测试假身
     /// 不被误加参数/误注入）。
     #[test]
@@ -606,5 +759,126 @@ mod tests {
         assert_eq!(shell_kind("/bin/bash"), Some("bash"));
         assert_eq!(shell_kind("/bin/zsh"), Some("zsh"));
         assert_eq!(shell_kind("cat"), None);
+    }
+}
+
+/// 启动文件注入生成面单测：zsh 四启动文件齐 + `.zshrc` 末尾带钩子、还原链
+/// 指向 $HOME（未设 OTTR_USER_ZDOTDIR）；sh ENV 文件含幂等片段 + 用户链。
+#[cfg(test)]
+mod startup_file_tests {
+    use super::{write_sh_env_file, write_zsh_startup_dir};
+
+    #[test]
+    fn zsh_startup_dir_writes_four_files_with_snippet_last() {
+        let dir = write_zsh_startup_dir().expect("startup dir");
+        for name in [".zshenv", ".zprofile", ".zshrc", ".zlogin"] {
+            let p = dir.join(name);
+            assert!(p.is_file(), "{name} 缺失");
+            let text = std::fs::read_to_string(&p).unwrap();
+            assert!(text.contains("OTTR_USER_ZDOTDIR"), "{name} 缺用户链还原");
+            assert!(text.contains("rc_dir"), "{name} 缺 HOME 回落");
+        }
+        let zshrc = std::fs::read_to_string(dir.join(".zshrc")).unwrap();
+        let snippet = ottr_ssh::shell_integration::ZSH_SNIPPET;
+        assert!(
+            zshrc
+                .rfind(snippet)
+                .is_some_and(|pos| pos > zshrc.find(".zshrc").unwrap()),
+            "集成钩子必须加载在用户 .zshrc 之后（覆盖 precmd 才生效）"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sh_env_file_chains_user_env_and_snippet() {
+        let path = write_sh_env_file().expect("env file");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("OTTR_USER_ENV"), "缺用户 $ENV 链");
+        assert!(
+            text.contains(ottr_ssh::shell_integration::SH_SNIPPET),
+            "缺 PS1 包装片段"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+/// bash --rcfile 注入验收（2026-10-20 真机：stty 敲入路径残留一行可见——
+/// 敲入法整体退役后的回归防线）：零敲入残留（无 stty/PROMPT_COMMAND 字面）
+/// 且出现 OSC 133;A。
+#[cfg(test)]
+mod bash_acceptance_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    #[test]
+    fn local_bash_injects_via_rcfile_without_typing() {
+        let bash = if std::path::Path::new("/bin/bash").exists() {
+            "/bin/bash"
+        } else {
+            "bash"
+        };
+        if std::process::Command::new(bash)
+            .arg("--norc")
+            .arg("-c")
+            .arg(":")
+            .output()
+            .is_err()
+        {
+            eprintln!("skipped: bash unavailable");
+            return;
+        }
+        let local_sessions: LocalTermMap = Default::default();
+        let captured = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = Arc::clone(&captured);
+        let on_data = Channel::new(move |body: InvokeResponseBody| {
+            if let InvokeResponseBody::Raw(bytes) = body {
+                sink.lock().unwrap().extend_from_slice(&bytes);
+            }
+            Ok(())
+        });
+        let id = local_term_open_with(
+            Arc::clone(&local_sessions),
+            None,
+            Some(bash),
+            true,
+            100,
+            30,
+            on_data,
+        )
+        .expect("open local bash");
+        let marker = b"\x1b]133;A".to_vec();
+        let mut saw_133a = false;
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline {
+            {
+                let out = captured.lock().unwrap();
+                saw_133a = out.windows(marker.len()).any(|w| w == marker);
+                if saw_133a {
+                    for noise in [b"stty -echo".as_slice(), b"PROMPT_COMMAND=".as_slice()] {
+                        assert!(
+                            !out.windows(noise.len()).any(|w| w == noise),
+                            "敲入残留出现在 PTY 输出：{:?}",
+                            String::from_utf8_lossy(noise)
+                        );
+                    }
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let (_writer, killer, cancel) = {
+            let m = local_sessions.lock().unwrap();
+            let e = m.get(&id).expect("entry");
+            (
+                Arc::clone(&e.writer),
+                Arc::clone(&e.killer),
+                Arc::clone(&e.cancel),
+            )
+        };
+        cancel.store(true, Ordering::Relaxed);
+        let _ = killer.lock().unwrap().kill();
+        assert!(saw_133a, "15s 内未见 OSC 133;A（bash rcfile 集成未生效）");
     }
 }

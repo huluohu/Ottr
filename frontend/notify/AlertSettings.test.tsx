@@ -209,6 +209,22 @@ describe("AlertSettings 规则区", () => {
     expect(engine.reload).toHaveBeenCalled();
   });
 
+  // 0024 本机规则：选「本机」（哨兵 -1）→ ar_create 载荷 host_id = null。
+  it("本机规则：host 选 -1 保存为 null", async () => {
+    render(<AlertSettings open={true} />);
+    showRulesSection();
+    fireEvent.click(await screen.findByTestId("alert-add-rule"));
+    fireEvent.change(screen.getByTestId("alert-rule-host"), { target: { value: "-1" } });
+    fireEvent.change(screen.getByTestId("alert-rule-kind"), { target: { value: "cpu" } });
+    fireEvent.change(screen.getByTestId("alert-rule-cpu-threshold"), { target: { value: "99" } });
+    fireEvent.change(screen.getByTestId("alert-rule-consecutive"), { target: { value: "1" } });
+    fireEvent.click(screen.getByTestId("alert-rule-channel-3"));
+    fireEvent.click(screen.getByTestId("alert-rule-save"));
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("ar_create", {
+      input: expect.objectContaining({ host_id: null, kind: "cpu" }),
+    }));
+  });
+
   it("主机必选：不选保存报错", async () => {
     render(<AlertSettings open={true} />);
     showRulesSection();

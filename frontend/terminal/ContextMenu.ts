@@ -28,6 +28,8 @@ export interface MenuContext {
   completionEnabled: boolean;
   /** 当前会话编码覆盖（"" = 未设置）。 */
   encoding: string;
+  /** 分屏已达上限（2026-10-21）：分屏两项置灰（守卫本体在 splitPane）。 */
+  splitDisabled?: boolean;
 }
 
 /**
@@ -45,8 +47,9 @@ export function buildContextMenu(ctx: MenuContext, t: TFunction): ContextMenuIte
     {
       id: "splitRight",
       label: t("terminal.splitRight"),
+      disabled: ctx.splitDisabled === true,
     },
-    { id: "splitDown", label: t("terminal.splitDown") },
+    { id: "splitDown", label: t("terminal.splitDown"), disabled: ctx.splitDisabled === true },
     { id: "closePane", label: t("terminal.closePane"), danger: true, separatorAfter: true },
     {
       id: "encoding",

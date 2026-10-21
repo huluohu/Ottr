@@ -53,7 +53,7 @@ fn main() {
         History::insert(
             &vault,
             &HistoryInput {
-                host_id: host.id,
+                host_id: Some(host.id),
                 session_id: Some("t12-seal-sess-3".to_string()),
                 command: format!("echo demo-{i}"),
                 exit_code: Some(0),
@@ -66,7 +66,7 @@ fn main() {
     let entry = SessionSummaries::insert(
         &vault,
         &SummaryInput {
-            host_id: host.id,
+            host_id: Some(host.id),
             session_id: "t12-seal-sess-3".into(),
             summary: SUMMARY_SAMPLE.into(),
             command_count: 3,

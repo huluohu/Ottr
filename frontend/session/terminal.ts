@@ -2,7 +2,7 @@
 // 模块级注册表（Terminal 挂载注册写入口）+ resize 下发去重 + AI 纪要钩子。
 // 对 useSessionStore 的引用全部发生在函数体内（运行期取用），ESM 循环导入安全。
 import { invoke } from "@tauri-apps/api/core";
-import type { Session } from "./types";
+import { vaultHostId, type Session } from "./types";
 import { useSessionStore } from "./SessionStore";
 
 /** Rust Raw 帧应为 ArrayBuffer（Phase 0 定案）；string 仅 base64 fallback 时出现。 */
@@ -76,7 +76,8 @@ export function isHostKeyRejection(err: string): boolean {
 
 /** 会话收尾信息（钩子入参；纪要生成链只需要归属三元组）。 */
 export interface SessionEndInfo {
-  hostId: number;
+  /** null = 本机（本地终端会话；见 types.ts vaultHostId）。 */
+  hostId: number | null;
   /** 前端会话 id（标签 uuid，跨重连稳定——history.session_id 同源）。 */
   id: string;
   hostName: string;
@@ -94,7 +95,7 @@ export function emitSessionEnded(session: Session): void {
   const hook = sessionEndHook;
   if (!hook) return;
   try {
-    hook({ hostId: session.hostId, id: session.id, hostName: session.hostName });
+    hook({ hostId: vaultHostId(session), id: session.id, hostName: session.hostName });
   } catch (e) {
     console.warn("[session] end hook failed:", e);
   }

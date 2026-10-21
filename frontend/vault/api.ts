@@ -286,12 +286,18 @@ export interface NotificationInput {
   payload: unknown;
 }
 
+/** ⌘R 面板按主机过滤的「本机」哨兵（Rust `history::LOCAL_HOST_FILTER` 同值）：
+ * history/summaries/recordings 三表 list/search 的 hostId 传 -1 = 只看
+ * host_id IS NULL 行（本地终端会话）；与会话层 `hostId: -1` 本地哨兵同值。 */
+export const LOCAL_HOST_FILTER = -1;
+
 /** Rust `history::HistoryEntry` 同构（Task 15，⌘R 历史行）。
  * command 存 OSC133 提取的原样文本（含提示符原文——消费侧剥离是保守启发式，
  * 见 src/history/format.ts）；exit_code 可空（shell 未上报）；明文面。 */
 export interface HistoryEntry {
   id: number;
-  host_id: number;
+  /** null = 本机（本地终端会话；与 recordings.host_id 同口径）。 */
+  host_id: number | null;
   command: string;
   cwd: string | null;
   exit_code: number | null;
@@ -302,7 +308,8 @@ export interface HistoryEntry {
 
 /** Rust `history::HistoryInput` 同构（history_insert 载荷，snake_case）。 */
 export interface HistoryInput {
-  host_id: number;
+  /** null = 本机。 */
+  host_id: number | null;
   command: string;
   cwd: string | null;
   exit_code: number | null;
@@ -314,7 +321,8 @@ export interface HistoryInput {
  * 消费方是 ⌘R 纪要页签。 */
 export interface SummaryEntry {
   id: number;
-  host_id: number;
+  /** null = 本机。 */
+  host_id: number | null;
   session_id: string;
   summary: string;
   /** 摘要覆盖的命令条数（面板徽标 + 溯源面）。 */
@@ -325,7 +333,8 @@ export interface SummaryEntry {
 
 /** Rust `summaries::SummaryInput` 同构（summary_insert 载荷，snake_case）。 */
 export interface SummaryInput {
-  host_id: number;
+  /** null = 本机。 */
+  host_id: number | null;
   session_id: string;
   summary: string;
   command_count: number;
@@ -376,7 +385,8 @@ export type AlertRuleParams = Record<string, unknown>;
  * 出库即解析后形态）。 */
 export interface AlertRule {
   id: number;
-  host_id: number;
+  /** null = 本机（本地终端会话；0024 起，与 recordings/history 同口径）。 */
+  host_id: number | null;
   kind: AlertRuleKind;
   params: AlertRuleParams;
   /** 订阅渠道 id 数组（notify_channels.id；③外部渠道按此路由）。 */
@@ -393,7 +403,8 @@ export interface AlertRule {
 
 /** Rust `alert_rules::AlertRuleInput` 同构（create/update 全量替换式提交）。 */
 export interface AlertRuleInput {
-  host_id: number;
+  /** null = 本机。 */
+  host_id: number | null;
   kind: AlertRuleKind;
   params: AlertRuleParams;
   channels: number[];
@@ -727,15 +738,17 @@ export const vaultApi = {
    * 超短 LIKE 兜底（Rust 层分派，同 hosts_search 语义）。 */
   history: {
     insert: (input: HistoryInput) => invoke<HistoryEntry>("history_insert", { input }),
-    /** query 空白 = 最近记录（面板初始态）；hostId=null 跨主机；limit 缺省 50。 */
+    /** query 空白 = 最近记录（面板初始态）；hostId 三态：null 跨主机、
+     * LOCAL_HOST_FILTER(-1) 只看本机、其余该主机；limit 缺省 50。 */
     search: (query: string, hostId: number | null, limit?: number) =>
       invoke<HistoryEntry[]>("history_search", {
         query,
         hostId,
         limit: limit ?? null,
       }),
-    /** 会话命令序列（Task 7 纪要数据源）：id 升序（≈ts 时序）；limit 缺省 200。 */
-    listSession: (hostId: number, sessionId: string, limit?: number) =>
+    /** 会话命令序列（Task 7 纪要数据源）：id 升序（≈ts 时序）；hostId=null 本机
+     * 会话；limit 缺省 200。 */
+    listSession: (hostId: number | null, sessionId: string, limit?: number) =>
       invoke<HistoryEntry[]>("history_list_session", {
         hostId,
         sessionId,
@@ -747,7 +760,7 @@ export const vaultApi = {
    * fire-and-forget）；读取面 = ⌘R 面板「纪要」页签。 */
   summaries: {
     insert: (input: SummaryInput) => invoke<SummaryEntry>("summary_insert", { input }),
-    /** 最近纪要（id DESC）；hostId=null 跨主机；limit 缺省 50。 */
+    /** 最近纪要（id DESC）；hostId 三态同 history.search；limit 缺省 50。 */
     list: (hostId: number | null, limit?: number) =>
       invoke<SummaryEntry[]>("summary_list", { hostId, limit: limit ?? null }),
   },

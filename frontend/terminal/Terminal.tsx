@@ -37,6 +37,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 import { registerSink, unregisterSink, resizeSession, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
+import { vaultHostId } from "../session/types";
 import { localList } from "../files/api";
 import { useTerminalFocus } from "./terminalFocus";
 import { useVaultStore } from "../vault/store";
@@ -75,7 +76,7 @@ import {
   type ContextMenuItem,
   type MenuContext,
 } from "./ContextMenu";
-import { dividers, layout, leaf, type Divider, type Rect } from "./split";
+import { dividers, layout, leaf, leaves, MAX_PANES, type Divider, type Rect } from "./split";
 // 对话框/右键菜单/搜索栏组件自本文件拆出（2026-10-08 遗留项②）——
 // 公共 API 经下方再导出保持原路径（组件测试 import 零改动）。
 import { ContextMenuView } from "./ContextMenuView";
@@ -300,6 +301,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     async function sudoAutofillSecret(): Promise<{ secret: string | null; reason: SudoSkipReason | null }> {
       const session = useSessionStore.getState().sessions.find((x) => x.id === sessionId);
       if (!session) return { secret: null, reason: "no-host" };
+      // 本地终端没有主机行/凭据链：不填充也不提示（提示会误导用户去配凭据）
+      if (session.kind === "local") return { secret: null, reason: null };
       const { hosts, credentials } = useVaultStore.getState();
       const host = hosts.find((h) => h.id === session.hostId);
       const cred =
@@ -431,7 +434,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
             kind: "diagnose",
             sessionId,
             rustId: session.rustId,
-            hostId: session.hostId,
+            hostId: vaultHostId(session),
             hostName: session.hostName,
             exitCode,
             command,
@@ -446,7 +449,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           // 缺陷 45：integrated=false（D-only 无完整集成）= 文本实为输出行——
           // 历史入库（record.ts 内再判）与补全缓存同门停用（宁缺勿污）。
           if (!ev.integrated) return;
-          recordCommand({ hostId: session.hostId, sessionId }, ev);
+          recordCommand({ hostId: vaultHostId(session), sessionId }, ev);
           completionHistory.append(session.hostId, ev.command); // B8：MRU 喂缓存
         },
       });
@@ -529,9 +532,30 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     // 即时（显示不拖泥带水），PTY 同步尾随 200ms——一次手势至多一次
     // SIGWINCH。卸载丢一次同步无碍（下次尺寸变化会带上最新值）。
     let ptyResizeTimer: ReturnType<typeof setTimeout> | undefined;
+    // pane 激活态（2026-10-20 用户实测：多个同主机页签来回切后主机名 5 字一行
+    // 竖排）：非激活 pane 没有布局矩形，绝对定位容器坍缩成内容宽度——切换瞬间
+    // RO 量到几十像素，fit 把缓冲按 5 列重排、200ms 后又把 5 列下发远端
+    // SIGWINCH（此前 <4 列的硬门限拦不住 5 列）。非激活 pane 一律不 fit、不
+    // 下发；切回时 rect 落地 → RO 触发 → 正常 fit 链。jsdom/无 pane 包裹 = 激活。
+    const paneActive = () => {
+      const pane = hostRef.current?.closest(".term-pane");
+      return pane == null || pane.getAttribute("data-active") !== "false";
+    };
     const schedulePtyResize = () => {
       clearTimeout(ptyResizeTimer);
       ptyResizeTimer = setTimeout(() => {
+        if (!paneActive()) return;
+        // 稳定判定：到期时再量一次——与当前列数不一致 = 布局仍在过渡，重 fit
+        // 并顺延一轮（refitNow 内部会再 schedule），直到两次测量一致才下发。
+        try {
+          const dim = fit.proposeDimensions();
+          if (dim && (dim.cols !== term.cols || dim.rows !== term.rows)) {
+            refitNow();
+            return;
+          }
+        } catch {
+          return;
+        }
         // PTY 退化尺寸保护（2026-10-16 用户实测 P0：连接失败标签关闭的瞬时
         // 重排把存活终端测成 1 列并下发——远端 shell 收到 1 列 SIGWINCH 后
         // 提示符逐字符竖排且 RO 不再触发，终身卡死）。退化尺寸永不下发；
@@ -543,6 +567,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const refitNow = () => {
       const el = hostRef.current;
       if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+      if (!paneActive()) return;
       ensureObserved();
       try {
         // 本地退化守卫（P0「字符乱飞」家族，真机复现 2026-10-19）：页签切换/
@@ -692,6 +717,10 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       }
       return;
     }
+    // 本地终端没有「侧栏主机」可双击：挂载瞬间经过 disconnected 态不写提示
+    // （否则一行灰字永久滞留回滚缓冲，2026-10-20 真机实测）。
+    const isLocalSession =
+      useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.kind === "local";
     switch (status) {
       case "connected":
         if (attempt === 0) break; // 首连成功：shell 输出即反馈，不打横幅
@@ -716,9 +745,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
               : `\x1b[31m[ottr] ${t("terminal.connectFailed", { message: lastError })}\x1b[0m`,
           );
         }
-        if (attempt === 0) {
+        if (attempt === 0 && !isLocalSession) {
           term.writeln(`\x1b[2m[ottr] ${t("terminal.reconnectHint")}\x1b[0m`);
-        } else {
+        } else if (attempt > 0) {
           term.writeln(
             `\x1b[31m[ottr] ${t("terminal.reconnectExhausted", {
               max: useSessionStore.getState().settings.maxReconnectAttempts,
@@ -743,6 +772,13 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       copyOnSelect: loadTerminalSettings().copyOnSelect,
       completionEnabled: loadTerminalSettings().completionEnabled,
       encoding: useSessionStore.getState().sessions.find((x) => x.id === sessionId)?.encoding ?? "utf-8",
+      // 分屏上限（数量守卫的另一入口呈现；守卫本体在 splitPane）
+      splitDisabled: (() => {
+        const st = useSessionStore.getState();
+        const tabId = st.sessions.find((x) => x.id === sessionId)?.paneOf ?? sessionId;
+        const tree = tabId != null ? st.trees[tabId] : undefined;
+        return tree != null && leaves(tree).length >= MAX_PANES;
+      })(),
     };
     const width = 220;
     setMenu({
@@ -769,7 +805,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           useAiStore.getState().openExplain({
             kind: "explain",
             sessionId,
-            hostId: session?.hostId ?? null,
+            hostId: session ? vaultHostId(session) : null,
             hostName: session?.hostName ?? "",
             text: term.getSelection(),
           });
@@ -940,7 +976,13 @@ export function TerminalToolbar({
   const { t } = useTranslation();
   const activeId = useSessionStore((s) => s.activeId);
   const activePaneMap = useSessionStore((s) => s.activePane);
+  const trees = useSessionStore((s) => s.trees);
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
+  // 分屏上限呈现（2026-10-21）：到顶按钮置灰 + 悬停提示；快捷键/⌘K 走 store
+  // 守卫弹 toast（splitPane 单点）。
+  const splitDisabled =
+    activeId == null ||
+    (trees[activeId] != null && leaves(trees[activeId]).length >= MAX_PANES);
   // 编码徽标（Task 9）：聚焦 pane 的当前会话编码，点击循环 utf-8→gbk→gb18030。
   const activeEncoding = useSessionStore((s) =>
     focusedPane != null
@@ -953,16 +995,18 @@ export function TerminalToolbar({
       {terminalControls && (
         <button
           data-testid="split-right"
-        disabled={activeId == null}
-        onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
-      >
+          disabled={splitDisabled}
+          title={splitDisabled && activeId != null ? t("terminal.splitMax", { max: MAX_PANES }) : undefined}
+          onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "row")}
+        >
           {t("terminal.splitRight")}
         </button>
       )}
       {terminalControls && (
         <button
           data-testid="split-down"
-          disabled={activeId == null}
+          disabled={splitDisabled}
+          title={splitDisabled && activeId != null ? t("terminal.splitMax", { max: MAX_PANES }) : undefined}
           onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
         >
           {t("terminal.splitDown")}
@@ -1007,7 +1051,8 @@ export function TerminalArea() {
   const dragRef = useRef<{ divider: Divider } | null>(null);
   const [bounds, setBounds] = useState<Rect>({ x: 0, y: 0, w: 0, h: 0 });
 
-  // 容器尺寸 → 布局输入（拖侧栏/窗口缩放都会触发）
+  // 容器尺寸 → 布局输入（拖侧栏/窗口缩放都会触发）；同步进 store 供
+  // splitPane 最小尺寸预判（不落库、随标签生命周期）
   useEffect(() => {
     const el = stackRef.current;
     if (!el) return;
@@ -1019,6 +1064,11 @@ export function TerminalArea() {
   }, []);
 
   const activeTree = activeId != null ? (trees[activeId] ?? leaf(activeId)) : null;
+  useEffect(() => {
+    if (activeId != null) {
+      useSessionStore.getState().setPaneBounds(activeId, bounds);
+    }
+  }, [activeId, bounds]);
   const rects = activeTree ? layout(activeTree, bounds) : new Map<string, Rect>();
   const dividerList = activeTree ? dividers(activeTree, bounds) : [];
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;

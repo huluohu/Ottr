@@ -26,7 +26,8 @@ pub fn history_insert(
     cmd(History::insert(&state.0, &input))
 }
 
-/// `query` 空白 = 最近记录（面板初始态）；`host_id` 缺省 = 跨主机；
+/// `query` 空白 = 最近记录（面板初始态）；`host_id` 三态：缺省 = 跨主机，
+/// `-1` = 只看本机（本地终端，history.host_id IS NULL），其余 = 该主机；
 /// `limit` 缺省 [`HISTORY_SEARCH_LIMIT`]。≥3 字符 FTS trigram / 超短 LIKE 兜底
 /// （Rust 层分派，与 hosts_search 同语义）。
 #[specta::specta]
@@ -46,12 +47,13 @@ pub fn history_search(
 }
 
 /// 会话维度的命令序列（Phase 2 Task 7 纪要数据源）：id 升序（≈ts 时序），
-/// `limit` 缺省 [`HISTORY_SESSION_LIMIT`]。明文面（锁定可读，同 history_search）。
+/// `host_id` None = 本机会话；`limit` 缺省 [`HISTORY_SESSION_LIMIT`]。
+/// 明文面（锁定可读，同 history_search）。
 #[specta::specta]
 #[tauri::command]
 pub fn history_list_session(
     state: State<'_, VaultState>,
-    host_id: i64,
+    host_id: Option<i64>,
     session_id: String,
     limit: Option<u32>,
 ) -> CmdResult<Vec<HistoryEntry>> {
@@ -78,7 +80,8 @@ pub fn summary_insert(
     cmd(SessionSummaries::insert(&state.0, &input))
 }
 
-/// `host_id` 缺省 = 跨主机；`limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。
+/// `host_id` 三态同 history_search（缺省跨主机 / -1 本机 / 该主机）；
+/// `limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。
 #[specta::specta]
 #[tauri::command]
 pub fn summary_list(

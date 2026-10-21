@@ -413,10 +413,29 @@ pub(crate) fn disconnect_all_inner(sessions: &SessionMap) -> usize {
     n
 }
 
+/// 本地终端会话同语义收尾（2026-10-20「断开全部」此前漏本地表）：取消标志 +
+/// 杀子进程（与 drop_session 本地分支同款两步），返回断开条数。
+pub(crate) fn disconnect_all_local(
+    local_sessions: &super::super::local_term::LocalTermMap,
+) -> usize {
+    let drained: Vec<(String, super::super::local_term::LocalSessionEntry)> =
+        local_sessions.lock().unwrap().drain().collect();
+    let n = drained.len();
+    for (_, entry) in &drained {
+        entry
+            .cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = entry.killer.lock().unwrap().kill();
+    }
+    n
+}
+
 /// 断开全部会话（命令面：托盘动作共用同一实现核；返回断开条数）。
 #[tauri::command]
 pub(crate) fn session_disconnect_all(state: State<'_, AppState>) -> Result<usize, String> {
     let mut n = disconnect_all_inner(&state.sessions);
+    // 本地终端会话同语义收尾（杀 PTY 子进程）
+    n += disconnect_all_local(&state.local_sessions);
     // FTP 文件会话同语义收尾（无转发循环，QUIT 即可）
     let drained: Vec<crate::commands::state::FtpSessionEntry> = state
         .ftp_sessions

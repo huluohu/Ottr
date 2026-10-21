@@ -36,8 +36,15 @@ export interface SessionClosedPayload {
 
 /** 会话种类（2026-10-20 本地终端）："local" = 连接本机 shell 的终端
  * （hostId 固定 -1 哨兵——Session.hostId 保留 number 类型避免全消费面
- * 加 null 分支；本地会话不参与监控/批量/cron 等一切按 hostId 的功能面）。 */
+ * 加 null 分支；批量/cron/告警规则等按主机行的功能面不含本地会话）。 */
 export type SessionKind = "ssh" | "local";
+
+/** 会话归属写入 vault 时的 host_id：本地会话 → null（history / summaries /
+ * notifications 的 host_id 列可空，NULL = 本机；-1 哨兵只在前端会话层使用，
+ * 直接落库会被外键拒绝——2026-10-20 实测本地历史/纪要静默丢失的根因）。 */
+export function vaultHostId(session: { kind?: SessionKind; hostId: number }): number | null {
+  return session.kind === "local" ? null : session.hostId;
+}
 
 export interface Session {
   /** 标签 id（uuid，跨重连稳定）；Rust 会话 id 另存 rustId。 */

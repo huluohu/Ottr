@@ -81,18 +81,23 @@ export const commands = {
 	secretContains: (key: string) => typedError<boolean, string>(__TAURI_INVOKE("secret_contains", { key })),
 	historyInsert: (input: HistoryInput) => typedError<HistoryEntry, string>(__TAURI_INVOKE("history_insert", { input })),
 	/**
-	 *  `query` 空白 = 最近记录（面板初始态）；`host_id` 缺省 = 跨主机；
+	 *  `query` 空白 = 最近记录（面板初始态）；`host_id` 三态：缺省 = 跨主机，
+	 *  `-1` = 只看本机（本地终端，history.host_id IS NULL），其余 = 该主机；
 	 *  `limit` 缺省 [`HISTORY_SEARCH_LIMIT`]。≥3 字符 FTS trigram / 超短 LIKE 兜底
 	 *  （Rust 层分派，与 hosts_search 同语义）。
 	 */
 	historySearch: (query: string, hostId: number | null, limit: number | null) => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_search", { query, hostId, limit })),
 	/**
 	 *  会话维度的命令序列（Phase 2 Task 7 纪要数据源）：id 升序（≈ts 时序），
-	 *  `limit` 缺省 [`HISTORY_SESSION_LIMIT`]。明文面（锁定可读，同 history_search）。
+	 *  `host_id` None = 本机会话；`limit` 缺省 [`HISTORY_SESSION_LIMIT`]。
+	 *  明文面（锁定可读，同 history_search）。
 	 */
-	historyListSession: (hostId: number, sessionId: string, limit: number | null) => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_list_session", { hostId, sessionId, limit })),
+	historyListSession: (hostId: number | null, sessionId: string, limit: number | null) => typedError<HistoryEntry[], string>(__TAURI_INVOKE("history_list_session", { hostId, sessionId, limit })),
 	summaryInsert: (input: SummaryInput) => typedError<SummaryEntry, string>(__TAURI_INVOKE("summary_insert", { input })),
-	/**  `host_id` 缺省 = 跨主机；`limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。 */
+	/**
+	 *  `host_id` 三态同 history_search（缺省跨主机 / -1 本机 / 该主机）；
+	 *  `limit` 缺省 [`SUMMARIES_LIST_LIMIT`]。
+	 */
 	summaryList: (hostId: number | null, limit: number | null) => typedError<SummaryEntry[], string>(__TAURI_INVOKE("summary_list", { hostId, limit })),
 	hostGroupsList: () => typedError<HostGroup[], string>(__TAURI_INVOKE("host_groups_list")),
 	hostGroupsCreate: (name: string, parentId: number | null, color: string | null) => typedError<HostGroup, string>(__TAURI_INVOKE("host_groups_create", { name, parentId, color })),
@@ -178,7 +183,8 @@ export type CredentialPatch = {
 /**  历史行（serde 面与 `frontend/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。 */
 export type HistoryEntry = {
 	id: number,
-	host_id: number,
+	/**  `None` = 本机（本地终端会话；0023 起可空，与 recordings 同口径）。 */
+	host_id: number | null,
 	command: string,
 	cwd: string | null,
 	exit_code: number | null,
@@ -189,7 +195,8 @@ export type HistoryEntry = {
 
 /**  新建历史行的输入（ts 由存储层定；command 非空校验在存储层）。 */
 export type HistoryInput = {
-	host_id: number,
+	/**  `None` = 本机。 */
+	host_id: number | null,
 	command: string,
 	cwd: string | null,
 	exit_code: number | null,
@@ -337,7 +344,8 @@ export type SnippetInput = {
  */
 export type SummaryEntry = {
 	id: number,
-	host_id: number,
+	/**  `None` = 本机（本地终端会话；0023 起可空，与 recordings 同口径）。 */
+	host_id: number | null,
 	session_id: string,
 	summary: string,
 	/**  摘要覆盖的命令条数（面板徽标 + 溯源面）。 */
@@ -348,7 +356,8 @@ export type SummaryEntry = {
 
 /**  新建/覆盖纪要的输入（ts/id 由存储层定）。 */
 export type SummaryInput = {
-	host_id: number,
+	/**  `None` = 本机。 */
+	host_id: number | null,
 	session_id: string,
 	summary: string,
 	command_count: number,

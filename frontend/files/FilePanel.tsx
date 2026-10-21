@@ -18,6 +18,7 @@ import { useEscClose } from "../ui/useEscClose";
 import { useModalStore } from "../ui/modalStore";
 import { useTranslation } from "react-i18next";
 import type { Session } from "../session/SessionStore";
+import { platform as detectPlatform } from "../shortcuts/registry";
 import {
   fileNameOf,
   joinLocalPath,
@@ -29,6 +30,7 @@ import {
   localList,
   localMkdir,
   localRemove,
+  openLocalFile,
   parentOf,
   sftpChmod,
   sftpList,
@@ -146,6 +148,9 @@ interface DialogState {
 export function FilePanel({ session }: { session: Session }) {
   const { t } = useTranslation();
   const rustId = session.rustId;
+  // Windows 本地会话没有 POSIX 权限位（Local 后端 chmod 显式报错）：入口直接
+  // 不出现——对用户比「点了报错」诚实（2026-10-21 Windows 本机能力补齐）。
+  const hideLocalChmod = session.kind === "local" && detectPlatform() === "win";
   const [remote, setRemote] = useState<PaneState>(emptyPane(""));
   const [local, setLocal] = useState<PaneState>(emptyPane(""));
   const [focus, setFocus] = useState<Side>("remote");
@@ -794,10 +799,15 @@ export function FilePanel({ session }: { session: Session }) {
                   action: () =>
                     openDialog({ kind: "rename", side: "remote", target: selectedEntry }),
                 },
-                {
-                  label: t("files.menu.chmod", { name: selectedEntry.name }),
-                  action: () => openDialog({ kind: "chmod", side: "remote", target: selectedEntry }),
-                },
+                ...(hideLocalChmod
+                  ? []
+                  : [
+                      {
+                        label: t("files.menu.chmod", { name: selectedEntry.name }),
+                        action: () =>
+                          openDialog({ kind: "chmod", side: "remote", target: selectedEntry }),
+                      },
+                    ]),
                 {
                   label: t("files.menu.delete", { name: selectedEntry.name }),
                   danger: true,
@@ -808,21 +818,29 @@ export function FilePanel({ session }: { session: Session }) {
             : []),
           ...(selectedEntry && !selectedEntry.is_dir
             ? [
-                // 远端编辑（Phase 2 Task 3）走 SFTP 读写原语——FTP/FTPS 会话
-                // 无此能力，编辑入口按协议隐藏（Rust 侧 sftp_for 同样显式拒绝）。
-                ...(session.protocol === "ssh"
+                // 编辑入口按会话分流（2026-10-20）：本地会话的右栏就是本机文件，
+                // 「打开」直接交给系统默认程序（不走 SFTP 临时文件回传）；
+                // SSH 走远端编辑（SFTP 读写原语）；FTP/FTPS 无此能力按协议隐藏。
+                ...(session.kind === "local"
                   ? [
-                      selectedRemotePath && editing.includes(selectedRemotePath)
-                        ? {
-                            label: t("files.menu.stopEdit", { name: selectedEntry.name }),
-                            action: () => void stopEditing(selectedRemotePath),
-                          }
-                        : {
-                            label: t("files.menu.edit", { name: selectedEntry.name }),
-                            action: () => void startEditing(selectedRemotePath ?? ""),
-                          },
+                      {
+                        label: t("files.menu.openWith", { name: selectedEntry.name }),
+                        action: () => void openLocalFile(selectedRemotePath ?? ""),
+                      },
                     ]
-                  : []),
+                  : session.protocol === "ssh"
+                    ? [
+                        selectedRemotePath && editing.includes(selectedRemotePath)
+                          ? {
+                              label: t("files.menu.stopEdit", { name: selectedEntry.name }),
+                              action: () => void stopEditing(selectedRemotePath),
+                            }
+                          : {
+                              label: t("files.menu.edit", { name: selectedEntry.name }),
+                              action: () => void startEditing(selectedRemotePath ?? ""),
+                            },
+                      ]
+                    : []),
                 ...(selectedEntry && !selectedEntry.is_dir
                   ? [
                       {
@@ -929,7 +947,9 @@ export function FilePanel({ session }: { session: Session }) {
         <span className="file-pane-name">
           {side === "local"
             ? t("files.localPane")
-            : `${t("files.remotePane")} · ${session.hostName}`}
+            : session.kind === "local"
+              ? t("files.localMachinePane")
+              : `${t("files.remotePane")} · ${session.hostName}`}
         </span>
       </div>
       <div className="file-pane-path">
@@ -1132,12 +1152,14 @@ export function FilePanel({ session }: { session: Session }) {
             >
               {t("files.rename")}
             </button>
-            <button
-              disabled={!selectedEntry}
-              onClick={() => selectedEntry && openDialog({ kind: "chmod", side: "remote", target: selectedEntry })}
-            >
-              {t("files.chmod")}
-            </button>
+            {!hideLocalChmod && (
+              <button
+                disabled={!selectedEntry}
+                onClick={() => selectedEntry && openDialog({ kind: "chmod", side: "remote", target: selectedEntry })}
+              >
+                {t("files.chmod")}
+              </button>
+            )}
             <button
               disabled={!selectedEntry}
               className="icon-btn danger"

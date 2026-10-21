@@ -154,6 +154,18 @@ describe("buildContextMenu（菜单模型）", () => {
       expect(items.some((i) => i.id === id), `缺菜单项 ${id}`).toBe(true);
     }
   });
+
+  // 2026-10-21 分屏上限：splitDisabled 时分屏两项置灰（其余不受影响）
+  it("splitDisabled：分屏两项置灰，其余照常", () => {
+    const items = buildContextMenu(
+      { hasSelection: false, copyOnSelect: false, completionEnabled: false, encoding: "utf-8", splitDisabled: true },
+      tStub,
+    );
+    expect(items.find((i) => i.id === "splitRight")!.disabled).toBe(true);
+    expect(items.find((i) => i.id === "splitDown")!.disabled).toBe(true);
+    expect(items.find((i) => i.id === "copy")!.disabled).toBe(true); // 无选中照旧
+    expect(items.find((i) => i.id === "closePane")!.disabled).toBeFalsy();
+  });
 });
 
 describe("ContextMenuView（菜单渲染）", () => {

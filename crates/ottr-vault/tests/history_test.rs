@@ -37,7 +37,7 @@ fn host_input(name: &str) -> HostInput {
 
 fn hist(host_id: i64, command: &str) -> HistoryInput {
     HistoryInput {
-        host_id,
+        host_id: Some(host_id),
         command: command.into(),
         cwd: None,
         exit_code: Some(0),
@@ -59,7 +59,7 @@ fn migration_0007_creates_history_and_insert_roundtrips() {
     let row = History::insert(
         &vault,
         &HistoryInput {
-            host_id: h.id,
+            host_id: Some(h.id),
             command: "docker logs --tail 100 ottr-api".into(),
             cwd: Some("/srv/ottr".into()),
             exit_code: Some(0),
@@ -300,5 +300,104 @@ fn history_limit_falls_back_to_default_on_missing_or_bad_value() {
         History::search(&vault, "", None, 10).unwrap().len(),
         5,
         "坏值回落默认上限：既有行为不受影响"
+    );
+}
+
+/// 0023：本地终端（host_id NULL）历史落库——此前 hostId -1 哨兵被 FK 拒绝，
+/// ⌘R 本地历史跨重启丢失。三态过滤：None 全部 / Some(-1) 只本机 / Some(id) 该主机；
+/// list_session 对 NULL 走 IS 比较。
+#[test]
+fn local_history_null_host_inserts_filters_and_lists_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let h = Hosts::create(&vault, host_input("web01")).unwrap();
+
+    let local = |c: &str, sid: &str| HistoryInput {
+        host_id: None,
+        command: c.into(),
+        cwd: Some("/Users/me".into()),
+        exit_code: Some(0),
+        session_id: Some(sid.into()),
+    };
+    let l1 = History::insert(&vault, &local("brew upgrade", "local-tab-1")).unwrap();
+    assert_eq!(l1.host_id, None, "本机行 host_id 回读为 None");
+    History::insert(&vault, &local("ls ~/Downloads", "local-tab-1")).unwrap();
+    History::insert(&vault, &local("echo other-local-tab", "local-tab-2")).unwrap();
+    History::insert(&vault, &hist(h.id, "docker ps")).unwrap();
+
+    // None = 全部（本机 + 主机）
+    assert_eq!(History::search(&vault, "", None, 50).unwrap().len(), 4);
+    // Some(-1) = 只看本机
+    let only_local = History::search(&vault, "", Some(ottr_vault::LOCAL_HOST_FILTER), 50).unwrap();
+    assert_eq!(only_local.len(), 3);
+    assert!(only_local.iter().all(|r| r.host_id.is_none()));
+    // Some(id) = 只看该主机（本机行不串入）
+    let only_host = History::search(&vault, "", Some(h.id), 50).unwrap();
+    assert_eq!(only_host.len(), 1);
+    assert_eq!(only_host[0].host_id, Some(h.id));
+    // FTS 路径（≥3 字符）同样尊重本机过滤
+    assert_eq!(
+        History::search(&vault, "Downloads", Some(ottr_vault::LOCAL_HOST_FILTER), 50)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        History::search(&vault, "Downloads", Some(h.id), 50)
+            .unwrap()
+            .is_empty()
+    );
+
+    // 会话序列：NULL host 走 IS 比较，按会话隔离
+    let seq = History::list_session(&vault, None, "local-tab-1", 200).unwrap();
+    assert_eq!(
+        seq.iter().map(|r| r.command.as_str()).collect::<Vec<_>>(),
+        vec!["brew upgrade", "ls ~/Downloads"]
+    );
+    assert!(
+        History::list_session(&vault, Some(h.id), "local-tab-1", 200)
+            .unwrap()
+            .is_empty(),
+        "主机维度查不到本机会话"
+    );
+}
+
+/// 0023 迁移保真：旧版（0022）库中已有的主机历史经表重建后 FTS 索引仍可命中
+/// （external-content 表重建期间删触发器 + 末尾 rebuild 的正确性），
+/// 且删主机级联仍然生效。
+#[test]
+fn migration_0023_rebuild_keeps_fts_and_cascade() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let h = Hosts::create(&vault, host_input("web01")).unwrap();
+    History::insert(&vault, &hist(h.id, "kubectl get pods --all-namespaces")).unwrap();
+    History::insert(
+        &vault,
+        &HistoryInput {
+            host_id: None,
+            command: "kubectl config current-context".into(),
+            cwd: None,
+            exit_code: Some(0),
+            session_id: None,
+        },
+    )
+    .unwrap();
+
+    // FTS 命中两行（一主机一本机）
+    assert_eq!(
+        History::search(&vault, "kubectl", None, 10).unwrap().len(),
+        2
+    );
+    // 删主机：主机行级联删除，本机行保留，FTS 同步
+    Hosts::delete(&vault, h.id).unwrap();
+    let left = History::search(&vault, "kubectl", None, 10).unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].host_id, None);
+    assert!(
+        matches!(
+            History::insert(&vault, &hist(4242, "ls")),
+            Err(VaultError::Sql(_))
+        ),
+        "悬空主机 id 仍被 FK 拒绝（可空≠放开约束）"
     );
 }

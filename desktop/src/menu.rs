@@ -84,6 +84,9 @@ fn menu_lang<R: Runtime>(app: &AppHandle<R>) -> Lang {
 /// 加速串）。读取失败/坏条目 → 逐条跳过（错误恢复：覆盖只是增强面，任何
 /// 异常都回落默认键位，绝不让改键数据打断菜单）。menu_lang 的 try_state
 /// 同款兜底：vault 未就绪 → 空表（默认键位），vault-ready 重建时纠偏。
+/// mac 专属：原生 app 菜单只在 mac 构建（win/linux 汉堡菜单走前端
+/// shortcutLabel，覆盖天然生效）。
+#[cfg(target_os = "macos")]
 fn shortcut_overrides<R: Runtime>(app: &AppHandle<R>) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     if let Some(vault) = app.try_state::<VaultState>() {
@@ -101,7 +104,8 @@ fn shortcut_overrides<R: Runtime>(app: &AppHandle<R>) -> std::collections::HashM
 }
 
 /// 把覆盖表写进菜单树（只改镜像动作的 accelerator；未知 id / 空串跳过——
-/// 错误恢复：坏条目回落默认键位）。就地修改。
+/// 错误恢复：坏条目回落默认键位）。就地修改。mac 专属（同上）。
+#[cfg(target_os = "macos")]
 fn apply_accel_overrides(
     tree: &mut [MenuNode],
     overrides: &std::collections::HashMap<String, String>,
@@ -1505,6 +1509,7 @@ pub fn on_vault_ready(app: &AppHandle<Wry>) {
 /// 监听与 [`on_vault_ready`] 共用；vault 未就绪（try_state 落空）按 En 兜底。
 fn rebuild_menus(handle: &AppHandle<Wry>) {
     let lang = menu_lang(handle);
+    #[cfg(target_os = "macos")]
     let overrides = shortcut_overrides(handle);
     #[cfg(target_os = "macos")]
     {
@@ -1666,7 +1671,8 @@ mod tests {
     }
 
     /// 快捷键改键（2026-10-21）：覆盖表写进镜像动作加速器；未知 id 不产生
-    /// 新条目、无覆盖的动作保持默认。
+    /// 新条目、无覆盖的动作保持默认。（mac 专属函数，同 cfg。）
+    #[cfg(target_os = "macos")]
     #[test]
     fn apply_accel_overrides_rewrites_mirror_accel_and_ignores_unknown() {
         fn collect(tree: &[MenuNode], id: &str) -> Option<String> {

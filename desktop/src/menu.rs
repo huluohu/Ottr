@@ -1371,7 +1371,9 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
         .on_menu_event(|app, event| match dispatch_of(event.id().as_ref()) {
             Some(Dispatch::TrayShow) => show_main_window(app),
             Some(Dispatch::TrayDisconnectAll) => {
-                let n = crate::disconnect_all_inner(&app.state::<AppState>().sessions);
+                let state = app.state::<AppState>();
+                let n = crate::disconnect_all_inner(&state.sessions)
+                    + crate::disconnect_all_local(&state.local_sessions);
                 eprintln!("[tray] disconnect all: {n} session(s)");
             }
             Some(Dispatch::Quit) => app.exit(0),

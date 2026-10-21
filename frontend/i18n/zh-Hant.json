@@ -198,6 +198,7 @@
     "placeholder": "搜尋跑過的命令…",
     "empty": "無匹配命令",
     "hostAll": "全部主機",
+    "hostLocal": "本機",
     "hostFilter": "按主機過濾",
     "insertHint": "回車插入當前終端",
     "unknownHost": "未知主機",
@@ -528,6 +529,7 @@
     "viewFiles": "檔案",
     "notConnected": "當前標籤未連接。連接主機後即可瀏覽遠端檔案。",
     "localPane": "本地檔案",
+    "localMachinePane": "本機檔案",
     "remotePane": "遠端檔案",
     "localPath": "本地路徑",
     "remotePath": "遠端路徑",
@@ -547,6 +549,7 @@
       "chmod": "更改權限「{{name}}」",
       "delete": "刪除「{{name}}」",
       "edit": "編輯「{{name}}」",
+      "openWith": "開啟「{{name}}」",
       "stopEdit": "停止編輯「{{name}}」",
       "download": "下載「{{name}}」",
       "downloadToLocal": "下載到本地當前目錄",
@@ -840,6 +843,7 @@
     "waiting": "等待首次採樣…（連接後每 5 秒只讀採樣一次）",
     "stopped": "採樣已停止（會話丟失？）——重連後恢復。",
     "disconnected": "還沒有已連接的主機。監控顯示當前連接主機的 CPU / 內存 / 磁盤 / 負載 / 網絡——先連接一臺主機，並在主機表單或總覽頁開啓監控。",
+    "localHint": "本機採樣（CPU / 記憶體 / 磁碟 / 負載 / 網路），預設每 5 秒一次。",
     "monitorHint": "只讀採樣當前連接的主機（cat /proc、df -k），預設每 5 秒一次；遠端僅支援 Linux。"
   },
   "overview": {
@@ -852,6 +856,7 @@
     "enabling": "開啓中…",
     "enableFailed": "{{host}} 開啓監控失敗：{{message}}",
     "notConnected": "未連接",
+    "localMachine": "本機",
     "procButton": "進程"
   },
   "process": {

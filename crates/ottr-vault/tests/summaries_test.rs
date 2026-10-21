@@ -36,7 +36,7 @@ fn host_input(name: &str) -> HostInput {
 
 fn summary_input(host_id: i64, session_id: &str, summary: &str) -> SummaryInput {
     SummaryInput {
-        host_id,
+        host_id: Some(host_id),
         session_id: session_id.into(),
         summary: summary.into(),
         command_count: 3,
@@ -127,7 +127,7 @@ fn insert_rejects_blank_and_negative() {
     let h = Hosts::create(&vault, host_input("web01")).unwrap();
 
     let blank_session = SummaryInput {
-        host_id: h.id,
+        host_id: Some(h.id),
         session_id: "   ".into(),
         summary: "ok".into(),
         command_count: 1,
@@ -137,7 +137,7 @@ fn insert_rejects_blank_and_negative() {
         Err(VaultError::InvalidInput(_))
     ));
     let blank_summary = SummaryInput {
-        host_id: h.id,
+        host_id: Some(h.id),
         session_id: "tab-a".into(),
         summary: "  \n ".into(),
         command_count: 1,
@@ -147,7 +147,7 @@ fn insert_rejects_blank_and_negative() {
         Err(VaultError::InvalidInput(_))
     ));
     let negative = SummaryInput {
-        host_id: h.id,
+        host_id: Some(h.id),
         session_id: "tab-a".into(),
         summary: "ok".into(),
         command_count: -1,
@@ -267,7 +267,7 @@ fn list_session_returns_commands_in_order_and_summary_chain_roundtrips() {
     let h = Hosts::create(&vault, host_input("web01")).unwrap();
 
     let cmd = |c: &str, sid: &str| HistoryInput {
-        host_id: h.id,
+        host_id: Some(h.id),
         command: c.into(),
         cwd: None,
         exit_code: Some(0),
@@ -285,7 +285,7 @@ fn list_session_returns_commands_in_order_and_summary_chain_roundtrips() {
     )
     .unwrap();
 
-    let session = History::list_session(&vault, h.id, "tab-fixture", 200).unwrap();
+    let session = History::list_session(&vault, Some(h.id), "tab-fixture", 200).unwrap();
     assert_eq!(
         session.iter().map(|r| r.id).collect::<Vec<_>>(),
         vec![c1.id, c2.id, c3.id],
@@ -293,7 +293,7 @@ fn list_session_returns_commands_in_order_and_summary_chain_roundtrips() {
     );
     // 其他会话的命令不串味
     History::insert(&vault, &cmd("root@web01:~$ 不属于本会话", "tab-other")).unwrap();
-    let other = History::list_session(&vault, h.id, "tab-other", 200).unwrap();
+    let other = History::list_session(&vault, Some(h.id), "tab-other", 200).unwrap();
     assert_eq!(other.len(), 1);
 
     let rows = SessionSummaries::list(&vault, None, 10).unwrap();
@@ -302,7 +302,7 @@ fn list_session_returns_commands_in_order_and_summary_chain_roundtrips() {
     let entry = SessionSummaries::insert(
         &vault,
         &SummaryInput {
-            host_id: h.id,
+            host_id: Some(h.id),
             session_id: "tab-fixture".into(),
             summary: "在 /srv/ottr 部署了 docker compose 服务（3 条命令）。".into(),
             command_count: 3,
@@ -313,4 +313,48 @@ fn list_session_returns_commands_in_order_and_summary_chain_roundtrips() {
     assert_eq!(got, vec![entry], "纪要入库可查：host 过滤 + 逐字段一致");
     assert_eq!(got[0].command_count, 3);
     assert_eq!(got[0].session_id, "tab-fixture");
+}
+
+/// 0023：本地终端（host_id NULL）纪要落库 + upsert——唯一索引改为
+/// COALESCE(host_id,-1) 后 NULL 参与唯一性，本机同会话多次收尾只留一行、
+/// rowid（AAD）稳定；三态列表过滤同 history。
+#[test]
+fn local_summary_null_host_upserts_and_filters() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    let h = Hosts::create(&vault, host_input("web01")).unwrap();
+
+    let first = SessionSummaries::insert(
+        &vault,
+        &SummaryInput {
+            host_id: None,
+            session_id: "local-tab-1".into(),
+            summary: "本机整理了下载目录。".into(),
+            command_count: 2,
+        },
+    )
+    .unwrap();
+    assert_eq!(first.host_id, None);
+    let second = SessionSummaries::insert(
+        &vault,
+        &SummaryInput {
+            host_id: None,
+            session_id: "local-tab-1".into(),
+            summary: "本机整理了下载目录并升级了 brew。".into(),
+            command_count: 5,
+        },
+    )
+    .unwrap();
+    assert_eq!(second.id, first.id, "本机同会话 upsert：rowid 稳定");
+    SessionSummaries::insert(&vault, &summary_input(h.id, "tab-a", "主机侧纪要")).unwrap();
+
+    let all = SessionSummaries::list(&vault, None, 50).unwrap();
+    assert_eq!(all.len(), 2);
+    let local = SessionSummaries::list(&vault, Some(ottr_vault::LOCAL_HOST_FILTER), 50).unwrap();
+    assert_eq!(local.len(), 1);
+    assert_eq!(local[0].summary, "本机整理了下载目录并升级了 brew。");
+    assert_eq!(local[0].command_count, 5);
+    let host_only = SessionSummaries::list(&vault, Some(h.id), 50).unwrap();
+    assert_eq!(host_only.len(), 1);
+    assert_eq!(host_only[0].host_id, Some(h.id));
 }

@@ -16,6 +16,7 @@
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
+use crate::history::host_filter_sql;
 use crate::{Result, Vault, VaultError, aad};
 
 /// ⌘R 纪要页签单次返回上限（Tauri 命令面 `limit` 缺省同值）。
@@ -34,7 +35,8 @@ fn now_ts() -> i64 {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SummaryEntry {
     pub id: i64,
-    pub host_id: i64,
+    /// `None` = 本机（本地终端会话；0023 起可空，与 recordings 同口径）。
+    pub host_id: Option<i64>,
     pub session_id: String,
     pub summary: String,
     /// 摘要覆盖的命令条数（面板徽标 + 溯源面）。
@@ -47,7 +49,8 @@ pub struct SummaryEntry {
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SummaryInput {
-    pub host_id: i64,
+    /// `None` = 本机。
+    pub host_id: Option<i64>,
     pub session_id: String,
     pub summary: String,
     pub command_count: i64,
@@ -57,10 +60,11 @@ pub struct SummaryInput {
 pub struct SessionSummaries;
 
 impl SessionSummaries {
-    /// 写入一条纪要（同 (host_id, session_id) upsert；锁定 →
-    /// [`VaultError::Locked`]）。host_id 必须指向存在的主机（FK 拒绝悬空插入
-    /// ——CASCADE 只管删主机联动删纪要）。session_id / summary 空白、
-    /// command_count 负数 → [`VaultError::InvalidInput`]。
+    /// 写入一条纪要（同 (host_id, session_id) upsert，NULL 与 NULL 视为同主机
+    /// ——`IS` 比较；锁定 → [`VaultError::Locked`]）。host_id `Some` 必须指向
+    /// 存在的主机（FK 拒绝悬空插入——CASCADE 只管删主机联动删纪要）；
+    /// `None` = 本机（0023 起，唯一索引按 COALESCE(host_id,-1) 参与唯一性）。
+    /// session_id / summary 空白、command_count 负数 → [`VaultError::InvalidInput`]。
     pub fn insert(vault: &Vault, input: &SummaryInput) -> Result<SummaryEntry> {
         if input.session_id.trim().is_empty() {
             return Err(VaultError::InvalidInput(
@@ -86,7 +90,7 @@ impl SessionSummaries {
         let ts = now_ts();
         let existing: Option<i64> = tx
             .query_row(
-                "SELECT id FROM session_summaries WHERE host_id = ?1 AND session_id = ?2",
+                "SELECT id FROM session_summaries WHERE host_id IS ?1 AND session_id = ?2",
                 params![input.host_id, input.session_id],
                 |r| r.get(0),
             )
@@ -125,24 +129,29 @@ impl SessionSummaries {
         })
     }
 
-    /// 纪要列表（逐行开封；`host_id` Some → 主机过滤；排序 id DESC，`limit` 下限 1）。
+    /// 纪要列表（逐行开封；`host_id` 三态见 [`crate::history::host_filter_sql`]；
+    /// 排序 id DESC，`limit` 下限 1）。
     pub fn list(vault: &Vault, host_id: Option<i64>, limit: usize) -> Result<Vec<SummaryEntry>> {
         let conn = vault.connection();
         // P0 vault-0（TOCTOU 修复）：先拿连接锁再取 Cipher——升级重密封持连接锁
         // 时写入方在此等待，拿到的必是升级后的新钥（旧序先取 Cipher 会被升级
         // 竞态出旧钥写入 = 永久不可解）。
         let cipher = vault.cipher()?;
-        let mut stmt = conn.prepare(
+        // 具名占位符一致（:host 在 CASE 里出现多次，与 ?N 位置参数混用会撞索引）
+        let host_filter = host_filter_sql("host_id");
+        let limit_i64 = limit.max(1) as i64;
+        let mut stmt = conn.prepare(&format!(
             "SELECT id, host_id, session_id, summary_enc, command_count, ts
              FROM session_summaries
-             WHERE (?1 IS NULL OR host_id = ?1)
-             ORDER BY id DESC LIMIT ?2",
-        )?;
+             WHERE {host_filter}
+             ORDER BY id DESC LIMIT :limit"
+        ))?;
+        let args: [(&str, &dyn rusqlite::ToSql); 2] = [(":host", &host_id), (":limit", &limit_i64)];
         let rows = stmt
-            .query_map(params![host_id, limit.max(1) as i64], |row| {
+            .query_map(args.as_slice(), |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
-                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<i64>>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, Vec<u8>>(3)?,
                     row.get::<_, i64>(4)?,

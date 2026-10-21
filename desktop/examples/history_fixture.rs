@@ -412,7 +412,7 @@ async fn run() -> Result<(), String> {
         History::insert(
             &vault,
             &HistoryInput {
-                host_id: host.id,
+                host_id: Some(host.id),
                 command: command.clone(),
                 cwd: cwd.clone(),
                 exit_code: *exit_code,

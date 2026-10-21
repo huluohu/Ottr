@@ -324,6 +324,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       encoding: "utf-8",
       encodingHint: null,
       isProduction: false,
+      // 本机监控无需主机行开关：连接即采样（与 connect 的 isLocal 分支同口径）
+      monitorEnabled: true,
     };
     set((st) => ({
       sessions: [...st.sessions, session],
@@ -518,7 +520,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // attach 成功即开（仅根——分屏 pane 与根同主机，多份采样纯浪费）。
       // 会话收尾（关标签/断开）由 Rust 侧 session_down 摘除采样任务，前端
       // 无需对位 stop；重连 = 新 rustId = 新采样窗口。
-      if (session.monitorEnabled && session.paneOf === null && !isLocal) {
+      // 本地终端连接即采样（本机无主机行/开关面，sysinfo 5s 一次成本可忽略——
+      // 2026-10-20 用户裁定「进程+监控都接本机」）；SSH 沿主机行开关。
+      if ((session.monitorEnabled || isLocal) && session.paneOf === null) {
         void invoke("monitor_start", { id: rustId }).catch(() => {});
       }
     } catch (e) {
@@ -697,6 +701,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const newId = newSessionId();
     const paneSession: Session = {
       id: newId,
+      kind: root.kind, // pane 与标签同源：本地标签分屏 = 再开一个本地 PTY，不按 hostId 连主机
       hostId: root.hostId,
       hostName: root.hostName,
       address: root.address,

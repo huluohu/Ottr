@@ -955,4 +955,29 @@ describe("SessionStore 本地终端", () => {
     expect(session?.attempt).toBe(0); // 没有安排重连
     expect(session?.status).toBe("connected");
   });
+
+  // 2026-10-20 用户实测：本地标签分屏报「连接失败：host id=-1 not found」——
+  // splitPane 复制根会话字段时漏了 kind，pane 被当 SSH 会话拿哨兵 hostId 连主机。
+  it("本地标签分屏：pane 继承 kind=local，连接走 local_term_open 而非 attach_host_session", async () => {
+    let opens = 0;
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "local_term_open") return Promise.resolve(`local-${++opens}`);
+      if (cmd === "attach_host_session") return Promise.reject(new Error("host id=-1 not found"));
+      return Promise.reject(new Error(`unexpected command: ${cmd}`));
+    });
+    const store = useSessionStore.getState();
+    const tab = store.openLocalTab();
+    await vi.waitFor(() => {
+      expect(useSessionStore.getState().sessions.find((s) => s.id === tab)?.rustId).toBe("local-1");
+    });
+    useSessionStore.getState().splitPane(tab, "row");
+    const pane = useSessionStore.getState().sessions.find((s) => s.paneOf === tab);
+    expect(pane?.kind).toBe("local");
+    await vi.waitFor(() => {
+      const p = useSessionStore.getState().sessions.find((s) => s.paneOf === tab);
+      expect(p?.status).toBe("connected");
+      expect(p?.rustId).toBe("local-2");
+    });
+    expect(mockedInvoke).not.toHaveBeenCalledWith("attach_host_session", expect.anything());
+  });
 });

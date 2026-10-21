@@ -63,7 +63,8 @@ export function buildSummaryPrompt(commands: string[]): SummaryPrompt {
 
 /** 会话收尾信息（SessionStore 钩子入参；生成链只需要归属三元组）。 */
 export interface SessionEndInfo {
-  hostId: number;
+  /** null = 本机（本地终端会话，纪要以 host_id NULL 落库）。 */
+  hostId: number | null;
   /** 前端会话 id（标签 uuid，跨重连稳定——history.session_id 同源）。 */
   id: string;
   hostName: string;

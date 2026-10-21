@@ -106,11 +106,14 @@ function StatusFace({
 export function MonitorPanel({
   rustId,
   enabled,
+  local = false,
 }: {
   /** 标签根会话的 Rust 会话 id（未连接 = null）。 */
   rustId: string | null;
-  /** host.monitor_enabled（off 态指引的依据）。 */
+  /** host.monitor_enabled（off 态指引的依据）；本地终端恒 true（连接即采样）。 */
   enabled: boolean;
+  /** 本地终端会话：机制说明按本机口径（sysinfo，非远端 /proc）。 */
+  local?: boolean;
 }) {
   const { t } = useTranslation();
   const win = useMonitorStore((s) => (rustId ? s.windows[rustId] : undefined));
@@ -156,7 +159,7 @@ export function MonitorPanel({
       )}
       {/* 机制说明常驻（2026-10-14 用户反馈「监控怎么用」）：采样口径一行说清。 */}
       <p className="monitor-state monitor-view-hint" data-testid="monitor-hint">
-        {t("monitor.monitorHint")}
+        {local ? t("monitor.localHint") : t("monitor.monitorHint")}
       </p>
     </div>
   );

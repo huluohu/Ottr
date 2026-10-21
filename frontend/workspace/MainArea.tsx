@@ -130,7 +130,8 @@ export function MainArea({
   // 监控面板采样开关（主机关闭监控时面板呈未采样态；ToolDialog 同口径）
   const monitorEnabled =
     rootSession != null
-      ? (hosts.find((h) => h.id === rootSession.hostId)?.monitor_enabled ?? false)
+      ? rootSession.kind === "local" ||
+        (hosts.find((h) => h.id === rootSession.hostId)?.monitor_enabled ?? false)
       : false;
   // 视图可见性（mainView 单值互斥 + filesOnly 覆盖，语义与原实现等价）
   const filesVisible = mainView === "files" || (terminalMode && filesOnly);
@@ -180,6 +181,10 @@ export function MainArea({
         onOpenProcesses={(host) => {
           openTab(host);
           openMainView("processes");
+        }}
+        onOpenLocal={(sessionId, view) => {
+          useSessionStore.getState().setActive(sessionId);
+          openMainView(view);
         }}
       />
     ) : slotView === "batch" ? (
@@ -404,7 +409,11 @@ export function MainArea({
           文件/进程；终端 visibility 隐藏常驻（缓冲/滚动回看不丢）。 */}
       {monitorVisible && rootSession && (
         <WorkspaceViewShell labelKey="monitor.title" description={t("workspace.monitor.desc")}>
-          <MonitorPanel rustId={rootSession.rustId} enabled={monitorEnabled} />
+          <MonitorPanel
+            rustId={rootSession.rustId}
+            enabled={monitorEnabled}
+            local={rootSession.kind === "local"}
+          />
         </WorkspaceViewShell>
       )}
       {pluginsVisible && rootSession && (

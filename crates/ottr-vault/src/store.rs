@@ -47,7 +47,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 22;
+pub const LATEST_SCHEMA_VERSION: u32 = 23;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -184,6 +184,13 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         22,
         include_str!("../migrations/0022_recordings_host_nullable.sql"),
+    ),
+    // 0023 history / session_summaries 的 host_id 改可空（本地终端：NULL = 本机）。
+    // history_fts 是 external-content 表，重建期间先删触发器、末尾 'rebuild'
+    // 整体重建索引；summary_enc 密文列 id 原样拷贝 → AAD 不变，不动 scan_registry。
+    (
+        23,
+        include_str!("../migrations/0023_local_history_nullable.sql"),
     ),
 ];
 

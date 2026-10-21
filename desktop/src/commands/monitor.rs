@@ -32,8 +32,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use ottr_monitor::{
-    LogTailSample, LoopConfig, Metrics, MonitorGuard, ProcEntry, SamplingEnd, collect,
-    collect_log_tail, collect_ps, kill_process, run_sampling,
+    LocalSampler, LogTailSample, LoopConfig, Metrics, MonitorError, MonitorGuard, ProcEntry,
+    SamplingEnd, collect, collect_log_tail, collect_log_tail_local, collect_ps, collect_ps_local,
+    kill_process, kill_process_local, run_sampling,
 };
 use ottr_ssh::SshSession;
 use ottr_vault::Settings;
@@ -44,6 +45,14 @@ use tokio_util::sync::CancellationToken;
 use super::state::AppState;
 use crate::security::{SETTING_MONITOR_INTERVAL, monitor_interval_from};
 use crate::vault::VaultState;
+
+/// `monitor_start` 的采集面：SSH 走远端复合命令，本地终端走 sysinfo 采样器
+/// （Arc 跨轮共享；Mutex 串行化采样轮）。
+#[derive(Clone)]
+enum Collector {
+    Ssh(Arc<SshSession>),
+    Local(Arc<Mutex<LocalSampler>>),
+}
 
 /// `ottr://monitor` 事件载荷（serde snake_case）。`status`：
 /// * `sample` —— 差分成功的新指标（`metrics` 必在）；
@@ -132,11 +141,21 @@ pub(crate) async fn monitor_start(
     app: AppHandle,
     id: String,
 ) -> Result<(), String> {
-    let session = {
-        let sessions = state.sessions.lock().unwrap();
-        sessions.get(&id).map(|e| Arc::clone(&e.session))
-    }
-    .ok_or_else(|| format!("no such session: {id}"))?;
+    // 采集面分派：SSH 会话 → 远端 /proc 复合命令；本地终端会话（2026-10-20）
+    // → 本机 sysinfo 采样器（同一 RawSample 差分管线，前端事件同形）。
+    let collector = {
+        let ssh = {
+            let sessions = state.sessions.lock().unwrap();
+            sessions.get(&id).map(|e| Arc::clone(&e.session))
+        };
+        match ssh {
+            Some(s) => Collector::Ssh(s),
+            None if state.local_sessions.lock().unwrap().contains_key(&id) => {
+                Collector::Local(Arc::new(std::sync::Mutex::new(LocalSampler::new())))
+            }
+            None => return Err(format!("no such session: {id}")),
+        }
+    };
 
     // 采样间隔现读 settings（缺省 5s，越界收敛；改配置对下一次 start 生效）
     let interval = monitor_interval_from(
@@ -156,10 +175,21 @@ pub(crate) async fn monitor_start(
             &id,
             LoopConfig::production(interval),
             token,
-            // 每轮现取 Arc 克隆（FnMut 返回 Future 借用约束的常规解法；Arc 廉价）
+            // 每轮现取克隆（FnMut 返回 Future 借用约束的常规解法；Arc 廉价）
             move || {
-                let session = Arc::clone(&session);
-                async move { collect(&session).await }
+                let c = collector.clone();
+                async move {
+                    match c {
+                        Collector::Ssh(session) => collect(&session).await,
+                        Collector::Local(sampler) => {
+                            tauri::async_runtime::spawn_blocking(move || {
+                                sampler.lock().unwrap().sample()
+                            })
+                            .await
+                            .map_err(|e| MonitorError::Exec(format!("local sampler join: {e}")))
+                        }
+                    }
+                }
             },
             move |metrics| {
                 let app = emit_app.clone();
@@ -220,12 +250,16 @@ pub(crate) fn monitor_stop(state: State<'_, AppState>, id: String) -> Result<(),
 }
 
 /// 进程浏览器采集（Phase 3 Task 2，B4 下半）：会话内 exec 只读 `ps -eo`
-/// （ottr_monitor::PS_CMD，白名单 ps 追加点）→ 结构化行。
+/// （ottr_monitor::PS_CMD，白名单 ps 追加点）→ 结构化行。本地终端会话
+/// （2026-10-20）→ [`collect_ps_local`]（同一解析器，本机 `ps`），前端零感知。
 #[tauri::command]
 pub(crate) async fn monitor_ps(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<ProcEntry>, String> {
+    if state.local_sessions.lock().unwrap().contains_key(&id) {
+        return collect_ps_local().await.map_err(|e| e.to_string());
+    }
     let session = session_arc(&state, &id)?;
     collect_ps(&session).await.map_err(|e| e.to_string())
 }
@@ -242,6 +276,11 @@ pub(crate) async fn monitor_log_tail(
     path: String,
     offset: Option<u64>,
 ) -> Result<LogTailSample, String> {
+    if state.local_sessions.lock().unwrap().contains_key(&id) {
+        return collect_log_tail_local(&path, offset)
+            .await
+            .map_err(|e| e.to_string());
+    }
     let session = session_arc(&state, &id)?;
     collect_log_tail(&session, &path, offset)
         .await
@@ -270,6 +309,9 @@ pub(crate) async fn monitor_kill(
     force: bool,
 ) -> Result<(), String> {
     let pid = validate_pid(pid)?;
+    if state.local_sessions.lock().unwrap().contains_key(&id) {
+        return kill_process_local(pid, force).await;
+    }
     let session = session_arc(&state, &id)?;
     kill_process(&session, pid, force).await
 }

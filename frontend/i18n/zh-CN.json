@@ -198,6 +198,7 @@
     "placeholder": "搜索跑过的命令…",
     "empty": "无匹配命令",
     "hostAll": "全部主机",
+    "hostLocal": "本机",
     "hostFilter": "按主机过滤",
     "insertHint": "回车插入当前终端",
     "unknownHost": "未知主机",
@@ -528,6 +529,7 @@
     "viewFiles": "文件",
     "notConnected": "当前标签未连接。连接主机后即可浏览远端文件。",
     "localPane": "本地文件",
+    "localMachinePane": "本机文件",
     "remotePane": "远端文件",
     "localPath": "本地路径",
     "remotePath": "远端路径",
@@ -547,6 +549,7 @@
       "chmod": "更改权限「{{name}}」",
       "delete": "删除「{{name}}」",
       "edit": "编辑「{{name}}」",
+      "openWith": "打开「{{name}}」",
       "stopEdit": "停止编辑「{{name}}」",
       "download": "下载「{{name}}」",
       "downloadToLocal": "下载到本地当前目录",
@@ -840,6 +843,7 @@
     "waiting": "等待首次采样…（连接后每 5 秒只读采样一次）",
     "stopped": "采样已停止（会话丢失？）——重连后恢复。",
     "disconnected": "还没有已连接的主机。监控显示当前连接主机的 CPU / 内存 / 磁盘 / 负载 / 网络——先连接一台主机，并在主机表单或总览页开启监控。",
+    "localHint": "本机采样（CPU / 内存 / 磁盘 / 负载 / 网络），默认每 5 秒一次。",
     "monitorHint": "只读采样当前连接的主机（cat /proc、df -k），默认每 5 秒一次；远端仅支持 Linux。"
   },
   "overview": {
@@ -852,6 +856,7 @@
     "enabling": "开启中…",
     "enableFailed": "{{host}} 开启监控失败：{{message}}",
     "notConnected": "未连接",
+    "localMachine": "本机",
     "procButton": "进程"
   },
   "process": {

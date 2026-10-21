@@ -36,6 +36,9 @@ export interface OverviewPageProps {
   onOpen: (host: Host) => void;
   /** 打开该主机终端标签并切到进程浏览器视图。 */
   onOpenProcesses: (host: Host) => void;
+  /** 本机卡片（2026-10-20 本地终端）：激活该本地标签并切到指定视图。
+   * 可选：仅渲染主机卡的旧挂载点/测试夹具不必补。 */
+  onOpenLocal?: (sessionId: string, view: "terminal" | "processes") => void;
 }
 
 /** 总览状态灯档位（off = 未开启监控的灰卡；idle = 开了但当前无采样窗）。 */
@@ -108,7 +111,7 @@ function MiniBar({ label, percent }: { label: string; percent: number }) {
   );
 }
 
-export function OverviewPage({ onOpen, onOpenProcesses }: OverviewPageProps) {
+export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewPageProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
   const sessions = useSessionStore((s) => s.sessions);
@@ -140,6 +143,14 @@ export function OverviewPage({ onOpen, onOpenProcesses }: OverviewPageProps) {
 
   const rustByHost = rootRustIdByHost(sessions);
   const sorted = sortForOverview(hosts);
+  // 本机卡片：第一条已连接的本地根会话（多开本地标签共用本机指标，取首个即可；
+  // 本机连接即采样，无开关面——light 永不为 off）。
+  const localRoot = sessions.find(
+    (x) => x.kind === "local" && x.paneOf === null && x.rustId != null,
+  );
+  const localWin = localRoot?.rustId ? windows[localRoot.rustId] : undefined;
+  const localLight = overviewLight(localWin, true);
+  const localLive = localWin?.status === "live" && localWin.latest != null;
 
   // 主区视图容器（UI 批次一 Task 3）：挂载即打开（MainArea 路由互斥），
   // data-view 沿 MainViewSlot 槽位口径。2026-10-16 总览标签化：头部返回
@@ -155,7 +166,7 @@ export function OverviewPage({ onOpen, onOpenProcesses }: OverviewPageProps) {
         <h2>{t("overview.title")}</h2>
       </div>
 
-      {sorted.length === 0 && (
+      {sorted.length === 0 && !localRoot && (
         <p className="overview-empty" data-testid="overview-empty">
           {t("overview.empty")}
         </p>
@@ -169,6 +180,53 @@ export function OverviewPage({ onOpen, onOpenProcesses }: OverviewPageProps) {
       )}
 
       <div className="overview-grid" data-testid="overview-grid">
+        {localRoot && (
+          <div
+            className="overview-card"
+            data-testid="overview-card-local"
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpenLocal?.(localRoot.id, "terminal")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpenLocal?.(localRoot.id, "terminal");
+              }
+            }}
+          >
+            <div className="overview-card-head">
+              <span className="overview-light" data-state={localLight} aria-hidden="true" />
+              <span className="overview-host">{t("overview.localMachine")}</span>
+              <span className="overview-addr">{t("nav.localTerminal")}</span>
+            </div>
+            {localLive && localWin ? (
+              <div className="overview-metrics">
+                <MiniBar label={t("monitor.cpu")} percent={localWin.latest!.cpu_percent} />
+                <MiniBar label={t("monitor.mem")} percent={localWin.latest!.mem_used_percent} />
+                <MiniBar label={t("monitor.disk")} percent={pickDiskPercent(localWin.latest!)} />
+              </div>
+            ) : (
+              <p className="overview-state">
+                {localLight === "unsupported"
+                  ? t("monitor.unsupported")
+                  : localLight === "stopped"
+                    ? t("monitor.stopped")
+                    : t("monitor.waiting")}
+              </p>
+            )}
+            <div className="overview-card-actions">
+              <button
+                data-testid="overview-proc-local"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenLocal?.(localRoot.id, "processes");
+                }}
+              >
+                {t("overview.procButton")}
+              </button>
+            </div>
+          </div>
+        )}
         {sorted.map((host) => {
           const rustId = rustByHost.get(host.id) ?? null;
           const win = rustId != null ? windows[rustId] : undefined;

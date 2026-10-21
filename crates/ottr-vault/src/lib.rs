@@ -35,7 +35,7 @@ pub use export::{hosts_csv, ssh_config_text, tabby_json, xshell_sessions};
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};
 pub use history::{
     HISTORY_KEEP_ROWS, HISTORY_SEARCH_LIMIT, HISTORY_SESSION_LIMIT, History, HistoryEntry,
-    HistoryInput,
+    HistoryInput, LOCAL_HOST_FILTER,
 };
 pub use jump_chains::{JumpChain, JumpChainInput, JumpChains};
 pub use master_key::MasterKey;

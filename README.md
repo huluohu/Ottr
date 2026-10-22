@@ -217,7 +217,6 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 │     ├─ ottr-cron         # 定时任务引擎（五段式解析 + 调度 + 抖动原语）
 │     └─ ottr-bench        # 性能基准（传输 / PTY 吞吐）
 ├─ scripts/                # 发布自动化（release.sh）+ 本地测试服务器（sshd/dufs）+ 更新清单生成
-├─ brand/                  # 品牌（logo 源文件 + 手册）
 ├─ docs/screenshots/       # README 截图（docs 其余为内部开发文档，不入库）
 └─ .github/workflows/      # CI：push → fmt + clippy + 三平台全量构建；tag → 双架构 macOS / Windows / Linux 构建 + 签名更新件 + latest.json 自动发布
 ```
@@ -251,7 +250,7 @@ npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前
 
 推送 `v*` 标签即触发 CI 自动构建四平台（macOS 双架构 / Windows / Linux）安装包 + 签名更新件并发布 Release。
 
-产物位于仓库根 `target/release/bundle/`。改了 `brand/icon.svg` 后用 `npx tauri icon brand/icon.svg` 重新生成全套图标。
+产物位于仓库根 `target/release/bundle/`。
 
 ### CI
 

@@ -38,10 +38,13 @@ describe("ShortcutSettings（设置 → 快捷键）", () => {
     await waitFor(() => {
       expect(useShortcutStore.getState().loaded).toBe(true);
     });
-    expect(screen.getByTestId("shortcuts-list").children.length).toBe(ACTIONS.length);
-    expect(screen.getByTestId("shortcut-row-palette.toggle").textContent).toMatch(
-      /⌘K|Ctrl\+K/,
-    );
+    // 表头行 + 24 个动作行
+    expect(screen.getAllByTestId(/^shortcut-row-/).length).toBe(ACTIONS.length);
+    // 键帽芯片：jsdom（win）下 palette.toggle = Ctrl / K 两枚
+    const chips = [
+      ...screen.getByTestId("shortcut-row-palette.toggle").querySelectorAll(".shortcut-kbd"),
+    ].map((k) => k.textContent);
+    expect(chips).toEqual(["Ctrl", "K"]);
   });
 
   it("搜索过滤动作名", async () => {
@@ -81,9 +84,15 @@ describe("ShortcutSettings（设置 → 快捷键）", () => {
       key: "k",
       metaKey: true,
     });
+    // 冲突不退出捕获：捕获盒内出现冲突报错（重按新组合即可），不落库
     await waitFor(() => {
-      expect(screen.getByTestId(`shortcut-error-palette.toggle`)).toBeTruthy();
+      expect(
+        screen.getByTestId(`shortcut-capture-palette.toggle`).querySelector(".shortcut-capture-err"),
+      ).toBeTruthy();
     });
+    expect(
+      screen.getByTestId(`shortcut-capture-palette.toggle`).querySelector(".shortcut-capture-input"),
+    ).toBeTruthy();
     expect(
       mockedInvoke.mock.calls.find(([c]) => c === "settings_set"),
     ).toBeUndefined();

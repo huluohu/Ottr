@@ -570,3 +570,123 @@
   font-weight: 700;
   letter-spacing: 0.04em;
 }
+
+/* --- 设置 → 快捷键（2026-10-21 改键设置，参考外部设计稿表格式布局）------ */
+.shortcut-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.shortcut-reset-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.shortcut-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+}
+.shortcut-search input {
+  border: none;
+  background: none;
+  color: var(--color-fg);
+  font-size: var(--text-sm);
+  outline: none;
+  width: 180px;
+}
+.shortcut-table {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.shortcut-tr {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 2.6fr) 90px 64px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+}
+.shortcut-tr + .shortcut-tr {
+  border-top: 1px solid var(--border-subtle);
+}
+.shortcut-head {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  background: var(--surface-raised);
+}
+.shortcut-cmd {
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shortcut-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.shortcut-kbd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--text-xs);
+  color: var(--color-fg);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+.shortcut-scope {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+.shortcut-act {
+  display: flex;
+  justify-content: flex-end;
+}
+.shortcut-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.shortcut-icon-btn:hover {
+  color: var(--color-fg);
+  background: var(--surface-raised);
+}
+.shortcut-capture {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shortcut-capture-input {
+  align-self: flex-start;
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  background: var(--surface-raised);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: 2px 10px;
+}
+.shortcut-capture-hint {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.shortcut-capture-err {
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+}

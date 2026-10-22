@@ -37,9 +37,11 @@ interface ShortcutStore {
   /** 覆盖变化计数（提示组件订阅重渲染）。 */
   version: number;
   load: () => Promise<void>;
-  /** 校验与持久化由调用方（设置页）先行；本方法只负责：落库 → 内存应用 → 广播。 */
-  persistApply: (overrides: Partial<Record<ActionId, string>>) => Promise<void>;
-  resetAll: () => Promise<void>;
+  /** 校验与持久化由调用方（设置页）先行；本方法只负责：落库 → 内存应用 → 广播。
+   * 返回落库是否成功（false = 写失败，调用方行内报错、内存未被改动）。 */
+  persistApply: (overrides: Partial<Record<ActionId, string>>) => Promise<boolean>;
+  /** 清空全部覆盖 = 恢复出厂键位；返回落库是否成功。 */
+  resetAll: () => Promise<boolean>;
 }
 
 export const useShortcutStore = create<ShortcutStore>()((set, get) => ({
@@ -74,10 +76,12 @@ export const useShortcutStore = create<ShortcutStore>()((set, get) => ({
     } catch {
       // 非 Tauri 环境（纯浏览器 dev）：mac 菜单重建无从谈起，镜像已是持久化面
     }
+    return true;
   },
 
   resetAll: async () => {
     await get().persistApply({});
+    return true;
   },
 }));
 

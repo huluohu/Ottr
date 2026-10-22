@@ -234,11 +234,9 @@ const MAC_SYMBOLS: Record<string, string> = {
   Alt: "⌥",
 };
 
-/** accelerator → 平台展示串（快捷键提示）：
- * mac「CmdOrCtrl+Shift+D」→「⌘⇧D」；win/linux →「Ctrl+Shift+D」。
- * 总表 win/linux 字面量直接写「Ctrl+…」（平台差异留Alt/F 系表达空间），
- * 与「CmdOrCtrl+…」等价对待。 */
-export function formatAccelerator(accel: string, plat: Platform): string {
+/** accelerator → 键帽芯片数组（改键设置每键一枚键帽）：mac「⌘ ⇧ K」、
+ * win/linux「Ctrl Shift K」；单字母键升为大写（键帽显示惯例）。 */
+export function acceleratorParts(accel: string, plat: Platform): string[] {
   const parts = accel.split("+").map((p) => p.trim());
   const mods: string[] = [];
   let key = "";
@@ -246,11 +244,21 @@ export function formatAccelerator(accel: string, plat: Platform): string {
     if (p === "CmdOrCtrl" || p === "Ctrl" || p === "Shift" || p === "Alt") mods.push(p);
     else key = p;
   }
+  const keyChip = key.length === 1 ? key.toUpperCase() : key;
   if (plat === "mac") {
-    return mods.map((m) => MAC_SYMBOLS[m]).join("") + key;
+    return [...mods.map((m) => MAC_SYMBOLS[m]), keyChip];
   }
-  const winMods = mods.map((m) => (m === "CmdOrCtrl" ? "Ctrl" : m));
-  return [...winMods, key].join("+");
+  return [...mods.map((m) => (m === "CmdOrCtrl" ? "Ctrl" : m)), keyChip];
+}
+
+/** accelerator → 平台展示串（快捷键提示）：
+ * mac「CmdOrCtrl+Shift+D」→「⌘⇧D」；win/linux →「Ctrl+Shift+D」。
+ * 总表 win/linux 字面量直接写「Ctrl+…」（平台差异留Alt/F 系表达空间），
+ * 与「CmdOrCtrl+…」等价对待。 */
+export function formatAccelerator(accel: string, plat: Platform): string {
+  const chips = acceleratorParts(accel, plat);
+  if (plat === "mac") return chips.join("");
+  return chips.join("+");
 }
 
 /** id → 平台展示串（「⌘K」/「Ctrl+K」；无键位 → null）。提示三处引用的出口。 */

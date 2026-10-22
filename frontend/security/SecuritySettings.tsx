@@ -96,9 +96,9 @@ const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
   { id: "security", labelKey: "settings.sectionSecurity" },
   { id: "sync", labelKey: "settings.sectionSync" },
   { id: "alerts", labelKey: "settings.sectionAlerts" },
-  { id: "shortcuts", labelKey: "settings.sectionShortcuts" },
   { id: "mcp", labelKey: "settings.sectionMcp" },
   { id: "appearance", labelKey: "settings.sectionAppearance" },
+  { id: "shortcuts", labelKey: "settings.sectionShortcuts" },
   { id: "ai", labelKey: "settings.sectionAi" },
   { id: "about", labelKey: "settings.sectionAbout" },
 ];

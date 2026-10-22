@@ -27,7 +27,25 @@
     "sectionShortcuts": "Shortcuts",
     "sectionMcp": "MCP",
     "panelError": "This settings panel failed to load; other sections are unaffected. Close and reopen settings to retry.",
-    "shortcuts": { "search": "Search actions or shortcuts…", "edit": "Change", "reset": "Reset", "resetAll": "Reset all", "capturing": "Press a key combination… (Esc to cancel)", "noMatch": "No matching actions", "hint": "Click \"Change\" and press a new combination. Esc cancels. A modifier (⌘/Ctrl/Alt) or F1-F24 is required for global shortcuts. Conflicting bindings are rejected.", "errReserved": "Reserved key (Esc/Tab/Enter/Space) cannot be bound", "errNoModifier": "Requires a modifier (⌘/Ctrl/Alt) or use F1-F24", "errConflict": "Conflicts with \"{{action}}\"", "errPersist": "Save failed, please retry" },
+    "shortcuts": {
+      "search": "Search shortcuts",
+      "edit": "Change",
+      "reset": "Reset",
+      "resetAll": "Reset all",
+      "capturing": "Press a new combo…",
+      "noMatch": "No matching actions",
+      "hint": "Click \"Change\" and press a new combination. Esc cancels. A modifier (⌘/Ctrl/Alt) or F1-F24 is required for global shortcuts. Conflicting bindings are rejected.",
+      "errReserved": "Reserved key (Esc/Tab/Enter/Space) cannot be bound",
+      "errNoModifier": "Requires a modifier (⌘/Ctrl/Alt) or use F1-F24",
+      "errConflict": "Conflicts with \"{{action}}\"",
+      "errPersist": "Save failed, please retry",
+      "colCommand": "Command",
+      "colBinding": "Key binding",
+      "colScope": "Scope",
+      "colAction": "Actions",
+      "scopeGlobal": "Global",
+      "captureHint": "Esc cancels · Backspace restores default · Press another combo after a conflict"
+    },
     "sectionGeneral": "General",
     "sectionAi": "AI",
     "sectionAbout": "About",
@@ -517,7 +535,8 @@
       "errRuleInvalid": "Regex does not compile"
     }
   },
-  "tabs": {    "duplicate": "Duplicate Tab",
+  "tabs": {
+    "duplicate": "Duplicate Tab",
     "rename": "Rename tab",
     "list": "Session tabs",
     "closeAria": "Close tab {{name}}",

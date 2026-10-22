@@ -48,7 +48,8 @@ docs/*
 /.vscode/extensions.json
 /.zcode/
 
-# 品牌资产与代理工作指引——本地保留，不公开（2026-10-21 用户裁定）
-/brand/
+# 品牌资产与代理工作指引——本地保留，不公开（2026-10-21 用户裁定）。
+# README 头图 logo 用复制副本：docs/screenshots/mark.svg（公开）。
+/brand/*
 /CLAUDE.md
 /AGENTS.md

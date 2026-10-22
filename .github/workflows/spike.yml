@@ -18,11 +18,23 @@
 name: spike-build
 
 on:
+  # main 不触发构建（2026-10-22 用户裁定）：main 只是集成分支——三平台构建
+  # 门在 PR（合入前跑绿），产物构建只在 tag 的 release.yml。main 上的提交
+  # 均已被合并前的 PR CI 验证过，原样重跑是纯浪费。文档类改动（md/docs）
+  # 同样不触发。需要手动验证时走 workflow_dispatch。
   push:
-    branches: [phase0-spike, phase2, main]
+    branches: [phase0-spike, phase2]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".gitignore"
   # 分支开发门（2026-10-13 用户裁定：大工程单独开分支）：feature 分支经
   # PR 合入前，三平台构建/fmt/clippy 先在此跑绿。
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".gitignore"
   workflow_dispatch:
 
 # 同分支连发只跑最新（2026-10-19 用户反馈「一次提交触发 3 次 action 浪费」）：

@@ -1,19 +1,10 @@
 # Windows MCP 命名管道快速验证（2026-10-13）：专用轻量 job——只编 debug bins
 # + 跑 mcp_pipe_fixture，迭代周期 ≈4 分钟（spike-build 全矩阵 ≈10 分钟）。
-# push 直跑；稳定后可移除或改 workflow_dispatch。
+# PR 触发（2026-10-22：main push 不再触发任何构建——Windows E2E 收敛为
+# 合并门；迭代期需在 main 上直跑时用 workflow_dispatch）。
 name: windows-mcp-test
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "desktop/src/commands/mcp/**"
-      - "desktop/src/bin/ottr-mcp.rs"
-      - "desktop/src/mcp.rs"
-      - "desktop/tests/mcp_pipe_fixture.rs"
-      - "desktop/Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/windows-mcp-test.yml"
   pull_request:
     paths:
       - "desktop/src/commands/mcp/**"

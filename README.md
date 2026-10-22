@@ -218,7 +218,7 @@ macOS 15 起要求应用获得「本地网络」授权后才能访问局域网�
 │     └─ ottr-bench        # 性能基准（传输 / PTY 吞吐）
 ├─ scripts/                # 发布自动化（release.sh）+ 本地测试服务器（sshd/dufs）+ 更新清单生成
 ├─ docs/screenshots/       # README 截图（docs 其余为内部开发文档，不入库）
-└─ .github/workflows/      # CI：push → fmt + clippy + 三平台全量构建；tag → 双架构 macOS / Windows / Linux 构建 + 签名更新件 + latest.json 自动发布
+└─ .github/workflows/      # CI：PR → fmt + clippy + 三平台构建（合并门，文档类改动不触发）；tag → 双架构 macOS / Windows / Linux 构建 + 签名更新件 + latest.json 自动发布
 ```
 
 ### 开发环境

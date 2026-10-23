@@ -640,6 +640,11 @@ describe("文件面板增强", () => {
     mockListings();
     render(<FilePanel session={makeSession()} />);
     await waitFor(() => expect(screen.getByTestId("file-list-local").textContent).toContain("notes.txt"));
+    // 双栏就绪（远端列也渲染完）+ flush：拖拽注册 effect 依赖 remote.path/
+    // local.path，路径落定会异步重注册 onDragDropEvent——不等齐就发 drop 会
+    // 打在重注册窗口里（Linux runner 慢机上实挂，2026-10-23 v1.5.7）。
+    await waitFor(() => expect(screen.getByTestId("file-list-remote").textContent).toContain("big100"));
+    await act(async () => {});
     // elementFromPoint 打桩指到本地栏（OS 拖拽落点判定）
     const localPane = screen
       .getByTestId("file-title-local")

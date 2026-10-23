@@ -135,6 +135,7 @@ describe("App 主页布局（集成）", () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "hosts_list") return Promise.resolve([web]);
       if (cmd === "credentials_list" || cmd === "host_groups_list" || cmd === "jc_list") return Promise.resolve([]);
+      if (cmd === "settings_get") return Promise.resolve(null); // 快捷键覆盖装载降级为默认
       return Promise.reject(new Error(`unexpected command: ${cmd}`));
     });
 

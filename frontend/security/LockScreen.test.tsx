@@ -183,12 +183,17 @@ describe("LockScreen 忘记密码引导", () => {
     expect(mockedInvoke).toHaveBeenCalledWith("vault_reset", { confirm: true });
   });
 
-  it("收起说明区即解除 armed（重开从一击开始）", () => {
+  // 2026-10-22 交互重做：忘记密码 = 单向打开，收起入口 = 面板底部「返回解锁」；
+  // 面板展开期间忘记密码链接隐藏（去掉「同链接既开又收」的反逻辑）。
+  it("收起走面板内「返回解锁」，即解除 armed（重开从一击开始）；展开期忘记密码链接隐藏", () => {
     mockedInvoke.mockResolvedValue(null);
     render(<LockScreen />);
     fireEvent.click(screen.getByTestId("lock-forgot"));
+    expect(screen.queryByTestId("lock-forgot")).toBeNull(); // 单向打开：链接隐藏
     fireEvent.click(screen.getByTestId("lock-reset-arm")); // armed
-    fireEvent.click(screen.getByTestId("lock-forgot")); // 收起
+    fireEvent.click(screen.getByTestId("lock-reset-close")); // 收起
+    expect(screen.queryByTestId("lock-reset-panel")).toBeNull();
+    expect(screen.getByTestId("lock-forgot")).toBeTruthy();
     fireEvent.click(screen.getByTestId("lock-forgot")); // 再展开
     expect(screen.getByTestId("lock-reset-arm").textContent).toBe("我已知晓，重置应用");
     expect(mockedInvoke).not.toHaveBeenCalled();

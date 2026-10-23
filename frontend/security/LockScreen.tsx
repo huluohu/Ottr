@@ -47,8 +47,11 @@ export function LockScreen({ closing }: { closing?: boolean }) {
     if (lockMode === "keyring") void refreshStatus();
   }, [lockMode, refreshStatus]);
 
-  function handleToggleHelp() {
-    setHelpOpen((v) => !v);
+  /** 关闭重置引导面板（面板底部「返回解锁」；解除 armed 二击与错误态——
+   * 与原收起语义一致）。打开入口只在「忘记密码？」链接（单向，2026-10-22
+   * 用户反馈：同链接既开又收不合常理）。 */
+  function closeHelp() {
+    setHelpOpen(false);
     setArmed(false);
     setResetError(null);
   }
@@ -121,15 +124,22 @@ export function LockScreen({ closing }: { closing?: boolean }) {
             {unlocking ? t("common.loading") : t("security.lockScreen.unlock")}
           </button>
         </div>
-        <button
-          type="button"
-          className="lock-forgot"
-          data-testid="lock-forgot"
-          aria-expanded={helpOpen}
-          onClick={handleToggleHelp}
-        >
-          {t("security.lockScreen.forgot")}
-        </button>
+        {/* 忘记密码 = 单向打开：收起入口在面板底部「返回解锁」（同链接既开又
+            收不合常理，2026-10-22 用户反馈） */}
+        {!helpOpen && (
+          <button
+            type="button"
+            className="lock-forgot"
+            data-testid="lock-forgot"
+            onClick={() => {
+              setHelpOpen(true);
+              setArmed(false);
+              setResetError(null);
+            }}
+          >
+            {t("security.lockScreen.forgot")}
+          </button>
+        )}
         {helpOpen && (
           <div className="lock-reset-panel" data-testid="lock-reset-panel">
             <p className="lock-reset-title">{t("security.lockScreen.resetTitle")}</p>
@@ -149,6 +159,14 @@ export function LockScreen({ closing }: { closing?: boolean }) {
               onClick={handleReset}
             >
               {armed ? t("security.lockScreen.resetArmed") : t("security.lockScreen.resetArm")}
+            </button>
+            <button
+              type="button"
+              className="lock-forgot"
+              data-testid="lock-reset-close"
+              onClick={closeHelp}
+            >
+              {t("security.lockScreen.resetClose")}
             </button>
           </div>
         )}

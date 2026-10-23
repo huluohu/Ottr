@@ -124,6 +124,9 @@
   border-radius: 50%;
   background: var(--ottr-amber-500);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ottr-amber-500) 25%, transparent);
+  /* 呼吸脉冲（2026-10-22 更新指示设计）：静态点不够可感知——复用页签状态点的
+     dot-breathe（keyframes 全局），reduced-motion 全局兜底压为静帧。 */
+  animation: dot-breathe var(--dur-loop-idle) var(--ease-drift) infinite;
 }
 
 /* --- 工作区宽幅视图外壳（WorkspaceViewShell，2026-10-16 IA 重构）--- */

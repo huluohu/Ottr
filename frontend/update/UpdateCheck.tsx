@@ -88,7 +88,7 @@ export function UpdateCheck() {
               type="button"
               className="btn-accent"
               data-testid="update-check-button"
-              disabled={phase.kind === "checking" || phase.kind === "downloading"}
+              disabled={phase.kind === "checking" || phase.kind === "downloading" || phase.kind === "installed"}
               onClick={() => void checkForUpdate()}
             >
               {phase.kind === "checking" ? t("update.checking") : t("update.check")}

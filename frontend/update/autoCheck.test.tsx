@@ -1,6 +1,7 @@
 // autoCheck 单测（2026-10-13 自动检查更新）：三模式调度 / 便携禁用 / 静默
-// UX（只有「发现新版本」发声）/ 设置页即改即生效。真实 updateStore +
-// toastStore 集成面；mock：updater check、app_portable、vault settings。
+// UX（2026-10-26 起全程静默：发现新版本也不弹 toast，只落 store 让图标轨
+// 更新钮浮现）/ 设置页即改即生效。真实 updateStore + toastStore 集成面；
+// mock：updater check、app_portable、vault settings。
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,7 +47,7 @@ function fakeUpdate(version: string) {
 beforeEach(() => {
   __resetForTests();
   useToastStore.setState({ toasts: [] });
-  useUpdateStore.setState({ current: "0.9.5", portable: false, phase: { kind: "idle" } });
+  useUpdateStore.setState({ current: "0.9.5", portable: false, phase: { kind: "idle" }, info: null });
   checkMock.mockReset();
   invokeMock.mockReset();
   settingsGetMock.mockReset();
@@ -84,20 +85,19 @@ describe("autoCheck（自动检查更新）", () => {
     expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 
-  it("startup：发现新版本 → 单条 toast 带「下载并安装」，不自动下载", async () => {
+  it("startup：发现新版本 → 不弹 toast，只落 store（图标轨据 info 浮现更新钮），不自动下载", async () => {
     render(<Toaster />);
-    checkMock.mockResolvedValue(fakeUpdate("0.9.6"));
+    const dl = vi.fn(async () => {});
+    checkMock.mockResolvedValue({ ...fakeUpdate("0.9.6"), downloadAndInstall: dl, body: "Ottr 0.9.6" });
     settingsGetMock.mockResolvedValue("startup");
     await act(async () => {
       await initAutoCheck();
     });
-    const actionToast = useToastStore.getState().toasts.find((t) => t.action);
-    expect(actionToast?.message).toContain("v0.9.6");
-    expect(actionToast?.action?.label).toBe("Download & install");
+    // 2026-10-26 用户裁定：一次发现两处提醒是重复——自动路径零 toast
+    expect(useToastStore.getState().toasts).toHaveLength(0);
     expect(useUpdateStore.getState().phase.kind).toBe("available");
-    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(
-      false,
-    );
+    expect(useUpdateStore.getState().info).toEqual({ version: "0.9.6", date: null, body: "Ottr 0.9.6" });
+    expect(dl).not.toHaveBeenCalled();
   });
 
   it("startup：检查出错保持静默（错误不上屏，手动入口才有完整反馈）", async () => {
@@ -130,7 +130,8 @@ describe("autoCheck（自动检查更新）", () => {
       await applyAutoCheckMode("startup");
     });
     expect(checkMock).toHaveBeenCalledTimes(1);
-    expect(useToastStore.getState().toasts.some((t) => t.action)).toBe(true);
+    expect(useUpdateStore.getState().info?.version).toBe("0.9.6");
+    expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 
   it("非法配置值按 off 处理（安全侧：不查）", async () => {

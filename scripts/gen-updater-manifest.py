@@ -57,13 +57,35 @@ def main() -> int:
     version = tag.lstrip("v")
     manifest = {
         "version": version,
-        "notes": f"Ottr {version}",
+        "notes": release_notes(tag, version),
         "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "platforms": platforms,
     }
     out.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"gen-updater-manifest: {out} written ({', '.join(sorted(platforms))})")
     return 0
+
+
+# notes 上限：latest.json 是每次检查更新都要拉的小文件，说明正文超长就截断
+# （应用内面板只展示摘要，完整说明在 Release 页）。
+NOTES_MAX_CHARS = 6000
+
+
+def release_notes(tag: str, version: str) -> str:
+    """发布说明正文 = 仓库内 docs/release-notes/<tag>.md（release.sh 打 tag 前
+    强制就位、与 Release 正文同源；release job 以仓库根为 cwd 调用本脚本）。
+    缺文件回退占位行「Ottr x.y.z」——应用内更新面板把该占位视为「无说明」
+    不渲染说明区（frontend/update/releaseNotes.ts isPlaceholderNotes）。"""
+    path = pathlib.Path("docs/release-notes") / f"{tag}.md"
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return f"Ottr {version}"
+    if not text:
+        return f"Ottr {version}"
+    if len(text) > NOTES_MAX_CHARS:
+        text = text[:NOTES_MAX_CHARS].rstrip() + "\n…"
+    return text
 
 
 if __name__ == "__main__":

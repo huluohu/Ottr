@@ -110,10 +110,17 @@
   z-index: 199;
 }
 
-/* 更新钮（2026-10-17 用户需求：发现新版本在图标轨体现）——按钮仅在有
- * 新版本待取时浮现；amber 圆点 = 奖赏信号（brand.md 三色分工）。 */
+/* 更新钮（2026-10-17 用户需求：发现新版本在图标轨体现；2026-10-26 贯穿全程）
+ * ——紧贴锁定键正上方；store.info 非空即浮现，信号随 data-phase 换色：
+ * available = amber 呼吸点（奖赏色，brand.md 三色分工）/ installed = success
+ * 呼吸点（待重启同样值得注意）/ error = danger 静点 / checking = 半透静点 /
+ * downloading = 进度环（点隐去）。 */
 .rail-update {
   position: relative;
+}
+.rail-update[data-expanded="true"] {
+  background: var(--surface-raised);
+  color: var(--color-fg);
 }
 .rail-update-dot {
   position: absolute;
@@ -127,6 +134,172 @@
   /* 呼吸脉冲（2026-10-22 更新指示设计）：静态点不够可感知——复用页签状态点的
      dot-breathe（keyframes 全局），reduced-motion 全局兜底压为静帧。 */
   animation: dot-breathe var(--dur-loop-idle) var(--ease-drift) infinite;
+}
+.rail-update[data-phase="installed"] .rail-update-dot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-success) 25%, transparent);
+}
+.rail-update[data-phase="error"] .rail-update-dot {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger) 25%, transparent);
+  animation: none;
+}
+.rail-update[data-phase="checking"] .rail-update-dot {
+  opacity: 0.5;
+  animation: none;
+}
+/* 下载进度环：SVG 描边 dash（IconRail.UpdateRing），覆盖整个 36px 钮面，
+ * 不拦点击。总长未知（data-indeterminate）时 25% 弧匀速转。 */
+.rail-update-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform: rotate(-90deg);
+}
+.rail-update-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+.rail-update-ring-track {
+  stroke: color-mix(in srgb, var(--fg-muted) 25%, transparent);
+}
+.rail-update-ring-arc {
+  stroke: var(--color-accent-border);
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--dur) var(--ease-out);
+}
+.rail-update-ring[data-indeterminate="true"] {
+  animation: rail-ring-spin var(--dur-loop-idle) linear infinite;
+}
+@keyframes rail-ring-spin {
+  to {
+    transform: rotate(270deg);
+  }
+}
+
+/* 更新面板（2026-10-26 用户需求：点更新钮弹新版本面板，显示版本信息、支持
+ * 下载并安装）：贴钮右侧的卡片（fixed，与 Otty 弹层同一锚定算法与入场），
+ * 不复用 .sidebar-flyout——那是按钮行菜单制式，会把面板内动作钮排成菜单行。 */
+.rail-pop {
+  position: fixed;
+  z-index: var(--z-flyout);
+  width: 320px;
+  max-width: calc(100vw - 72px);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  transform-origin: left bottom;
+  animation: flyout-in var(--dur) var(--ease-float);
+}
+.update-pop-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.update-pop-title {
+  font-size: var(--text-base);
+  color: var(--color-fg);
+}
+.update-pop-meta {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+/* 发布说明：纯文本块（标题/列表/段落），最多约 6 行后内滚——面板不随
+ * 说明长度无限长高。 */
+.update-pop-notes {
+  max-height: 168px;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-fg) 4%, transparent);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-fg);
+}
+.update-pop-h {
+  font-weight: 600;
+  margin-top: var(--space-1);
+}
+.update-pop-h:first-child {
+  margin-top: 0;
+}
+.update-pop-li {
+  position: relative;
+  padding-left: 14px;
+}
+.update-pop-li::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: var(--fg-muted);
+}
+.update-pop-p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+}
+.update-pop-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  word-break: break-word;
+}
+/* 下载进度：细条 + 文案（scaleX 合成器动画，同文件面板队列条制式） */
+.update-pop-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.update-pop-bar {
+  height: 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--fg-muted) 25%, transparent);
+  overflow: hidden;
+}
+.update-pop-bar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--color-accent-border);
+  transform-origin: left;
+  transform: scaleX(var(--progress, 0));
+  transition: transform var(--dur) var(--ease-out);
+}
+.update-pop-bar-fill[data-indeterminate="true"] {
+  width: 30%;
+  transform: none;
+  animation: update-bar-slide var(--dur-loop-idle) var(--ease-drift) infinite;
+}
+@keyframes update-bar-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+.update-pop-progress-text {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+/* 动作行：左侧 GitHub 链接、右侧主动作（与设置页「发现新版」条同权重分配） */
+.update-pop-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.update-pop-actions .update-pop-link {
+  margin-right: auto;
+  font-size: var(--text-sm);
+  color: var(--color-accent-text);
+  text-decoration: none;
+}
+.update-pop-actions .update-pop-link:hover {
+  text-decoration: underline;
 }
 
 /* --- 工作区宽幅视图外壳（WorkspaceViewShell，2026-10-16 IA 重构）--- */

@@ -4,18 +4,18 @@
 // "interval"），设置 → 关于 的下拉即改即生效（applyAutoCheckMode）。
 //
 // 自动检查的 UX 纪律（与手动 toast 流程的差异）：
-//   * 全程静默——不弹「正在检查」、不报「已是最新」、出错不上屏（手动入口
-//     才有完整反馈）；
-//   * 唯一发声点 = 发现新版本（复用手动路径的「下载并安装」15s 决策窗
-//     toast，绝不自动下载）；
+//   * **全程静默**——不弹「正在检查」、不报「已是最新」、出错不上屏；发现
+//     新版本也不弹 toast（2026-10-26 用户裁定：图标轨更新钮是唯一提醒，
+//     此前「toast + 轨上钮」一次发现两处提醒是重复——toast 只留给用户
+//     主动点「检查更新」后的即时反馈）；
+//   * 发现新版本的全部呈现 = updateStore.info 非空 → 图标轨更新钮浮现
+//     （amber 呼吸点 + 贴钮面板「下载并安装」），绝不自动下载；
 //   * 便携版整体禁用（无安装器/无 updater 签名件，检查没有意义——与
 //     设置面板/手动入口的隐藏同源）；非 Tauri 环境同样禁用。
 //
-// 单飞：复用 updateStore 的 phase 护栏（checking/downloading 期间跳过），
-// 与手动入口互不打断（手动检查进行中时自动轮次让位）。
-import i18n from "../i18n";
+// 单飞：复用 updateStore 的 phase 护栏（checking/downloading/installed 期间
+// 跳过），与手动入口互不打断（手动检查进行中时自动轮次让位）。
 import { vaultApi } from "../vault/api";
-import { showToast } from "../ui/toastStore";
 import { useUpdateStore } from "./updateStore";
 
 export type AutoCheckMode = "off" | "startup" | "interval";
@@ -51,24 +51,12 @@ async function isPortable(): Promise<boolean> {
   }
 }
 
-/** 一轮自动检查：便携/进行中让位；只有「发现新版本」发声（15s 决策窗）。 */
+/** 一轮自动检查：便携/进行中让位；结果只落 store（图标轨据 info 浮现更新钮）。 */
 async function runSilentCheck(): Promise<void> {
   const st = useUpdateStore.getState();
-  if (st.phase.kind === "checking" || st.phase.kind === "downloading") return;
+  if (st.phase.kind === "checking" || st.phase.kind === "downloading" || st.phase.kind === "installed") return;
   await st.checkForUpdate();
-  const after = useUpdateStore.getState().phase;
-  if (after.kind === "available") {
-    const t = i18n.t.bind(i18n);
-    showToast(t("update.available", { version: after.version }), "info", {
-      label: t("update.downloadInstall"),
-      // 与手动路径同一动作内核（startInstallToasts：下载进度可见 + 完成带
-      // 「立即重启」）。
-      run: () => {
-        void import("./updateToasts").then(({ startInstallToasts }) => startInstallToasts());
-      },
-    }, 15000);
-  }
-  // uptodate / error：自动路径保持静默（不打扰是本功能的全部意义）。
+  // available / uptodate / error：自动路径一律不上屏（不打扰是本功能的全部意义）。
 }
 
 async function applyMode(mode: AutoCheckMode): Promise<void> {

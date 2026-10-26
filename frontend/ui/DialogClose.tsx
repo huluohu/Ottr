@@ -8,9 +8,11 @@ interface DialogCloseProps {
   onClose: () => void;
   /** 测试锚点（沿用各弹框既有 testid，防测试面漂移）。 */
   testid?: string;
+  /** 悬停提示（如在途任务「关闭将放弃」等提示）。 */
+  title?: string;
 }
 
-export function DialogClose({ onClose, testid }: DialogCloseProps) {
+export function DialogClose({ onClose, testid, title }: DialogCloseProps) {
   const { t } = useTranslation();
   return (
     <span className="dialog-close-group">
@@ -23,6 +25,7 @@ export function DialogClose({ onClose, testid }: DialogCloseProps) {
         className="dialog-close"
         data-testid={testid}
         aria-label={t("common.close")}
+        title={title}
         onClick={onClose}
       >
         ✕

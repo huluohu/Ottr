@@ -193,6 +193,11 @@ jobs:
             echo "TAURI_SIGNING_PRIVATE_KEY not configured - building without updater artifacts"
           fi
 
+      # 打包段重试（v1.5.8 实挂）：macOS 的 bundle_dmg.sh 靠 hdiutil 挂盘 +
+      # AppleScript 驱动 Finder 排图标，无头 runner 上会间歇静默失败（Rust
+      # 编译与签名全过、4 秒即退、Tauri 不透出脚本 stderr）。cargo/vite 缓存
+      # 全命中，重试只重跑打包段，代价不到 1 分钟。重试前先卸掉上次失败
+      # 残留的挂载卷——不卸的话下次 attach 必报 Resource busy，重试白费。
       - name: Build Tauri app
         shell: bash
         env:
@@ -200,9 +205,23 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           RUST_TARGET: ${{ matrix.rust_target }}
         run: |
-          # TAURI_BUILD_ARGS 有意按空白分词（空 = 无参数；加引号会传空串当参数）
-          # shellcheck disable=SC2086
-          npx tauri build $TAURI_BUILD_ARGS ${RUST_TARGET:+--target "$RUST_TARGET"}
+          built=""
+          for attempt in 1 2 3; do
+            # TAURI_BUILD_ARGS 有意按空白分词（空 = 无参数；加引号会传空串当参数）
+            # shellcheck disable=SC2086
+            if npx tauri build $TAURI_BUILD_ARGS ${RUST_TARGET:+--target "$RUST_TARGET"}; then
+              built=1
+              break
+            fi
+            [ "$attempt" -lt 3 ] || break
+            echo "::warning::tauri build 第 $attempt 次失败，清残留挂载后重试"
+            # 非 macOS 无 /Volumes 目录，通配不命中、-d 守卫跳过
+            for vol in /Volumes/Ottr*; do
+              [ -d "$vol" ] && hdiutil detach "$vol" -force || true
+            done
+            sleep 15
+          done
+          [ -n "$built" ] || { echo "::error::tauri build 三次均失败"; exit 1; }
           # 交叉构建的 bundle 落在 target/<triple>/ 下——归位到标准路径供
           # 统一上传通配（原生构建无此目录，跳过）。
           if [ -n "$RUST_TARGET" ]; then

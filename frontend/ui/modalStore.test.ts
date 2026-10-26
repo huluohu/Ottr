@@ -32,11 +32,11 @@ describe("modalStore 全局弹窗唯一槽", () => {
 
   it("close 幂等：空槽/异者 close 均 no-op", () => {
     expect(useModalStore.getState().active).toBeNull();
-    useModalStore.getState().close("sync");
+    useModalStore.getState().close("history");
     expect(useModalStore.getState().active).toBeNull();
-    useModalStore.getState().open("sync");
-    useModalStore.getState().close("sync");
-    useModalStore.getState().close("sync");
+    useModalStore.getState().open("history");
+    useModalStore.getState().close("history");
+    useModalStore.getState().close("history");
     expect(useModalStore.getState().active).toBeNull();
   });
 });

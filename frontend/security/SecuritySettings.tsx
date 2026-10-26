@@ -7,6 +7,7 @@
 // * 外观（主题网格）/语言两项沿用 T2 词典键——persist 已迁 vault settings
 //   （ThemeContext / i18n index 负责读写，本页只触发 setMode/setLang）。
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import { vaultApi, type HostKeyAuditStatus, type ReencryptProgress } from "../vault/api";
@@ -27,6 +28,7 @@ import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
 import { UpdateCheck } from "../update/UpdateCheck";
 import { useVaultLockStore } from "./VaultLockStore";
 import { SyncSettings } from "../sync/SyncSettings";
+import { SyncDialog } from "../sync/SyncDialog";
 import { AISettings } from "../ai/AISettings";
 import { getVersion } from "@tauri-apps/api/app";
 import { AlertSettings } from "../notify/AlertSettings";
@@ -41,8 +43,6 @@ export interface SecuritySettingsProps {
   /** 外部定向打开（AI 设置跳转/检查更新入口）：本次打开落地的分区；
    * null = 默认通用区。仅在本轮 open=true 时消费。 */
   initialPane?: SettingsPane | null;
-  /** 同步区「立即同步」入口（App 根部挂 SyncDialog，Task 4）。 */
-  onOpenSyncDialog?: () => void;
 }
 
 const REENCRYPT_EVENT = "ottr://reencrypt-progress";
@@ -113,7 +113,6 @@ export function SecuritySettings({
   open,
   onClose,
   initialPane = null,
-  onOpenSyncDialog,
 }: SecuritySettingsProps) {
   const { t } = useTranslation();
   const { mode: themeMode, setMode } = useTheme();
@@ -236,6 +235,15 @@ export function SecuritySettings({
     }
     return false;
   });
+  // 同步流程对话框 = 本设置页的**子弹框**（2026-10-26 用户反馈「弹出同步弹框
+  // 时不要隐藏下面的设置面板」）：此前它占全局弹窗槽位、开启即顶掉设置页，
+  // 关闭再跳回设置页——形态上是「换页」不是「叠层」。现由设置页自持开关、
+  // portal 到 body 叠在设置之上（同 z 层、DOM 靠后即在上），设置全程不动；
+  // Esc 走栈式 useEscClose 只收最上层。设置页关闭时一并收起，重开不残留。
+  const [syncOpen, setSyncOpen] = useState(false);
+  useEffect(() => {
+    if (!open) setSyncOpen(false);
+  }, [open]);
   // B2 主题生态（Phase 2 Task 9）：配色导入的本地反馈面（选择/清单在全局 store）。
   const themeFileRef = useRef<HTMLInputElement | null>(null);
   const [themeImportError, setThemeImportError] = useState<string | null>(null);
@@ -847,7 +855,7 @@ export function SecuritySettings({
               hidden={pane !== "sync"}
               data-testid="sync-pane"
             >
-              <SyncSettings onOpenSync={() => onOpenSyncDialog?.()} />
+              <SyncSettings onOpenSync={() => setSyncOpen(true)} />
             </div>
 
             {/* --- 告警（B9 通知渠道 + 告警规则；自工具 dock 双入口归位设置）--- */}
@@ -1211,6 +1219,17 @@ export function SecuritySettings({
           </div>
         </div>
       </div>
+      {/* 同步子弹框：portal 到 body（设置壳的入场/退场动画带 transform，fixed
+          子元素若留在壳内会被当作相对该壳定位——必须出壳）。无通道态「去设置」
+          = 收起子框即可，设置页同步分区就在底下。 */}
+      {createPortal(
+        <SyncDialog
+          open={syncOpen}
+          onClose={() => setSyncOpen(false)}
+          onOpenSettings={() => setSyncOpen(false)}
+        />,
+        document.body,
+      )}
     </div>
   );
 }

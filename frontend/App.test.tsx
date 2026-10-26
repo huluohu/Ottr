@@ -607,26 +607,55 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     expect(screen.getByTestId("main-area").textContent).toContain("Pick a host");
   });
 
-  // 2026-10-23 用户反馈：同步弹框点击取消/关闭时，不应关闭整个设置，而是返回设置页同步分区
-  it("立即同步弹框关闭后平滑返回设置页同步分区", async () => {
+  // 2026-10-26 用户反馈：弹出同步弹框时不要隐藏下面的设置面板——同步框是设置
+  // 页的子弹框，叠在设置之上；取消/✕/Esc 只收子框，设置原地不动（此前它占
+  // 全局槽位把设置顶掉、关闭再跳回，形态是「换页」不是「叠层」）。
+  it("立即同步弹框叠在设置页之上：设置不被顶掉，关闭子框后设置仍停在同步分区", async () => {
     listMock();
+    // 已保存的本地目录通道 → 「立即同步」可用
+    const base = mockedInvoke.getMockImplementation()!;
+    mockedInvoke.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "settings_get") {
+        const key = (args as { key?: string } | undefined)?.key;
+        if (key === "sync.channel") return Promise.resolve("localdir");
+        if (key === "sync.config.localdir") return Promise.resolve({ path: "/tmp/ottr-sync" });
+        return Promise.resolve(null);
+      }
+      return base(cmd, args);
+    });
     render(<App />);
     await act(async () => {});
 
-    // 从全局槽打开同步弹窗（模拟设置页同步分区点击「立即同步」）
     act(() => {
-      useModalStore.getState().open("sync");
+      useModalStore.getState().open("settings");
     });
-    expect(screen.getByTestId("sync-dialog")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("settings-nav-sync"));
+    const syncNow = screen.getByTestId("sync-now") as HTMLButtonElement;
+    await waitFor(() => expect(syncNow.disabled).toBe(false));
+    fireEvent.click(syncNow);
 
-    // 关闭/取消同步弹窗 → 自动重新打开设置页，且直落同步分区（sync-pane）
+    // 子框与设置同时在场；子框 portal 到 body、DOM 位于设置之后（同 z 层靠后即在上）
+    const settings = screen.getByTestId("security-settings");
+    const sync = screen.getByTestId("sync-dialog");
+    expect(settings.compareDocumentPosition(sync) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sync.parentElement).toBe(document.body);
+    expect(useModalStore.getState().active).toBe("settings"); // 槽位仍归设置
+
+    // 关闭子框 → 设置原地不动、仍停在同步分区
     fireEvent.click(screen.getByTestId("sync-dialog-close"));
     expect(screen.queryByTestId("sync-dialog")).toBeNull();
     expect(screen.getByTestId("security-settings")).toBeTruthy();
-    expect(screen.getByTestId("sync-pane")).toBeTruthy();
+    expect(screen.getByTestId("sync-pane").hasAttribute("hidden")).toBe(false);
 
-    // 在设置页点击关闭 → 正常退出设置
-    fireEvent.click(screen.getByTestId("settings-dialog-close"));
+    // 再开子框，Esc 只收栈顶的子框，不穿透到设置
+    fireEvent.click(screen.getByTestId("sync-now"));
+    expect(screen.getByTestId("sync-dialog")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("sync-dialog")).toBeNull();
+    expect(screen.getByTestId("security-settings")).toBeTruthy();
+
+    // 设置页自己的关闭仍正常；Esc 现在轮到设置
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("security-settings")).toBeNull();
   });
 });

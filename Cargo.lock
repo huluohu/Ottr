@@ -3696,7 +3696,7 @@ dependencies = [
 
 [[package]]
 name = "ottr"
-version = "1.5.8"
+version = "1.5.9"
 dependencies = [
  "arboard",
  "base64 0.22.1",

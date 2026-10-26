@@ -34,6 +34,7 @@
 //      超时转 error 面（重试 + 关闭恢复可用），对话框不再永久转圈。
 import { useEffect, useRef, useState } from "react";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
+import { useEscClose } from "../ui/useEscClose";
 import { useTranslation } from "react-i18next";
 import { DialogClose } from "../ui/DialogClose";
 import { EnvelopeError } from "./envelope";
@@ -257,19 +258,11 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
     onClose();
   }
 
-  // Esc = 关闭钮的键盘等价（39 号缺陷「Esc 无效」的直接清偿）：对话框开着
-  // 期间挂 document 级监听，busy 与否一视同仁。
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.stopPropagation();
-      abandonAndClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, onClose]);
+  // Esc = 关闭钮的键盘等价（39 号缺陷「Esc 无效」的直接清偿），busy 与否一视
+  // 同仁。走栈式 useEscClose（2026-10-26）：本框现在叠在设置页之上，Esc 只收
+  // 栈顶的本框、设置页不动——旧的 document 级私有监听靠 stopPropagation 挡
+  // 住底层，是巧合而非契约。
+  useEscClose(open, abandonAndClose);
 
   async function runStatus(m: SyncDialogModel, passphrase: string): Promise<void> {
     const seq = runSeqRef.current;
@@ -421,7 +414,7 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
   const busy = phase === "running" || phase === "checking";
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={t("sync.dialog.title")} data-testid="sync-dialog">
+    <div className="overlay overlay-stacked" role="dialog" aria-modal="true" aria-label={t("sync.dialog.title")} data-testid="sync-dialog">
       {/* 2026-10-23 布局重做：自适应内容高（sync-dialog），宽清单面切 sync-wide。
           顶部统一标准 dialog-head 与 DialogClose；底部孤悬多余关闭钮移除。 */}
       <div

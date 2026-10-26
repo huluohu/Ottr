@@ -24,6 +24,12 @@
 .overlay::-webkit-scrollbar {
   display: none;
 }
+/* 叠在另一弹框之上的子弹框（2026-10-26 同步框叠设置页）：第二层遮罩减淡，
+ * 底下的父弹框保持可读——两层全量 scrim 叠加会把父框压成一团暗影，用户
+ * 要的是「设置面板留在底下」而不是「隐约还在」。 */
+.overlay.overlay-stacked {
+  background: color-mix(in srgb, var(--scrim) 45%, transparent);
+}
 .dialog,
 .host-form {
   background: var(--surface-overlay);

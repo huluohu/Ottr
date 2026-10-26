@@ -19,7 +19,6 @@ import { useDelayedUnmount, useDelayedValue } from "./ui/useDelayedUnmount";
 import { runUpdateCheckToasts } from "./update/updateToasts";
 import { LockScreen } from "./security/LockScreen";
 import { SecuritySettings } from "./security/SecuritySettings";
-import { SyncDialog } from "./sync/SyncDialog";
 // Phase 4 Task 3（C1）：exec 逐次审批确认框（事件驱动、全局挂载；McpSettings
 // 对话框本体 T4 迁入右侧 dock——本任务自 App 停挂）。
 import { McpApprovalDialog } from "./security/McpApprovalDialog";
@@ -736,19 +735,11 @@ function HomeLayout() {
           open={owned("settings")}
           initialPane={settingsPane}
           onClose={() => closeModal("settings")}
-          onOpenSyncDialog={() => openModal("sync")}
         />
       )}
-      {/* 同步流程对话框：设置页同步分区「立即同步」的唯一弹窗入口（工具菜单
-          同步项已退役，2026-10-14 设置类收敛）；开启即顶掉设置页（单实例槽），
-          关闭/取消时平滑返回设置页同步分区（2026-10-23 用户反馈）。 */}
-      {(owned("sync") || activeModal === null) && (
-        <SyncDialog
-          open={owned("sync")}
-          onClose={() => openSettingsToPane("sync")}
-          onOpenSettings={() => openSettingsToPane("sync")}
-        />
-      )}
+      {/* 同步流程对话框不再在此挂载（2026-10-26）：它是设置页的子弹框，由
+          SecuritySettings 自持开关并 portal 叠在设置之上——此前占全局槽位、
+          开启即顶掉设置页再跳回，用户要的是「设置面板留在底下」。 */}
       {/* 【UI 批次一 Task 2】原对话框面板（AlertSettings/ForwardPanel/
           JumpChainEditor/OverviewPage/BatchPanel/CronPanel/McpSettings）已停挂——
           实体 T4 迁入右侧 dock（alerts/forwards/jumpchains/cron/mcp）、T3 迁入

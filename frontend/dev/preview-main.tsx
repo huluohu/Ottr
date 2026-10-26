@@ -38,6 +38,9 @@ const sideMode = new URLSearchParams(location.search).get("side") === "1";
 // 图标轨更新钮/面板目检（2026-10-26）：?update=available|downloading|installed|
 // error|checking —— 种子 updateStore，验证钮贴锁定键正上方 + 面板四态排版。
 const updateMode = new URLSearchParams(location.search).get("update");
+// 设置页目检（2026-10-26）：?settings=sync —— 设置页直落同步分区，且已保存
+// 本地目录通道让「立即同步」可点，验证同步子弹框叠在设置之上（设置不被顶掉）。
+const settingsMode = new URLSearchParams(location.search).get("settings");
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -86,6 +89,10 @@ if (recMode) {
           remote_path: String(args?.path ?? "/tmp/x"),
           total: 1,
         });
+    }
+    if (settingsMode && cmd === "settings_get") {
+      if (args?.key === "sync.channel") return Promise.resolve("localdir");
+      if (args?.key === "sync.config.localdir") return Promise.resolve({ path: "/tmp/ottr-sync-preview" });
     }
     if (cmd in invokeTable) return Promise.resolve(invokeTable[cmd]);
     return Promise.resolve(null);
@@ -161,6 +168,18 @@ setInterval(() => {
 }, 3000);
 
 async function render() {
+  if (settingsMode) {
+    const { SecuritySettings } = await import("./../security/SecuritySettings");
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <MainArea storeError={null} selected={seedHost} onOpenAiSettings={() => {}} />
+          <SecuritySettings open initialPane={settingsMode as "sync"} onClose={() => {}} />
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
   if (updateMode) {
     const { IconRail } = await import("./../app/IconRail");
     const { useUpdateStore } = await import("./../update/updateStore");

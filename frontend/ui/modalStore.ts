@@ -6,7 +6,7 @@
 // 新弹窗一起关掉）。
 //
 // 接入面（渲染门 = `active === id`，同步互斥）：
-//   * App 根部九个弹窗（hostForm/importHosts/credentials/settings/sync/
+//   * App 根部八个弹窗（hostForm/importHosts/exportHosts/credentials/settings/
 //     palette/history/nl2cmd）——App 以 active===id 作渲染条件，
 //     并保留「正常关闭播退场动画、被顶掉立即销毁」的口径（见 App 内
 //     `owned(id) || activeModal === null` 门）；
@@ -16,7 +16,10 @@
 //     点同步认领，渲染门 = 本地态 && 槽位在手。
 //
 // 门外（有意不进槽位）：LockScreen / VaultInitGateOverlay 是安全门卫遮罩
-// （盖住一切、非用户弹窗）；各面板内右键菜单、侧栏弹层、Toast 是菜单/反馈面。
+// （盖住一切、非用户弹窗）；各面板内右键菜单、侧栏弹层、Toast 是菜单/反馈面；
+// 同步流程对话框（SyncDialog）是**设置页的子弹框**（2026-10-26 用户反馈
+// 「弹同步框时不要隐藏下面的设置面板」）——由 SecuritySettings 自持、portal
+// 叠在设置之上，槽位仍归设置；子弹框若进槽位就会把父弹框顶掉。
 import { create } from "zustand";
 
 /** 应用级弹窗 id（与各渲染门字面量逐字对齐）。 */
@@ -26,7 +29,6 @@ export type ModalId =
   | "exportHosts"
   | "credentials"
   | "settings"
-  | "sync"
   | "palette"
   | "history"
   | "nl2cmd"

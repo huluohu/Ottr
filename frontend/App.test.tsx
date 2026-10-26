@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { useToastStore } from "./ui/toastStore";
+import { useModalStore } from "./ui/modalStore";
 import { save } from "@tauri-apps/plugin-dialog";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -604,5 +605,28 @@ describe("App 工具菜单 → workspace 路由（UI 批次一 Task 2）", () =>
     expect(screen.queryByTestId("batch-panel")).toBeNull();
     expect(screen.queryByTestId("overview-panel")).toBeNull();
     expect(screen.getByTestId("main-area").textContent).toContain("Pick a host");
+  });
+
+  // 2026-10-23 用户反馈：同步弹框点击取消/关闭时，不应关闭整个设置，而是返回设置页同步分区
+  it("立即同步弹框关闭后平滑返回设置页同步分区", async () => {
+    listMock();
+    render(<App />);
+    await act(async () => {});
+
+    // 从全局槽打开同步弹窗（模拟设置页同步分区点击「立即同步」）
+    act(() => {
+      useModalStore.getState().open("sync");
+    });
+    expect(screen.getByTestId("sync-dialog")).toBeTruthy();
+
+    // 关闭/取消同步弹窗 → 自动重新打开设置页，且直落同步分区（sync-pane）
+    fireEvent.click(screen.getByTestId("sync-dialog-close"));
+    expect(screen.queryByTestId("sync-dialog")).toBeNull();
+    expect(screen.getByTestId("security-settings")).toBeTruthy();
+    expect(screen.getByTestId("sync-pane")).toBeTruthy();
+
+    // 在设置页点击关闭 → 正常退出设置
+    fireEvent.click(screen.getByTestId("settings-dialog-close"));
+    expect(screen.queryByTestId("security-settings")).toBeNull();
   });
 });

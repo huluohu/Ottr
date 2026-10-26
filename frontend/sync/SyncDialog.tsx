@@ -35,6 +35,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { useTranslation } from "react-i18next";
+import { DialogClose } from "../ui/DialogClose";
 import { EnvelopeError } from "./envelope";
 import {
   SYNC_CATEGORIES,
@@ -421,13 +422,20 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={t("sync.dialog.title")} data-testid="sync-dialog">
-      {/* 无通道态 = 一行提示 + 去设置：紧凑壳（sync-compact）；其余态沿用
-          设置壳尺寸（720×620，内容多为表单/清单，需要稳定大面）。 */}
+      {/* 2026-10-23 布局重做：自适应内容高（sync-dialog），宽清单面切 sync-wide。
+          顶部统一标准 dialog-head 与 DialogClose；底部孤悬多余关闭钮移除。 */}
       <div
-        className={phase === "nochannel" ? "dialog sync-compact" : "dialog settings-dialog"}
+        className={`dialog sync-dialog ${phase === "conflict" || phase === "pull" || phase === "push" ? "sync-wide" : ""}`}
         aria-busy={busy}
       >
-        <h2>{t("sync.dialog.title")}</h2>
+        <div className="dialog-head">
+          <h2>{t("sync.dialog.title")}</h2>
+          <DialogClose
+            onClose={abandonAndClose}
+            testid="sync-dialog-close"
+            title={phase === "running" ? t("sync.dialog.abandonHint") : undefined}
+          />
+        </div>
 
         {phase === "checking" && (
           <p className="dialog-intro" data-testid="sync-checking">
@@ -444,7 +452,7 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
                 className="btn-accent"
                 data-testid="sync-nochannel-go-settings"
                 onClick={() => {
-                  onClose();
+                  abandonAndClose();
                   onOpenSettings?.();
                 }}
               >
@@ -456,7 +464,7 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
 
         {phase === "askpass" && (
           <form
-            className="wizard-step"
+            className="sync-askpass-form"
             noValidate
             data-testid="sync-askpass"
             onSubmit={(e) => {
@@ -465,23 +473,24 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
             }}
           >
             <p className="dialog-intro">{t("sync.dialog.askpass")}</p>
-            <label>
+            <label className="sync-field">
               <span>{t("sync.passphrase.title")}</span>
               <input
                 type="password"
                 data-testid="sync-askpass-input"
                 autoComplete="off"
+                autoFocus
                 value={askpassInput}
                 onChange={(e) => setAskpassInput(e.currentTarget.value)}
               />
             </label>
-            <label className="settings-row">
+            <label className="sync-scope-row">
               <Checkbox
                 testid="sync-askpass-save"
                 checked={askpassSave}
                 onChange={(e) => setAskpassSave(e.currentTarget.checked)}
               />
-              {t("sync.dialog.askpassSave")}
+              <span>{t("sync.dialog.askpassSave")}</span>
             </label>
             {errorMsg !== null && (
               <p className="form-error" data-testid="sync-askpass-error">
@@ -489,10 +498,15 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
               </p>
             )}
             <div className="form-actions">
-              <button type="button" data-testid="sync-askpass-cancel" onClick={onClose}>
+              <button type="button" data-testid="sync-askpass-cancel" onClick={abandonAndClose}>
                 {t("common.cancel")}
               </button>
-              <button type="submit" className="btn-accent" data-testid="sync-askpass-continue" disabled={askpassInput === ""}>
+              <button
+                type="submit"
+                className="btn-accent"
+                data-testid="sync-askpass-continue"
+                disabled={askpassInput === ""}
+              >
                 {t("sync.dialog.continue")}
               </button>
             </div>
@@ -507,6 +521,11 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
                 ? t("sync.dialog.lastSync", { time: new Date(status.baseline.saved_at * 1000).toLocaleString() })
                 : t("sync.dialog.never")}
             </p>
+            <div className="form-actions">
+              <button type="button" className="btn-accent" onClick={abandonAndClose}>
+                {t("common.close")}
+              </button>
+            </div>
           </div>
         )}
 
@@ -531,7 +550,16 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
               ))}
             </fieldset>
             <div className="form-actions">
-              <button type="button" data-testid="sync-push-start" className="btn-accent" disabled={pushScope.length === 0} onClick={() => void startPush()}>
+              <button type="button" onClick={abandonAndClose}>
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                data-testid="sync-push-start"
+                className="btn-accent"
+                disabled={pushScope.length === 0}
+                onClick={() => void startPush()}
+              >
                 {t("sync.dialog.pushStart")}
               </button>
             </div>
@@ -576,6 +604,9 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
               })}
             </fieldset>
             <div className="form-actions">
+              <button type="button" onClick={abandonAndClose}>
+                {t("common.cancel")}
+              </button>
               <button
                 type="button"
                 data-testid="sync-pull-start"
@@ -615,6 +646,15 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
             <p className="settings-hint" data-testid="sync-running-abandon-hint">
               {t("sync.dialog.abandonHint")}
             </p>
+            <div className="form-actions">
+              <button
+                type="button"
+                onClick={abandonAndClose}
+                title={t("sync.dialog.abandonHint")}
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
           </div>
         )}
 
@@ -635,6 +675,11 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
                 })}
               </p>
             )}
+            <div className="form-actions">
+              <button type="button" className="btn-accent" onClick={abandonAndClose}>
+                {t("common.done")}
+              </button>
+            </div>
           </div>
         )}
 
@@ -645,25 +690,20 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
               {errorMsg}
             </p>
             <div className="form-actions">
-              <button type="button" data-testid="sync-retry" onClick={() => pass !== null && m !== null && void runStatus(m, pass)}>
+              <button type="button" onClick={abandonAndClose}>
+                {t("common.close")}
+              </button>
+              <button
+                type="button"
+                className="btn-accent"
+                data-testid="sync-retry"
+                onClick={() => pass !== null && m !== null && void runStatus(m, pass)}
+              >
                 {t("sync.dialog.retry")}
               </button>
             </div>
           </div>
         )}
-
-        <div className="form-actions">
-          {/* busy 中亦可达（A5 解困）：点击 = 放弃本次同步（见 abandonAndClose）；
-              running 态带 title 披露（I-1(b)）。 */}
-          <button
-            type="button"
-            data-testid="sync-dialog-close"
-            onClick={abandonAndClose}
-            title={phase === "running" ? t("sync.dialog.abandonHint") : undefined}
-          >
-            {t("sync.dialog.close")}
-          </button>
-        </div>
       </div>
     </div>
   );

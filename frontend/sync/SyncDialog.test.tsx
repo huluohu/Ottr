@@ -373,4 +373,38 @@ describe("SyncDialog", () => {
     expect(screen.queryByTestId("sync-pull-panel")).toBeNull();
     expect(fm.localSnapshot).not.toHaveBeenCalled();
   });
+
+  // 2026-10-23 布局与交互重做（用户反馈：排版乱、多出关闭按钮、取消应返回设置）：
+  // 1) 壳层自适应高（sync-dialog，脱离 settings-dialog 620px 大框）；
+  // 2) askpass 表单使用 sync-askpass-form，无 wizard-step 多余边框，复选框为单行水平对齐；
+  // 3) 顶部统一 dialog-head + DialogClose，底部无孤悬关闭钮；
+  // 4) 点击「取消」触发 onClose（App 侧路由回设置页同步分区）。
+  it("askpass 态紧凑表单：取消触发 onClose、无底部多余关闭钮、无 wizard-step 嵌套", async () => {
+    const store = fakeStore(statusOf("synced"));
+    const fm = fakeModel({ store, passphrase: vi.fn(async () => null) });
+    const onClose = vi.fn();
+    render(<SyncDialog open onClose={onClose} model={fm} />);
+    await waitFor(() => expect(screen.getByTestId("sync-askpass")).toBeTruthy());
+
+    // 壳层类名断言
+    const dialog = screen.getByTestId("sync-dialog").querySelector(".dialog");
+    expect(dialog?.className).toContain("sync-dialog");
+    expect(dialog?.className).not.toContain("settings-dialog");
+
+    // askpass 表单不嵌套 wizard-step
+    expect(screen.getByTestId("sync-askpass").className).toContain("sync-askpass-form");
+    expect(screen.getByTestId("sync-askpass").className).not.toContain("wizard-step");
+
+    // 复选框行使用横向 sync-scope-row，不再被 wizard-step 强制纵排居中
+    const checkboxRow = screen.getByTestId("sync-askpass-save").closest("label");
+    expect(checkboxRow?.className).toContain("sync-scope-row");
+
+    // 顶部右上角存在标准 DialogClose
+    expect(screen.getByTestId("sync-dialog-close")).toBeTruthy();
+    expect(screen.getByTestId("sync-dialog-close").closest(".dialog-head")).toBeTruthy();
+
+    // 点击取消调用 onClose 返回设置页
+    fireEvent.click(screen.getByTestId("sync-askpass-cancel"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

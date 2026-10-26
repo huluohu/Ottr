@@ -82,7 +82,8 @@ describe("对话框滚动语义守卫（BL-526 + T5 披露）", () => {
   });
 
   it("SyncDialog / LockScreen 容器挂 .dialog 类（承接滚动语义，防类名漂移）", () => {
-    expect(syncDialogTsx).toContain('"dialog settings-dialog"');
+    // 2026-10-23：SyncDialog 脱离 settings-dialog 620px 大框，挂 .dialog.sync-dialog
+    expect(syncDialogTsx).toContain("dialog sync-dialog");
     expect(lockScreenTsx).toContain('"dialog lock-card"');
   });
 });

@@ -51,10 +51,43 @@
 }
 
 
-/* 无通道态紧凑壳（2026-10-12 用户反馈：一行提示撑满 720×620 设置壳）：
-   回到 .dialog 内容自适应，仅收窄；「去设置」主按钮见 SyncDialog nochannel。 */
+/* 同步弹窗壳（2026-10-23 布局重做）：自适应内容高、居中紧凑排版，
+   不再误借 settings-dialog 的 720×620 固定大壳（原导致大片黑色虚空 + 按钮孤悬底角）；
+   冲突/推送/恢复等宽清单面切 .sync-wide。 */
+.dialog.sync-dialog {
+  width: min(500px, 100%);
+  max-height: 86vh;
+}
+
+.dialog.sync-dialog.sync-wide {
+  width: min(640px, 100%);
+}
+
 .dialog.sync-compact {
   width: min(420px, 100%);
+}
+
+.sync-askpass-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.sync-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sync-field > span {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+
+.sync-field > input {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 通道字段放宽（2026-10-16 用户反馈「加长不是搞乱」二轮修正）：首版让

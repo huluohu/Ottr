@@ -738,11 +738,11 @@ function HomeLayout() {
       )}
       {/* 同步流程对话框：设置页同步分区「立即同步」的唯一弹窗入口（工具菜单
           同步项已退役，2026-10-14 设置类收敛）；开启即顶掉设置页（单实例槽），
-          「去设置」按钮反向顶回。 */}
+          关闭/取消时平滑返回设置页同步分区（2026-10-23 用户反馈）。 */}
       {(owned("sync") || activeModal === null) && (
         <SyncDialog
           open={owned("sync")}
-          onClose={() => closeModal("sync")}
+          onClose={() => openSettingsToPane("sync")}
           onOpenSettings={() => openSettingsToPane("sync")}
         />
       )}

@@ -16,6 +16,8 @@ import { LANGS, useLanguage } from "../i18n";
 import { useVaultLockStore } from "../security/VaultLockStore";
 import { useSessionStore } from "../session/SessionStore";
 import { useUpdateStore } from "../update/updateStore";
+import { UpdateRailPanel } from "../update/UpdateRailPanel";
+import { useOttyStore } from "../ui/otty/ottyStore";
 
 export interface IconRailProps {
   /** macOS 融合式标题栏（2026-10-14）：顶部让出红绿灯区并铺拖拽面。 */
@@ -26,8 +28,6 @@ export interface IconRailProps {
   /** 历史/回放面板（⌘R 同一面板；2026-10-18 自会话区迁入 Otty 弹层——
    * 历史命令/会话纪要/录制回放是全局功能，不属于会话面板）。 */
   onOpenHistory: () => void;
-  /** 更新钮点击：跳设置 → 关于（发现新版本时按钮才浮现）。 */
-  onOpenUpdate: () => void;
 }
 
 function OverviewIcon() {
@@ -217,11 +217,60 @@ function UpdateIcon() {
   );
 }
 
+/** 更新钮下载进度环：SVG 描边 dash 画弧（三端 WebView 全兼容，不依赖
+ * CSS mask）；总长未知时 25% 弧匀速旋转（data-indeterminate）。 */
+const RING_R = 16;
+const RING_C = 2 * Math.PI * RING_R;
+function UpdateRing({ pct }: { pct: number | null }) {
+  const indeterminate = pct === null;
+  return (
+    <svg
+      className="rail-update-ring"
+      width="36"
+      height="36"
+      viewBox="0 0 36 36"
+      aria-hidden="true"
+      data-indeterminate={indeterminate ? "true" : undefined}
+      data-testid="rail-update-ring"
+    >
+      <circle className="rail-update-ring-track" cx="18" cy="18" r={RING_R} />
+      <circle
+        className="rail-update-ring-arc"
+        cx="18"
+        cy="18"
+        r={RING_R}
+        strokeDasharray={indeterminate ? `${RING_C * 0.25} ${RING_C * 0.75}` : `${RING_C} ${RING_C}`}
+        strokeDashoffset={indeterminate ? 0 : RING_C * (1 - (pct ?? 0))}
+      />
+    </svg>
+  );
+}
+
+/** 更新钮悬停提示：按 phase 说清「现在是什么状态、点了会怎样」。 */
+function updateTitle(
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  kind: string,
+  version: string,
+): string {
+  switch (kind) {
+    case "downloading":
+      return t("nav.updateDownloading", { version });
+    case "installed":
+      return t("nav.updateInstalled", { version });
+    case "error":
+      return t("nav.updateError");
+    case "checking":
+      return t("update.checking");
+    default:
+      return t("nav.updateAvailable", { version });
+  }
+}
+
 /** 主题快捷循环顺序（水域家族光量降序，与 THEME_IDS 同序）。 */
 // 主题快切序 = THEME_IDS 派生（registry 单源，手写清单已退役——forest 曾漏插）。
 const THEME_CYCLE: readonly ThemeMode[] = THEME_IDS;
 
-export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpenSettings, onOpenMcpSettings, onOpenHistory }: IconRailProps) {
+export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onOpenMcpSettings, onOpenHistory }: IconRailProps) {
   const { t } = useTranslation();
   const mainView = useWorkspaceStore((s) => s.mainView);
   const openMainView = useWorkspaceStore((s) => s.openMainView);
@@ -230,11 +279,22 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
   const unread = useNotifyStore((s) => s.unread);
   // 锁定按钮渲染门（2026-10-20）：仅 password 模式显示（keychain 无锁概念）。
   const lockMode = useVaultLockStore((s) => s.mode);
-  // 更新可用（2026-10-17 用户需求：发现新版本在图标轨体现）——phase 驱动，
-  // 按钮仅在有新版本待取时浮现；点击跳设置 → 关于（唯一权威进度面）。
+  // 更新钮（2026-10-17 用户需求：发现新版本在图标轨体现；2026-10-26 升级为
+  // 贯穿全程的常驻指示）：store.info 非空 = 有待处理的更新（有新版/下载中/
+  // 已装待重启/失败可重试），钮浮现并按 phase 换信号色；便携版无 updater
+  // 整体不显示。点击弹贴钮面板（版本信息 + 下载安装/重启/重试）。
+  const updateInfo = useUpdateStore((s) => s.info);
+  const updatePortable = useUpdateStore((s) => s.portable);
+  const updatePhaseKind = useUpdateStore((s) => s.phase.kind);
+  const updatePct = useUpdateStore((s) =>
+    s.phase.kind === "downloading" && s.phase.total != null && s.phase.total > 0
+      ? Math.min(1, s.phase.received / s.phase.total)
+      : null,
+  );
   const updateAvailableVersion = useUpdateStore((s) =>
     s.phase.kind === "available" ? s.phase.version : null,
   );
+  const showUpdate = updateInfo !== null && updatePortable !== true;
   const { mode: themeMode, setMode } = useTheme();
   const { lang, setLang } = useLanguage();
   // Otty 球弹层（原侧栏快捷菜单机制整体迁入）：底部锚定、子面板右并排。
@@ -244,6 +304,25 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const flyoutRef = useRef<HTMLDivElement | null>(null);
   const subFlyoutRef = useRef<HTMLDivElement | null>(null);
+  // 更新面板：与 Otty 弹层互斥（同轨只开一个），同一背板/Esc 收起机制。
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [updatePos, setUpdatePos] = useState({ bottom: 0, left: 0 });
+  const updateBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // Otty 时刻④「更新就绪」（2026-10-16 M3）：每个新版本首次被发现时播一次——
+  // 自动检查与手动检查同一出口（2026-10-26 自 toast 编排迁入：自动路径此前
+  // 不播，手动路径播，漂移）。开关关/弱动效下 play 内部直接跳过。
+  const ottyPlayedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (updateAvailableVersion === null || ottyPlayedFor.current === updateAvailableVersion) return;
+    ottyPlayedFor.current = updateAvailableVersion;
+    useOttyStore.getState().play("update");
+  }, [updateAvailableVersion]);
+
+  // 更新完成（info 被「已是最新」清空）时面板随之消失。
+  useEffect(() => {
+    if (!showUpdate) setUpdateOpen(false);
+  }, [showUpdate]);
 
   const openOttyMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -251,8 +330,26 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
     // 底边与球对齐。子面板再右并排（+208，沿侧栏旧制）。
     setFlyoutPos({ bottom: window.innerHeight - rect.bottom, left: rect.right + 8 });
     setSub(null);
+    setUpdateOpen(false);
     setMenu((cur) => (cur === "main" ? null : "main"));
   };
+
+  const toggleUpdatePanel = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setUpdatePos({ bottom: window.innerHeight - rect.bottom, left: rect.right + 8 });
+    setMenu(null);
+    setSub(null);
+    setUpdateOpen((cur) => !cur);
+  };
+
+  useEffect(() => {
+    if (!updateOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setUpdateOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [updateOpen]);
 
   useEffect(() => {
     if (menu === null) return;
@@ -364,22 +461,32 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
         <LocalTerminalIcon />
       </button>
       <div className="rail-spacer" aria-hidden />
-      {/* 更新钮（2026-10-17 用户需求）：发现新版本时浮现，点击跳设置 →
-          关于（完整进度面）；amber 圆点为奖赏色信号。闲置时轨道保持干净。 */}
-      {updateAvailableVersion !== null && (
+      {/* 更新钮（2026-10-17 用户需求：发现新版本在图标轨体现；2026-10-26 贯穿
+          全程 + 贴钮面板）：紧贴锁定键正上方——此前这里多了一个 rail-spacer，
+          把钮挤到轨道正中（用户截图实锤），底部组之外不得再有弹性占位。
+          信号色随 phase：有新版 amber 呼吸点 / 下载中进度环 / 已装待重启
+          success 呼吸点 / 失败 danger 静点。闲置时轨道保持干净。 */}
+      {showUpdate && updateInfo && (
         <button
           type="button"
+          ref={updateBtnRef}
           className="rail-btn rail-update"
           data-testid="rail-update"
-          title={t("nav.updateAvailable", { version: updateAvailableVersion })}
-          aria-label={t("nav.updateAvailable", { version: updateAvailableVersion })}
-          onClick={onOpenUpdate}
+          data-phase={updatePhaseKind}
+          data-expanded={updateOpen}
+          aria-expanded={updateOpen}
+          title={updateTitle(t, updatePhaseKind, updateInfo.version)}
+          aria-label={updateTitle(t, updatePhaseKind, updateInfo.version)}
+          onClick={toggleUpdatePanel}
         >
           <UpdateIcon />
-          <span className="rail-update-dot" aria-hidden />
+          {updatePhaseKind === "downloading" ? (
+            <UpdateRing pct={updatePct} />
+          ) : (
+            <span className="rail-update-dot" aria-hidden />
+          )}
         </button>
       )}
-      <div className="rail-spacer" aria-hidden />
       {/* 锁定（2026-10-16 用户需求：控制中心旁的锁定入口）——立即锁库，
           与原生菜单「立即锁定」同一动作（vault.lock）。
           仅 password 模式渲染（2026-10-20 幽灵锁屏修复第一层）：keychain
@@ -413,6 +520,18 @@ export function IconRail({ titlebarInset, onOpenUpdate, onOpenCredentials, onOpe
       >
         <OttyBall />
       </button>
+      {/* 更新面板背板 + 面板（背板模式同 Otty 弹层：主区是拖拽面吞 mousedown，
+          document 级点外关闭失效）。 */}
+      {updateOpen && showUpdate && (
+        <div
+          className="rail-flyout-backdrop"
+          data-testid="update-pop-backdrop"
+          onMouseDown={() => setUpdateOpen(false)}
+        />
+      )}
+      {updateOpen && showUpdate && (
+        <UpdateRailPanel pos={updatePos} onClose={() => setUpdateOpen(false)} />
+      )}
       {menu === "main" && (
         <div
           className="rail-flyout-backdrop"

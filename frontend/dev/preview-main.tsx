@@ -35,6 +35,9 @@ const ftpMode = new URLSearchParams(location.search).get("ftp") === "1";
 const lockMode = new URLSearchParams(location.search).get("lock") === "1";
 const formMode = new URLSearchParams(location.search).get("form") === "1";
 const sideMode = new URLSearchParams(location.search).get("side") === "1";
+// 图标轨更新钮/面板目检（2026-10-26）：?update=available|downloading|installed|
+// error|checking —— 种子 updateStore，验证钮贴锁定键正上方 + 面板四态排版。
+const updateMode = new URLSearchParams(location.search).get("update");
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -158,6 +161,55 @@ setInterval(() => {
 }, 3000);
 
 async function render() {
+  if (updateMode) {
+    const { IconRail } = await import("./../app/IconRail");
+    const { useUpdateStore } = await import("./../update/updateStore");
+    const { useVaultLockStore } = await import("./../security/VaultLockStore");
+    useVaultLockStore.setState({ phase: "unlocked", mode: "password" } as never);
+    const info = {
+      version: "1.5.9",
+      date: "2026-10-26T04:13:21Z",
+      body: [
+        "## 🔄 1.5.9：更新提醒全局协调",
+        "",
+        "- **图标轨更新钮贯穿全程**：有新版 / 下载中 / 待重启一处可见",
+        "- **贴钮面板**：版本信息 + 发布说明 + 一键「下载并安装」",
+        "- 自动检查发现新版本不再弹 toast（只亮轨上钮）",
+        "- 发布说明随 latest.json 下发，面板内直接阅读",
+        "",
+        "详见 [发布页](https://github.com/huluohu/Ottr/releases)。",
+      ].join("\n"),
+    };
+    const phase =
+      updateMode === "downloading"
+        ? { kind: "downloading", received: 3 * 1024 * 1024, total: 8 * 1024 * 1024 }
+        : updateMode === "installed"
+          ? { kind: "installed" }
+          : updateMode === "error"
+            ? { kind: "error", message: "下载失败：网络连接被重置（ECONNRESET）" }
+            : updateMode === "checking"
+              ? { kind: "checking" }
+              : { kind: "available", update: {}, version: info.version };
+    useUpdateStore.setState({ current: "1.5.8", portable: false, info, phase: phase as never });
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <div className="app-shell">
+            <div className="app-body">
+              <IconRail
+                onOpenCredentials={() => {}}
+                onOpenSettings={() => {}}
+                onOpenMcpSettings={() => {}}
+                onOpenHistory={() => {}}
+              />
+              <div style={{ flex: 1 }} />
+            </div>
+          </div>
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
   if (formMode) {
     // 新建主机关闭钮/底部留白目检（2026-10-20 用户反馈）
     const { HostForm } = await import("./../hosts/HostForm");

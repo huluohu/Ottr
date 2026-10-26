@@ -170,4 +170,45 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
     expect(checkMock).not.toHaveBeenCalled();
     expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(true);
   });
+
+  it("已装待重启再点「检查更新」：就地给「立即重启」toast，不再发起检查（2026-10-26：同一版本重查会被当新版本再报）", async () => {
+    render(<Toaster />);
+    const restart = vi.spyOn(useUpdateStore.getState(), "restartNow").mockImplementation(() => {});
+    useUpdateStore.setState({ phase: { kind: "installed" }, info: { version: "1.0.0", date: null, body: null } });
+    runUpdateCheckToasts();
+    expect(checkMock).not.toHaveBeenCalled();
+    const t = useToastStore.getState().toasts.find((x) => x.action);
+    expect(t?.message).toMatch(/installed/i);
+    fireEvent.click(await screen.findByTestId(`toast-action-${t!.id}`));
+    expect(restart).toHaveBeenCalledTimes(1);
+    // store 层同一护栏：installed 态 checkForUpdate 直接返回
+    await useUpdateStore.getState().checkForUpdate();
+    expect(checkMock).not.toHaveBeenCalled();
+    expect(useUpdateStore.getState().phase.kind).toBe("installed");
+    restart.mockRestore();
+  });
+
+  it("发现新版把版本信息落 store.info（图标轨面板读）；下载失败保留 info 供轨上重试；已最新清空", async () => {
+    checkMock.mockResolvedValue({
+      ...fakeUpdate("0.9.1"),
+      date: "2026-10-26T04:13:21Z",
+      body: "## 0.9.1\n- x",
+      downloadAndInstall: async () => {
+        throw new Error("disk full");
+      },
+    });
+    await useUpdateStore.getState().checkForUpdate();
+    expect(useUpdateStore.getState().info).toEqual({
+      version: "0.9.1",
+      date: "2026-10-26T04:13:21Z",
+      body: "## 0.9.1\n- x",
+    });
+    await useUpdateStore.getState().downloadAndInstall();
+    expect(useUpdateStore.getState().phase).toEqual({ kind: "error", message: "disk full" });
+    expect(useUpdateStore.getState().info?.version).toBe("0.9.1"); // 失败不丢提醒
+    checkMock.mockResolvedValue(null);
+    await useUpdateStore.getState().checkForUpdate();
+    expect(useUpdateStore.getState().phase.kind).toBe("uptodate");
+    expect(useUpdateStore.getState().info).toBeNull();
+  });
 });

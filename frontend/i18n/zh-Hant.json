@@ -1284,7 +1284,15 @@
     "autoCheck_startup": "啓動時檢查",
     "autoCheck_interval": "定時檢查（每 24 小時）",
     "portableHint": "便攜版不內置自動更新——請到 GitHub Releases 下載新的便攜包，替換 exe 即可（data 資料夾保留）。",
-    "openDownloadPage": "打開下載頁"
+    "openDownloadPage": "打開下載頁",
+    "panelDownloading": "正在下載 v{{version}}",
+    "panelInstalled": "v{{version}} 已安裝",
+    "panelFailed": "更新失敗",
+    "panelCurrent": "目前 v{{version}}",
+    "panelProgress": "{{received}}/{{total}} KB · {{pct}}%",
+    "later": "稍後",
+    "retry": "重試",
+    "viewOnGitHub": "在 GitHub 查看"
   },
   "home": {
     "tagline": "選一臺主機，開始下潛。",
@@ -1308,7 +1316,10 @@
     "theme": "主題",
     "language": "語言",
     "langToggle": "切換中英文",
-    "updateAvailable": "發現新版本 v{{version}}，點擊查看"
+    "updateAvailable": "發現新版本 v{{version}}，點擊查看",
+    "updateDownloading": "正在下載 v{{version}}…",
+    "updateInstalled": "v{{version}} 已安裝，點擊重新啟動生效",
+    "updateError": "更新失敗，點擊重試"
   },
   "menu": {
     "zoomIn": "放大",

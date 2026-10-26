@@ -16,6 +16,9 @@
 //   （进度不逐条播报）→ 完成提示 toast 内「立即重启」（15s 决策窗；
 //   2026-10-13 用户需求：安装完成不再要求手动退出重开）。
 // 设置 → 关于 的 UpdateCheck 面板（完整进度 UX）不受影响，两者同源同状态。
+// 图标轨更新钮（2026-10-26）是贯穿全程的常驻指示：本模块的 toast 只是用户
+// 主动点「检查更新」后的即时反馈，发现新版/下载进度/待重启在轨上同步可见；
+// 自动检查不走本模块（静默，只亮轨上钮）。
 import { showToast, updateToast, useToastStore } from "../ui/toastStore";
 import i18n from "../i18n";
 import { useUpdateStore } from "./updateStore";
@@ -24,14 +27,10 @@ let flowActive = false;
 
 let availableToastId: number | null = null;
 
-/** 「发现新版本」toast（手动/自动两条路径共用）：内嵌「下载并安装」，15s 决策窗。 */
+/** 「发现新版本」toast（手动路径）：内嵌「下载并安装」，15s 决策窗。
+ * Otty 时刻「更新就绪」已迁图标轨单点触发（自动/手动同一出口）。 */
 function availableToast(version: string): void {
   const t = i18n.t.bind(i18n);
-  // Otty 时刻④「更新就绪」（2026-10-16 M3）：冲浪板滑过顶沿——奖赏瞬间与
-  // 决策窗同点触发；开关关/弱动效下 play 内部直接跳过。
-  void import("../ui/otty/ottyStore").then(({ useOttyStore }) =>
-    useOttyStore.getState().play("update"),
-  );
   availableToastId = showToast(t("update.available", { version }), "info", {
     label: t("update.downloadInstall"),
     run: startInstallToasts,
@@ -53,6 +52,12 @@ export function runUpdateCheckToasts(): void {
   // 四端入口就地一条指引（与 设置→关于 面板的隐藏同源，updateStore.portable）。
   if (st.portable === true) {
     showToast(i18n.t("update.portableHint"), "info");
+    return;
+  }
+  // 已装待重启（2026-10-26）：再点「检查更新」不该再查一遍（store 也会拒绝——
+  // 同一版本会被当新版本再报），唯一有意义的动作是重启，就地给它。
+  if (st.phase.kind === "installed") {
+    installedToast(i18n.t.bind(i18n));
     return;
   }
   if (st.phase.kind === "checking" || st.phase.kind === "downloading") {

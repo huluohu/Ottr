@@ -20,6 +20,7 @@ import { useNotifyStore } from "../notify/core";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultLockStore } from "../security/VaultLockStore";
 import { useUpdateStore } from "../update/updateStore";
+import { useOttyStore } from "../ui/otty/ottyStore";
 
 const noop = () => {};
 
@@ -29,7 +30,6 @@ function renderRail(overrides?: Partial<Parameters<typeof IconRail>[0]>) {
     onOpenSettings: vi.fn(),
     onOpenMcpSettings: vi.fn(),
     onOpenHistory: vi.fn(),
-    onOpenUpdate: vi.fn(),
     ...overrides,
   };
   render(
@@ -44,10 +44,15 @@ function openOttyMenu() {
   fireEvent.click(screen.getByTestId("rail-otty"));
 }
 
+/** 更新钮/面板用例的 store 种子（info 非空 = 钮在场；phase 决定内容）。 */
+const UPDATE_INFO = { version: "9.9.9", date: null, body: null };
+
 beforeEach(() => {
   useWorkspaceStore.setState({ mainView: "terminal", overviewOpen: false });
   useNotifyStore.setState({ unread: 0 });
   useSessionStore.setState({ sessions: [] });
+  useUpdateStore.setState({ phase: { kind: "idle" }, info: null, current: null, portable: null });
+  useOttyStore.setState({ current: null, queue: [], enabled: true });
   // 锁定钮渲染门（2026-10-20）：默认 password 模式（keychain 隐藏有专测）。
   useVaultLockStore.setState({ phase: "unlocked", mode: "password" });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
@@ -64,6 +69,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.removeItem("ottr.settings.theme");
 });
@@ -72,7 +78,7 @@ describe("IconRail（48px 图标轨）", () => {
   it("五钮恒驻 + 锁定钮 + Otty 球；mac 标题栏让位面可注入", () => {
     const { rerender } = render(
       <ThemeProvider>
-        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenHistory={noop} onOpenUpdate={noop} />
+        <IconRail titlebarInset onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenHistory={noop} />
       </ThemeProvider>,
     );
     for (const id of ["rail-overview", "rail-cron", "rail-notifications", "rail-lock", "rail-otty"]) {
@@ -89,7 +95,7 @@ describe("IconRail（48px 图标轨）", () => {
     expect(document.querySelector(".titlebar-inset")).toBeTruthy();
     rerender(
       <ThemeProvider>
-        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenHistory={noop} onOpenUpdate={noop} />
+        <IconRail onOpenCredentials={noop} onOpenSettings={noop} onOpenMcpSettings={noop} onOpenHistory={noop} />
       </ThemeProvider>,
     );
     expect(document.querySelector(".titlebar-inset")).toBeNull();
@@ -145,18 +151,158 @@ describe("IconRail（48px 图标轨）", () => {
     expect(screen.getByTestId("rail-overview").getAttribute("data-active")).toBe("true");
   });
 
-  it("更新钮：仅在有新版本时浮现，点击跳设置 → 关于", () => {
-    useUpdateStore.setState({ phase: { kind: "available", update: {} as never, version: "9.9.9" } });
-    const { props } = renderRail();
+  it("更新钮：紧贴锁定键正上方——底部组之外只有一个弹性占位（2026-10-26 用户截图：第二个占位把钮挤到轨道正中）", () => {
+    useUpdateStore.setState({
+      phase: { kind: "available", update: {} as never, version: "9.9.9" },
+      info: UPDATE_INFO,
+    });
+    renderRail();
+    expect(document.querySelectorAll(".rail-spacer")).toHaveLength(1);
     const btn = screen.getByTestId("rail-update");
     expect(btn.getAttribute("title")).toContain("9.9.9");
-    fireEvent.click(btn);
-    expect(props.onOpenUpdate).toHaveBeenCalledTimes(1); // 跳设置 → 关于
-    // 下载开始（phase 离开 available）→ 按钮消失
+    expect(btn.getAttribute("data-phase")).toBe("available");
+    // 更新钮与锁定钮之间不得再有任何元素
+    expect(btn.nextElementSibling).toBe(screen.getByTestId("rail-lock"));
+    // Otty 时刻「更新就绪」在此单点触发（自动/手动检查同一出口）
+    expect(useOttyStore.getState().current).toBe("update");
+  });
+
+  it("更新钮贯穿全程：有新版/下载中/已装/失败均在场并换信号，闲置、已最新、便携版隐藏", () => {
+    renderRail();
+    expect(screen.queryByTestId("rail-update")).toBeNull(); // idle
     cleanup();
-    useUpdateStore.setState({ phase: { kind: "downloading", received: 0, total: null } });
+
+    const phases = [
+      [{ kind: "downloading", received: 0, total: null }, "downloading"],
+      [{ kind: "installed" }, "installed"],
+      [{ kind: "error", message: "boom" }, "error"],
+      [{ kind: "checking" }, "checking"],
+    ] as const;
+    for (const [phase, expected] of phases) {
+      useUpdateStore.setState({ phase: phase as never, info: UPDATE_INFO });
+      renderRail();
+      expect(screen.getByTestId("rail-update").getAttribute("data-phase"), expected).toBe(expected);
+      cleanup();
+    }
+    // 下载中：amber 点让位给进度环（总长未知 → 不定环）
+    useUpdateStore.setState({ phase: { kind: "downloading", received: 0, total: null }, info: UPDATE_INFO });
+    renderRail();
+    expect(screen.getByTestId("rail-update-ring").getAttribute("data-indeterminate")).toBe("true");
+    expect(document.querySelector(".rail-update-dot")).toBeNull();
+    cleanup();
+
+    // 已是最新（info 清空）→ 隐藏；便携版即便有 info 也隐藏（无 updater）
+    useUpdateStore.setState({ phase: { kind: "uptodate" }, info: null });
     renderRail();
     expect(screen.queryByTestId("rail-update")).toBeNull();
+    cleanup();
+    useUpdateStore.setState({
+      phase: { kind: "available", update: {} as never, version: "9.9.9" },
+      info: UPDATE_INFO,
+      portable: true,
+    });
+    renderRail();
+    expect(screen.queryByTestId("rail-update")).toBeNull();
+  });
+
+  it("更新面板：有新版 → 版本信息 + 发布说明（纯文本块）+ 「下载并安装」就地下载；Esc/背板收起", () => {
+    useUpdateStore.setState({
+      phase: { kind: "available", update: {} as never, version: "9.9.9" },
+      info: {
+        version: "9.9.9",
+        date: "2026-10-26T04:13:21Z",
+        body: "## 9.9.9：主题\n\n- **亮点**：说明见 [文档](https://example.invalid/x)\n普通段落",
+      },
+      current: "1.5.7",
+    });
+    const dl = vi.spyOn(useUpdateStore.getState(), "downloadAndInstall").mockResolvedValue();
+    renderRail();
+    fireEvent.click(screen.getByTestId("rail-update"));
+    const pop = screen.getByTestId("update-pop");
+    expect(pop.getAttribute("data-phase")).toBe("available");
+    expect(screen.getByTestId("update-pop-title").textContent).toContain("9.9.9");
+    expect(screen.getByTestId("update-pop-meta").textContent).toContain("1.5.7");
+    const notes = screen.getByTestId("update-pop-notes").textContent ?? "";
+    expect(notes).toContain("9.9.9：主题");
+    expect(notes).toContain("亮点：说明见 文档"); // 行内标记剥离：粗体/链接只留文本
+    expect(notes).toContain("普通段落");
+    expect(notes).not.toContain("**");
+    expect(notes).not.toContain("https://");
+    expect(screen.getByTestId("update-pop-github").getAttribute("href")).toBe(
+      "https://github.com/huluohu/Ottr/releases/tag/v9.9.9",
+    );
+    fireEvent.click(screen.getByTestId("update-pop-install"));
+    expect(dl).toHaveBeenCalledTimes(1);
+    // Esc 收起
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("update-pop")).toBeNull();
+    // 再开 → 背板 mousedown 收起（主区是拖拽面吞 mousedown，必须背板模式）
+    fireEvent.click(screen.getByTestId("rail-update"));
+    expect(screen.getByTestId("update-pop")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByTestId("update-pop-backdrop"));
+    expect(screen.queryByTestId("update-pop")).toBeNull();
+  });
+
+  it("更新面板：占位说明（「Ottr x.y.z」旧清单）不渲染说明区", () => {
+    useUpdateStore.setState({
+      phase: { kind: "available", update: {} as never, version: "9.9.9" },
+      info: { version: "9.9.9", date: null, body: "Ottr 9.9.9" },
+    });
+    renderRail();
+    fireEvent.click(screen.getByTestId("rail-update"));
+    expect(screen.getByTestId("update-pop")).toBeTruthy();
+    expect(screen.queryByTestId("update-pop-notes")).toBeNull();
+  });
+
+  it("更新面板：下载中进度（钮上进度环 + 面板百分比）；已装 → 「立即重启」；失败 → 「重试」重查", () => {
+    useUpdateStore.setState({
+      phase: { kind: "downloading", received: 512 * 1024, total: 1024 * 1024 },
+      info: UPDATE_INFO,
+    });
+    renderRail();
+    const ring = screen.getByTestId("rail-update-ring");
+    expect(ring.getAttribute("data-indeterminate")).toBeNull();
+    fireEvent.click(screen.getByTestId("rail-update"));
+    expect(screen.getByTestId("update-pop-progress").textContent).toContain("50%");
+    expect(screen.queryByTestId("update-pop-install")).toBeNull();
+    cleanup();
+
+    useUpdateStore.setState({ phase: { kind: "installed" }, info: UPDATE_INFO });
+    const restart = vi.spyOn(useUpdateStore.getState(), "restartNow").mockImplementation(() => {});
+    renderRail();
+    fireEvent.click(screen.getByTestId("rail-update"));
+    expect(screen.getByTestId("update-pop-installed")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("update-pop-restart"));
+    expect(restart).toHaveBeenCalledTimes(1);
+    // 「稍后」只收面板（重启被 mock 掉，面板仍开着），钮仍在场（待重启提醒不丢）
+    fireEvent.click(screen.getByTestId("update-pop-later"));
+    expect(screen.queryByTestId("update-pop")).toBeNull();
+    expect(screen.getByTestId("rail-update")).toBeTruthy();
+    cleanup();
+
+    useUpdateStore.setState({ phase: { kind: "error", message: "boom" }, info: UPDATE_INFO });
+    const check = vi.spyOn(useUpdateStore.getState(), "checkForUpdate").mockResolvedValue();
+    renderRail();
+    fireEvent.click(screen.getByTestId("rail-update"));
+    expect(screen.getByTestId("update-pop-error").textContent).toContain("boom");
+    fireEvent.click(screen.getByTestId("update-pop-retry"));
+    expect(check).toHaveBeenCalledTimes(1);
+  });
+
+  it("更新面板与 Otty 弹层互斥：开一个收另一个", () => {
+    useUpdateStore.setState({
+      phase: { kind: "available", update: {} as never, version: "9.9.9" },
+      info: UPDATE_INFO,
+    });
+    renderRail();
+    fireEvent.click(screen.getByTestId("rail-update"));
+    expect(screen.getByTestId("update-pop")).toBeTruthy();
+    openOttyMenu();
+    expect(screen.getByTestId("rail-flyout-main")).toBeTruthy();
+    expect(screen.queryByTestId("update-pop")).toBeNull();
+    fireEvent.click(screen.getByTestId("rail-update"));
+    expect(screen.getByTestId("update-pop")).toBeTruthy();
+    expect(screen.queryByTestId("rail-flyout-main")).toBeNull();
   });
 
   it("Otty 弹层背板：点击弹层外任意区域（含主区拖拽面）即收起", () => {

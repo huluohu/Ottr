@@ -71,6 +71,7 @@ import { ThemeProvider, useTheme, syncThemeFromVault } from "./theme/ThemeContex
 import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { createSplitDedupe } from "./shortcuts/splitDedupe";
 import { initAutoCheck } from "./update/autoCheck";
+import { useUpdateStore } from "./update/updateStore";
 import { useVaultStore } from "./vault/store";
 import { type Host } from "./vault/api";
 import "./theme/tokens.css";
@@ -279,6 +280,9 @@ function HomeLayout() {
       void useTerminalThemeStore.getState().syncFromVault();
       // 自动检查更新（2026-10-13 用户需求）：vault 就绪后读 update.check_mode
       // （off 默认 / startup / interval 24h）；便携版在模块内整体禁用。
+      // 当前版本号/便携标记先拉一次（2026-10-26）：图标轨更新面板要显示
+      // 「当前 vX」并按便携标记隐藏钮——此前只有打开过设置→关于才会加载。
+      useUpdateStore.getState().loadCurrent();
       void initAutoCheck();
       // Otty 情感时刻开关（2026-10-16 M3）：vault 真源 ui.ottyMoments 对齐
       // （默认开；设置页外观分区可一键关——报告红线②）。
@@ -632,7 +636,6 @@ function HomeLayout() {
           onOpenSettings={() => openSettingsToPane(null)}
           onOpenMcpSettings={() => openSettingsToPane("mcp")}
           onOpenHistory={() => openModal("history")}
-          onOpenUpdate={() => openSettingsToPane("about")}
         />
         {/* 应用级侧栏（2026-10-10 壳层重构）：快捷连接 + 主机区（树）；
             功能导航与设置已迁图标轨（M3）。⌓\ 折叠胶囊 = 64px 恒宽。 */}

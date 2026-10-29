@@ -168,11 +168,16 @@ describe("SyncSettings", () => {
     await waitFor(() => expect(screen.queryByTestId("sync-dirty-hint")).toBeNull());
   });
 
-  it("信封口令：未设置 → 设置表单（不一致报错/成功写钥匙链）；已设置 → 更换+清除", async () => {
+  it("信封口令：未设置 → 设置弹框（不一致报错/成功写钥匙链）；已设置 → 更换+清除", async () => {
     seedSettings({});
     renderSection();
     await waitFor(() => expect(screen.getByTestId("sync-passphrase-status").textContent).toContain("未设置"));
+    // 设置口令 = 弹框（2026-10-29 用户需求），不再在设置页里展开成表单
+    expect(screen.queryByTestId("sync-passphrase-form")).toBeNull();
     fireEvent.click(screen.getByTestId("sync-passphrase-toggle"));
+    expect(screen.getByTestId("passphrase-dialog")).toBeTruthy();
+    // 弹框叠在设置页之上（portal 到 body），设置页本身不被顶掉
+    expect(document.body.querySelector('[data-testid="passphrase-dialog"]')).toBeTruthy();
     fireEvent.change(screen.getByTestId("sync-passphrase-new"), { target: { value: "abc" } });
     fireEvent.change(screen.getByTestId("sync-passphrase-confirm"), { target: { value: "abd" } });
     fireEvent.click(screen.getByTestId("sync-passphrase-submit"));
@@ -190,6 +195,8 @@ describe("SyncSettings", () => {
     fireEvent.click(screen.getByTestId("sync-passphrase-submit"));
     await waitFor(() => expect(screen.getByTestId("sync-passphrase-status").textContent).toContain("已存钥匙链"));
     expect(screen.getByTestId("sync-passphrase-forget")).toBeTruthy();
+    // 保存成功后弹框收起
+    await waitFor(() => expect(screen.queryByTestId("passphrase-dialog")).toBeNull());
 
     fireEvent.click(screen.getByTestId("sync-passphrase-forget"));
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("sync_passphrase_del"));
@@ -198,7 +205,7 @@ describe("SyncSettings", () => {
 
   // ui2 T4（A5 清偿·三态扫描）：清除失败此前 finally 直翻「未设置」= 假成功
   // + unhandled rejection；现在状态不翻转（诚实面）+ 错误上屏。
-  it("清除记住的口令失败（钥匙链拒绝）→ 错误面上屏、徽标保持已设置；表单关闭态错误亦可见", async () => {
+  it("清除记住的口令失败（钥匙链拒绝）→ 错误面上屏、徽标保持已设置；弹框关闭态错误亦可见", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "sync_passphrase_get") return Promise.resolve("stored");
       if (cmd === "sync_passphrase_del") return Promise.reject(new Error("keychain denied"));
@@ -208,7 +215,7 @@ describe("SyncSettings", () => {
     await waitFor(() => expect(screen.getByTestId("sync-passphrase-status").textContent).toContain("已存钥匙链"));
 
     fireEvent.click(screen.getByTestId("sync-passphrase-forget"));
-    const err = await screen.findByTestId("sync-passphrase-error");
+    const err = await screen.findByTestId("sync-passphrase-forget-error");
     expect(err.textContent).toContain("清除记住的口令失败");
     expect(err.textContent).toContain("keychain denied");
     expect(screen.getByTestId("sync-passphrase-status").textContent).toContain("已存钥匙链");

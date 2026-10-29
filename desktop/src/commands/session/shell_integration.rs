@@ -67,6 +67,9 @@ fn integration_decision(
 pub enum ShellIntegrationOutcome {
     /// 已下发片段（载荷 = shell 种类名）。
     Injected(&'static str),
+    /// 钩子已装上但验证窗内没等到 `133;D` 标记（慢链路/标记缺失）：功能可能
+    /// 不全，但**链式注入不破坏用户提示符**，不回退（2026-10-29 新路径）。
+    InjectedNoMarker(&'static str),
     /// settings 开关关（调用方门卫，本函数不重复判）。
     SkippedDisabled,
     /// $SHELL 非 bash/zsh/sh 系（fish/nushell/…）——跳过不报错。
@@ -95,6 +98,15 @@ const INJECT_VERIFY_MAX_WAIT: Duration = Duration::from_millis(2500);
 /// 失败即降级；不能用 `$SHELL` 探测的 10s 上限——那会让注入在用户已经开始
 /// 输入后才发生（键序交错）。
 const INJECT_AUX_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// shell 种类 → 打点载荷名（与旧实现的口径一致：bash/zsh/sh）。
+fn kind_name(kind: si::ShellKind) -> &'static str {
+    match kind {
+        si::ShellKind::Bash => "bash",
+        si::ShellKind::Zsh => "zsh",
+        si::ShellKind::Sh => "sh",
+    }
+}
 
 /// 向 PTY 写一行交互输入（`\r` 提交）。锁只在写入期间持有——等回显/等标记
 /// 期间必须释放，否则用户键入会被注入流程阻塞。
@@ -202,58 +214,67 @@ async fn inject_hidden(
     }
 }
 
-/// sh 系：钩子本体经 exec 通道落盘（不进交互历史），交互行只发一条短
-/// source 行；落盘失败才退化回整行片段直发（功能优先，可见残留为旧行为）。
-async fn inject_sh(
+/// 主路径（2026-10-29 用户诉求「屏幕零残留」）：**钩子体经 exec 通道落盘**，
+/// 交互会话里只留一条短 source 行（钩子文件末尾自己擦掉它）。
+///
+/// - 钩子体不经过行编辑器 → 里面的转义序列不可能被回显成乱码（无论远端
+///   有没有 stty、是不是 zsh 的 zle）；
+/// - 落盘失败（exec 通道异常/只读 /tmp）→ 退回旧的整行内联片段（功能成立、
+///   有可见残留），保底不断功能。
+/// - 钩子体是**链式**的（不覆盖用户的 PROMPT_COMMAND / precmd / DEBUG trap）。
+async fn inject_hook_file(
     writer: &tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>,
     probe_session: &SshSession,
     text_tail: &TextTail,
+    kind: si::ShellKind,
 ) -> ShellIntegrationOutcome {
     let path = si::sh_hook_temp_path();
-    let write_cmd = si::sh_hook_write_command(&path);
+    let write_cmd = si::hook_write_command(kind, &path);
     let file_ready = matches!(
         tokio::time::timeout(INJECT_AUX_TIMEOUT, probe_session.exec(&write_cmd)).await,
         Ok(Ok(out)) if String::from_utf8_lossy(&out.stdout).contains("OTTR_HOOK_OK")
     );
-    if file_ready {
-        if let Err(e) = send_line(writer, &si::sh_hook_source_line(&path)).await {
-            eprintln!("[shell-integration] write failed: {e}");
-            return ShellIntegrationOutcome::ProbeFailed;
-        }
+    if !file_ready {
+        eprintln!("[shell-integration] hook file unavailable; falling back to inline snippet");
+        return inject_inline_fallback(writer, probe_session, text_tail, kind).await;
+    }
+    if let Err(e) = send_line(writer, &si::hook_source_line(kind, &path)).await {
+        eprintln!("[shell-integration] write failed: {e}");
+        return ShellIntegrationOutcome::ProbeFailed;
+    }
+    // 验证窗：钩子装上后首个提示符应带 `133;D` 标记。没等到只说明慢链路/
+    // 标记缺失——钩子已装（链式，不破坏用户提示符），不再回退。
+    if wait_sh_marker(text_tail, INJECT_VERIFY_MAX_WAIT).await {
+        ShellIntegrationOutcome::Injected(kind_name(kind))
     } else {
-        // 落盘失败（只读 /tmp、无 cat、exec 通道异常）：退回旧的整行片段
-        // 直发。stty 可用时仍走「关回显 → 片段 → 恢复/擦行」三步，避免
-        // 整行片段被回显（夹具断言「防提示符污染」）；stty 缺失才退化为
-        // 可见长行（旧行为，功能不受影响）。
-        eprintln!("[shell-integration] sh hook file unavailable; falling back to inline snippet");
-        let has_stty = probe_has_stty(probe_session).await;
-        if has_stty {
-            if let Err(e) = send_line(writer, si::ECHO_OFF_LINE).await {
-                eprintln!("[shell-integration] write failed: {e}");
-                return ShellIntegrationOutcome::ProbeFailed;
-            }
-            wait_echo_off(text_tail).await;
-        }
+        ShellIntegrationOutcome::InjectedNoMarker(kind_name(kind))
+    }
+}
+
+/// 降级路径：钩子文件落不了盘时的老办法——整行片段直发（bash/zsh 走
+/// stty 隐身，sh 系无 stty 依赖）。可见残留是旧行为，功能不受影响。
+async fn inject_inline_fallback(
+    writer: &tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Unpin + Send>>,
+    probe_session: &SshSession,
+    text_tail: &TextTail,
+    kind: si::ShellKind,
+) -> ShellIntegrationOutcome {
+    if kind == si::ShellKind::Sh {
+        // sh 系旧路径：整行片段直发（无 stty 依赖）
         if let Err(e) = send_line(writer, si::SH_SNIPPET).await {
             eprintln!("[shell-integration] write failed: {e}");
             return ShellIntegrationOutcome::ProbeFailed;
         }
-        if has_stty {
-            let restore = "stty echo 2>/dev/null; printf '\\e[2K\\r\\e[1A\\e[2K'";
-            if let Err(e) = send_line(writer, restore).await {
-                eprintln!("[shell-integration] write failed: {e}");
-                return ShellIntegrationOutcome::ProbeFailed;
+        if wait_sh_marker(text_tail, INJECT_VERIFY_MAX_WAIT).await {
+            ShellIntegrationOutcome::Injected("sh")
+        } else {
+            if let Err(e) = send_line(writer, si::SH_REVERT_LINE).await {
+                eprintln!("[shell-integration] sh revert write failed: {e}");
             }
+            ShellIntegrationOutcome::RevertedNoMarker
         }
-    }
-    // 片段依赖 PS1 命令替换，窗口内未见标记即回填原 PS1（验证-回退护栏）
-    if wait_sh_marker(text_tail, INJECT_VERIFY_MAX_WAIT).await {
-        ShellIntegrationOutcome::Injected("sh")
     } else {
-        if let Err(e) = send_line(writer, si::SH_REVERT_LINE).await {
-            eprintln!("[shell-integration] sh revert write failed: {e}");
-        }
-        ShellIntegrationOutcome::RevertedNoMarker
+        inject_hidden(writer, probe_session, text_tail, kind).await
     }
 }
 
@@ -282,12 +303,7 @@ pub async fn inject_shell_integration(
     if wait_initial_output(text_tail).await {
         return ShellIntegrationOutcome::SkippedAlreadyIntegrated;
     }
-    match kind {
-        si::ShellKind::Sh => inject_sh(writer, probe_session, text_tail).await,
-        si::ShellKind::Bash | si::ShellKind::Zsh => {
-            inject_hidden(writer, probe_session, text_tail, kind).await
-        }
-    }
+    inject_hook_file(writer, probe_session, text_tail, kind).await
 }
 
 #[cfg(test)]

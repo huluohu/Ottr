@@ -32,7 +32,13 @@ use ottr_ssh::{AuthMethod, HostKeyPolicy, SshSession, connect};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 2222;
-const USER: &str = "spike-sh";
+/// 登录用户（夹具内置三个 shell 账号）：`spike`=bash、`spike-zsh`=zsh、
+/// `spike-sh`=/bin/sh。用 `OTTR_SPIKE_USER` 覆盖（2026-10-29 链式注入改造
+/// 后，三种 shell 都要跑一遍真机验收）。
+fn user() -> &'static str {
+    static U: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    U.get_or_init(|| std::env::var("OTTR_SPIKE_USER").unwrap_or_else(|_| "spike-sh".to_string()))
+}
 const PASSWORD: &str = "spike-pass";
 const KNOWN_HOSTS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../fixtures/known_hosts");
 
@@ -248,11 +254,14 @@ async fn main() {
 
 async fn run() -> Result<(), String> {
     let (policy, pinned_fp) = pinned_host_key_policy();
-    eprintln!("[sh-spike] connect {USER}@{HOST}:{PORT} (pinned {pinned_fp})");
+    eprintln!(
+        "[sh-spike] connect {}@{HOST}:{PORT} (pinned {pinned_fp})",
+        user()
+    );
     let session: SshSession = connect(
         HOST,
         PORT,
-        USER,
+        user(),
         AuthMethod::Password(PASSWORD.into()),
         policy,
     )
@@ -330,7 +339,14 @@ async fn run() -> Result<(), String> {
     // Injected("sh") 本身即验证-回退护栏的判定结果：窗口内真见到了 133;D; 标记。
     let outcome = inject_shell_integration(&writer, &session, &text_tail, true).await;
     println!("[inject] -> {outcome:?}");
-    if outcome != ShellIntegrationOutcome::Injected("sh") {
+    let expect_kind = if user() == "spike" {
+        "bash"
+    } else if user() == "spike-zsh" {
+        "zsh"
+    } else {
+        "sh"
+    };
+    if outcome != ShellIntegrationOutcome::Injected(expect_kind) {
         // 诊断面：回显注入后的解码流尾部与原始头部标记状态，便于定位
         let buf = stage.decoded.lock().unwrap();
         let tail: String = buf
@@ -343,7 +359,9 @@ async fn run() -> Result<(), String> {
             .collect();
         println!("[diag] decoded tail after failed inject: {tail:?}");
         println!("[diag] raw head has 133 = {}", text_tail.raw_head_has_133());
-        return Err(format!("expected Injected(\"sh\"), got {outcome:?}"));
+        return Err(format!(
+            "expected Injected({expect_kind:?}), got {outcome:?}"
+        ));
     }
 
     // 三条用户命令：true / false / true
@@ -389,7 +407,25 @@ async fn run() -> Result<(), String> {
     if codes != [Some(0), Some(1), Some(0)] {
         return Err(format!("exit codes mismatch: {codes:?} (want [0, 1, 0])"));
     }
-    if rows[1].0 != "false" {
+    // 命令文本比对：原始流里可能夹着行编辑器的重绘控制字符（zsh 的退格
+    // 等）——xterm 的缓冲里不会留这些，所以比对前先剥掉 C0 控制字符。
+    let plain = |s: &str| -> String {
+        // 回格要「退回一格」再写（zsh 重绘时发 "f\b false" 这类），不能直接
+        // 删控制字符——那样会留下重复字符（"f" + "false" = "ffalse"）。
+        let mut out = String::new();
+        for c in s.chars() {
+            match c {
+                '\u{8}' => {
+                    out.pop();
+                }
+                '\u{7}' | '\r' | '\n' => {}
+                _ if c.is_control() => {}
+                _ => out.push(c),
+            }
+        }
+        out.trim().to_string()
+    };
+    if plain(&rows[1].0) != "false" {
         return Err(format!(
             "rows[1] should be the failed command, got {:?}",
             rows[1]
@@ -397,7 +433,7 @@ async fn run() -> Result<(), String> {
     }
 
     // 硬约束断言②：sh 片段不发 OSC 7（cwd 只喂历史/⌘J，sh 系历史停用）
-    if !replay.osc7_paths.is_empty() {
+    if expect_kind == "sh" && !replay.osc7_paths.is_empty() {
         return Err(format!(
             "unexpected OSC 7 paths from sh snippet: {:?}",
             replay.osc7_paths

@@ -99,7 +99,11 @@ fn write_zsh_startup_dir() -> Option<std::path::PathBuf> {
         std::fs::write(dir.join(name), restore(name)).ok()?;
     }
     let mut zshrc = restore(".zshrc");
-    zshrc.push_str(&format!("{}\n", ottr_ssh::shell_integration::ZSH_SNIPPET));
+    // 链式钩子体（2026-10-29）：用户原有的 precmd/preexec 保留，不再覆盖。
+    zshrc.push_str(&format!(
+        "{}\n",
+        ottr_ssh::shell_integration::zsh_hook_body()
+    ));
     std::fs::write(dir.join(".zshrc"), zshrc).ok()?;
     Some(dir)
 }
@@ -128,7 +132,9 @@ fn write_bash_rcfile() -> Option<std::path::PathBuf> {
     );
     let content = format!(
         "{head}{chain}{}\n",
-        ottr_ssh::shell_integration::BASH_SNIPPET
+        // 链式钩子体（2026-10-29）：用户原有的 PROMPT_COMMAND / DEBUG trap
+        // 保留，不再覆盖；退出码原样传给用户钩子。
+        ottr_ssh::shell_integration::bash_hook_body(&path.to_string_lossy())
     );
     std::fs::write(&path, content).ok()?;
     Some(path)
@@ -779,12 +785,13 @@ mod startup_file_tests {
             assert!(text.contains("rc_dir"), "{name} 缺 HOME 回落");
         }
         let zshrc = std::fs::read_to_string(dir.join(".zshrc")).unwrap();
-        let snippet = ottr_ssh::shell_integration::ZSH_SNIPPET;
+        // 链式钩子体（2026-10-29）：用户 precmd/preexec 保留，不再覆盖
+        let body = ottr_ssh::shell_integration::zsh_hook_body();
         assert!(
             zshrc
-                .rfind(snippet)
+                .rfind(&body)
                 .is_some_and(|pos| pos > zshrc.find(".zshrc").unwrap()),
-            "集成钩子必须加载在用户 .zshrc 之后（覆盖 precmd 才生效）"
+            "集成钩子必须加载在用户 .zshrc 之后（链接用户 precmd 才生效）"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

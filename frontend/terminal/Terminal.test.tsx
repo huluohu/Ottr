@@ -276,6 +276,69 @@ describe("SessionTerminal 恢复标签（未连接浮层，2026-10-14）", () =>
   });
 });
 
+describe("SessionTerminal 断线耗尽态回车重连（2026-10-29 用户需求）", () => {
+  it("自动重连耗尽（attempt>0 + disconnected）→ 回车 = 重走退避链（attempt 归零重来）", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-x", status: "disconnected", rustId: null, attempt: 5 })],
+      activeId: "tab-x",
+      trees: { "tab-x": { kind: "leaf", id: "tab-x" } },
+      activePane: { "tab-x": "tab-x" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-x" />
+      </ThemeProvider>,
+    );
+    fireEvent.keyDown(container.querySelector(".session-term")!, { key: "Enter" });
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("reconnecting");
+    expect(s.attempt).toBe(1); // 计数归零后从第 1 次起步（不是第 6 次→立刻耗尽）
+    // 清掉挂起的退避定时器（disconnect 会 cancelRetryTimer），免得测试外泄
+    useSessionStore.getState().disconnect("tab-x");
+  });
+
+  it("回车在 xterm 吞掉冒泡时仍生效（2026-10-29 真机实测：xterm 对 Enter 调 stopPropagation，事件到不了冒泡阶段）", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-z", status: "disconnected", rustId: null, attempt: 5 })],
+      activeId: "tab-z",
+      trees: { "tab-z": { kind: "leaf", id: "tab-z" } },
+      activePane: { "tab-z": "tab-z" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-z" />
+      </ThemeProvider>,
+    );
+    // 仿 xterm 的隐藏 textarea：keydown 时 stopPropagation（不往祖先冒泡）
+    const host = container.querySelector(".session-term") as HTMLDivElement;
+    const fake = document.createElement("textarea");
+    fake.addEventListener("keydown", (e) => e.stopPropagation());
+    host.appendChild(fake);
+    fireEvent.keyDown(fake, { key: "Enter" });
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("reconnecting");
+    expect(s.attempt).toBe(1);
+    useSessionStore.getState().disconnect("tab-z");
+  });
+
+  it("手动断开（attempt=0 + 非恢复标签）回车不劫持", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-y", status: "disconnected", rustId: null, attempt: 0 })],
+      activeId: "tab-y",
+      trees: { "tab-y": { kind: "leaf", id: "tab-y" } },
+      activePane: { "tab-y": "tab-y" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-y" />
+      </ThemeProvider>,
+    );
+    fireEvent.keyDown(container.querySelector(".session-term")!, { key: "Enter" });
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+    expect(useSessionStore.getState().sessions[0].attempt).toBe(0);
+  });
+});
+
 describe("SessionTerminal 右键唤起菜单（集成）", () => {
   it("contextmenu 事件弹出菜单并渲染各动作项；点击关闭动作上抛到 store", () => {
     useSessionStore.setState({

@@ -895,10 +895,30 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   /** 回车重连（2026-10-15 用户需求）：恢复标签断连态，Enter = 点「连接」。
       谓词与浮层显示完全一致（restored + disconnected，新建/分屏首帧的短暂
       disconnected 不劫持按键）；IME 组合中的回车放行。挂 .session-term 根
-      div 上——xterm 隐藏 textarea 的 keydown 会冒泡到此，浮层未聚焦也生效。 */
+      div 上——xterm 隐藏 textarea 的 keydown 会冒泡到此，浮层未聚焦也生效。
+
+      2026-10-29 用户补充（实测截图「自动重连 5 次未成功，已停止」）：断线
+      会话自动重连耗尽后，光标还在终端里，用户要的就是「按回车继续重试」。
+      耗尽态（attempt>0 + disconnected）→ 回车 = reconnectNow（重走整条退避
+      链，不是单次重试——单次失败会立刻回耗尽终态，见 store 注释）。
+      恢复标签（attempt=0）→ 仍是普通 connect（首连语义：无自动重连链）。
+
+      **必须用捕获阶段（onKeyDownCapture）**：xterm.js 对 Enter 这类「自己
+      消费掉」的键在自己的 textarea 监听里调 `stopPropagation()`
+      （Keyboard.cancel → preventDefault + stopPropagation），事件**到不了
+      冒泡阶段**——挂在祖先上的 onKeyDown 永远不会触发（真机实测：回车无
+      反应；jsdom 的 fireEvent 直投 div，故单测看不出）。捕获阶段自根向
+      目标下行，先于 xterm 的监听器跑到本处理器。 */
   function handleTermKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (!restored || status !== "disconnected") return;
+    if (status !== "disconnected") return;
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    if (attempt > 0) {
+      // 自动重连已耗尽：重走退避链（attempt 归零 → 第 1/5 次起步）
+      e.preventDefault();
+      useSessionStore.getState().reconnectNow(sessionId);
+      return;
+    }
+    if (!restored) return;
     e.preventDefault();
     void useSessionStore.getState().connect(sessionId);
   }
@@ -909,7 +929,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       ref={hostRef}
       data-session-id={sessionId}
       onContextMenu={openContextMenu}
-      onKeyDown={handleTermKeyDown}
+      onKeyDownCapture={handleTermKeyDown}
     >
       {/* 恢复标签的「未连接」浮层（2026-10-14 用户反馈）：状态可读 + 一键重连。
           仅恢复标签显示——新建/分屏会话首帧的短暂 disconnected 不打扰。 */}

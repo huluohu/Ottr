@@ -41,6 +41,11 @@ const updateMode = new URLSearchParams(location.search).get("update");
 // 设置页目检（2026-10-26）：?settings=sync —— 设置页直落同步分区，且已保存
 // 本地目录通道让「立即同步」可点，验证同步子弹框叠在设置之上（设置不被顶掉）。
 const settingsMode = new URLSearchParams(location.search).get("settings");
+// 断线耗尽态目检（2026-10-29 用户需求：终端内回车继续重连）：?reconnect=exhausted
+// —— 种子一条「自动重连已耗尽」的会话（disconnected + attempt=5），终端可聚焦；
+// 按回车应重走退避链（attempt 归零 → 第 1/5 次起步）。window.__session__ 暴露
+// 会话状态给浏览器断言面。
+const reconnectMode = new URLSearchParams(location.search).get("reconnect");
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -158,6 +163,43 @@ useSessionStore.setState({
   trees: { "preview-tab": { kind: "leaf", id: "preview-tab" } },
   activePane: { "preview-tab": "preview-tab" },
 });
+
+// 断线耗尽态覆盖（?reconnect=exhausted）：把上面那条「已连接」会话换成
+// 「自动重连 5 次未成功」的终态（restored=false = 曾连上后掉线的活会话）。
+if (reconnectMode === "exhausted") {
+  useSessionStore.setState({
+    sessions: [
+      {
+        id: "preview-tab",
+        hostId: 1,
+        hostName: "preview-host",
+        rustId: null,
+        paneOf: null,
+        status: "disconnected",
+        attempt: 5,
+        nextRetryAt: null,
+        lastError: "ssh protocol error: Disconnected",
+        restored: false,
+        encoding: "utf-8",
+        isProduction: false,
+        protocol: "ssh",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+    ],
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__session__ = () =>
+    useSessionStore.getState().sessions.map((s) => ({
+      id: s.id,
+      status: s.status,
+      attempt: s.attempt,
+      nextRetryAt: s.nextRetryAt,
+    }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__reconnectNow__ = (id: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (useSessionStore.getState() as any).reconnectNow(id);
+}
 
 // PTY 数据面在浏览器里不存在（attach 未真跑），终端画布为空属预期——本页
 // 只验证布局/可见性。定期以假输出喂画布让终端区非空（视觉参照）。

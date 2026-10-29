@@ -125,6 +125,9 @@ interface SessionStore {
   connect: (id: string) => Promise<void>;
   /** 安排第 attempt 次自动重连（指数退避；超上限转 disconnected）。 */
   scheduleReconnect: (id: string) => void;
+  /** 用户显式要求继续重连（2026-10-29 用户需求：光标在终端内按回车）：重置
+   *  自动重连计数并重走一遍退避链。 */
+  reconnectNow: (id: string) => void;
   /** ottr://host-key-ask 事件入口：置 waiting_host_key + 弹窗态。 */
   onHostKeyAsk: (payload: HostKeyAskPayload) => void;
   /** 确认框裁定：accept=true 放行在途 attach；false = 主动断开（Rust 侧已拒）。 */
@@ -608,6 +611,31 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         void get().connect(id);
       }, delay),
     );
+  },
+
+  /** 用户显式要求继续重连（2026-10-29 用户需求：光标在终端内按回车）。
+   *
+   *  **重走整条退避链，不是单次重试**：耗尽终态下 attempt 已等于上限，单次
+   *  重试一旦失败就会再次 scheduleReconnect → attempt 超上限 → 立刻回到
+   *  「已耗尽」——用户再按回车仍是死路。重置计数后重走 1/2/4/8/16s 全链，
+   *  才对得上「继续尝试重连」。
+   *
+   *  只在断连终态生效（connecting/reconnecting/connected 不动——那两态要么
+   *  正在连、要么已经排在退避队列里，再插一次会双发 attach）。 */
+  reconnectNow: (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (!session || session.status !== "disconnected") return;
+    cancelRetryTimer(id);
+    set((prev) => ({
+      sessions: patchSession(prev.sessions, id, {
+        attempt: 0,
+        status: "reconnecting",
+        nextRetryAt: null,
+        rustId: null,
+      }),
+    }));
+    // 计数清零后由退避器接管：attempt=1、退避 1s，第 1/5 次起步
+    get().scheduleReconnect(id);
   },
 
   onHostKeyAsk: (payload) => {

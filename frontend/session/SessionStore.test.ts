@@ -165,6 +165,57 @@ describe("连接与断线重连", () => {
     expect(attemptsSeen).toBe(5);
   });
 
+  it("reconnectNow（2026-10-29 用户需求：终端内回车继续重连）：耗尽终态重走整条退避链", async () => {
+    let fail = false;
+    mockedInvoke.mockImplementation((_cmd: string) =>
+      fail ? Promise.reject(new Error("connection refused")) : Promise.resolve("pty-ok"),
+    );
+    const store = useSessionStore.getState();
+    const id = store.openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    markConnected(id, "pty-ok");
+
+    // 断线 → 5 次自动重连全败 → 耗尽终态
+    act(() =>
+      useSessionStore.getState().onSessionClosed({ id: "pty-ok", reason: "closed" }),
+    );
+    for (let i = 0; i < 5; i++) {
+      fail = true;
+      await vi.advanceTimersByTimeAsync(reconnectDelayMs(i + 1));
+    }
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+    expect(useSessionStore.getState().sessions[0].attempt).toBe(5);
+    const attachBefore = attachCalls().length;
+
+    // 用户显式要求继续重连：计数归零 → 第 1/5 次起步，退避 1s
+    act(() => useSessionStore.getState().reconnectNow(id));
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("reconnecting");
+    expect(s.attempt).toBe(1);
+    expect(s.nextRetryAt).not.toBeNull();
+
+    // 退避链重走：1s 后第 1 次重连（仍失败）→ attempt 2 → 继续 2s/4s/…
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs(1));
+    expect(attachCalls().length).toBe(attachBefore + 1);
+    expect(useSessionStore.getState().sessions[0].attempt).toBe(2);
+    expect(useSessionStore.getState().sessions[0].status).toBe("reconnecting");
+  });
+
+  it("reconnectNow：非断连态不动作（connecting/reconnecting/connected 不双发 attach）", async () => {
+    mockedInvoke.mockResolvedValue("pty-ok");
+    const store = useSessionStore.getState();
+    const id = store.openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    markConnected(id, "pty-ok");
+    const attachBefore = attachCalls().length;
+
+    // 已连接：按回车不重连
+    act(() => useSessionStore.getState().reconnectNow(id));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(attachCalls().length).toBe(attachBefore);
+    expect(useSessionStore.getState().sessions[0].status).toBe("connected");
+  });
+
   it("手动断开不重连：disconnect 后 session-closed / 定时器均不再触发 attach", async () => {
     mockedInvoke.mockResolvedValue("pty-1");
     const id = useSessionStore.getState().openTab(hostA);

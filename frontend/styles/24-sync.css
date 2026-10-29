@@ -67,6 +67,35 @@
   width: min(420px, 100%);
 }
 
+/* 口令弹框壳（2026-10-29）：设置/更改信封口令改弹框后专用——比 sync-dialog
+   再窄一档（两个密码框 + 一句说明，无需宽面）。自适应内容高，不撑黑虚空。 */
+.dialog.pass-dialog {
+  width: min(420px, 100%);
+  max-height: 86vh;
+}
+
+/* 口令弹框表单：标签在上、输入框在下，间距与同步弹框的问密码面同款。 */
+.pass-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.pass-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.pass-form input {
+  width: 100%;
+  /* border-box 强制（沿用 13-terminal-tabs 的同款备案）：全局无 border-box
+     重置，content-box 下 width:100% 会把内边距与边框算到框外 → 横向溢出，
+     弹框底部冒横向滚动条。 */
+  box-sizing: border-box;
+}
+
 .sync-askpass-form {
   display: flex;
   flex-direction: column;

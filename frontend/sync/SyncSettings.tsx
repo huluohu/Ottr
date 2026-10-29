@@ -18,6 +18,7 @@ import { vaultApi } from "../vault/api";
 import { createGitTransport, tauriGitDeps, validateRepoUrl, type GitConfig } from "./git";
 import { createLocalDirTransport, tauriLocalDirDeps } from "./localdir";
 import { createWebdavTransport, type WebdavConfig } from "./webdav";
+import { PassphraseDialog } from "./PassphraseDialog";
 import type { SyncTransport } from "./transport";
 
 export type SyncChannelKind = "webdav" | "git" | "localdir";
@@ -129,10 +130,11 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
   const [testResult, setTestResult] = useState<"ok" | "fail" | null>(null);
 
   const [hasPassphrase, setHasPassphrase] = useState(false);
+  /** 口令弹框开关（2026-10-29 用户需求：不再在设置页里展开成表单，改为弹框）。 */
   const [passOpen, setPassOpen] = useState(false);
-  const [pass1, setPass1] = useState("");
-  const [pass2, setPass2] = useState("");
-  const [passError, setPassError] = useState<string | null>(null);
+  /** 「清除记住的口令」失败面（钥匙链写保护等）——**留在设置页行尾**：
+   *  清除动作发生在弹框关闭态，错误必须仍可见（ui2 T4 扫描清偿）。 */
+  const [forgetError, setForgetError] = useState<string | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -233,27 +235,13 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
     }
   }
 
-  async function submitPassphrase(e: FormEvent) {
-    e.preventDefault();
-    if (pass1 === "") {
-      setPassError("sync.passphrase.errEmpty");
-      return;
-    }
-    if (pass1 !== pass2) {
-      setPassError("sync.passphrase.errMismatch");
-      return;
-    }
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("sync_passphrase_set", { value: pass1 });
-      setHasPassphrase(true);
-      setPassOpen(false);
-      setPass1("");
-      setPass2("");
-      setPassError(null);
-    } catch (err) {
-      setPassError(`sync.errSave|${err instanceof Error ? err.message : String(err)}`);
-    }
+  /** 口令保存（弹框提交）：成功即关弹框并翻徽标；失败抛给弹框内呈现。 */
+  async function savePassphrase(passphrase: string): Promise<void> {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("sync_passphrase_set", { value: passphrase });
+    setHasPassphrase(true);
+    setPassOpen(false);
+    setForgetError(null);
   }
 
   async function forgetPassphrase() {
@@ -261,11 +249,12 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("sync_passphrase_del");
       setHasPassphrase(false);
+      setForgetError(null);
     } catch (err) {
       // 清除失败（钥匙链写保护等）：状态不翻转（徽标仍「已设置」= 诚实面），
-      // 错误经 passError 面上屏——此前 finally 直翻 false 属假成功 + unhandled
-      // rejection（ui2 T4 扫描清偿）。
-      setPassError(`sync.errForget|${err instanceof Error ? err.message : String(err)}`);
+      // 错误经行尾面（forgetError）上屏——此前 finally 直翻 false 属假成功 +
+      // unhandled rejection（ui2 T4 扫描清偿）。
+      setForgetError(`sync.errForget|${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -432,7 +421,7 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
         >
           {hasPassphrase ? t("sync.passphrase.statusSet") : t("sync.passphrase.statusUnset")}
         </span>
-        <button type="button" data-testid="sync-passphrase-toggle" onClick={() => setPassOpen((v) => !v)}>
+        <button type="button" data-testid="sync-passphrase-toggle" onClick={() => setPassOpen(true)}>
           {hasPassphrase ? t("sync.passphrase.change") : t("sync.passphrase.set")}
         </button>
         {hasPassphrase && (
@@ -442,46 +431,22 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
         )}
       </div>
       <p className="settings-hint">{t("sync.passphrase.hint")}</p>
-      {/* 错误面挂行尾（不进 passOpen 门）：「清除记住的口令」在表单关闭态也
-          可能失败（钥匙链写保护），必须可见（ui2 T4 扫描清偿）。 */}
-      {passError !== null && (
-        <p className="form-error" data-testid="sync-passphrase-error">
-          {renderError(passError)}
+      {/* 「清除记住的口令」失败面留在行尾（**不进弹框**）：清除动作发生在弹框
+          关闭态，错误必须仍可见（ui2 T4 扫描清偿）。口令本身的校验/保存错误
+          在弹框内呈现（sync-passphrase-error）。 */}
+      {forgetError !== null && (
+        <p className="form-error" data-testid="sync-passphrase-forget-error">
+          {renderError(forgetError)}
         </p>
       )}
-      {passOpen && (
-        <form className="wizard-step" onSubmit={(e) => void submitPassphrase(e)} noValidate data-testid="sync-passphrase-form">
-          <label>
-            <span>{t("sync.passphrase.new")}</span>
-            <input
-              type="password"
-              data-testid="sync-passphrase-new"
-              autoComplete="new-password"
-              value={pass1}
-              onChange={(e) => setPass1(e.currentTarget.value)}
-            />
-          </label>
-          <label>
-            <span>{t("sync.passphrase.confirm")}</span>
-            <input
-              type="password"
-              data-testid="sync-passphrase-confirm"
-              autoComplete="new-password"
-              value={pass2}
-              onChange={(e) => setPass2(e.currentTarget.value)}
-            />
-          </label>
-          <p className="settings-hint">{hasPassphrase ? t("sync.passphrase.changeHint") : t("sync.passphrase.hint")}</p>
-          <div className="form-actions">
-            <button type="button" data-testid="sync-passphrase-cancel" onClick={() => setPassOpen(false)}>
-              {t("common.cancel")}
-            </button>
-            <button type="submit" className="btn-accent" data-testid="sync-passphrase-submit">
-              {hasPassphrase ? t("sync.passphrase.change") : t("sync.passphrase.set")}
-            </button>
-          </div>
-        </form>
-      )}
+      {/* 设置/更改口令 = 弹框（2026-10-29 用户需求：同「立即同步」弹法，叠在
+          设置页之上、设置页不被顶掉）。 */}
+      <PassphraseDialog
+        open={passOpen}
+        hasPassphrase={hasPassphrase}
+        onSave={savePassphrase}
+        onClose={() => setPassOpen(false)}
+      />
 
       <div className="form-actions">
         <button

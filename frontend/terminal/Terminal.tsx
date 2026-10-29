@@ -57,6 +57,7 @@ import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
 import { copyText } from "../ui/clipboard";
 import { createCommandWatch } from "./CommandWatch";
+import { DiagnoseGate } from "./DiagnoseGate";
 import { noteCwd, forgetCwd } from "./CwdTracker";
 import {
   SudoPromptDetector,
@@ -147,6 +148,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const prevStatus = useRef<string | null>(null);
   // 中断记账（见 writeToSession 处注释）：本条命令执行期间用户发过 Ctrl+C
   const interruptedRef = useRef(false);
+  // 诊断取消宽限（2026-10-29 用户实测「粘贴→仍要粘贴→Ctrl+C 撤销→弹诊断」）：
+  // 失败上报到弹面板之间留一段宽限期，用户在期内 Ctrl+C 撤销 → 这次诊断收回。
+  const diagnoseGateRef = useRef<DiagnoseGate | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
@@ -275,6 +279,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const writeToSession = (input: string | Uint8Array): void => {
       if (typeof input === "string" ? input.includes("\x03") : input.includes(0x03)) {
         interruptedRef.current = true;
+        // 撤销表达：收回挂起中的诊断（宽限期内按 Ctrl+C = 用户放弃这次失败）。
+        diagnoseGateRef.current?.cancel();
       }
       const session = useSessionStore
         .getState()
@@ -419,6 +425,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       .sessions.find((x) => x.id === sessionId);
     if (firstSession) void completionHistory.ensure(firstSession.hostId); // 补全历史冷启动拉取
     let watch: ReturnType<typeof createCommandWatch> | null = null;
+    // 诊断取消宽限门：挂起失败诊断，等用户一个「撤销」的表态。
+    const diagnoseGate = new DiagnoseGate({
+      onOpen: (req) => useAiStore.getState().onCommandFailed(req),
+    });
+    diagnoseGateRef.current = diagnoseGate;
     try {
       watch = createCommandWatch(term, {
         // B8：新提示符 = 旧输入行消失，ghost 全量清态；中断标记随新命令清零
@@ -435,7 +446,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           // exit 1 退出、普通命令报 130，击键记账是本质信号）或退出码即 130。
           // 历史照记（onCommandFinished）、手动「解释」不受限。
           if (interruptedRef.current || !shouldAutoDiagnose(exitCode)) return;
-          useAiStore.getState().onCommandFailed({
+          // 走取消宽限门（DiagnoseGate）：失败上报比用户按键早一个网络往返，
+          // 用户「Ctrl+C 撤销」若晚于上报就收不回诊断（2026-10-29 用户实测：
+          // 粘贴→仍要粘贴→Ctrl+C 撤销→弹诊断）。门内 Ctrl+C → 收回；到期
+          // 未撤销 → 照常弹。
+          diagnoseGateRef.current?.schedule({
             kind: "diagnose",
             sessionId,
             rustId: session.rustId,
@@ -620,6 +635,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       onData.dispose();
       watch?.dispose();
       watchRef.current = null;
+      diagnoseGateRef.current?.dispose();
+      diagnoseGateRef.current = null;
       ghost.dispose();
       ghostRef.current = null;
       trzsz.dispose();
@@ -878,10 +895,30 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   /** 回车重连（2026-10-15 用户需求）：恢复标签断连态，Enter = 点「连接」。
       谓词与浮层显示完全一致（restored + disconnected，新建/分屏首帧的短暂
       disconnected 不劫持按键）；IME 组合中的回车放行。挂 .session-term 根
-      div 上——xterm 隐藏 textarea 的 keydown 会冒泡到此，浮层未聚焦也生效。 */
+      div 上——xterm 隐藏 textarea 的 keydown 会冒泡到此，浮层未聚焦也生效。
+
+      2026-10-29 用户补充（实测截图「自动重连 5 次未成功，已停止」）：断线
+      会话自动重连耗尽后，光标还在终端里，用户要的就是「按回车继续重试」。
+      耗尽态（attempt>0 + disconnected）→ 回车 = reconnectNow（重走整条退避
+      链，不是单次重试——单次失败会立刻回耗尽终态，见 store 注释）。
+      恢复标签（attempt=0）→ 仍是普通 connect（首连语义：无自动重连链）。
+
+      **必须用捕获阶段（onKeyDownCapture）**：xterm.js 对 Enter 这类「自己
+      消费掉」的键在自己的 textarea 监听里调 `stopPropagation()`
+      （Keyboard.cancel → preventDefault + stopPropagation），事件**到不了
+      冒泡阶段**——挂在祖先上的 onKeyDown 永远不会触发（真机实测：回车无
+      反应；jsdom 的 fireEvent 直投 div，故单测看不出）。捕获阶段自根向
+      目标下行，先于 xterm 的监听器跑到本处理器。 */
   function handleTermKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (!restored || status !== "disconnected") return;
+    if (status !== "disconnected") return;
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    if (attempt > 0) {
+      // 自动重连已耗尽：重走退避链（attempt 归零 → 第 1/5 次起步）
+      e.preventDefault();
+      useSessionStore.getState().reconnectNow(sessionId);
+      return;
+    }
+    if (!restored) return;
     e.preventDefault();
     void useSessionStore.getState().connect(sessionId);
   }
@@ -892,7 +929,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       ref={hostRef}
       data-session-id={sessionId}
       onContextMenu={openContextMenu}
-      onKeyDown={handleTermKeyDown}
+      onKeyDownCapture={handleTermKeyDown}
     >
       {/* 恢复标签的「未连接」浮层（2026-10-14 用户反馈）：状态可读 + 一键重连。
           仅恢复标签显示——新建/分屏会话首帧的短暂 disconnected 不打扰。 */}

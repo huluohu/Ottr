@@ -88,7 +88,7 @@ pub const ECHO_OFF_LINE: &str = "stty -echo 2>/dev/null; : ottr-hide";
 /// - `__ottr_hc`：首个提示符时按哨兵删除「钩子行」→「stty 行」两条历史，
 ///   随后从 PROMPT_COMMAND 自我摘除。`history -d` 按**历史编号**删除（兼容
 ///   bash 4.2，不依赖 4.3+ 的负数偏移），失败静默（老 shell = 现状）。
-pub const BASH_SNIPPET: &str = r#"export PROMPT_COMMAND='__ottr_hc; printf "\e]133;D;%s\a\e]133;A\a" "$?"; printf "\e]7;file://%s%s\a" "$HOSTNAME" "$PWD"'; __osc133_preexec(){ case "$BASH_COMMAND" in __ottr_*|'printf "\e]133;D;%s\a\e]133;A\a" "$?"'|'printf "\e]7;file://%s%s\a" "$HOSTNAME" "$PWD"') return;; esac; printf '\e]133;C\a'; }; trap '__osc133_preexec' DEBUG; __ottr_hc(){ local h n; h=$(HISTTIMEFORMAT= history 1 2>/dev/null); case "$h" in *__osc133_preexec*) n=${h#"${h%%[! ]*}"}; n=${n%%[ ]*}; history -d "$n" 2>/dev/null;; esac; h=$(HISTTIMEFORMAT= history 1 2>/dev/null); case "$h" in *ottr-hide*) n=${h#"${h%%[! ]*}"}; n=${n%%[ ]*}; history -d "$n" 2>/dev/null;; esac; PROMPT_COMMAND=${PROMPT_COMMAND#__ottr_hc; }; :; }"#;
+pub const BASH_SNIPPET: &str = r#"export PROMPT_COMMAND='__ottr_hc; printf "\e]133;D;%s\a\e]133;A\a" "$?"; printf "\e]7;file://%s%s\a" "$HOSTNAME" "$PWD"'; __osc133_preexec(){ case "$BASH_COMMAND" in __ottr_*|'printf "\e]133;D;%s\a\e]133;A\a" "$?"'|'printf "\e]7;file://%s%s\a" "$HOSTNAME" "$PWD"') return;; esac; printf '\033]133;C\007'; }; trap '__osc133_preexec' DEBUG; __ottr_hc(){ local h n; h=$(HISTTIMEFORMAT= history 1 2>/dev/null); case "$h" in *__osc133_preexec*) n=${h#"${h%%[! ]*}"}; n=${n%%[ ]*}; history -d "$n" 2>/dev/null;; esac; h=$(HISTTIMEFORMAT= history 1 2>/dev/null); case "$h" in *ottr-hide*) n=${h#"${h%%[! ]*}"}; n=${n%%[ ]*}; history -d "$n" 2>/dev/null;; esac; PROMPT_COMMAND=${PROMPT_COMMAND#__ottr_hc; }; :; }"#;
 
 /// zsh 钩子本体（简报原稿，真机验证直接可用）。
 ///
@@ -155,7 +155,7 @@ pub fn sh_hook_file_content(path: &str) -> String {
 /// shell 随后绘出的新提示符正好落在擦净的位置（与隐身通道的擦行同款手法）。
 /// 该行本身会进历史（ash 无豁免能力），但它是固定的短形态。
 pub fn sh_hook_source_line(path: &str) -> String {
-    format!(". {path} 2>/dev/null; printf '\\e[1A\\e[2K' 2>/dev/null")
+    format!(". {path} 2>/dev/null; printf '\\033[1A\\033[2K' 2>/dev/null")
 }
 
 /// 经 exec 通道落盘钩子文件的命令（**不进交互历史**：exec 不经过行编辑器）。
@@ -169,6 +169,197 @@ pub fn sh_hook_write_command(path: &str) -> String {
     format!(
         "set -C; umask 077; cat > {path} <<'OTTR_HOOK_EOF'\n{}OTTR_HOOK_EOF\n[ $? -eq 0 ] && test -s {path} && echo OTTR_HOOK_OK",
         sh_hook_file_content(path)
+    )
+}
+
+// ---------------------------------------------------------------------------
+// 链式钩子体 + 统一「落盘交付」（2026-10-29 用户诉求：屏幕零残留）
+// ---------------------------------------------------------------------------
+//
+// # 为什么改（用户原话：「别给我显示一大堆乱字符」）
+//
+// 旧实现把**整段钩子体打进交互会话**（bash 一行七百多字符，内含
+// `\e]133;D;%s\a` 之类的转义序列）：
+// * bash 靠 `stty -echo` 藏 → 无 stty 的机器（BusyBox NAS、极简容器）**藏
+//   不住**，用户屏幕上就是一大坨转义乱码；
+// * zsh 靠 zle 自己回显 → **根本藏不住**（真夹具实测 stty 对 zsh 无效）；
+// * 旧片段还**覆盖**用户的 `PROMPT_COMMAND` / `precmd` / `DEBUG` trap——
+//   用户自己的提示符钩子被静默顶掉，这就是「注入不卫生」。
+//
+// # 新做法（与市场同构：钩子体不经过行编辑器）
+//
+// 1. **钩子体经 exec 通道落盘**（文件不是打进去的 → 行编辑器碰不到它 →
+//    转义序列不可能被回显成乱码；不进交互历史）；
+// 2. 交互会话里只留**一条短 source 行**，且钩子文件末尾自己把它擦掉
+//    （`printf '\033[1A\033[2K'`）——屏幕上不留任何痕迹；
+// 3. **链式而非覆盖**：用户的 `PROMPT_COMMAND` / `precmd` / `preexec` /
+//    `DEBUG` trap 全部保留，且看到的仍是**原始退出码**（入口先取 `$?`，
+//    末尾 `( exit $rc )` 还原后再让用户钩子跑——VS Code 的同名修复，
+//    microsoft/vscode#221393）。
+//
+// 落盘失败（exec 通道不可用/只读 /tmp）→ 退回旧的整行内联片段（功能成立、
+// 有可见残留），保底不断功能。
+
+/// bash 钩子体（**链式**：不覆盖用户的 `PROMPT_COMMAND` / `DEBUG` trap）。
+///
+/// 关键语义：
+/// * `__ottr_entry` 是**追加**在用户 `PROMPT_COMMAND` 之前的一段（数组形态
+///   用 `PROMPT_COMMAND=(...)` 前插，字符串形态用换行拼接）——用户那段原样
+///   保留在其后；
+/// * `$?` 在入口第一条就被取走（`__ottr_rc=$?`），末尾 `( exit $rc )` 还原，
+///   用户钩子看到的仍是原始退出码；
+/// * `DEBUG` trap 只允许存在一个 → 取出用户 trap 的**函数体**（不是整行
+///   `trap ... DEBUG`），在我们的 trap 里原样 eval，用户的 trap 仍对每条
+///   命令生效（整行 eval 会让用户的 trap 晚一条命令才跑——不采用）；
+/// * 历史清理在 **source 当场**做（bash 有 `history -d`），不挂一次性
+///   `PROMPT_COMMAND` 清理钩子（少一处用户钩子面上的改动）。
+pub fn bash_hook_body(path: &str) -> String {
+    format!(
+        r#"# Ottr shell integration (bash) - generated file, do not edit by hand
+# Chain, don't overwrite: the user's PROMPT_COMMAND / DEBUG trap survive, and
+# still see the original exit code ($? is restored before the user's hook runs).
+__ottr_entry='__ottr_rc=$?; __ottr_in=1; __ottr_pc "$__ottr_rc"; unset __ottr_in; ( exit $__ottr_rc )'
+__ottr_pc() {{
+  printf '\033]133;D;%s\007\033]133;A\007' "$1"
+  printf '\033]7;file://%s%s\007' "$HOSTNAME" "$PWD"
+}}
+__ottr_preexec() {{
+  [ -n "$__ottr_in" ] && return
+  case "$BASH_COMMAND" in
+    *__ottr_*|*{path}*) return ;;
+  esac
+  printf '\033]133;C\007'
+}}
+__ottr_h() {{
+  local h n
+  h=$(HISTTIMEFORMAT= history 1 2>/dev/null)
+  case "$h" in
+    *{path}*) n=${{h#"${{h%%[! ]*}}"}}; n=${{n%%[ ]*}}; history -d "$n" 2>/dev/null ;;
+  esac
+}}
+__ottr_h
+unset -f __ottr_h
+__ottr_dbg="$(trap -p DEBUG 2>/dev/null)"
+case "$__ottr_dbg" in
+  "trap -- '"*) __ottr_dbg_body="${{__ottr_dbg#trap -- \'}}"; __ottr_dbg_body="${{__ottr_dbg_body%\' DEBUG}}" ;;
+  "trap '"*) __ottr_dbg_body="${{__ottr_dbg#trap \'}}"; __ottr_dbg_body="${{__ottr_dbg_body%\' DEBUG}}" ;;
+  *) __ottr_dbg_body="" ;;
+esac
+unset __ottr_dbg
+if [ "$(declare -p PROMPT_COMMAND 2>/dev/null)" = "declare -a"* ]; then
+  PROMPT_COMMAND=("$__ottr_entry" "${{PROMPT_COMMAND[@]}}")
+else
+  export PROMPT_COMMAND="$__ottr_entry${{PROMPT_COMMAND:+$'\n'}}$PROMPT_COMMAND"
+fi
+if [ -n "$__ottr_dbg_body" ]; then
+  trap '__ottr_preexec; eval "$__ottr_dbg_body"' DEBUG
+else
+  trap '__ottr_preexec' DEBUG
+fi
+"#
+    )
+}
+
+/// zsh 钩子体（**链式**：不覆盖用户的 `precmd` / `preexec`）。
+///
+/// zsh 的 `precmd` / `preexec` 允许用户自定义函数：把用户的原函数体挪到
+/// `__ottr_user_precmd` / `__ottr_user_preexec`，我们的同名函数里先跑自己
+/// 的上报、再调用户的——用户的钩子仍对每条命令生效，且拿到的是原始 `$?`
+/// （`__ottr_precmd` 入口取 `$?`、末尾 `( exit $rc )` 还原）。
+pub fn zsh_hook_body() -> String {
+    r#"# Ottr shell integration (zsh) - generated file, do not edit by hand
+# Chain, don't overwrite: the user's precmd / preexec survive and still see
+# the original exit code.
+__ottr_precmd() {
+  local __ottr_rc="$1"
+  print -Pn "\033]133;D;$__ottr_rc\007\033]133;A\007\033]7;file://$HOST\PWD\007"
+  ( exit $__ottr_rc )
+}
+__ottr_preexec() {
+  print -Pn "\033]133;C\007"
+}
+if (( ${+functions[precmd]} )); then
+  functions[__ottr_user_precmd]=$functions[precmd]
+  unfunction precmd
+fi
+if (( ! ${+functions[__ottr_user_precmd]} )); then
+  functions[__ottr_user_precmd]=' :'
+fi
+precmd() {
+  local __ottr_rc=$?
+  __ottr_precmd "$__ottr_rc"
+  __ottr_user_precmd
+}
+if (( ${+functions[preexec]} )); then
+  functions[__ottr_user_preexec]=$functions[preexec]
+  unfunction preexec
+fi
+if (( ! ${+functions[__ottr_user_preexec]} )); then
+  functions[__ottr_user_preexec]=' :'
+fi
+preexec() {
+  __ottr_preexec
+  __ottr_user_preexec
+}
+"#
+    .to_string()
+}
+
+/// 钩子体（按 shell 种类；不含落盘尾巴）。
+pub fn hook_body(kind: ShellKind, path: &str) -> String {
+    match kind {
+        ShellKind::Bash => bash_hook_body(path),
+        ShellKind::Zsh => zsh_hook_body(),
+        ShellKind::Sh => SH_SNIPPET.to_string(),
+    }
+}
+
+/// 钩子文件全文 = 钩子体 + 擦除回显行 + 自删。
+///
+/// 擦除行放在**钩子体之后**（钩子体执行完，source 行的回显已被行编辑器
+/// 画在提示符那一行 → `\e[1A\e[2K` 上移一行清掉它，shell 随后绘出的新提示
+/// 符正好落在同一行 → 屏幕上不留任何痕迹）。
+///
+/// bash 的擦除行包在 `__ottr_in=1 … unset __ottr_in` 之间：DEBUG trap 会对
+/// 擦除行本身触发一次 C 标记（`133;C`），标志位让我们的 trap 在这段窗口
+/// 里静默（与用户钩子无关的噪声不上报）。标志位必须用 `unset` 复位——
+/// 置 `0` 仍是「非空」，`[ -n "$__ottr_in" ]` 会永远成立 → C 标记全灭
+/// （真 bash 首轮就踩到：2026-10-29）。
+///
+/// sh 系没有 DEBUG trap，擦除行裸跑即可。
+pub fn hook_file_content(kind: ShellKind, path: &str) -> String {
+    let body = hook_body(kind, path);
+    let tail = match kind {
+        ShellKind::Bash => "__ottr_in=1; printf '\\033[1A\\033[2K'; unset __ottr_in\n",
+        ShellKind::Zsh | ShellKind::Sh => "printf '\\033[1A\\033[2K'\n",
+    };
+    format!("{body}\n{tail}rm -f {path} 2>/dev/null\n")
+}
+
+/// 交互行（**短**）：source 钩子文件。
+///
+/// 这是用户屏幕上唯一会经过行编辑器的东西——所以必须短、必须纯 ASCII、
+/// 必须没有转义序列。zsh 额外前导一个空格（用户若开了 `HIST_IGNORE_SPACE`
+/// 则不入历史；没开也只是历史里多一条短行，与旧实现的残留量相当）。
+pub fn hook_source_line(kind: ShellKind, path: &str) -> String {
+    match kind {
+        ShellKind::Zsh => format!(" . {path} 2>/dev/null"),
+        _ => format!(". {path} 2>/dev/null"),
+    }
+}
+
+/// 经 exec 通道落盘钩子文件的命令（**不进交互历史**：exec 不经过行编辑器）。
+///
+/// - `set -C`（noclobber）+ 随机路径：不跟随预置文件/符号链接；
+/// - `umask 077`：仅属主可读写；
+/// - heredoc 用引号定界符 → 片段原样写入（不做变量展开）；
+/// - 成功哨兵 = **cat 自身退出码** + 非空 + `OTTR_HOOK_OK`：只判非空会把
+///   「noclobber 拒写后残留的旧文件」误判成成功（真机测试抓到的缺陷）。
+pub fn hook_write_command(kind: ShellKind, path: &str) -> String {
+    let content = hook_file_content(kind, path);
+    format!(
+        "set -C; umask 077; cat > {path} <<'OTTR_HOOK_EOF'\n{}OTTR_HOOK_EOF\n[ $? -eq 0 ] && test -s {path} && echo OTTR_HOOK_OK",
+        content
     )
 }
 
@@ -330,7 +521,7 @@ mod tests {
         // 交互行要短（用户的抱怨就是 200+ 字符的乱码行）——路径形态固定
         let line = sh_hook_source_line(path);
         assert!(line.starts_with(&format!(". {path}")));
-        assert!(line.contains("printf '\\e[1A\\e[2K'"));
+        assert!(line.contains("printf '\\033[1A\\033[2K'"));
         assert!(line.len() < 80, "source 行必须短: {line:?}");
         assert!(!line.contains("PS1"), "钩子本体不得回到交互行");
         // 写命令：noclobber / 私有 umask / 引号 heredoc / 成功哨兵
@@ -344,6 +535,207 @@ mod tests {
         assert!(p.starts_with("/tmp/.ottr-"), "{p}");
         assert!(p.ends_with(".sh"));
         assert!(p.is_ascii());
+    }
+
+    // --- 链式钩子 + 落盘交付（2026-10-29 用户诉求：屏幕零残留）---------------
+
+    /// 交互行（source 行）是用户屏幕上唯一经过行编辑器的东西：必须短、
+    /// 纯 ASCII、且**不含任何转义序列**（含转义 = 用户看到一堆乱字符）。
+    #[test]
+    fn source_line_is_short_ascii_and_escape_free() {
+        let path = "/tmp/.ottr-abc-123.sh";
+        for kind in [ShellKind::Bash, ShellKind::Zsh, ShellKind::Sh] {
+            let line = hook_source_line(kind, path);
+            assert!(line.len() < 45, "{kind:?} source 行必须短: {line:?}");
+            assert!(line.is_ascii(), "{kind:?} source 行必须纯 ASCII: {line:?}");
+            assert!(!line.contains("\\e"), "{kind:?} source 行不得含转义序列");
+            assert!(!line.contains("133;"), "{kind:?} source 行不得含 OSC 片段");
+            assert!(!line.contains("PS1"), "{kind:?} 钩子本体不得回到交互行");
+            assert!(!line.contains("PROMPT_COMMAND"), "{kind:?} 同上");
+        }
+    }
+
+    /// bash：链式而非覆盖——用户的 `PROMPT_COMMAND` 追加在 Ottr 之后、
+    /// 用户的 `DEBUG` trap 函数体被取出并在我们的 trap 里原样 eval、
+    /// 退出码在用户钩子执行前被还原（`( exit $rc )`）。
+    #[test]
+    fn bash_hook_chains_user_prompt_command_and_debug_trap() {
+        let body = bash_hook_body("/tmp/.ottr-abc-123.sh");
+        // 用户的 PROMPT_COMMAND 被**追加**（不是被替换）
+        assert!(
+            body.contains(
+                r#"export PROMPT_COMMAND="$__ottr_entry${PROMPT_COMMAND:+$'\n'}$PROMPT_COMMAND""#
+            ),
+            "用户 PROMPT_COMMAND 必须被追加：{body}"
+        );
+        // 数组形态（bash 5.1+）走前插分支，不做字符串替换
+        assert!(body.contains(r#"PROMPT_COMMAND=("$__ottr_entry" "${PROMPT_COMMAND[@]}")"#));
+        // 退出码：入口先取，末尾还原
+        assert!(body.contains("__ottr_rc=$?"));
+        assert!(body.contains("( exit $__ottr_rc )"));
+        // DEBUG trap：取函数体（不是整行 trap），在我们的 trap 里 eval
+        assert!(body.contains("trap -p DEBUG"));
+        assert!(body.contains(r#"trap '__ottr_preexec; eval "$__ottr_dbg_body"' DEBUG"#));
+        // 老实现是「覆盖式」写法，新实现不得再出现
+        assert!(!body.contains(r#"export PROMPT_COMMAND='__ottr_hc"#));
+        // 上报本体在（133;D / 133;A / 133:C / OSC 7）
+        assert!(body.contains(r#"printf '\033]133;D;%s\007\033]133;A\007' "$1""#));
+        assert!(body.contains(r#"printf '\033]133;C\007'"#));
+        assert!(body.contains(r#"printf '\033]7;file://%s%s\007' "$HOSTNAME" "$PWD""#));
+    }
+
+    /// zsh：链式而非覆盖——用户的 `precmd` / `preexec` 函数体被挪到
+    /// `__ottr_user_*` 并在我们的同名函数里调用；退出码原样传递。
+    #[test]
+    fn zsh_hook_chains_user_precmd_and_preexec() {
+        let body = zsh_hook_body();
+        assert!(body.contains("functions[__ottr_user_precmd]=$functions[precmd]"));
+        assert!(body.contains("functions[__ottr_user_preexec]=$functions[preexec]"));
+        // 用户钩子必须被**直接调用**（前面不能夹 `if` 之类会改写 `$?` 的
+        // 命令——真 zsh 首轮就踩到：`if` 的条件求值把用户钩子要看的退出码
+        // 冲成了 0）。
+        assert!(body.contains("  __ottr_user_precmd\n}"));
+        assert!(body.contains("  __ottr_user_preexec\n}"));
+        // 退出码：入口取、末尾还原
+        assert!(body.contains("local __ottr_rc=$?"));
+        assert!(body.contains("( exit $__ottr_rc )"));
+        // 老实现是「整体重定义 precmd/preexec」，新实现不得再出现
+        assert!(!body.contains(r#"precmd(){ print -Pn"#));
+        assert!(!body.contains(r#"preexec(){ print -Pn"#));
+        assert!(body.contains(r#"print -Pn "\033]133;D;$__ottr_rc\007\033]133;A\007"#));
+        assert!(body.contains(r#"print -Pn "\033]133;C\007""#));
+    }
+
+    /// 钩子文件全文 = 钩子体 + 擦除回显行 + 自删；写命令仍是 noclobber +
+    /// 私有权限 + 引号 heredoc + 成功哨兵（落盘不过行编辑器 = 不进历史）。
+    #[test]
+    fn hook_file_is_self_deleting_and_erases_its_own_echo() {
+        let path = "/tmp/.ottr-abc-123.sh";
+        for kind in [ShellKind::Bash, ShellKind::Zsh, ShellKind::Sh] {
+            let content = hook_file_content(kind, path);
+            assert!(
+                content.ends_with(&format!("rm -f {path} 2>/dev/null\n")),
+                "{kind:?} 钩子文件必须自删"
+            );
+            assert!(
+                content.contains(r"printf '\033[1A\033[2K'"),
+                "{kind:?} 必须擦掉 source 行自己的回显"
+            );
+            let cmd = hook_write_command(kind, path);
+            assert!(cmd.starts_with("set -C; umask 077; cat > "));
+            assert!(cmd.contains("<<'OTTR_HOOK_EOF'"));
+            assert!(cmd.contains("OTTR_HOOK_OK"));
+            assert!(cmd.contains(&content));
+        }
+    }
+
+    /// 钩子体本身必须是纯 ASCII：转义序列只以 `\e` 字面量出现（由 printf
+    /// 在执行时解释），**不得**含真 ESC 字节（真 ESC 经行编辑器回显会被
+    /// 当 ESC 序列吞掉 → 屏幕乱码）。
+    #[test]
+    fn hook_bodies_are_pure_ascii() {
+        let path = "/tmp/.ottr-abc-123.sh";
+        for kind in [ShellKind::Bash, ShellKind::Zsh, ShellKind::Sh] {
+            let content = hook_file_content(kind, path);
+            assert!(content.is_ascii(), "{kind:?} 钩子文件必须纯 ASCII");
+            assert!(!content.contains('\u{1b}'), "{kind:?} 不得含真 ESC 字节");
+        }
+    }
+
+    /// 真 shell 落盘链式验证的公共骨架：写钩子文件 → 交互 shell 里 source →
+    /// 跑一条失败命令 → 校验「用户钩子仍生效 + 用户钩子看到原始退出码」。
+    ///
+    /// `bash -i` / `zsh -i` + 脚本喂 stdin：交互钩子（PROMPT_COMMAND /
+    /// precmd）只在交互 shell 里跑，非交互跑不到。
+    fn real_shell_chain_probe(
+        shell: &str,
+        hook_body: &str,
+        user_hooks: &str,
+    ) -> Option<(String, String)> {
+        let dir = std::env::temp_dir().join(format!(
+            "ottr-chain-{}-{}-{}",
+            shell,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).ok()?;
+        let hook = dir.join("hook.sh");
+        let log = dir.join("log.txt");
+        std::fs::write(&hook, hook_body).ok()?;
+        let script = format!(
+            "{user_hooks}\n. {hook}\nfalse\nexit\n",
+            user_hooks = user_hooks
+                .replace("@LOG@", log.to_str().unwrap_or(""))
+                .replace("@HOOK@", hook.to_str().unwrap_or("")),
+            hook = hook.to_str().unwrap_or(""),
+        );
+        let script_path = dir.join("probe.sh");
+        std::fs::write(&script_path, script).ok()?;
+        let file = std::fs::File::open(&script_path).ok()?;
+        let out = std::process::Command::new(shell)
+            .arg("-i")
+            .stdin(std::process::Stdio::from(file))
+            .output();
+        let out = out.ok()?;
+        // 先读日志再清目录（顺序反了会把证据一起删掉——2026-10-29 踩过）
+        let log_text = std::fs::read_to_string(&log).unwrap_or_default();
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        let _ = std::fs::remove_dir_all(&dir);
+        Some((stdout, log_text))
+    }
+
+    /// 真 bash（管道喂 stdin 的交互 shell）：钩子体能装上、用户的
+    /// `PROMPT_COMMAND` 仍生效、且用户钩子看到的 `$?` 是**原始退出码**
+    /// （旧实现被 Ottr 的 printf 冲成 0——VS Code 的同名修复 #221393）。
+    ///
+    /// 口径：管道喂 stdin 的 bash **不会**把 sourced 文件里设的 DEBUG trap
+    /// 带回主 shell（真 PTY 下才成立——真机 E2E 验的就是 PTY 那条路径），
+    /// 故本用例只断言 PROMPT_COMMAND 链与退出码语义；DEBUG trap 链由真机
+    /// E2E 覆盖。
+    ///
+    /// 无 bash 的平台（Windows）跳过。
+    #[test]
+    fn bash_hook_chains_user_prompt_command_in_real_bash() {
+        let user_hooks = "PROMPT_COMMAND='echo USER_PC rc=$? >> @LOG@'\nexport PROMPT_COMMAND";
+        let Some((stdout, log)) =
+            real_shell_chain_probe("bash", &bash_hook_body("/tmp/.ottr-x.sh"), user_hooks)
+        else {
+            return; // 无 bash：跳过
+        };
+        assert!(
+            log.contains("USER_PC rc=1"),
+            "用户 PROMPT_COMMAND 必须仍生效且看到原始退出码 1: {log:?}"
+        );
+        assert!(
+            stdout.contains("133;D;1"),
+            "Ottr 必须上报退出码 1: {stdout:?}"
+        );
+    }
+
+    /// 真 zsh：注入后用户的 `precmd` / `preexec` 仍生效，且用户 precmd
+    /// 看到的 `$?` 是原始退出码。无 zsh 的平台跳过。
+    #[test]
+    fn zsh_hook_chains_user_hooks_in_real_zsh() {
+        let user_hooks = "precmd() { echo \"USER_PC rc=$?\" >> @LOG@ }\npreexec() { echo USER_PREEXEC >> @LOG@ }";
+        let Some((stdout, log)) = real_shell_chain_probe("zsh", &zsh_hook_body(), user_hooks)
+        else {
+            return; // 无 zsh：跳过
+        };
+        assert!(
+            log.contains("USER_PC rc=1"),
+            "用户 precmd 必须仍生效且看到原始退出码 1: {log:?}"
+        );
+        assert!(
+            log.contains("USER_PREEXEC"),
+            "用户 preexec 必须仍生效: {log:?}"
+        );
+        assert!(
+            stdout.contains("133;D;1"),
+            "Ottr 必须上报退出码 1: {stdout:?}"
+        );
     }
 
     /// 真实 shell 落盘（CI 覆盖 exec 侧格式本身）：`/bin/sh` 执行

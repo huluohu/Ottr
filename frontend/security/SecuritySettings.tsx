@@ -1203,10 +1203,23 @@ export function SecuritySettings({
                     </p>
                   </div>
                 </div>
+                {/* 元信息行（2026-10-29 用户需求：加博客地址）：作者·许可·博客·
+                    仓库。三个链接同列同款（裸 URL、无标签），博客排在仓库前
+                    ——短项在前，行末留最长的仓库 URL。flex-wrap 兜底窄面板
+                    折行（.about-meta 见 16-lock-security.css）。 */}
                 <div className="about-meta">
                   <span>@huluohu</span>
                   <span aria-hidden="true">·</span>
                   <span>MIT</span>
+                  <span aria-hidden="true">·</span>
+                  <a
+                    href="https://www.huluohu.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="about-blog"
+                  >
+                    www.huluohu.com
+                  </a>
                   <span aria-hidden="true">·</span>
                   <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
                     https://github.com/huluohu/Ottr

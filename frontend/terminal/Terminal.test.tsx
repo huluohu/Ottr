@@ -60,6 +60,8 @@ import { terminalThemes } from "../theme/terminal-themes";
 import { findGalleryTheme } from "../theme/gallery";
 import { resetTerminalThemeStoreForTest, useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { applyTermTheme, ContextMenuView, PasteConfirmDialog, SessionTerminal, TerminalArea, TerminalToolbar } from "./Terminal";
+import { DEFAULT_DIAGNOSE_GRACE_MS } from "./DiagnoseGate";
+import { useAiStore } from "../ai/aiStore";
 import { buildContextMenu, DEFAULT_TERMINAL_FONT_FAMILY, loadTerminalSettings, saveTerminalSettings } from "./ContextMenu";
 import { completionHistory } from "../history/cache";
 import { useSessionStore, type Session } from "../session/SessionStore";
@@ -271,6 +273,69 @@ describe("SessionTerminal 恢复标签（未连接浮层，2026-10-14）", () =>
       "attach_host_session",
       expect.objectContaining({ hostId: 1 }),
     );
+  });
+});
+
+describe("SessionTerminal 断线耗尽态回车重连（2026-10-29 用户需求）", () => {
+  it("自动重连耗尽（attempt>0 + disconnected）→ 回车 = 重走退避链（attempt 归零重来）", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-x", status: "disconnected", rustId: null, attempt: 5 })],
+      activeId: "tab-x",
+      trees: { "tab-x": { kind: "leaf", id: "tab-x" } },
+      activePane: { "tab-x": "tab-x" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-x" />
+      </ThemeProvider>,
+    );
+    fireEvent.keyDown(container.querySelector(".session-term")!, { key: "Enter" });
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("reconnecting");
+    expect(s.attempt).toBe(1); // 计数归零后从第 1 次起步（不是第 6 次→立刻耗尽）
+    // 清掉挂起的退避定时器（disconnect 会 cancelRetryTimer），免得测试外泄
+    useSessionStore.getState().disconnect("tab-x");
+  });
+
+  it("回车在 xterm 吞掉冒泡时仍生效（2026-10-29 真机实测：xterm 对 Enter 调 stopPropagation，事件到不了冒泡阶段）", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-z", status: "disconnected", rustId: null, attempt: 5 })],
+      activeId: "tab-z",
+      trees: { "tab-z": { kind: "leaf", id: "tab-z" } },
+      activePane: { "tab-z": "tab-z" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-z" />
+      </ThemeProvider>,
+    );
+    // 仿 xterm 的隐藏 textarea：keydown 时 stopPropagation（不往祖先冒泡）
+    const host = container.querySelector(".session-term") as HTMLDivElement;
+    const fake = document.createElement("textarea");
+    fake.addEventListener("keydown", (e) => e.stopPropagation());
+    host.appendChild(fake);
+    fireEvent.keyDown(fake, { key: "Enter" });
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("reconnecting");
+    expect(s.attempt).toBe(1);
+    useSessionStore.getState().disconnect("tab-z");
+  });
+
+  it("手动断开（attempt=0 + 非恢复标签）回车不劫持", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-y", status: "disconnected", rustId: null, attempt: 0 })],
+      activeId: "tab-y",
+      trees: { "tab-y": { kind: "leaf", id: "tab-y" } },
+      activePane: { "tab-y": "tab-y" },
+    });
+    const { container } = render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-y" />
+      </ThemeProvider>,
+    );
+    fireEvent.keyDown(container.querySelector(".session-term")!, { key: "Enter" });
+    expect(useSessionStore.getState().sessions[0].status).toBe("disconnected");
+    expect(useSessionStore.getState().sessions[0].attempt).toBe(0);
   });
 });
 
@@ -778,5 +843,82 @@ describe("TerminalToolbar：FTP/FTPS 无终端控件（2026-10-19 用户需求�
     expect(screen.queryByTestId("split-down")).toBeNull();
     expect(screen.queryByTestId("encoding-badge")).toBeNull();
     expect(screen.getByTestId("extra")).toBeTruthy();
+  });
+});
+
+// 诊断取消宽限（2026-10-29 用户实测：「复制内容粘贴→点仍要粘贴→Ctrl+C 撤销→
+// 弹了诊断」）。诊断的触发源是远端上报的退出码（OSC133 D;<code>），比用户按键
+// 早一个网络往返——用户「Ctrl+C 撤销」若晚于上报就收不回诊断。宽限门：失败
+// 先挂起，期内 Ctrl+C → 收回；到期未撤销 → 照常弹。
+describe("诊断取消宽限（粘贴→仍要粘贴→Ctrl+C 撤销→不应弹诊断）", () => {
+  /** 远端回放：提示符 A → 命令行文本 → C → 失败 D;<code>（首个 D 是启动状态报告，被门卫吞）。 */
+  async function replayFailure(term: InstanceType<typeof XTermClass>, code: number) {
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("\x1b]133;D;0\x07"); // 启动状态报告（watch 首个 D 恒被吞）
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("\x1b]133;A\x07"); // 提示符
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("web01:~$ rm -rf /nope\r\n"); // 命令行进缓冲
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("\x1b]133;C\x07"); // 命令开始（取命令文本）
+    await vi.advanceTimersByTimeAsync(0);
+    term.write(`\x1b]133;D;${code}\x07`); // 命令结束（失败）
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  function setup() {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-dg", hostId: 5, rustId: "pty-dg" })],
+      activeId: "tab-dg",
+      trees: { "tab-dg": { kind: "leaf", id: "tab-dg" } },
+      activePane: { "tab-dg": "tab-dg" },
+    });
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "history_search") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-dg" />
+      </ThemeProvider>,
+    );
+    const terms = capturedTerms();
+    return terms[terms.length - 1]!;
+  }
+
+  it("失败上报后用户按 Ctrl+C 撤销 → 诊断收回，面板不弹", async () => {
+    vi.useFakeTimers();
+    try {
+      const term = setup();
+      const spy = vi.spyOn(useAiStore.getState(), "onCommandFailed").mockImplementation(() => {});
+      await replayFailure(term, 127);
+      // 宽限期内用户撤销（Ctrl+C 打到终端 → 中断记账 + 收回挂起的诊断）
+      await act(async () => {
+        term.input("\x03");
+      });
+      await vi.advanceTimersByTimeAsync(DEFAULT_DIAGNOSE_GRACE_MS * 3);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("失败上报后用户不撤销 → 宽限期满照常弹诊断（既有能力不回归）", async () => {
+    vi.useFakeTimers();
+    try {
+      const term = setup();
+      const spy = vi.spyOn(useAiStore.getState(), "onCommandFailed").mockImplementation(() => {});
+      await replayFailure(term, 127);
+      expect(spy).not.toHaveBeenCalled(); // 宽限期内先不弹
+      await vi.advanceTimersByTimeAsync(DEFAULT_DIAGNOSE_GRACE_MS + 10);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0]![0]).toMatchObject({
+        kind: "diagnose",
+        sessionId: "tab-dg",
+        exitCode: 127,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

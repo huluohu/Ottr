@@ -692,3 +692,26 @@ describe("定向分区消费（2026-10-13 修复：initialPane 此前从未被�
     expect(tabs[tabs.length - 1].getAttribute("data-testid")).toBe("settings-nav-about");
   });
 });
+
+describe("关于分区的博客地址（2026-10-29 用户需求）", () => {
+  it("博客链接与仓库链接同列（博客在仓库之前）", () => {
+    render(
+      <ThemeProvider>
+        <SecuritySettings open initialPane="about" onClose={() => {}} />
+      </ThemeProvider>,
+    );
+    const card = screen.getByTestId("about-card");
+    const blog = screen.getByTestId("about-blog");
+    expect(blog.getAttribute("href")).toBe("https://www.huluohu.com");
+    expect(blog.textContent).toContain("www.huluohu.com");
+    expect(blog.getAttribute("target")).toBe("_blank");
+    expect(blog.getAttribute("rel")).toBe("noreferrer");
+    // 仓库链接仍在（博客是新增项，不是替换）
+    const repo = card.querySelector('a[href="https://github.com/huluohu/Ottr"]');
+    expect(repo).toBeTruthy();
+    // 顺序：博客在仓库之前
+    expect(
+      blog.compareDocumentPosition(repo as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+});

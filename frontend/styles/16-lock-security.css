@@ -541,6 +541,9 @@
   gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--fg-muted);
+  /* 2026-10-29 加博客地址后行内项变四个：窄面板允许折行（分隔点随行尾
+     折行，不留悬空「·」）。 */
+  flex-wrap: wrap;
 }
 .about-meta a {
   color: inherit;

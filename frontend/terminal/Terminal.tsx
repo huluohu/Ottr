@@ -57,6 +57,7 @@ import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
 import { copyText } from "../ui/clipboard";
 import { createCommandWatch } from "./CommandWatch";
+import { DiagnoseGate } from "./DiagnoseGate";
 import { noteCwd, forgetCwd } from "./CwdTracker";
 import {
   SudoPromptDetector,
@@ -147,6 +148,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const prevStatus = useRef<string | null>(null);
   // 中断记账（见 writeToSession 处注释）：本条命令执行期间用户发过 Ctrl+C
   const interruptedRef = useRef(false);
+  // 诊断取消宽限（2026-10-29 用户实测「粘贴→仍要粘贴→Ctrl+C 撤销→弹诊断」）：
+  // 失败上报到弹面板之间留一段宽限期，用户在期内 Ctrl+C 撤销 → 这次诊断收回。
+  const diagnoseGateRef = useRef<DiagnoseGate | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [pendingDrop, setPendingDrop] = useState<string[] | null>(null);
@@ -275,6 +279,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const writeToSession = (input: string | Uint8Array): void => {
       if (typeof input === "string" ? input.includes("\x03") : input.includes(0x03)) {
         interruptedRef.current = true;
+        // 撤销表达：收回挂起中的诊断（宽限期内按 Ctrl+C = 用户放弃这次失败）。
+        diagnoseGateRef.current?.cancel();
       }
       const session = useSessionStore
         .getState()
@@ -419,6 +425,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       .sessions.find((x) => x.id === sessionId);
     if (firstSession) void completionHistory.ensure(firstSession.hostId); // 补全历史冷启动拉取
     let watch: ReturnType<typeof createCommandWatch> | null = null;
+    // 诊断取消宽限门：挂起失败诊断，等用户一个「撤销」的表态。
+    const diagnoseGate = new DiagnoseGate({
+      onOpen: (req) => useAiStore.getState().onCommandFailed(req),
+    });
+    diagnoseGateRef.current = diagnoseGate;
     try {
       watch = createCommandWatch(term, {
         // B8：新提示符 = 旧输入行消失，ghost 全量清态；中断标记随新命令清零
@@ -435,7 +446,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           // exit 1 退出、普通命令报 130，击键记账是本质信号）或退出码即 130。
           // 历史照记（onCommandFinished）、手动「解释」不受限。
           if (interruptedRef.current || !shouldAutoDiagnose(exitCode)) return;
-          useAiStore.getState().onCommandFailed({
+          // 走取消宽限门（DiagnoseGate）：失败上报比用户按键早一个网络往返，
+          // 用户「Ctrl+C 撤销」若晚于上报就收不回诊断（2026-10-29 用户实测：
+          // 粘贴→仍要粘贴→Ctrl+C 撤销→弹诊断）。门内 Ctrl+C → 收回；到期
+          // 未撤销 → 照常弹。
+          diagnoseGateRef.current?.schedule({
             kind: "diagnose",
             sessionId,
             rustId: session.rustId,
@@ -620,6 +635,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       onData.dispose();
       watch?.dispose();
       watchRef.current = null;
+      diagnoseGateRef.current?.dispose();
+      diagnoseGateRef.current = null;
       ghost.dispose();
       ghostRef.current = null;
       trzsz.dispose();

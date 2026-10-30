@@ -235,6 +235,17 @@ impl Vault {
     /// [`VaultError::MasterKeyUnreachable`]（密钥在打不开的钥匙链里，
     /// fallback 救不了它，静默锁死换密钥等于销毁数据）。
     pub fn open_auto(dir: &Path) -> Result<Vault> {
+        // 主密码库快路径（2026-10-30 修复）：若既有库已是 Password 模式，
+        // 直接走 open_password_only（纯本地密文，零钥匙链调用）——避免在 macOS
+        // 上哪怕用户设了主密码、启动时仍被系统弹窗要钥匙串密码。
+        let db_path = dir.join("vault.db");
+        if db_path.exists()
+            && let Ok(conn) = rusqlite::Connection::open(&db_path)
+            && let Ok(Some(mode_str)) = read_meta_value(&conn, META_KEY_MODE)
+            && mode_str == KeyMode::Password.as_str()
+        {
+            return Self::open_password_only(dir);
+        }
         #[cfg(target_os = "linux")]
         {
             if crate::master_key::keyring_available() {

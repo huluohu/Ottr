@@ -42,19 +42,36 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use ottr_vault::{KeyMode, Secrets};
+use tauri::State;
+
+use crate::vault::VaultState;
+
 /// scratch 目录名前缀（std::env::temp_dir() 下的命名空间）。
 const SCRATCH_PREFIX: &str = "ottr-sync-git-";
 /// 单次 git 子命令上限（clone/push 网络操作含排队余量）。
 const EXEC_TIMEOUT: Duration = Duration::from_secs(120);
 
 // ---------------------------------------------------------------------------
-// 信封口令钥匙链（T11 keyring 先例；CI 不触真钥匙链，命令体薄包装）
+// 信封口令存储（2026-10-30 根治系统钥匙串弹窗事故）
 // ---------------------------------------------------------------------------
+//
+// 事故根因：此前硬编码调用系统 keyring::Entry::new("ottr.dev", "sync-passphrase")，
+// 且进入设置页时哪怕在「通用」分区也因组件预渲染盲调 sync_passphrase_get——在未
+// 经 Apple 签名（ad-hoc）的 macOS 上，每次读取都会被操作系统弹出系统模态框：
+// 「Ottr 想要访问你的钥匙串中的密钥 ottr.dev」。
+// 特别是当用户明明设了【主密码模式】时，主密码模式本身就是要脱离钥匙串，用户
+// 一开设置就被系统弹窗糊一脸，完全违背安全意图。
+//
+// 修复架构：
+// 1. 秘密字段（密码/私钥/口令/AI Key）严格按 CLAUDE.md 规范，全部收归 Vault
+//    内部的 Secrets 表进行字段级 AES-256-GCM 密封（受当前 Master Key 保护）；
+// 2. 主密码模式下：完全在本地 SQLite WAL 内闭环，绝对不调用系统钥匙串，零系统弹窗！
+// 3. 钥匙链模式下：同样优先密文落库；兼顾平滑迁移旧版遗留在钥匙串中的条目。
 
-/// 与 ottr-vault master_key::DEFAULT_SERVICE 同命名空间纪律（dev/release
-/// 强制隔离，dev 实例绝不可触碰正式信封口令——2026-10-13 主密钥事故同源），
-/// account 独立条目——主密码与信封口令互不可见。pub(crate)：vault_reset
-/// 清库须同删本条目（T5 评审 P1——漏清则重置后云信封仍可被记忆口令解密）。
+pub const SECRET_SYNC_PASSPHRASE: &str = "sync.passphrase";
+
+/// 与 ottr-vault master_key::DEFAULT_SERVICE 同命名空间纪律（仅钥匙链迁移时用）。
 #[cfg(debug_assertions)]
 pub(crate) const SYNC_SERVICE: &str = "ottr.dev.debug";
 #[cfg(not(debug_assertions))]
@@ -65,31 +82,65 @@ fn sync_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(SYNC_SERVICE, SYNC_ACCOUNT).map_err(|e| format!("entry new: {e}"))
 }
 
-/// 保存/更换信封口令（幂等：先删后存）。
+/// 保存/更换信封口令：存入 Vault 内部 AES-256-GCM Secrets 密文表。
 #[tauri::command]
-pub fn sync_passphrase_set(value: String) -> Result<(), String> {
-    let entry = sync_entry()?;
-    let _ = entry.delete_credential();
-    entry.set_password(&value).map_err(|e| format!("set: {e}"))
+pub fn sync_passphrase_set(state: State<'_, VaultState>, value: String) -> Result<(), String> {
+    let vault = &state.0;
+    if vault.is_locked() {
+        return Err("vault is locked".into());
+    }
+    Secrets::set(vault, SECRET_SYNC_PASSPHRASE, &value)
+        .map_err(|e| format!("save passphrase secret: {e}"))?;
+    if vault.mode() == KeyMode::Keyring {
+        let _ = sync_entry().and_then(|e| e.delete_credential().map_err(|e| e.to_string()));
+    }
+    Ok(())
 }
 
-/// 读取信封口令；无条目 = None（keyring v3 NoEntry 显式映射，不当错误吞）。
+/// 读取信封口令：
+/// - 锁定态返回 Ok(None)；
+/// - 优先从 Vault 内部 Secrets 密文表读；
+/// - 若未命中：在【主密码模式】下绝对禁止触碰系统钥匙串，彻底杜绝 macOS 弹窗；
+/// - 仅在【钥匙链模式】下才尝试读取旧版残留并自动无感迁移。
 #[tauri::command]
-pub fn sync_passphrase_get() -> Result<Option<String>, String> {
+pub fn sync_passphrase_get(state: State<'_, VaultState>) -> Result<Option<String>, String> {
+    let vault = &state.0;
+    if vault.is_locked() {
+        return Ok(None);
+    }
+    // 1. 优先读 Vault 内部 AES-256-GCM 密文表
+    if let Ok(Some(v)) = Secrets::get(vault, SECRET_SYNC_PASSPHRASE)
+        && !v.is_empty()
+    {
+        return Ok(Some(v));
+    }
+    // 2. 主密码模式：绝对不触碰系统钥匙串！
+    if vault.mode() == KeyMode::Password {
+        return Ok(None);
+    }
+    // 3. 仅钥匙链模式：尝试读取旧条目并自动迁移
     match sync_entry()?.get_password() {
-        Ok(v) => Ok(Some(v)),
-        Err(keyring::Error::NoEntry) => Ok(None),
+        Ok(v) if !v.is_empty() => {
+            let _ = Secrets::set(vault, SECRET_SYNC_PASSPHRASE, &v);
+            let _ = sync_entry().and_then(|e| e.delete_credential().map_err(|e| e.to_string()));
+            Ok(Some(v))
+        }
+        Ok(_) | Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("get: {e}")),
     }
 }
 
-/// 清除记住的口令（UI「不记住」出口；无条目亦 Ok）。
+/// 清除记住的口令。
 #[tauri::command]
-pub fn sync_passphrase_del() -> Result<(), String> {
-    match sync_entry()?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("del: {e}")),
+pub fn sync_passphrase_del(state: State<'_, VaultState>) -> Result<(), String> {
+    let vault = &state.0;
+    if !vault.is_locked() {
+        let _ = Secrets::delete(vault, SECRET_SYNC_PASSPHRASE);
     }
+    if vault.mode() == KeyMode::Keyring {
+        let _ = sync_entry().and_then(|e| e.delete_credential().map_err(|e| e.to_string()));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -853,5 +904,43 @@ mod tests {
         );
         sync_git_scratch_cleanup(scratch).unwrap();
         let _ = std::fs::remove_dir_all(&bare);
+    }
+
+    // --- sync_passphrase_* 在主密码模式下的零系统钥匙串调用保障 (2026-10-30) ---
+
+    #[test]
+    fn sync_passphrase_in_password_mode_uses_vault_secrets_zero_keychain() {
+        let dir = std::env::temp_dir().join(format!(
+            "ottr-sync-pass-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let vault = ottr_vault::Vault::open_password_only(&dir).unwrap();
+        assert_eq!(vault.mode(), KeyMode::Password);
+        assert!(vault.is_locked());
+
+        // 1. 锁定态读：直接返回 None，不报错、不弹窗
+        assert!(
+            ottr_vault::Secrets::get(&vault, SECRET_SYNC_PASSPHRASE).is_err(),
+            "锁定态直接读 Secrets 报 Locked"
+        );
+
+        // 2. 解锁后：存入 Secrets，受 Master Key AES-256-GCM 保护
+        vault.unlock_with_password("test-password-123").unwrap();
+        assert!(!vault.is_locked());
+
+        ottr_vault::Secrets::set(&vault, SECRET_SYNC_PASSPHRASE, "my-secret-passphrase").unwrap();
+        let got = ottr_vault::Secrets::get(&vault, SECRET_SYNC_PASSPHRASE).unwrap();
+        assert_eq!(got.as_deref(), Some("my-secret-passphrase"));
+
+        // 3. 删除
+        ottr_vault::Secrets::delete(&vault, SECRET_SYNC_PASSPHRASE).unwrap();
+        let after_del = ottr_vault::Secrets::get(&vault, SECRET_SYNC_PASSPHRASE).unwrap();
+        assert_eq!(after_del, None);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

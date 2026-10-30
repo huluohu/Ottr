@@ -855,7 +855,7 @@ export function SecuritySettings({
               hidden={pane !== "sync"}
               data-testid="sync-pane"
             >
-              <SyncSettings onOpenSync={() => setSyncOpen(true)} />
+              <SyncSettings active={pane === "sync"} onOpenSync={() => setSyncOpen(true)} />
             </div>
 
             {/* --- 告警（B9 通知渠道 + 告警规则；自工具 dock 双入口归位设置）--- */}

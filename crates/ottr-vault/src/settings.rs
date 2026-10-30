@@ -118,8 +118,26 @@ pub const HISTORY_LIMIT_MAX: u64 = 1_000_000;
 pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
 /// 自动检查更新频率（2026-10-13 用户需求）：off / startup / interval（24h）。
 /// 消费方在前端 update/autoCheck.ts；Rust 侧只管写入校验（枚举白名单）。
+///
+/// 2026-10-29 用户需求：定时检查增加更密的挡位 → 设置值扩为
+/// `interval:<小时>` 形态（`interval` 裸值 = 旧档 24 小时，向后兼容 ✓）。
 pub const SETTING_UPDATE_CHECK_MODE: &str = "update.check_mode";
 pub const UPDATE_CHECK_MODES: [&str; 3] = ["off", "startup", "interval"];
+/// 定时检查的间隔挡位（小时）——与前端 update/autoCheck.ts 的 INTERVAL_HOURS
+/// 对齐（1/3/8/15/24）。写入侧只认这几个值（其余数字一律拒绝，避免前端
+/// 与 Rust 两份挡位表漂移）。
+pub const UPDATE_CHECK_INTERVAL_HOURS: [u64; 5] = [1, 3, 8, 15, 24];
+
+/// 设置值是否合法：三个基础枚举，或 `interval:<挡位小时>`。
+pub fn is_valid_update_check_mode(value: &str) -> bool {
+    if UPDATE_CHECK_MODES.contains(&value) {
+        return true;
+    }
+    value
+        .strip_prefix("interval:")
+        .and_then(|h| h.parse::<u64>().ok())
+        .is_some_and(|h| UPDATE_CHECK_INTERVAL_HOURS.contains(&h))
+}
 /// 快捷键覆盖表（2026-10-21 改键设置）：动作 id → 加速串（平台中性
 /// `CmdOrCtrl+Shift+K` 形态，CmdOrCtrl 三平台同语义）。消费方在 frontend
 /// registry（生效查询）与 desktop menu.rs（mac 菜单重建）；Rust 只管写入
@@ -264,10 +282,12 @@ pub fn validate_known_setting(
         }
         SETTING_SHELL_INTEGRATION => bool_value(key, value),
         // 自动检查更新频率（字符串枚举白名单；非法值显式拒绝）
+        // 2026-10-29：定时检查增密档位 → 白名单含 `interval:<小时>` 形态。
         SETTING_UPDATE_CHECK_MODE => match value {
-            serde_json::Value::String(s) if UPDATE_CHECK_MODES.contains(&s.as_str()) => Ok(()),
+            serde_json::Value::String(s) if is_valid_update_check_mode(s) => Ok(()),
             serde_json::Value::String(s) => Err(format!(
-                "{SETTING_UPDATE_CHECK_MODE} must be one of {UPDATE_CHECK_MODES:?}, got {s:?}"
+                "{SETTING_UPDATE_CHECK_MODE} must be one of {UPDATE_CHECK_MODES:?} or \
+                 interval:<hours> with hours in {UPDATE_CHECK_INTERVAL_HOURS:?}, got {s:?}"
             )),
             _ => Err(format!("{SETTING_UPDATE_CHECK_MODE} expects a string")),
         },
@@ -392,6 +412,8 @@ mod tests {
 
     /// 自动检查更新频率（2026-10-13）：三枚举放行，非法串/类型错拒绝
     /// （settings_set 与 sync 分类导入共享本注册表）。
+    /// 2026-10-29 增密档位：`interval:<小时>` 形态放行（挡位表内），
+    /// 挡位表外的数字拒绝（避免前端与 Rust 两份表漂移）。
     #[test]
     fn update_check_mode_write_side_validation() {
         let key = SETTING_UPDATE_CHECK_MODE;
@@ -401,9 +423,24 @@ mod tests {
                 "合法枚举放行: {mode}"
             );
         }
+        for hours in UPDATE_CHECK_INTERVAL_HOURS {
+            let value = format!("interval:{hours}");
+            assert!(
+                validate_known_setting(key, &serde_json::json!(value)).is_ok(),
+                "合法间隔档放行: {value}"
+            );
+        }
         assert!(
             validate_known_setting(key, &serde_json::json!("daily")).is_err(),
             "未知枚举拒绝"
+        );
+        assert!(
+            validate_known_setting(key, &serde_json::json!("interval:7")).is_err(),
+            "挡位表外的间隔拒绝"
+        );
+        assert!(
+            validate_known_setting(key, &serde_json::json!("interval:abc")).is_err(),
+            "非数字间隔拒绝"
         );
         assert!(
             validate_known_setting(key, &serde_json::json!(1)).is_err(),

@@ -31,8 +31,10 @@ import { Toaster } from "../ui/Toaster";
 import { useToastStore } from "../ui/toastStore";
 import {
   __resetForTests,
-  applyAutoCheckMode,
+  applyAutoCheckSetting,
   initAutoCheck,
+  parseSetting,
+  encodeSetting,
   SETTING_UPDATE_CHECK_MODE,
 } from "./autoCheck";
 import { useUpdateStore } from "./updateStore";
@@ -62,7 +64,7 @@ afterEach(() => {
   cleanup();
   // 模块级 armed/计时器状态：每用例后以 off 重臂复位
   return act(async () => {
-    await applyAutoCheckMode("off");
+    await applyAutoCheckSetting({ kind: "off", hours: 24 });
   });
 });
 
@@ -120,14 +122,14 @@ describe("autoCheck（自动检查更新）", () => {
     expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 
-  it("设置页即改即生效：applyAutoCheckMode('startup') 立即按新模式调度", async () => {
+  it("设置页即改即生效：applyAutoCheckSetting(startup) 立即按新模式调度", async () => {
     await act(async () => {
       await initAutoCheck(); // 以 off 启动
     });
     expect(checkMock).not.toHaveBeenCalled();
     checkMock.mockResolvedValue(fakeUpdate("0.9.6"));
     await act(async () => {
-      await applyAutoCheckMode("startup");
+      await applyAutoCheckSetting({ kind: "startup", hours: 24 });
     });
     expect(checkMock).toHaveBeenCalledTimes(1);
     expect(useUpdateStore.getState().info?.version).toBe("0.9.6");
@@ -140,6 +142,41 @@ describe("autoCheck（自动检查更新）", () => {
       await initAutoCheck();
     });
     expect(checkMock).not.toHaveBeenCalled();
+  });
+
+  it("档位编解码：interval:<小时> 与裸 interval（=24h 旧值）", () => {
+    expect(parseSetting("interval:3")).toEqual({ kind: "interval", hours: 3 });
+    expect(parseSetting("interval")).toEqual({ kind: "interval", hours: 24 });
+    expect(parseSetting("off")).toEqual({ kind: "off", hours: 24 });
+    expect(parseSetting("startup")).toEqual({ kind: "startup", hours: 24 });
+    // 非法值（未知枚举 / 非法小时数）→ off（安全侧：不查）
+    expect(parseSetting("daily")).toEqual({ kind: "off", hours: 24 });
+    expect(parseSetting("interval:7")).toEqual({ kind: "off", hours: 24 });
+    // 编解码互逆（24 小时档沿用裸值，不改写旧配置）
+    expect(encodeSetting({ kind: "interval", hours: 24 })).toBe("interval");
+    expect(encodeSetting({ kind: "interval", hours: 1 })).toBe("interval:1");
+    expect(encodeSetting({ kind: "off", hours: 24 })).toBe("off");
+  });
+
+  it("定时检查：间隔小时数按设置生效（interval:1 → 满 1 小时复查一次）", async () => {
+    vi.useFakeTimers();
+    try {
+      settingsGetMock.mockResolvedValue("interval:1");
+      await act(async () => {
+        await initAutoCheck();
+      });
+      expect(checkMock).toHaveBeenCalledTimes(1); // 启动即查一次
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000 - 1);
+      });
+      expect(checkMock).toHaveBeenCalledTimes(1); // 未到点
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2);
+      });
+      expect(checkMock).toHaveBeenCalledTimes(2); // 到点复查
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("配置键 = update.check_mode", async () => {

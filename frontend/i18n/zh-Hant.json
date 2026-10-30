@@ -1282,7 +1282,7 @@
     "autoCheck": "自動檢查更新",
     "autoCheck_off": "關閉",
     "autoCheck_startup": "啓動時檢查",
-    "autoCheck_interval": "定時檢查（每 24 小時）",
+    "autoCheck_interval": "定時檢查（每 {{hours}} 小時）",
     "portableHint": "便攜版不內置自動更新——請到 GitHub Releases 下載新的便攜包，替換 exe 即可（data 資料夾保留）。",
     "openDownloadPage": "打開下載頁",
     "panelDownloading": "正在下載 v{{version}}",

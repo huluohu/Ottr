@@ -11,6 +11,7 @@ import { vaultApi } from "../vault/api";
 import { Switch } from "../ui/Switch";
 import { DialogClose } from "../ui/DialogClose";
 import { FormDialog } from "../ui/FormDialog";
+import { useEscClose } from "../ui/useEscClose";
 import { createProvider, type ProviderMeta } from "./provider";
 import type { RedactRule } from "./redact";
 import {
@@ -84,21 +85,11 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
   const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_TOKENS);
   const [draft, setDraft] = useState<ProviderDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  // 关闭交互统一（2026-10-08）：Esc = 右上 X 等价；Provider 草稿编辑态先收
-  // 草稿（Esc 逐层退出，不跨层关闭整个面板）。
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (draft) {
-        setDraft(null);
-        return;
-      }
-      onClose?.();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose, draft]);
+  // 关闭交互统一（2026-10-30 栈式收口）：独立弹窗形态（!embedded）走
+  // useEscClose 压栈退出；嵌入形态由外层 SecuritySettings 与内层 FormDialog
+  // 分别栈式接管——不再私挂 document 监听器抢跑（抢跑导致重新渲染退栈，事件
+  // 穿透到外层关掉整个设置，真机实测抓出的严重缺陷）。
+  useEscClose(open && !embedded, () => onClose?.());
   const [testing, setTesting] = useState<string | null>(null); // 正在测试的 provider id
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; msg: string } | null>(
     null,

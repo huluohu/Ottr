@@ -329,4 +329,19 @@ describe("通用", () => {
     const { container } = render(<AISettings open={false} onClose={() => {}} />);
     expect(container.firstChild).toBeNull();
   });
+
+  it("Provider 表单弹框化（2026-10-30 用户需求）：点击添加/编辑时弹框叠在设置之上，点取消关闭", async () => {
+    render(<AISettings open embedded />);
+    // 初始态无弹框
+    expect(document.body.querySelector('[data-testid="ai-provider-dialog"]')).toBeNull();
+    // 点击「添加 Provider」→ 弹框 portal 到 body
+    fireEvent.click(await screen.findByTestId("ai-add-provider"));
+    expect(document.body.querySelector('[data-testid="ai-provider-dialog"]')).toBeTruthy();
+    expect(screen.getByTestId("ai-provider-form")).toBeTruthy();
+    // 点击取消 → 弹框收起
+    fireEvent.click(screen.getByTestId("ai-form-cancel"));
+    await waitFor(() =>
+      expect(document.body.querySelector('[data-testid="ai-provider-dialog"]')).toBeNull(),
+    );
+  });
 });

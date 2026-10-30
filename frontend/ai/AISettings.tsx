@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import { Switch } from "../ui/Switch";
 import { DialogClose } from "../ui/DialogClose";
+import { FormDialog } from "../ui/FormDialog";
 import { createProvider, type ProviderMeta } from "./provider";
 import type { RedactRule } from "./redact";
 import {
@@ -316,18 +317,19 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
         <section aria-label={t("ai.settings.providers")} data-testid="ai-providers-section">
           <h3 className="ai-providers-head">
             <span>{t("ai.settings.providers")}</span>
-            {!draft && (
-              <button
-                className="btn-accent btn-compact"
-                data-testid="ai-add-provider"
-                onClick={() => setDraft(emptyDraft())}
-              >
-                {t("ai.settings.addProvider")}
-              </button>
-            )}
+            <button
+              className="btn-accent btn-compact"
+              data-testid="ai-add-provider"
+              onClick={() => {
+                setDraft(emptyDraft());
+                setFormError(null);
+              }}
+            >
+              {t("ai.settings.addProvider")}
+            </button>
           </h3>
           <p className="settings-hint">{t("ai.settings.byokHint")}</p>
-          {providers.length === 0 && !draft && (
+          {providers.length === 0 && (
             <p className="settings-hint" data-testid="ai-providers-empty">
               {t("ai.settings.noProviders")}
             </p>
@@ -378,9 +380,10 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
                   </button>
                   <button
                     data-testid={`ai-provider-edit-${p.id}`}
-                    onClick={() =>
-                      setDraft({ id: p.id, name: p.name, kind: p.kind, baseURL: p.baseURL, model: p.model, apiKey: "" })
-                    }
+                    onClick={() => {
+                      setFormError(null);
+                      setDraft({ id: p.id, name: p.name, kind: p.kind, baseURL: p.baseURL, model: p.model, apiKey: "" });
+                    }}
                   >
                     {t("common.edit")}
                   </button>
@@ -404,109 +407,119 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
               </li>
             ))}
           </ul>
-          {draft && (
-            <form className="wizard-step" onSubmit={(e) => void saveDraft(e)} noValidate data-testid="ai-provider-form">
-              <p className="dialog-intro">{t("ai.settings.formTitle")}</p>
-              <label>
-                <span>{t("ai.settings.fieldName")}</span>
-                <input
-                  data-testid="ai-field-name"
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.currentTarget.value })}
-                />
-              </label>
-              <label>
-                <span>{t("ai.settings.fieldKind")}</span>
-                <select
-                  data-testid="ai-field-kind"
-                  value={draft.kind}
-                  onChange={(e) => {
-                    const kind = e.currentTarget.value as ProviderMeta["kind"];
-                    // 预设 = 具体端点类型捷径；mock 刻意不自动填 baseURL
-                    // （测试端点地址由使用者显式给，防误指真实端点）
-                    const preset =
-                      kind === "anthropic"
-                        ? BASE_URL_PRESETS.anthropic
-                        : kind === "mock"
-                          ? ""
-                          : BASE_URL_PRESETS.openai;
-                    setDraft({ ...draft, kind, baseURL: draft.baseURL || preset });
-                  }}
-                >
-                  <option value="openai-compatible">{t("ai.settings.kindOpenai")}</option>
-                  <option value="anthropic">{t("ai.settings.kindAnthropic")}</option>
-                  <option value="mock">{t("ai.settings.kindMock")}</option>
-                </select>
-              </label>
-              <div className="ai-presets">
-                {Object.entries(BASE_URL_PRESETS).map(([key, url]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className="ai-preset"
-                    data-testid={`ai-preset-${key}`}
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        kind: key === "anthropic" ? "anthropic" : "openai-compatible",
-                        baseURL: url,
-                        // 默认模型仅补空（用户已填不覆盖；无默认模型的 preset 不动）
-                        model: draft.model || PRESET_DEFAULT_MODELS[key] || draft.model,
-                      })
-                    }
+          {/* Provider 添加/编辑弹框（2026-10-30 用户需求：所有添加操作改弹框，不再就地展开） */}
+          <FormDialog
+            open={draft !== null}
+            title={t("ai.settings.formTitle")}
+            onClose={() => {
+              setDraft(null);
+              setFormError(null);
+            }}
+            testid="ai-provider-dialog"
+          >
+            {draft && (
+              <form className="wizard-step" onSubmit={(e) => void saveDraft(e)} noValidate data-testid="ai-provider-form">
+                <label>
+                  <span>{t("ai.settings.fieldName")}</span>
+                  <input
+                    data-testid="ai-field-name"
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.currentTarget.value })}
+                  />
+                </label>
+                <label>
+                  <span>{t("ai.settings.fieldKind")}</span>
+                  <select
+                    data-testid="ai-field-kind"
+                    value={draft.kind}
+                    onChange={(e) => {
+                      const kind = e.currentTarget.value as ProviderMeta["kind"];
+                      // 预设 = 具体端点类型捷径；mock 刻意不自动填 baseURL
+                      // （测试端点地址由使用者显式给，防误指真实端点）
+                      const preset =
+                        kind === "anthropic"
+                          ? BASE_URL_PRESETS.anthropic
+                          : kind === "mock"
+                            ? ""
+                            : BASE_URL_PRESETS.openai;
+                      setDraft({ ...draft, kind, baseURL: draft.baseURL || preset });
+                    }}
                   >
-                    {/* 展示名 i18n（动态键与 settings.themeX 同款；缺键回落原始 key） */}
-                    {t(`ai.settings.preset${key.charAt(0).toUpperCase()}${key.slice(1)}`, {
-                      defaultValue: key,
-                    })}
+                    <option value="openai-compatible">{t("ai.settings.kindOpenai")}</option>
+                    <option value="anthropic">{t("ai.settings.kindAnthropic")}</option>
+                    <option value="mock">{t("ai.settings.kindMock")}</option>
+                  </select>
+                </label>
+                <div className="ai-presets">
+                  {Object.entries(BASE_URL_PRESETS).map(([key, url]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className="ai-preset"
+                      data-testid={`ai-preset-${key}`}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          kind: key === "anthropic" ? "anthropic" : "openai-compatible",
+                          baseURL: url,
+                          // 默认模型仅补空（用户已填不覆盖；无默认模型的 preset 不动）
+                          model: draft.model || PRESET_DEFAULT_MODELS[key] || draft.model,
+                        })
+                      }
+                    >
+                      {/* 展示名 i18n（动态键与 settings.themeX 同款；缺键回落原始 key） */}
+                      {t(`ai.settings.preset${key.charAt(0).toUpperCase()}${key.slice(1)}`, {
+                        defaultValue: key,
+                      })}
+                    </button>
+                  ))}
+                </div>
+                <label>
+                  <span>{t("ai.settings.fieldBaseUrl")}</span>
+                  <input
+                    data-testid="ai-field-baseurl"
+                    value={draft.baseURL}
+                    placeholder="https://api.deepseek.com"
+                    onChange={(e) => setDraft({ ...draft, baseURL: e.currentTarget.value })}
+                  />
+                </label>
+                <label>
+                  <span>{t("ai.settings.fieldModel")}</span>
+                  <input
+                    data-testid="ai-field-model"
+                    value={draft.model}
+                    placeholder="deepseek-chat"
+                    onChange={(e) => setDraft({ ...draft, model: e.currentTarget.value })}
+                  />
+                </label>
+                <label>
+                  <span>{t("ai.settings.fieldApiKey")}</span>
+                  <input
+                    type="password"
+                    data-testid="ai-field-apikey"
+                    value={draft.apiKey}
+                    autoComplete="off"
+                    placeholder={t("ai.settings.apiKeyPlaceholder")}
+                    onChange={(e) => setDraft({ ...draft, apiKey: e.currentTarget.value })}
+                  />
+                </label>
+                <p className="settings-hint">{t("ai.settings.apiKeyHint")}</p>
+                {formError && (
+                  <p className="form-error" data-testid="ai-form-error">
+                    {formError}
+                  </p>
+                )}
+                <div className="form-actions">
+                  <button type="button" data-testid="ai-form-cancel" onClick={() => setDraft(null)}>
+                    {t("common.cancel")}
                   </button>
-                ))}
-              </div>
-              <label>
-                <span>{t("ai.settings.fieldBaseUrl")}</span>
-                <input
-                  data-testid="ai-field-baseurl"
-                  value={draft.baseURL}
-                  placeholder="https://api.deepseek.com"
-                  onChange={(e) => setDraft({ ...draft, baseURL: e.currentTarget.value })}
-                />
-              </label>
-              <label>
-                <span>{t("ai.settings.fieldModel")}</span>
-                <input
-                  data-testid="ai-field-model"
-                  value={draft.model}
-                  placeholder="deepseek-chat"
-                  onChange={(e) => setDraft({ ...draft, model: e.currentTarget.value })}
-                />
-              </label>
-              <label>
-                <span>{t("ai.settings.fieldApiKey")}</span>
-                <input
-                  type="password"
-                  data-testid="ai-field-apikey"
-                  value={draft.apiKey}
-                  autoComplete="off"
-                  placeholder={t("ai.settings.apiKeyPlaceholder")}
-                  onChange={(e) => setDraft({ ...draft, apiKey: e.currentTarget.value })}
-                />
-              </label>
-              <p className="settings-hint">{t("ai.settings.apiKeyHint")}</p>
-              {formError && (
-                <p className="form-error" data-testid="ai-form-error">
-                  {formError}
-                </p>
-              )}
-              <div className="form-actions">
-                <button type="button" data-testid="ai-form-cancel" onClick={() => setDraft(null)}>
-                  {t("common.cancel")}
-                </button>
-                <button type="submit" className="btn-accent" data-testid="ai-form-save">
-                  {t("common.save")}
-                </button>
-              </div>
-            </form>
-          )}
+                  <button type="submit" className="btn-accent" data-testid="ai-form-save">
+                    {t("common.save")}
+                  </button>
+                </div>
+              </form>
+            )}
+          </FormDialog>
         </section>
 
         {/* --- 脱敏 --- */}

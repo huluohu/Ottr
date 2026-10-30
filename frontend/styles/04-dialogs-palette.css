@@ -84,12 +84,14 @@
    2026-10-17：工具弹框体退役，改挂工作区宽幅视图 .workspace-view——原生宽滚动条在系统「滚动条常显」下
    盖住内容右缘（用户反馈：设置页滚动条压住开关与按钮）。 */
 .dialog::-webkit-scrollbar,
+.form-dialog-body::-webkit-scrollbar,
 .host-form::-webkit-scrollbar,
 .settings-panes::-webkit-scrollbar,
 .workspace-view::-webkit-scrollbar {
   width: 6px;
 }
 .dialog::-webkit-scrollbar-thumb,
+.form-dialog-body::-webkit-scrollbar-thumb,
 .host-form::-webkit-scrollbar-thumb,
 .settings-panes::-webkit-scrollbar-thumb,
 .workspace-view::-webkit-scrollbar-thumb {
@@ -97,6 +99,28 @@
   border-radius: var(--radius-sm);
   border: 2px solid transparent;
   background-clip: padding-box;
+}
+
+/* 设置子弹框（2026-10-30 用户需求：「设置页，所有添加类型的操作，都改成弹出框，而不是展开」）：
+   Provider 配置、告警渠道配置、告警规则配置等表单自设置页就地展开移入弹窗。
+   自适应内容高、上限 86vh、内部表单去多余边框防「框中框」。 */
+.dialog.form-dialog {
+  width: min(540px, 100%);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+}
+.form-dialog-body {
+  overflow-y: auto;
+  margin-top: var(--space-2);
+}
+.form-dialog .wizard-step {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.form-dialog .dialog-intro {
+  margin-top: 0;
 }
 .dialog h2,
 .host-form h2 {

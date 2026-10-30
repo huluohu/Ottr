@@ -118,9 +118,14 @@ export async function loadChannelSettings(): Promise<SyncChannelSettings> {
 export interface SyncSettingsProps {
   /** 立即同步入口（App 根部挂 SyncDialog）。 */
   onOpenSync: () => void;
+  /** 是否处于当前激活分区（设置页分区分组懒加载，2026-10-30 修复）：
+   *  用户打开设置看通用/外观/关于等其他分区时，后台绝对不预跑同步通道探测
+   *  与口令查询，从根源上杜绝在非同步分区偷跑任何敏感系统调用。
+   *  缺省 true（独立测试或单挂时可用）。 */
+  active?: boolean;
 }
 
-export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
+export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
   const { t } = useTranslation();
   const [cfg, setCfg] = useState<SyncChannelSettings>(EMPTY_CHANNEL_SETTINGS);
   const [saved, setSaved] = useState<SyncChannelSettings | null>(null);
@@ -137,6 +142,7 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
   const [forgetError, setForgetError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!active) return;
     let disposed = false;
     void (async () => {
       const loaded = await loadChannelSettings();
@@ -155,7 +161,7 @@ export function SyncSettings({ onOpenSync }: SyncSettingsProps) {
     return () => {
       disposed = true;
     };
-  }, []);
+  }, [active]);
 
   const patch = (part: Partial<SyncChannelSettings>) => {
     setCfg((c) => ({ ...c, ...part }));

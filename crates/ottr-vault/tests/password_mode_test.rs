@@ -445,6 +445,23 @@ fn fallback_refuses_keyring_mode_vault_when_keychain_dead() {
     );
 }
 
+/// 既有主密码模式库（2026-10-30 修复）：open_auto 探测到既有库为 password 模式时，
+/// 必须直接走 open_password_only（零钥匙链调用），绝不触碰系统钥匙串！
+#[test]
+fn open_auto_uses_password_only_for_existing_password_vault() {
+    let dir = tempfile::tempdir().unwrap();
+    // 首次打开并设为主密码模式
+    let vault = Vault::open_password_only(dir.path()).unwrap();
+    vault.unlock_with_password("my-master-pass-456").unwrap();
+    assert_eq!(vault.mode(), KeyMode::Password);
+    drop(vault);
+
+    // 再次通过生产统一入口 open_auto 打开：必须直接以 Password 模式打开且为锁定态
+    let reopened = Vault::open_auto(dir.path()).unwrap();
+    assert_eq!(reopened.mode(), KeyMode::Password);
+    assert!(reopened.is_locked(), "主密码库重开后必须为锁定态");
+}
+
 // ---------------------------------------------------------------------------
 // keyring 错误分类（Linux fallback 判定原语，纯函数跨平台可测）
 // ---------------------------------------------------------------------------

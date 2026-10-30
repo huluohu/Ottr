@@ -32,6 +32,7 @@ import { NotifyKindsSection } from "./NotifyKinds";
 import { Switch } from "../ui/Switch";
 import { Checkbox } from "../ui/Checkbox";
 import { SegmentedControl } from "../ui/SegmentedControl";
+import { FormDialog } from "../ui/FormDialog";
 import {
   CHANNEL_FIELD_SPECS,
   CHANNEL_REQUIRED,
@@ -462,83 +463,100 @@ export function AlertSettings({ open }: AlertSettingsProps) {
               </li>
             ))}
           </ul>
-          {!channelDraft && (
-            <button className="btn-accent btn-compact" data-testid="alert-add-channel" onClick={() => { setChannelDraft(emptyChannelDraft()); setTestState(null); }}>
-              {t("alert.addChannel")}
-            </button>
-          )}
+          <button
+            className="btn-accent btn-compact"
+            data-testid="alert-add-channel"
+            onClick={() => {
+              setChannelDraft(emptyChannelDraft());
+              setTestState(null);
+              setFormError(null);
+            }}
+          >
+            {t("alert.addChannel")}
+          </button>
 
-          {channelDraft && (
-            <form className="wizard-step" onSubmit={(e) => void saveChannel(e)} noValidate data-testid="alert-channel-form">
-              <p className="dialog-intro">{t("alert.channelFormTitle")}</p>
-              <label>
-                <span>{t("alert.fieldKind")}</span>
-                <select
-                  data-testid="alert-channel-kind"
-                  value={channelDraft.kind}
-                  onChange={(e) =>
-                    setChannelDraft({ ...channelDraft, kind: e.currentTarget.value as ChannelKind, config: {}, original: null })
-                  }
-                >
-                  {kindOptions(CHANNEL_KINDS)}
-                </select>
-              </label>
-              {(CHANNEL_FIELD_SPECS[channelDraft.kind] ?? []).map((field) => (
-                <label key={field.key}>
-                  <span>{t(`alert.channelField.${field.labelKey}`)}</span>
-                  {field.multiline ? (
-                    <textarea
-                      data-testid={`alert-field-${field.key}`}
-                      rows={2}
-                      placeholder={field.placeholder}
-                      value={paramOf(channelDraft.config, field.key)}
-                      onChange={(e) => setChannelDraft({ ...channelDraft, config: { ...channelDraft.config, [field.key]: e.currentTarget.value } })}
-                    />
-                  ) : (
-                    <input
-                      data-testid={`alert-field-${field.key}`}
-                      type={field.secret ? "password" : field.number ? "number" : "text"}
-                      autoComplete={field.secret ? "new-password" : "off"}
-                      placeholder={field.placeholder}
-                      value={paramOf(channelDraft.config, field.key)}
-                      onChange={(e) => setChannelDraft({ ...channelDraft, config: { ...channelDraft.config, [field.key]: e.currentTarget.value } })}
-                    />
-                  )}
+          {/* 渠道添加/编辑弹框（2026-10-30 用户需求：所有添加操作改弹框，不再就地展开） */}
+          <FormDialog
+            open={channelDraft !== null}
+            title={t("alert.channelFormTitle")}
+            onClose={() => {
+              setChannelDraft(null);
+              setFormError(null);
+              setTestState(null);
+            }}
+            testid="alert-channel-dialog"
+          >
+            {channelDraft && (
+              <form className="wizard-step" onSubmit={(e) => void saveChannel(e)} noValidate data-testid="alert-channel-form">
+                <label>
+                  <span>{t("alert.fieldKind")}</span>
+                  <select
+                    data-testid="alert-channel-kind"
+                    value={channelDraft.kind}
+                    onChange={(e) =>
+                      setChannelDraft({ ...channelDraft, kind: e.currentTarget.value as ChannelKind, config: {}, original: null })
+                    }
+                  >
+                    {kindOptions(CHANNEL_KINDS)}
+                  </select>
                 </label>
-              ))}
-              <div className="settings-row">
-                <span className="settings-label">{t("alert.fieldEnabled")}</span>
-                <Switch
-                  testid="alert-channel-enabled"
-                  label={t("alert.fieldEnabled")}
-                  checked={channelDraft.enabled}
-                  onChange={(e) => setChannelDraft({ ...channelDraft, enabled: e.currentTarget.checked })}
-                />
-              </div>
-              <div className="form-actions">
-                <button type="button" data-testid="alert-channel-test-draft" disabled={testing !== null} onClick={() => void testDraft()}>
-                  {testing === "draft" ? t("alert.testing") : t("alert.test")}
-                </button>
-                <button type="button" data-testid="alert-channel-cancel" onClick={() => setChannelDraft(null)}>
-                  {t("common.cancel")}
-                </button>
-                <button type="submit" className="btn-accent" data-testid="alert-channel-save">
-                  {t("common.save")}
-                </button>
-              </div>
-              {formError && (
-                <p className="form-error" data-testid="alert-form-error">
-                  {formError}
-                </p>
-              )}
-              {testState?.id === "draft" && (
-                <p className={`settings-hint ${testState.ok ? "ai-test-ok" : "form-error"}`} data-testid="alert-channel-result-draft">
-                  {testState.ok ? "✓ " : "✗ "}
-                  {testState.msg}
-                </p>
-              )}
-            </form>
-          )}
+                {(CHANNEL_FIELD_SPECS[channelDraft.kind] ?? []).map((field) => (
+                  <label key={field.key}>
+                    <span>{t(`alert.channelField.${field.labelKey}`)}</span>
+                    {field.multiline ? (
+                      <textarea
+                        data-testid={`alert-field-${field.key}`}
+                        rows={2}
+                        placeholder={field.placeholder}
+                        value={paramOf(channelDraft.config, field.key)}
+                        onChange={(e) => setChannelDraft({ ...channelDraft, config: { ...channelDraft.config, [field.key]: e.currentTarget.value } })}
+                      />
+                    ) : (
+                      <input
+                        data-testid={`alert-field-${field.key}`}
+                        type={field.secret ? "password" : field.number ? "number" : "text"}
+                        autoComplete={field.secret ? "new-password" : "off"}
+                        placeholder={field.placeholder}
+                        value={paramOf(channelDraft.config, field.key)}
+                        onChange={(e) => setChannelDraft({ ...channelDraft, config: { ...channelDraft.config, [field.key]: e.currentTarget.value } })}
+                      />
+                    )}
+                  </label>
+                ))}
+                <div className="settings-row">
+                  <span className="settings-label">{t("alert.fieldEnabled")}</span>
+                  <Switch
+                    testid="alert-channel-enabled"
+                    label={t("alert.fieldEnabled")}
+                    checked={channelDraft.enabled}
+                    onChange={(e) => setChannelDraft({ ...channelDraft, enabled: e.currentTarget.checked })}
+                  />
+                </div>
+                <div className="form-actions">
+                  <button type="button" data-testid="alert-channel-test-draft" disabled={testing !== null} onClick={() => void testDraft()}>
+                    {testing === "draft" ? t("alert.testing") : t("alert.test")}
+                  </button>
+                  <button type="button" data-testid="alert-channel-cancel" onClick={() => setChannelDraft(null)}>
+                    {t("common.cancel")}
+                  </button>
+                  <button type="submit" className="btn-accent" data-testid="alert-channel-save">
+                    {t("common.save")}
+                  </button>
+                </div>
+                {formError && (
+                  <p className="form-error" data-testid="alert-form-error">
+                    {formError}
+                  </p>
+                )}
+                {testState?.id === "draft" && (
+                  <p className={`settings-hint ${testState.ok ? "ai-test-ok" : "form-error"}`} data-testid="alert-channel-result-draft">
+                    {testState.ok ? "✓ " : "✗ "}
+                    {testState.msg}
+                  </p>
+                )}
+              </form>
+            )}
+          </FormDialog>
         </section>
       )}
 
@@ -571,119 +589,134 @@ export function AlertSettings({ open }: AlertSettingsProps) {
               </li>
             ))}
           </ul>
-          {!ruleDraft && (
-            <button className="btn-accent btn-compact" data-testid="alert-add-rule" onClick={() => { setRuleDraft(emptyRuleDraft()); setFormError(null); }}>
-              {t("alert.addRule")}
-            </button>
-          )}
+          <button
+            className="btn-accent btn-compact"
+            data-testid="alert-add-rule"
+            onClick={() => {
+              setRuleDraft(emptyRuleDraft());
+              setFormError(null);
+            }}
+          >
+            {t("alert.addRule")}
+          </button>
 
-          {ruleDraft && (
-            <form className="wizard-step" onSubmit={(e) => void saveRule(e)} noValidate data-testid="alert-rule-form">
-              <p className="dialog-intro">{t("alert.ruleFormTitle")}</p>
-              <label>
-                <span>{t("alert.fieldHost")}</span>
-                <select data-testid="alert-rule-host" value={ruleDraft.host_id} onChange={(e) => setRuleDraft({ ...ruleDraft, host_id: e.currentTarget.value })}>
-                  <option value="">—</option>
-                  <option value={LOCAL_HOST_FILTER}>{t("nav.localTerminal")}</option>
-                  {hosts.map((h: Host) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>{t("alert.fieldKind")}</span>
-                <select data-testid="alert-rule-kind" value={ruleDraft.kind} onChange={(e) => setRuleDraft({ ...ruleDraft, kind: e.currentTarget.value as AlertRuleKind })}>
-                  <option value="disk">{t("alert.title.disk")}</option>
-                  <option value="cpu">{t("alert.title.cpu")}</option>
-                  <option value="process">{t("alert.title.process")}</option>
-                  <option value="log">{t("alert.kindLog")}</option>
-                </select>
-              </label>
-              {ruleDraft.kind === "disk" && (
-                <>
-                  <label>
-                    <span>{t("alert.paramDiskMount")}</span>
-                    <input data-testid="alert-rule-mount" value={paramOf(ruleDraft.params, "mount")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, mount: e.currentTarget.value } })} />
-                  </label>
-                  <label>
-                    <span>{t("alert.paramDiskThreshold")}</span>
-                    <input type="number" min={1} max={100} data-testid="alert-rule-threshold" value={paramOf(ruleDraft.params, "threshold")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, threshold: e.currentTarget.value } })} />
-                  </label>
-                </>
-              )}
-              {ruleDraft.kind === "cpu" && (
-                <>
-                  <label>
-                    <span>{t("alert.paramCpuThreshold")}</span>
-                    <input type="number" min={1} max={100} data-testid="alert-rule-cpu-threshold" value={paramOf(ruleDraft.params, "threshold")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, threshold: e.currentTarget.value } })} />
-                  </label>
-                  <label>
-                    <span>{t("alert.paramCpuConsecutive")}</span>
-                    <input type="number" min={1} data-testid="alert-rule-consecutive" value={paramOf(ruleDraft.params, "consecutive")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, consecutive: e.currentTarget.value } })} />
-                  </label>
-                </>
-              )}
-              {ruleDraft.kind === "process" && (
+          {/* 规则添加/编辑弹框（2026-10-30 用户需求：所有添加操作改弹框，不再就地展开） */}
+          <FormDialog
+            open={ruleDraft !== null}
+            title={t("alert.ruleFormTitle")}
+            onClose={() => {
+              setRuleDraft(null);
+              setFormError(null);
+            }}
+            testid="alert-rule-dialog"
+          >
+            {ruleDraft && (
+              <form className="wizard-step" onSubmit={(e) => void saveRule(e)} noValidate data-testid="alert-rule-form">
                 <label>
-                  <span>{t("alert.paramProcessComm")}</span>
-                  <input data-testid="alert-rule-comm" value={paramOf(ruleDraft.params, "comm")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, comm: e.currentTarget.value } })} />
+                  <span>{t("alert.fieldHost")}</span>
+                  <select data-testid="alert-rule-host" value={ruleDraft.host_id} onChange={(e) => setRuleDraft({ ...ruleDraft, host_id: e.currentTarget.value })}>
+                    <option value="">—</option>
+                    <option value={LOCAL_HOST_FILTER}>{t("nav.localTerminal")}</option>
+                    {hosts.map((h: Host) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-              )}
-              {ruleDraft.kind === "log" && (
-                <>
+                <label>
+                  <span>{t("alert.fieldKind")}</span>
+                  <select data-testid="alert-rule-kind" value={ruleDraft.kind} onChange={(e) => setRuleDraft({ ...ruleDraft, kind: e.currentTarget.value as AlertRuleKind })}>
+                    <option value="disk">{t("alert.title.disk")}</option>
+                    <option value="cpu">{t("alert.title.cpu")}</option>
+                    <option value="process">{t("alert.title.process")}</option>
+                    <option value="log">{t("alert.kindLog")}</option>
+                  </select>
+                </label>
+                {ruleDraft.kind === "disk" && (
+                  <>
+                    <label>
+                      <span>{t("alert.paramDiskMount")}</span>
+                      <input data-testid="alert-rule-mount" value={paramOf(ruleDraft.params, "mount")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, mount: e.currentTarget.value } })} />
+                    </label>
+                    <label>
+                      <span>{t("alert.paramDiskThreshold")}</span>
+                      <input type="number" min={1} max={100} data-testid="alert-rule-threshold" value={paramOf(ruleDraft.params, "threshold")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, threshold: e.currentTarget.value } })} />
+                    </label>
+                  </>
+                )}
+                {ruleDraft.kind === "cpu" && (
+                  <>
+                    <label>
+                      <span>{t("alert.paramCpuThreshold")}</span>
+                      <input type="number" min={1} max={100} data-testid="alert-rule-cpu-threshold" value={paramOf(ruleDraft.params, "threshold")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, threshold: e.currentTarget.value } })} />
+                    </label>
+                    <label>
+                      <span>{t("alert.paramCpuConsecutive")}</span>
+                      <input type="number" min={1} data-testid="alert-rule-consecutive" value={paramOf(ruleDraft.params, "consecutive")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, consecutive: e.currentTarget.value } })} />
+                    </label>
+                  </>
+                )}
+                {ruleDraft.kind === "process" && (
                   <label>
-                    <span>{t("alert.paramLogPath")}</span>
-                    <input data-testid="alert-rule-log-path" placeholder="/var/log/app.log" value={paramOf(ruleDraft.params, "path")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, path: e.currentTarget.value } })} />
+                    <span>{t("alert.paramProcessComm")}</span>
+                    <input data-testid="alert-rule-comm" value={paramOf(ruleDraft.params, "comm")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, comm: e.currentTarget.value } })} />
                   </label>
-                  <label>
-                    <span>{t("alert.paramLogPattern")}</span>
-                    <input data-testid="alert-rule-log-pattern" placeholder="FATAL|ERROR" value={paramOf(ruleDraft.params, "pattern")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, pattern: e.currentTarget.value } })} />
-                  </label>
-                  <label>
-                    <span>{t("alert.paramLogInterval")}</span>
-                    <input type="number" min={5} data-testid="alert-rule-log-interval" value={paramOf(ruleDraft.params, "interval")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, interval: e.currentTarget.value } })} />
-                  </label>
-                </>
-              )}
-              <fieldset>
-                <legend>{t("alert.fieldChannels")}</legend>
-                {channels.length === 0 && <p className="settings-hint">{t("alert.errNoChannelHint")}</p>}
-                {channels.map((c) => (
-                  <label key={c.id} className="notify-mute-row">
-                    <Checkbox
-                      testid={`alert-rule-channel-${c.id}`}
-                      checked={ruleDraft.channels.includes(c.id)}
-                      onChange={() => toggleDraftChannel(c.id)}
-                    />
-                    <span>{t(`alert.kind.${c.kind}`)}</span>
-                  </label>
-                ))}
-              </fieldset>
-              <label>
-                <span>{t("alert.fieldRateLimit")}</span>
-                <input type="number" min={0} data-testid="alert-rule-ratelimit" value={ruleDraft.rate_limit} onChange={(e) => setRuleDraft({ ...ruleDraft, rate_limit: e.currentTarget.value })} />
-              </label>
-              <label>
-                <span>{t("alert.fieldMuteWindow")}</span>
-                <input data-testid="alert-rule-mutewindow" placeholder="22:00-08:00" value={ruleDraft.mute_window} onChange={(e) => setRuleDraft({ ...ruleDraft, mute_window: e.currentTarget.value })} />
-              </label>
-              {formError && (
-                <p className="form-error" data-testid="alert-form-error">
-                  {formError}
-                </p>
-              )}
-              <div className="form-actions">
-                <button type="button" data-testid="alert-rule-cancel" onClick={() => setRuleDraft(null)}>
-                  {t("common.cancel")}
-                </button>
-                <button type="submit" className="btn-accent" data-testid="alert-rule-save">
-                  {t("common.save")}
-                </button>
-              </div>
-            </form>
-          )}
+                )}
+                {ruleDraft.kind === "log" && (
+                  <>
+                    <label>
+                      <span>{t("alert.paramLogPath")}</span>
+                      <input data-testid="alert-rule-log-path" placeholder="/var/log/app.log" value={paramOf(ruleDraft.params, "path")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, path: e.currentTarget.value } })} />
+                    </label>
+                    <label>
+                      <span>{t("alert.paramLogPattern")}</span>
+                      <input data-testid="alert-rule-log-pattern" placeholder="FATAL|ERROR" value={paramOf(ruleDraft.params, "pattern")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, pattern: e.currentTarget.value } })} />
+                    </label>
+                    <label>
+                      <span>{t("alert.paramLogInterval")}</span>
+                      <input type="number" min={5} data-testid="alert-rule-log-interval" value={paramOf(ruleDraft.params, "interval")} onChange={(e) => setRuleDraft({ ...ruleDraft, params: { ...ruleDraft.params, interval: e.currentTarget.value } })} />
+                    </label>
+                  </>
+                )}
+                <fieldset>
+                  <legend>{t("alert.fieldChannels")}</legend>
+                  {channels.length === 0 && <p className="settings-hint">{t("alert.errNoChannelHint")}</p>}
+                  {channels.map((c) => (
+                    <label key={c.id} className="notify-mute-row">
+                      <Checkbox
+                        testid={`alert-rule-channel-${c.id}`}
+                        checked={ruleDraft.channels.includes(c.id)}
+                        onChange={() => toggleDraftChannel(c.id)}
+                      />
+                      <span>{t(`alert.kind.${c.kind}`)}</span>
+                    </label>
+                  ))}
+                </fieldset>
+                <label>
+                  <span>{t("alert.fieldRateLimit")}</span>
+                  <input type="number" min={0} data-testid="alert-rule-ratelimit" value={ruleDraft.rate_limit} onChange={(e) => setRuleDraft({ ...ruleDraft, rate_limit: e.currentTarget.value })} />
+                </label>
+                <label>
+                  <span>{t("alert.fieldMuteWindow")}</span>
+                  <input data-testid="alert-rule-mutewindow" placeholder="22:00-08:00" value={ruleDraft.mute_window} onChange={(e) => setRuleDraft({ ...ruleDraft, mute_window: e.currentTarget.value })} />
+                </label>
+                {formError && (
+                  <p className="form-error" data-testid="alert-form-error">
+                    {formError}
+                  </p>
+                )}
+                <div className="form-actions">
+                  <button type="button" data-testid="alert-rule-cancel" onClick={() => setRuleDraft(null)}>
+                    {t("common.cancel")}
+                  </button>
+                  <button type="submit" className="btn-accent" data-testid="alert-rule-save">
+                    {t("common.save")}
+                  </button>
+                </div>
+              </form>
+            )}
+          </FormDialog>
         </section>
       )}
 

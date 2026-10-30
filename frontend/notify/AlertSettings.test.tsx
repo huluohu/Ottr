@@ -307,6 +307,26 @@ describe("AlertSettings 规则区", () => {
       }),
     }));
   });
+
+  it("渠道与规则表单弹框化（2026-10-30 用户需求）：打开弹框 portal 到 body，取消即收起", async () => {
+    render(<AlertSettings open={true} />);
+    // 渠道弹框
+    expect(document.body.querySelector('[data-testid="alert-channel-dialog"]')).toBeNull();
+    fireEvent.click(await screen.findByTestId("alert-add-channel"));
+    expect(document.body.querySelector('[data-testid="alert-channel-dialog"]')).toBeTruthy();
+    expect(screen.getByTestId("alert-channel-form")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("alert-channel-cancel"));
+    await waitFor(() => expect(document.body.querySelector('[data-testid="alert-channel-dialog"]')).toBeNull());
+
+    // 规则弹框
+    showRulesSection();
+    expect(document.body.querySelector('[data-testid="alert-rule-dialog"]')).toBeNull();
+    fireEvent.click(await screen.findByTestId("alert-add-rule"));
+    expect(document.body.querySelector('[data-testid="alert-rule-dialog"]')).toBeTruthy();
+    expect(screen.getByTestId("alert-rule-form")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("alert-rule-cancel"));
+    await waitFor(() => expect(document.body.querySelector('[data-testid="alert-rule-dialog"]')).toBeNull());
+  });
 });
 
 

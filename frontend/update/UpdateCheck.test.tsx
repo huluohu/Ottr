@@ -71,17 +71,43 @@ describe("UpdateCheck", () => {
     expect(screen.queryByTestId("update-check-button")).toBeNull();
   });
 
-  it("自动检查频率行：渲染三档 + 变更即落盘 update.check_mode（2026-10-13）", async () => {
+  it("自动检查频率行：渲染七档（关闭/启动时/定时 1·3·8·15·24 小时）+ 变更即落盘 update.check_mode", async () => {
     settingsGetMock.mockResolvedValue("off");
     render(<UpdateCheck />);
     const select = (await waitFor(() =>
       screen.getByTestId("update-auto-check"),
     )) as HTMLSelectElement;
     expect(select.value).toBe("off");
-    fireEvent.change(select, { target: { value: "startup" } });
+    // 档位值：基础枚举 + interval:<小时>（24 小时档沿用裸值）
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toEqual([
+      "off",
+      "startup",
+      "interval:1",
+      "interval:3",
+      "interval:8",
+      "interval:15",
+      "interval",
+    ]);
+    // 定时档文案带小时数（英语走复数形态 "Every hour" 无数字 → 只查 3 小时档；
+    // 各档文案互不相同）
+    const labels = Array.from(select.options).map((o) => o.textContent ?? "");
+    expect(labels[3]).toContain("3");
+    expect(new Set(labels).size).toBe(labels.length);
+    // 变更即落盘（选 3 小时档 → 落 interval:3）
+    fireEvent.change(select, { target: { value: "interval:3" } });
     await waitFor(() =>
-      expect(settingsSetMock).toHaveBeenCalledWith(SETTING_UPDATE_CHECK_MODE, "startup"),
+      expect(settingsSetMock).toHaveBeenCalledWith(SETTING_UPDATE_CHECK_MODE, "interval:3"),
     );
+  });
+
+  it("自动检查频率行：旧配置 interval（=24 小时档）回填为定时档", async () => {
+    settingsGetMock.mockResolvedValue("interval");
+    render(<UpdateCheck />);
+    const select = (await waitFor(() =>
+      screen.getByTestId("update-auto-check"),
+    )) as HTMLSelectElement;
+    expect(select.value).toBe("interval");
   });
 
   it("检查按钮渲染（v2：版本号由关于卡显示，本组件不再重复）", async () => {

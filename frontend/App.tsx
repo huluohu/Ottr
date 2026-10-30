@@ -38,6 +38,7 @@ import { setSessionEndHook, useSessionStore } from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
+import { resolveDoubleClickZoom } from "./titlebar/zoomIntent";
 import { initAlertEngine } from "./notify/rules";
 import { initShortcutOverrides } from "./shortcuts/store";
 import { remountChannels } from "./notify/channelRegistry";
@@ -351,18 +352,50 @@ function HomeLayout() {
   // data-tauri-drag-region 走手动拖拽（performWindowDrag），系统「双击标题栏
   // 缩放」只在真标题栏生效——Overlay 形态下真标题栏被 webview 内容盖住。
   // 补全局 dblclick：命中拖拽面元素本身（与起拖同判定，子元素交互不受扰）
-  // 即 toggleMaximize。仅 mac + Tauri——Win/Linux 自绘标题栏的拖拽区经
-  // HTCAPTION 仿真，系统原生双击缩放已生效，再叠 JS 会双次翻转。
+  // 即缩放。仅 mac + Tauri——Win/Linux 自绘标题栏的拖拽区经 HTCAPTION 仿真，
+  // 系统原生双击缩放已生效，再叠 JS 会双次翻转。
+  //
+  // 2026-10-29 用户报障修正：「双击左边栏顶部最大化，有时候会先最大化、然后
+  // 又自动恢复默认尺寸」——macOS 的 performWindowDragWithEvent: **保留了系统
+  // 「双击标题栏缩放」语义**（系统那侧在第二次按下时就可能缩放过），与我们
+  // 的 toggleMaximize 方向相反时互相抵消。改为：按下时先记「缩放前」的最大化
+  // 状态，双击时按「当前是否已是目标态」决定要不要我们再动手（详见
+  // titlebar/zoomIntent.ts）。
   useEffect(() => {
     if (PLATFORM !== "mac" || !IS_TAURI) return;
-    const onDblClick = (e: MouseEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el?.hasAttribute("data-tauri-drag-region")) {
-        getCurrentWindow().toggleMaximize().catch(() => {});
-      }
+    const win = getCurrentWindow();
+    const onDragRegion = (el: Element | null): boolean =>
+      (el as HTMLElement | null)?.hasAttribute("data-tauri-drag-region") ?? false;
+    // 双击「之前」的最大化状态：第一次按下时抓（系统的缩放发生在第二次按下，
+    // 早于 dblclick 事件 → 此刻仍是缩放前的状态）。
+    let preMax: boolean | null = null;
+    const onMouseDown = (e: MouseEvent) => {
+      if (!onDragRegion(e.target as HTMLElement | null)) return;
+      void win
+        .isMaximized()
+        .then((v) => {
+          preMax = v;
+        })
+        .catch(() => {});
     };
+    const onDblClick = (e: MouseEvent) => {
+      if (!onDragRegion(e.target as HTMLElement | null)) return;
+      void win
+        .isMaximized()
+        .then((now) => {
+          const { target, act } = resolveDoubleClickZoom(preMax, now);
+          if (!act) return; // 系统那侧已缩放到目标态 → 不重复动作
+          preMax = target;
+          return target ? win.maximize() : win.unmaximize();
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("dblclick", onDblClick);
-    return () => window.removeEventListener("dblclick", onDblClick);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("dblclick", onDblClick);
+    };
   }, []);
 
   // T13：设置页路由钩子注入（aiStore 错误面「去设置」按钮 → 打开 AI 设置）

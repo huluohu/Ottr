@@ -1,7 +1,12 @@
-// 自动检查更新（2026-10-13 用户需求）：关闭 / 启动时检查 / 定时检查（24h）。
+// 自动检查更新（2026-10-13 用户需求）：关闭 / 启动时检查 / 定时检查。
 //
-// 配置面 = vault settings `update.check_mode`（"off"（默认）| "startup" |
-// "interval"），设置 → 关于 的下拉即改即生效（applyAutoCheckMode）。
+// 配置面 = vault settings `update.check_mode`：
+//   * "off"（默认）/ "startup" —— 基础枚举；
+//   * "interval" —— 旧值 = 24 小时档（2026-10-13 时只有这一档，向后兼容 ✓）；
+//   * "interval:<小时>" —— **2026-10-29 用户需求：定时检查增加更密的挡位**
+//     （1/3/8/15/24 小时；Rust 侧白名单同表，见 ottr-vault settings.rs）。
+//
+// 设置 → 关于 的下拉即改即生效（applyAutoCheckSetting）。
 //
 // 自动检查的 UX 纪律（与手动 toast 流程的差异）：
 //   * **全程静默**——不弹「正在检查」、不报「已是最新」、出错不上屏；发现
@@ -21,23 +26,49 @@ import { useUpdateStore } from "./updateStore";
 export type AutoCheckMode = "off" | "startup" | "interval";
 
 export const SETTING_UPDATE_CHECK_MODE = "update.check_mode";
-const INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-const MODES: readonly AutoCheckMode[] = ["off", "startup", "interval"];
+/** 定时检查的间隔挡位（小时）——与 Rust 侧 UPDATE_CHECK_INTERVAL_HOURS 对齐。 */
+export const INTERVAL_HOURS = [1, 3, 8, 15, 24] as const;
+export type IntervalHours = (typeof INTERVAL_HOURS)[number];
+/** 裸值 "interval"（旧配置）对应的档位 = 24 小时。 */
+export const DEFAULT_INTERVAL_HOURS: IntervalHours = 24;
 
-export function parseMode(raw: string | null | undefined): AutoCheckMode {
-  return MODES.includes(raw as AutoCheckMode) ? (raw as AutoCheckMode) : "off";
+/** 自动检查的完整设置（模式 + 间隔）。 */
+export interface AutoCheckSetting {
+  kind: AutoCheckMode;
+  /** 定时检查的间隔小时数（kind==="interval" 时有效）。 */
+  hours: IntervalHours;
+}
+
+/** 设置值 → 设置（非法值按 off 处理：安全侧不查）。 */
+export function parseSetting(raw: string | null | undefined): AutoCheckSetting {
+  if (raw === "startup") return { kind: "startup", hours: DEFAULT_INTERVAL_HOURS };
+  if (raw === "interval") return { kind: "interval", hours: DEFAULT_INTERVAL_HOURS };
+  if (typeof raw === "string" && raw.startsWith("interval:")) {
+    const hours = Number(raw.slice("interval:".length));
+    const hit = INTERVAL_HOURS.find((h) => Number(h) === hours);
+    if (hit !== undefined) return { kind: "interval", hours: hit };
+    return { kind: "off", hours: DEFAULT_INTERVAL_HOURS };
+  }
+  return { kind: "off", hours: DEFAULT_INTERVAL_HOURS };
+}
+
+/** 设置 → 设置值（24 小时档沿用裸 "interval"，避免旧配置被改写）。 */
+export function encodeSetting(setting: AutoCheckSetting): string {
+  if (setting.kind === "off") return "off";
+  if (setting.kind === "startup") return "startup";
+  return setting.hours === DEFAULT_INTERVAL_HOURS ? "interval" : `interval:${setting.hours}`;
 }
 
 let intervalTimer: ReturnType<typeof setInterval> | undefined;
 let started = false;
 
 /** 读配置（vault settings；非 Tauri/未就绪 = off——不查是安全侧）。 */
-async function readMode(): Promise<AutoCheckMode> {
+async function readSetting(): Promise<AutoCheckSetting> {
   try {
-    return parseMode(await vaultApi.settings.get<string>(SETTING_UPDATE_CHECK_MODE));
+    return parseSetting(await vaultApi.settings.get<string>(SETTING_UPDATE_CHECK_MODE));
   } catch {
-    return "off";
+    return { kind: "off", hours: DEFAULT_INTERVAL_HOURS };
   }
 }
 
@@ -59,17 +90,20 @@ async function runSilentCheck(): Promise<void> {
   // available / uptodate / error：自动路径一律不上屏（不打扰是本功能的全部意义）。
 }
 
-async function applyMode(mode: AutoCheckMode): Promise<void> {
+async function applySetting(setting: AutoCheckSetting): Promise<void> {
   if (intervalTimer !== undefined) {
     clearInterval(intervalTimer);
     intervalTimer = undefined;
   }
-  if (mode === "off") return;
+  if (setting.kind === "off") return;
   if (await isPortable()) return;
   // startup / interval 共有：启动即查一次。
   void runSilentCheck();
-  if (mode === "interval") {
-    intervalTimer = setInterval(() => void runSilentCheck(), INTERVAL_MS);
+  if (setting.kind === "interval") {
+    intervalTimer = setInterval(
+      () => void runSilentCheck(),
+      setting.hours * 60 * 60 * 1000,
+    );
   }
 }
 
@@ -77,12 +111,12 @@ async function applyMode(mode: AutoCheckMode): Promise<void> {
 export async function initAutoCheck(): Promise<void> {
   if (started) return;
   started = true;
-  await applyMode(await readMode());
+  await applySetting(await readSetting());
 }
 
 /** 设置页变更入口：落盘后的即时生效面（无需重启应用）。 */
-export async function applyAutoCheckMode(mode: AutoCheckMode): Promise<void> {
-  await applyMode(mode);
+export async function applyAutoCheckSetting(setting: AutoCheckSetting): Promise<void> {
+  await applySetting(setting);
 }
 
 /** 测试专用：复位单次武装标记与计时器（生产代码勿调——App 只 init 一次）。 */

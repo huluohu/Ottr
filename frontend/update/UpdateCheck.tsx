@@ -7,14 +7,23 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import {
-  applyAutoCheckMode,
-  parseMode,
+  applyAutoCheckSetting,
+  DEFAULT_INTERVAL_HOURS,
+  encodeSetting,
+  INTERVAL_HOURS,
+  parseSetting,
   SETTING_UPDATE_CHECK_MODE,
-  type AutoCheckMode,
+  type AutoCheckSetting,
 } from "./autoCheck";
 import { useUpdateStore } from "./updateStore";
 
-const AUTO_CHECK_MODES: readonly AutoCheckMode[] = ["off", "startup", "interval"];
+/** 下拉档位（2026-10-29 用户需求：定时检查增密 1/3/8/15/24 小时）。
+ *  顺序 = 关闭 → 启动时检查 → 定时检查由密到疏。 */
+const AUTO_CHECK_OPTIONS: readonly AutoCheckSetting[] = [
+  { kind: "off", hours: DEFAULT_INTERVAL_HOURS },
+  { kind: "startup", hours: DEFAULT_INTERVAL_HOURS },
+  ...INTERVAL_HOURS.map((hours) => ({ kind: "interval" as const, hours })),
+];
 
 export function UpdateCheck() {
   const { t } = useTranslation();
@@ -25,15 +34,15 @@ export function UpdateCheck() {
   const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
   const restartNow = useUpdateStore((s) => s.restartNow);
   // 自动检查频率（vault settings update.check_mode；null = 未拉到/非 Tauri）
-  const [autoCheckMode, setAutoCheckMode] = useState<AutoCheckMode | null>(null);
+  const [autoCheck, setAutoCheck] = useState<AutoCheckSetting | null>(null);
 
   useEffect(() => {
     loadCurrent();
     // Promise.resolve 兜底：测试 mock 对未列命令返回 undefined（非 thenable，
     // 同 hostkey 巡检状态读取的既有先例）。
     Promise.resolve(vaultApi.settings.get<string>(SETTING_UPDATE_CHECK_MODE))
-      .then((raw) => setAutoCheckMode(parseMode(raw)))
-      .catch(() => setAutoCheckMode("off"));
+      .then((raw) => setAutoCheck(parseSetting(raw)))
+      .catch(() => setAutoCheck({ kind: "off", hours: DEFAULT_INTERVAL_HOURS }));
   }, [loadCurrent]);
 
   return (
@@ -55,26 +64,31 @@ export function UpdateCheck() {
       ) : (
         <>
           {/* 自动检查频率（2026-10-13 用户需求）：即改即存即生效（autoCheck
-              模块重臂计时）；便携版随整个检查区隐藏（无 updater 无意义）。 */}
-          {autoCheckMode !== null && (
+              模块重臂计时）；便携版随整个检查区隐藏（无 updater 无意义）。
+              2026-10-29 增密档位：定时检查 1/3/8/15/24 小时。 */}
+          {autoCheck !== null && (
             <label className="settings-row" data-testid="update-auto-check-row">
               <span className="settings-label">{t("update.autoCheck")}</span>
               <select
                 data-testid="update-auto-check"
-                value={autoCheckMode}
+                value={encodeSetting(autoCheck)}
                 onChange={(e) => {
-                  const mode = parseMode(e.currentTarget.value);
-                  setAutoCheckMode(mode);
-                  void vaultApi.settings.set(SETTING_UPDATE_CHECK_MODE, mode).catch(() => {
-                    // 写入失败回落旧值（Rust validate 是权威；失败原因罕见）
-                    setAutoCheckMode(autoCheckMode);
-                  });
-                  void applyAutoCheckMode(mode);
+                  const setting = parseSetting(e.currentTarget.value);
+                  setAutoCheck(setting);
+                  void vaultApi.settings
+                    .set(SETTING_UPDATE_CHECK_MODE, encodeSetting(setting))
+                    .catch(() => {
+                      // 写入失败回落旧值（Rust validate 是权威；失败原因罕见）
+                      setAutoCheck(autoCheck);
+                    });
+                  void applyAutoCheckSetting(setting);
                 }}
               >
-                {AUTO_CHECK_MODES.map((m) => (
-                  <option key={m} value={m}>
-                    {t(`update.autoCheck_${m}`)}
+                {AUTO_CHECK_OPTIONS.map((o) => (
+                  <option key={encodeSetting(o)} value={encodeSetting(o)}>
+                    {o.kind === "interval"
+                      ? t("update.autoCheck_interval", { hours: o.hours, count: o.hours })
+                      : t(`update.autoCheck_${o.kind}`)}
                   </option>
                 ))}
               </select>

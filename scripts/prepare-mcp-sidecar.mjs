@@ -23,17 +23,21 @@ function hostTriple() {
   return m[1];
 }
 
-const triple = hostTriple();
+// 目标 triple：CI 交叉编译（release.yml 的 macOS Intel job）经 RUST_TARGET
+// 指定——beforeBuildCommand 继承 job 环境；本地 dev/host 场景 = rustc host。
+const triple = process.env.RUST_TARGET || hostTriple();
+const crossArgs = process.env.RUST_TARGET ? ["--target", process.env.RUST_TARGET] : [];
 const profileDir = release ? "release" : "debug";
-// 工作区 target 在仓库根（crates + desktop 同 workspace，无 target-dir 覆盖）。
-const built = join(root, "target", profileDir, "ottr-mcp");
+// 工作区 target 在仓库根（crates + desktop 同 workspace，无 target-dir 覆盖）；
+// 交叉编译时产物落 target/<triple>/<profile>/。
+const built = join(root, "target", ...crossArgs.slice(1), profileDir, "ottr-mcp");
 const builtExe = process.platform === "win32" ? `${built}.exe` : built;
 
 // 增量：已就位（同 profile）则跳过编译（tauri dev 重启频繁，debug 重复编译
 // 浪费数十秒；文件由 cargo 增量管理，我们只认「存在即用」）。
 const dest = join(root, "desktop", "binaries", `ottr-mcp-${triple}${process.platform === "win32" ? ".exe" : ""}`);
 if (!existsSync(dest)) {
-  execSync(`cargo build -p ottr-mcp ${release ? "--release" : ""}`, {
+  execSync(`cargo build -p ottr-mcp ${release ? "--release" : ""} ${crossArgs.join(" ")}`.trim(), {
     cwd: root,
     stdio: "inherit",
   });

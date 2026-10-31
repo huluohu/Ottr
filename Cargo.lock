@@ -3734,7 +3734,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "window-vibrancy",
- "windows-sys 0.52.0",
  "zeroize",
 ]
 
@@ -3755,6 +3754,14 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "ottr-mcp"
+version = "1.5.15"
+dependencies = [
+ "tokio",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

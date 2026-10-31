@@ -680,7 +680,13 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
                 onClick={() => setLang(id) /* 选中留场，同主题子面板 */}
               >
                 <span>
-                  {id === "zh-CN" ? "简体中文" : id === "zh-Hant" ? "繁體中文" : "English"}
+                  {id === "zh-CN"
+                    ? "简体中文"
+                    : id === "zh-Hant"
+                      ? "繁體中文"
+                      : id === "lzh"
+                        ? "文言"
+                        : "English"}
                 </span>
                 {lang === id && (
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

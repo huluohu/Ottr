@@ -96,6 +96,12 @@ jobs:
             libxdo-dev libssl-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev
 
+      # MCP relay sidecar 备料（2026-10-31）：workspace clippy 编译 desktop →
+      # tauri build.rs 校验 bundle.externalBin 的 sidecar 文件存在，缺失即拒
+      # （ottr-mcp 已拆独立 crate，cargo 不再连带编译它）。
+      - name: Prepare MCP relay sidecar
+        run: node scripts/prepare-mcp-sidecar.mjs
+
       - name: cargo clippy --workspace --all-targets -D warnings
         run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -150,7 +156,10 @@ jobs:
       - name: Run MCP named-pipe e2e (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: cargo test -p ottr --test mcp_pipe_fixture
+        # sidecar 备料前置于 e2e：desktop build.rs 校验 externalBin 文件存在
+        run: |
+          node scripts/prepare-mcp-sidecar.mjs
+          cargo test -p ottr --test mcp_pipe_fixture
 
       - name: Install frontend dependencies
         run: npm ci

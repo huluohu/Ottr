@@ -229,6 +229,25 @@ describe("SyncDialog", () => {
     await waitFor(() => expect(store.pull).toHaveBeenCalledWith("stored-pass", ["hosts", "snippets"], expect.anything()));
   });
 
+  it("conflict 态冲突列表为空（指纹双改但内容一致）→ 不渲染空裁定面板，给「重建基线」出口", async () => {
+    // 2026-10-31 用户实测：历史 push 实际成功而基线未落 → 三态判双改、逐类
+    // canonical 全同 → 冲突列表空。空面板此前「全选/应用全是死按钮」。
+    const store = fakeStore(statusOf("conflict", { conflicts: [] }));
+    const fm = fakeModel({ store });
+    renderDialog(fm);
+    await waitFor(() => expect(screen.getByTestId("sync-conflict-empty")).toBeTruthy());
+    expect(screen.queryByTestId("sync-conflict-panel")).toBeNull();
+    expect(screen.queryByTestId("conflict-all-local")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("sync-rebaseline"));
+    await waitFor(() => {
+      expect(store.calls.map((c) => c.op)).toEqual(["status", "push"]);
+    });
+    // cats undefined = 走已保存的推送范围（resolveScope），不夹带裁定面残留
+    expect(store.calls[1]!.args[0]).toBeNull();
+    expect(await screen.findByTestId("sync-done-text").then((el) => el.textContent)).toContain("推送");
+  });
+
   it("auth 错误（status / push 中途）→ 回 askpass 并显示口令错；执行失败 → error 面 + 重试重走 status", async () => {
     const authErr = new EnvelopeError("auth", "nope");
     const store = fakeStore(statusOf("push"));

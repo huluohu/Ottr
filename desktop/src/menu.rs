@@ -54,6 +54,9 @@ pub enum Lang {
     Zh,
     /// 繁體中文（zh-Hant，港澳台通用；2026-10-18 完整三语）。
     ZhTw,
+    /// 文言（lzh，浅近文言；2026-10-31 用户需求。繁体字形，菜单文案以
+    /// 浅近古语措辞）。
+    Lzh,
     En,
 }
 
@@ -66,6 +69,7 @@ pub fn lang_from_vault(vault: &ottr_vault::Vault) -> Lang {
     {
         Some("zh-CN") => Lang::Zh,
         Some("zh-Hant") => Lang::ZhTw,
+        Some("lzh") => Lang::Lzh,
         _ => Lang::En,
     }
 }
@@ -138,6 +142,7 @@ fn apply_accel_overrides(
 fn text(lang: Lang, key: &str) -> &'static str {
     let zh = lang == Lang::Zh;
     let hant = matches!(lang, Lang::ZhTw);
+    let lzh = matches!(lang, Lang::Lzh);
     match key {
         "app" => "Ottr",
         "settings" => {
@@ -145,6 +150,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "设置…"
             } else if hant {
                 "設定…"
+            } else if lzh {
+                "設…"
             } else {
                 "Settings…"
             }
@@ -153,6 +160,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
             if zh {
                 "文件"
             } else if hant {
+                "檔案"
+            } else if lzh {
                 "檔案"
             } else {
                 "File"
@@ -163,6 +172,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "新建分组"
             } else if hant {
                 "新建分組"
+            } else if lzh {
+                "創一類"
             } else {
                 "New Group"
             }
@@ -172,6 +183,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "新建主机"
             } else if hant {
                 "新建主機"
+            } else if lzh {
+                "增一機"
             } else {
                 "New Host"
             }
@@ -181,6 +194,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "导入主机…"
             } else if hant {
                 "匯入主機…"
+            } else if lzh {
+                "輯"
             } else {
                 "Import Hosts…"
             }
@@ -190,6 +205,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "向右分屏"
             } else if hant {
                 "向右分屏"
+            } else if lzh {
+                "複是席"
             } else {
                 "Split Right"
             }
@@ -199,6 +216,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "向下分屏"
             } else if hant {
                 "向下分屏"
+            } else if lzh {
+                "易名"
             } else {
                 "Split Down"
             }
@@ -210,6 +229,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "折叠/展开主机面板"
             } else if hant {
                 "折疊/展開主機面板"
+            } else if lzh {
+                "闔是席"
             } else {
                 "Toggle Host Panel"
             }
@@ -219,6 +240,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "编辑"
             } else if hant {
                 "編輯"
+            } else if lzh {
+                "闔窗"
             } else {
                 "Edit"
             }
@@ -228,6 +251,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "视图"
             } else if hant {
                 "視圖"
+            } else if lzh {
+                "納機"
             } else {
                 "View"
             }
@@ -237,6 +262,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "放大"
             } else if hant {
                 "放大"
+            } else if lzh {
+                "出機"
             } else {
                 "Zoom In"
             }
@@ -246,6 +273,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "缩小"
             } else if hant {
                 "縮小"
+            } else if lzh {
+                "去"
             } else {
                 "Zoom Out"
             }
@@ -255,6 +284,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "实际大小"
             } else if hant {
                 "實際大小"
+            } else if lzh {
+                "觀"
             } else {
                 "Actual Size"
             }
@@ -264,6 +295,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "窗口"
             } else if hant {
                 "窗口"
+            } else if lzh {
+                "全屏"
             } else {
                 "Window"
             }
@@ -273,6 +306,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "帮助"
             } else if hant {
                 "幫助"
+            } else if lzh {
+                "佐"
             } else {
                 "Help"
             }
@@ -282,6 +317,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "命令面板…"
             } else if hant {
                 "命令面板…"
+            } else if lzh {
+                "書"
             } else {
                 "Command Palette…"
             }
@@ -291,6 +328,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "项目主页"
             } else if hant {
                 "項目主頁"
+            } else if lzh {
+                "新版"
             } else {
                 "Project Homepage"
             }
@@ -300,6 +339,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "显示主窗口"
             } else if hant {
                 "顯示主窗口"
+            } else if lzh {
+                "自敘"
             } else {
                 "Show Main Window"
             }
@@ -309,6 +350,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "断开全部连接"
             } else if hant {
                 "斷開全部連接"
+            } else if lzh {
+                "察新…"
             } else {
                 "Disconnect All"
             }
@@ -318,6 +361,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "主题"
             } else if hant {
                 "主題"
+            } else if lzh {
+                "斂"
             } else {
                 "Theme"
             }
@@ -327,6 +372,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "浅滩"
             } else if hant {
                 "淺灘"
+            } else if lzh {
+                "張"
             } else {
                 "Shallows"
             }
@@ -336,6 +383,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "深河"
             } else if hant {
                 "深河"
+            } else if lzh {
+                "居前"
             } else {
                 "Deep Water"
             }
@@ -345,6 +394,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "跟随系统"
             } else if hant {
                 "跟隨系統"
+            } else if lzh {
+                "匿"
             } else {
                 "System"
             }
@@ -354,6 +405,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "深渊"
             } else if hant {
                 "深淵"
+            } else if lzh {
+                "匿諸他"
             } else {
                 "Abyss"
             }
@@ -363,6 +416,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "夜光河"
             } else if hant {
                 "夜光河"
+            } else if lzh {
+                "悉陳"
             } else {
                 "Bio River"
             }
@@ -372,6 +427,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "溪岸"
             } else if hant {
                 "溪岸"
+            } else if lzh {
+                "役"
             } else {
                 "Riverside"
             }
@@ -381,6 +438,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "雨窗"
             } else if hant {
                 "雨窗"
+            } else if lzh {
+                "削"
             } else {
                 "Rain Glass"
             }
@@ -390,6 +449,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "工具"
             } else if hant {
                 "工具"
+            } else if lzh {
+                "謄"
             } else {
                 "Tools"
             }
@@ -399,6 +460,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "沙洲"
             } else if hant {
                 "沙洲"
+            } else if lzh {
+                "黏"
             } else {
                 "Sandbar"
             }
@@ -408,6 +471,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "松涛"
             } else if hant {
                 "松濤"
+            } else if lzh {
+                "悉擇"
             } else {
                 "Pine Waves"
             }
@@ -417,6 +482,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "河灯"
             } else if hant {
                 "河燈"
+            } else if lzh {
+                "復行"
             } else {
                 "River Lanterns"
             }
@@ -426,6 +493,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "通知中心"
             } else if hant {
                 "通知中心"
+            } else if lzh {
+                "悔"
             } else {
                 "Notification Center"
             }
@@ -435,6 +504,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "凭据"
             } else if hant {
                 "憑證"
+            } else if lzh {
+                "易色"
             } else {
                 "Credentials"
             }
@@ -444,6 +515,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "告警规则"
             } else if hant {
                 "告警規則"
+            } else if lzh {
+                "易語"
             } else {
                 "Alert Rules"
             }
@@ -453,6 +526,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "端口转发"
             } else if hant {
                 "端口轉發"
+            } else if lzh {
+                "即刻上鎖"
             } else {
                 "Port Forwards"
             }
@@ -462,6 +537,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "跳板链"
             } else if hant {
                 "跳板鏈"
+            } else if lzh {
+                "本機終端"
             } else {
                 "Jump Chains"
             }
@@ -471,6 +548,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "总览"
             } else if hant {
                 "總覽"
+            } else if lzh {
+                "右分屏"
             } else {
                 "Overview"
             }
@@ -480,6 +559,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "批量执行"
             } else if hant {
                 "批量執行"
+            } else if lzh {
+                "下分屏"
             } else {
                 "Batch Exec"
             }
@@ -489,6 +570,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "定时任务"
             } else if hant {
                 "定時任務"
+            } else if lzh {
+                "令牌"
             } else {
                 "Scheduled Tasks"
             }
@@ -505,6 +588,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "导出主机…"
             } else if hant {
                 "匯出主機…"
+            } else if lzh {
+                "啟終端"
             } else {
                 "Export Hosts…"
             }
@@ -514,6 +599,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "检查更新…"
             } else if hant {
                 "檢查更新…"
+            } else if lzh {
+                "檔"
             } else {
                 "Check for Updates…"
             }
@@ -523,6 +610,8 @@ fn text(lang: Lang, key: &str) -> &'static str {
                 "退出 Ottr"
             } else if hant {
                 "退出 Ottr"
+            } else if lzh {
+                "諸程"
             } else {
                 "Quit Ottr"
             }
@@ -848,12 +937,14 @@ pub fn tray_tree(lang: Lang, session_count: u64) -> Vec<MenuNode> {
         match lang {
             Lang::Zh => "无活动会话".to_string(),
             Lang::ZhTw => "無活動工作階段".to_string(),
+            Lang::Lzh => "無席在線".to_string(),
             Lang::En => "No active sessions".to_string(),
         }
     } else {
         match lang {
             Lang::Zh => format!("{session_count} 个会话在线"),
             Lang::ZhTw => format!("{session_count} 個工作階段在線"),
+            Lang::Lzh => format!("{session_count} 席在線"),
             Lang::En => format!("{session_count} active session(s)"),
         }
     };

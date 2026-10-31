@@ -87,9 +87,31 @@ struct RelayClient {
     stdin: Arc<Mutex<Box<dyn Write + Send>>>,
 }
 
+/// relay 可执行文件路径：优先 Cargo 注入（同包 bin 时有效）；ottr-mcp 已拆
+/// 独立 crate（2026-10-31，桌面 tauri build.rs 校验 sidecar 的鸡生蛋破局），
+/// 退回工作区 target 目录推导（与测试同 profile）。
+fn relay_exe() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("CARGO_BIN_EXE_ottr-mcp") {
+        return p.into();
+    }
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    let mut p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../target") // ottr-mcp 独立 crate：workspace target 在仓库根（desktop 的上一级）
+        .join(profile)
+        .join("ottr-mcp");
+    if cfg!(windows) {
+        p.set_extension("exe");
+    }
+    p
+}
+
 impl RelayClient {
     fn spawn(socket: &std::path::Path) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_ottr-mcp"))
+        let mut child = Command::new(relay_exe())
             .arg("--socket")
             .arg(socket)
             .stdin(Stdio::piped())

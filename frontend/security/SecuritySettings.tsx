@@ -1090,7 +1090,9 @@ export function SecuritySettings({
                         ? t("settings.langZh")
                         : l === "zh-Hant"
                           ? t("settings.langHant")
-                          : t("settings.langEn")}
+                          : l === "lzh"
+                            ? t("settings.langLzh")
+                            : t("settings.langEn")}
                     </option>
                   ))}
                 </select>
@@ -1203,27 +1205,31 @@ export function SecuritySettings({
                     </p>
                   </div>
                 </div>
-                {/* 元信息行（2026-10-29 用户需求：加博客地址）：作者·许可·博客·
-                    仓库。三个链接同列同款（裸 URL、无标签），博客排在仓库前
-                    ——短项在前，行末留最长的仓库 URL。flex-wrap 兜底窄面板
-                    折行（.about-meta 见 16-lock-security.css）。 */}
+                {/* 元信息（2026-10-31 用户需求：博客地址单独一行；同日跟进：
+                    分别标记博客/项目——两个裸 URL 并排无人知晓各是啥）。 */}
                 <div className="about-meta">
                   <span>@huluohu</span>
                   <span aria-hidden="true">·</span>
                   <span>MIT</span>
-                  <span aria-hidden="true">·</span>
-                  <a
-                    href="https://www.huluohu.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    data-testid="about-blog"
-                  >
-                    www.huluohu.com
-                  </a>
-                  <span aria-hidden="true">·</span>
-                  <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
-                    https://github.com/huluohu/Ottr
-                  </a>
+                </div>
+                <div className="about-links">
+                  <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.blogLabel")}</span>
+                    <a
+                      href="https://www.huluohu.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="about-blog"
+                    >
+                      www.huluohu.com
+                    </a>
+                  </span>
+                  <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.repoLabel")}</span>
+                    <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
+                      https://github.com/huluohu/Ottr
+                    </a>
+                  </span>
                 </div>
               </div>
               <div className="form-section-title">{t("settings.softwareUpdate")}</div>

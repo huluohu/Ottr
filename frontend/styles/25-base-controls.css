@@ -103,28 +103,46 @@
   width: 14px;
 }
 
-/* 三选段控（互斥单选）：选中段 accent 实底 + on-accent 前景，同一 mint 家族 */
+/* 分段页签（互斥单选；2026-10-31 用户反馈「太像按钮，容易与按钮混淆」）：
+ * 从「胶囊分段按钮」改为**页签形态**——下缘细分隔线 + 选中段 accent 文字与
+ * 2px 下划线，不再用 accent 实底填充（实底 = 与操作按钮同视觉家族，混淆
+ * 源）。DOM/ARIA 契约不变（role=group + aria-pressed，键盘漫游保留）。 */
 .ui-segmented {
   display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background-color: var(--color-surface, transparent);
+  gap: var(--space-4);
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
 }
 .ui-segmented button {
-  font-size: var(--text-sm);
-  padding: 0.25em 0.7em;
+  position: relative;
+  font-size: var(--text-base);
+  padding: 4px 2px 8px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   background: transparent;
-  color: inherit;
+  color: var(--fg-muted);
   box-shadow: none;
+  cursor: pointer;
+}
+.ui-segmented button:hover {
+  color: var(--color-fg);
 }
 .ui-segmented button[data-active="true"] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-accent-text);
+}
+.ui-segmented button[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
   background: var(--color-accent);
-  border-color: var(--color-accent-border);
-  color: var(--color-on-accent);
 }
 
 /* 主题网格卡片（theme-suite T2.4，设置页外观区）：每卡 = 迷你色板预览条

@@ -1,7 +1,7 @@
 [workspace]
 
 resolver = "2"
-members = ["desktop", "crates/ottr-ssh", "crates/ottr-transfer", "crates/ottr-term", "crates/ottr-bench", "crates/ottr-vault", "crates/ottr-monitor", "crates/ottr-cron"]
+members = ["desktop", "crates/ottr-mcp", "crates/ottr-ssh", "crates/ottr-transfer", "crates/ottr-term", "crates/ottr-bench", "crates/ottr-vault", "crates/ottr-monitor", "crates/ottr-cron"]
 
 # Mobile targets (P4-T5, docs/adr/0001-mobile-scope.md): aarch64-apple-ios /
 # aarch64-linux-android are CHECK-ONLY targets (rustup target add; no committed

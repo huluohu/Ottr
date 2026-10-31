@@ -22,10 +22,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # MCP stdio relay（Phase 4 Task 3，C1）：Claude Desktop 等 MCP 客户端 spawn 的
 # 子进程——纯 std 字节管道（stdin ↔ UDS ↔ stdout），不链接 ottr_lib/tauri。
 # 形态裁定与配置方法见 commands/mcp.rs 模块文档与 docs/mcp.md。
-[[bin]]
-name = "ottr-mcp"
-path = "src/bin/ottr-mcp.rs"
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -152,15 +148,8 @@ tempfile = { workspace = true }
 russh = { workspace = true }
 rand = { workspace = true }
 
-# MCP Windows 传输（2026-10-13 命名管道形态）：relay 侧同步 FFI 客户端 +
-# 引擎侧 tokio named pipe server。安全 = 管道默认 DACL（创建者 token，仅
-# 当前用户/管理员可连）——与 UDS 0600 同级保证，见 listener.rs windows 分支。
+# MCP Windows 传输（2026-10-13 命名管道形态）：引擎侧 tokio named pipe
+# server（relay 客户端已拆至 crates/ottr-mcp）。安全 = 管道默认 DACL（创建者
+# token，仅当前用户/管理员可连）——与 UDS 0600 同级保证，见 listener.rs
+# windows 分支。
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = [
-  "Win32_Foundation",
-  "Win32_Security",
-  "Win32_Storage_FileSystem",
-  "Win32_System_IO",
-  "Win32_System_Pipes",
-  "Win32_System_Threading",
-] }

@@ -1,9 +1,11 @@
 // i18n 脚手架（A11，Task 2 产出；全任务消费）：
 // i18next + react-i18next，单文件 translation 命名空间起步；词典 zh-CN/zh-Hant/
 // en-US JSON（2026-10-18 +繁體中文：zh-Hant = 港澳台通用繁体，字形 OpenCC s2t
-// 打底 + 高频词人工校准）。
+// 打底 + 高频词人工校准）；2026-10-31 +文言（lzh，ISO 639-3 Literary Chinese）：
+// 以 zh-Hant 为底的浅近文言（scripts/gen-lzh-locale.py 词典 + 高可见键手工
+// 雅化），缺键回落 zh-Hant → zh-CN。
 // 语言 = 系统检测（navigator.language：zh-Hant/TW/HK/MO → zh-Hant，zh* 其余 →
-// zh-CN，其余 → en-US）+ 手动覆盖。
+// zh-CN，其余 → en-US；文言仅手动选择）+ 手动覆盖。
 // 持久化（T11 迁移完成）：真源 = vault settings `ui.language`（明文面，锁定可读，
 // syncLangFromVault 对齐/迁移）；localStorage 键降级为启动缓存镜像（防闪烁）。
 // fallback：zh-Hant 缺键回落 zh-CN（繁体缺词不裸露），en-US 恒为最终兜底。
@@ -12,8 +14,10 @@ import { initReactI18next, useTranslation } from "react-i18next";
 import zhCN from "./zh-CN.json";
 import zhHant from "./zh-Hant.json";
 import enUS from "./en-US.json";
+import lzh from "./lzh.json";
 
-export const LANGS = ["zh-CN", "zh-Hant", "en-US"] as const;
+// 顺序即选择器顺序（2026-10-31 用户裁定：文言紧随繁体，English 垫底）。
+export const LANGS = ["zh-CN", "zh-Hant", "lzh", "en-US"] as const;
 export type Lang = (typeof LANGS)[number];
 
 /** localStorage 缓存镜像键（真源 = vault settings，见文件头）。 */
@@ -65,10 +69,12 @@ void i18n.use(initReactI18next).init({
     "zh-CN": { translation: zhCN },
     "zh-Hant": { translation: zhHant },
     "en-US": { translation: enUS },
+    lzh: { translation: lzh },
   },
   lng: detectLang(),
-  // zh-Hant 缺键回落简体（同文种优先），en-US 恒为最终兜底
-  fallbackLng: { "zh-Hant": ["zh-CN"], default: ["en-US"] },
+  // 缺键回落链：lzh（文言）→ zh-Hant → zh-CN（同文种逐级白话化），en-US 恒为
+  // 最终兜底——文言词典缺词不裸露键名。
+  fallbackLng: { lzh: ["zh-Hant", "zh-CN"], "zh-Hant": ["zh-CN"], default: ["en-US"] },
   // React 自带 XSS 转义；关闭 i18next 二次转义避免 &amp; 双重转义
   interpolation: { escapeValue: false },
 });

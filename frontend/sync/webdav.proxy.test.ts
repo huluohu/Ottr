@@ -95,6 +95,18 @@ describe("WebDAV 生产代理包装（tauriWebdavFetch）", () => {
     }
   });
 
+  it("无体状态（alist PUT 实测 204）→ Response 以 null body 构造，push 不再假失败", async () => {
+    // 根因（2026-10-31 用户实测）：WebKit 的 Response 构造器对 204 + 非空
+    // body 直接抛 TypeError「Response cannot have a body with the given
+    // status」——服务器上实际已写入成功，UI 却报同步失败。
+    const env = await sealEnvelope("payload", "pw");
+    const t = proxied([{ status: 204, body: "" }]);
+    await expect(t.push(env)).resolves.toBeUndefined(); // 不抛 = 假失败根除
+    // 205/304 同口径（null body status 家族）
+    const t2 = proxied([{ status: 205, body: "" }, { status: 304, body: "" }]);
+    await expect(t2.push(env)).resolves.toBeUndefined();
+  });
+
   it("非 Tauri 环境：默认 fetchImpl（无 deps）报明确错误，不静默走全局 fetch", async () => {
     const t = createWebdavTransport(config); // 生产默认 = 代理包装
     await expect(t.fetch()).rejects.toThrow("non-Tauri environments must inject deps.fetchImpl");

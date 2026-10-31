@@ -198,7 +198,7 @@ describe("i18n", () => {
 
     // 语言选择器的「语言自主名称」惯例（en 包里也用原文显示「中文」）——豁免；
     // 其余任何 CJK 都是语言包损坏（I-1 现场）。
-    const SELF_NAMED_LANG_KEYS = new Set(["settings.langZh", "settings.langHant", "palette.langToggle"]);
+    const SELF_NAMED_LANG_KEYS = new Set(["settings.langZh", "settings.langHant", "settings.langLzh", "palette.langToggle"]);
     const cjk = enLeaves.filter(([k, v]) => !SELF_NAMED_LANG_KEYS.has(k) && hasCJK(v));
     expect(cjk, "en-US 值含中文（英文用户看到中文文案）").toEqual([]);
 
@@ -247,6 +247,36 @@ describe("i18n", () => {
       for (const [k, zv] of flatten(zh)) {
         const hv = hantFlat.get(k);
         expect(vars(String(hv)), `占位符不一致: ${k}`).toEqual(vars(zv));
+      }
+    });
+  });
+
+  // 2026-10-31 +lzh（文言）：以 zh-Hant 为底生成（scripts/gen-lzh-locale.py），
+  // 键集与占位符必须与 zh-Hant 1:1——fallback 兜运行期缺键，词典漂移不许。
+  describe("lzh（文言）对齐", () => {
+    it("键集双向一致：lzh 键 = zh-Hant 键（无多无缺）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const hant = JSON.parse(read("zh-Hant.json"));
+      const lzh = JSON.parse(read("lzh.json"));
+      const hantKeys = new Set(flatten(hant).map(([k]) => k));
+      const lzhKeys = new Set(flatten(lzh).map(([k]) => k));
+      const missing = [...hantKeys].filter((k) => !lzhKeys.has(k));
+      const extra = [...lzhKeys].filter((k) => !hantKeys.has(k));
+      expect(missing, "lzh 缺键").toEqual([]);
+      expect(extra, "lzh 多键").toEqual([]);
+    });
+
+    it("插值占位符与 zh-Hant 一致（{{x}} 面对齐）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const hant = JSON.parse(read("zh-Hant.json"));
+      const lzh = JSON.parse(read("lzh.json"));
+      const vars = (s: string) => [...s.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
+      const lzhFlat = new Map(flatten(lzh));
+      for (const [k, hv] of flatten(hant)) {
+        const lv = lzhFlat.get(k);
+        expect(vars(String(lv)), `占位符不一致: ${k}`).toEqual(vars(hv));
       }
     });
 

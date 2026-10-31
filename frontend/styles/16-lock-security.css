@@ -582,13 +582,23 @@
   font-size: var(--text-sm);
   color: var(--fg-muted);
 }
-/* 链接区（2026-10-31 用户需求：博客地址单独一行）：博客与仓库各占一行，
-   纵排裸 URL（弱化色，与元信息行同字号）。 */
+/* 链接区（2026-10-31 用户需求：博客地址单独一行；同日跟进：分别标记
+   博客/项目——裸 URL 并排无法自明）。标签弱化色在前，链接随后。 */
 .about-links {
   display: flex;
   flex-direction: column;
   gap: 2px;
   font-size: var(--text-sm);
+}
+.about-link-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.about-link-label {
+  flex: none;
+  color: var(--fg-muted);
 }
 .about-links a {
   color: var(--fg-muted);

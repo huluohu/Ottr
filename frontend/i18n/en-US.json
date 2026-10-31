@@ -60,6 +60,8 @@
     "langZh": "简体中文",
     "langEn": "English",
       "langLzh": "文言 (Classical)",
+      "blogLabel": "Blog",
+      "repoLabel": "Project",
     "sectionSecurity": "Security",
     "closeToTray": "Hide to tray on close",
     "closeToTrayHint": "Ottr stays in the system tray after closing; quit from the tray.",

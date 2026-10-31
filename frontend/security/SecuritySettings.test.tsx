@@ -693,8 +693,8 @@ describe("定向分区消费（2026-10-13 修复：initialPane 此前从未被�
   });
 });
 
-describe("关于分区的博客地址（2026-10-29 用户需求；2026-10-31 改单独成行）", () => {
-  it("博客链接独立成行（.about-links），与作者/许可元信息行分离；仓库链接仍在", () => {
+describe("关于分区的博客地址（2026-10-29 用户需求；2026-10-31 单独成行 + 分别标记）", () => {
+  it("博客/项目各占一行且带标签（裸 URL 并排无法自明）；仓库链接仍在", () => {
     render(
       <ThemeProvider>
         <SecuritySettings open initialPane="about" onClose={() => {}} />
@@ -709,12 +709,16 @@ describe("关于分区的博客地址（2026-10-29 用户需求；2026-10-31 改
     // 博客在独立链接区（.about-links），不在作者/许可元信息行内
     expect(blog.closest(".about-links")).toBeTruthy();
     expect(blog.closest(".about-meta")).toBeNull();
-    // 仓库链接同区且在博客之后
-    const repo = card.querySelector('a[href="https://github.com/huluohu/Ottr"]');
+    // 各行带弱化标签（博客/项目），标签在链接之前同行
+    const blogLine = blog.closest(".about-link-line") as Element;
+    expect(blogLine.querySelector(".about-link-label")?.textContent).toBe("博客");
+    const repo = card.querySelector('a[href="https://github.com/huluohu/Ottr"]') as Element;
     expect(repo).toBeTruthy();
-    expect((repo as Element).closest(".about-links")).toBe(blog.closest(".about-links"));
+    const repoLabel = repo.closest(".about-link-line")?.querySelector(".about-link-label");
+    expect(repoLabel?.textContent).toBe("项目");
+    // 顺序：博客在仓库之前
     expect(
-      blog.compareDocumentPosition(repo as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+      blog.compareDocumentPosition(repo) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 });

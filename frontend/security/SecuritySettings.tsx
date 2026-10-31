@@ -1205,26 +1205,31 @@ export function SecuritySettings({
                     </p>
                   </div>
                 </div>
-                {/* 元信息（2026-10-31 用户需求：博客地址单独一行）：第一行 =
-                    作者·许可；博客与仓库各占一行（.about-links 纵排，裸 URL
-                    同款无标签）。 */}
+                {/* 元信息（2026-10-31 用户需求：博客地址单独一行；同日跟进：
+                    分别标记博客/项目——两个裸 URL 并排无人知晓各是啥）。 */}
                 <div className="about-meta">
                   <span>@huluohu</span>
                   <span aria-hidden="true">·</span>
                   <span>MIT</span>
                 </div>
                 <div className="about-links">
-                  <a
-                    href="https://www.huluohu.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    data-testid="about-blog"
-                  >
-                    www.huluohu.com
-                  </a>
-                  <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
-                    https://github.com/huluohu/Ottr
-                  </a>
+                  <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.blogLabel")}</span>
+                    <a
+                      href="https://www.huluohu.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="about-blog"
+                    >
+                      www.huluohu.com
+                    </a>
+                  </span>
+                  <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.repoLabel")}</span>
+                    <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
+                      https://github.com/huluohu/Ottr
+                    </a>
+                  </span>
                 </div>
               </div>
               <div className="form-section-title">{t("settings.softwareUpdate")}</div>

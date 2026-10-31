@@ -60,6 +60,8 @@
     "langZh": "简体中文",
     "langEn": "English",
       "langLzh": "文言（古語）",
+      "blogLabel": "博客",
+      "repoLabel": "專案",
     "sectionSecurity": "安全",
     "closeToTray": "關閉窗口時隱藏到托盤",
     "closeToTrayHint": "關閉後 Ottr 常駐系統托盤，可從托盤退出。",

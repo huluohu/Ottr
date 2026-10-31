@@ -244,6 +244,9 @@ HAND = {
     "settings.langHant": "繁體中文",
     "settings.langEn": "English",
     "settings.langLzh": "文言",
+    # 语言自主名称 = 原文惯例（简体「简体中文」不随文言词典转字形）
+    "settings.langZh": "简体中文",
+    "settings.langHant": "繁體中文",
     "settings.aboutSlogan": "如獺穿行於伺服器之間。",
     "settings.shellIntegration": "Shell 集成注入",
     "settings.recordingSaveDir": "錄檔之所",

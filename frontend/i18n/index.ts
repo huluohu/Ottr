@@ -16,7 +16,8 @@ import zhHant from "./zh-Hant.json";
 import enUS from "./en-US.json";
 import lzh from "./lzh.json";
 
-export const LANGS = ["zh-CN", "zh-Hant", "en-US", "lzh"] as const;
+// 顺序即选择器顺序（2026-10-31 用户裁定：文言紧随繁体，English 垫底）。
+export const LANGS = ["zh-CN", "zh-Hant", "lzh", "en-US"] as const;
 export type Lang = (typeof LANGS)[number];
 
 /** localStorage 缓存镜像键（真源 = vault settings，见文件头）。 */

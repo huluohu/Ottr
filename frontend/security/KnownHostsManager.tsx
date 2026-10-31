@@ -15,6 +15,7 @@ import {
   type KnownHost,
   type KnownHostState,
 } from "../vault/api";
+import { InfoHint } from "../ui/InfoHint";
 
 const STATE_BADGE: Record<KnownHostState, string> = {
   ok: "kh-badge-ok",
@@ -117,6 +118,7 @@ export function KnownHostsManager() {
     <section aria-label={t("knownHosts.title")} data-testid="known-hosts-manager">
       <div className="kh-toolbar">
         <h3>{t("knownHosts.title")}</h3>
+        <InfoHint text={t("knownHosts.hint")} />
         <button
           type="button"
           data-testid="kh-audit-now"
@@ -126,7 +128,6 @@ export function KnownHostsManager() {
           {auditing ? t("knownHosts.auditing") : t("knownHosts.auditNow")}
         </button>
       </div>
-      <p className="settings-hint">{t("knownHosts.hint")}</p>
       {auditMsg && (
         <p className="tree-status" data-testid="kh-audit-result">
           {auditMsg}
@@ -231,7 +232,7 @@ export function KnownHostsManager() {
               </p>
             ) : (
               <>
-                <p className="settings-hint">{t("knownHosts.probeHint")}</p>
+                <InfoHint text={t("knownHosts.probeHint")} />
                 <ul className="kh-seen" data-testid="kh-probe-seen">
                   {probe.seen.map((fp) => (
                     <li key={fp}>

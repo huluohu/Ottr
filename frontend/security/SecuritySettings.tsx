@@ -36,6 +36,8 @@ import { ShortcutSettings } from "./ShortcutSettings";
 import { McpSettings } from "./McpSettings";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
 import { DialogClose } from "../ui/DialogClose";
+import { InfoHint } from "../ui/InfoHint";
+import { SettingsGroup } from "../ui/SettingsGroup";
 
 export interface SecuritySettingsProps {
   open: boolean;
@@ -495,13 +497,15 @@ export function SecuritySettings({
 
           <div className="settings-row" data-testid="vault-mode">
             <span className="settings-label">{t("security.mode")}</span>
+            <InfoHint
+              text={
+                isPasswordMode ? t("security.modePasswordDesc") : t("security.modeKeyringDesc")
+              }
+            />
             <span className={`vault-mode-badge vault-mode-${lockMode ?? "unknown"}`}>
               {isPasswordMode ? t("security.modePassword") : t("security.modeKeyring")}
             </span>
           </div>
-          <p className="settings-hint">
-            {isPasswordMode ? t("security.modePasswordDesc") : t("security.modeKeyringDesc")}
-          </p>
 
           {isPasswordMode ? (
             <div className="settings-row">
@@ -730,6 +734,7 @@ export function SecuritySettings({
               面过大）；可访问名经 Switch label prop 补回。 */}
           <div className="settings-row" data-testid="hostkey-audit-row">
             <span className="settings-label">{t("security.hostkeyAudit")}</span>
+            <InfoHint text={t("security.hostkeyAuditHint")} />
             <Switch
               testid="hostkey-audit-toggle"
               label={t("security.hostkeyAudit")}
@@ -784,7 +789,6 @@ export function SecuritySettings({
               </select>
             </label>
           )}
-          <p className="settings-hint">{t("security.hostkeyAuditHint")}</p>
 
           {/* B9（Task 6）：sudo 密码自动填充——安全敏感：默认关 + password
               （主密码）模式限定 + 开启须确认框说明风险（keyring 模式隐藏） */}
@@ -792,6 +796,7 @@ export function SecuritySettings({
             <>
               <div className="settings-row" data-testid="sudo-autofill-row">
                 <span className="settings-label">{t("security.sudoAutofill")}</span>
+                <InfoHint text={t("security.sudoAutofillHint")} />
                 <Switch
                   testid="sudo-autofill-toggle"
                   label={t("security.sudoAutofill")}
@@ -808,7 +813,6 @@ export function SecuritySettings({
                   }}
                 />
               </div>
-              <p className="settings-hint">{t("security.sudoAutofillHint")}</p>
               {sudoConfirm && (
                 <div
                   ref={sudoConfirmRef}
@@ -909,7 +913,14 @@ export function SecuritySettings({
               新主题零 CSS 成本；system 卡保留分屏渐变静态样式。 */}
           <div className="settings-row">
             <span className="settings-label">{t("settings.theme")}</span>
+            <InfoHint text={t("settings.themeAmethystGlassHint")} />
           </div>
+          {/* 水域家族更名映射提示（2026-10-16 视觉重设计）：旧名 → 新名 90 天
+              过渡（至 2027-01-14 后移除本行与 settings.themeRenameHint 双语键）。
+              属「迁移通告」而非选项解释——用户需要一眼看到，故不进 ⓘ 气泡。 */}
+          <p className="settings-hint" data-testid="theme-rename-hint">
+            {t("settings.themeRenameHint")}
+          </p>
           <div className="theme-grid" role="radiogroup" aria-label={t("settings.theme")} data-testid="theme-grid">
             {THEME_CHOICES.map((m) => (
               <button
@@ -937,18 +948,13 @@ export function SecuritySettings({
           </div>
           {/* 幻紫/雾镜（今夜光河/雨窗）同为暗色主题，选择卡看不出差别（2026-10-13
               用户问询）：网格下一行说明差异本体（实色 vs 真透明）。 */}
-          <p className="settings-hint">{t("settings.themeAmethystGlassHint")}</p>
-          {/* 水域家族更名映射提示（2026-10-16 视觉重设计）：旧名 → 新名 90 天
-              过渡（至 2027-01-14 后移除本行与 settings.themeRenameHint 双语键）。 */}
-          <p className="settings-hint" data-testid="theme-rename-hint">
-            {t("settings.themeRenameHint")}
-          </p>
           {/* Otty 情感时刻开关（2026-10-16 M3，报告红线②：默认开但必须可一键关）。
               div 包行沿 2026-10-16 用户反馈口径（label 包行命中面过大），可访问名
               走 Switch label prop；镜像面 = ottyStore，vault 真源由 setOttyEnabled
               异步落库（失败不回滚镜像，与 ui.theme 同口径）。 */}
           <div className="settings-row" data-testid="otty-moments-row">
             <span className="settings-label">{t("settings.ottyMoments")}</span>
+            <InfoHint text={t("settings.ottyMomentsHint")} />
             <Switch
               testid="otty-moments-toggle"
               label={t("settings.ottyMoments")}
@@ -956,12 +962,12 @@ export function SecuritySettings({
               onChange={(e) => setOttyEnabled(e.currentTarget.checked)}
             />
           </div>
-          <p className="settings-hint">{t("settings.ottyMomentsHint")}</p>
           {/* --- 终端配色（B2 主题生态，Phase 2 Task 9）：auto 跟随界面 /
               内置画廊 / 自定义（iTerm2 .itermcolors 与 Windows Terminal .json
               导入，vault settings 持久化）--- */}
           <label className="settings-row" data-testid="terminal-theme-row">
             <span className="settings-label">{t("settings.terminalTheme")}</span>
+            <InfoHint text={t("settings.terminalThemeHint")} />
             <select
               data-testid="terminal-theme-select"
               value={terminalSelection}
@@ -987,7 +993,6 @@ export function SecuritySettings({
               )}
             </select>
           </label>
-          <p className="settings-hint">{t("settings.terminalThemeHint")}</p>
           <div className="settings-row">
             <span className="settings-label">{t("settings.terminalThemeImport")}</span>
             <input
@@ -1077,6 +1082,9 @@ export function SecuritySettings({
               data-testid="general-section"
             >
               <h3>{t("settings.sectionGeneral")}</h3>
+              {/* 分组卡片版式（2026-10-31 用户需求，参照系统设置类应用）：
+                  外观 / 启动 / 存储 三组，组内选项行以发丝线分隔。 */}
+              <SettingsGroup title={t("settings.sectionAppearance")} testid="general-group-appearance">
               <label className="settings-row">
                 <span className="settings-label">{t("settings.language")}</span>
                 <select
@@ -1097,10 +1105,13 @@ export function SecuritySettings({
                   ))}
                 </select>
               </label>
+              </SettingsGroup>
               {/* A12（Task 14）：关窗到托盘（三端统一默认开，简报裁定）。开关行
                   div 包行 + Switch label 补可访问名（点击面收窄到控件本身）。 */}
+              <SettingsGroup title={t("settings.groupStartup")} testid="general-group-startup">
               <div className="settings-row" data-testid="close-to-tray-row">
                 <span className="settings-label">{t("settings.closeToTray")}</span>
+                <InfoHint text={t("settings.closeToTrayHint")} />
                 <Switch
                   testid="close-to-tray-toggle"
                   label={t("settings.closeToTray")}
@@ -1112,11 +1123,11 @@ export function SecuritySettings({
                   }}
                 />
               </div>
-              <p className="settings-hint">{t("settings.closeToTrayHint")}</p>
               {/* Task 15 fix 1/5：shell 集成自动注入（⌘R 历史搜索 / T13 报错即诊的
                   数据源）。关 = attach 不探测不注入；已自带集成的远端自动跳过。 */}
               <div className="settings-row" data-testid="shell-integration-row">
                 <span className="settings-label">{t("settings.shellIntegration")}</span>
+                <InfoHint text={t("settings.shellIntegrationHint")} />
                 <Switch
                   testid="shell-integration-toggle"
                   label={t("settings.shellIntegration")}
@@ -1128,11 +1139,13 @@ export function SecuritySettings({
                   }}
                 />
               </div>
-              <p className="settings-hint">{t("settings.shellIntegrationHint")}</p>
+              </SettingsGroup>
               {/* 录制默认保存目录（2026-10-12 用户需求）：停录时 .cast 副本落盘位置；
                   空 = 下载目录/Ottr 录制 兜底。目录选择走 plugin-dialog。 */}
+              <SettingsGroup title={t("settings.groupStorage")} testid="general-group-storage">
               <div className="settings-row" data-testid="recording-save-dir-row">
                 <span className="settings-label">{t("settings.recordingSaveDir")}</span>
+                <InfoHint text={t("settings.recordingSaveDirHint")} />
                 <span className="settings-hint" data-testid="recording-save-dir-value">
                   {recordingSaveDir || t("settings.recordingSaveDirDefault")}
                 </span>
@@ -1156,7 +1169,7 @@ export function SecuritySettings({
                   </button>
                 )}
               </div>
-              <p className="settings-hint">{t("settings.recordingSaveDirHint")}</p>
+              </SettingsGroup>
             </section>
 
             {/* --- AI（2026-10-10 第 6 分区）：服务商管理自独立对话框并入；

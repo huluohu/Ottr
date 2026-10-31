@@ -6,6 +6,7 @@
 // 消费；本组件只渲染开关面，无本地状态。
 import { useTranslation } from "react-i18next";
 import { Checkbox } from "../ui/Checkbox";
+import { InfoHint } from "../ui/InfoHint";
 import { useNotifyStore, type NotifyKind } from "./core";
 
 /** 可静音的事件类别（原 NotificationCenter 口径原样迁入）。 */
@@ -17,8 +18,10 @@ export function NotifyKindsSection() {
   const toggleMuted = useNotifyStore((s) => s.toggleMuted);
   return (
     <section aria-label={t("notify.muteSection")} data-testid="notify-kinds-section">
-      <h3>{t("notify.muteSection")}</h3>
-      <p className="settings-hint">{t("notify.muteHint")}</p>
+      <div className="settings-head">
+        <h3>{t("notify.muteSection")}</h3>
+        <InfoHint text={t("notify.muteHint")} />
+      </div>
       <div className="notify-kinds-grid">
         {MUTABLE_KINDS.map((kind) => (
           <label key={kind} className="notify-mute-row">

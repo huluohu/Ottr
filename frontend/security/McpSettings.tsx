@@ -20,6 +20,7 @@ import {
 } from "../vault/api";
 import { Switch } from "../ui/Switch";
 import { Checkbox } from "../ui/Checkbox";
+import { InfoHint } from "../ui/InfoHint";
 
 export interface McpSettingsProps {
   open: boolean;
@@ -185,6 +186,7 @@ export function McpSettings({ open }: McpSettingsProps) {
               可访问名经 Switch label prop 补回。 */}
           <div className="settings-row" data-testid="mcp-enabled-row">
             <span className="settings-label">{t("mcp.enabled")}</span>
+            <InfoHint text={t("mcp.enabledHint")} />
             <Switch
               testid="mcp-enabled-toggle"
               label={t("mcp.enabled")}
@@ -192,7 +194,6 @@ export function McpSettings({ open }: McpSettingsProps) {
               onChange={(e) => toggleEnabled(e.currentTarget.checked)}
             />
           </div>
-          <p className="settings-hint">{t("mcp.enabledHint")}</p>
           <div className="settings-row" data-testid="mcp-listening">
             <span className="settings-label">{t("mcp.listening")}</span>
             <span className={`vault-mode-badge ${status?.listening ? "vault-mode-keyring" : ""}`}>
@@ -204,6 +205,7 @@ export function McpSettings({ open }: McpSettingsProps) {
               语义）。范围 10-600s 由 Rust 注册表拒绝，UI 给四档常用值。 */}
           <label className="settings-row" data-testid="mcp-approval-timeout-row">
             <span className="settings-label">{t("mcp.approvalTimeout")}</span>
+            <InfoHint text={t("mcp.approvalTimeoutHint")} />
             <select
               data-testid="mcp-approval-timeout"
               value={status?.approval_timeout ?? 60}
@@ -216,20 +218,21 @@ export function McpSettings({ open }: McpSettingsProps) {
               ))}
             </select>
           </label>
-          <p className="settings-hint">{t("mcp.approvalTimeoutHint")}</p>
           {socket && (
             <p className="settings-hint" data-testid="mcp-socket-path">
               {t("mcp.socketPath")}: <code>{socket}</code>
             </p>
           )}
           <div className="settings-row">
+            <span className="settings-label">{t("mcp.snippetToggle")}</span>
+            <InfoHint text={t("mcp.snippetHint")} />
             <button type="button" data-testid="mcp-toggle-snippet" onClick={() => setShowSnippet((v) => !v)}>
               {t("mcp.snippetToggle")}
             </button>
           </div>
           {showSnippet && (
             <div data-testid="mcp-snippet">
-              <p className="settings-hint">{t("mcp.snippetHint")}</p>
+              <InfoHint text={t("mcp.snippetDocs")} />
               {socket && !relayPath && (
                 <p className="form-error" data-testid="mcp-relay-missing">
                   {t("mcp.relayMissing")}
@@ -257,14 +260,15 @@ export function McpSettings({ open }: McpSettingsProps) {
                   <code>{t("mcp.snippetUnavailable")}</code>
                 </pre>
               )}
-              <p className="settings-hint">{t("mcp.snippetDocs")}</p>
             </div>
           )}
         </section>
 
         <section aria-label={t("mcp.grantsSection")} data-testid="mcp-grants-section">
-          <h3>{t("mcp.grantsSection")}</h3>
-          <p className="settings-hint">{t("mcp.grantsHint")}</p>
+          <div className="settings-head">
+            <h3>{t("mcp.grantsSection")}</h3>
+            <InfoHint text={t("mcp.grantsHint")} />
+          </div>
           {grants.length === 0 && (
             <p className="settings-hint" data-testid="mcp-no-grants">
               {t("mcp.noGrants")}

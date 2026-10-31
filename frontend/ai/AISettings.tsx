@@ -25,6 +25,7 @@ import {
   saveRedaction,
   type RedactionConfig,
 } from "./settings";
+import { InfoHint } from "../ui/InfoHint";
 
 export interface AISettingsProps {
   open: boolean;
@@ -263,6 +264,7 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
           <h3>{t("ai.settings.general")}</h3>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.autoDiagnose")}</span>
+            <InfoHint text={t("ai.settings.autoDiagnoseHint")} />
             <Switch
               testid="ai-enabled"
               checked={enabled}
@@ -273,9 +275,9 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
               }}
             />
           </label>
-          <p className="settings-hint">{t("ai.settings.autoDiagnoseHint")}</p>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.summaryEnabled")}</span>
+            <InfoHint text={t("ai.settings.summaryEnabledHint")} />
             <Switch
               testid="ai-summary-enabled"
               checked={summaryEnabled}
@@ -286,7 +288,6 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
               }}
             />
           </label>
-          <p className="settings-hint">{t("ai.settings.summaryEnabledHint")}</p>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.maxTokens")}</span>
             <input
@@ -308,6 +309,7 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
         <section aria-label={t("ai.settings.providers")} data-testid="ai-providers-section">
           <h3 className="ai-providers-head">
             <span>{t("ai.settings.providers")}</span>
+            <InfoHint text={t("ai.settings.byokHint")} />
             <button
               className="btn-accent btn-compact"
               data-testid="ai-add-provider"
@@ -319,7 +321,6 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
               {t("ai.settings.addProvider")}
             </button>
           </h3>
-          <p className="settings-hint">{t("ai.settings.byokHint")}</p>
           {providers.length === 0 && (
             <p className="settings-hint" data-testid="ai-providers-empty">
               {t("ai.settings.noProviders")}
@@ -485,6 +486,7 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
                 </label>
                 <label>
                   <span>{t("ai.settings.fieldApiKey")}</span>
+                  <InfoHint text={t("ai.settings.apiKeyHint")} />
                   <input
                     type="password"
                     data-testid="ai-field-apikey"
@@ -494,7 +496,6 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
                     onChange={(e) => setDraft({ ...draft, apiKey: e.currentTarget.value })}
                   />
                 </label>
-                <p className="settings-hint">{t("ai.settings.apiKeyHint")}</p>
                 {formError && (
                   <p className="form-error" data-testid="ai-form-error">
                     {formError}
@@ -518,13 +519,13 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
           <h3>{t("ai.settings.redaction")}</h3>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.redactHostname")}</span>
+            <InfoHint text={t("ai.settings.redactionHint")} />
             <Switch
               testid="ai-redact-hostname"
               checked={redaction.hostname}
               onChange={(e) => void toggleHostname(e.currentTarget.checked)}
             />
           </label>
-          <p className="settings-hint">{t("ai.settings.redactionHint")}</p>
           <ul className="ai-rule-list">
             {redaction.custom.map((r, i) => (
               <li key={`${r.name}-${i}`} className="ai-rule-row" data-testid={`ai-rule-${i}`}>

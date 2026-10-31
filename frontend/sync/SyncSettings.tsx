@@ -20,6 +20,7 @@ import { createLocalDirTransport, tauriLocalDirDeps } from "./localdir";
 import { createWebdavTransport, type WebdavConfig } from "./webdav";
 import { PassphraseDialog } from "./PassphraseDialog";
 import type { SyncTransport } from "./transport";
+import { InfoHint } from "../ui/InfoHint";
 
 export type SyncChannelKind = "webdav" | "git" | "localdir";
 
@@ -282,10 +283,9 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
   return (
     <section aria-label={t("sync.sectionTitle")} data-testid="sync-section">
       <h3>{t("settings.sectionSync")}</h3>
-      <p className="settings-hint">{t("sync.channelHint")}</p>
-
       <div className="settings-row" role="radiogroup" aria-label={t("sync.channel")}>
         <span className="settings-label">{t("sync.channel")}</span>
+        <InfoHint text={t("sync.channelHint")} />
         {(["webdav", "git", "localdir"] as const).map((kind) => (
           <label key={kind}>
             <input
@@ -305,6 +305,7 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
           <>
             <label className="settings-row">
               <span className="settings-label">{t("sync.webdav.server")}</span>
+              <InfoHint text={t("sync.webdav.hint")} />
               <input
                 data-testid="sync-webdav-server"
                 type="text"
@@ -343,7 +344,6 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
                 onChange={(e) => patch({ webdav: { ...cfg.webdav, password: e.currentTarget.value } })}
               />
             </label>
-            <p className="settings-hint">{t("sync.webdav.hint")}</p>
           </>
         )}
 
@@ -351,6 +351,7 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
           <>
             <label className="settings-row">
               <span className="settings-label">{t("sync.git.repoUrl")}</span>
+              <InfoHint text={t("sync.git.hint")} />
               <input
                 data-testid="sync-git-repourl"
                 type="text"
@@ -369,6 +370,7 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
             </label>
             <label className="settings-row">
               <span className="settings-label">{t("sync.git.token")}</span>
+              <InfoHint text={t("sync.git.tokenHint")} />
               <input
                 data-testid="sync-git-token"
                 type="password"
@@ -377,8 +379,6 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
                 onChange={(e) => patch({ git: { ...cfg.git, token: e.currentTarget.value } })}
               />
             </label>
-            <p className="settings-hint">{t("sync.git.tokenHint")}</p>
-            <p className="settings-hint">{t("sync.git.hint")}</p>
           </>
         )}
 
@@ -386,12 +386,12 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
           <>
             <div className="settings-row">
               <span className="settings-label">{t("sync.localdir.dir")}</span>
+              <InfoHint text={t("sync.localdir.hint")} />
               <span data-testid="sync-localdir-dir">{cfg.localdir.dir}</span>
               <button type="button" data-testid="sync-localdir-choose" onClick={() => void chooseDir()}>
                 {t("sync.localdir.choose")}
               </button>
             </div>
-            <p className="settings-hint">{t("sync.localdir.hint")}</p>
           </>
         )}
 
@@ -421,6 +421,7 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
       {/* --- 信封口令（钥匙链） --- */}
       <div className="settings-row" data-testid="sync-passphrase-row">
         <span className="settings-label">{t("sync.passphrase.title")}</span>
+        <InfoHint text={t("sync.passphrase.hint")} />
         <span
           className={`vault-mode-badge vault-mode-${hasPassphrase ? "password" : "unknown"}`}
           data-testid="sync-passphrase-status"
@@ -436,7 +437,6 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
           </button>
         )}
       </div>
-      <p className="settings-hint">{t("sync.passphrase.hint")}</p>
       {/* 「清除记住的口令」失败面留在行尾（**不进弹框**）：清除动作发生在弹框
           关闭态，错误必须仍可见（ui2 T4 扫描清偿）。口令本身的校验/保存错误
           在弹框内呈现（sync-passphrase-error）。 */}

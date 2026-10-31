@@ -36,6 +36,8 @@ export function McpSettings({ open }: McpSettingsProps) {
   const [error, setError] = useState<string | null>(null);
   const [pathsDraft, setPathsDraft] = useState<PathsDraft>({});
   const [showSnippet, setShowSnippet] = useState(false);
+  /** ottr-mcp relay 可执行文件期望路径（主程序同目录；null = 未找到）。 */
+  const [relayPath, setRelayPath] = useState<string | null>(null);
   // 接入片段复制反馈（2026-10-16 用户需求）：已复制 1.5s 回弹；失败不装
   // 「已复制」（诚实面，与快捷命令插件/Terminal 剪贴板路径同口径）。
   const [snippetCopied, setSnippetCopied] = useState(false);
@@ -53,15 +55,23 @@ export function McpSettings({ open }: McpSettingsProps) {
       vaultApi.mcp.grantsList().catch(() => [] as McpGrant[]), // 锁定态：列表可空呈现
       vaultApi.hosts.list().catch(() => [] as Host[]),
     ]);
-    setStatus(s);
-    setGrants(g);
-    setHosts(h);
+    // 判空收口（2026-10-31）：dev 预览环境对未命中命令一律回 null（非
+    // rejection，catch 不触发）——null.map 直接把面板炸进错误边界。列表面
+    // 一律阵列化，状态面本就 null 安全。
+    setStatus(s ?? null);
+    setGrants(Array.isArray(g) ? g : []);
+    setHosts(Array.isArray(h) ? h : []);
   }, []);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
     void refresh().catch((e) => setError(String(e)));
+    // relay 路径独立取（mcp_status 之外的单命令；失败 = 未找到，前端如实回落）
+    void vaultApi.mcp
+      .relayPath()
+      .then(setRelayPath)
+      .catch(() => setRelayPath(null));
   }, [open, refresh]);
 
   if (!open) return null;
@@ -147,12 +157,15 @@ export function McpSettings({ open }: McpSettingsProps) {
   const socket = status?.socket_path ?? null;
   // Windows 传输 = 命名管道（--pipe <name>）；unix = UDS（--socket <path>）。
   // 与 Rust 侧 socket_path/parse_args 的口径逐字对齐（mod.rs / ottr-mcp.rs）。
+  // command = relay 真实路径（Rust mcp_relay_path 探测主程序同目录，随应用
+  // 分发——2026-10-31 用户需求：直接配置好不让用户手改）；未找到 = 占位符。
+  const command = relayPath ?? "<path-to-ottr-mcp>";
   const snippet = socket
     ? JSON.stringify(
         {
           mcpServers: {
             ottr: {
-              command: "<path-to-ottr-mcp>",
+              command,
               args: [detectPlatform() === "win" ? "--pipe" : "--socket", socket],
             },
           },
@@ -217,15 +230,32 @@ export function McpSettings({ open }: McpSettingsProps) {
           {showSnippet && (
             <div data-testid="mcp-snippet">
               <p className="settings-hint">{t("mcp.snippetHint")}</p>
-              <pre className="host-key-fp">
-                <code>{snippet ?? t("mcp.snippetUnavailable")}</code>
-              </pre>
+              {socket && !relayPath && (
+                <p className="form-error" data-testid="mcp-relay-missing">
+                  {t("mcp.relayMissing")}
+                </p>
+              )}
+              {/* 代码块自带右上角复制钮（2026-10-31 用户需求）：pre 横向滚动
+                  兜底长路径——不再把设置页撑出横向滚动条。 */}
               {snippet && (
-                <div className="settings-row">
-                  <button type="button" data-testid="mcp-copy-snippet" onClick={() => void copySnippet()}>
+                <div className="mcp-snippet">
+                  <button
+                    type="button"
+                    className="mcp-snippet-copy"
+                    data-testid="mcp-copy-snippet"
+                    onClick={() => void copySnippet()}
+                  >
                     {snippetCopied ? t("mcp.snippetCopied") : t("mcp.snippetCopy")}
                   </button>
+                  <pre className="mcp-snippet-pre">
+                    <code>{snippet}</code>
+                  </pre>
                 </div>
+              )}
+              {!snippet && (
+                <pre className="mcp-snippet-pre">
+                  <code>{t("mcp.snippetUnavailable")}</code>
+                </pre>
               )}
               <p className="settings-hint">{t("mcp.snippetDocs")}</p>
             </div>

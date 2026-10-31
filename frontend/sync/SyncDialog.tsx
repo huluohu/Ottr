@@ -407,6 +407,20 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
     });
   }
 
+  /** 双改指纹冲突但逐类内容一致（2026-10-31 用户实测「裁定面板空无一物」的
+   *  根因闭环：历史上一次 push 实际成功而基线未落——信封每次封装换随机
+   *  nonce，整封指纹必不同，三态判为双改；逐类 canonical 比对则全同 →
+   *  冲突列表为空）。内容既无分歧，推送一次现值即重建基线、循环终止。 */
+  async function rebaseline() {
+    if (m === null) return;
+    await perform(async (seq) => {
+      await m.store.push(pass ?? "", undefined, {
+        isAbandoned: () => runSeqRef.current !== seq,
+      });
+      return { kind: "push" };
+    });
+  }
+
   // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
   const mount = useDelayedUnmount(open);
   if (!mount.shouldRender) return null;
@@ -614,17 +628,42 @@ export function SyncDialog({ open, onClose, onOpenSettings, model }: SyncDialogP
         )}
 
         {phase === "conflict" && status?.conflicts && localData !== null && remoteData !== null && (
-          <div data-testid="sync-conflict-panel">
-            <p className="dialog-intro">{t("sync.dialog.conflictTitle")}</p>
-            <ConflictDialog
-              conflicts={status.conflicts}
-              localData={localData}
-              remoteData={remoteData}
-              busy={busy}
-              onApply={(resolution) => void applyConflict(resolution)}
-              onCancel={abandonAndClose}
-            />
-          </div>
+          status.conflicts.length === 0 ? (
+            // 双改指纹但内容零分歧（rebaseline 文档）：不渲染空裁定面板——
+            // 此前的空面板「全选/应用裁定全是死按钮」，用户无从下手。
+            <div data-testid="sync-conflict-empty">
+              <p className="dialog-intro">{t("sync.dialog.conflictTitle")}</p>
+              <p className="settings-hint" data-testid="sync-conflict-empty-hint">
+                {t("sync.dialog.conflictIdentical")}
+              </p>
+              <div className="form-actions">
+                <button type="button" onClick={abandonAndClose}>
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="btn-accent"
+                  data-testid="sync-rebaseline"
+                  disabled={busy}
+                  onClick={() => void rebaseline()}
+                >
+                  {t("sync.dialog.rebaseline")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div data-testid="sync-conflict-panel">
+              <p className="dialog-intro">{t("sync.dialog.conflictTitle")}</p>
+              <ConflictDialog
+                conflicts={status.conflicts}
+                localData={localData}
+                remoteData={remoteData}
+                busy={busy}
+                onApply={(resolution) => void applyConflict(resolution)}
+                onCancel={abandonAndClose}
+              />
+            </div>
+          )
         )}
 
         {phase === "running" && (

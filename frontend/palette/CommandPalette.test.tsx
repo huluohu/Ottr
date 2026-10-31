@@ -89,7 +89,7 @@ describe("渲染（空查询）", () => {
     const expected =
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
       (FEATURE_COMMANDS.length - 1) +
-      13;
+      14; // 外观组 = 主题 10 + 语言 4（2026-10-31 +文言）
     expect(items().length).toBe(expected + 2);
   });
 
@@ -164,7 +164,7 @@ describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", ()
     expect(icons.length).toBe(
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
         (FEATURE_COMMANDS.length - 1) +
-        13 +
+        14 + // 外观组 = 主题 10 + 语言 4
         2,
     );
     const cmdIcon = icons[0];
@@ -223,7 +223,7 @@ describe("键盘导航", () => {
     expect(activeIndex()).toBe(
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
         (FEATURE_COMMANDS.length - 1) +
-        13 -
+        14 - // 外观组 = 主题 10 + 语言 4
         1,
     );
   });

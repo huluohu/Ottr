@@ -107,7 +107,14 @@ export function tauriWebdavFetch(config: WebdavConfig, deps: WebdavProxyDeps = {
     if (!Number.isInteger(result.status) || result.status < 200 || result.status > 599) {
       throw new Error(`webdav proxy: invalid status ${JSON.stringify(result.status)}`);
     }
-    return new Response(result.body, { status: result.status });
+    // 无体状态（204/205/304 等）禁止携带 body：WebKit 的 Response 构造器对
+    // 非空 body 直接抛 TypeError「Response cannot have a body with the given
+    // status」——alist 等 WebDAV 服务器对 PUT 返回 204，此前被误报成「同步
+    // 失败」而服务器上实际已写入成功（2026-10-31 用户实测）。null body 状态
+    // 一律以 null 构造（fetch spec 口径）。
+    const bodyless =
+      result.status === 204 || result.status === 205 || result.status === 304;
+    return new Response(bodyless ? null : result.body, { status: result.status });
   };
 }
 

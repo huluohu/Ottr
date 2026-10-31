@@ -853,6 +853,8 @@ export const vaultApi = {
    * （过锁定门卫，同 hosts）；approvalDecision = 审批框裁定回传。 */
   mcp: {
     status: () => invoke<McpStatus>("mcp_status"),
+    /** ottr-mcp relay 可执行文件期望路径（主程序同目录）；不存在 = null。 */
+    relayPath: () => invoke<string | null>("mcp_relay_path"),
     setEnabled: (enabled: boolean) => invoke<McpStatus>("mcp_set_enabled", { enabled }),
     setApprovalTimeout: (secs: number) => invoke<McpStatus>("mcp_set_approval_timeout", { secs }),
     grantsList: () => invoke<McpGrant[]>("mcp_grants_list"),

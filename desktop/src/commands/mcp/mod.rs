@@ -224,6 +224,20 @@ pub(crate) fn mcp_status(app: AppHandle, state: State<'_, VaultState>) -> CmdRes
     })
 }
 
+/// ottr-mcp relay 可执行文件的期望路径（2026-10-31 用户需求：接入片段的
+/// command 值直接配置好，不让用户手改）。探测面 = 主程序同目录（安装版 =
+/// 应用包内，随 externalBin sidecar 分发；dev = target/debug 同级）。不存在
+/// → None（前端回落占位符并如实提示）。
+#[tauri::command]
+pub(crate) fn mcp_relay_path() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let mut path = exe.parent()?.join("ottr-mcp");
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+    path.exists().then(|| path.to_string_lossy().into_owned())
+}
+
 /// 总开关：持久化 settings + 起/停 listener（改设即生效，无需重启）。
 /// 顺序即契约：动作成功**先于**落盘——开启时 listener 起不来（如 Windows 无
 /// UDS）则报错返回、设置不残留 enabled=true 的「永远起不来」态；关闭时先停

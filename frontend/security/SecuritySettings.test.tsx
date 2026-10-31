@@ -693,8 +693,8 @@ describe("定向分区消费（2026-10-13 修复：initialPane 此前从未被�
   });
 });
 
-describe("关于分区的博客地址（2026-10-29 用户需求）", () => {
-  it("博客链接与仓库链接同列（博客在仓库之前）", () => {
+describe("关于分区的博客地址（2026-10-29 用户需求；2026-10-31 改单独成行）", () => {
+  it("博客链接独立成行（.about-links），与作者/许可元信息行分离；仓库链接仍在", () => {
     render(
       <ThemeProvider>
         <SecuritySettings open initialPane="about" onClose={() => {}} />
@@ -706,10 +706,13 @@ describe("关于分区的博客地址（2026-10-29 用户需求）", () => {
     expect(blog.textContent).toContain("www.huluohu.com");
     expect(blog.getAttribute("target")).toBe("_blank");
     expect(blog.getAttribute("rel")).toBe("noreferrer");
-    // 仓库链接仍在（博客是新增项，不是替换）
+    // 博客在独立链接区（.about-links），不在作者/许可元信息行内
+    expect(blog.closest(".about-links")).toBeTruthy();
+    expect(blog.closest(".about-meta")).toBeNull();
+    // 仓库链接同区且在博客之后
     const repo = card.querySelector('a[href="https://github.com/huluohu/Ottr"]');
     expect(repo).toBeTruthy();
-    // 顺序：博客在仓库之前
+    expect((repo as Element).closest(".about-links")).toBe(blog.closest(".about-links"));
     expect(
       blog.compareDocumentPosition(repo as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

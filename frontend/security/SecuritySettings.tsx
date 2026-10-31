@@ -1090,7 +1090,9 @@ export function SecuritySettings({
                         ? t("settings.langZh")
                         : l === "zh-Hant"
                           ? t("settings.langHant")
-                          : t("settings.langEn")}
+                          : l === "lzh"
+                            ? t("settings.langLzh")
+                            : t("settings.langEn")}
                     </option>
                   ))}
                 </select>
@@ -1203,15 +1205,15 @@ export function SecuritySettings({
                     </p>
                   </div>
                 </div>
-                {/* 元信息行（2026-10-29 用户需求：加博客地址）：作者·许可·博客·
-                    仓库。三个链接同列同款（裸 URL、无标签），博客排在仓库前
-                    ——短项在前，行末留最长的仓库 URL。flex-wrap 兜底窄面板
-                    折行（.about-meta 见 16-lock-security.css）。 */}
+                {/* 元信息（2026-10-31 用户需求：博客地址单独一行）：第一行 =
+                    作者·许可；博客与仓库各占一行（.about-links 纵排，裸 URL
+                    同款无标签）。 */}
                 <div className="about-meta">
                   <span>@huluohu</span>
                   <span aria-hidden="true">·</span>
                   <span>MIT</span>
-                  <span aria-hidden="true">·</span>
+                </div>
+                <div className="about-links">
                   <a
                     href="https://www.huluohu.com"
                     target="_blank"
@@ -1220,7 +1222,6 @@ export function SecuritySettings({
                   >
                     www.huluohu.com
                   </a>
-                  <span aria-hidden="true">·</span>
                   <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
                     https://github.com/huluohu/Ottr
                   </a>

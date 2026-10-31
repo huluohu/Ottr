@@ -332,6 +332,7 @@ pub fn run() {
             // MCP server（Phase 4 Task 3，C1；commands/mcp.rs）：状态/开关 +
             // 授权矩阵 CRUD（过锁定门卫）+ 逐次审批裁定回传
             commands::mcp::mcp_status,
+            commands::mcp::mcp_relay_path,
             commands::mcp::mcp_set_enabled,
             commands::mcp::mcp_grants_list,
             commands::mcp::mcp_grants_upsert,

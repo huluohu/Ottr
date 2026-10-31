@@ -361,12 +361,13 @@ pub fn validate_known_setting(
             let s = value
                 .as_str()
                 .ok_or_else(|| "ui.language expects a string".to_string())?;
-            // 2026-10-18 完整三语：+zh-Hant（港澳台通用繁体）。
-            if matches!(s, "zh-CN" | "zh-Hant" | "en-US") {
+            // 2026-10-18 完整三语：+zh-Hant（港澳台通用繁体）；2026-10-31 +lzh（文言）。
+            // 2026-10-31 +lzh（文言）：与前端 i18n LANGS 对齐。
+            if matches!(s, "zh-CN" | "zh-Hant" | "en-US" | "lzh") {
                 Ok(())
             } else {
                 Err(format!(
-                    "ui.language must be zh-CN|zh-Hant|en-US, got {s:?}"
+                    "ui.language must be zh-CN|zh-Hant|en-US|lzh, got {s:?}"
                 ))
             }
         }

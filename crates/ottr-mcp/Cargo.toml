@@ -13,7 +13,9 @@ publish = false
 # crate、再让 tauri build/dev 拿到现成文件。
 
 [dependencies]
-tokio = { workspace = true, features = ["io-util", "rt", "sync", "time", "net"] }
+# features 对齐原 desktop 内 bin 时的有效并集：io-std（stdin/stdout 泵）、
+# macros（tokio::select!）——独立 crate 后无图内聚合，必须自持。
+tokio = { workspace = true, features = ["io-util", "io-std", "macros", "rt", "sync", "time", "net"] }
 
 # MCP Windows 传输（沿 desktop 同版本/同 features）：命名管道同步 FFI 客户端。
 # 安全 = 管道默认 DACL（创建者 token，仅当前用户/管理员可连）——与 UDS 0600

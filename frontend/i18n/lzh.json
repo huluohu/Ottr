@@ -47,6 +47,8 @@
       "captureHint": "Esc 罷 · Backspace 恢復預設 · 衝突後直接重按新組合"
     },
     "sectionGeneral": "常規",
+    "groupStartup": "啟程",
+    "groupStorage": "儲藏",
     "sectionAi": "智",
     "sectionAbout": "自敘",
     "aboutSlogan": "如獺穿行於伺服器之間。",

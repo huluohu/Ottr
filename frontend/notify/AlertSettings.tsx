@@ -38,6 +38,7 @@ import {
   CHANNEL_REQUIRED,
   renderTemplate,
 } from "./channels/types";
+import { InfoHint } from "../ui/InfoHint";
 
 export interface AlertSettingsProps {
   open: boolean;
@@ -412,21 +413,22 @@ export function AlertSettings({ open }: AlertSettingsProps) {
     // 通知中心迁入）常驻页顶：哪些事件产生通知 → 走什么通道/什么规则。
     <div className="dock-entity settings-dialog" role="region" aria-label={t("alert.settingsTitle")} data-testid="alert-settings">
       <NotifyKindsSection />
-      <SegmentedControl
-        testid="alert-section-switch"
-        ariaLabel={t("alert.settingsTitle")}
-        value={section}
-        options={[
-          { value: "channels", label: t("alert.channelSection") },
-          { value: "rules", label: t("alert.ruleSection") },
-        ]}
-        onChange={setSection}
-      />
+      <div className="settings-head">
+        <SegmentedControl
+          testid="alert-section-switch"
+          ariaLabel={t("alert.settingsTitle")}
+          value={section}
+          options={[
+            { value: "channels", label: t("alert.channelSection") },
+            { value: "rules", label: t("alert.ruleSection") },
+          ]}
+          onChange={setSection}
+        />
+        <InfoHint text={section === "channels" ? t("alert.channelHint") : t("alert.ruleHint")} />
+      </div>
 
       {section === "channels" && (
         <section aria-label={t("alert.channelSection")} data-testid="alert-channels-section">
-          {/* 分段控已是标题（2026-10-21 用户反馈重复），区块不再重复 h3 */}
-          <p className="settings-hint">{t("alert.channelHint")}</p>
           {channels.length === 0 && !channelDraft && (
             <p className="settings-hint" data-testid="alert-channels-empty">
               {t("alert.noChannels")}
@@ -563,7 +565,6 @@ export function AlertSettings({ open }: AlertSettingsProps) {
       {/* --- 规则 --- */}
       {section === "rules" && (
         <section aria-label={t("alert.ruleSection")} data-testid="alert-rules-section">
-          <p className="settings-hint">{t("alert.ruleHint")}</p>
           {rules.length === 0 && !ruleDraft && (
             <p className="settings-hint" data-testid="alert-rules-empty">
               {t("alert.noRules")}

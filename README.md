@@ -1,266 +1,171 @@
 <div align="center">
 
-<img src="docs/screenshots/mark.svg" alt="Ottr — 如獭穿行于服务器之间" width="140" />
+<img src="docs/screenshots/mark.svg" alt="Ottr" width="140" />
 
-# Ottr · 喔獭
+# Ottr
 
-### AI 原生的个人服务器管理工具
+### An AI-native personal server manager
 
-*Swim through your servers.* ／ *如獭穿行于服务器之间。*
+*Swim through your servers.*
 
-**开源 · 免费 · 三端（macOS / Windows / Linux）· 数据主权 100% 归你**
+**Open source · Free · macOS / Windows / Linux · Your data stays yours**
 
 [![GitHub](https://img.shields.io/badge/GitHub-huluohu%2FOttr-0F172A)](https://github.com/huluohu/Ottr)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-下载与安装)
-[![Built with](https://img.shields.io/badge/Tauri%202%20%2B%20Rust%20%2B%20React-0F172A)](#-技术栈与工程结构)
-[![Tests](https://img.shields.io/badge/tests-1900%2B%20green-5EEAD4)](#-测试)
-[![License](https://img.shields.io/badge/license-MIT-5EEAD4)](#-许可与作者)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-14B8A6)](#-download--install)
+[![License](https://img.shields.io/badge/license-MIT-5EEAD4)](#-license--author)
+
+**Languages:** [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Italiano](README.it.md)
 
 </div>
 
 ---
 
-**Ottr** 是一款轻量级的开源 AI SSH 客户端——安装包约 8 MB（AppImage 约 84 MB）、常驻内存约 100 MB，不安装任何后台服务或 Agent。它把「连上服务器敲命令」升级为「AI 懂你的终端」：命令失败自动诊断、自然语言生成命令、全局历史检索，同时守住一条硬底线——**自带 AI Key（BYOK），请求直连你选的模型端点，没有 Ottr 中转服务器**。凭据等秘密字段在本机加密保存；主机元数据和命令历史等以明文存入本机 SQLite。AI 请求和可选同步的数据边界见下方说明。
+**Ottr** is a lightweight, open-source AI SSH client — about 8 MB installed (84 MB for the AppImage), roughly 100 MB of resident memory, no background service and no agent to install. It turns "connect to a server and type commands" into "your terminal understands AI": failed commands are diagnosed for you, commands are generated from plain language, and your history is searchable from anywhere.
 
-技术栈 **Tauri 2 + Rust**（russh / russh-sftp）+ **React / TypeScript + xterm.js**，前后端命令契约由自动生成的 TS 绑定与契约测试双面钉住，三端一套代码。
+The hard rule it never breaks: **you bring your own AI key (BYOK)**. Requests go straight from your machine to the model endpoint you picked — there is no Ottr server in the middle. Secrets are encrypted at rest on your own machine; host metadata and command history live in a local SQLite file. The exact data boundary for AI requests and optional sync is described in [Privacy & AI](#-privacy--ai-data-boundaries).
 
-![欢迎首页：时段问候 + 快捷卡 + 48px 图标轨（溪岸主题）](docs/screenshots/home-welcome.png)
+![Welcome screen: time-of-day greeting, quick actions and the icon rail](docs/screenshots/home-welcome.png)
 
-## ✨ 功能总览
+## ✨ What it does
 
-### 终端与会话
+### Terminal & sessions
 
-- **标签页 + 分屏**（向右/向下），GPU 加速渲染，搜索、URL 识别、完整转义序列
-- **编码自适应**：UTF-8 / GBK / GB18030 自动检测与一键切换（中文 Windows 服务器刚需）
-- **断线自愈**：自动重连（退避）、keepalive 死链检测、连接健康状态灯、重启后还原标签
-- **会话录制**：[asciinema v2](https://docs.asciinema.org/manual/asciinema-v2/) 格式，内置时间轴回放（拖动 / 倍速），可导出**脱敏文本**分享
+- **Tabs and split panes** (side by side or stacked), GPU-accelerated rendering, search, URL detection, full escape-sequence support
+- **Encoding that adapts**: UTF-8 / GBK / GB18030 detected automatically and switchable by hand — essential for Chinese Windows servers
+- **Self-healing connections**: automatic reconnect with backoff, keepalive dead-link detection, a connection health light, and tabs restored after a restart
+- **Session recording** in [asciinema v2](https://docs.asciinema.org/manual/asciinema-v2/) format, with an in-app timeline player (scrub, speed up) and export as **redacted text** you can share
 
-### 主机与凭据
+### Hosts & credentials
 
-- 分组 / 标签 / 搜索 / **⌘K 模糊快速连接**；主机清单导入 / 导出各支持四种格式：
-  `~/.ssh/config`、Tabby（JSON/YAML）、Xshell 会话、CSV——导出只含主机元数据，凭据机密永不出库
-- 凭据库：密码、SSH 密钥（ed25519/ecdsa/rsa，生成/导入/部署公钥）、TOTP 两步验证，按主机绑定、**可命名**（多凭据一眼可辨），一套凭据多主机共享
-- **跳板链**：多级跳板可视化编排；**端口转发**：本地 / 动态 SOCKS / 远程，断线自动重挂
-- known_hosts **TOFU 首次信任 + 指纹巡检**，防中间人
+- Groups, tags, search and **⌘K fuzzy quick-connect**; import and export support `~/.ssh/config`, Tabby (JSON/YAML), Xshell sessions and CSV — exports carry host metadata only, never secrets
+- Credential vault: passwords, SSH keys (ed25519/ecdsa/rsa — generate, import, deploy the public key) and TOTP two-factor, bound to hosts and **nameable**, so one credential can serve several hosts
+- **Jump host chains** arranged visually; **port forwarding** for local, dynamic SOCKS and remote forwards, re-established automatically after a drop
+- known_hosts with **trust-on-first-use plus periodic fingerprint audits**, to catch man-in-the-middle attacks
 
-![暗色主题（深河）：图标轨 + 主机面板 + 悬浮岛页签与连接状态点](docs/screenshots/main-dark.png)
+![Dark theme: icon rail, host panel, floating tab islands and connection status dots](docs/screenshots/main-dark.png)
 
-### AI 能力（核心卖点，隐私优先）
+### AI that respects your data
 
-- **报错即诊**：命令非零退出自动浮出「原因 + 修复命令」，需确认才执行，危险命令红色标注
-- **⌘J AI 生成命令**：中文/英文意图直接生成单行命令（附当前目录锚点）
-- **选中即释**：选中文本右键「解释 / 翻译 / 修复」；会话结束自动生成纪要，⌘R 全局检索
-- **BYOK 多服务商**：OpenAI 兼容（**OpenAI / DeepSeek / 智谱 GLM / 任意自建端点**）、Anthropic Claude、本地 Ollama——预设一键填端点，Key 加密存本机
-- **按规则脱敏**：诊断/解释及纪要中的匹配项替换为占位符，不能保证覆盖所有秘密；自然语言命令输入和当前目录上下文不做脱敏。另内置 MCP 服务器（三平台），可接入 Claude Desktop / Cursor 等任何支持 stdio MCP 的客户端（主机级授权 + 逐次审批，等待时长可配）
+- **Diagnose on failure**: a non-zero exit surfaces the likely cause and a suggested fix; nothing runs without your confirmation, and risky commands are flagged in red
+- **⌘J to generate a command**: describe what you want in Chinese or English and get a single line back, anchored to the current directory
+- **Select to explain**: right-click any selected text to explain, translate or repair it; sessions can end with an auto-generated summary, searchable with ⌘R
+- **BYOK across many providers**: OpenAI-compatible endpoints (**OpenAI / DeepSeek / Zhipu GLM / any endpoint you host**), Anthropic Claude, and local Ollama — presets fill in the endpoint for you, and keys are encrypted on your machine
+- **Redaction by rule**: matches in diagnostics, explanations and summaries are replaced with placeholders. This cannot be guaranteed to catch every secret; natural-language command input and the current directory context are **not** redacted. Ottr also ships an MCP server (all three platforms) that any stdio MCP client — Claude Desktop, Cursor, … — can talk to, with per-host authorization and per-call approval
 
-### 监控 · 告警 · 运维
+### Monitoring, alerts & operations
 
-- **免 Agent 监控**：CPU / 内存 / 磁盘 / 负载 / 网络实时曲线 + 进程浏览器，多主机总览
-- **告警规则**（磁盘 / CPU / 进程 / 日志关键字）→ **12 种通知渠道**：企业微信、钉钉、飞书、Telegram、Slack、Discord、SMTP 邮件等国内外主流，限频 + 失败重试 + 投递记录持久化
-- **定时任务**中心（Rust 侧调度，错过即知）、**批量执行**（多选主机 + 片段库 + 并发/超时控制）
+- **Agent-free monitoring**: live CPU / memory / disk / load / network charts and a process browser, with a multi-host overview
+- **Alert rules** (disk, CPU, process, log keyword) routed through **12 notification channels**: WeCom, DingTalk, Feishu, Telegram, Slack, Discord, SMTP email and more, with rate limiting, retries and a durable delivery log
+- **Scheduled tasks** run by a native scheduler (missed runs are recorded, not lost), plus **batch execution** across selected hosts with a snippet library, concurrency and timeout control
 
-### 文件与同步
+### Files & sync
 
-- **SFTP 双栏文件管理器**：拖拽传输、并行分块、断点续传；trzsz（trz/tsz）支持；FTP / FTPS
-- **远程编辑**：本机编辑器直接改远端文件，原子保存（失败不损坏远端）、二进制嗅探防误编辑
-- **多设备同步**：端到端加密信封（AES-256-GCM + PBKDF2），通道三选一（**WebDAV / Git / 本地目录**——WebDAV 走 Rust 代理直连你的网盘，无跨域限制），分类粒度推送/拉取，冲突逐类人工裁定
+- **Two-pane SFTP browser**: drag-and-drop transfer, parallel chunks, resumable uploads; trzsz (trz/tsz) supported; FTP and FTPS too
+- **Remote editing** in your local editor with atomic saves (a failure never corrupts the remote file) and binary sniffing to prevent accidental edits
+- **Multi-device sync** through an end-to-end encrypted envelope (AES-256-GCM + PBKDF2) over one of three channels — **WebDAV, Git, or a local folder** (WebDAV goes through a native proxy straight to your own drive, with no cross-origin restrictions) — with per-category push/pull and a manual decision for each conflict
 
-### 安全底座
+### Security you can audit
 
-- 本地凭据及秘密字段使用 **AES-256-GCM**（不是全库加密）：**钥匙链免密模式**为默认（主密钥存系统钥匙链，打开即用），
-  **主密码模式**可选（Argon2id 派生，无密码不可解密秘密字段），一键互转、秘密字段跨模式重加密
-- 敏感复制自动清除（剪贴板中的凭据按配置定时清空）、锁定屏「忘记密码」重置引导
-  （二次确认，云端备份不受影响）
-- 无 Ottr 遥测；AI、同步等功能仍会按配置发送相关数据，不能理解为“任何主机数据都不离开本机”。
-
-### 隐私与 AI 插入边界
-
-- **本地存储**：SSH 密码、私钥、私钥口令、AI API Key 等秘密字段做字段级 AES-256-GCM 加密。主机地址、用户名、备注、命令历史及普通设置等仍是 SQLite 明文；锁库或设置主密码不等于这些内容已加密。同步使用独立加密信封，不改变本地数据库的存储方式。
-- **诊断与解释**：诊断发送失败命令和终端输出尾部（最多 8 KB），解释发送选中文本；发送前按规则替换 IP、密码赋值、邮箱以及配置启用的主机名和自定义匹配项。纪要对命令序列应用同类规则。规则可能漏掉不符合样式的秘密、内部名称或业务数据；“已脱敏 N 处”仅表示匹配次数，不是完整性保证。面板仍可能显示本地原文。
-- **自然语言生成命令**：输入原文及可用的当前目录（OSC7）直接作为上下文发往所选模型端点，不经过上述脱敏。不要输入密码、令牌或不希望外发的信息。请求直连不代表服务商不接收或留存内容，其处理取决于所选服务商。
-- **Ollama**：预设端点是 `http://localhost:11434/v1`。只有端点及模型推理都在本机时才是本地处理；改用远程地址、代理或云端模型后，不能再承诺内容不出本机。
-- **AI 命令插入**：只接受不含换行和控制字符的单行文本，不附加回车；多行内容保留原文并禁用插入，需审阅后手动准备命令，不会自动拼接或只取第一行。危险等级是提示，不能证明命令安全。插入前仍需确认终端处于预期的 shell 输入状态并检查已有输入；自定义按键绑定或交互程序的行为不由此保证。
-
-![锁定屏](docs/screenshots/lockscreen.png)
-
-### 体验细节
-
-- **48px 图标轨**：总览、定时任务、通知中心、端口转发、跳板链五个高频入口常驻左侧，未读数直接挂在图标上，
-  面板打开时对应图标亮起小光点；发现新版本时还会浮现**更新按钮**；底部**锁定**按钮一键锁库
-- **主机面板**：主机树（分组、标签、搜索、行内编辑）宽度可拖拽，`⌘\`（Windows/Linux `Ctrl+Shift+\`）
-  可折叠成 64px 小胶囊，只留搜索钮和分组色点
-- **Otty 球控制中心**：窗口左下角水獭圆钮弹出凭据 / MCP / 主题 / 语言 / 设置
-- **悬浮岛页签与状态点**：每条会话是一枚圆角浮岛，激活岛描边浮起；主机列表和页签上的状态点
-  用「呼吸 = 连接中、弹跳 = 已连接、涟漪 = 断开」表达连接状态
-- **欢迎首页**：时段问候 + 快捷卡（新建主机 / ⌘K 命令面板 / 导入配置）+ 最近连接，零会话也有归宿
-- **七套主题（水域家族）**：跟随系统 / 浅滩 / 溪岸 / 深河 / 深渊（OLED 纯黑）/ 夜光河 / 雨窗（真透明毛玻璃），
-  Otty 球「主题」子菜单一键切换，终端配色逐主题跟随；支持 iTerm2 主题导入（含二进制 plist）与自定义配色
-- **中文 / English 双语**：Otty 球「语言」子菜单即点即切，原生菜单栏文案同步重建；
-  macOS 原生菜单栏承载全部功能入口，Windows/Linux 自绘标题栏（Windows 最大化按钮悬停弹出**贴靠布局选择器**），三端托盘（彩色水獭徽章）
-- **终端个性化**：字体族（Menlo / SF Mono / JetBrains Mono 等）与字号（10–20pt）设置页即选即生效
-- **应用内检查更新**：设置 → 关于一键检查；发现新版本时图标轨浮现更新按钮，点击直达设置 → 关于；
-  菜单 / ⌘K 直接触发时发现新版**直接在提示条上下载安装**（更新经签名校验）
-- 凭据与密钥、MCP、导入/导出主机有专属弹出面板；通知中心、定时任务、端口转发、跳板链、批量执行
-  在主区以宽幅页面打开（不挤压终端）；告警配置在设置 → 告警；另有等宽字体连字、命令面板、
-  插件系统（网络摘要 / 快捷命令）
+- Secrets and credentials are protected with **AES-256-GCM** (not whole-database encryption). Two modes: **keychain mode** is the default (the master key lives in your system keychain, so the app just opens), or **master-password mode** (Argon2id derivation — without the password, secret fields cannot be decrypted). Switch at any time; secrets are re-encrypted when you do
+- Sensitive copies clear themselves on a schedule, and the lock screen offers a guided "forgot my password" reset (with confirmation; cloud backups are untouched)
+- Ottr sends **no telemetry**. AI and sync features still send the data they need — that does not mean "no host data ever leaves your machine"
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="⌘K 命令面板"></td>
-    <td width="50%"><img src="docs/screenshots/cron.png" alt="定时任务中心"></td>
+    <td width="50%"><img src="docs/screenshots/palette.png" alt="Command palette"></td>
+    <td width="50%"><img src="docs/screenshots/cron.png" alt="Scheduled task center"></td>
   </tr>
   <tr>
-    <td width="50%">⌘K 命令面板（模糊搜索）</td>
-    <td width="50%">定时任务中心</td>
+    <td width="50%">⌘K command palette (fuzzy search)</td>
+    <td width="50%">Scheduled task center</td>
   </tr>
 </table>
 
 <details>
-<summary>更多截图</summary>
+<summary>More screenshots</summary>
 
-![多主机总览](docs/screenshots/overview.png)
-![凭据管理](docs/screenshots/credentials.png)
-![溪岸主题 · 已连接会话与悬浮岛页签](docs/screenshots/light-theme.png)
+![Multi-host overview](docs/screenshots/overview.png)
+![Credential manager](docs/screenshots/credentials.png)
 
 </details>
 
-## 📦 下载与安装
+## 📦 Download & install
 
-前往 [**Releases**](https://github.com/huluohu/Ottr/releases) 下载对应平台安装包（推送版本标签后由 CI 自动构建发布）：
+Grab the build for your platform from [**Releases**](https://github.com/huluohu/Ottr/releases):
 
-| 平台 | 格式 |
+| Platform | Formats |
 |---|---|
-| macOS（Apple Silicon） | `.dmg` |
-| macOS（Intel） | `.dmg` |
-| Windows | `.msi` / `.exe`（安装向导）或 **`_x64_portable.zip`（便携版，免安装）** |
+| macOS (Apple Silicon) | `.dmg` |
+| macOS (Intel) | `.dmg` |
+| Windows | `.msi` / `.exe` installer, or **`_x64_portable.zip` (no install needed)** |
 | Linux | `.deb` / `.rpm` / `.AppImage` |
 
-首次启动会引导你配置本机秘密字段的加密方式（不加密整个数据库）：**钥匙链模式**（免记密码，主密钥存系统钥匙链）或**主密码模式**（无密码不可解密秘密字段）。
+On first launch Ottr asks how you want to encrypt secret fields on this machine (not the whole database): **keychain mode** (no password to remember) or **master-password mode** (secret fields cannot be decrypted without it).
 
-**Windows 便携版**：解压到任意目录，双击 `Ottr.exe` 即用——无需安装，配置和数据随包存放在 `Ottr/data/` 目录（整个文件夹拷走即迁移，删掉即卸载；需系统已有 WebView2 运行时，Win10/11 一般自带）。便携版不提供应用内自动更新，升级时下载新版 zip 解压覆盖（保留 `data/` 目录即保留全部配置）。
+**Windows portable build**: unzip anywhere and run `Ottr.exe` — nothing is installed, and your configuration and data live next to the app in `Ottr/data/` (copy the folder to move your setup, delete it to uninstall; WebView2 is required, but Win10/11 usually ships it). The portable build cannot update itself — download the new zip and overwrite the old one, keeping `data/` to keep everything.
 
-安装版已内置**应用内检查更新**（设置 → 关于，经签名校验下载安装）——也可以随时回到本页下载新版本。
+The installed build has **in-app updates** (Settings → About, signed packages only), and you can always come back to this page for a manual download.
 
 <details>
-<summary><strong>🍎 macOS 提示「已损坏，无法打开」或连不上局域网主机？点开看解决方法</strong></summary>
+<summary><strong>🍎 macOS says "damaged" or cannot reach your LAN? Open for the fix</strong></summary>
 
-Ottr 目前尚未购买 Apple 开发者签名，macOS 的安全机制会对这类应用额外把关——<strong>安装包并没有损坏</strong>，按下面两步处理即可。
+Ottr is not signed with an Apple Developer ID yet, so macOS treats it more strictly than usual — **the download is not corrupt**. Two steps and you are done.
 
-**1️⃣ 打开时提示「已损坏，无法打开。你应该将它移到废纸篓」**
+**1️⃣ "Ottr is damaged and can't be opened. You should move it to the Trash."**
 
-打开「终端」，执行以下命令后，再正常打开 Ottr（每次更新版本后重复一次）：
+Open Terminal and run this once, then open Ottr normally (repeat after every update):
 
 ```bash
 xattr -cr /Applications/Ottr.app
 ```
 
-**2️⃣ 连接局域网主机时提示「No route to host」**
+**2️⃣ "No route to host" when connecting to a machine on your LAN**
 
-macOS 15 起要求应用获得「本地网络」授权后才能访问局域网内的设备。首次连接如果弹出「"Ottr"想要访问本地网络」，点击「允许」即可正常使用。若没有弹窗且连接失败，任选下面一种方法：
+Since macOS 15, an app must be granted "Local Network" access before it can reach devices on your network. If the prompt appears, click **Allow**. If it never appears and the connection fails, pick one:
 
-- **每次从终端启动 Ottr**（通过终端启动的应用不受此限制）：
+- **Launch Ottr from Terminal** (apps started this way are not affected):
 
   ```bash
   /Applications/Ottr.app/Contents/MacOS/ottr &
   ```
 
-- **一次性放行你的局域网网段**（需要输入管理员密码，执行后重启电脑生效；把 `192.168.9.0/24` 换成你的实际网段）：
+- **Allow your LAN range once** (asks for an admin password; replace `192.168.9.0/24` with your own range, then restart):
 
   ```bash
   sudo defaults write com.apple.network.local-network AllowedWiFiLocalNetworkAddresses -array "192.168.9.0/24"
   sudo defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "192.168.9.0/24"
   ```
 
-  想恢复系统默认行为时，执行以下命令并再次重启：
+  To restore the system default later, run these and restart once more:
 
   ```bash
   sudo defaults delete com.apple.network.local-network AllowedWiFiLocalNetworkAddresses
   sudo defaults delete com.apple.network.local-network AllowedEthernetLocalNetworkAddresses
   ```
 
-等 Ottr 加入正式的 Apple 开发者签名后，以上步骤将不再需要。
+Once Ottr ships with a proper Apple Developer ID signature, none of this will be needed.
 
 </details>
 
-## 🚀 快速上手
+## 🚀 Quick start
 
-1. **加主机**：侧栏「新建主机」（分组头悬停「＋」可直接往该分组加主机）、「导入 ssh config」→
-   双击主机行连接（首次连接展示指纹，信任后免问询）
-2. **用 AI**：设置 → AI → 新增服务商（选「智谱 GLM」「DeepSeek」「Ollama」等预设，填 Key）→
-   之后命令失败会自动诊断；`⌘J` 直接用中文要命令
-3. **配告警**：设置 → 告警 → 添加通知渠道（发测试消息验证）→ 建规则（如「根分区 > 90%」）；
-   哪些事件产生通知也在这页的「通知类型」里勾选
-4. **多设备同步**：第二台设备装好后，设置 → 同步 → 选通道（如 WebDAV 填你的网盘地址）→
-   设置同步口令 → 「立即同步」
-5. **进阶**：`⌘R` 搜历史、`⌘D`（Win/Linux `Ctrl+⇧D`）分屏；「文件」菜单（macOS）导入 /
-   导出主机，「工具」菜单（macOS）/ `⌘K` 面板还有端口转发 / 跳板链 / 定时任务 / 批量执行 /
-   通知中心（未读数直接标在图标轨与菜单上）
+1. **Add a host**: "New host" in the sidebar (hover a group header and press **＋** to add straight into that group) or "Import ssh config"; double-click a host row to connect — the fingerprint is shown on first contact and never asked again once you trust it
+2. **Turn on AI**: Settings → AI → add a provider (pick a preset such as Zhipu GLM, DeepSeek or Ollama and paste your key). After that, failed commands are diagnosed automatically, and **⌘J** turns a plain-language request into a command
+3. **Set up alerts**: Settings → Alerts → add a notification channel (send a test message to verify it) → create a rule such as "root partition > 90%". The "notification types" section of the same page decides which events notify you at all
+4. **Sync across devices**: install Ottr on the second device, choose a channel in Settings → Sync (for WebDAV, enter your drive URL), set a sync passphrase, then press **Sync now**
+5. **Go further**: **⌘R** searches history, **⌘D** (Ctrl+⇧D on Windows/Linux) splits the pane, the "File" menu (macOS) imports and exports hosts, and the "Tools" menu (macOS) or the **⌘K** palette reach port forwarding, jump host chains, scheduled tasks, batch execution and the notification center (unread counts sit right on the icon rail and in the menus)
 
-## 🛠 技术栈与工程结构
+## 🔐 Privacy & AI data boundaries
 
-```
-├─ frontend/               # 前端（React + TypeScript + zustand + i18next + xterm.js）
-│  ├─ app/ home/ titlebar/ workspace/                  # 壳层侧栏 / 欢迎首页 / 自绘标题栏 / 工作区宽幅视图
-│  ├─ terminal/ workspace/ hosts/ credentials/ files/  # 终端 / 工作区 / 主机 / 凭据 / 文件
-│  ├─ ai/ notify/ sync/ monitor/ history/ cron/ update/  # AI / 通知 / 同步 / 监控 / 历史 / 定时任务 / 检查更新
-│  ├─ session/ security/ vault/ batch/ forward/ plugins/  # 会话状态机 / 安全 / 库 API / 批量 / 转发 / 插件
-│  ├─ theme/ styles/ ui/ i18n/ shortcuts/ palette/     # 主题令牌 / 分节样式 / 基础组件 / 双语 / 键位 / ⌘K
-│  └─ vault/bindings.generated.ts                      # Rust 命令 TS 绑定（tauri-specta 自动生成，漂移即测试红）
-├─ desktop/              # Tauri 2 宿主 + 命令层（按域拆分：session/vault/mcp/…）
-│  ├─ tests/               # 起真实 SSH/FTP 容器跑集成测试 + 前后端命令契约守护（命令名集合比对 / 绑定一致性）
-│  └─ crates/
-│     ├─ ottr-vault        # 加密库（AES-256-GCM + Argon2id + 钥匙链 + 同步快照）
-│     ├─ ottr-ssh          # SSH/SFTP 传输核（russh，trait 隔离 + PTY 收口层）
-│     ├─ ottr-term         # 终端文本层（ANSI/OSC133 解析、编码、asciinema）
-│     ├─ ottr-transfer     # SFTP 并行传输 / FTP
-│     ├─ ottr-monitor      # 免 Agent 监控采样
-│     ├─ ottr-cron         # 定时任务引擎（五段式解析 + 调度 + 抖动原语）
-│     └─ ottr-bench        # 性能基准（传输 / PTY 吞吐）
-├─ scripts/                # 发布自动化（release.sh）+ 本地测试服务器（sshd/dufs）+ 更新清单生成
-├─ docs/screenshots/       # README 截图（docs 其余为内部开发文档，不入库）
-└─ .github/workflows/      # CI：PR → fmt + clippy + 三平台构建（合并门，文档类改动不触发）；tag → 双架构 macOS / Windows / Linux 构建 + 签名更新件 + latest.json 自动发布
-```
+- **Local storage**: SSH passwords, private keys, key passphrases and AI API keys are encrypted per field with AES-256-GCM. Host addresses, usernames, notes, command history and ordinary settings stay as plain text in a local SQLite file — locking the vault or setting a master password does not encrypt those. Sync uses its own encrypted envelope and does not change how the local database is stored.
+- **Diagnostics and explanations**: a diagnostic sends the failed command and the tail of the terminal output (up to 8 KB); an explanation sends the text you selected. Before sending, rules replace IP addresses, password assignments, e-mail addresses and — if enabled — host names and your own custom patterns. Summaries apply similar rules to command sequences. Rules can miss secrets that do not look like the samples, internal names or business data; "N items redacted" counts matches, it is not a completeness guarantee. The panel may still show the original text locally.
+- **Generating commands from plain language**: your request and the current directory (OSC 7) are sent to the model endpoint you chose as context, without the redaction above. Do not type passwords, tokens or anything you would not want sent. A direct connection does not stop the provider from receiving or keeping the content — that depends on the provider.
+- **Ollama**: the preset endpoint is `http://localhost:11434/v1`. Processing is local only while the endpoint and the inference both stay on this machine; once you point it at a remote address, a proxy or a cloud model, we can no longer promise the content stays local.
+- **Inserting AI commands**: only single-line text without newlines or control characters is accepted, and no carriage return is appended. Multi-line content is kept as-is and insertion is disabled — review it and prepare the command yourself; nothing is concatenated or truncated to the first line. The danger rating is a hint, not a proof that a command is safe. Still confirm that the terminal is in the state you expect before inserting, and check what is already typed; custom key bindings and interactive programs are not covered by this guarantee.
 
-### 开发环境
+## 📄 License & author
 
-**前置要求**：Node.js 22（仓库带 `.nvmrc`）、Rust stable（[rustup](https://rustup.rs/)），以及平台依赖——
-macOS：Xcode CLT；Windows：MSVC Build Tools + [NASM](https://www.nasm.us/)（`aws-lc-sys` 需要）；Linux：`libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev`（Debian/Ubuntu 包名）。
-
-```bash
-npm install            # 前端依赖
-npm run tauri dev      # 起 vite + Tauri 开发窗
-```
-
-### 测试
-
-```bash
-npm test               # 前端 vitest（1317 用例，含端到端）
-cargo test             # Rust 工作区全部单测/集成测试（约 600，含 Windows 命名管道 e2e）
-cargo fmt --all --check
-cargo clippy --workspace --all-targets   # CI 同款 -D warnings 门，零告警基线
-```
-
-本地 SSH/WebDAV 联调可起 Docker 测试服务器：`scripts/spike-sshd.sh`（127.0.0.1:2222）、`scripts/spike-dufs.sh`（127.0.0.1:15773）。仓库另有守护测试钉住设计约束（主题对比度实算、前后端命令名契约比对、TS 绑定与 Rust 签名一致性、控件一致性等）。
-
-### 发布构建
-
-```bash
-npx tauri build        # 产出 dmg / msi / nsis / deb / rpm / AppImage（当前平台）
-```
-
-推送 `v*` 标签即触发 CI 自动构建四平台（macOS 双架构 / Windows / Linux）安装包 + 签名更新件并发布 Release。
-
-产物位于仓库根 `target/release/bundle/`。
-
-### CI
-
-- **`release.yml`**：推送 `v*` 标签 → 校验版本一致性 → 三平台矩阵构建（Linux 上起真实测试服务器跑全量前端测试）→ 自动发布 GitHub Release
-- **`spike.yml`**：推送 main 与 pull request → `cargo fmt --check` + `cargo clippy -D warnings` + 三平台编译冒烟（Windows 上实跑 MCP 命名管道端到端用例）
-
-## 📄 许可与作者
-
-**Ottr** 由 [@huluohu](https://github.com/huluohu) 开发，以 [MIT](LICENSE-MIT) 协议开源——
-欢迎 Issue 反馈与 PR；主仓库：[github.com/huluohu/Ottr](https://github.com/huluohu/Ottr)。
+**Ottr** is developed by [@huluohu](https://github.com/huluohu) and released under the [MIT](LICENSE-MIT) license — issues and pull requests are welcome. Repository: [github.com/huluohu/Ottr](https://github.com/huluohu/Ottr).
 
 <div align="center">
 

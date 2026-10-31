@@ -231,6 +231,8 @@ HAND = {
     "nav.terminal": "終端",
     # 设置分区
     "settings.sectionGeneral": "常規",
+    "settings.groupStartup": "啟程",
+    "settings.groupStorage": "儲藏",
     "settings.sectionSecurity": "守",
     "settings.sectionSync": "同步",
     "settings.sectionAlerts": "警",

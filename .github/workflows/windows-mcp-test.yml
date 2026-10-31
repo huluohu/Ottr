@@ -34,7 +34,11 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build debug bins
-        run: cargo build -p ottr --bins
+        # ottr-mcp 已拆独立 crate（2026-10-31）：--bins 不再覆盖，且 desktop
+        # build.rs 校验 sidecar 存在——prepare 脚本一并搞定（编译 + 摆放）。
+        run: |
+          cargo build -p ottr --bins
+          node scripts/prepare-mcp-sidecar.mjs
 
       - name: Run MCP named-pipe e2e
         env:

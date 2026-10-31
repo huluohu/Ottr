@@ -166,7 +166,11 @@ jobs:
 
       - name: Run frontend tests (full suite with real fixtures)
         if: matrix.name == 'Linux'
-        run: npm test
+        # e2e.dualdevice 会编译 desktop → tauri build.rs 校验 externalBin 的
+        # sidecar 文件（2026-10-31），前制备料防拒编。
+        run: |
+          node scripts/prepare-mcp-sidecar.mjs
+          npm test
 
       # russh 默认 feature 走 aws-lc-rs → aws-lc-sys 在 Windows 需要 NASM
       # 汇编器（spike.yml 同款步骤，真跑失败先查这里）。

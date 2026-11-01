@@ -123,13 +123,17 @@ export function useGlobalFocusTrap(): void {
           if (trigger && document.contains(trigger)) trigger.focus();
         }
       }
-      // 新出现的弹窗：记住触发者 + 聚焦进去（内容可能下一帧才挂载 → rAF 后再聚焦）。
+      // 新出现的弹窗：记住触发者 + 聚焦进去（先尝试即时聚焦，并在 rAF 兜底
+      // 防异步挂载子节点）。
       for (const d of current) {
         if (!known.has(d)) {
           known.add(d);
           triggers.set(d, document.activeElement as HTMLElement | null);
+          focusFirst(d);
           requestAnimationFrame(() => {
-            if (document.contains(d)) focusFirst(d);
+            if (document.contains(d) && !d.contains(document.activeElement)) {
+              focusFirst(d);
+            }
           });
         }
       }

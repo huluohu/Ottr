@@ -3,7 +3,7 @@
 // 此前所有弹窗只声明 aria-modal="true"，没有任何实现——键盘 Tab 能从弹窗一路
 // 走到背后的界面（锁屏时能 Tab 进仍可交互的应用本身）。
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useState } from "react";
 import { useGlobalFocusTrap } from "./useFocusTrap";
@@ -34,15 +34,17 @@ describe("useGlobalFocusTrap", () => {
   it("弹窗出现时焦点进入弹窗", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByTestId("open-btn"));
-    // MutationObserver → rAF 后聚焦；等一拍
-    await new Promise((r) => setTimeout(r, 30));
-    expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-first");
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-first"),
+    );
   });
 
   it("Tab 在弹窗内循环：最后一个再 Tab 回到第一个（不回背景）", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByTestId("open-btn"));
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-first"),
+    );
     screen.getByTestId("dlg-last").focus();
     // 焦点在最后一个时按 Tab → 应回到第一个（而不是跳到背景按钮）
     fireEvent.keyDown(document, { key: "Tab" });
@@ -52,7 +54,9 @@ describe("useGlobalFocusTrap", () => {
   it("Shift+Tab 在第一个时回到最后一个", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByTestId("open-btn"));
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-first"),
+    );
     screen.getByTestId("dlg-first").focus();
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
     expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-last");
@@ -61,7 +65,9 @@ describe("useGlobalFocusTrap", () => {
   it("焦点跑到弹窗外时按 Tab 被拉回弹窗", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByTestId("open-btn"));
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-first"),
+    );
     screen.getByTestId("bg-btn").focus();
     fireEvent.keyDown(document, { key: "Tab" });
     expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-first");
@@ -72,11 +78,14 @@ describe("useGlobalFocusTrap", () => {
     const opener = screen.getByTestId("open-btn");
     opener.focus();
     fireEvent.click(opener);
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("dlg-first"),
+    );
     // 关闭弹窗
     const dlg = screen.getByTestId("dlg");
     dlg.remove();
-    await new Promise((r) => setTimeout(r, 30));
-    expect(document.activeElement?.getAttribute("data-testid")).toBe("open-btn");
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("open-btn"),
+    );
   });
 });

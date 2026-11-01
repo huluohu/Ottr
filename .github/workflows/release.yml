@@ -77,12 +77,13 @@ jobs:
       matrix:
         include:
           - name: macOS (Apple Silicon)
-            os: macos-14
+            os: macos-latest
           - name: macOS (Intel)
-            os: macos-14
+            os: macos-latest
             # macos-13（Intel 金属机型）已被 GitHub 淘汰，job 永远等不到
             # runner（v0.2.0 首跑实测卡 30 分钟）——Intel 包改在 Apple
             # Silicon runner 上交叉编译（本地 x86_64 目标交叉 check 已验）。
+            # 2026-11-02：macos-14 runner 退役进入 scheduled brownout，统一走 macos-latest。
             rust_target: x86_64-apple-darwin
           - name: Windows
             os: windows-2022

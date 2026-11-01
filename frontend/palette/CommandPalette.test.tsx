@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
 import { CommandPalette } from "./CommandPalette";
-import { ACTIONS, type ActionDef, type ActionId } from "../shortcuts/registry";
+import { ACTIONS, applyOverrides, type ActionDef, type ActionId } from "../shortcuts/registry";
 import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
 import { THEME_IDS } from "../theme/ThemeContext";
 import { LANGS } from "../i18n";
@@ -292,4 +292,24 @@ describe("动作注入（缩表）", () => {
     expect(screen.getByText("新建主机")).toBeTruthy();
     expect(screen.queryByText("设置")).toBeNull();
   });
+
+// 2026-11-01 功能审计 P2-4 回归：设置页改键后，⌘K 里的键位提示要跟着变。
+// 此前 commandItems 的 memo 不依赖覆盖表版本 —— 面板常驻挂载，提示停在旧键位
+// （按新键却生效）。
+describe("CommandPalette：键位提示跟随覆盖表", () => {
+  it("applyOverrides 后提示重算（不再显示旧键位）", () => {
+    const hints = () =>
+      Array.from(document.querySelectorAll(".palette-hint")).map((k) => k.textContent ?? "");
+    // 改键前：默认键位
+    renderPalette({ hosts: [] });
+    expect(hints().length, "浏览态应有多条键位提示").toBeGreaterThan(0);
+    expect(hints()).toContain("Ctrl+N");
+    cleanup();
+    // 改键后：提示跟着变（此前 memo 不依赖覆盖表版本 → 停在旧键位）
+    applyOverrides({ "hosts.new": "Ctrl+Shift+N" });
+    renderPalette({ hosts: [] });
+    expect(hints(), "改键后提示应显示新键位").toContain("Ctrl+Shift+N");
+    applyOverrides({});
+  });
+});
 });

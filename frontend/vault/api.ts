@@ -674,13 +674,13 @@ export const vaultApi = {
       invoke<KeyMaterial>("key_inspect", { pem, passphrase }),
     /** 导出私钥 PEM（0600）。path=null → 下载目录 ottr-key-<ts>.pem，返回落盘路径。 */
     export: (pem: string, path: string | null) => invoke<string>("key_export", { pem, path }),
-    /** 部署公钥到主机（幂等 exec 追加 authorized_keys）；认证材料从 vault 服务端取，明文不过前端。 */
-    deploy: (authCredentialId: number, address: string, port: number, username: string, publicKey: string) =>
+    /** 部署公钥到主机（幂等 exec 追加 authorized_keys）；认证材料从 vault 服务端取，
+     *  明文不过前端。目标主机按 hostId 由**服务端**解析地址/端口/用户名——
+     *  主机密钥 TOFU 记账键 = 端点，前端传值会让「校验端点 ≠ 连接端点」。 */
+    deploy: (hostId: number, authCredentialId: number, publicKey: string) =>
       invoke<KeyDeployReport>("key_deploy", {
+        hostId,
         authCredentialId,
-        address,
-        port,
-        username,
         publicKey,
       }),
   },

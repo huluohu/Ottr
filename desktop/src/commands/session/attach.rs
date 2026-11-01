@@ -29,6 +29,12 @@ use crate::vault::VaultState;
 /// **scripts/ 驱动脚本命令面**（台账裁定）：直传参数 + Phase 0 语义原样保留
 /// （15s 限时、指纹 pin、无 keepalive、无 session-closed 事件）；
 /// 正式 UI 走 [`attach_host_session`]（vault 凭据 + TOFU + keepalive）。
+///
+/// **release 不注册**（2026-11-01 安全审计 P2-3）：本命令是 Phase 0 的夹具
+/// 驱动面——直传主机/端口/用户名/**密码**、指纹钉死夹具常量、且不走
+/// `ensure_unlocked`（库锁着也能开连）。scripts/ 早已无调用方（grep 无引用），
+/// 与 spike_* 同口径按 `#[cfg(debug_assertions)]` 生产闸门处理。
+#[cfg(debug_assertions)]
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // scripts 直传命令面（Phase 0 语义原样保留）
 pub(crate) async fn attach_session(

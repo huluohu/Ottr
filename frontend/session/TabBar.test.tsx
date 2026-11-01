@@ -260,6 +260,33 @@ describe("TabBar 总览置顶标签", () => {
     expect(useWorkspaceStore.getState().mainView).toBe("files"); // 子视图不让位
   });
 
+  // 2026-11-01 UI 审计 P1-2 回归：会话页签的 ✕ 必须键盘可用。
+  // 关闭钮是 role="tab" 的后代，页签的 onKeyDown 对 Enter/空格 preventDefault
+  // ——冒泡上来的回车会取消按钮的默认激活（click 不再发生），键盘用户永远
+  // 关不掉标签（关标签 = 断开会话）。
+  it("会话页签 ✕ 键盘可达：回车不被页签的 onKeyDown 取消（浏览器随后派发 click）", () => {
+    seedThreeTabs();
+    render(<TabBar />);
+    const tab = screen.getByTestId("tab-web-01");
+    const closeBtn = tab.querySelector(".tab-close") as HTMLButtonElement;
+    // fireEvent 返回 false ⇔ 事件被 preventDefault —— 关闭钮的按键必须不被
+    // 祖先（role="tab"）的 onKeyDown 取消，否则浏览器的「回车激活按钮」不发生。
+    expect(fireEvent.keyDown(closeBtn, { key: "Enter" })).toBe(true);
+    // 浏览器在回车后派发 click → 标签关闭（= 断开会话）。
+    fireEvent.click(closeBtn);
+    expect(useSessionStore.getState().sessions.map((s) => s.id)).not.toContain("t1");
+  });
+
+  it("工作区页签 ✕ 键盘可达：回车不被页签的 onKeyDown 取消", () => {
+    useWorkspaceStore.setState({ overviewOpen: false, mainView: "cron" });
+    render(<TabBar />);
+    const tab = screen.getByTestId("tab-workspace-cron");
+    const closeBtn = tab.querySelector(".tab-close") as HTMLButtonElement;
+    expect(fireEvent.keyDown(closeBtn, { key: "Enter" })).toBe(true);
+    fireEvent.click(closeBtn);
+    expect(useWorkspaceStore.getState().mainView).toBe("terminal");
+  });
+
   // 2026-10-16 IA 重构：库级宽幅视图页签镜像 mainView（定时任务/通知中心/
   // 端口转发/跳板链），✕ = closeMainView 回终端。
   it("宽幅视图页签镜像 mainView：label/icon 正确，✕ 关闭回终端", () => {

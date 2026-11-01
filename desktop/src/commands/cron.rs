@@ -180,7 +180,11 @@ fn write_sidecar(
     let dir = output_dir(app)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("create cron-runs dir: {e}"))?;
     let path = dir.join(format!("{cron_id}-{run_id}.log"));
-    std::fs::write(&path, bytes).map_err(|e| format!("write sidecar: {e}"))?;
+    // 落盘即 0600（2026-11-01 安全审计 P2-2）：侧车文件装的是任务脚本的**原始
+    // 输出**——脚本里若打印了凭据（cat ~/.aws/credentials、curl -H "Auth: …"），
+    // 0644 的默认权限在多用户机器上等于公开可读。此前 `std::fs::write` 按
+    // umask 落 0644，与 vault.db / 录制文件的 0600 口径不一致。
+    write_private_file(&path, bytes).map_err(|e| format!("write sidecar: {e}"))?;
     // 清理旧 sidecar：mtime > 7 天的 .log 文件删除（不依赖 DB 查询，简单有效）
     if let Ok(entries) = std::fs::read_dir(&dir) {
         let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 24 * 3600);
@@ -203,6 +207,29 @@ fn write_sidecar(
 fn output_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     let base = crate::paths::data_root(app).map_err(|e| format!("app_data_dir: {e}"))?;
     Ok(base.join(CRON_OUTPUT_DIR))
+}
+
+/// 写私密文件：unix 创建即 0600（无宽权限窗口），非 unix 普通创建。
+/// 口径同录制文件（commands/recording.rs 的 open_private_new）。
+fn write_private_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        f.write_all(bytes)?;
+        f.flush()?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, bytes)?;
+    }
+    Ok(())
 }
 
 /// 调度器装配（vault 就绪后调一次；进程生命周期 owner——无需 guard，
@@ -576,5 +603,18 @@ mod tests {
         assert!(validate_schedule("60 * * * *").is_err());
         assert!(validate_schedule("* * * *").is_err());
         assert!(validate_schedule("garbage").is_err());
+    }
+
+    /// 2026-11-01 安全审计 P2-2 回归：任务运行侧车文件（装脚本原始输出，
+    /// 可能含凭据）必须 0600——此前按 umask 落 0644，多用户机器上公开可读。
+    #[test]
+    #[cfg(unix)]
+    fn sidecar_file_is_private_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("1-2.log");
+        write_private_file(&path, b"token=secret\n").expect("write sidecar");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "侧车文件权限应为 0600，实际 {mode:o}");
     }
 }

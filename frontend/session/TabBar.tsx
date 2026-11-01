@@ -14,6 +14,7 @@ import { useSessionStore, type Session } from "./SessionStore";
 import { useAiStore } from "../ai/aiStore";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { workspaceViewOf, WORKSPACE_VIEW_META, type WorkspaceView } from "../workspace/workspaceViews";
+import { useEscClose } from "../ui/useEscClose";
 import { useVaultStore } from "../vault/store";
 
 export interface TabBarProps {
@@ -46,6 +47,9 @@ export function TabBar({ dragRegion }: TabBarProps) {
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; sessionId: string } | null>(
     null,
   );
+  // 右键菜单 Esc 关闭（2026-11-01 UI 审计 P2-2）：此前只有点遮罩能收——键盘
+  // 打开的菜单只能靠鼠标点掉。
+  useEscClose(tabMenu != null, () => setTabMenu(null));
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const renameTab = useSessionStore((s) => s.renameTab);
@@ -100,6 +104,10 @@ export function TabBar({ dragRegion }: TabBarProps) {
               if (workspaceView === "overview") closeOverview();
               else closeMainView();
             }}
+            // 键盘可达（2026-11-01 UI 审计 P1-2）：关闭钮是 role="tab" 的后代，
+            // 回车/空格冒泡到页签的 onKeyDown 会被 preventDefault 吃掉——按钮的
+            // 默认激活（click）不再发生，键盘用户永远关不掉页签（连同会话）。
+            onKeyDown={(e) => e.stopPropagation()}
           >
             ✕
           </button>
@@ -200,6 +208,9 @@ export function TabBar({ dragRegion }: TabBarProps) {
               e.stopPropagation();
               closeTab(session.id);
             }}
+            // 键盘可达（2026-11-01 UI 审计 P1-2）：见工作区页签关闭钮的同款说明
+            // ——冒泡到 role="tab" 的 onKeyDown 会被 preventDefault 吃掉按钮激活。
+            onKeyDown={(e) => e.stopPropagation()}
           >
             ✕
           </button>

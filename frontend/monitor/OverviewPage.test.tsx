@@ -260,6 +260,27 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
     expect(onOpen, "按钮点击不冒泡成卡片跳转").not.toHaveBeenCalled();
   });
 
+  // 2026-11-01 UI 审计 P1-3 回归：卡片动作按钮的按键不得被卡片（role="button"）
+  // 的 onKeyDown 取消——取消后浏览器的「回车激活按钮」不发生，监控开启/进程/
+  // 连接三个动作对键盘用户全部失效（回车反而打开会话）。
+  it("卡片动作按钮：按键不被卡片的 onKeyDown 取消（键盘可达）", () => {
+    const off = host({ id: 5, name: "off-host", monitor_enabled: false });
+    const updateHost = vi.fn(async (_id: number, _input: HostInput) => ({
+      ...off,
+      monitor_enabled: true,
+    }));
+    useVaultStore.setState({ hosts: [off], updateHost });
+    const onOpen = vi.fn();
+    render(<OverviewPage onOpen={onOpen} onOpenProcesses={() => {}} />);
+
+    const btn = screen.getByTestId("overview-monitor-on-5");
+    // fireEvent 返回 false ⇔ 事件被 preventDefault。
+    expect(fireEvent.keyDown(btn, { key: "Enter" })).toBe(true);
+    fireEvent.click(btn);
+    expect(updateHost, "回车后的 click 应触发开启监控").toHaveBeenCalledTimes(1);
+    expect(onOpen, "按钮动作不应冒泡成卡片跳转").not.toHaveBeenCalled();
+  });
+
   // 2026-10-16 用户反馈：未连接卡片此前只有灰字提示，可点连接完全不可发现——
   // 显式「连接」首动作（语义 = 卡片本体 onOpen = openTab + 回终端）。
   it("未连接卡片渲染「连接」首动作：点击走 onOpen 且不冒泡双触发；已连接卡片不渲染", () => {

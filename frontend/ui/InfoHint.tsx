@@ -83,10 +83,15 @@ export function InfoHint({ text, label, testid }: InfoHintProps) {
         onFocus={show}
         onBlur={hide}
         onKeyDown={(e) => {
-          if (e.key === "Escape") hide();
-          // 徽标常落在 <label class="settings-row"> 内——不拦住的话，点 ⓘ 会连带
-          // 激活标签关联的控件（下拉/单选被顺手打开）。徽标自己只负责显示气泡。
-          e.stopPropagation();
+          if (e.key === "Escape") {
+            hide();
+            return;
+          }
+          // 只拦「会激活按钮」的键（Enter/空格）——徽标常落在
+          // <label class="settings-row"> 内，激活会连带打开标签关联的控件。
+          // 此前无条件 stopPropagation 连带吃掉了全局快捷键：ⓘ 获得焦点时
+          // ⌘K/⌘N/⌘, 全部失灵（2026-11-01 UI 审计 P2-8）。
+          if (e.key === "Enter" || e.key === " ") e.stopPropagation();
         }}
         onClick={(e) => {
           e.preventDefault();

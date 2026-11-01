@@ -254,6 +254,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       // `LS_COLORS`（目录蓝/可写绿底）、导入主题、九套内置色板全部覆盖，
       // 主题层不用再逐槽追。饱和蓝等低对比前景会被提亮，视觉上更浅但可读。
       minimumContrastRatio: 4.5,
+      // 读屏支持（2026-11-01 UI 审计 P1-1）：xterm 默认把内容画进 canvas，
+      // 画布对辅助技术是 aria-hidden —— 读屏用户听不到任何会话内容（命令输出、
+      // 提示符、回显全无），产品的核心表面对读屏用户等于不存在。开启后 xterm
+      // 额外把缓冲区暴露成可读的 DOM（NVDA / VoiceOver）。
+      screenReaderMode: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -1022,6 +1027,14 @@ export function TerminalToolbar({
   const activePaneMap = useSessionStore((s) => s.activePane);
   const trees = useSessionStore((s) => s.trees);
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
+  // 聚焦 pane 是不是「分屏出来的子窗格」（paneOf != null）：根窗格关掉 = 关整
+  // 个会话（closePane 语义），工具行的「关闭窗格」按钮只对子窗格出现——
+  // 否则它会变成一个藏在工具行里的「断开会话」按钮。
+  const focusedPaneIsChild = useSessionStore((s) =>
+    focusedPane != null
+      ? (s.sessions.find((x) => x.id === focusedPane)?.paneOf ?? null) != null
+      : false,
+  );
   // 分屏上限呈现（2026-10-21）：到顶按钮置灰 + 悬停提示；快捷键/⌘K 走 store
   // 守卫弹 toast（splitPane 单点）。
   const splitDisabled =
@@ -1054,6 +1067,20 @@ export function TerminalToolbar({
           onClick={() => activeId != null && useSessionStore.getState().splitPane(activeId, "column")}
         >
           {t("terminal.splitDown")}
+        </button>
+      )}
+      {terminalControls && focusedPane != null && focusedPaneIsChild && (
+        // 关闭分屏窗格（2026-11-01 UI 审计 P2-39）：v1.5.18 把窗格 ✕ 收窄成
+        // 「分屏子窗格专属」后，关窗格只剩两个入口——浮在子窗格右上角的 ✕ 与
+        // 右键菜单（后者纯鼠标，键盘不可达）。工具行是分屏功能唯一的可见
+        // 入口，这里补一个显式按钮，与分屏钮同排。
+        <button
+          data-testid="close-pane"
+          title={t("terminal.closePane")}
+          aria-label={t("terminal.closePane")}
+          onClick={() => useSessionStore.getState().closePane(focusedPane)}
+        >
+          {t("terminal.closePane")}
         </button>
       )}
       {toolbarExtra}

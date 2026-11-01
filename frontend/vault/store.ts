@@ -42,7 +42,20 @@ interface VaultStore {
   deleteJumpChain: (id: number) => Promise<void>;
 }
 
-export const useVaultStore = create<VaultStore>((set, get) => ({
+export const useVaultStore = create<VaultStore>((set, get) => {
+  /** 变更失败也要落 store.error（2026-11-01 功能审计 P2-7）：此前只有 refresh()
+   *  会写 error，而 refresh 在**变更本身**失败时根本走不到——删除主机失败 =
+   *  静默回弹、零提示（store.error 恒 null，用户无法判断到底删没删掉）。
+   *  成功路径的 refresh() 会清掉 error（下一轮刷新即恢复）。 */
+  const mutate = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      throw e;
+    }
+  };
+  return ({
   hosts: [],
   credentials: [],
   hostGroups: [],
@@ -66,40 +79,46 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     }
   },
 
-  createHost: async (input) => {
-    const host = await vaultApi.hosts.create(input);
-    await get().refresh();
-    return host;
-  },
+  createHost: async (input) =>
+    mutate(async () => {
+      const host = await vaultApi.hosts.create(input);
+      await get().refresh();
+      return host;
+    }),
 
-  updateHost: async (id, input) => {
-    const host = await vaultApi.hosts.update(id, input);
-    await get().refresh();
-    return host;
-  },
+  updateHost: async (id, input) =>
+    mutate(async () => {
+      const host = await vaultApi.hosts.update(id, input);
+      await get().refresh();
+      return host;
+    }),
 
-  deleteHost: async (id) => {
-    await vaultApi.hosts.remove(id);
-    await get().refresh();
-  },
+  deleteHost: async (id) =>
+    mutate(async () => {
+      await vaultApi.hosts.remove(id);
+      await get().refresh();
+    }),
 
-  createCredential: async (input) => {
-    const credential = await vaultApi.credentials.create(input);
-    await get().refresh();
-    return credential;
-  },
+  createCredential: async (input) =>
+    mutate(async () => {
+      const credential = await vaultApi.credentials.create(input);
+      await get().refresh();
+      return credential;
+    }),
 
-  updateCredential: async (id, patch) => {
-    const credential = await vaultApi.credentials.update(id, patch);
-    await get().refresh();
-    return credential;
-  },
+  updateCredential: async (id, patch) =>
+    mutate(async () => {
+      const credential = await vaultApi.credentials.update(id, patch);
+      await get().refresh();
+      return credential;
+    }),
 
-  deleteCredential: async (id) => {
+  deleteCredential: async (id) =>
     // 删凭据会解绑引用它的主机（FK ON DELETE SET NULL），必须刷新 hosts。
-    await vaultApi.credentials.remove(id);
-    await get().refresh();
-  },
+    mutate(async () => {
+      await vaultApi.credentials.remove(id);
+      await get().refresh();
+    }),
 
   createGroup: async (name) => {
     // MVP 分组均为根级（parent_id=null）；嵌套树待有真实诉求再做
@@ -131,4 +150,5 @@ export const useVaultStore = create<VaultStore>((set, get) => ({
     await vaultApi.jumpChains.remove(id);
     await get().refresh();
   },
-}));
+  });
+});

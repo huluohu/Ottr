@@ -19,7 +19,7 @@ import {
 } from "../theme/gallery";
 import { parseThemeFileBytes } from "../theme/importers";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
-import { useLanguage, type Lang , LANGS } from "../i18n";
+import { useLanguage, type Lang , LANGS, LANG_LABEL_KEY } from "../i18n";
 import { Switch } from "../ui/Switch";
 import { setOttyEnabled, useOttyStore } from "../ui/otty/ottyStore";
 import { loadTerminalSettings, saveTerminalSettings } from "../terminal/ContextMenu";
@@ -1094,13 +1094,7 @@ export function SecuritySettings({
                 >
                   {LANG_CHOICES.map((l) => (
                     <option key={l} value={l}>
-                      {l === "zh-CN"
-                        ? t("settings.langZh")
-                        : l === "zh-Hant"
-                          ? t("settings.langHant")
-                          : l === "lzh"
-                            ? t("settings.langLzh")
-                            : t("settings.langEn")}
+                      {t(LANG_LABEL_KEY[l])}
                     </option>
                   ))}
                 </select>

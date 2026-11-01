@@ -57,6 +57,14 @@ pub enum Lang {
     /// 文言（lzh，浅近文言；2026-10-31 用户需求。繁体字形，菜单文案以
     /// 浅近古语措辞）。
     Lzh,
+    /// 日本語（ja；2026-11-01 随 README 六语配图新增）。
+    Ja,
+    /// 한국어（ko；2026-11-01）。
+    Ko,
+    /// Español（es；2026-11-01）。
+    Es,
+    /// Italiano（it；2026-11-01）。
+    It,
     En,
 }
 
@@ -70,6 +78,10 @@ pub fn lang_from_vault(vault: &ottr_vault::Vault) -> Lang {
         Some("zh-CN") => Lang::Zh,
         Some("zh-Hant") => Lang::ZhTw,
         Some("lzh") => Lang::Lzh,
+        Some("ja") => Lang::Ja,
+        Some("ko") => Lang::Ko,
+        Some("es") => Lang::Es,
+        Some("it") => Lang::It,
         _ => Lang::En,
     }
 }
@@ -134,12 +146,244 @@ fn apply_accel_overrides(
     }
 }
 
+/// 菜单文案表（新增四语 ja/ko/es/it；2026-11-01）：键 → 日/韩/西/意。
+/// 键集与 `text_core` 的词条一一对应；表外键回落英文（`text_core` 的 else
+/// 分支）。新增语言不改动既有三分支结构——机械扩展优于改写。
+const TEXT_NEW_LANGS: &[(&str, &str, &str, &str, &str)] = &[
+    ("settings", "設定…", "설정…", "Ajustes…", "Impostazioni…"),
+    ("file", "ファイル", "파일", "Archivo", "File"),
+    (
+        "new_group",
+        "新しいグループ",
+        "새 그룹",
+        "Nuevo grupo",
+        "Nuovo gruppo",
+    ),
+    (
+        "new_host",
+        "新しいホスト",
+        "새 호스트",
+        "Nuevo host",
+        "Nuovo host",
+    ),
+    (
+        "import_host",
+        "ホストをインポート…",
+        "호스트 가져오기…",
+        "Importar hosts…",
+        "Importa host…",
+    ),
+    (
+        "split_right",
+        "右に分割",
+        "오른쪽으로 분할",
+        "Dividir a la derecha",
+        "Dividi a destra",
+    ),
+    (
+        "split_down",
+        "下に分割",
+        "아래로 분할",
+        "Dividir hacia abajo",
+        "Dividi in basso",
+    ),
+    (
+        "toggle_sidebar",
+        "ホストパネルの表示切替",
+        "호스트 패널 전환",
+        "Alternar panel de hosts",
+        "Mostra/nascondi pannello host",
+    ),
+    ("edit", "編集", "편집", "Editar", "Modifica"),
+    ("view", "表示", "보기", "Ver", "Vedi"),
+    ("zoom_in", "拡大", "확대", "Acercar", "Ingrandisci"),
+    ("zoom_out", "縮小", "축소", "Alejar", "Riduci"),
+    (
+        "zoom_reset",
+        "実際のサイズ",
+        "실제 크기",
+        "Tamaño real",
+        "Dimensione reale",
+    ),
+    ("window", "ウインドウ", "창", "Ventana", "Finestra"),
+    ("help", "ヘルプ", "도움말", "Ayuda", "Aiuto"),
+    (
+        "palette",
+        "コマンドパレット…",
+        "명령 팔레트…",
+        "Paleta de comandos…",
+        "Palette dei comandi…",
+    ),
+    (
+        "help_github",
+        "プロジェクトのページ",
+        "프로젝트 홈페이지",
+        "Página del proyecto",
+        "Sito del progetto",
+    ),
+    (
+        "tray_show",
+        "メインウインドウを表示",
+        "기본 창 표시",
+        "Mostrar ventana principal",
+        "Mostra finestra principale",
+    ),
+    (
+        "tray_disconnect_all",
+        "すべて切断",
+        "모두 연결 해제",
+        "Desconectar todo",
+        "Disconnetti tutto",
+    ),
+    ("theme", "テーマ", "테마", "Tema", "Tema"),
+    ("theme_light", "浅瀬", "여울", "Bajíos", "Bassi fondali"),
+    (
+        "theme_dark",
+        "深水",
+        "깊은 물",
+        "Agua profunda",
+        "Acque profonde",
+    ),
+    ("theme_system", "システム", "시스템", "Sistema", "Sistema"),
+    ("theme_oled", "深淵", "심연", "Abismo", "Abisso"),
+    (
+        "theme_amethyst",
+        "生命の川",
+        "야광 강",
+        "Río biótico",
+        "Fiume bioluminescente",
+    ),
+    ("theme_verdant", "河畔", "강변", "Ribera", "Riva verde"),
+    (
+        "theme_glass",
+        "雨の硝子",
+        "빗물 유리",
+        "Vidrio de lluvia",
+        "Vetro di pioggia",
+    ),
+    ("tools", "ツール", "도구", "Herramientas", "Strumenti"),
+    ("theme_sepia", "砂州", "모래톱", "Arenal", "Barra di sabbia"),
+    (
+        "theme_forest",
+        "松波",
+        "소나무 물결",
+        "Olas de pino",
+        "Onde di pini",
+    ),
+    (
+        "theme_ember",
+        "川灯",
+        "강변 등불",
+        "Faroles del río",
+        "Lanterne di fiume",
+    ),
+    (
+        "tool_notify_center",
+        "通知センター",
+        "알림 센터",
+        "Centro de notificaciones",
+        "Centro notifiche",
+    ),
+    (
+        "tool_credentials",
+        "資格情報",
+        "자격 증명",
+        "Credenciales",
+        "Credenziali",
+    ),
+    (
+        "tool_alerts",
+        "アラートルール",
+        "알림 규칙",
+        "Reglas de alerta",
+        "Regole di avviso",
+    ),
+    (
+        "tool_forwards",
+        "ポートフォワーディング",
+        "포트 포워딩",
+        "Redirecciones de puertos",
+        "Port forwarding",
+    ),
+    (
+        "tool_jump_chains",
+        "ジャンプチェーン",
+        "점프 체인",
+        "Cadenas de salto",
+        "Catene di salto",
+    ),
+    ("tool_overview", "概要", "개요", "Resumen", "Panoramica"),
+    (
+        "tool_batch",
+        "一括実行",
+        "일괄 실행",
+        "Ejecución por lotes",
+        "Esecuzione per lotti",
+    ),
+    (
+        "tool_cron",
+        "定期タスク",
+        "예약 작업",
+        "Tareas programadas",
+        "Attività pianificate",
+    ),
+    (
+        "export_host",
+        "ホストをエクスポート…",
+        "호스트 내보내기…",
+        "Exportar hosts…",
+        "Esporta host…",
+    ),
+    (
+        "tool_export_hosts",
+        "ホストをエクスポート…",
+        "호스트 내보내기…",
+        "Exportar hosts…",
+        "Esporta host…",
+    ),
+    (
+        "update_check",
+        "更新を確認…",
+        "업데이트 확인…",
+        "Buscar actualizaciones…",
+        "Controlla aggiornamenti…",
+    ),
+    (
+        "tray_quit",
+        "Ottr を終了",
+        "Ottr 종료",
+        "Salir de Ottr",
+        "Esci da Ottr",
+    ),
+    ("app", "Ottr", "Ottr", "Ottr", "Ottr"),
+];
+
+/// 取新增四语文案；非新增语种或表外键 → None（调用方回落英文）。
+fn text_new(lang: Lang, key: &str) -> Option<&'static str> {
+    let row = TEXT_NEW_LANGS.iter().find(|(k, ..)| *k == key)?;
+    Some(match lang {
+        Lang::Ja => row.1,
+        Lang::Ko => row.2,
+        Lang::Es => row.3,
+        Lang::It => row.4,
+        _ => return None,
+    })
+}
+
+/// 菜单文案取用入口：新增四语走表，其余走 `text_core`（zh/zh-Hant/lzh/en）。
+fn text(lang: Lang, key: &str) -> &'static str {
+    if let Some(s) = text_new(lang, key) {
+        return s;
+    }
+    text_core(lang, key)
+}
+
 /// 菜单文案表（zh/en；PredefinedMenuItem 的系统项文案由系统自动本地化，不进表）。
 // if_same_then_else 豁免：三分支机械统一（zh/hant/en 各一臂），部分词条简繁
 // 同形（向右分屏类）触发同体告警——为保「每个词条三臂齐整、新增语言机械扩展」
 // 的结构不变性，豁免优于逐条去重（去重后词条升臂/降臂会漂）。
 #[allow(clippy::if_same_then_else)]
-fn text(lang: Lang, key: &str) -> &'static str {
+fn text_core(lang: Lang, key: &str) -> &'static str {
     let zh = lang == Lang::Zh;
     let hant = matches!(lang, Lang::ZhTw);
     let lzh = matches!(lang, Lang::Lzh);
@@ -938,6 +1182,10 @@ pub fn tray_tree(lang: Lang, session_count: u64) -> Vec<MenuNode> {
             Lang::Zh => "无活动会话".to_string(),
             Lang::ZhTw => "無活動工作階段".to_string(),
             Lang::Lzh => "無席在線".to_string(),
+            Lang::Ja => "アクティブなセッションなし".to_string(),
+            Lang::Ko => "활성 세션 없음".to_string(),
+            Lang::Es => "Sin sesiones activas".to_string(),
+            Lang::It => "Nessuna sessione attiva".to_string(),
             Lang::En => "No active sessions".to_string(),
         }
     } else {
@@ -945,6 +1193,10 @@ pub fn tray_tree(lang: Lang, session_count: u64) -> Vec<MenuNode> {
             Lang::Zh => format!("{session_count} 个会话在线"),
             Lang::ZhTw => format!("{session_count} 個工作階段在線"),
             Lang::Lzh => format!("{session_count} 席在線"),
+            Lang::Ja => format!("{session_count} 件のセッションがオンライン"),
+            Lang::Ko => format!("활성 세션 {session_count}개"),
+            Lang::Es => format!("{session_count} sesión(es) activa(s)"),
+            Lang::It => format!("{session_count} sessione attive"),
             Lang::En => format!("{session_count} active session(s)"),
         }
     };
@@ -2048,5 +2300,43 @@ mod tests {
         assert_eq!(lang_from_vault(&vault), Lang::Zh);
         ottr_vault::Settings::set_str(&vault, LANG_SETTING_KEY, "fr-FR").unwrap();
         assert_eq!(lang_from_vault(&vault), Lang::En, "非法值 → En");
+    }
+
+    /// 2026-11-01 新增四语：vault 值 → 菜单语言；文案表命中且非英文。
+    #[test]
+    fn new_langs_map_from_vault_and_have_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = ottr_vault::Vault::open_with(
+            dir.path(),
+            &ottr_vault::master_key::InMemoryStorage::new(),
+        )
+        .expect("open in-memory vault");
+        for (value, expect) in [
+            ("ja", Lang::Ja),
+            ("ko", Lang::Ko),
+            ("es", Lang::Es),
+            ("it", Lang::It),
+        ] {
+            ottr_vault::Settings::set_str(&vault, LANG_SETTING_KEY, value).unwrap();
+            assert_eq!(lang_from_vault(&vault), expect, "vault {value} → 菜单语言");
+        }
+
+        // 四语文案表：键集与英文表一致（非空、且不等于英文原文）
+        let en_keys: Vec<&str> = TEXT_NEW_LANGS.iter().map(|(k, ..)| *k).collect();
+        assert!(!en_keys.is_empty(), "文案表非空");
+        for (key, ja, ko, es, it) in TEXT_NEW_LANGS {
+            for (lang, label) in [
+                (Lang::Ja, *ja),
+                (Lang::Ko, *ko),
+                (Lang::Es, *es),
+                (Lang::It, *it),
+            ] {
+                assert!(!label.is_empty(), "{key} 的 {lang:?} 文案非空");
+                assert_eq!(text(lang, key), label, "{key} 的 {lang:?} 文案走新增语种表");
+            }
+        }
+        // 主题名与界面词典一致（菜单与窗口同一语言同一叫法）
+        assert_eq!(text(Lang::Ja, "theme_dark"), "深水");
+        assert_eq!(text(Lang::Ko, "theme_dark"), "깊은 물");
     }
 }

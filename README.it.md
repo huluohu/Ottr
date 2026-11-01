@@ -24,7 +24,7 @@
 
 La regola ferrea che non infrange mai: **porti la tua chiave AI (BYOK)**. Le richieste vanno direttamente dalla tua macchina all'endpoint del modello che hai scelto — non c'è alcun server Ottr di mezzo. I segreti sono cifrati a riposo sulla tua stessa macchina; i metadati degli host e la cronologia dei comandi risiedono in un file SQLite locale. Il confine esatto dei dati per le richieste AI e per la sincronizzazione facoltativa è descritto in [Privacy e AI](#-privacy--ai-data-boundaries).
 
-![Schermata di benvenuto: saluto in base all'orario del giorno, azioni rapide e barra laterale delle icone](docs/screenshots/home-welcome.png)
+![Schermata di benvenuto: saluto in base all'orario del giorno, azioni rapide e barra laterale delle icone](docs/screenshots/it/home-welcome.png)
 
 ## ✨ Cosa fa
 
@@ -42,7 +42,7 @@ La regola ferrea che non infrange mai: **porti la tua chiave AI (BYOK)**. Le ric
 - **Catene di jump host** disposte visivamente; **port forwarding** per forward locali, dinamici SOCKS e remoti, ristabiliti automaticamente dopo un'interruzione
 - known_hosts con **trust-on-first-use più verifiche periodiche delle impronte**, per individuare attacchi man-in-the-middle
 
-![Tema scuro: barra laterale delle icone, pannello degli host, isole di schede galleggianti e punti di stato della connessione](docs/screenshots/main-dark.png)
+![Tema scuro: barra laterale delle icone, pannello degli host, isole di schede galleggianti e punti di stato della connessione](docs/screenshots/it/main-dark.png)
 
 ### Un'AI che rispetta i tuoi dati
 
@@ -72,8 +72,8 @@ La regola ferrea che non infrange mai: **porti la tua chiave AI (BYOK)**. Le ric
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="Palette dei comandi"></td>
-    <td width="50%"><img src="docs/screenshots/cron.png" alt="Centro attività pianificate"></td>
+    <td width="50%"><img src="docs/screenshots/it/palette.png" alt="Palette dei comandi"></td>
+    <td width="50%"><img src="docs/screenshots/it/cron.png" alt="Centro attività pianificate"></td>
   </tr>
   <tr>
     <td width="50%">Palette dei comandi ⌘K (ricerca fuzzy)</td>
@@ -84,8 +84,8 @@ La regola ferrea che non infrange mai: **porti la tua chiave AI (BYOK)**. Le ric
 <details>
 <summary>Altre schermate</summary>
 
-![Panoramica multi-host](docs/screenshots/overview.png)
-![Gestore delle credenziali](docs/screenshots/credentials.png)
+![Panoramica multi-host](docs/screenshots/it/overview.png)
+![Gestore delle credenziali](docs/screenshots/it/credentials.png)
 
 </details>
 

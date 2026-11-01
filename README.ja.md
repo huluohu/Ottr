@@ -24,7 +24,7 @@
 
 Ottr が決して破らない大前提はひとつだけです。**AI キーはご自身でお持ちください（BYOK）**。リクエストはお使いの端末から、選択したモデルエンドポイントへ直接送られます。間に Ottr のサーバーを介在させることはありません。秘密情報はお使いの端末上で暗号化して保存し、ホスト情報とコマンド履歴はローカルの SQLite ファイルに保持します。AI リクエストとオプションの同期について、具体的なデータ境界は [プライバシーと AI](#-privacy--ai-data-boundaries) で説明しています。
 
-![ウェルカム画面：時間帯に応じた挨拶、クイックアクション、アイコンレール](docs/screenshots/home-welcome.png)
+![ウェルカム画面：時間帯に応じた挨拶、クイックアクション、アイコンレール](docs/screenshots/ja/home-welcome.png)
 
 ## ✨ できること
 
@@ -42,7 +42,7 @@ Ottr が決して破らない大前提はひとつだけです。**AI キーは�
 - **ジャンプホストのチェーン**を視覚的に構成でき、**ポートフォワーディング**（ローカル、動的 SOCKS、リモート）にも対応。切断後も自動的に再確立されます
 - known_hosts は **trust-on-first-use に加えて定期的なフィンガープリント監査** を行い、man-in-the-middle 攻撃を検知します
 
-![ダークテーマ：アイコンレール、ホストパネル、浮遊するタブ群、接続状態のドット表示](docs/screenshots/main-dark.png)
+![ダークテーマ：アイコンレール、ホストパネル、浮遊するタブ群、接続状態のドット表示](docs/screenshots/ja/main-dark.png)
 
 ### データを尊重する AI
 
@@ -72,8 +72,8 @@ Ottr が決して破らない大前提はひとつだけです。**AI キーは�
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="コマンドパレット"></td>
-    <td width="50%"><img src="docs/screenshots/cron.png" alt="定期タスクセンター"></td>
+    <td width="50%"><img src="docs/screenshots/ja/palette.png" alt="コマンドパレット"></td>
+    <td width="50%"><img src="docs/screenshots/ja/cron.png" alt="定期タスクセンター"></td>
   </tr>
   <tr>
     <td width="50%">⌘K コマンドパレット（あいまい検索）</td>
@@ -84,8 +84,8 @@ Ottr が決して破らない大前提はひとつだけです。**AI キーは�
 <details>
 <summary>その他のスクリーンショット</summary>
 
-![複数ホストの一覧](docs/screenshots/overview.png)
-![認証情報マネージャー](docs/screenshots/credentials.png)
+![複数ホストの一覧](docs/screenshots/ja/overview.png)
+![認証情報マネージャー](docs/screenshots/ja/credentials.png)
 
 </details>
 

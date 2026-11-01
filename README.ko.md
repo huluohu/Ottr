@@ -24,7 +24,7 @@
 
 이 앱이 절대 타지 않는 원칙이 하나 있습니다. 바로 **AI 키는 사용자가 직접 가져옵니다(BYOK)**는 점입니다. 요청은 사용자의 컴퓨터에서 직접 선택한 모델 엔드포인트로 전달되며, 중간에 Ottr 서버를 거치지 않습니다. 시크릿은 사용자의 컴퓨터에서 저장 시점에 암호화되고, 호스트 메타데이터와 명령 기록은 로컬 SQLite 파일에 보관됩니다. AI 요청과 선택적 동기화에 대한 정확한 데이터 경계는 [개인정보 보호 및 AI](#-privacy--ai-data-boundaries)에 설명되어 있습니다.
 
-![시작 화면: 시간대별 인사말, 빠른 작업, 아이콘 레일](docs/screenshots/home-welcome.png)
+![시작 화면: 시간대별 인사말, 빠른 작업, 아이콘 레일](docs/screenshots/ko/home-welcome.png)
 
 ## ✨ 무엇을 할 수 있나
 
@@ -42,7 +42,7 @@
 - 시각적으로 정리하는 **점프 호스트 체인**; 로컬·동적 SOCKS·원격 포워딩을 위한 **포트 포워딩**, 연결이 끊어지면 자동으로 다시 설정
 - 최초 사용 시 신뢰(TOFU)와 주기적인 지문 점검을 적용하는 known_hosts — 중간자 공격을 잡아냅니다
 
-![다크 테마: 아이콘 레일, 호스트 패널, 떠 있는 탭 아일랜드, 연결 상태 점](docs/screenshots/main-dark.png)
+![다크 테마: 아이콘 레일, 호스트 패널, 떠 있는 탭 아일랜드, 연결 상태 점](docs/screenshots/ko/main-dark.png)
 
 ### 데이터를 존중하는 AI
 
@@ -72,8 +72,8 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="커맨드 팔레트"></td>
-    <td width="50%"><img src="docs/screenshots/cron.png" alt="예약 작업 센터"></td>
+    <td width="50%"><img src="docs/screenshots/ko/palette.png" alt="커맨드 팔레트"></td>
+    <td width="50%"><img src="docs/screenshots/ko/cron.png" alt="예약 작업 센터"></td>
   </tr>
   <tr>
     <td width="50%">⌘K 커맨드 팔레트(퍼지 검색)</td>
@@ -84,8 +84,8 @@
 <details>
 <summary>스크린샷 더 보기</summary>
 
-![다중 호스트 개요](docs/screenshots/overview.png)
-![자격 증명 관리자](docs/screenshots/credentials.png)
+![다중 호스트 개요](docs/screenshots/ko/overview.png)
+![자격 증명 관리자](docs/screenshots/ko/credentials.png)
 
 </details>
 

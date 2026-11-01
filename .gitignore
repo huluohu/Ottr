@@ -54,3 +54,6 @@ docs/*
 /CLAUDE.md
 /AGENTS.md
 /desktop/binaries/
+
+# README 配图出图脚本的报错日志（临时产物，不入库）
+docs/screenshots/.shot-errors.log

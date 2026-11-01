@@ -60,7 +60,7 @@ afterEach(() => {
 });
 
 describe("i18n", () => {
-  it("detectLang：繁体区标签 → zh-Hant；zh* 其余 → zh-CN；其余 → en-US", () => {
+  it("detectLang：繁体区标签 → zh-Hant；zh* 其余 → zh-CN；日/韩/西/意语系前缀 → 对应语言；其余 → en-US", () => {
     setNavigatorLanguage("zh-TW");
     expect(detectLang()).toBe("zh-Hant");
     setNavigatorLanguage("zh-HK");
@@ -71,7 +71,18 @@ describe("i18n", () => {
     expect(detectLang()).toBe("zh-CN");
     setNavigatorLanguage("zh-SG");
     expect(detectLang()).toBe("zh-CN");
+    // 2026-11-01 新增四语：系统语言即该语种（此前一律 en-US）
+    setNavigatorLanguage("ja-JP");
+    expect(detectLang()).toBe("ja");
+    setNavigatorLanguage("ko-KR");
+    expect(detectLang()).toBe("ko");
+    setNavigatorLanguage("es-ES");
+    expect(detectLang()).toBe("es");
+    setNavigatorLanguage("it-IT");
+    expect(detectLang()).toBe("it");
     setNavigatorLanguage("en-GB");
+    expect(detectLang()).toBe("en-US");
+    setNavigatorLanguage("fr-FR");
     expect(detectLang()).toBe("en-US");
   });
 
@@ -198,7 +209,16 @@ describe("i18n", () => {
 
     // 语言选择器的「语言自主名称」惯例（en 包里也用原文显示「中文」）——豁免；
     // 其余任何 CJK 都是语言包损坏（I-1 现场）。
-    const SELF_NAMED_LANG_KEYS = new Set(["settings.langZh", "settings.langHant", "settings.langLzh", "palette.langToggle"]);
+    const SELF_NAMED_LANG_KEYS = new Set([
+      "settings.langZh",
+      "settings.langHant",
+      "settings.langLzh",
+      "settings.langJa",
+      "settings.langKo",
+      "settings.langEs",
+      "settings.langIt",
+      "palette.langToggle",
+    ]);
     const cjk = enLeaves.filter(([k, v]) => !SELF_NAMED_LANG_KEYS.has(k) && hasCJK(v));
     expect(cjk, "en-US 值含中文（英文用户看到中文文案）").toEqual([]);
 
@@ -288,6 +308,65 @@ describe("i18n", () => {
       expect(flat.get("settings.theme")).toBe("主題");
       expect(flat.get("nav.credentials")).toBe("憑證");
       expect(flat.get("nav.settings")).toBe("設定");
+    });
+  });
+
+  // 2026-11-01 新增日/韩/西/意四语（README 六语配图需要对应语言的界面）：
+  // 键集与 en-US 对齐（裸键面）、插值占位符逐键一致——缺键/缺参即测试红。
+  describe("ja/ko/es/it 对齐（README 六语守卫）", () => {
+    const NEW_LANGS = ["ja", "ko", "es", "it"] as const;
+
+    it("键集双向一致：新四语键 = en-US 键（无多无缺）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const en = JSON.parse(read("en-US.json"));
+      const enKeys = new Set(flatten(en).map(([k]) => stripPluralSuffix(k)));
+      for (const lang of NEW_LANGS) {
+        const data = JSON.parse(read(`${lang}.json`));
+        const keys = new Set(flatten(data).map(([k]) => stripPluralSuffix(k)));
+        const missing = [...enKeys].filter((k) => !keys.has(k));
+        const extra = [...keys].filter((k) => !enKeys.has(k));
+        expect(missing, `${lang} 缺键`).toEqual([]);
+        expect(extra, `${lang} 多键`).toEqual([]);
+      }
+    });
+
+    it("插值占位符与 en-US 一致（{{x}} 面对齐）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const en = JSON.parse(read("en-US.json"));
+      const vars = (s: string) => [...s.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]).sort();
+      // 逐「同名键」比（复数形态 _one/_other 各算各的：_one 合法地不带占位符，
+      // 不能把裸键折叠成一张表再比——那会把 _one 错配到 _other 的占位符上）。
+      const enFlat = new Map(flatten(en));
+      for (const lang of NEW_LANGS) {
+        const data = JSON.parse(read(`${lang}.json`));
+        for (const [k, v] of flatten(data)) {
+          const ev = enFlat.get(k);
+          expect(ev, `${lang} 与 en-US 的键面不一致: ${k}`).toBeDefined();
+          expect(vars(String(ev)), `占位符不一致: ${lang} ${k}`).toEqual(vars(String(v)));
+        }
+      }
+    });
+
+    it("不是英文占位：抽样键是目标语言译文（防漏译回退 en-US）", async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf-8");
+      const samples: Record<string, string[]> = {
+        ja: ["一般", "資格情報", "ターミナル"],
+        ko: ["일반", "자격 증명", "터미널"],
+        es: ["General", "Credenciales", "Terminal SSH"],
+        it: ["Generale", "Credenziali", "Terminale"],
+      };
+      for (const lang of NEW_LANGS) {
+        const data = JSON.parse(read(`${lang}.json`));
+        const flatMap = new Map(flatten(data));
+        expect(flatMap.get("settings.sectionGeneral"), `${lang} 设置分区名`).toBe(
+          samples[lang][0],
+        );
+        expect(flatMap.get("nav.credentials"), `${lang} 凭据入口名`).toBe(samples[lang][1]);
+        expect(flatMap.get("files.viewTerminal"), `${lang} 终端入口名`).toBe(samples[lang][2]);
+      }
     });
   });
 });

@@ -483,8 +483,14 @@ function HomeLayout() {
           setMode(themeMode === "light" ? "dark" : themeMode === "dark" ? "system" : "light");
           break;
         case "lang.toggle":
-          // 三语循环（2026-10-18 +繁体）：简 → 繁 → EN → 简
-          setLang(lang === "zh-CN" ? "zh-Hant" : lang === "zh-Hant" ? "en-US" : "zh-CN");
+          // 语言循环（2026-10-18 三语起，2026-11-01 扩到八语）：按 LANGS
+          // 顺序走到下一门——此前是写死的「简 → 繁 → EN → 简」，加语种后会
+          // 漏掉新语言。
+          {
+            const order = LANGS as readonly Lang[];
+            const idx = order.indexOf(lang);
+            setLang(order[(idx + 1) % order.length]);
+          }
           break;
         case "session.splitRight":
         case "session.splitDown": {

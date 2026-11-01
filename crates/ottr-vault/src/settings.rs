@@ -362,12 +362,16 @@ pub fn validate_known_setting(
                 .as_str()
                 .ok_or_else(|| "ui.language expects a string".to_string())?;
             // 2026-10-18 完整三语：+zh-Hant（港澳台通用繁体）；2026-10-31 +lzh（文言）。
-            // 2026-10-31 +lzh（文言）：与前端 i18n LANGS 对齐。
-            if matches!(s, "zh-CN" | "zh-Hant" | "en-US" | "lzh") {
+            // 2026-11-01 +ja/ko/es/it（README 六语配图需要对应语言的界面）。
+            // 与前端 i18n LANGS 对齐——漏一门 = 切语言写库被拒（界面切不动）。
+            if matches!(
+                s,
+                "zh-CN" | "zh-Hant" | "lzh" | "ja" | "ko" | "es" | "it" | "en-US"
+            ) {
                 Ok(())
             } else {
                 Err(format!(
-                    "ui.language must be zh-CN|zh-Hant|en-US|lzh, got {s:?}"
+                    "ui.language must be zh-CN|zh-Hant|lzh|ja|ko|es|it|en-US, got {s:?}"
                 ))
             }
         }
@@ -469,6 +473,25 @@ mod tests {
             );
         }
         assert!(validate_known_setting("ui.theme", &serde_json::json!(1)).is_err());
+    }
+
+    /// 语言白名单必须与前端 i18n LANGS 一一对应（2026-11-01 八门）：
+    /// 少一门 = 该语言切不动（写库被拒，界面静默留在旧语言）。
+    #[test]
+    fn ui_language_whitelist_covers_all_langs() {
+        for id in ["zh-CN", "zh-Hant", "lzh", "ja", "ko", "es", "it", "en-US"] {
+            assert!(
+                validate_known_setting("ui.language", &serde_json::json!(id)).is_ok(),
+                "合法语言放行: {id}"
+            );
+        }
+        for bad in ["fr-FR", "", "JA", "zh"] {
+            assert!(
+                validate_known_setting("ui.language", &serde_json::json!(bad)).is_err(),
+                "白名单外语言拒绝: {bad:?}"
+            );
+        }
+        assert!(validate_known_setting("ui.language", &serde_json::json!(1)).is_err());
     }
 }
 

@@ -104,6 +104,10 @@ const APPEARANCE_COMMANDS: readonly { key: string; labelKey: string; action: str
   { key: "lang-zh", labelKey: "settings.langZh", action: "lang.set.zh-CN" },
   { key: "lang-hant", labelKey: "settings.langHant", action: "lang.set.zh-Hant" },
   { key: "lang-lzh", labelKey: "settings.langLzh", action: "lang.set.lzh" },
+  { key: "lang-ja", labelKey: "settings.langJa", action: "lang.set.ja" },
+  { key: "lang-ko", labelKey: "settings.langKo", action: "lang.set.ko" },
+  { key: "lang-es", labelKey: "settings.langEs", action: "lang.set.es" },
+  { key: "lang-it", labelKey: "settings.langIt", action: "lang.set.it" },
   { key: "lang-en", labelKey: "settings.langEn", action: "lang.set.en-US" },
 ];
 

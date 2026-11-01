@@ -24,7 +24,7 @@
 
 The hard rule it never breaks: **you bring your own AI key (BYOK)**. Requests go straight from your machine to the model endpoint you picked — there is no Ottr server in the middle. Secrets are encrypted at rest on your own machine; host metadata and command history live in a local SQLite file. The exact data boundary for AI requests and optional sync is described in [Privacy & AI](#-privacy--ai-data-boundaries).
 
-![Welcome screen: time-of-day greeting, quick actions and the icon rail](docs/screenshots/home-welcome.png)
+![Welcome screen: time-of-day greeting, quick actions and the icon rail](docs/screenshots/en-US/home-welcome.png)
 
 ## ✨ What it does
 
@@ -42,7 +42,7 @@ The hard rule it never breaks: **you bring your own AI key (BYOK)**. Requests go
 - **Jump host chains** arranged visually; **port forwarding** for local, dynamic SOCKS and remote forwards, re-established automatically after a drop
 - known_hosts with **trust-on-first-use plus periodic fingerprint audits**, to catch man-in-the-middle attacks
 
-![Dark theme: icon rail, host panel, floating tab islands and connection status dots](docs/screenshots/main-dark.png)
+![Dark theme: icon rail, host panel, floating tab islands and connection status dots](docs/screenshots/en-US/main-dark.png)
 
 ### AI that respects your data
 
@@ -72,8 +72,8 @@ The hard rule it never breaks: **you bring your own AI key (BYOK)**. Requests go
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="Command palette"></td>
-    <td width="50%"><img src="docs/screenshots/cron.png" alt="Scheduled task center"></td>
+    <td width="50%"><img src="docs/screenshots/en-US/palette.png" alt="Command palette"></td>
+    <td width="50%"><img src="docs/screenshots/en-US/cron.png" alt="Scheduled task center"></td>
   </tr>
   <tr>
     <td width="50%">⌘K command palette (fuzzy search)</td>
@@ -84,8 +84,8 @@ The hard rule it never breaks: **you bring your own AI key (BYOK)**. Requests go
 <details>
 <summary>More screenshots</summary>
 
-![Multi-host overview](docs/screenshots/overview.png)
-![Credential manager](docs/screenshots/credentials.png)
+![Multi-host overview](docs/screenshots/en-US/overview.png)
+![Credential manager](docs/screenshots/en-US/credentials.png)
 
 </details>
 

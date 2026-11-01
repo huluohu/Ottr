@@ -15,10 +15,27 @@ import zhCN from "./zh-CN.json";
 import zhHant from "./zh-Hant.json";
 import enUS from "./en-US.json";
 import lzh from "./lzh.json";
+import ja from "./ja.json";
+import ko from "./ko.json";
+import es from "./es.json";
+import it from "./it.json";
 
-// 顺序即选择器顺序（2026-10-31 用户裁定：文言紧随繁体，English 垫底）。
-export const LANGS = ["zh-CN", "zh-Hant", "lzh", "en-US"] as const;
+// 顺序即选择器顺序（2026-10-31 用户裁定：文言紧随繁体，English 垫底；
+// 2026-11-01 新增日/韩/西/意四语，排在文言之后、English 之前）。
+export const LANGS = ["zh-CN", "zh-Hant", "lzh", "ja", "ko", "es", "it", "en-US"] as const;
 export type Lang = (typeof LANGS)[number];
+
+/** 语言 id → 设置页词典键（各语言用「自称」标注，认语言不靠猜）。 */
+export const LANG_LABEL_KEY: Record<Lang, string> = {
+  "zh-CN": "settings.langZh",
+  "zh-Hant": "settings.langHant",
+  lzh: "settings.langLzh",
+  ja: "settings.langJa",
+  ko: "settings.langKo",
+  es: "settings.langEs",
+  it: "settings.langIt",
+  "en-US": "settings.langEn",
+};
 
 /** localStorage 缓存镜像键（真源 = vault settings，见文件头）。 */
 const LANG_KEY = "ottr.settings.lang";
@@ -42,7 +59,8 @@ function writeCache(lang: string): void {
 }
 
 /** 语言检测：缓存镜像优先（真源对齐前的首帧口径），其次 navigator.language
- * （繁体区标签 zh-hant/zh-tw/zh-hk/zh-mo → zh-Hant；zh* 其余 → zh-CN）。 */
+ * （繁体区标签 zh-hant/zh-tw/zh-hk/zh-mo → zh-Hant；zh* 其余 → zh-CN；
+ *  2026-11-01 新增 ja/ko/es/it 语系前缀 → 对应语言，其余 → en-US）。 */
 export function detectLang(): Lang {
   const stored = readCache();
   if (stored !== null && (LANGS as readonly string[]).includes(stored)) {
@@ -50,7 +68,12 @@ export function detectLang(): Lang {
   }
   const tag = navigator.language.toLowerCase();
   if (/^(zh-hant|zh-tw|zh-hk|zh-mo)/.test(tag)) return "zh-Hant";
-  return tag.startsWith("zh") ? "zh-CN" : "en-US";
+  if (tag.startsWith("zh")) return "zh-CN";
+  if (tag.startsWith("ja")) return "ja";
+  if (tag.startsWith("ko")) return "ko";
+  if (tag.startsWith("es")) return "es";
+  if (tag.startsWith("it")) return "it";
+  return "en-US";
 }
 
 /** 语言 → <html lang> 同步（CSS :lang(zh-Hant) 繁体字体栈依赖；document.lang
@@ -70,10 +93,15 @@ void i18n.use(initReactI18next).init({
     "zh-Hant": { translation: zhHant },
     "en-US": { translation: enUS },
     lzh: { translation: lzh },
+    ja: { translation: ja },
+    ko: { translation: ko },
+    es: { translation: es },
+    it: { translation: it },
   },
   lng: detectLang(),
   // 缺键回落链：lzh（文言）→ zh-Hant → zh-CN（同文种逐级白话化），en-US 恒为
-  // 最终兜底——文言词典缺词不裸露键名。
+  // 最终兜底——文言词典缺词不裸露键名。日/韩/西/意为全量词典，缺键直接回
+  // en-US（default 兜底链覆盖）。
   fallbackLng: { lzh: ["zh-Hant", "zh-CN"], "zh-Hant": ["zh-CN"], default: ["en-US"] },
   // React 自带 XSS 转义；关闭 i18next 二次转义避免 &amp; 双重转义
   interpolation: { escapeValue: false },

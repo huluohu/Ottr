@@ -46,6 +46,13 @@ const settingsMode = new URLSearchParams(location.search).get("settings");
 // 按回车应重走退避链（attempt 归零 → 第 1/5 次起步）。window.__session__ 暴露
 // 会话状态给浏览器断言面。
 const reconnectMode = new URLSearchParams(location.search).get("reconnect");
+// README 配图模式（2026-11-01 用户需求「每种语言的 README 配图都要切换到对应
+// 语言后拍摄」）：README 有六种语言，配图此前六份共用同一批简中界面截图。
+// ?shot=<name> 决定画面（home/terminal/palette/cron/overview/credentials），
+// ?lang=<locale> 决定界面语言（en-US/zh-CN/ja/ko/es/it）。出图脚本：
+// scripts/capture-screenshots.mjs（Playwright 无头 Chromium，不碰真机桌面）。
+const shotMode = new URLSearchParams(location.search).get("shot");
+const shotLang = new URLSearchParams(location.search).get("lang");
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -108,8 +115,15 @@ if (recMode) {
   plugins: {},
 };
 // Channel 类走内部转换，给个可 new 的桩
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript/no-explicit-any
 (window as any).__TAURI_CHANNEL_STUB__ = MockChannel;
+// 事件插件内部件：@tauri-apps/api 的 listen/unlisten 会调它的
+// registerListener/unregisterListener——缺了会在 unlisten 时抛
+//「Cannot read properties of undefined (reading 'unregisterListener')」。
+(window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+  registerListener: () => {},
+  unregisterListener: () => {},
+};
 
 import "./../i18n";
 import "./../theme/tokens.css";
@@ -203,13 +217,249 @@ if (reconnectMode === "exhausted") {
 
 // PTY 数据面在浏览器里不存在（attach 未真跑），终端画布为空属预期——本页
 // 只验证布局/可见性。定期以假输出喂画布让终端区非空（视觉参照）。
-setInterval(() => {
-  const sinkWrite = (window as unknown as { __previewFeed__?: (s: string) => void })
-    .__previewFeed__;
-  sinkWrite?.(`preview line ${new Date().toLocaleTimeString()}\r\n`);
-}, 3000);
+// 配图模式例外：终端配图由 renderShot 写入定稿会话文本，不能再叠加假行。
+if (!shotMode) {
+  setInterval(() => {
+    const sinkWrite = (window as unknown as { __previewFeed__?: (s: string) => void })
+      .__previewFeed__;
+    sinkWrite?.(`preview line ${new Date().toLocaleTimeString()}\r\n`);
+  }, 3000);
+}
+
+/** README 配图用的一段真实感终端回显（仿 SSH 登录横幅 + 一次命令输出）。
+ *  颜色用 ANSI 转义，与真机截图的终端配色一致（提示符绿、主机名青）。 */
+const SHOT_TERMINAL_TRANSCRIPT = [
+  "Linux 26ff194c6651 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2 x86_64",
+  "",
+  "The programs included with the Debian GNU/Linux system are free software;",
+  "the exact distribution terms for each program are described in the",
+  "individual files in /usr/share/doc/*/copyright.",
+  "",
+  "Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent",
+  "permitted by applicable law.",
+  "Last login: Sat Oct 31 08:08:46 2026 from 172.17.0.1",
+  "\u001b[32mspike@26ff194c6651\u001b[0m:\u001b[34m~\u001b[0m$ echo '=== Ottr - AI-native SSH client ===' && uname -a && df -h / | tail -1 && free -m | head -2 && uptime && ls /etc | head -5",
+  "=== Ottr - AI-native SSH client ===",
+  "Linux 26ff194c6651 7.0.0-38-generic #38~24.04.4-Ubuntu SMP PREEMPT_DYNAMIC Mon Sep 14 16:37:11 UTC 2 x86_64 GNU/Linux",
+  "overlay         48G   32G  12G  73%  /",
+  "Mem:           15824  2049   1226  9249  24040",
+  "              08:00:38 up 18 days, 19 min  0 user, load average: 0.32, 0.33, 0.29",
+  "X11",
+  "adviser.conf",
+  "alternatives",
+  "apt",
+  "bash.bashrc",
+  "\u001b[32mspike@26ff194c6651\u001b[0m:\u001b[34m~\u001b[0m$",
+  "",
+].join("\r\n");
+
+/** README 配图渲染（?shot=<name>[&lang=<locale>]）：六张配图各自的画面状态。
+ *  种子的是**界面状态**（主机/会话/面板/弹窗/数据面），不是像素；渲染仍是
+ *  真实组件，样式与真机一致。 */
+async function renderShot(): Promise<void> {
+  const { IconRail } = await import("./../app/IconRail");
+  const { Sidebar } = await import("./../app/Sidebar");
+  const { useWorkspaceStore } = await import("./../workspace/workspaceStore");
+  const { useSessionStore } = await import("./../session/SessionStore");
+  const { useVaultStore } = await import("./../vault/store");
+  const { sinks } = await import("./../session/terminal");
+  const i18n = (await import("./../i18n")).default;
+
+  // 界面语言（README 每语一套配图）：切语言 + 同步 <html lang>（字体栈依赖）。
+  if (shotLang) {
+    await i18n.changeLanguage(shotLang);
+    document.documentElement.lang = shotLang;
+  }
+  // 主题：README 配图统一用「深河」暗色（此前真机配图即此主题）。真源是
+  // vault settings，本页无后端 → 走 localStorage 启动缓存镜像（ThemeContext
+  // 的 loadMode 先读它）。
+  try {
+    localStorage.setItem("ottr.settings.theme", "dark");
+  } catch {
+    // 隐私模式等：忽略（跟随系统浅色）
+  }
+
+  // 配图里的夹具主机（「fixture spike@127.0.0.1:2222」——端口 2222 即本地
+  // SSH 夹具端点，空态欢迎页的「连接夹具」快捷卡按此端点识别）。
+  const fixtureHost = {
+    id: 1,
+    name: "fixture",
+    group_id: null,
+    tags: [],
+    address: "127.0.0.1",
+    port: 2222,
+    username: "spike",
+    protocol: "ssh" as const,
+    credential_id: 1,
+    jump_chain_id: null,
+    encoding_override: null,
+    theme_override: null,
+    monitor_enabled: false,
+    is_production: false,
+    notes: null,
+    created_at: 1,
+    updated_at: 1,
+  };
+  useVaultStore.setState({
+    hosts: [fixtureHost],
+    hostGroups: [],
+    // 凭据列表（凭据配图）：凭据面从 vault store 取，本页直接种子一条
+    // 未命名密码凭据（与真机配图同款：显示「凭据 #1」+ 绑定主机数）。
+    credentials: [
+      { id: 1, kind: "password", name: null, key_pub: null, created_at: 1, updated_at: 1 },
+    ],
+    loading: false,
+    error: null,
+  });
+
+  // 面板数据面（定时任务 / 凭据）：真源是 Rust 命令，本页给同形种子。
+  invokeTable["cj_list"] = [
+    {
+      id: 1,
+      host_id: 1,
+      schedule: "0 9 * * *",
+      script: "df -h / && uptime",
+      channels: [],
+      enabled: true,
+      created_at: 1,
+      updated_at: 1,
+    },
+    {
+      id: 2,
+      host_id: 1,
+      schedule: "*/30 * * * *",
+      script: "systemctl --failed",
+      channels: [],
+      enabled: true,
+      created_at: 1,
+      updated_at: 1,
+    },
+  ];
+  invokeTable["cj_runs"] = [];
+  invokeTable["cj_next_fire"] = Math.floor(Date.now() / 1000) + 3600;
+  invokeTable["credentials_list"] = [
+    { id: 1, kind: "password", name: null, key_pub: null, created_at: 1, updated_at: 1 },
+  ];
+
+  // 会话：仅终端配图需要（欢迎首页配图走零会话空态）。
+  const withSession = shotMode === "terminal";
+  useSessionStore.setState({
+    sessions: withSession
+      ? [
+          {
+            id: "shot-tab",
+            hostId: 1,
+            hostName: "fixture",
+            address: "127.0.0.1",
+            port: 22,
+            username: "spike",
+            protocol: "ssh",
+            rustId: "pty-shot",
+            paneOf: null,
+            status: "connected",
+            attempt: 0,
+            nextRetryAt: null,
+            lastError: null,
+            restored: true,
+            encoding: "utf-8",
+            isProduction: false,
+          } as never,
+        ]
+      : [],
+    activeId: withSession ? "shot-tab" : null,
+    trees: withSession ? { "shot-tab": { kind: "leaf", id: "shot-tab" } } : {},
+    activePane: withSession ? { "shot-tab": "shot-tab" } : {},
+  });
+
+  // 主区视图（定时任务 / 总览是主区视图态，不走弹窗）。
+  if (shotMode === "cron") useWorkspaceStore.getState().openMainView("cron");
+  if (shotMode === "overview") useWorkspaceStore.getState().openMainView("overview");
+
+  const { MainArea } = await import("./../workspace/MainArea");
+  const { CommandPalette } = await import("./../palette/CommandPalette");
+  const { CredentialsDialog } = await import("./../credentials/CredentialsDialog");
+  const { TitleBar } = await import("./../titlebar/TitleBar");
+
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <ThemeProvider>
+        <div className="app-shell">
+          {/* Win/Linux 自绘标题栏（App 同一组件）：README 配图对齐真机窗口壳。 */}
+          <TitleBar
+            plat="linux"
+            onAction={() => {}}
+            win={{
+              minimize: () => {},
+              toggleMaximize: () => {},
+              close: () => {},
+            }}
+          />
+          <div className="app-body">
+            <IconRail
+              titlebarInset={false}
+              onOpenCredentials={() => {}}
+              onOpenSettings={() => {}}
+              onOpenMcpSettings={() => {}}
+              onOpenHistory={() => {}}
+            />
+            <Sidebar
+              style={{ width: 304 }}
+              collapsed={false}
+              onExpand={() => {}}
+              titlebarInset={false}
+              newGroupSignal={0}
+              selectedId={null}
+              onSelect={() => {}}
+              onOpen={() => {}}
+              onEdit={() => {}}
+              onAdd={() => {}}
+              onQuickConnect={() => {}}
+              onNewGroup={() => {}}
+            />
+            <MainArea
+              storeError={null}
+              selected={shotMode === "home" ? null : fixtureHost}
+              onOpenAiSettings={() => {}}
+            />
+          </div>
+        </div>
+        {shotMode === "palette" && (
+          <CommandPalette
+            open
+            onClose={() => {}}
+            hosts={[fixtureHost] as never}
+            onConnect={() => {}}
+            onAction={() => {}}
+            plat="linux"
+          />
+        )}
+        {shotMode === "credentials" && <CredentialsDialog onClose={() => {}} />}
+      </ThemeProvider>
+    </React.StrictMode>,
+  );
+
+  // 终端回显：等 SessionTerminal 挂载注册 sink 后写入（sink = 真实写入口）。
+  if (shotMode === "terminal") {
+    const enc = new TextEncoder();
+    for (let i = 0; i < 40; i += 1) {
+      await new Promise((r) => setTimeout(r, 100));
+      const sink = sinks.get("shot-tab");
+      if (sink) {
+        sink.write(enc.encode(SHOT_TERMINAL_TRANSCRIPT));
+        break;
+      }
+    }
+  }
+
+  // 就绪信号：出图脚本等它再截图（渲染 + 终端回显都落定后再拍）。
+  (window as unknown as { __shotReady__?: boolean }).__shotReady__ = true;
+}
 
 async function render() {
+  if (shotMode) {
+    await renderShot();
+    return;
+  }
   if (settingsMode) {
     const { SecuritySettings } = await import("./../security/SecuritySettings");
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

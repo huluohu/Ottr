@@ -24,7 +24,7 @@
 
 La regla innegociable que nunca incumple: **usted aporta su propia clave de IA (BYOK)**. Las solicitudes van directamente desde su equipo al endpoint del modelo que haya elegido: no hay ningún servidor de Ottr por medio. Los secretos se cifran en reposo en su propio equipo; los metadatos de los hosts y el historial de comandos se guardan en un archivo SQLite local. El límite exacto de datos de las solicitudes de IA y de la sincronización opcional se describe en [Privacidad e IA](#-privacy--ai-data-boundaries).
 
-![Pantalla de bienvenida: saludo según la hora del día, acciones rápidas y la barra de iconos](docs/screenshots/home-welcome.png)
+![Pantalla de bienvenida: saludo según la hora del día, acciones rápidas y la barra de iconos](docs/screenshots/es/home-welcome.png)
 
 ## ✨ Qué hace
 
@@ -42,7 +42,7 @@ La regla innegociable que nunca incumple: **usted aporta su propia clave de IA (
 - **Cadenas de hosts de salto** dispuestas visualmente; **reenvío de puertos** local, dinámico con SOCKS y remoto, restablecido automáticamente tras una caída
 - known_hosts con **confianza en el primer uso y auditorías periódicas de huellas**, para detectar ataques de intermediario (man-in-the-middle)
 
-![Tema oscuro: barra de iconos, panel de hosts, islas de pestañas flotantes e indicadores de estado de conexión](docs/screenshots/main-dark.png)
+![Tema oscuro: barra de iconos, panel de hosts, islas de pestañas flotantes e indicadores de estado de conexión](docs/screenshots/es/main-dark.png)
 
 ### IA que respeta sus datos
 
@@ -72,8 +72,8 @@ La regla innegociable que nunca incumple: **usted aporta su propia clave de IA (
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="Paleta de comandos"></td>
-    <td width="50%"><img src="docs/screenshots/cron.png" alt="Centro de tareas programadas"></td>
+    <td width="50%"><img src="docs/screenshots/es/palette.png" alt="Paleta de comandos"></td>
+    <td width="50%"><img src="docs/screenshots/es/cron.png" alt="Centro de tareas programadas"></td>
   </tr>
   <tr>
     <td width="50%">Paleta de comandos de ⌘K (búsqueda difusa)</td>
@@ -84,8 +84,8 @@ La regla innegociable que nunca incumple: **usted aporta su propia clave de IA (
 <details>
 <summary>Más capturas de pantalla</summary>
 
-![Vista general de varios hosts](docs/screenshots/overview.png)
-![Administrador de credenciales](docs/screenshots/credentials.png)
+![Vista general de varios hosts](docs/screenshots/es/overview.png)
+![Administrador de credenciales](docs/screenshots/es/credentials.png)
 
 </details>
 

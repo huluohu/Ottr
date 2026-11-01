@@ -797,14 +797,13 @@ describe("分屏 pane 关闭（2026-10-13 用户反馈「分屏后怎么关闭�
     });
   };
 
-  it("每个 pane 有关闭钮；关子 pane = 断该会话 + 树回落 leaf + drop_session 下发", () => {
+  it("分屏出的子 pane 有关闭钮；关子 pane = 断该会话 + 树回落 leaf + drop_session 下发", () => {
     splitState();
     render(
       <ThemeProvider>
         <TerminalArea />
       </ThemeProvider>,
     );
-    expect(screen.getByTestId("term-pane-close-t-a")).toBeTruthy();
     expect(screen.getByTestId("term-pane-close-t-b")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("term-pane-close-t-b"));
@@ -814,15 +813,52 @@ describe("分屏 pane 关闭（2026-10-13 用户反馈「分屏后怎么关闭�
     expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-2" });
   });
 
-  it("关根 pane = 关标签（全会话消亡，closePane→closeTab 既有语义）", () => {
+  it("关根 pane = 关标签（closePane→closeTab 既有语义，store 侧不变）", () => {
     splitState();
+    act(() => useSessionStore.getState().closePane("t-a"));
+    expect(useSessionStore.getState().sessions).toEqual([]);
+  });
+});
+
+describe("未分屏不显示 pane 关闭钮（2026-11-01 用户反馈「没分屏右上角也有关闭按钮」）", () => {
+  it("单 pane 标签：终端区右上角无 term-pane-close（整会话由页签 × 关闭）", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-solo" })],
+      activeId: "t-solo",
+      trees: { "t-solo": { kind: "leaf", id: "t-solo" } },
+      activePane: { "t-solo": "t-solo" },
+    });
     render(
       <ThemeProvider>
         <TerminalArea />
       </ThemeProvider>,
     );
-    fireEvent.click(screen.getByTestId("term-pane-close-t-a"));
-    expect(useSessionStore.getState().sessions).toEqual([]);
+    expect(screen.getByTestId("term-pane-t-solo")).toBeTruthy();
+    expect(screen.queryByTestId("term-pane-close-t-solo")).toBeNull();
+  });
+
+  it("根 pane（paneOf=null）即便在分屏标签里也不显示——钮语义 = 关分屏窗格", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-a" }), sess({ id: "t-b", paneOf: "t-a", rustId: "pty-2" })],
+      activeId: "t-b",
+      trees: {
+        "t-a": {
+          kind: "split",
+          dir: "row",
+          ratio: 0.5,
+          first: { kind: "leaf", id: "t-a" },
+          second: { kind: "leaf", id: "t-b" },
+        },
+      },
+      activePane: { "t-a": "t-b" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalArea />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId("term-pane-close-t-a")).toBeNull();
+    expect(screen.getByTestId("term-pane-close-t-b")).toBeTruthy();
   });
 });
 

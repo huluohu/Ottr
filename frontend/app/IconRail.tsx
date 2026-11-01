@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import { useWorkspaceStore } from "../workspace/workspaceStore";
 import { useNotifyStore } from "../notify/core";
 import { useTheme, THEME_IDS, type ThemeMode } from "../theme/ThemeContext";
-import { LANGS, useLanguage } from "../i18n";
+import { LANGS, LANG_LABEL_KEY, useLanguage } from "../i18n";
 import { useVaultLockStore } from "../security/VaultLockStore";
 import { useSessionStore } from "../session/SessionStore";
 import { useUpdateStore } from "../update/updateStore";
@@ -679,15 +679,7 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
                 data-checked={lang === id}
                 onClick={() => setLang(id) /* 选中留场，同主题子面板 */}
               >
-                <span>
-                  {id === "zh-CN"
-                    ? "简体中文"
-                    : id === "zh-Hant"
-                      ? "繁體中文"
-                      : id === "lzh"
-                        ? "文言"
-                        : "English"}
-                </span>
+                <span>{t(LANG_LABEL_KEY[id])}</span>
                 {lang === id && (
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M3 8.5 6.5 12 13 4.5" />

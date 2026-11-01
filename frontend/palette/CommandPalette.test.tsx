@@ -8,6 +8,8 @@ import i18n from "../i18n";
 import { CommandPalette } from "./CommandPalette";
 import { ACTIONS, type ActionDef, type ActionId } from "../shortcuts/registry";
 import { FEATURE_COMMANDS } from "../shortcuts/toolsRegistry";
+import { THEME_IDS } from "../theme/ThemeContext";
+import { LANGS } from "../i18n";
 import type { Host } from "../vault/api";
 
 const web: Host = {
@@ -89,7 +91,8 @@ describe("渲染（空查询）", () => {
     const expected =
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
       (FEATURE_COMMANDS.length - 1) +
-      14; // 外观组 = 主题 10 + 语言 4（2026-10-31 +文言）
+      THEME_IDS.length +
+      LANGS.length; // 外观组 = 主题 + 语言（2026-11-01 语言八门）
     expect(items().length).toBe(expected + 2);
   });
 
@@ -164,7 +167,8 @@ describe("命令子组与类型图标（批次三 T2，审计 ⌘K 19/20）", ()
     expect(icons.length).toBe(
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
         (FEATURE_COMMANDS.length - 1) +
-        14 + // 外观组 = 主题 10 + 语言 4
+        THEME_IDS.length +
+        LANGS.length + // 外观组 = 主题 + 语言（2026-11-01 语言八门）
         2,
     );
     const cmdIcon = icons[0];
@@ -223,7 +227,8 @@ describe("键盘导航", () => {
     expect(activeIndex()).toBe(
       ACTIONS.filter((a) => !excluded.includes(a.id)).length +
         (FEATURE_COMMANDS.length - 1) +
-        14 - // 外观组 = 主题 10 + 语言 4
+        THEME_IDS.length +
+        LANGS.length - // 外观组 = 主题 + 语言（2026-11-01 语言八门）
         1,
     );
   });

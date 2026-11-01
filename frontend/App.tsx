@@ -470,6 +470,13 @@ function HomeLayout() {
         case "hosts.import":
           modal.open("importHosts");
           break;
+        case "hosts.export":
+          // 导出主机（2026-11-01 功能审计 P1）：registry 的 hosts.export 是
+          // ⌘K 与 Win/Linux 汉堡的条目 id，但 handleAction 只把 tool.* 前缀
+          // 转交 runToolAction —— 本条从未被派发，两个入口都是死点击（macOS
+          // 原生文件菜单发的是 tool.export-hosts，故只有 mac 能用）。
+          modal.open("exportHosts");
+          break;
         case "settings.open":
           openSettingsToPane(null);
           break;

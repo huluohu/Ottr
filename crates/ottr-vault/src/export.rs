@@ -99,6 +99,12 @@ pub fn tabby_json(vault: &Vault) -> Result<String> {
 
 /// OpenSSH config 文本：每主机一个 Host 块（HostName/User/Port）。别名 = 主机
 /// 名（OpenSSH pattern 不容空白，空白替换为 `-`）；分组/标签以注释行保留上下文。
+///
+/// 字段转义（2026-11-01 安全审计 P1-2）：OpenSSH config 是**行指令**文本，
+/// 裸换行会让字段值越出本行、变成任意新指令（如 `ProxyCommand`）——恶意主机
+/// 清单（CSV 多行字段）经导入落库、用户导出并合并进 `~/.ssh/config` 即被持久
+/// 执行。入口已拒控制字符（entities::Hosts::validate），此处再兜一层存量脏
+/// 数据：控制字符一律替换为空格，绝不产出第二行。
 pub fn ssh_config_text(vault: &Vault) -> Result<String> {
     let groups: HashMap<i64, String> = HostGroups::list(vault)?
         .into_iter()
@@ -106,22 +112,34 @@ pub fn ssh_config_text(vault: &Vault) -> Result<String> {
         .collect();
     let mut out = String::from("# Exported from Ottr — OpenSSH compatible host entries\n");
     for h in ssh_hosts(vault)? {
-        let alias = h.name.replace([' ', '\t'], "-");
+        // 别名同样要净化：Host 行的 pattern 位置容不得换行（否则下一行成指令）。
+        let alias = config_value(&h.name).replace([' ', '\t'], "-");
         let group = h
             .group_id
             .and_then(|id| groups.get(&id))
             .map(String::as_str)
             .unwrap_or("");
         out.push_str(&format!(
-            "\n# {group}\nHost {alias}\n  HostName {}\n",
-            h.address
+            "\n# {}\nHost {alias}\n  HostName {}\n",
+            config_value(group),
+            config_value(&h.address)
         ));
         if let Some(user) = h.username.as_deref().filter(|u| !u.is_empty()) {
-            out.push_str(&format!("  User {user}\n"));
+            out.push_str(&format!("  User {}\n", config_value(user)));
         }
         out.push_str(&format!("  Port {}\n", h.port));
     }
     Ok(out)
+}
+
+/// OpenSSH config 字段值净化：控制字符（\r\n\t 等）→ 空格。
+///
+/// 只处理控制字符（其余原样保留：OpenSSH config 的值允许大部分非 ASCII 与
+/// 空格语义之外的字符，粗暴白名单会破坏 IPv6 地址/中文主机名等合法值）。
+fn config_value(raw: &str) -> String {
+    raw.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
 }
 
 /// Xshell 会话条目（每主机一个 .xsh）：返回 `(文件名, 内容)`；键面与

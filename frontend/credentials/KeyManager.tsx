@@ -154,11 +154,11 @@ export function KeyManager() {
     }
     setDeploying(true);
     try {
+      // 目标按 hostId 交服务端解析（2026-11-01 安全审计 P1-1：部署握手要走
+      // 主机密钥 TOFU，记账键 = 端点——前端传地址会让校验端点与连接端点脱钩）。
       const report = await vaultApi.keys.deploy(
+        host.id,
         Number(deployAuthId),
-        host.address,
-        host.port,
-        host.username ?? "",
         deployPub.trim(),
       );
       setDeployReport(report);

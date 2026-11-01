@@ -132,6 +132,16 @@ describe("MainArea：terminal 视图（默认）", () => {
     );
     expect(screen.getByTestId("store-error").textContent).toContain("vault boom");
   });
+
+  // 2026-11-01 功能审计 P2-20：库级错误横幅此前只挂在「零会话」空态里——
+  // 有会话时（常态）删除主机/凭据失败、刷新失败全部静默。
+  it("会话态也渲染库级错误横幅（删除失败不再无声）", () => {
+    seedSessions([fakeSession()]);
+    render(
+      <MainArea storeError="vault boom" selected={null} onOpenAiSettings={() => {}} />,
+    );
+    expect(screen.getByTestId("store-error").textContent).toContain("vault boom");
+  });
 });
 
 describe("MainArea：终端常驻不变量（visibility 制式）", () => {

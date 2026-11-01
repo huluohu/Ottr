@@ -180,8 +180,8 @@ struct HostKeyAskPayload {
 /// verified=1、**信任锚接管为本次指纹、changed_at 保留**——变更历史不随信任
 /// 恢复抹除），再放行挂起的 connect。落账键 = host 端点（0004 迁移）：按
 /// host_id 现查 address/port 组装，与策略层写入口径一致。
-/// 无挂起问询（已超时/已裁定）返回错误——落账已发生（接受路径），下次
-/// 连接直接放行，无害。
+/// 无挂起问询（已超时/已裁定）返回错误——**不落任何账**（见
+/// [`apply_host_key_decision`]）。
 #[tauri::command]
 pub(crate) fn host_key_decision(
     state: State<'_, AppState>,
@@ -192,8 +192,24 @@ pub(crate) fn host_key_decision(
 ) -> Result<(), String> {
     let key = format!("{host_id}:{fingerprint}");
     let tx = state.host_key_asks.lock().unwrap().remove(&key);
+    apply_host_key_decision(&vault.0, host_id, &fingerprint, accept, tx)
+}
+
+/// 裁定落地（拆出以便单测）：**信任锚只在真有挂起问询时写入**。
+///
+/// 2026-11-01 安全审计 P2-1：此前 `KnownHosts::verify` 在「有没有挂起问询」
+/// 判定之前执行——任何拿到 IPC 的调用方都能对从未连接过的主机写信任锚，
+/// 而该指纹此后被静默信任（等于把 MITM 的钥匙钉成锚）。问询槽的键是
+/// `{host_id}:{fingerprint}`，槽存在即说明「这个指纹正是被问询的那个」。
+fn apply_host_key_decision(
+    vault: &ottr_vault::Vault,
+    host_id: i64,
+    fingerprint: &str,
+    accept: bool,
+    tx: Option<std::sync::mpsc::Sender<bool>>,
+) -> Result<(), String> {
     // host 行可能在问询挂起期间被删：无端点可落账，按拒绝收尾（不悬挂等待方）。
-    let host_key = match Hosts::get(&vault.0, host_id) {
+    let host_key = match Hosts::get(vault, host_id) {
         Ok(Some(host)) => ottr_vault::host_endpoint_key(&host.address, host.port),
         Ok(None) => {
             if let Some(tx) = tx.as_ref() {
@@ -208,14 +224,12 @@ pub(crate) fn host_key_decision(
             return Err(format!("host id={host_id} read failed: {e}"));
         }
     };
-    if accept && let Err(e) = KnownHosts::verify(&vault.0, &host_key, &fingerprint) {
-        if let Some(tx) = tx.as_ref() {
-            let _ = tx.send(false);
-        }
-        return Err(e.to_string());
-    }
     match tx {
         Some(tx) => {
+            if accept && let Err(e) = KnownHosts::verify(vault, &host_key, fingerprint) {
+                let _ = tx.send(false);
+                return Err(e.to_string());
+            }
             let _ = tx.send(accept);
             Ok(())
         }
@@ -394,5 +408,57 @@ mod tests {
             Some("changed")
         );
         assert_eq!(KnownHosts::list(&vault).unwrap().len(), 1, "换钥不新增记录");
+    }
+
+    /// 2026-11-01 安全审计 P2-1 回归：**无挂起问询时不得写信任锚**。
+    /// 此前 verify 早于「有没有问询」的判定执行——拿到 IPC 的调用方能对
+    /// 任意主机写锚，此后该指纹被静默信任。
+    #[test]
+    fn decision_without_pending_ask_does_not_write_trust_anchor() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = ottr_vault::Vault::open_with(
+            dir.path(),
+            &ottr_vault::master_key::InMemoryStorage::new(),
+        )
+        .expect("open in-memory vault");
+        let host = ottr_vault::Hosts::create(
+            &vault,
+            ottr_vault::HostInput {
+                protocol: Default::default(),
+                name: "web-1".into(),
+                group_id: None,
+                tags: vec![],
+                address: "10.0.0.1".into(),
+                port: 22,
+                username: None,
+                credential_id: None,
+                jump_chain_id: None,
+                encoding_override: None,
+                theme_override: None,
+                monitor_enabled: false,
+                is_production: false,
+                notes: None,
+            },
+        )
+        .expect("create host");
+
+        // 无挂起问询 + accept=true：必须报错且不落任何账。
+        let err = apply_host_key_decision(&vault, host.id, "SHA256:EVIL", true, None)
+            .expect_err("无挂起问询应报错");
+        assert!(err.contains("no pending host key ask"), "got: {err}");
+        assert!(
+            KnownHosts::list(&vault).unwrap().is_empty(),
+            "无挂起问询不得写信任锚"
+        );
+
+        // 有挂起问询：接受 → 落锚 + 放行。
+        let (tx, rx) = std::sync::mpsc::channel();
+        apply_host_key_decision(&vault, host.id, "SHA256:GOOD", true, Some(tx))
+            .expect("落账应成功");
+        assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap());
+        let hk = ottr_vault::host_endpoint_key("10.0.0.1", 22);
+        let rec = KnownHosts::get(&vault, &hk).unwrap().expect("信任锚应落库");
+        assert_eq!(rec.fingerprint, "SHA256:GOOD");
+        assert_eq!(rec.state, KnownHostState::Ok);
     }
 }

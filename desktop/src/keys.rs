@@ -19,8 +19,10 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
 
 use ottr_ssh::{AuthMethod, DeployStatus, deploy_public_key};
-use ottr_vault::{Credentials, KnownHostState, KnownHosts, SecretField};
+use ottr_vault::{Credentials, Hosts, KnownHostState, KnownHosts, SecretField};
 
+use crate::commands::session::tofu_host_key_policy;
+use crate::commands::state::AppState;
 use crate::vault::VaultState;
 
 type CmdResult<T> = Result<T, String>;
@@ -223,30 +225,60 @@ pub(crate) async fn resolve_credential_auth(
 }
 
 /// 把公钥部署到目标主机（exec 追加 authorized_keys，幂等，见 ottr-ssh::deploy）。
-/// `auth_credential_id` 指向 password/key 凭据；TOTP 认证目标机不在 MVP
-/// 部署支持面（报告已注明）。
+///
+/// **主机密钥策略 = 与普通连接同一套 TOFU**（2026-11-01 安全审计 P1-1）：
+/// 此前本命令用「接受任何 `SHA256:` 指纹」的宽松策略（模块头「裁定 #3」写明
+/// 「T7 接入真 TOFU 后收紧」，但 T7 落地后本调用点从未更新）。后果：MITM 可在
+/// 部署握手阶段截获用户交出的**密码凭据**（部署认证材料就是密码/私钥），
+/// 且观察到的指纹会被写进 known_hosts 当信任锚——此后该 MITM 指纹被静默信任。
+/// 现走 `tofu_host_key_policy`：首见问用户、指纹变更强提醒默认拒绝、已知指纹
+/// 静默放行；信任锚与普通连接共用同一端点记账。
+///
+/// **目标地址/端口/用户名一律由 host_id 在服务端解析**（不再信前端传值）：
+/// TOFU 记账键 = 端点，若前端可传任意地址，就会出现「校验的端点 ≠ 实际连接
+/// 的端点」——TOFU 被绕开。前端仍按原口径从所选主机取值，此处是同一来源的
+/// 服务端再解析（口径一致 + 不可被篡改）。
 #[tauri::command]
-pub async fn key_deploy(
-    state: State<'_, VaultState>,
+pub(crate) async fn key_deploy(
+    app: AppHandle,
+    app_state: State<'_, AppState>,
+    vault_state: State<'_, VaultState>,
+    host_id: i64,
     auth_credential_id: i64,
-    address: String,
-    port: i64,
-    username: String,
     public_key: String,
 ) -> CmdResult<KeyDeployReport> {
+    let host = Hosts::get(&vault_state.0, host_id)
+        .map_err(vault_err)?
+        .ok_or_else(|| format!("host id={host_id} not found"))?;
+    let address = host.address.clone();
+    let port = host.port;
+    let username = host.username.clone().unwrap_or_default();
+    let host_key = ottr_vault::host_endpoint_key(&address, port);
+    let policy = tofu_host_key_policy(
+        vault_state.0.clone(),
+        app,
+        host_id,
+        host.name.clone(),
+        host_key,
+        app_state.host_key_asks.clone(),
+        None,
+        None,
+    );
     key_deploy_inner(
-        &state,
+        &vault_state,
         auth_credential_id,
         address,
         port,
         username,
         public_key,
+        policy,
     )
     .await
 }
 
 /// 命令本体。State 只做解引用——拆 inner 供无 Tauri 运行时的回归测试直接调用
 /// （评审 I-1：临时私钥在「resolve 之后、部署之前」的任何失败路径都不得残留）。
+/// 主机密钥策略由调用方注入（生产 = TOFU 策略；单测 = 宽松桩，不触网）。
 async fn key_deploy_inner(
     vault: &VaultState,
     auth_credential_id: i64,
@@ -254,15 +286,11 @@ async fn key_deploy_inner(
     port: i64,
     username: String,
     public_key: String,
+    policy: ottr_ssh::HostKeyPolicy,
 ) -> CmdResult<KeyDeployReport> {
     // guard 持有临时私钥路径直到本函数返回（含 ? 提前返回），Drop 即删
     let (auth, _temp_key_guard) = resolve_credential_auth(vault, auth_credential_id).await?;
     let port = u16::try_from(port).map_err(|_| format!("port {port} out of range"))?;
-
-    // 裁定 #3：部署 MVP 主机密钥策略 = 接受 SHA256: 指纹（观察值随回执返回并落
-    // known_hosts）；TOFU 确认对话框 Task 7 收紧。
-    let policy: ottr_ssh::HostKeyPolicy =
-        std::sync::Arc::new(|fingerprint: &str| fingerprint.starts_with("SHA256:"));
 
     let outcome = tokio::time::timeout(
         std::time::Duration::from_secs(30),
@@ -357,6 +385,9 @@ mod tests {
         }
         assert!(leaked_temp_keys().is_empty(), "前置：基线无残留");
 
+        // 策略桩：本用例的失败点在端口前置校验（连接之前），策略不会被调用——
+        // 生产路径注入的是 TOFU 策略（见 key_deploy 命令）。
+        let policy: ottr_ssh::HostKeyPolicy = std::sync::Arc::new(|_| true);
         let err = tauri::async_runtime::block_on(key_deploy_inner(
             &state,
             cred.id,
@@ -364,6 +395,7 @@ mod tests {
             70_000, // 越界：resolve（临时 PEM 已落盘）之后、连接之前的 ? 提前返回
             "spike".into(),
             "ssh-ed25519 AAAA leak-test".into(),
+            policy,
         ))
         .unwrap_err();
         assert!(err.contains("out of range"), "got: {err}");

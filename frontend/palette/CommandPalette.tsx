@@ -13,14 +13,17 @@
 // （组标题隐藏——检索时相关性优先于分类）。每条目带类型图标（命令/主机两型
 // 内联 SVG，stroke currentColor 随主题）。分组是展示层裁定，收在面板本地：
 // registry 是键位单一来源（T14 纪律），菜单/汉堡渲染不受影响。
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Host } from "../vault/api";
 import { useDelayedUnmount } from "../ui/useDelayedUnmount";
+import { LANGS, LANG_LABEL_KEY } from "../i18n";
 import { useEscClose } from "../ui/useEscClose";
 import {
   ACTIONS,
+  overridesVersion,
   shortcutLabel,
+  subscribeOverrides,
   type ActionDef,
   type ActionId,
   type Platform,
@@ -101,14 +104,13 @@ const APPEARANCE_COMMANDS: readonly { key: string; labelKey: string; action: str
     labelKey: `settings.themes.${id}`,
     action: `theme.set.${id}`,
   })),
-  { key: "lang-zh", labelKey: "settings.langZh", action: "lang.set.zh-CN" },
-  { key: "lang-hant", labelKey: "settings.langHant", action: "lang.set.zh-Hant" },
-  { key: "lang-lzh", labelKey: "settings.langLzh", action: "lang.set.lzh" },
-  { key: "lang-ja", labelKey: "settings.langJa", action: "lang.set.ja" },
-  { key: "lang-ko", labelKey: "settings.langKo", action: "lang.set.ko" },
-  { key: "lang-es", labelKey: "settings.langEs", action: "lang.set.es" },
-  { key: "lang-it", labelKey: "settings.langIt", action: "lang.set.it" },
-  { key: "lang-en", labelKey: "settings.langEn", action: "lang.set.en-US" },
+  // 语言条目 = LANGS 派生（2026-11-01 功能审计 P2-8）：此前手抄八条，加语种时
+  // 漏改就是「面板里没有这门语言」——与主题条目（THEME_IDS 派生）同口径。
+  ...LANGS.map((id) => ({
+    key: `lang-${id}`,
+    labelKey: LANG_LABEL_KEY[id],
+    action: `lang.set.${id}`,
+  })),
 ];
 
 /** FEATURE_COMMANDS 里与 ACTIONS 重复的条目（面板去重：同一动作只出现一次）。
@@ -225,6 +227,10 @@ export function CommandPalette({
 
   // 过滤 + 排序（渲染即纯计算）：空查询 = 浏览态（命令按组聚拢，registry 序）；
   // 有查询 = 过滤态（命令/主机各按得分降序扁平排，组语义让位相关性）。
+  // 覆盖表版本订阅：改键后重算键位提示（useSyncExternalStore 的既有接线面；
+  // 2026-11-01 功能审计 P2-4——设置页改键后 ⌘K 的键位提示此前不跟着变）。
+  const overrideTick = useSyncExternalStore(subscribeOverrides, overridesVersion);
+
   const { commandItems, commandRows, hostItems } = useMemo(() => {
     const q = query.trim();
     const cmds: PaletteItem[] = [];
@@ -397,7 +403,9 @@ export function CommandPalette({
       }
     }
     return { commandItems: cmds, commandRows: rows, hostItems: hsts };
-  }, [query, actions, hosts, plat, t]);
+    // 键位提示依赖覆盖表（2026-11-01 功能审计 P2-4）：用户在设置页改键后，
+    // 覆盖表变了但本 memo 不重算 —— ⌘K 里显示的还是旧键位（按新键却生效）。
+  }, [query, actions, hosts, plat, t, overrideTick]);
 
   const flat = useMemo(() => [...commandItems, ...hostItems], [commandItems, hostItems]);
 

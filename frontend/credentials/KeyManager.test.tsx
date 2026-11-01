@@ -218,11 +218,11 @@ describe("KeyManager", () => {
     fireEvent.change(screen.getByTestId("km-deploy-pub"), { target: { value: generated.public_openssh } });
     fireEvent.click(screen.getByTestId("km-deploy"));
     await waitFor(() =>
+      // 2026-11-01 安全审计 P1-1：目标按 hostId 交服务端解析（TOFU 记账键 =
+      // 端点，前端传地址会让校验端点与连接端点脱钩）。
       expect(mockedInvoke).toHaveBeenCalledWith("key_deploy", {
+        hostId: 3,
         authCredentialId: 5,
-        address: "127.0.0.1",
-        port: 2222,
-        username: "spike",
         publicKey: generated.public_openssh,
       }),
     );

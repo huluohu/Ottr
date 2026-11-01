@@ -279,6 +279,14 @@ export function MainArea({
   // 按钮同行——页签行只剩会话页签，视觉边界一条线。
   return (
     <main className="main-area terminal-mode" data-testid="main-area">
+      {/* 库级错误横幅（2026-11-01 功能审计 P2-20）：此前 storeError 只渲染在
+          「零会话」分支的空态里——有会话时（常态）删除主机/凭据失败、刷新失败
+          全部静默，用户只看到界面毫无变化。此处常驻渲染，会话态也可见。 */}
+      {storeError && (
+        <p className="main-error" data-testid="store-error">
+          {t("mainArea.loadFailed", { message: storeError })}
+        </p>
+      )}
       <div className="tabbar-row" {...dragRegion}>
         {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
             命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}

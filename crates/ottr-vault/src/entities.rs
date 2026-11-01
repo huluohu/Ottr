@@ -227,6 +227,9 @@ impl HostGroups {
                 "group name must not be empty".into(),
             ));
         }
+        // 分组名进 OpenSSH config 的注释行（export::ssh_config_text）——控制字符
+        // 会把注释行变成指令行（2026-11-01 安全审计 P1-2）。
+        reject_control_chars("group name", name)?;
         Ok(())
     }
 }
@@ -861,8 +864,32 @@ impl Hosts {
                 input.port
             )));
         }
+        // 控制字符（尤其 \r\n）不得进库（2026-11-01 安全审计 P1-2）：这些字段会
+        // 逐字进入 OpenSSH config 导出（export::ssh_config_text），换行即等于
+        // 注入任意 ssh_config 指令（如 ProxyCommand）——恶意主机清单（CSV 多行
+        // 字段）经导入落库后，用户导出并合并进 ~/.ssh/config 即被持久化执行。
+        reject_control_chars("host name", &input.name)?;
+        reject_control_chars("host address", &input.address)?;
+        if let Some(user) = input.username.as_deref() {
+            reject_control_chars("host username", user)?;
+        }
         Ok(())
     }
+}
+
+/// 拒绝含控制字符（U+0000–U+001F、U+007F）的字段值。
+///
+/// 理由（2026-11-01 安全审计 P1-2）：这类值在**导出面**是注入载体——OpenSSH
+/// config 是行指令文本，CSV/Tabby 导出同理；控制字符让「一行一字段」的前提
+/// 失效。入口拒绝 = 源头阻断；导出面另有一层转义兜底（存量脏数据）。
+fn reject_control_chars(field: &str, value: &str) -> Result<()> {
+    if let Some(c) = value.chars().find(|c| c.is_control()) {
+        return Err(VaultError::InvalidInput(format!(
+            "{field} must not contain control characters (found U+{:04X})",
+            c as u32
+        )));
+    }
+    Ok(())
 }
 
 fn row_to_host(row: &Row) -> rusqlite::Result<Host> {

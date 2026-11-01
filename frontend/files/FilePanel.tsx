@@ -221,6 +221,11 @@ export function FilePanel({ session }: { session: Session }) {
   const [editing, setEditing] = useState<string[]>([]);
   /** 冲突待裁定的远端路径（非空 = 「远端已变更，覆盖？」对话框开着）。 */
   const [conflictPath, setConflictPath] = useState<string | null>(null);
+
+  // 右键菜单 / 冲突对话框 Esc 关闭（2026-11-01 UI 审计 P2-2、P2-3）：此前
+  // 两者都只有「点遮罩」一条出路——键盘用户关不掉。
+  useEscClose(menu != null, () => setMenu(null));
+  useEscClose(conflictPath != null, () => setConflictPath(null));
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startDownload = useTransferStore((s) => s.startDownload);
   const startUpload = useTransferStore((s) => s.startUpload);

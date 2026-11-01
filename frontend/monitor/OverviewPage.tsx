@@ -297,6 +297,11 @@ export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewP
                         e.stopPropagation();
                         onOpen(host);
                       }}
+                      // 键盘可达（2026-11-01 UI 审计 P1-3）：卡片本体是
+                      // role="button" 且在 keydown 里 preventDefault——冒泡上来
+                      // 的回车会**取消按钮的默认激活**并改成打开连接。鼠标路径
+                      // 靠 onClick 的 stopPropagation 挡住，键盘路径此前没挡。
+                      onKeyDown={(e) => e.stopPropagation()}
                     >
                       {t("overview.connect")}
                     </button>
@@ -311,6 +316,9 @@ export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewP
                         e.stopPropagation();
                         void enableMonitor(host);
                       }}
+                      // 键盘可达（2026-11-01 UI 审计 P1-3）：同上——冒泡到卡片
+                      // 的回车会取消按钮激活、反而打开会话。
+                      onKeyDown={(e) => e.stopPropagation()}
                     >
                       {enablingId === host.id ? t("overview.enabling") : t("overview.enableMonitor")}
                     </button>
@@ -323,6 +331,8 @@ export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewP
                       e.stopPropagation();
                       onOpenProcesses(host);
                     }}
+                    // 键盘可达（2026-11-01 UI 审计 P1-3）：同上。
+                    onKeyDown={(e) => e.stopPropagation()}
                   >
                     {t("overview.procButton")}
                   </button>

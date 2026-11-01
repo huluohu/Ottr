@@ -862,6 +862,50 @@ describe("未分屏不显示 pane 关闭钮（2026-11-01 用户反馈「没分�
   });
 });
 
+describe("TerminalToolbar：关闭分屏窗格（2026-11-01 UI 审计 P2-39）", () => {
+  it("聚焦分屏子窗格时出现「关闭窗格」钮，点击关掉该子窗格；单窗格时不出现", () => {
+    // 根 pane + 子 pane（paneOf=根 id）：聚焦子 pane。
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-a" }), sess({ id: "t-b", paneOf: "t-a", rustId: "pty-2" })],
+      activeId: "t-a",
+      trees: {
+        "t-a": {
+          kind: "split",
+          dir: "row",
+          ratio: 0.5,
+          first: { kind: "leaf", id: "t-a" },
+          second: { kind: "leaf", id: "t-b" },
+        },
+      },
+      activePane: { "t-a": "t-b" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalToolbar />
+      </ThemeProvider>,
+    );
+    const btn = screen.getByTestId("close-pane");
+    fireEvent.click(btn);
+    expect(useSessionStore.getState().sessions.map((s) => s.id)).toEqual(["t-a"]);
+    expect(useSessionStore.getState().trees["t-a"].kind).toBe("leaf");
+  });
+
+  it("未分屏（聚焦根 pane）：不出现「关闭窗格」钮", () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "t-solo" })],
+      activeId: "t-solo",
+      trees: { "t-solo": { kind: "leaf", id: "t-solo" } },
+      activePane: { "t-solo": "t-solo" },
+    });
+    render(
+      <ThemeProvider>
+        <TerminalToolbar />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByTestId("close-pane")).toBeNull();
+  });
+});
+
 describe("TerminalToolbar：FTP/FTPS 无终端控件（2026-10-19 用户需求）", () => {
   it("terminalControls=false：分屏钮与编码徽标均不渲染；toolbarExtra 照常", () => {
     useSessionStore.setState({

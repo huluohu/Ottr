@@ -366,6 +366,17 @@ describe("App 原生菜单栏动作分发（theme.set.* / tool.*）", () => {
     useSessionStore.setState({ sessions: [], activeId: null });
   });
 
+  // 2026-11-01 功能审计 P1 回归：hosts.export 是 ⌘K 与 Win/Linux 汉堡的条目
+  // id，此前 handleAction 无对应分支（只转交 tool.* 前缀）——两处入口都是死
+  // 点击，「导出主机」在非 mac 平台无任何可用入口。
+  it("hosts.export 动作派发到导出主机对话框", async () => {
+    listMock();
+    render(<App />);
+    await waitFor(() => expect(menuActionHandler).toBeTruthy());
+    act(() => menuActionHandler?.({ payload: "hosts.export" }));
+    expect(useModalStore.getState().active).toBe("exportHosts");
+  });
+
   it("theme.set.<id> 切主题 + menu_set_theme 同步勾选", async () => {
     listMock();
     render(<App />);

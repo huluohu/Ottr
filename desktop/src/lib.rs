@@ -258,6 +258,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // 夹具驱动面（直传密码 + 指纹钉死 + 不经库锁）：release 不注册
+            // （2026-11-01 安全审计 P2-3，与 spike_* 同口径）。
+            #[cfg(debug_assertions)]
             commands::session::attach_session,
             commands::session::attach_host_session,
             // FTP/FTPS 文件会话（Phase 2 Task 5；命令域 commands/ftp.rs）

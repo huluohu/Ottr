@@ -383,6 +383,7 @@
   },
   "terminal": {
     "connecting": "Conectando a {{host}}…",
+    "writeFailed": "Error de escritura: puede que la conexión se haya perdido — {{message}}",
     "reconnected": "Reconectado",
     "reconnecting": "Conexión perdida. Reintentando en {{seconds}} s (intento {{attempt}}/{{max}})…",
     "reconnectExhausted": "La reconexión automática se agotó tras {{max}} intentos. Pulsa Enter o haz doble clic en el host para reintentar.",

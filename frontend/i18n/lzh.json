@@ -382,6 +382,7 @@
   },
   "terminal": {
     "connecting": "方連 {{host}}…",
+    "writeFailed": "寫入失——連或已絕：{{message}}",
     "reconnected": "已再連",
     "reconnecting": "連已絕，{{seconds}} 秒後重連（第 {{attempt}}/{{max}} 次）…",
     "reconnectExhausted": "再連 {{max}} 次皆敗，已止。按回車，或雙擊左側諸機可再連。",

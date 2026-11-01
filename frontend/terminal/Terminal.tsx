@@ -148,6 +148,8 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   const prevStatus = useRef<string | null>(null);
   // 中断记账（见 writeToSession 处注释）：本条命令执行期间用户发过 Ctrl+C
   const interruptedRef = useRef(false);
+  /** 写入失败提示节流（2026-11-01）：断线期间每次击键都失败，不节流会刷屏。 */
+  const lastWriteErrorRef = useRef(0);
   // 诊断取消宽限（2026-10-29 用户实测「粘贴→仍要粘贴→Ctrl+C 撤销→弹诊断」）：
   // 失败上报到弹面板之间留一段宽限期，用户在期内 Ctrl+C 撤销 → 这次诊断收回。
   const diagnoseGateRef = useRef<DiagnoseGate | null>(null);
@@ -296,7 +298,18 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       void invoke("write_session", {
         id: session.rustId,
         bytes: Array.from(bytes),
-      }).catch(() => {});
+      }).catch((e) => {
+        // 写入失败此前被静默吞掉（2026-11-01 功能审计）：通道已断时用户打字
+        // 「没反应」，屏幕上没有任何原因。现在写一行进终端（与状态横幅同款），
+        // 并按 3 秒节流，避免断线期间每次击键都刷一行。
+        const now = Date.now();
+        if (now - lastWriteErrorRef.current < 3000) return;
+        lastWriteErrorRef.current = now;
+        const message = e instanceof Error ? e.message : String(e);
+        termRef.current?.writeln(
+          `\x1b[33m[ottr] ${t("terminal.writeFailed", { message })}\x1b[0m`,
+        );
+      });
     };
     // B9 sudo 密码自动填充（默认关）：PTY 出口旁路检测 `[sudo] password for`，
     // 命中 → gate（设置开 + 主密码模式）→ host 绑定 password 凭据 → 前置延迟

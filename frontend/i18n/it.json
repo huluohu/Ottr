@@ -383,6 +383,7 @@
   },
   "terminal": {
     "connecting": "Connessione a {{host}}…",
+    "writeFailed": "Scrittura non riuscita: la connessione potrebbe essere caduta — {{message}}",
     "reconnected": "Riconnesso",
     "reconnecting": "Connessione persa. Nuovo tentativo tra {{seconds}}s (tentativo {{attempt}}/{{max}})…",
     "reconnectExhausted": "Riconnessione automatica interrotta dopo {{max}} tentativi. Premi Invio o fai doppio clic sull'host per riprovare.",

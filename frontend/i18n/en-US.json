@@ -383,6 +383,7 @@
   },
   "terminal": {
     "connecting": "Connecting to {{host}}…",
+    "writeFailed": "Write failed — the connection may be gone: {{message}}",
     "reconnected": "Reconnected",
     "reconnecting": "Connection lost. Retrying in {{seconds}}s (attempt {{attempt}}/{{max}})…",
     "reconnectExhausted": "Auto-reconnect gave up after {{max}} attempts. Press Enter or double-click the host to try again.",

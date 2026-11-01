@@ -382,6 +382,7 @@
   },
   "terminal": {
     "connecting": "正在连接 {{host}}…",
+    "writeFailed": "写入失败——连接可能已断开：{{message}}",
     "reconnected": "已重新连接",
     "reconnecting": "连接已断开，{{seconds}} 秒后重连（第 {{attempt}}/{{max}} 次）…",
     "reconnectExhausted": "自动重连 {{max}} 次未成功，已停止。按回车或双击左侧主机可再次连接。",

@@ -383,6 +383,7 @@
   },
   "terminal": {
     "connecting": "{{host}} に接続中…",
+    "writeFailed": "書き込みに失敗しました（接続が切れている可能性があります）：{{message}}",
     "reconnected": "再接続しました",
     "reconnecting": "接続が切断されました。{{seconds}} 秒後に再試行 (試行 {{attempt}}/{{max}})…",
     "reconnectExhausted": "自動再接続は {{max}} 回で中止しました。Enter キーを押すか、ホストをダブルクリックして再試行してください。",

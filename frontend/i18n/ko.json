@@ -383,6 +383,7 @@
   },
   "terminal": {
     "connecting": "{{host}}(으)로 연결 중…",
+    "writeFailed": "쓰기 실패 — 연결이 끊어졌을 수 있습니다: {{message}}",
     "reconnected": "다시 연결됨",
     "reconnecting": "연결이 끊어졌습니다. {{seconds}}초 후 재시도 (시도 {{attempt}}/{{max}})…",
     "reconnectExhausted": "자동 재연결이 {{max}}회 실패하여 포기했습니다. Enter를 누르거나 호스트를 더블클릭해 다시 시도하세요.",

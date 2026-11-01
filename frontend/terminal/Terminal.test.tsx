@@ -398,6 +398,36 @@ describe("智能补全开关（Task 8 B8）", () => {
     expect(loadTerminalSettings().completionEnabled).toBe(false);
   });
 
+  // 2026-11-01 功能审计：PTY 写入失败此前被静默吞掉——通道已断时用户打字
+  // 「没反应」，屏幕上没有任何原因。现在写一行进终端说明。
+  it("写入失败可见化：write_session 失败时终端写出一行 [ottr] 说明", async () => {
+    useSessionStore.setState({
+      sessions: [sess({ id: "tab-wf", hostId: 5, rustId: "pty-wf" })],
+      activeId: "tab-wf",
+      trees: { "tab-wf": { kind: "leaf", id: "tab-wf" } },
+      activePane: { "tab-wf": "tab-wf" },
+    });
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "write_session") return Promise.reject(new Error("channel closed"));
+      return Promise.resolve([]);
+    });
+    render(
+      <ThemeProvider>
+        <SessionTerminal sessionId="tab-wf" />
+      </ThemeProvider>,
+    );
+    const captured = capturedTerms();
+    const term = captured[captured.length - 1];
+    const spy = vi.spyOn(term, "writeln");
+    await act(async () => {
+      term.input("x");
+    });
+    expect(spy, "写入失败应有终端提示").toHaveBeenCalled();
+    const line = String(spy.mock.calls[0][0]);
+    expect(line).toContain("[ottr]");
+    expect(line, "提示里带失败原因").toContain("channel closed");
+  });
+
   it("I-3 PTY 纯净性（集成）：ghost 显示时按 Tab——write_session 收 suffix 而非 \\t，打字字节原样透传", async () => {
     completionHistory.resetForTests();
     completionHistory.append(5, "docker ps -a");

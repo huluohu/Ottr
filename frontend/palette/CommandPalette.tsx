@@ -471,6 +471,7 @@ export function CommandPalette({
         <button
           className="palette-item"
           data-active={idx === activeIndex}
+          tabIndex={-1}
           onMouseEnter={() => setActiveIndex(idx)}
           onClick={() => runItem(item)}
         >
@@ -486,6 +487,7 @@ export function CommandPalette({
       <button
         className="palette-item"
         data-active={idx === activeIndex}
+        tabIndex={-1}
         onMouseEnter={() => setActiveIndex(idx)}
         onClick={() => runItem(item)}
       >
@@ -518,12 +520,27 @@ export function CommandPalette({
           placeholder={t("palette.placeholder")}
           aria-label={t("palette.title")}
           data-testid="palette-input"
+          // 列表语义（2026-11-01 UI 审计 P1-5）：此前高亮只靠 data-active
+          // （纯 CSS），读屏用户听不到「高亮换到哪一条」——焦点始终在输入框，
+          // 条目无 option 语义、无 aria-selected。现在焦点留在输入框，高亮项
+          // 由 aria-activedescendant 指向对应 option（combobox + listbox 范式）。
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="palette-list"
+          aria-autocomplete="list"
+          aria-activedescendant={flat.length > 0 ? `palette-opt-${activeIndex}` : undefined}
           onChange={(e) => {
             setQuery(e.currentTarget.value);
             setActiveIndex(0);
           }}
         />
-        <ul className="palette-list" ref={listRef}>
+        <ul
+          className="palette-list"
+          ref={listRef}
+          id="palette-list"
+          role="listbox"
+          aria-label={t("palette.title")}
+        >
           {flat.length === 0 && <li className="palette-empty">{t("palette.empty")}</li>}
           {/* 浏览态（rows 模型）下「命令」总头与组节头相邻会出现空总头——
               组节头已承载结构，总头仅在过滤态扁平列表时渲染（评审 P0-4）。 */}
@@ -540,10 +557,26 @@ export function CommandPalette({
                     {row.label}
                   </li>
                 ) : (
-                  <li key={row.key}>{renderItem(row.item, row.flat)}</li>
+                  <li
+                    key={row.key}
+                    role="option"
+                    id={`palette-opt-${row.flat}`}
+                    aria-selected={row.flat === activeIndex}
+                  >
+                    {renderItem(row.item, row.flat)}
+                  </li>
                 ),
               )
-            : commandItems.map((item, i) => <li key={item.key}>{renderItem(item, i)}</li>)
+            : commandItems.map((item, i) => (
+                <li
+                  key={item.key}
+                  role="option"
+                  id={`palette-opt-${i}`}
+                  aria-selected={i === activeIndex}
+                >
+                  {renderItem(item, i)}
+                </li>
+              ))
           )}
           {hostItems.length > 0 && (
             <li className="palette-section" aria-hidden="true">
@@ -551,7 +584,14 @@ export function CommandPalette({
             </li>
           )}
           {hostItems.map((item, i) => (
-            <li key={item.key}>{renderItem(item, commandItems.length + i)}</li>
+            <li
+              key={item.key}
+              role="option"
+              id={`palette-opt-${commandItems.length + i}`}
+              aria-selected={commandItems.length + i === activeIndex}
+            >
+              {renderItem(item, commandItems.length + i)}
+            </li>
           ))}
         </ul>
       </div>

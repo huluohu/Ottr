@@ -267,12 +267,24 @@ export type HostInput = {
  */
 export type HostProtocol = "ssh" | "ftp" | "ftps";
 
+/**
+ *  导入问题（2026-11-01 功能审计 P2-5）：此前 errors 是写死的中文字符串，
+ *  前端原样渲染 → 八语界面里导入报错仍然是中文。改为**稳定错误码 + 参数表**：
+ *  前端按码本地化（未知码退化为原样展示，不丢信息）。
+ */
+export type ImportIssue = {
+	/**  稳定错误码（前端 i18n 映射键；如 `csv.header_mismatch`）。 */
+	code: string,
+	/**  参数表（行号/实际值等）→ 前端按码插值。 */
+	params?: { [key in string]: string },
+};
+
 /**  导入报告（裁定 #4：新增 N、跳过 N、解析错误行列表，导入完成对话框展示）。 */
 export type ImportReport = {
 	added: number,
 	skipped_wildcards: number,
 	skipped_duplicates: number,
-	errors: string[],
+	errors: ImportIssue[],
 };
 
 /**  已知主机指纹（TOFU 记录，以 host 端点为主键、fingerprint = 当前信任锚）。 */

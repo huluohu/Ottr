@@ -25,6 +25,7 @@
 //   第一位的置顶标签（TabBar），点会话标签回终端、关总览标签 ✕ 收场；
 // * 主题/i18n 纪律：色板走 App.css 令牌，文案全走 t()（零新增键）。
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
@@ -132,6 +133,31 @@ export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewP
     } catch (e) {
       setEnableError(
         t("overview.enableFailed", {
+          host: host.name,
+          message: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    } finally {
+      setEnablingId(null);
+    }
+  }
+
+  /** 关闭监控（2026-11-01 功能审计 P2-2 修复：Rust 有 monitor_stop 命令，
+   *  界面此前没有任何入口——开了监控只能靠关会话/重连才停）。
+   *  两步：① 若有活会话，停当前采样（立即生效）；② 关主机开关（持久，重连
+   *  不再起采样）。顺序：先停再落开关，避免开关落库失败时采样还活着。 */
+  async function disableMonitor(host: Host) {
+    setEnablingId(host.id);
+    setEnableError(null);
+    try {
+      const rustId = rootRustIdByHost(sessions).get(host.id);
+      if (rustId) {
+        await invoke("monitor_stop", { id: rustId }).catch(() => undefined);
+      }
+      await updateHost(host.id, hostInputFrom(host, { monitor_enabled: false }));
+    } catch (e) {
+      setEnableError(
+        t("overview.disableFailed", {
           host: host.name,
           message: e instanceof Error ? e.message : String(e),
         }),
@@ -304,6 +330,24 @@ export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewP
                       onKeyDown={(e) => e.stopPropagation()}
                     >
                       {t("overview.connect")}
+                    </button>
+                  )}
+                  {/* 关闭监控（2026-11-01 功能审计）：此前只有「开启监控」，
+                      开了之后界面无任何停止入口（Rust 的 monitor_stop 无人
+                      调用）。与开启按钮对称出现。 */}
+                  {host.protocol === "ssh" && light !== "off" && (
+                    <button
+                      data-testid={`overview-monitor-off-${host.id}`}
+                      disabled={enablingId === host.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void disableMonitor(host);
+                      }}
+                      // 键盘可达（2026-11-01 UI 审计 P1-3）：冒泡到卡片的回车
+                      // 会取消按钮激活、反而打开会话。
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      {enablingId === host.id ? t("overview.disabling") : t("overview.disableMonitor")}
                     </button>
                   )}
                   {/* 一键开启监控（ui2 T3，A4）：只在 ssh + off 态灰卡出现，

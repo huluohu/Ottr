@@ -73,6 +73,7 @@ import { createSplitDedupe } from "./shortcuts/splitDedupe";
 import { initAutoCheck } from "./update/autoCheck";
 import { useUpdateStore } from "./update/updateStore";
 import { useVaultStore } from "./vault/store";
+import { useGlobalFocusTrap } from "./ui/useFocusTrap";
 import { type Host } from "./vault/api";
 import "./theme/tokens.css";
 import "./styles/index.css";
@@ -261,6 +262,11 @@ function HomeLayout() {
     if (!IS_TAURI) return;
     void useVaultInitGate.getState().init();
   }, []);
+
+  // 全局焦点陷阱（2026-11-01 UI 审计 P1-4）：所有弹窗只声明 aria-modal、
+  // 此前无实现——Tab 能从弹窗走到背后界面（锁屏时能 Tab 进应用本身）。
+  // 挂一次即覆盖全部弹窗（含 role=alertdialog 的问询/审批框）。
+  useGlobalFocusTrap();
 
   // 首屏（vault 就绪后走 T11 既有启动链）：锁定状态机 → vault 数据 → 会话事件
   // 监听 → 标签恢复（不自动连接，安全考虑见 SessionStore.restoreTabs）。恢复依

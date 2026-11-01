@@ -312,4 +312,33 @@ describe("CommandPalette：键位提示跟随覆盖表", () => {
     applyOverrides({});
   });
 });
+
+// 2026-11-01 UI 审计 P1-5 回归：⌘K 结果列表要有 listbox/option 语义，
+// 高亮项由输入框的 aria-activedescendant 指向——此前高亮只是 data-active
+// （纯 CSS），读屏用户听不到「高亮换到哪一条」。
+describe("CommandPalette：列表语义", () => {
+  it("列表是 listbox、条目是 option，高亮项 aria-selected=true", () => {
+    renderPalette({ hosts: [] });
+    const list = screen.getByTestId("command-palette").querySelector(".palette-list")!;
+    expect(list.getAttribute("role")).toBe("listbox");
+    const options = Array.from(list.querySelectorAll('[role="option"]'));
+    expect(options.length).toBeGreaterThan(0);
+    expect(options[0].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("输入框是 combobox，aria-activedescendant 跟随高亮项", () => {
+    const { activeIndex } = renderPalette({ hosts: [] });
+    const input = screen.getByTestId("palette-input");
+    expect(input.getAttribute("role")).toBe("combobox");
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    const first = input.getAttribute("aria-activedescendant");
+    expect(first, "高亮项 id 应被指向").toBeTruthy();
+    const opt = document.getElementById(first!);
+    expect(opt?.getAttribute("role")).toBe("option");
+    // ↓ 移动高亮 → activedescendant 跟着换
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-activedescendant")).not.toBe(first);
+    expect(activeIndex()).toBe(1);
+  });
+});
 });

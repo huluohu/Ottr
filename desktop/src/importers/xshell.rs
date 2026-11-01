@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 use ottr_vault::Vault;
 
-use crate::ssh_config::{ImportReport, ParseOutcome, SshConfigEntry, import_entries};
+use crate::ssh_config::{ImportIssue, ImportReport, ParseOutcome, SshConfigEntry, import_entries};
 
 /// 单文件解析结论（三态：可导入 / 有效但不可导入 / 损坏）。
 #[derive(Debug, Clone, PartialEq)]
@@ -30,7 +30,7 @@ pub enum XshParse {
     /// 有效 .xsh 但无可导入内容（非 SSH 协议 / 缺 Host）。
     Skipped(&'static str),
     /// 结构损坏（如 Port 非法）——整文件不导入。
-    Error(String),
+    Error(ImportIssue),
 }
 
 /// BOM 嗅探读文本（Xshell 老版本 .xsh 是 UTF-16LE）。
@@ -106,7 +106,12 @@ pub fn parse_xsh(content: &str, fallback_name: &str) -> XshParse {
         None => None,
         Some(s) => match s.parse::<u16>() {
             Ok(p) if p > 0 => Some(p),
-            _ => return XshParse::Error(format!("Port '{s}' 不可解析")),
+            _ => {
+                return XshParse::Error(ImportIssue::with(
+                    "xshell.port_not_parseable",
+                    &[("value", s.to_string())],
+                ));
+            }
         },
     };
     let name = description
@@ -126,9 +131,10 @@ pub fn parse_xsh(content: &str, fallback_name: &str) -> XshParse {
 pub fn parse_dir(dir: &Path) -> ParseOutcome {
     let mut outcome = ParseOutcome::default();
     let Ok(read) = std::fs::read_dir(dir) else {
-        outcome
-            .errors
-            .push(format!("read dir {}: 无法读取", dir.display()));
+        outcome.errors.push(ImportIssue::with(
+            "xshell.read_dir_failed",
+            &[("path", dir.display().to_string())],
+        ));
         return outcome;
     };
     let mut files: Vec<PathBuf> = read
@@ -161,14 +167,17 @@ fn push_file(outcome: &mut ParseOutcome, path: &Path) {
     let content = match read_text(path) {
         Ok(c) => c,
         Err(e) => {
-            outcome.errors.push(format!("{display}: read: {e}"));
+            outcome.errors.push(ImportIssue::with(
+                "xshell.file_read_failed",
+                &[("path", display.clone()), ("error", e.to_string())],
+            ));
             return;
         }
     };
     match parse_xsh(&content, &fallback_name) {
         XshParse::Entry(entry) => outcome.entries.push(entry),
         XshParse::Skipped(_) => outcome.skipped_wildcards += 1,
-        XshParse::Error(err) => outcome.errors.push(format!("{display}: {err}")),
+        XshParse::Error(issue) => outcome.errors.push(issue),
     }
 }
 
@@ -248,7 +257,13 @@ mod tests {
     #[test]
     fn bad_port_is_error() {
         match parse_xsh(&fixture("badport.xsh"), "badport") {
-            XshParse::Error(msg) => assert!(msg.contains("Port 'not-a-port'")),
+            XshParse::Error(issue) => {
+                assert_eq!(issue.code, "xshell.port_not_parseable");
+                assert_eq!(
+                    issue.params.get("value").map(String::as_str),
+                    Some("not-a-port")
+                );
+            }
             other => panic!("expected error, got {other:?}"),
         }
     }
@@ -285,7 +300,7 @@ mod tests {
         assert_eq!(outcome.entries.len(), 2);
         assert_eq!(outcome.skipped_wildcards, 1);
         assert_eq!(outcome.errors.len(), 1);
-        assert!(outcome.errors[0].starts_with("badport.xsh:"));
+        assert_eq!(outcome.errors[0].code, "xshell.port_not_parseable");
 
         // 导入流（Vault 实库）：新增 2 + 去重语义复用 ssh_config（同键再导全跳）
         let tmp = tempfile::tempdir().unwrap();

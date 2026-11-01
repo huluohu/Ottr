@@ -16,7 +16,13 @@ import { useVaultStore } from "../vault/store";
 
 const mockedInvoke = invoke as unknown as Mock;
 
-const report = { added: 3, skipped_wildcards: 2, skipped_duplicates: 1, errors: ["L29: Port 'not-a-port' 不可解析"] };
+// 导入问题 = 稳定码 + 参数（2026-11-01 功能审计 P2-5：此前是写死的中文字符串）。
+const report = {
+  added: 3,
+  skipped_wildcards: 2,
+  skipped_duplicates: 1,
+  errors: [{ code: "sshconfig.port_not_parseable", params: { line: "29", value: "not-a-port" } }],
+};
 
 function listCommandsOk() {
   mockedInvoke.mockImplementation((cmd: string) => {
@@ -51,7 +57,9 @@ describe("ImportDialog", () => {
 
     // 错误行列表逐行展示
     const errors = screen.getByTestId("import-errors");
-    expect(errors.textContent).toContain("L29");
+    // 本地化文案（此前是后端写死的 "L29: Port 'not-a-port' 不可解析"）
+    expect(errors.textContent).toContain("Line 29");
+    expect(errors.textContent).toContain("not-a-port");
 
     // 完成后触发 refresh（hosts_list 被再次调用；store 直取 list 是单参 invoke）
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("hosts_list"));
@@ -132,7 +140,7 @@ describe("ImportDialog 迁移导入器来源（Phase 2 Task 10，B3）", () => {
   it("Xshell 来源：目录选择后 start 携路径发 import_xshell_sessions；跳过行换语义标签", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "import_xshell_sessions") {
-        return Promise.resolve({ added: 2, skipped_wildcards: 1, skipped_duplicates: 0, errors: ["badport.xsh: Port 'not-a-port' 不可解析"] });
+        return Promise.resolve({ added: 2, skipped_wildcards: 1, skipped_duplicates: 0, errors: [{ code: "xshell.port_not_parseable", params: { value: "not-a-port" } }] });
       }
       if (cmd === "hosts_list" || cmd === "credentials_list" || cmd === "host_groups_list") {
         return Promise.resolve([]);
@@ -152,7 +160,8 @@ describe("ImportDialog 迁移导入器来源（Phase 2 Task 10，B3）", () => {
     expect(mockedInvoke).toHaveBeenCalledWith("import_xshell_sessions", { path: "/Users/ottr/Sessions" });
     expect(screen.getByTestId("import-report").textContent).toContain("Added 2 hosts");
     expect(screen.getByTestId("import-report").textContent).toContain("Skipped 1 unusable entries/files");
-    expect(screen.getByTestId("import-errors").textContent).toContain("badport.xsh");
+    // 本地化文案（英文界面）：不再是后端写死的中文串
+    expect(screen.getByTestId("import-errors").textContent).toContain("cannot be parsed");
   });
 
   it("Tabby 来源：未选文件时 start 禁用；选 JSON 后发 import_tabby_config", async () => {

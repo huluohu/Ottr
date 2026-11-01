@@ -6,7 +6,22 @@
 // 条目/文件，分列）、解析错误行列表。导入成功后刷新 store（新主机立即可见）。
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { vaultApi, type ImportReport } from "../vault/api";
+import { vaultApi, type ImportIssue, type ImportReport } from "../vault/api";
+
+/** 导入错误码 → i18n 键（Rust 侧发稳定码，前端按码本地化；
+ *  未知码退化为原样展示，不丢信息）。2026-11-01 功能审计 P2-5。 */
+const IMPORT_ISSUE_KEY: Record<string, string> = {
+  "csv.header_mismatch": "importDialog.errHeaderMismatch",
+  "csv.empty_file": "importDialog.errEmptyFile",
+  "csv.row_field_count": "importDialog.errRowFieldCount",
+  "csv.port_not_number": "importDialog.errPortNotNumber",
+  "csv.missing_name_or_address": "importDialog.errMissingNameOrAddress",
+  "sshconfig.port_not_parseable": "importDialog.errSshPortNotParseable",
+  "tabby.port_not_parseable": "importDialog.errTabbyPortNotParseable",
+  "xshell.port_not_parseable": "importDialog.errXshellPortNotParseable",
+  "xshell.read_dir_failed": "importDialog.errXshellReadDirFailed",
+  "xshell.file_read_failed": "importDialog.errXshellFileReadFailed"
+};
 import { useVaultStore } from "../vault/store";
 import { useEscClose } from "../ui/useEscClose";
 
@@ -28,6 +43,20 @@ export function ImportDialog({ onClose, closing }: { onClose: () => void; closin
   const [phase, setPhase] = useState<"idle" | "running" | "done" | "failed">("idle");
   const [report, setReport] = useState<ImportReport | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  /** 导入问题 → 本地化文案（按码取 i18n 键；未知码原样展示 code + 参数，
+   *  不丢信息）。2026-11-01 功能审计 P2-5：此前 Rust 发的是写死的中文字符串，
+   *  八语界面里导入报错仍然是中文。 */
+  function issueText(issue: ImportIssue): string {
+    const key = IMPORT_ISSUE_KEY[issue.code];
+    if (!key) {
+      const params = Object.entries(issue.params ?? {})
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ");
+      return params ? `${issue.code} (${params})` : issue.code;
+    }
+    return t(key, { ...(issue.params ?? {}) });
+  }
 
   // Tabby 无跨平台惯例位置：必须先选文件才能开始（xshell 可回落服务端默认目录）
   // ssh/xshell 允许空路径（回落服务端默认）；tabby/csv 必须先选文件。
@@ -193,8 +222,8 @@ export function ImportDialog({ onClose, closing }: { onClose: () => void; closin
                     {t("importDialog.errors", { count: report.errors.length })}
                   </p>
                   <ul className="report-errors" data-testid="import-errors">
-                    {report.errors.map((err) => (
-                      <li key={err}>{err}</li>
+                    {report.errors.map((err, i) => (
+                      <li key={`${err.code}-${i}`}>{issueText(err)}</li>
                     ))}
                   </ul>
                 </>

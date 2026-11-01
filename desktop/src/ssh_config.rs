@@ -29,12 +29,46 @@ pub struct SshConfigEntry {
     pub identity_file: Option<String>,
 }
 
-/// 一次性解析结果：条目 + 通配跳过数 + 错误行列表（`L{行号}: {原因}`）。
+/// 导入问题（2026-11-01 功能审计 P2-5）：此前 errors 是写死的中文字符串，
+/// 前端原样渲染 → 八语界面里导入报错仍然是中文。改为**稳定错误码 + 参数表**：
+/// 前端按码本地化（未知码退化为原样展示，不丢信息）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, specta::Type)]
+pub struct ImportIssue {
+    /// 稳定错误码（前端 i18n 映射键；如 `csv.header_mismatch`）。
+    pub code: String,
+    /// 参数表（行号/实际值等）→ 前端按码插值。
+    #[serde(default)]
+    pub params: std::collections::BTreeMap<String, String>,
+}
+
+impl ImportIssue {
+    /// 无参问题。
+    pub fn new(code: &str) -> Self {
+        Self {
+            code: code.to_string(),
+            params: std::collections::BTreeMap::new(),
+        }
+    }
+
+    /// 带参问题（参数值按字符串存；数字在前端插值时自行格式化）。
+    pub fn with(code: &str, params: &[(&str, String)]) -> Self {
+        let mut map = std::collections::BTreeMap::new();
+        for (k, v) in params {
+            map.insert((*k).to_string(), v.clone());
+        }
+        Self {
+            code: code.to_string(),
+            params: map,
+        }
+    }
+}
+
+/// 一次性解析结果：条目 + 通配跳过数 + 错误列表（结构化问题）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParseOutcome {
     pub entries: Vec<SshConfigEntry>,
     pub skipped_wildcards: usize,
-    pub errors: Vec<String>,
+    pub errors: Vec<ImportIssue>,
 }
 
 /// 导入报告（裁定 #4：新增 N、跳过 N、解析错误行列表，导入完成对话框展示）。
@@ -43,7 +77,7 @@ pub struct ImportReport {
     pub added: usize,
     pub skipped_wildcards: usize,
     pub skipped_duplicates: usize,
-    pub errors: Vec<String>,
+    pub errors: Vec<ImportIssue>,
 }
 
 /// 默认配置路径：`~/.ssh/config`（HOME / USERPROFILE 均兼顾三端）。
@@ -64,7 +98,7 @@ pub fn parse_config(content: &str) -> ParseOutcome {
     // 当前块：每个非通配 pattern 一份 pending 条目（共享后续 Keyword 赋值）。
     let mut pending: Vec<SshConfigEntry> = Vec::new();
     // 当前块是否已带致命错误（如 Port 非法）——置位后整块不导入。
-    let mut block_error: Option<String> = None;
+    let mut block_error: Option<ImportIssue> = None;
 
     for (idx, raw) in content.lines().enumerate() {
         let line = raw.trim();
@@ -104,7 +138,13 @@ pub fn parse_config(content: &str) -> ParseOutcome {
                     }
                 }
                 _ => {
-                    block_error = Some(format!("L{}: Port '{}' 不可解析", idx + 1, value));
+                    block_error = Some(ImportIssue::with(
+                        "sshconfig.port_not_parseable",
+                        &[
+                            ("line", (idx + 1).to_string()),
+                            ("value", value.to_string()),
+                        ],
+                    ));
                 }
             },
             "user" => {
@@ -156,7 +196,7 @@ fn unquote(value: &str) -> &str {
 /// 块结束：无致命错误的 pending 条目落 outcome，清空当前块状态。
 fn flush_block(
     pending: &mut Vec<SshConfigEntry>,
-    block_error: &mut Option<String>,
+    block_error: &mut Option<ImportIssue>,
     outcome: &mut ParseOutcome,
 ) {
     if let Some(err) = block_error.take() {
@@ -253,7 +293,12 @@ mod tests {
         // 通配 2（prod-*、*.lan）+ 排除 1（!exclude-me）
         assert_eq!(outcome.skipped_wildcards, 3);
         // bad-port 块整块不导入，错误行带行号
-        assert_eq!(outcome.errors, vec!["L29: Port 'not-a-port' 不可解析"]);
+        assert_eq!(outcome.errors.len(), 1);
+        assert_eq!(outcome.errors[0].code, "sshconfig.port_not_parseable");
+        assert_eq!(
+            outcome.errors[0].params.get("line").map(String::as_str),
+            Some("29")
+        );
     }
 
     #[test]

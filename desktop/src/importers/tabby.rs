@@ -15,7 +15,7 @@
 use ottr_vault::Vault;
 use serde_json::Value;
 
-use crate::ssh_config::{ImportReport, ParseOutcome, SshConfigEntry, import_entries};
+use crate::ssh_config::{ImportIssue, ImportReport, ParseOutcome, SshConfigEntry, import_entries};
 
 /// JSON 文本 → [`ParseOutcome`]。非 JSON / 无 profiles 面 → Err。
 pub fn parse_config(content: &str) -> Result<ParseOutcome, String> {
@@ -73,9 +73,10 @@ fn parse_doc(doc: Value) -> Result<ParseOutcome, String> {
             Some(v) => match v.as_u64() {
                 Some(p) if p > 0 && p <= 65535 => Some(p as u16),
                 _ => {
-                    outcome
-                        .errors
-                        .push(format!("profiles[{idx}]: port 不可解析"));
+                    outcome.errors.push(ImportIssue::with(
+                        "tabby.port_not_parseable",
+                        &[("index", idx.to_string())],
+                    ));
                     continue;
                 }
             },
@@ -147,7 +148,12 @@ mod tests {
         // telnet profile 跳过；缺 host 的 profile 跳过；坏 port 计错误
         assert_eq!(outcome.entries.len(), 3);
         assert_eq!(outcome.skipped_wildcards, 2);
-        assert_eq!(outcome.errors, vec!["profiles[5]: port 不可解析"]);
+        assert_eq!(outcome.errors.len(), 1);
+        assert_eq!(outcome.errors[0].code, "tabby.port_not_parseable");
+        assert_eq!(
+            outcome.errors[0].params.get("index").map(String::as_str),
+            Some("5")
+        );
 
         let web = &outcome.entries[0];
         assert_eq!(web.host, "web-01");
@@ -247,7 +253,8 @@ mod tests {
         // 同时复述 JSON golden 断言：防两份 fixture 内容漂移时对齐变空转
         assert_eq!(yaml.entries.len(), 3);
         assert_eq!(yaml.skipped_wildcards, 2);
-        assert_eq!(yaml.errors, vec!["profiles[5]: port 不可解析"]);
+        assert_eq!(yaml.errors.len(), 1);
+        assert_eq!(yaml.errors[0].code, "tabby.port_not_parseable");
         let web = &yaml.entries[0];
         assert_eq!(web.host, "web-01");
         assert_eq!(web.hostname.as_deref(), Some("192.168.1.10"));

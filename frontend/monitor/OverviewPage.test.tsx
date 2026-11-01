@@ -1,6 +1,6 @@
 // OverviewPage 组件测试（Phase 3 Task 2 Step 3）：纯函数（灯位/排序/反查）
 // + 卡片网格渲染（实时卡指标/灰卡降级/状态文案）+ 动作分派（跳转/进程）。
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
 import { OverviewPage, overviewLight, rootRustIdByHost, sortForOverview } from "./OverviewPage";
@@ -258,6 +258,22 @@ describe("OverviewPage off 卡一键开启监控（ui2 T3，审计 A4）", () =>
     expect(screen.queryByTestId("overview-monitor-on-7"), "已开启主机非 off 态，不出开启入口").toBeNull();
     fireEvent.click(screen.getByTestId("overview-monitor-on-5"));
     expect(onOpen, "按钮点击不冒泡成卡片跳转").not.toHaveBeenCalled();
+  });
+
+  // 2026-11-01 功能审计 P2-2 回归：Rust 有 monitor_stop 命令，界面此前没有
+  // 任何停止入口——开了监控只能靠关会话/重连才停。
+  it("监控已开的主机出「关闭监控」入口：停采样 + 关主机开关", async () => {
+    const on = host({ id: 8, name: "on-host", monitor_enabled: true });
+    const updateHost = vi.fn(async (_id: number, _input: HostInput) => ({ ...on, monitor_enabled: false }));
+    useVaultStore.setState({ hosts: [on], updateHost });
+    render(<OverviewPage onOpen={() => {}} onOpenProcesses={() => {}} />);
+
+    const btn = screen.getByTestId("overview-monitor-off-8");
+    fireEvent.click(btn);
+    await waitFor(() => expect(updateHost).toHaveBeenCalledTimes(1));
+    const [id, input] = updateHost.mock.calls[0];
+    expect(id).toBe(8);
+    expect(input.monitor_enabled, "开关要落库为关（重连不再起采样）").toBe(false);
   });
 
   // 2026-11-01 UI 审计 P1-3 回归：卡片动作按钮的按键不得被卡片（role="button"）

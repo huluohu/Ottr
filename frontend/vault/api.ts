@@ -60,11 +60,18 @@ export type KnownHostState = "ok" | "changed" | "pending";
 export type SecretField = "secret" | "passphrase" | "totp_secret";
 
 /** Rust `ssh_config::ImportReport` 同构（Task 5 ssh-config 导入，对话框展示）。 */
+/** 导入问题（Rust `ImportIssue` 同构）：稳定错误码 + 参数表。
+ *  码由前端映射到 i18n 文案（未知码退化为原样展示）。 */
+export interface ImportIssue {
+  code: string;
+  params?: Record<string, string>;
+}
+
 export interface ImportReport {
   added: number;
   skipped_wildcards: number;
   skipped_duplicates: number;
-  errors: string[];
+  errors: ImportIssue[];
 }
 
 /** Rust `entities::Host`（serde）同构。 */

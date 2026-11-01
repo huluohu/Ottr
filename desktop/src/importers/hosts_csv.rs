@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use ottr_vault::Vault;
 use ottr_vault::entities::{HostGroups, HostInput, Hosts};
 
-use crate::ssh_config::ImportReport;
+use crate::ssh_config::{ImportIssue, ImportReport};
 
 /// 导出表头（与 export.rs hosts_csv 固定表头一致；容忍 UTF-8 BOM 前缀）。
 pub const HEADER: &str = "name,username,address,port,group,tags,encoding,notes";
@@ -18,7 +18,7 @@ pub const HEADER: &str = "name,username,address,port,group,tags,encoding,notes";
 /// 解析产物：port 已校验为 i64 的数据行 + 逐行错误（行号从 2 起计，1 为表头）。
 pub struct CsvOutcome {
     pub rows: Vec<CsvRow>,
-    pub errors: Vec<String>,
+    pub errors: Vec<ImportIssue>,
 }
 
 pub struct CsvRow {
@@ -90,15 +90,18 @@ pub fn parse(content: &str) -> CsvOutcome {
                 .map(|h| h.trim().trim_start_matches('\u{feff}').to_string())
                 .collect();
             if actual != expected || normalized != expected[0] {
-                out.errors.push(format!(
-                    "表头不符：期望「{HEADER}」，实际「{}」",
-                    actual.join(",")
+                out.errors.push(ImportIssue::with(
+                    "csv.header_mismatch",
+                    &[
+                        ("expected", HEADER.to_string()),
+                        ("actual", actual.join(",")),
+                    ],
                 ));
                 return out;
             }
         }
         None => {
-            out.errors.push("文件为空".to_string());
+            out.errors.push(ImportIssue::new("csv.empty_file"));
             return out;
         }
     }
@@ -108,15 +111,22 @@ pub fn parse(content: &str) -> CsvOutcome {
             continue; // 空行静默跳过
         }
         if row.len() != 8 {
-            out.errors
-                .push(format!("第 {line} 行字段数 {} ≠ 8，已跳过", row.len()));
+            out.errors.push(ImportIssue::with(
+                "csv.row_field_count",
+                &[
+                    ("line", line.to_string()),
+                    ("actual", row.len().to_string()),
+                ],
+            ));
             continue;
         }
         let port = match row[3].trim().parse::<i64>() {
             Ok(p) => p,
             Err(_) => {
-                out.errors
-                    .push(format!("第 {line} 行端口「{}」不是数字，已跳过", row[3]));
+                out.errors.push(ImportIssue::with(
+                    "csv.port_not_number",
+                    &[("line", line.to_string()), ("value", row[3].clone())],
+                ));
                 continue;
             }
         };
@@ -127,8 +137,10 @@ pub fn parse(content: &str) -> CsvOutcome {
         let name = row[0].trim().to_string();
         let address = row[2].trim().to_string();
         if name.is_empty() || address.is_empty() {
-            out.errors
-                .push(format!("第 {line} 行名称或地址为空，已跳过"));
+            out.errors.push(ImportIssue::with(
+                "csv.missing_name_or_address",
+                &[("line", line.to_string())],
+            ));
             continue;
         }
         out.rows.push(CsvRow {
@@ -233,13 +245,13 @@ mod tests {
     fn parse_rejects_wrong_header_and_bad_port() {
         let out = parse("foo,bar,baz,qux,a,b,c,d\n");
         assert!(out.rows.is_empty());
-        assert!(out.errors[0].contains("表头不符"));
+        assert_eq!(out.errors[0].code, "csv.header_mismatch");
 
         let out = parse(
             "name,username,address,port,group,tags,encoding,notes\nweb,root,10.0.0.1,ssh,,,,\n",
         );
         assert!(out.rows.is_empty());
-        assert!(out.errors[0].contains("不是数字"));
+        assert_eq!(out.errors[0].code, "csv.port_not_number");
     }
 
     #[test]

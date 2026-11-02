@@ -184,6 +184,28 @@ export function buildUserMessage(
   return `${i18n.t("ai.msg.explainTarget")}:\n${redactedSubject}${contextBlock}`;
 }
 
+/**
+ * 对话历史封顶（2026-11-02 审计）：历史无上限时，每轮追问都把**全部**历史
+ * 重发——token 线性增长、总量平方增长（BYOK 用户自掏腰包），且长会话会把
+ * 最早的诊断上下文（最长 8KB 输出尾）一直拖着。
+ *
+ * 口径：先按**轮数**截（保留最近 N 轮，含首轮诊断上下文那一轮——它带的是
+ * 本次诊断的证据），再按**总字符**截（从最老的一轮开始丢）。与 nl2cmd 的
+ * NL_ROUNDS_CAP=10 同一思路。
+ */
+const HISTORY_TURN_CAP = 8;
+const HISTORY_CHAR_CAP = 16 * 1024;
+
+export function capHistory<T extends { content: string }>(turns: T[]): T[] {
+  let out = turns.length > HISTORY_TURN_CAP ? turns.slice(turns.length - HISTORY_TURN_CAP) : turns;
+  let total = out.reduce((n, t) => n + t.content.length, 0);
+  while (out.length > 1 && total > HISTORY_CHAR_CAP) {
+    total -= out[0].content.length;
+    out = out.slice(1);
+  }
+  return out;
+}
+
 /** 通知正文的命令摘要（首行、80 字符截断；已脱敏文本入通知）。 */
 export function commandExcerpt(command: string): string {
   const first = command.split("\n")[0] ?? command;
@@ -399,8 +421,16 @@ export const useAiStore = create<AiStore>((set, get) => {
 
       // --- 4. 流式（BYOK 直连；取消器按会话隔离）---
       // 对话历史：首轮 = 装配后的诊断上下文；追问轮 = 只带历史 + 本次追问。
-      // 历史内容一律脱敏后存（追加时已 redact）。
-      const history = slice(sessionId).messages;
+      //
+      // **历史出网前再脱敏一次**（幂等）：用户轮入库时已 redact，但 assistant
+      // 轮是模型原文——模型可能把上下文里的敏感值**回显**出来（审计实测这条
+      // 路径会绕过脱敏引擎再次出网）。redact 幂等，重复应用安全。
+      const history = capHistory(
+        slice(sessionId).messages.map((m) => ({
+          role: m.role,
+          content: redact(m.content, redactOpts).text,
+        })),
+      );
       const userContent = isFollowup
         ? subject.text
         : buildUserMessage(req, subject.text, outputTail, hostContext);
@@ -410,7 +440,9 @@ export const useAiStore = create<AiStore>((set, get) => {
       ];
       // 本轮的 assistant 占位（流式期间原地追加内容）。
       const assistantTurn: ChatTurn = { role: "assistant", content: "" };
-      const turnsSoFar: ChatTurn[] = [...history, { role: "user", content: userContent }];
+      // 存储面也封顶：否则 store 里的 messages 无限增长（每轮追问又把全部
+      // 历史重发）——封顶在「组装请求」与「落库」两处都做。
+      const turnsSoFar: ChatTurn[] = capHistory([...history, { role: "user", content: userContent }]);
       patch(sessionId, { messages: [...turnsSoFar, assistantTurn] });
       const ac = new AbortController();
       controllers.set(sessionId, ac);
@@ -438,6 +470,16 @@ export const useAiStore = create<AiStore>((set, get) => {
         if (controllers.get(sessionId) === ac) {
           controllers.delete(sessionId);
           const done = !ac.signal.aborted;
+          // assistant 轮落库前脱敏：模型回显的敏感值不留明文在历史里
+          // （存储面与出网面都守住「内容一律脱敏后存」的契约）。
+          if (assistantTurn.content !== "") {
+            patch(sessionId, {
+              messages: [
+                ...turnsSoFar,
+                { role: "assistant", content: redact(assistantTurn.content, redactOpts).text },
+              ],
+            });
+          }
           patch(sessionId, {
             status: done ? "done" : "aborted",
             elapsedMs: Math.round(performance.now() - startedAt),

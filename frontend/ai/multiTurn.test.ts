@@ -16,13 +16,15 @@ type MockProviderLike = {
   requests: { system?: string; messages: { content: string }[]; maxTokens: number }[];
 };
 const createdProviders: MockProviderLike[] = [];
+/** mock provider 的回答（可改，用来模拟「模型回显了敏感值」）。 */
+let mockAnswer = ["**原因**\n\n磁盘满了。"];
 vi.mock("./provider", async (importOriginal) => {
   const orig = await importOriginal<typeof import("./provider")>();
   return {
     ...orig,
     createProvider: (meta: unknown, apiKey: string) => {
       chatFactory(meta, apiKey);
-      const p = orig.createMockProvider(["**原因**\n\n磁盘满了。"]);
+      const p = orig.createMockProvider(mockAnswer);
       createdProviders.push(p);
       return p;
     },
@@ -85,6 +87,7 @@ beforeEach(async () => {
   mockedInvoke.mockReset();
   chatFactory.mockClear();
   createdProviders.length = 0;
+  mockAnswer = ["**原因**\n\n磁盘满了。"];
   useAiStore.setState({ sessions: {} });
   resetRateLimiter();
   setNotifyPorts({
@@ -170,6 +173,53 @@ describe("AI 多轮追问会话", () => {
     expect(dump).not.toContain("10.1.2.3");
     expect(dump).not.toContain("10.9.8.7");
     expect(dump).toContain("[REDACTED_");
+  });
+
+  it("assistant 轮回显的敏感值不再原样出网（脱敏后入历史）", async () => {
+    // 回归点（2026-11-02 安全审计）：assistant 轮是模型原文，直接入历史 →
+    // 下一轮原样重发，绕过脱敏引擎。模型若回显了敏感值（如「密码是 hunter2」），
+    // 它会在第二轮请求里再次出网。
+    mockAnswer = ["**原因**\n\n密码是 hunter2"];
+    mockBackend();
+    useAiStore.getState().onCommandFailed(REQ);
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().sessions["tab-1"]?.status).toBe("done");
+    });
+
+    // 存进历史的是脱敏后的
+    const stored = useAiStore.getState().sessions["tab-1"]!.messages;
+    const assistantTurn = stored.find((m) => m.role === "assistant");
+    expect(assistantTurn?.content).not.toContain("hunter2");
+    expect(assistantTurn?.content).toContain("[REDACTED_PASSWORD_1]");
+
+    // 追问轮发出去的请求里也不该有明文
+    await useAiStore.getState().run("tab-1", "再说一次");
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().sessions["tab-1"]?.status).toBe("done");
+    });
+    const second = createdProviders[1].requests[0].messages;
+    const dump = JSON.stringify(second);
+    expect(dump).not.toContain("hunter2");
+  });
+
+  it("历史封顶：轮数与总字符都有上限（token 不无限增长）", async () => {
+    mockBackend();
+    useAiStore.getState().onCommandFailed(REQ);
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().sessions["tab-1"]?.status).toBe("done");
+    });
+    // 连问若干轮，历史不应无限增长
+    for (let i = 0; i < 12; i++) {
+      await useAiStore.getState().run("tab-1", `追问 ${i}`);
+      await vi.waitFor(() => {
+        expect(useAiStore.getState().sessions["tab-1"]?.status).toBe("done");
+      });
+    }
+    const msgs = useAiStore.getState().sessions["tab-1"]!.messages;
+    // capHistory 保留最近 8 轮（含首轮 user 轮）
+    expect(msgs.length).toBeLessThanOrEqual(9);
+    const total = msgs.reduce((n, m) => n + m.content.length, 0);
+    expect(total).toBeLessThanOrEqual(16 * 1024 + 4096);
   });
 
   it("追问内容本身也脱敏后入历史", async () => {

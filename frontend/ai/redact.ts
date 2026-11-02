@@ -39,21 +39,69 @@ interface CompiledRule {
   placeholder: string;
 }
 
-/** 密码赋值的值字符集：排除空白与 shell 元字符；**保留方括号**（幂等护栏依赖）。 */
-const PASSWORD_SOURCE =
-  "(?<![a-z0-9])(pass(?:word|wd)?|pwd|secret|token|api[_-]?key|access[_-]?key|auth)\\s*[:=]\\s*" +
-  '("[^"]*"|\'[^\']*\'|[^\\s"\';|&()<>{}\\x60]+)';
+/**
+ * 机密赋值的关键词（英文 + 中文）。
+ *
+ * 中文这一组是**必须**的：脱敏引擎的输入里最常见的敏感片段来自中文运维
+ * 文档与终端输出（「密码：xxx」「口令：xxx」），而规则集此前只有英文关键
+ * 词 → 中文写法一律原样出网（本批新增的「主机备注」注入源恰恰是用户手写
+ * 的中文，极容易踩中）。
+ *
+ * `pass(?:word|wd|phrase)?` / `pwd` / `secret` / `token` / `api[_-]?key` /
+ * `access[_-]?key` / `auth(?:orization)?` / `credential` / `priv(?:ate)?[_-]?key` /
+ * `session[_-]?key` / `client[_-]?secret`。
+ */
+const SECRET_KEYWORDS =
+  "pass(?:word|wd|phrase)?|pwd|secret|token|api[_-]?key|access[_-]?key|" +
+  // 「Authorization:」是**头名**不是机密赋值：它后面的值是 "Basic <b64>" /
+  // "Bearer <token>"，由 bearer 规则整条处理（见下）。这里让 password 规则
+  // 跳过这种形态，免得只把 "Bearer" 这个词当值吞掉、令牌上下文反而丢在
+  // 外面；但 `authorization=abc123` 这种**真赋值**仍要脱敏。
+  "auth(?!orization)|authorization(?!\\s*[:=：]\\s*(?:Basic|Bearer)\\s)|" +
+  "credential|priv(?:ate)?[_-]?key|session[_-]?key|client[_-]?secret|" +
+  // 中文
+  "密码|口令|密钥|令牌|私钥|凭据|凭证";
+
+/**
+ * 机密赋值的值字符集：排除空白、shell 元字符与**中文标点**（否则
+ * 「密码：hunter2，下一个」会把逗号后的中文一起吞掉）；**保留方括号**
+ * （幂等护栏依赖占位符形态）。
+ */
+const SECRET_VALUE = '("[^"]*"|\'[^\']*\'|[^\\s"\'，、；。！？：,;|&()<>{}\\x60]+)';
+
+/**
+ * 机密赋值规则：`<关键词><分隔符><值>`。
+ *
+ * 分隔符支持 `:` `=` **全角冒号 `：`** 与「是 / 为 / is」三种自然语言写法。
+ *
+ * **不再用 `(?<![a-z0-9])` 前置断言**：该规则带 `i` 标志，字符类
+ * `[a-z0-9]` 在 `i` 下同样匹配大写，于是 `PGPASSWORD=` / `DBPASSWORD=` 这类
+ * 环境变量名（大写前缀紧贴关键词）会被整体挡掉——实测漏网。
+ * 去掉前置断言后，「关键词后必须紧跟分隔符」这一约束仍然成立，误伤面只有
+ * 「以关键词结尾且后面跟 `:`/`=` 的普通词」（如 `compass:`），方向是**多脱敏
+ * 而不是漏脱敏**，对安全面是安全的一侧。
+ */
+const SECRET_SOURCE = `(?:${SECRET_KEYWORDS})\\s*(?:[:=：]|(?:是|为|is)\\s*)\\s*${SECRET_VALUE}`;
 
 /** 主机名 TLD 白名单（黑名单式「任何 xx.yy」会把 app.log/notes.txt 全吞）：
  * 只认常见 TLD/内网后缀——精确度优先，漏报由自定义规则补。 */
 const HOSTNAME_TLDS =
   "com|net|org|edu|gov|int|mil|info|io|ai|dev|app|cloud|xyz|me|cn|uk|de|jp|fr|ru|" +
-  "local|lan|internal|corp|example|test|invalid";
+  "local|lan|internal|intranet|corp|company|private|home|arpa|example|test|invalid";
 
 /** 默认规则表（顺序即应用顺序：email 先于 hostname，防域名被拆散）。 */
 export const DEFAULT_REDACT_RULES: readonly { name: string }[] = [
   { name: "ipv4" },
   { name: "ipv6" },
+  { name: "urlpass" },
+  { name: "ipnumeric" },
+  { name: "privatekey" },
+  // bearer / tokenlike / shadow 必须排在 password **之前**：password 规则会把
+  // 「Authorization: Bearer sk-xxx」里的 "Bearer" 当成值吞掉，真正的令牌就
+  // 脱离了 keyword 上下文、后面几条规则再也匹配不到。
+  { name: "bearer" },
+  { name: "tokenlike" },
+  { name: "shadow" },
   { name: "password" },
   { name: "email" },
   { name: "hostname" },
@@ -74,10 +122,70 @@ function compileDefaults(): CompiledRule[] {
       placeholder: "IPV6",
     },
     {
+      // URL 里的 userinfo 口令：`https://user:secret@gw/x`。
+      // 必须在 email **之前**——email 规则会把整段 user:pass@host 当成邮箱吞掉
+      // （虽然不漏，但把用户名与主机名一起丢了，模型失去上下文）；且
+      // `http://admin:secret@10.0.0.1/` 这类**没有域名**的写法 email 规则
+      // 根本不匹配 → 口令原样出网（实测漏网）。
+      name: "urlpass",
+      source: "(?<=://)[^\\s/:@]+:([^\\s/:@]+)@",
+      flags: "g",
+      valueGroup: 1,
+      placeholder: "URLPASS",
+    },
+    {
+      // 数字/十六进制写的 IPv4：`http://2130706433/`、`http://0x7f000001/`。
+      // **只在 URL 主机位**匹配（`://` 之后、路径之前）——否则会把任意长数字
+      // （订单号、纳秒时间戳）误吞。
+      name: "ipnumeric",
+      source: "(?<=://)(?:\\d{8,10}|0[xX][0-9a-fA-F]{1,8})(?=[/:?#\\s\"'`]|$)",
+      flags: "g",
+      placeholder: "IPV4",
+    },
+    {
+      // PEM / OpenSSH 私钥块：整块吞（`s` 标志让 `.` 跨行）。
+      name: "privatekey",
+      source: "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+      flags: "g",
+      placeholder: "PRIVATEKEY",
+    },
+    {
+      // `Authorization: Bearer sk-xxx` —— 密钥形态规则只吃关键词后面的**第一个
+      // 词**（"Bearer"），真正的令牌在第二个词上，必须单独一条规则。
+      //
+      // **必须排在 password 之前**：password 规则会把 "Authorization: Bearer …"
+      // 里的 "Bearer" 当成值吞掉，令牌就脱离了 keyword 上下文。
+      name: "bearer",
+      source: "\\b(?:Bearer|Basic)\\s+([A-Za-z0-9._~+/=-]{8,})",
+      flags: "g",
+      valueGroup: 1,
+      placeholder: "TOKEN",
+    },
+    {
+      // 常见厂商密钥形态：OpenAI/Anthropic `sk-`、AWS `AKIA`、GitHub `ghp_`、
+      // Slack `xox*`。纯形态匹配，无需上下文。
+      name: "tokenlike",
+      source:
+        "\\bsk-[A-Za-z0-9_-]{8,}" +
+        "|\\bAKIA[0-9A-Z]{16}\\b" +
+        "|\\bgh[pousr]_[A-Za-z0-9]{20,}\\b" +
+        "|\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b",
+      flags: "g",
+      placeholder: "TOKEN",
+    },
+    {
+      // shadow 口令哈希：`$6$rounds=5000$salt$hash`（含 `$1$`/`$5$`/`$y$`）。
+      // 哈希本身不可逆，但它是**凭据材料**（可离线爆破），照样不该出网。
+      name: "shadow",
+      source: "\\$[156y]\\$(?:rounds=\\d+\\$)?[A-Za-z0-9./$]{8,}",
+      flags: "g",
+      placeholder: "TOKEN",
+    },
+    {
       name: "password",
-      source: PASSWORD_SOURCE,
+      source: SECRET_SOURCE,
       flags: "gi",
-      valueGroup: 2,
+      valueGroup: 1,
       placeholder: "PASSWORD",
     },
     {

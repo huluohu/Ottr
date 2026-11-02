@@ -95,10 +95,16 @@ describe("自定义规则", () => {
     });
     expect(r.text).toBe("hello ((");
   });
-  it("默认四规则齐备（ipv4/ipv6/password/email/hostname）", () => {
+  it("默认规则齐备（ipv4/ipv6/urlpass/ipnumeric/privatekey/bearer/tokenlike/shadow/password/email/hostname）", () => {
     expect(DEFAULT_REDACT_RULES.map((r) => r.name)).toEqual([
       "ipv4",
       "ipv6",
+      "urlpass",
+      "ipnumeric",
+      "privatekey",
+      "bearer",
+      "tokenlike",
+      "shadow",
       "password",
       "email",
       "hostname",
@@ -123,5 +129,102 @@ describe("占位符往返（spec §6：模型看到的即占位符）", () => {
   it("占位符形态稳定（大写下划线，可被模型原样复述）", () => {
     const r = redact("ip 8.8.4.4");
     expect(r.text).toMatch(/\[REDACTED_[A-Z0-9_]+_\d+\]/);
+  });
+});
+
+// --- 2026-11-02 安全审计整改：脱敏规则覆盖面 -------------------------------
+//
+// 审计实测的漏网面（本批新增的「主机备注」注入源恰恰是用户手写的中文运维
+// 片段，极容易踩中）：中文口令写法、大写前缀的环境变量名、URL userinfo、
+// 数字/十六进制 IP、PEM 私钥块、Bearer 令牌、shadow 哈希、内网域名后缀。
+describe("审计整改：脱敏覆盖面", () => {
+  it("中文口令写法（密码/口令/密钥/令牌 + 全角冒号）→ 占位符", () => {
+    expect(redact("密码：hunter2").text).toBe("密码：[REDACTED_PASSWORD_1]");
+    expect(redact("口令：abc123").text).toBe("口令：[REDACTED_PASSWORD_1]");
+    expect(redact("数据库密码: hunter2").text).toBe("数据库密码: [REDACTED_PASSWORD_1]");
+    expect(redact("API 密钥 = k-9").text).toContain("[REDACTED_PASSWORD_1]");
+  });
+
+  it("大写前缀的环境变量名（PGPASSWORD/DBPASSWORD）→ 占位符", () => {
+    // 回归点：旧规则带 `i` 标志，前置断言 `(?<![a-z0-9])` 在 `i` 下同样匹配
+    // 大写 → 大写前缀紧贴关键词时整条规则不生效（实测漏网）。
+    expect(redact("PGPASSWORD=hunter2").text).toBe("PGPASSWORD=[REDACTED_PASSWORD_1]");
+    expect(redact("DBPASSWORD=hunter2").text).toBe("DBPASSWORD=[REDACTED_PASSWORD_1]");
+  });
+
+  it("自然语言写法（password is X）→ 占位符", () => {
+    expect(redact("MySQL password is hunter2").text).toContain("[REDACTED_PASSWORD_1]");
+  });
+
+  it("URL userinfo 口令 → 占位符（无域名的写法也要覆盖）", () => {
+    expect(redact("https://user:hunter2@gw.example.com/x").text).toContain(
+      "[REDACTED_URLPASS_1]",
+    );
+    // 没有域名的 host：email 规则匹配不到，原先口令原样出网
+    expect(redact("http://admin:secret@10.0.0.1/").text).toContain("[REDACTED_URLPASS_1]");
+  });
+
+  it("数字/十六进制写的 IPv4（仅 URL 主机位）→ 占位符", () => {
+    expect(redact("http://2130706433/").text).toContain("[REDACTED_IPV4_1]");
+    expect(redact("http://0x7f000001/").text).toContain("[REDACTED_IPV4_1]");
+    // 长数字不在 URL 主机位 → 不误伤（订单号/时间戳）
+    expect(redact("order 123456789012 shipped").text).not.toContain("REDACTED");
+  });
+
+  it("PEM / OpenSSH 私钥块 → 整块占位符", () => {
+    const pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----";
+    expect(redact(pem).text).toBe("[REDACTED_PRIVATEKEY_1]");
+    expect(redact("-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----")
+      .text).toContain("[REDACTED_PRIVATEKEY_1]");
+  });
+
+  it("Bearer / Basic 令牌 → 占位符（Authorization 头名不被当值吞掉）", () => {
+    const out = redact("Authorization: Bearer sk-abc123XYZ").text;
+    expect(out).toContain("[REDACTED_TOKEN_1]");
+    expect(out).toContain("Bearer");
+    expect(out).not.toContain("sk-abc123XYZ");
+    expect(redact("Authorization: Basic dXNlcjpwYXNzd29yZA==").text).toContain(
+      "[REDACTED_TOKEN_1]",
+    );
+  });
+
+  it("厂商密钥形态（sk-/AKIA/ghp_/xox）→ 占位符", () => {
+    expect(redact("key sk-abcdefghijklmnop").text).toContain("[REDACTED_TOKEN_1]");
+    expect(redact("AWS AKIAIOSFODNN7EXAMPLE").text).toContain("[REDACTED_TOKEN_1]");
+    expect(redact("ghp_abcdefghijklmnopqrstuvwxyz012345").text).toContain("[REDACTED_TOKEN_1]");
+  });
+
+  it("shadow 口令哈希 → 占位符（不可逆但是凭据材料）", () => {
+    expect(redact("root:$6$rounds=5000$salt$hash").text).toContain("[REDACTED_TOKEN_1]");
+  });
+
+  it("内网域名后缀（intranet/company/private）→ 占位符", () => {
+    expect(redact("db-prod-01.intranet.company").text).toBe("[REDACTED_HOSTNAME_1]");
+    expect(redact("host.private").text).toBe("[REDACTED_HOSTNAME_1]");
+  });
+
+  it("新增规则不破坏幂等（redact(redact(x)) === redact(x)）", () => {
+    const cases = [
+      "PGPASSWORD=hunter2",
+      "密码：hunter2",
+      "https://user:hunter2@gw.example.com/x",
+      "http://2130706433/",
+      "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----",
+      "root:$6$rounds=5000$salt$hash",
+      "Authorization: Bearer sk-abc123XYZ",
+      "Authorization: Basic dXNlcjpwYXNzd29yZA==",
+      "password=hunter2",
+    ];
+    for (const c of cases) {
+      const once = redact(c).text;
+      expect(redact(once).text, `输入: ${c}`).toBe(once);
+    }
+  });
+
+  it("普通词不被误伤（精度不退化）", () => {
+    // 关键词后必须紧跟分隔符 → compass/bypass 这类普通词不受影响
+    expect(redact("bypass the firewall").text).not.toContain("REDACTED");
+    expect(redact("the password policy was updated").text).not.toContain("REDACTED");
+    expect(redact("app.log / notes.txt").text).not.toContain("REDACTED");
   });
 });

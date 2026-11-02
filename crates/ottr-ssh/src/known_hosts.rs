@@ -14,6 +14,12 @@
 //!   绝不退化为「随便取一条」）。
 //! * [`parse_known_hosts_file`]：整文件 → `(host, port, fingerprint)` 列表
 //!   （导入本地 known_hosts 的解析面，2026-11-02）。
+//! * [`parse_known_hosts_file_limited`]：同上，但带**条目数上限**
+//!   （[`MAX_KNOWN_HOSTS_ENTRIES`]）——导入路径必须走它（超限即报错，
+//!   不静默截断）；无上限的 [`parse_known_hosts_file`] 只留给测试/工具面。
+//! * [`select_by_endpoint`]：端点归组 + 择一（HashMap 归组，O(n)）。
+
+use std::collections::HashMap;
 
 use base64::Engine as _;
 use sha2::Digest;
@@ -154,7 +160,56 @@ pub struct KnownHostsParseResult {
 ///
 /// **一个 host 可能有多枚密钥**（rsa/ecdsa/ed25519 并存）——本函数**全部返回**，
 /// 由 [`select_by_endpoint`] 择一。
+///
+/// **无条目上限**（既有 API 形状不变）：导入路径请用
+/// [`parse_known_hosts_file_limited`]（超限报错，绝不静默截断）。
 pub fn parse_known_hosts_file(content: &str) -> KnownHostsParseResult {
+    // `usize::MAX` 上限永不触发 `TooManyEntries`（条目数不可能超过 usize::MAX）。
+    match parse_known_hosts_file_limited(content, usize::MAX) {
+        Ok(parsed) => parsed,
+        Err(e) => unreachable!("usize::MAX 条目上限不可能触发：{e}"),
+    }
+}
+
+/// 导入条目数上限（2026-11-02 审计整改）。
+///
+/// 文件**字节**上限（8 MiB，在命令层）之外再加**条目数**上限：一个 8 MiB 的
+/// 畸形/巨型文件能产出几十万条目，解析 + 逐条落库（每条都要抢 vault 连接锁）
+/// 足以把一次导入拖成分钟级。2 万条远超任何真实 known_hosts（真机实测 37 条）。
+pub const MAX_KNOWN_HOSTS_ENTRIES: usize = 20_000;
+
+/// 解析面错误（仅导入路径用；[`parse_known_hosts_file`] 无上限，不会出错）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KnownHostsParseError {
+    /// 条目数超限（`limit` = 当时生效的上限）。
+    TooManyEntries { limit: usize },
+}
+
+impl std::fmt::Display for KnownHostsParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KnownHostsParseError::TooManyEntries { limit } => {
+                write!(f, "known_hosts has too many entries (limit {limit})")
+            }
+        }
+    }
+}
+
+impl std::error::Error for KnownHostsParseError {}
+
+/// 带**条目数上限**的整文件解析（导入路径专用面，2026-11-02 审计整改）。
+///
+/// 语义与 [`parse_known_hosts_file`] **逐条相同**（同一套跳过/拆分口径），
+/// 只多一条硬约束：产出的条目数**超过** `limit` → 立刻返回
+/// [`KnownHostsParseError::TooManyEntries`]，**不继续处理**（既不静默截断，
+/// 也不把几十万条目塞进内存再逐条落库）。
+///
+/// 上限按**产出的端点条目数**计（一行多 pattern 会产出多条）；被跳过的行
+/// （注释/hashed/marker/畸形）不计入——它们不产生落库压力。
+pub fn parse_known_hosts_file_limited(
+    content: &str,
+    limit: usize,
+) -> Result<KnownHostsParseResult, KnownHostsParseError> {
     let mut out = KnownHostsParseResult::default();
     for raw in content.lines() {
         let line = raw.trim();
@@ -196,12 +251,16 @@ pub fn parse_known_hosts_file(content: &str) -> KnownHostsParseResult {
                 key_type: key_type.to_string(),
                 fingerprint: fingerprint.clone(),
             });
+            if out.entries.len() > limit {
+                // 超限即停：不再解析剩余行，也不再把超量条目交给落库层。
+                return Err(KnownHostsParseError::TooManyEntries { limit });
+            }
         }
         if !matched {
             out.skipped_other += 1;
         }
     }
-    out
+    Ok(out)
 }
 
 /// 端点归组 + 密钥型优先级择一（用户裁定 2026-11-02：优先 ed25519）。
@@ -216,47 +275,100 @@ pub fn parse_known_hosts_file(content: &str) -> KnownHostsParseResult {
 /// 候选集（candidates）保留同端点的**全部**指纹：落库层据此判定「既有锚
 /// 是否仍在候选集内」——在则算重复（用户先前锚的是同一台服务器的另一型
 /// 密钥），不在才算真冲突。
+///
+/// **算法（2026-11-02 审计整改）**：归组走 `HashMap<(host, port), 组号>`
+/// ——一趟建组（O(n)），组内择一用「首见排名表 + 哈希去重」增量完成
+/// （O(n) 摊还）。旧实现对每条 entry 线性扫 `grouped` 与 `entries`
+/// （O(n²)，且 `ranked_key_type` 每次都重扫全表）——真机量级（10 万条）
+/// 要按分钟计，导入大文件时命令线程直接趴窝。
+///
+/// **输出语义逐字不变**：同端点多密钥型 → 优先 ed25519 > ecdsa > rsa；
+/// 同型 → 文件序首条；候选集按文件序去重保序；输出按端点**首次出现**序。
+/// 语义守恒由 `tests/known_hosts_test.rs` 的差分回归测试钉住（新实现 vs
+/// 旧算法参考实现逐字段比对，含病态样本）。
 pub fn select_by_endpoint(entries: &[KnownHostEntry]) -> Vec<SelectedEndpoint> {
-    let mut grouped: Vec<SelectedEndpoint> = Vec::new();
+    // 组号表：`HashMap` 归组替代旧实现的「线性扫 grouped」。
+    let mut group_of: HashMap<(&str, u16), usize> = HashMap::with_capacity(entries.len());
+    let mut groups: Vec<EndpointGroup> = Vec::new();
     for entry in entries {
-        let found = grouped
-            .iter_mut()
-            .find(|g| g.host == entry.host && g.port == entry.port);
-        match found {
-            Some(g) => {
-                if !g.candidates.contains(&entry.fingerprint) {
-                    g.candidates.push(entry.fingerprint.clone());
-                }
-                // 优先级更高者夺魁（同优先级不动，保留文件序首条）。
-                let challenger_rank = key_type_rank(&entry.key_type);
-                let incumbent_rank = ranked_key_type(entries, g, &g.fingerprint);
-                if challenger_rank.is_some()
-                    && (incumbent_rank.is_none() || challenger_rank < incumbent_rank)
-                {
-                    g.fingerprint = entry.fingerprint.clone();
-                }
+        match group_of.get(&(entry.host.as_str(), entry.port)) {
+            // 已有组 → 增量吸收（候选集去重 + 优先级夺魁）。
+            Some(&idx) => groups[idx].absorb(entry),
+            // 新端点 → 建组（首条即初始夺魁者，候选集 = [该指纹]）。
+            None => {
+                let idx = groups.len();
+                groups.push(EndpointGroup::new(entry));
+                group_of.insert((entry.host.as_str(), entry.port), idx);
             }
-            None => grouped.push(SelectedEndpoint {
-                host: entry.host.clone(),
-                port: entry.port,
-                fingerprint: entry.fingerprint.clone(),
-                candidates: vec![entry.fingerprint.clone()],
-            }),
         }
     }
-    grouped
+    groups
+        .into_iter()
+        .map(EndpointGroup::into_selected)
+        .collect()
 }
 
-/// 归组内当前落库指纹对应的密钥型（用于比优先级；找不到 = 未知型）。
-fn ranked_key_type(
-    entries: &[KnownHostEntry],
-    group: &SelectedEndpoint,
-    fingerprint: &str,
-) -> Option<usize> {
-    entries
-        .iter()
-        .find(|e| e.host == group.host && e.port == group.port && e.fingerprint == fingerprint)
-        .and_then(|e| key_type_rank(&e.key_type))
+/// 端点归组态（择一过程中的可变聚合体）。
+///
+/// `first_rank` 是**首见排名表**：某指纹在组内**首次出现**的那条 entry 的
+/// 密钥型排名（旧实现 `ranked_key_type` 的口径——「取文件序第一个同指纹
+/// 条目」，而非「当前这条」）。夺魁比较用的正是它，故语义与旧实现逐字一致
+/// （含「同一指纹配不同密钥型」的病态样本）。
+struct EndpointGroup {
+    host: String,
+    port: u16,
+    /// 当前落库指纹（夺魁者）。
+    winner_fp: String,
+    /// 夺魁者的首见排名（未知密钥型 = `None`）。
+    winner_rank: Option<usize>,
+    /// 该端点的全部候选指纹（文件序、去重）。
+    candidates: Vec<String>,
+    /// 每个候选指纹的首见排名。
+    first_rank: HashMap<String, Option<usize>>,
+}
+
+impl EndpointGroup {
+    /// 新建组（该端点的第一条 entry 即初始夺魁者）。
+    fn new(entry: &KnownHostEntry) -> Self {
+        let rank = key_type_rank(&entry.key_type);
+        let mut first_rank = HashMap::new();
+        first_rank.insert(entry.fingerprint.clone(), rank);
+        Self {
+            host: entry.host.clone(),
+            port: entry.port,
+            winner_fp: entry.fingerprint.clone(),
+            winner_rank: rank,
+            candidates: vec![entry.fingerprint.clone()],
+            first_rank,
+        }
+    }
+
+    /// 吸收一条 entry：候选集去重保序 + 按密钥型优先级增量夺魁。
+    fn absorb(&mut self, entry: &KnownHostEntry) {
+        let challenger_rank = key_type_rank(&entry.key_type);
+        if !self.first_rank.contains_key(&entry.fingerprint) {
+            // 指纹首次出现 → 记下它的首见排名，并追加进候选集（文件序）。
+            self.first_rank
+                .insert(entry.fingerprint.clone(), challenger_rank);
+            self.candidates.push(entry.fingerprint.clone());
+        }
+        // 优先级更高者夺魁（同优先级不动 → 保留文件序首条；未知型不夺魁）。
+        if challenger_rank.is_some()
+            && (self.winner_rank.is_none() || challenger_rank < self.winner_rank)
+        {
+            self.winner_fp = entry.fingerprint.clone();
+            self.winner_rank = self.first_rank.get(&entry.fingerprint).copied().flatten();
+        }
+    }
+
+    fn into_selected(self) -> SelectedEndpoint {
+        SelectedEndpoint {
+            host: self.host,
+            port: self.port,
+            fingerprint: self.winner_fp,
+            candidates: self.candidates,
+        }
+    }
 }
 
 /// known_hosts host 列的一段 → `(地址, 端口)`。

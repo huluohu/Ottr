@@ -5,8 +5,9 @@
 //! 金样向量：ed25519 公钥（`ssh-keygen -lf` 实测指纹），
 //! `SHA256:aQYbRlhLOCUDFmDqZp0i2/ltZvBtACX57D/77LUPAU4`。
 use ottr_ssh::known_hosts::{
-    KnownHostEntry, fingerprint_for_host, key_type_rank, line_fingerprint, parse_known_hosts_file,
-    select_by_endpoint,
+    KnownHostEntry, KnownHostsParseError, MAX_KNOWN_HOSTS_ENTRIES, SelectedEndpoint,
+    fingerprint_for_host, key_type_rank, line_fingerprint, parse_known_hosts_file,
+    parse_known_hosts_file_limited, select_by_endpoint,
 };
 
 const GOLDEN_B64: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIKGG+QLrOYImKV/X+7f0EJ1eqaBx7XCX7Dqa2/+VS+/w";
@@ -404,4 +405,314 @@ fn parse_counts_other_skips() {
     assert_eq!(parsed.skipped_hashed, 0);
     // 注释 + 空行 + 2 条 marker + 2 条畸形 = 6
     assert_eq!(parsed.skipped_other, 6, "其他跳过项合计计数");
+}
+
+// ---------------------------------------------------------------------------
+// 规模上限（2026-11-02 审计整改）：字节上限之外再加**条目数**上限——
+// 一个 8 MiB 的畸形文件能产出几十万条目，解析 + 逐条落库（每条抢 vault
+// 连接锁）足以把一次导入拖成分钟级。超限必须**报错**，绝不静默截断。
+// ---------------------------------------------------------------------------
+
+/// 造 N 条明文条目（每行一条端点）。
+fn entries_content(n: usize) -> String {
+    let mut out = String::with_capacity(n * 96);
+    for i in 0..n {
+        out.push_str(&format!("h{i}.example.com ssh-ed25519 {ED_A_B64}\n"));
+    }
+    out
+}
+
+/// 恰好等于上限 → 放行；超一条 → 报错（不是截断）。
+#[test]
+fn parse_known_hosts_file_limited_rejects_over_limit_and_accepts_exact_limit() {
+    let content = entries_content(5);
+    let ok = parse_known_hosts_file_limited(&content, 5).expect("正好等于上限必须放行");
+    assert_eq!(ok.entries.len(), 5);
+    let err = parse_known_hosts_file_limited(&content, 4).expect_err("超限必须报错");
+    assert_eq!(err, KnownHostsParseError::TooManyEntries { limit: 4 });
+    // 错误文案要说清是「条目太多」而非含糊的解析失败。
+    assert!(
+        err.to_string().contains("too many entries"),
+        "错误文案必须点明条目超限：{err}"
+    );
+}
+
+/// 超限时**不产出半截结果**（Err 而非 Ok(截断的 entries)）——截断会让用户
+/// 以为「导入完成」，实际少导了一大片。
+#[test]
+fn parse_known_hosts_file_limited_returns_no_partial_result_on_overflow() {
+    let content = entries_content(10);
+    match parse_known_hosts_file_limited(&content, 3) {
+        Ok(parsed) => panic!("超限必须报错，却拿到 Ok（{parsed:?}）"),
+        Err(KnownHostsParseError::TooManyEntries { limit }) => assert_eq!(limit, 3),
+    }
+}
+
+/// 同一份内容在上限内 → 带上限与不带上限的解析结果**逐字段相同**
+/// （上限只是加了一道闸，不改任何解析语义）。
+#[test]
+fn parse_known_hosts_file_limited_matches_unlimited_below_limit() {
+    let content = format!(
+        "# comment\n\
+         |1|c2FsdA==|aGFzaA==|ssh-ed25519 {ED_A_B64}\n\
+         @cert-authority *.example.com ssh-ed25519 {ED_A_B64}\n\
+         multi.example.com ssh-rsa {RSA_B_B64}\n\
+         multi.example.com ssh-ed25519 {ED_A_B64}\n\
+         a.example.com,b.example.com ssh-ed25519 {ED_A_B64}\n\
+         bad.b64.example.com ssh-ed25519 !!!not-b64!!!\n"
+    );
+    let unlimited = parse_known_hosts_file(&content);
+    let limited = parse_known_hosts_file_limited(&content, MAX_KNOWN_HOSTS_ENTRIES).unwrap();
+    assert_eq!(limited, unlimited);
+}
+
+/// 生产默认上限（2 万条）真实生效：2 万条放行、2 万零一条报错。
+/// （真机真实 known_hosts 37 条——上限远在真机量级之上，只拦畸形/巨型文件。）
+#[test]
+fn default_entry_limit_rejects_oversized_real_world_file() {
+    let content = entries_content(MAX_KNOWN_HOSTS_ENTRIES + 1);
+    let err = parse_known_hosts_file_limited(&content, MAX_KNOWN_HOSTS_ENTRIES)
+        .expect_err("超出生产上限必须报错");
+    assert_eq!(
+        err,
+        KnownHostsParseError::TooManyEntries {
+            limit: MAX_KNOWN_HOSTS_ENTRIES
+        }
+    );
+    // 无上限的裸解析面**不截断**（它只供测试/工具面；导入路径走带上限的）。
+    assert_eq!(
+        parse_known_hosts_file(&content).entries.len(),
+        MAX_KNOWN_HOSTS_ENTRIES + 1
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 择一算法改造（2026-11-02 审计整改）：旧实现 O(n²)（对每条 entry 线性扫
+// grouped 与 entries），10 万条量级要按分钟计。改成 HashMap 归组后必须
+// **语义逐字不变**——由下面的差分回归测试钉住。
+// ---------------------------------------------------------------------------
+
+/// 旧实现（O(n²)）的参考实现——差分基准。逐字复制审计前的算法：线性扫
+/// `grouped` 归组 + `ranked_key_type` 每次重扫全表比密钥型优先级。
+fn select_by_endpoint_reference(entries: &[KnownHostEntry]) -> Vec<SelectedEndpoint> {
+    let mut grouped: Vec<SelectedEndpoint> = Vec::new();
+    for entry in entries {
+        let found = grouped
+            .iter_mut()
+            .find(|g| g.host == entry.host && g.port == entry.port);
+        match found {
+            Some(g) => {
+                if !g.candidates.contains(&entry.fingerprint) {
+                    g.candidates.push(entry.fingerprint.clone());
+                }
+                let challenger_rank = key_type_rank(&entry.key_type);
+                let incumbent_rank = ranked_key_type_reference(entries, g, &g.fingerprint);
+                if challenger_rank.is_some()
+                    && (incumbent_rank.is_none() || challenger_rank < incumbent_rank)
+                {
+                    g.fingerprint = entry.fingerprint.clone();
+                }
+            }
+            None => grouped.push(SelectedEndpoint {
+                host: entry.host.clone(),
+                port: entry.port,
+                fingerprint: entry.fingerprint.clone(),
+                candidates: vec![entry.fingerprint.clone()],
+            }),
+        }
+    }
+    grouped
+}
+
+/// 参考实现里的「当前落库指纹对应的密钥型」（取文件序第一个同指纹条目）。
+fn ranked_key_type_reference(
+    entries: &[KnownHostEntry],
+    group: &SelectedEndpoint,
+    fingerprint: &str,
+) -> Option<usize> {
+    entries
+        .iter()
+        .find(|e| e.host == group.host && e.port == group.port && e.fingerprint == fingerprint)
+        .and_then(|e| key_type_rank(&e.key_type))
+}
+
+/// 确定性伪随机（不引 rand 依赖；固定种子 → 用例可复现）。
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.0 >> 33
+    }
+
+    fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
+        &items[(self.next() as usize) % items.len()]
+    }
+}
+
+/// 差分回归：HashMap 归组的新实现与旧 O(n²) 参考实现在随机样本上
+/// **逐字段相同**（落库指纹、候选集内容与顺序、输出顺序）。
+#[test]
+fn select_by_endpoint_matches_reference_implementation() {
+    let key_types = [
+        "ssh-ed25519",
+        "ecdsa-sha2-nistp256",
+        "ecdsa-sha2-nistp384",
+        "ssh-rsa",
+        "sk-ssh-ed25519@openssh.com", // 未知型（无排名）
+    ];
+    let fingerprints = [ED_A_FP, ED_C_FP, RSA_B_FP, "SHA256:unknownfp"];
+    let mut rng = Lcg(0x5eed_1234);
+    for case in 0..64 {
+        let n = 1 + (rng.next() % 40) as usize;
+        let mut entries: Vec<KnownHostEntry> = Vec::with_capacity(n);
+        for _ in 0..n {
+            let host_idx = (rng.next() % 5) as usize;
+            let port = [22u16, 2222, 2200][(rng.next() % 3) as usize];
+            entries.push(KnownHostEntry {
+                host: format!("h{host_idx}.example.com"),
+                port,
+                key_type: (*rng.pick(&key_types)).to_string(),
+                fingerprint: (*rng.pick(&fingerprints)).to_string(),
+            });
+        }
+        let got = select_by_endpoint(&entries);
+        let want = select_by_endpoint_reference(&entries);
+        assert_eq!(got, want, "用例 #{case} 的择一结果与旧实现不一致");
+    }
+}
+
+/// 差分回归的病态样本：**同一枚指纹配不同密钥型**（真实文件不会出现——b64
+/// 段自带密钥型——但它正是旧实现「取文件序第一个同指纹条目」口径的分水岭：
+/// 新实现若按「当前这条的密钥型」比较，会选错落库指纹）。
+#[test]
+fn select_by_endpoint_same_fingerprint_with_different_key_types() {
+    let entries = vec![
+        KnownHostEntry {
+            host: "multi.example.com".to_string(),
+            port: 22,
+            key_type: "ssh-rsa".to_string(),
+            fingerprint: ED_A_FP.to_string(),
+        },
+        KnownHostEntry {
+            host: "multi.example.com".to_string(),
+            port: 22,
+            key_type: "ssh-ed25519".to_string(),
+            fingerprint: ED_A_FP.to_string(),
+        },
+        KnownHostEntry {
+            host: "multi.example.com".to_string(),
+            port: 22,
+            key_type: "ecdsa-sha2-nistp256".to_string(),
+            fingerprint: RSA_B_FP.to_string(),
+        },
+    ];
+    let got = select_by_endpoint(&entries);
+    let want = select_by_endpoint_reference(&entries);
+    assert_eq!(got, want, "同指纹异密钥型的择一必须与旧实现一致");
+    // 固定期望值（旧实现口径：夺魁者的排名取「文件序第一个同指纹条目」的
+    // 密钥型 = rsa 的第 4 位 → ecdsa(1) < rsa(4) → ecdsa 那一枚夺魁）。
+    assert_eq!(got[0].fingerprint, RSA_B_FP);
+}
+
+/// 候选集按**文件序**去重保序（落库层只判「∈ 候选集」，但顺序是语义的一部分：
+/// 报告与调试都要能复现同一条目的来源次序）。
+#[test]
+fn select_by_endpoint_candidates_keep_file_order_without_duplicates() {
+    let entries = vec![
+        KnownHostEntry {
+            host: "h.example.com".to_string(),
+            port: 22,
+            key_type: "ssh-ed25519".to_string(),
+            fingerprint: "SHA256:aaa".to_string(),
+        },
+        KnownHostEntry {
+            host: "h.example.com".to_string(),
+            port: 22,
+            key_type: "ssh-rsa".to_string(),
+            fingerprint: "SHA256:bbb".to_string(),
+        },
+        KnownHostEntry {
+            host: "h.example.com".to_string(),
+            port: 22,
+            key_type: "ecdsa-sha2-nistp256".to_string(),
+            fingerprint: "SHA256:aaa".to_string(),
+        },
+    ];
+    let selected = select_by_endpoint(&entries);
+    assert_eq!(
+        selected[0].candidates,
+        vec!["SHA256:aaa".to_string(), "SHA256:bbb".to_string()],
+        "候选集 = 文件序去重"
+    );
+    // 落库的是 ecdsa（优先级高于 rsa）。
+    assert_eq!(selected[0].fingerprint, "SHA256:aaa");
+}
+
+/// 规模回归（审计整改的性能面）：10 万条目（旧实现 O(n²) 在这个量级要按
+/// 分钟计）必须在**亚秒级**完成，且结果正确。
+///
+/// 时间上限给得宽（5s）——新实现的真实耗时是毫秒级，宽限只为躲开 CI 抖动；
+/// 旧 O(n²) 实现在同量级要跑几分钟，5s 的闸足以把「又退回 O(n²)」钉死。
+#[test]
+fn select_by_endpoint_scales_to_100k_entries() {
+    let n = 100_000usize;
+    let mut entries: Vec<KnownHostEntry> = Vec::with_capacity(n);
+    for i in 0..n {
+        entries.push(KnownHostEntry {
+            host: format!("h{i}.example.com"),
+            port: 22,
+            key_type: "ssh-ed25519".to_string(),
+            fingerprint: format!("SHA256:fp{i}"),
+        });
+    }
+    let started = std::time::Instant::now();
+    let selected = select_by_endpoint(&entries);
+    let elapsed = started.elapsed();
+    assert_eq!(selected.len(), n, "10 万条 → 10 万个端点");
+    assert_eq!(selected[0].host, "h0.example.com");
+    assert_eq!(selected[n - 1].host, format!("h{}.example.com", n - 1));
+    assert!(
+        elapsed.as_secs() < 5,
+        "10 万条择一耗时 {}ms（上限 5s）——O(n²) 回退了？",
+        elapsed.as_millis()
+    );
+}
+
+/// 规模回归（同端点多密钥型）：10 万条目压在 1000 个端点上（每端点 100 枚
+/// 密钥）——旧实现每条都要重扫全表比优先级，这一档最能暴露 O(n²)。
+#[test]
+fn select_by_endpoint_scales_with_many_keys_per_endpoint() {
+    let endpoints = 1_000usize;
+    let per_endpoint = 100usize;
+    let mut entries: Vec<KnownHostEntry> = Vec::with_capacity(endpoints * per_endpoint);
+    for e in 0..endpoints {
+        for k in 0..per_endpoint {
+            entries.push(KnownHostEntry {
+                host: format!("h{e}.example.com"),
+                port: 22,
+                // 轮转密钥型：ed25519 与 rsa 交替 → 夺魁者恒为 ed25519。
+                key_type: if k % 2 == 0 {
+                    "ssh-ed25519".to_string()
+                } else {
+                    "ssh-rsa".to_string()
+                },
+                fingerprint: format!("SHA256:fp{e}-{k}"),
+            });
+        }
+    }
+    let started = std::time::Instant::now();
+    let selected = select_by_endpoint(&entries);
+    let elapsed = started.elapsed();
+    assert_eq!(selected.len(), endpoints);
+    assert_eq!(selected[0].candidates.len(), per_endpoint);
+    assert_eq!(selected[0].fingerprint, "SHA256:fp0-0", "ed25519 夺魁");
+    assert!(
+        elapsed.as_secs() < 5,
+        "10 万条 / 1000 端点择一耗时 {}ms（上限 5s）——O(n²) 回退了？",
+        elapsed.as_millis()
+    );
 }

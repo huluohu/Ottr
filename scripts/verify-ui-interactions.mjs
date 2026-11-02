@@ -32,15 +32,30 @@ function check(name, pass, detail = "") {
 async function open(shot, viewport = { width: 1440, height: 900 }) {
   const page = await browser.newPage({ viewport });
   await page.goto(`http://localhost:1432/dev-preview.html?shot=${shot}`);
-  await page.waitForTimeout(600);
+  // 预览树是异步装配的（动态 import + 夹具状态注入）——固定 sleep 会读到
+  // 「组件还没挂上 / expiresAt 还没算出来」的中间帧。等选择器，别抢跑。
+  await page.waitForTimeout(400);
   return page;
+}
+
+/** 等某选择器出现（最多 8s）；没出现就返回 false。 */
+async function waitFor(page, selector, timeout = 8000) {
+  try {
+    await page.waitForSelector(selector, { timeout });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------- 1. 提问弹窗
 {
   const page = await open("prompt-dialog");
+  const appeared = await waitFor(page, '[data-testid="prompt-dialog"]');
+  check("提问弹窗渲染", appeared);
   const input = page.locator('[data-testid="prompt-input-0"]');
-  check("提问弹窗渲染", await page.locator('[data-testid="prompt-dialog"]').count() > 0);
+  // 等倒计时真的算出数字（首帧 expiresAt 还是 null → 文案是「…in s」）
+  await waitFor(page, '[data-testid="prompt-code-countdown"]');
 
   const before = await input.inputValue();
   const countdown = page.locator('[data-testid="prompt-code-countdown"]');
@@ -79,6 +94,7 @@ async function open(shot, viewport = { width: 1440, height: 900 }) {
 // ---------------------------------------------------------------- 2. Ask Ottr
 {
   const page = await open("ai-ask");
+  await waitFor(page, '[data-testid="ai-panel"]');
   const input = page.locator('[data-testid="ai-followup-input"]');
   check("Ask Ottr 面板渲染", (await page.locator('[data-testid="ai-panel"]').count()) > 0);
   const placeholder = (await input.getAttribute("placeholder")) ?? "";
@@ -98,6 +114,7 @@ async function open(shot, viewport = { width: 1440, height: 900 }) {
 {
   const page = await open("credentials");
   // 凭据对话框默认是列表视图 → 先点「新建凭据」进表单
+  await waitFor(page, '[data-testid="cred-new"]');
   await page.locator('[data-testid="cred-new"]').click();
   await page.waitForTimeout(400);
   // 选 TOTP 类型 → 位数/步长两个输入应出现
@@ -131,7 +148,7 @@ async function open(shot, viewport = { width: 1440, height: 900 }) {
 // ---------------------------------------------------------------- 4. MCP 客户端
 {
   const page = await open("mcp-client");
-  await page.waitForTimeout(500);
+  await waitFor(page, '[data-testid="mcp-client-row-srv-demo"]');
   check(
     "MCP 客户端列出已配置的 server",
     (await page.locator('[data-testid="mcp-client-row-srv-demo"]').count()) > 0,

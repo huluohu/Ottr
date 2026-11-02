@@ -771,7 +771,7 @@
     "importSkipped": "已跳 {{hashed}} 條 hashed 條目（主機名被雜湊，不可反解）與 {{other}} 條註/標記/格式異常條目。",
     "importNotFound": "未得 known_hosts 檔。",
     "importConflictNotice": "衝突之端點未覆：既存指紋相異者仍請確認，請自察後處之。",
-    "importSkippedHashed": "加密條目（|1|…）不能反解，已略。"
+    "importSkippedHashed": "雜湊條目（|1|…）不能逆推，已略。"
   },
   "hostKey": {
     "firstTitle": "首次連諾",

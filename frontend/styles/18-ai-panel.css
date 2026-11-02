@@ -102,8 +102,11 @@
   padding-top: var(--space-2);
   border-top: 1px solid var(--border-subtle);
   font-size: var(--text-2xs);
+  /* 实色 + 单层 opacity（同文件 .ai-redactions / .ai-panel-meta 的做法）。
+     叠两层（实色 fg-muted 又加 opacity 0.85）会把对比度压到 AA 以下
+     （11px 文字实测 亮色 4.37:1 / 暗色 3.75:1）。 */
   color: var(--fg-muted);
-  opacity: 0.85;
+  opacity: 0.95;
 }
 .ai-usage-model {
   font-weight: 600;

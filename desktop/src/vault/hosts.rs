@@ -206,6 +206,31 @@ pub async fn known_hosts_import(
         .map(PathBuf::from)
         .or_else(default_known_hosts_path)
         .ok_or_else(|| "cannot resolve home directory".to_string())?;
+    // 大小上限：整文件读进内存 + 逐条落库，超大文件会把命令线程占死
+    // （每条都要抢 vault 连接锁）。8 MiB 足够放下任何真实 known_hosts。
+    const MAX_KNOWN_HOSTS_BYTES: u64 = 8 * 1024 * 1024;
+    let meta = match std::fs::metadata(&path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ottr_vault::KnownHostsImportReport {
+                added: 0,
+                skipped_duplicate: 0,
+                skipped_conflict: 0,
+                skipped_hashed: 0,
+                skipped_other: 0,
+                errors: vec![format!("{KNOWN_HOSTS_FILE_NOT_FOUND}: {}", path.display())],
+            });
+        }
+        Err(e) => return Err(format!("stat {}: {e}", path.display())),
+    };
+    if meta.len() > MAX_KNOWN_HOSTS_BYTES {
+        return Err(format!(
+            "{} is too large to import ({} bytes > {} bytes)",
+            path.display(),
+            meta.len(),
+            MAX_KNOWN_HOSTS_BYTES
+        ));
+    }
     let content = match std::fs::read_to_string(&path) {
         Ok(content) => content,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -221,7 +246,11 @@ pub async fn known_hosts_import(
         }
         Err(e) => return Err(format!("read {}: {e}", path.display())),
     };
-    let parsed = ottr_ssh::known_hosts::parse_known_hosts_file(&content);
+    // UTF-8 BOM：Windows 上被编辑器存过的 known_hosts 常带 BOM——不剥的话
+    // 首行的 host 会带上 U+FEFF，落库锚变成 "\u{feff}host:22"，与运行时端点
+    // 键永远不匹配（等于没导入）。
+    let content = content.strip_prefix('\u{feff}').unwrap_or(&content);
+    let parsed = ottr_ssh::known_hosts::parse_known_hosts_file(content);
     // 择一（同端点多密钥型 → 优先 ed25519，OpenSSH 语义在 ottr-ssh 层）。
     let selected = ottr_ssh::known_hosts::select_by_endpoint(&parsed.entries);
     let import_entries: Vec<ottr_vault::KnownHostImportEntry> = selected

@@ -712,7 +712,7 @@ describe("BL-501 防线（T0）", () => {
     unregisterSink(id);
   });
 
-  it("attach 看门狗：invoke 永不 settle → 100s 复位 disconnected（可重试）；迟到响应 gen 未变时照常恢复", async () => {
+  it("attach 看门狗：invoke 永不 settle → 290s 复位 disconnected（可重试）；迟到响应 gen 未变时照常恢复", async () => {
     let resolveAttach: (v: string) => void = () => {};
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "attach_host_session")
@@ -725,11 +725,13 @@ describe("BL-501 防线（T0）", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
 
-    // 100s 内（如 TOFU 问询窗口）不复位
-    await vi.advanceTimersByTimeAsync(99_999);
+    // 290s 内（Rust 侧最坏合法等待 = connect 预算 255s + open_pty/request_shell
+    // 各 10s ≈ 275s）不复位——看门狗必须比它大，否则会在 Rust 还在合法等待时
+    // 把「用户没作答」误报成「后端无响应」。
+    await vi.advanceTimersByTimeAsync(289_999);
     expect(useSessionStore.getState().sessions[0].status).toBe("connecting");
 
-    // 100s 上限到：复位 disconnected + lastError（用户可重试，不再永久「正在连接」）
+    // 290s 上限到：复位 disconnected + lastError（用户可重试，不再永久「正在连接」）
     await vi.advanceTimersByTimeAsync(1);
     const s = useSessionStore.getState().sessions[0];
     expect(s.status).toBe("disconnected");

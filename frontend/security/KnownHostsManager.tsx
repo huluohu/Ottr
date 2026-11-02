@@ -191,7 +191,10 @@ export function KnownHostsManager() {
         {t("knownHosts.importHint")} {t("knownHosts.importSkippedHashed")}
       </p>
       {importReport && (
-        <div data-testid="kh-import-report">
+        // role="status"（隐含 aria-live=polite）：导入是**异步**结果，读屏用户
+        // 点了按钮后必须能听到「导了多少 / 跳了多少」——否则这条主流程对读屏
+        // 用户完全不可见（只有视觉用户看得到报告块）。
+        <div data-testid="kh-import-report" role="status" aria-live="polite">
           {importReport.errors.some((e) => e.startsWith(FILE_NOT_FOUND_CODE)) ? (
             <p className="tree-status" data-testid="kh-import-notfound">
               {t("knownHosts.importNotFound")}

@@ -340,3 +340,36 @@ async fn keyboard_interactive_collects_code() {
         "SshSession must expose the recorded host key fingerprint"
     );
 }
+
+/// **放弃作答 = 一个响应都不发**（fail-closed）。
+///
+/// 回归由来（2026-11-02 安全审计）：超时/取消路径曾回「等长空串」，条数校验
+/// 通过 → 空密码被**发给服务端**。服务端若允许空口令（sshd 的
+/// PermitEmptyPasswords、PAM 的 nullok），就会在用户完全没作答的情况下
+/// 认证成功。现在空答案在客户端侧直接判拒。
+#[tokio::test]
+async fn keyboard_interactive_empty_answer_is_rejected_without_responding() {
+    let (addr, _host_key) = spawn_mock_sshd().await;
+    let fingerprints: FingerprintLog = Arc::new(Mutex::new(Vec::new()));
+
+    // 模拟「用户放弃 / 问询超时」：回空答案（长度 0）。
+    let responder = Arc::new(|_prompts: &[String]| -> Vec<String> { Vec::new() });
+
+    // connect_with_timeout 本身就返回 Result（内部已处理超时）
+    let result = connect_with_timeout(
+        addr,
+        MOCK_USER,
+        AuthMethod::KeyboardInteractive { responder },
+        &fingerprints,
+    )
+    .await;
+
+    let err = match result {
+        Ok(_) => panic!("empty answers must not authenticate"),
+        Err(e) => e,
+    };
+    assert!(
+        matches!(err, Error::AuthRejected),
+        "empty answers must surface as AuthRejected, got {err:?}"
+    );
+}

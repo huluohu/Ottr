@@ -8,7 +8,7 @@
 [package]
 name = "ottr-totp"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "RFC 6238 TOTP generation (local-only, never touches the network)"
 
 [dependencies]

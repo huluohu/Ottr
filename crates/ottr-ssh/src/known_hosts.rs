@@ -21,9 +21,14 @@ use sha2::Digest;
 /// 单行 known_hosts / ssh-keyscan 输出 →
 /// `SHA256:<unpadded-std-b64(sha256(key_blob))>` 指纹。
 ///
-/// 行形状：`host keytype b64`（恰好 3 列）。以下行返回 `None`：
+/// 行形状：`host keytype b64 [comment…]`（**至少 3 列**）。OpenSSH 的
+/// known_hosts 允许第 4 列起是自由文本注释（`hostfile.c` 读第 4 列），
+/// 本实现同样忽略其后的列——早期版本要求恰好 3 列，把带注释的合法行整行
+/// 丢弃，那个端点就导不进信任锚（首次连接照样弹 TOFU，导入白做）。
+///
+/// 以下行返回 `None`：
 /// 空行/纯空白、`#` 注释、`|1|…` hashed 形态（keyscan 不产出，防御性跳过）、
-/// `@cert-authority` / `@revoked` **marker 行**（见模块文档）、列数不符、
+/// `@cert-authority` / `@revoked` **marker 行**（见模块文档）、列数不足 3、
 /// b64 段非法。
 pub fn line_fingerprint(line: &str) -> Option<String> {
     let line = line.trim();
@@ -34,8 +39,9 @@ pub fn line_fingerprint(line: &str) -> Option<String> {
         return None;
     }
     let mut parts = line.split_whitespace();
+    // ≥3 列：第 4 列起是 OpenSSH 允许的自由注释，忽略即可（不判畸形）。
     let b64 = match (parts.next(), parts.next(), parts.next()) {
-        (Some(_host), Some(_ktype), Some(b64)) if parts.next().is_none() => b64,
+        (Some(_host), Some(_ktype), Some(b64)) => b64,
         _ => return None,
     };
     fingerprint_from_key_b64(b64)
@@ -263,6 +269,14 @@ fn ranked_key_type(
 fn parse_host_port(field: &str) -> Option<(String, u16)> {
     let field = field.trim();
     if field.is_empty() {
+        return None;
+    }
+    // **pattern 行不是端点**：OpenSSH 的 host 列可以是通配（`*` / `*.example.com`）
+    // 或取反（`!bad.example.com`）。前者永远匹配不上精确端点（运行时按端点
+    // 精确匹配，不做通配），后者语义正好相反（永不信任）。当成字面主机名
+    // 落库 = 造一条永不匹配任何连接的垃圾信任锚，还会污染「新增 N 条」计数
+    // 与巡检结果。
+    if field.contains('*') || field.contains('?') || field.starts_with('!') {
         return None;
     }
     if let Some(rest) = field.strip_prefix('[') {

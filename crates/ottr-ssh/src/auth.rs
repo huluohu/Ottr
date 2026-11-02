@@ -175,6 +175,15 @@ async fn keyboard_interactive_auth(
             KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
                 let texts: Vec<String> = prompts.iter().map(|p| p.prompt.clone()).collect();
                 let answers = responder(&texts);
+                // **放弃作答 = 空答案 = 一个响应都不发**（fail-closed）。
+                //
+                // 绝不能回「等长空串」：那会被当作「用户提交了空密码」发给服务端，
+                // 服务端若允许空口令（sshd 的 PermitEmptyPasswords、PAM 栈的
+                // nullok），就会在用户完全没作答的情况下**认证成功**。
+                // 空答案在这里直接判拒，不向服务端发任何字节。
+                if answers.is_empty() && !texts.is_empty() {
+                    return Err(Error::AuthRejected);
+                }
                 if answers.len() != texts.len() {
                     return Err(Error::PromptAnswerMismatch {
                         prompts: texts.len(),

@@ -203,7 +203,9 @@ export function DiagnosePanel({
       )}
 
       {status === "running" && answer === "" && (
-        <p className="ai-thinking" data-testid="ai-thinking">
+        // aria-live=polite：只播状态短语，**不把流式正文塞进 live 区**——
+        // 否则读屏会随着每个 token 反复播报正文（更糟）。
+        <p className="ai-thinking" data-testid="ai-thinking" role="status" aria-live="polite">
           {t("ai.thinking")}
         </p>
       )}
@@ -214,8 +216,15 @@ export function DiagnosePanel({
           **流式中的当前回答也在 messages 里**（末条 assistant 轮内容原地增长），
           故此处不重复渲染 answer。 */}
       <div className="ai-thread" data-testid="ai-thread">
-        {threadTurns.map((m, i) =>
-          m.role === "user" ? (
+        {threadTurns.map((m, i) => {
+          // **首轮诊断上下文不进气泡流**：它的内容是「退出码 + 命令 + 最长
+          // 8KB 原始终端输出 + 主机备注」——正是给模型看的 prompt。直接渲染
+          // 会把面板第一屏淹没（原始终端输出），而且与上方 .ai-request 区块
+          // 展示的退出码/命令重复。模型侧仍收到完整上下文（messages 里原样
+          // 保留），这里只是**不把它当「用户说的话」显示**。
+          const isDiagnosticContext = i === 0 && m.role === "user" && request.kind === "diagnose";
+          if (isDiagnosticContext) return null;
+          return m.role === "user" ? (
             <div key={`u${i}`} className="ai-bubble ai-bubble-user" data-testid="ai-msg-user">
               {m.content}
             </div>
@@ -229,15 +238,16 @@ export function DiagnosePanel({
                 onInserted={onInserted}
               />
             </div>
-          ),
-        )}
+          );
+        })}
       </div>
 
       {/* 用量透明化（2026-11-02 批次一 B 项）：模型 · token · 耗时。
           端点不回 usage 时只显示模型与耗时（不显示 token 数）——透明化是
           增强项，拿不到就降级，绝不让面板空白。 */}
       {(status === "done" || status === "aborted") && (
-        <div className="ai-usage-row" data-testid="ai-usage">
+        // 完成态播报：读屏用户需要知道「回答好了」（正文在气泡流里，不进 live）。
+        <div className="ai-usage-row" data-testid="ai-usage" role="status" aria-live="polite">
           <span className="ai-usage-model">
             {modelUsed ?? active?.model ?? ""}
           </span>

@@ -128,6 +128,37 @@ fn parse_known_hosts_file_skips_comments_blanks_hashed_and_markers() {
     );
 }
 
+/// OpenSSH 的 known_hosts 允许第 4 列起是自由注释（`host keytype b64 comment`）。
+/// 早期实现要求**恰好 3 列**，把这类合法行整行丢弃 → 那个端点导不进信任锚，
+/// 首次连接照样弹 TOFU（导入白做）。
+#[test]
+fn parse_known_hosts_file_accepts_trailing_comment_columns() {
+    let content = format!(
+        "real.example.com ssh-ed25519 {ED_A_B64} my-laptop\n\
+         plain.example.com ssh-ed25519 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    let hosts: Vec<&str> = parsed.entries.iter().map(|e| e.host.as_str()).collect();
+    assert_eq!(hosts, vec!["real.example.com", "plain.example.com"]);
+    assert_eq!(parsed.entries[0].fingerprint, ED_A_FP);
+}
+
+/// host 列是 **pattern**（通配 `*` / `?` / 取反 `!`）时不是端点：运行时按端点
+/// 精确匹配（不做通配），取反的语义还正好相反。当成字面主机名落库 = 造一条
+/// 永不匹配任何连接的垃圾信任锚，还污染「新增 N 条」计数与巡检结果。
+#[test]
+fn parse_known_hosts_file_skips_pattern_hosts() {
+    let content = format!(
+        "*.example.com ssh-ed25519 {ED_A_B64}\n\
+         host?.example.com ssh-ed25519 {ED_A_B64}\n\
+         !never-trust.example.com ssh-ed25519 {ED_A_B64}\n\
+         real.example.com ssh-ed25519 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    let hosts: Vec<&str> = parsed.entries.iter().map(|e| e.host.as_str()).collect();
+    assert_eq!(hosts, vec!["real.example.com"]);
+}
+
 /// 端口解析：`[host]:port` 取方括号里的端口；裸 host 缺省 22
 /// （OpenSSH 惯例，与 `fingerprint_for_host` 同口径）。
 #[test]

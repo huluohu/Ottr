@@ -230,6 +230,10 @@ export const useAiStore = create<AiStore>((set, get) => {
           errorKind: null,
           error: null,
           seen: false,
+          // **新问题 = 新会话**：不清历史的话，run() 会把上一轮对话当上下文
+          // 带上（同一会话连着两次诊断，模型看到的是两个不相关的问题 + 前一轮
+          // 的答案 → 答非所问，且 token 白花一倍）。
+          messages: [],
         });
         await get().run(req.sessionId);
       })();
@@ -245,6 +249,8 @@ export const useAiStore = create<AiStore>((set, get) => {
         errorKind: null,
         error: null,
         seen: false,
+        // 新问题 = 新会话（同 onCommandFailed：历史不重置就会串上下文）。
+        messages: [],
       });
       void get().run(req.sessionId);
     },

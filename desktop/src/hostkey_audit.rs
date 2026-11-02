@@ -77,6 +77,14 @@ pub fn classify_probe(anchor: &str, seen: &[String]) -> ProbeVerdict {
 /// 本包装保留 keyscan 面的名字与语义（`|1|` hashed 行防御性跳过、marker 行
 /// `@cert-authority`/`@revoked` 不参与——keyscan 不产出这些行，规则一致）。
 pub fn keyscan_line_fingerprint(line: &str) -> Option<String> {
+    // **ssh-keyscan 输出恰好三列**（`host keytype base64`），没有 known_hosts
+    // 那种自由注释列——四段行在 keyscan 语境下是畸形（端口注释形态）。
+    // known_hosts 文件解析（ottr_ssh::known_hosts::line_fingerprint）允许
+    // 第 4 列起的注释，两者语义不同，故在这里各自把关。
+    let trimmed = line.trim();
+    if trimmed.split_whitespace().count() != 3 {
+        return None;
+    }
     ottr_ssh::known_hosts::line_fingerprint(line)
 }
 

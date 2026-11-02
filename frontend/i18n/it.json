@@ -563,7 +563,7 @@
       "errRuleIncomplete": "Sono obbligatori sia il nome della regola sia la regex",
       "errRuleInvalid": "La regex non viene compilata"
     },
-    "followupPlaceholder": "Fai una domanda di follow-up… (Invio con Invio)"
+    "followupPlaceholder": "Fai una domanda di follow-up… (premi Invio per inviare)"
   },
   "tabs": {
     "duplicate": "Duplica scheda",

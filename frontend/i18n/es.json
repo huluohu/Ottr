@@ -772,7 +772,7 @@
     "importSkipped": "Se omitieron {{hashed}} entradas con hash (los nombres de host están hasheados y no se pueden revertir) y {{other}} entradas de comentario/marcador/malformadas.",
     "importNotFound": "No se encontró el archivo known_hosts.",
     "importConflictNotice": "Los endpoints conflictivos no se sobrescribieron: los que tienen otra huella siguen pidiendo confirmación; revísalos manualmente.",
-    "importSkippedHashed": "Las entradas cifradas (|1|…) no se pueden revertir y se omitieron."
+    "importSkippedHashed": "Las entradas con hash (|1|…) no se pueden revertir y se omitieron."
   },
   "hostKey": {
     "firstTitle": "Primera conexión",

@@ -771,7 +771,7 @@
     "importSkipped": "已跳过 {{hashed}} 条 hashed 条目（主机名被哈希，无法反解）与 {{other}} 条注释/标记/格式异常条目。",
     "importNotFound": "未找到 known_hosts 文件。",
     "importConflictNotice": "冲突端点未被覆盖：已有不同指纹的端点仍会弹确认，请手动核对后处理。",
-    "importSkippedHashed": "加密条目（|1|…）无法反解，已跳过。"
+    "importSkippedHashed": "哈希条目（|1|…）无法反解，已跳过。"
   },
   "hostKey": {
     "firstTitle": "首次连接确认",

@@ -213,8 +213,7 @@ function deferConnect(id: string): void {
 // --- attach 看门狗（BL-501 防御纵深，T0） ------------------------------------
 // invoke 响应可能被 WKWebView IPC 层静默丢失（T0 实证：触发面见 deferConnect
 // 注释；Rust 命令侧一切正常完成）。响应一旦丢失，await 永不 settle，会话永久
-// 停留「正在连接」且无任何错误面。看门狗在超出 Rust 侧全部限时上限（TOFU 问询
-// 60s 含于 connect 限时 75s 内 + open_pty/request_shell 各 10s ≈ 95s）后仍无
+// 停留「正在连接」且无任何错误面。看门狗在超出 Rust 侧全部限时上限后仍无
 // settle 时，把会话复位为 disconnected（带 lastError），让用户可重试；若丢失的
 // 响应只是迟到，随后照常走守卫路径（gen 未变 → 迟到成功照常落 connected；用户
 // 已重试 → 孤儿分支 drop_session 清掉迟到会话），两条出路都收敛。
@@ -226,7 +225,14 @@ function deferConnect(id: string): void {
 // **不覆盖交互式认证阶段**：问询期会话状态是 waiting_prompt（不在本看门狗的
 // 武装状态里），超时由 Rust 侧问询窗口（180s）+ `ottr://kbd-interactive-timeout`
 // 事件负责——否则看门狗会抢在它前面把「用户没作答」误报成「后端无响应」。
-const ATTACH_WATCHDOG_MS = 100_000;
+//
+// **必须大于 Rust 侧最坏合法等待**：connect 预算 = 主机密钥问询 60s +
+// 交互式认证问询 180s + 网络余量 15s = 255s（Rust state.rs
+// CONNECT_BUDGET_PER_HOP），再加 open_pty/request_shell 各 10s ≈ 275s。
+// 看门狗取 290s——比它小就会出现「Rust 还在合法等待、看门狗先把会话打成
+// disconnected」，用户看到的是「后端无响应」这种假报错（真机实测过：100s 的
+// 看门狗抢在 180s 的问询超时前面，把「用户没作答」误报成「后端无响应」）。
+const ATTACH_WATCHDOG_MS = 290_000;
 const attachWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
 function armAttachWatchdog(id: string, gen: number): void {

@@ -85,9 +85,15 @@
 .prompt-code-countdown {
   color: var(--fg-muted);
 }
+/* 「码已过期、提交必被拒」是最关键的状态——用 danger 色时暗色主题下对比度
+   只有 4.11:1（AA 要 4.5:1）。加深 danger 的呈现（加底色 + 描边）而不是
+   换语义色：这一态确实该是警示色，但不该只有颜色这一条信息通道。 */
 .prompt-code-expired {
   color: var(--color-danger);
   font-weight: 600;
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  padding: 0 4px;
 }
 .prompt-code-refresh {
   flex: none;

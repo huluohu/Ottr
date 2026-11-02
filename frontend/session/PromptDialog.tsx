@@ -22,6 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { DialogClose } from "../ui/DialogClose";
 import { useEscClose } from "../ui/useEscClose";
+import { useModalStore } from "../ui/modalStore";
 import { useSessionStore } from "./SessionStore";
 
 interface TotpCodePayload {
@@ -33,6 +34,12 @@ export function PromptDialog() {
   const { t } = useTranslation();
   const ask = useSessionStore((s) => s.promptAsk);
   const answerPrompt = useSessionStore((s) => s.answerPrompt);
+  // 全局弹窗唯一槽（与 HostKeyDialog 同口径）：**持有槽位才渲染**。
+  // 不看槽位的话，交互式认证框会和设置/凭据框同时在场（两个模态遮罩），
+  // 而 Esc 栈与全局焦点陷阱都建立在「同时只有一个弹窗」上。
+  // 被别的弹窗顶掉 = 本框销毁——问询仍留在 SessionStore，Rust 侧 180s 超时
+  // 按空答案收尾（fail-closed）。
+  const owned = useModalStore((s) => s.active === "promptAsk");
   const [values, setValues] = useState<string[]>([]);
   /** 自动填入码的到期时刻（ms 挂钟）；null = 本轮没有自动填码。 */
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
@@ -106,11 +113,11 @@ export function PromptDialog() {
   }, [remain, touched, codeIndex, refreshCode]);
 
   // Esc = 放弃作答（空答案 = 拒绝，Rust 侧按认证失败收尾）。
-  useEscClose(ask != null, () => {
+  useEscClose(ask != null && owned, () => {
     void answerPrompt([]);
   });
 
-  if (!ask) return null;
+  if (!ask || !owned) return null;
 
   const submit = async () => {
     if (busy) return;

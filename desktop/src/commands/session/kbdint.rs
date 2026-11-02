@@ -208,7 +208,10 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
             },
         ) {
             eprintln!("[kbd-interactive] emit ask failed: {e}");
-            return vec![String::new(); prompts.len()];
+            // 空答案 = 放弃（Rust 侧判 AuthRejected，不向服务端发任何响应）。
+            // 不能回等长空串——那等于「替用户提交了空密码」，服务端若允许空口令
+            // 就会在用户没作答的情况下放行。
+            return Vec::new();
         }
 
         // 超时 / 槽位被顶掉 → 空答案（服务端拒绝 → 认证失败，fail-closed）。
@@ -235,7 +238,9 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
                         eprintln!("[kbd-interactive] emit timeout failed: {err}");
                     }
                 }
-                vec![String::new(); prompts.len()]
+                // 同上：空答案 = 放弃（auth.rs 侧判 AuthRejected，绝不向服务端
+                // 发「空密码」）。
+                Vec::new()
             }
         }
     })

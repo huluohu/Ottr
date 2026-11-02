@@ -63,8 +63,10 @@ import {
   reconnectDelayMs,
 } from "./retry";
 import {
+  PROMPT_TIMEOUT_MARKER,
   emitSessionEnded,
   isHostKeyRejection,
+  isPromptTimeout,
   sinks,
   toBytes,
   unregisterSink,
@@ -74,6 +76,7 @@ import {
   type HostKeyAskPayload,
   type PromptAsk,
   type PromptAskPayload,
+  type PromptTimeoutPayload,
   type Session,
 } from "./types";
 import { loadDismissedEncodingHosts } from "./encoding";
@@ -138,6 +141,8 @@ interface SessionStore {
   onPromptAsk: (payload: PromptAskPayload) => void;
   /** 提交一组答案（条数须等于提问数）；空数组 = 放弃（Rust 侧按空答案 = 拒绝）。 */
   answerPrompt: (answers: string[]) => Promise<void>;
+  /** ottr://kbd-interactive-timeout 事件入口：问询超时未作答 → 关窗 + 记真因。 */
+  onPromptTimeout: (payload: PromptTimeoutPayload) => void;
   /** 确认框裁定：accept=true 放行在途 attach；false = 主动断开（Rust 侧已拒）。 */
   decideHostKey: (accept: boolean) => Promise<void>;
   /** ottr://session-closed 事件入口：仅对 connected 会话触发重连（cancelled 忽略）。 */
@@ -562,9 +567,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         void invoke("monitor_start", { id: rustId }).catch(() => {});
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const raw = e instanceof Error ? e.message : String(e);
       cancelAttachWatchdog(id);
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) return;
+      // 交互式认证超时：Rust 问询超时回空答案 → 服务端拒 → 这里拿到的是
+      // 「authentication rejected by server」（症状）。若会话上已记着「未作答」
+      // 这个真因，就别用症状盖掉它。
+      const prior = get().sessions.find((s) => s.id === id)?.lastError ?? "";
+      const msg = isPromptTimeout(prior) ? prior : raw;
       if (isHostKeyRejection(msg)) {
         // 主机密钥被拒（用户拒绝/超时/changed 默认拒）：终态，不自动重连
         set((st) => ({
@@ -741,6 +751,29 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     useModalStore.getState().open("promptAsk");
   },
 
+  /**
+   * `ottr://kbd-interactive-timeout` 事件入口：问询等满时限仍无人作答。
+   *
+   * 关掉弹窗并把**真因**（未作答）记到会话错误面——不让用户对着一个已经不会
+   * 有人听的输入框敲码，也不让随后那句无信息量的「认证被服务端拒绝」盖掉真因。
+   */
+  onPromptTimeout: (payload: PromptTimeoutPayload) => {
+    const ask = get().promptAsk;
+    // 不是当前那个问询（已作答 / 已换问询）→ 迟到的超时通知，忽略。
+    if (!ask || ask.ask_id !== payload.ask_id) return;
+    set({ promptAsk: null });
+    useModalStore.getState().close("promptAsk");
+    if (!ask.sessionId) return;
+    set((st) => ({
+      sessions: patchSession(st.sessions, ask.sessionId, {
+        status: "disconnected",
+        lastError: PROMPT_TIMEOUT_MARKER,
+        rustId: null,
+        nextRetryAt: null,
+      }),
+    }));
+  },
+
   answerPrompt: async (answers) => {
     const ask = get().promptAsk;
     if (!ask) return;
@@ -752,10 +785,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // 问询已超时/已裁定：Rust 侧报错。放弃作答 = 认证失败（fail-closed），
       // 会话按断开收尾。
       if (ask.sessionId) {
+        // 槽位已失效（超时/已裁定）→ 记「未作答」而不是把 Rust 的内部报错
+        // （"no pending prompt ask for 7:1 …"）直接甩给用户看。
+        const raw = String(e);
         set((st) => ({
           sessions: patchSession(st.sessions, ask.sessionId, {
             status: "disconnected",
-            lastError: String(e),
+            lastError: raw.includes("no pending prompt ask")
+              ? PROMPT_TIMEOUT_MARKER
+              : raw,
           }),
         }));
       }

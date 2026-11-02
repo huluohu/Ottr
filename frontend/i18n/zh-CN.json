@@ -431,7 +431,8 @@
     "prodBadgeAria": "生产环境主机",
     "dangerInputTitle": "注意",
     "dangerInputHint": "当前输入命中危险规则：{{rule}}（{{excerpt}}）",
-    "dangerInputDismiss": "关闭危险提醒"
+    "dangerInputDismiss": "关闭危险提醒",
+    "promptTimeout": "等待身份验证超时，未连接（请在弹窗出现时作答）"
   },
   "ai": {
     "title": "AI 助手",

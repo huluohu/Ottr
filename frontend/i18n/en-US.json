@@ -432,7 +432,8 @@
     "prodBadgeAria": "Production host",
     "dangerInputTitle": "Careful",
     "dangerInputHint": "This input hits a danger rule: {{rule}} ({{excerpt}})",
-    "dangerInputDismiss": "Dismiss danger reminder"
+    "dangerInputDismiss": "Dismiss danger reminder",
+    "promptTimeout": "Timed out waiting for authentication; not connected (answer when the prompt appears)"
   },
   "ai": {
     "title": "AI Assistant",

@@ -36,7 +36,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
-import { registerSink, unregisterSink, resizeSession, useSessionStore, encodingName, isHostKeyRejection, nextEncoding, type SessionEncoding } from "../session/SessionStore";
+import { registerSink, unregisterSink, resizeSession, useSessionStore, encodingName, isHostKeyRejection, isPromptTimeout, nextEncoding, type SessionEncoding } from "../session/SessionStore";
 import { vaultHostId } from "../session/types";
 import { localList } from "../files/api";
 import { useTerminalFocus } from "./terminalFocus";
@@ -784,7 +784,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           term.writeln(
             isHostKeyRejection(lastError)
               ? `\x1b[31m[ottr] ${t("terminal.hostKeyRejected")}\x1b[0m`
-              : `\x1b[31m[ottr] ${t("terminal.connectFailed", { message: lastError })}\x1b[0m`,
+              : isPromptTimeout(lastError)
+                ? `\x1b[31m[ottr] ${t("terminal.promptTimeout")}\x1b[0m`
+                : `\x1b[31m[ottr] ${t("terminal.connectFailed", { message: lastError })}\x1b[0m`,
           );
         }
         if (attempt === 0 && !isLocalSession) {

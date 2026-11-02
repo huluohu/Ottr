@@ -397,11 +397,25 @@ pub(crate) const HOST_KEY_ASK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// keyboard-interactive 问询超时（前端作答的最长等待）。
 ///
-/// **必须小于 connect 预算**（直连 75s / 链式 75s×(hops+1)，见
-/// `commands/session/attach.rs`）——否则 connect 的 `tokio::time::timeout`
-/// 先到期，返回的却是「连接超时」而非「认证未作答」，用户得不到正确归因。
-/// 取 60s 与 TOFU 问询对齐（同一交互面、同一量级）。
-pub(crate) const PROMPT_ASK_TIMEOUT: Duration = Duration::from_secs(60);
+/// 取 **180s**：交互式提问要人参与（翻手机上的验证器、翻密码管理器、查工单）——
+/// 60s 太短。短窗口的真实后果不是「拒了」，而是**前端弹窗还开着**：用户在
+/// 一个已经死掉的问询上敲码，提交后只看到「认证被服务端拒绝」，与「我验证码
+/// 过期了」完全分不开（真机 E2E 2026-11-02 实测）。
+///
+/// **必须小于 connect 预算**（见 [`CONNECT_BUDGET_PER_HOP`]）——否则 connect 的
+/// `tokio::time::timeout` 先到期，用户拿到的是「连接超时」而非「认证未作答」。
+pub(crate) const PROMPT_ASK_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// 每跳的连接限时 = 问询窗口之和（主机密钥 + 交互式认证）+ 网络预算余量。
+///
+/// 一跳里两个问询窗口可能**先后**都占满（先 TOFU 指纹确认、再交互式认证），
+/// 故预算要装得下两者之和，而不是单个窗口——否则「先 TOFU 用满 60s、紧接着
+/// 交互式认证」必然撞上 connect 超时，用户看到的是「连接超时」。
+///
+/// 15s 是网络余量（握手 + 通道打开 + 认证往返）。
+pub(crate) const CONNECT_BUDGET_PER_HOP: Duration = Duration::from_secs(
+    HOST_KEY_ASK_TIMEOUT.as_secs() + PROMPT_ASK_TIMEOUT.as_secs() + 15,
+);
 
 /// LANG 探测命令/超时（Task 9 detect_hint：连接建立后独立 exec 通道跑一次，
 /// 不进 PTY 数据流、不阻塞 attach 返回；失败/超时 = 不提示，安全侧）。
@@ -443,7 +457,9 @@ mod tests {
     // 2 列终端只发空重绘（\e[?2004h\e[K\r）不发提示符、回显退化为逐字符重绘
     // ——且全应用无 resize 接线，PTY 终身 2×1。修复 = 挂起槽 + 转发循环
     // window_change 下发（真窗复验：resize 后提示符/回显完整）。
-    use super::SessionResizeSlot;
+    use super::{
+        CONNECT_BUDGET_PER_HOP, HOST_KEY_ASK_TIMEOUT, PROMPT_ASK_TIMEOUT, SessionResizeSlot,
+    };
 
     #[test]
     fn resize_slot_latches_latest_and_take_clears() {
@@ -469,5 +485,27 @@ mod tests {
         slot.set(80, 0);
         slot.set(0, 0);
         assert_eq!(slot.take(), None);
+    }
+
+    /// connect 预算必须**装得下**同一跳里先后可能占满的两个问询窗口
+    /// （TOFU 指纹确认 → 交互式认证）——否则「先 TOFU 用满窗口、紧接着
+    /// 交互式认证」必然撞上 connect 超时，用户看到的是「连接超时」而不是
+    /// 「认证未作答」。
+    #[test]
+    fn connect_budget_fits_both_ask_windows() {
+        assert!(
+            CONNECT_BUDGET_PER_HOP >= HOST_KEY_ASK_TIMEOUT + PROMPT_ASK_TIMEOUT,
+            "每跳预算必须 ≥ 两个问询窗口之和"
+        );
+    }
+
+    /// 问询超时必须**小于** connect 预算——否则 connect 的 timeout 先到期，
+    /// 归因错位（用户拿到「连接超时」而非「没人作答」）。
+    #[test]
+    fn prompt_ask_timeout_is_below_connect_budget() {
+        assert!(
+            PROMPT_ASK_TIMEOUT < CONNECT_BUDGET_PER_HOP,
+            "问询超时必须小于 connect 预算"
+        );
     }
 }

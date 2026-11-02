@@ -432,7 +432,8 @@
     "prodBadgeAria": "Host de producción",
     "dangerInputTitle": "Cuidado",
     "dangerInputHint": "Esta entrada activa una regla de peligro: {{rule}} ({{excerpt}})",
-    "dangerInputDismiss": "Descartar el aviso de peligro"
+    "dangerInputDismiss": "Descartar el aviso de peligro",
+    "promptTimeout": "Se agotó el tiempo de espera de la autenticación; sin conexión (responde cuando aparezca el aviso)"
   },
   "ai": {
     "title": "Asistente AI",

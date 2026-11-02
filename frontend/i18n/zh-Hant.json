@@ -431,7 +431,8 @@
     "prodBadgeAria": "生產環境主機",
     "dangerInputTitle": "注意",
     "dangerInputHint": "當前輸入命中危險規則：{{rule}}（{{excerpt}}）",
-    "dangerInputDismiss": "關閉危險提醒"
+    "dangerInputDismiss": "關閉危險提醒",
+    "promptTimeout": "等待身分驗證逾時，未連接（請在彈窗出現時作答）"
   },
   "ai": {
     "title": "AI 助手",

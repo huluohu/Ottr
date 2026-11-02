@@ -432,7 +432,8 @@
     "prodBadgeAria": "本番ホスト",
     "dangerInputTitle": "注意",
     "dangerInputHint": "この入力は危険ルールに一致します: {{rule}} ({{excerpt}})",
-    "dangerInputDismiss": "危険アラートを閉じる"
+    "dangerInputDismiss": "危険アラートを閉じる",
+    "promptTimeout": "認証の待ちがタイムアウトしました。接続していません（プロンプトが出たら回答してください）"
   },
   "ai": {
     "title": "AI アシスタント",

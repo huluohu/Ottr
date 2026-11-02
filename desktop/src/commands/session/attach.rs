@@ -16,7 +16,9 @@ use ottr_vault::{Hosts, Settings};
 use super::hostkey::{pinned_host_key_policy, tofu_host_key_policy};
 use super::register::{open_and_register, register_opened};
 use crate::commands::encoding::encoding_from_str;
-use crate::commands::state::{AppState, KEEPALIVE_INTERVAL, SessionEntry, SessionMap};
+use crate::commands::state::{
+    AppState, CONNECT_BUDGET_PER_HOP, KEEPALIVE_INTERVAL, SessionEntry, SessionMap,
+};
 use crate::keys;
 use crate::vault::VaultState;
 
@@ -177,7 +179,7 @@ pub(crate) async fn attach_host_session(
             auth,
             policy,
             Some(KEEPALIVE_INTERVAL),
-            Duration::from_secs(75),
+            CONNECT_BUDGET_PER_HOP,
             format!("{}@{}:{}", username, host.address, port),
             cols,
             rows,
@@ -230,8 +232,10 @@ pub(crate) async fn attach_host_session(
         None,
         Some(host_id),
     );
-    // connect 限时 = 每跳问询窗口 60s + 网络预算 15s（问询期间握手合法挂起）。
-    let budget = Duration::from_secs(75 * (hop_specs.hops.len() as u64 + 1));
+    // connect 限时 = 每跳问询窗口之和（TOFU + 交互式认证）+ 网络余量，
+    // 逐跳累乘（问询期间握手合法挂起）。
+    let budget =
+        Duration::from_secs(CONNECT_BUDGET_PER_HOP.as_secs() * (hop_specs.hops.len() as u64 + 1));
     // remote(-R) 转发的入站路由挂进 target 连接（链式主机与直连主机同语义）。
     let forward_router = ottr_ssh::RemoteForwardRouter::new();
     let target_spec = ottr_ssh::HopSpec {

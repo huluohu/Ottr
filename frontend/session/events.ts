@@ -3,6 +3,7 @@
 // 事件名契约（Rust 侧 lib.rs）：
 //   ottr://host-key-ask   HostKeyAskPayload — TOFU 确认框问询
 //   ottr://kbd-interactive-ask PromptAskPayload — 交互式认证提问（TOTP/2FA）
+//   ottr://kbd-interactive-timeout PromptTimeoutPayload — 问询超时未作答
 //   ottr://session-closed SessionClosedPayload — 连接丢失/主动关闭通知
 //   ottr://encoding-hint  EncodingHintPayload — detect_hint 命中 GBK（Task 9）
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -11,6 +12,7 @@ import {
   type EncodingHintPayload,
   type HostKeyAskPayload,
   type PromptAskPayload,
+  type PromptTimeoutPayload,
   type SessionClosedPayload,
 } from "./SessionStore";
 
@@ -31,6 +33,11 @@ export async function initSessionEvents(): Promise<void> {
   unlisteners.push(
     await listen<PromptAskPayload>("ottr://kbd-interactive-ask", (e) => {
       store.getState().onPromptAsk(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen<PromptTimeoutPayload>("ottr://kbd-interactive-timeout", (e) => {
+      store.getState().onPromptTimeout(e.payload);
     }),
   );
   unlisteners.push(

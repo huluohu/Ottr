@@ -431,7 +431,8 @@
     "prodBadgeAria": "生產環境機",
     "dangerInputTitle": "慎",
     "dangerInputHint": "今輸入命中危險規則：{{rule}}（{{excerpt}}）",
-    "dangerInputDismiss": "闔危險提醒"
+    "dangerInputDismiss": "闔危險提醒",
+    "promptTimeout": "待驗身分逾時，未連（請彈窗現時作答）"
   },
   "ai": {
     "title": "智",

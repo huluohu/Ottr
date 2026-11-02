@@ -88,6 +88,20 @@ pub(crate) struct PromptAskPayload {
     pub(crate) origin_host_id: Option<i64>,
 }
 
+/// `ottr://kbd-interactive-timeout` 事件载荷（问询等满时限未作答）。
+///
+/// 前端据此**关掉弹窗**并说明原因——否则用户面对的是一个「还开着但已经不
+/// 会有人听」的输入框。
+#[derive(Clone, serde::Serialize)]
+pub(crate) struct PromptTimeoutPayload {
+    /// 问询回执号（前端据此判断是不是当前那一个弹窗）。
+    pub(crate) ask_id: String,
+    pub(crate) host_id: i64,
+    pub(crate) host_name: String,
+    /// 等了多久（秒）——文案里说清「等了多久没人作答」。
+    pub(crate) seconds: u64,
+}
+
 /// 提问文本是否像「验证码」类（可自动填 TOTP 码）。
 ///
 /// 关键词命中即认为可自动填；命中不了就让用户手输（**宁可不填也不错填**——
@@ -202,6 +216,25 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
             Ok(answers) => answers,
             Err(e) => {
                 eprintln!("[kbd-interactive] ask {ask_id} not answered: {e}");
+                // 超时是**前端可见的事实**：弹窗还开着的话，用户会在一个已经
+                // 死掉的问询上敲码，提交后只看到「认证被拒」，与「没作答」分不开。
+                // 故主动通知前端关窗 + 说清原因（见 PromptTimeoutPayload）。
+                if e == std::sync::mpsc::RecvTimeoutError::Timeout {
+                    // 槽位一并回收：否则过期后前端再回传答案会命中一个死端
+                    // （send 失败被吞，前端以为提交成功）。
+                    ctx.asks.lock().unwrap().remove(&ask_id);
+                    if let Err(err) = ctx.app.emit(
+                        "ottr://kbd-interactive-timeout",
+                        PromptTimeoutPayload {
+                            ask_id: ask_id.clone(),
+                            host_id: ctx.host_id,
+                            host_name: ctx.host_name.clone(),
+                            seconds: PROMPT_ASK_TIMEOUT.as_secs(),
+                        },
+                    ) {
+                        eprintln!("[kbd-interactive] emit timeout failed: {err}");
+                    }
+                }
                 vec![String::new(); prompts.len()]
             }
         }

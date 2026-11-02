@@ -68,6 +68,21 @@ export function isHostKeyRejection(err: string): boolean {
   return err.includes("host key rejected");
 }
 
+/**
+ * 交互式认证「未作答」的标记串。
+ *
+ * Rust 侧问询等满时限（`ottr://kbd-interactive-timeout`）后回空答案 → 服务端
+ * 拒 → 前端只会拿到「authentication rejected by server」这种无信息量的文案。
+ * 前端收到超时通知时把本标记写进 `lastError`，终端据此渲染**说人话**的文案，
+ * 且后续的连接失败不再把它盖掉（真因 vs 症状）。
+ */
+export const PROMPT_TIMEOUT_MARKER = "prompt ask timed out";
+
+/** 是否为「交互式认证未作答」的标记。 */
+export function isPromptTimeout(err: string): boolean {
+  return err.includes(PROMPT_TIMEOUT_MARKER);
+}
+
 // --- 会话结束钩子（Phase 2 Task 7 会话纪要）----------------------------------
 // 「会话收尾」三时机（closeTab / disconnect / 自动重连耗尽转 disconnected）向
 // App 注入的钩子派发一次（消费方 = src/ai/summary.ts onSessionEnded，异步生成

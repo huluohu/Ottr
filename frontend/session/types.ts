@@ -63,6 +63,20 @@ export interface PromptAsk extends PromptAskPayload {
   sessionId: string;
 }
 
+/** `ottr://kbd-interactive-timeout` 事件载荷（Rust PromptTimeoutPayload 同构）。
+ *
+ * 问询等满时限仍无人作答 → 前端据此**关掉弹窗**并说明原因（否则用户对着一个
+ * 已经不会有人听的输入框敲码）。
+ */
+export interface PromptTimeoutPayload {
+  /** 问询回执号（前端据此判断是不是当前那一个弹窗）。 */
+  ask_id: string;
+  host_id: number;
+  host_name: string;
+  /** 等了多久（秒）。 */
+  seconds: number;
+}
+
 /** `ottr://session-closed` 事件载荷（Rust SessionClosedPayload 同构）。 */
 export interface SessionClosedPayload {
   id: string;
@@ -94,8 +108,10 @@ export interface Session {
   /** 主机协议（Phase 2 Task 5）：ftp/ftps = 纯文件会话（无 PTY 终端）。 */
   protocol: HostProtocol;
   /** 跳板链归属（host.jump_chain_id 会话内拷贝；分屏 pane 与标签同源）：
-   * 非空 = attach 走链式路径，Rust 侧 connect 预算 = 75s×(跳数+1)——
-   * attach 看门狗只护直连（见 ATTACH_WATCHDOG_MS 注释），链式不武装。 */
+   * 非空 = attach 走链式路径，Rust 侧 connect 预算 = 每跳预算×(跳数+1)
+   * （每跳预算 = 两个问询窗口之和 + 网络余量，见 Rust state.rs
+   * CONNECT_BUDGET_PER_HOP）——attach 看门狗只护直连（见 ATTACH_WATCHDOG_MS
+   * 注释），链式不武装。 */
   jumpChainId: number | null;
   status: SessionStatus;
   /** 启动恢复标签（restoreTabs 置 true，会话生命周期内不变）：恢复策略不自动

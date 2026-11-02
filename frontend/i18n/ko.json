@@ -432,7 +432,8 @@
     "prodBadgeAria": "운영 환경 호스트",
     "dangerInputTitle": "주의",
     "dangerInputHint": "이 입력은 위험 규칙에 해당합니다: {{rule}} ({{excerpt}})",
-    "dangerInputDismiss": "위험 알림 닫기"
+    "dangerInputDismiss": "위험 알림 닫기",
+    "promptTimeout": "인증 대기 시간이 초과되어 연결하지 않았습니다 (프롬프트가 나타나면 응답하세요)"
   },
   "ai": {
     "title": "AI 어시스턴트",

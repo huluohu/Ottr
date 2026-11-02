@@ -40,6 +40,9 @@ ssh "$DEV" "export PATH=\$HOME/.cargo/bin:\$PATH; cd $REMOTE && \
   cargo build --example mock_kbdint_server -p ottr-ssh && echo BUILD_OK" || exit 1
 
 say "1. 起 mock sshd + 造 TOTP 凭据 + 主机行"
+# 注：mock sshd 已支持 publickey（russh 0.63 的 publickey 分两段：探测
+# `auth_publickey_offered` + 签名 `auth_publickey`，**两个都要实现**，
+# 否则 agent 认证在探测阶段就被拒、服务端日志里一条 publickey 记录都没有）。
 # 主机行种子脚本**随脚本下发**（不依赖设备上遗留文件——否则 /tmp 一清就跑不了）。
 cat > /tmp/ottr-seed-kbd.py <<'SEEDPY'
 import sqlite3, time
@@ -100,6 +103,21 @@ ssh "$DEV" "export DISPLAY=:1; W=\$(xdotool search --pid \$(pgrep -x ottr) | tai
   xdotool mousemove 1859 1201; sleep 0.3; xdotool click 1; sleep 5; \
   import -window \$W /tmp/ottr-verify/v-connected.png; \
   cat /tmp/mock-kbdint.log"
+
+say "5b. ssh-agent 凭据实际认证（第二个主机行，绑 agent 凭据）"
+ssh "$DEV" "export HOME=$HOME_DIR XDG_DATA_HOME=$DATA DISPLAY=:1; \
+  cd $REMOTE && \
+  [ -f /tmp/ottr-agent-env ] && . /tmp/ottr-agent-env; \
+  python3 - <<'PYX'
+import sqlite3, time
+db='/tmp/ottr-verify/data/com.ottr.app/vault.db'
+c=sqlite3.connect(db); now=int(time.time())
+c.execute(\"\"\"INSERT OR REPLACE INTO hosts (id,name,group_id,tags,address,port,credential_id,
+  jump_chain_id,encoding_override,theme_override,monitor_enabled,notes,created_at,updated_at,
+  username,protocol,is_production) VALUES (2,'agent-box',NULL,'[]','127.0.0.1',2223,2,
+  NULL,NULL,NULL,0,'走系统 ssh-agent 认证',?,?,'spike','ssh',0)\"\"\",(now,now))
+c.commit(); print('hosts:', list(c.execute('SELECT id,name,credential_id FROM hosts'))); c.close()
+PYX" || exit 1
 
 say "6. 走查其余交互面（Ask Ottr / 凭据表单 / MCP 客户端 / agent 认证）"
 # 这一段以「截图 + 状态对账」为主：逐个打开目标界面并留档，供事后逐张核对。

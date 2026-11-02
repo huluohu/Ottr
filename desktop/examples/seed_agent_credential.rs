@@ -25,9 +25,10 @@ fn main() -> Result<(), String> {
     // 且锁着；夹具需要能解锁。`OTTR_VAULT_PASSWORD` 给出主密码时先解锁
     // （真机上 vault 通常在钥匙链模式，这段是 no-op）。
     if let Ok(pw) = std::env::var("OTTR_VAULT_PASSWORD") {
-        vault
-            .unlock_with_password(&pw)
-            .map_err(|e| format!("unlock: {e}"))?;
+        // **尽力而为**：钥匙链模式（真机）下 unlock_with_password 会报
+        // 「vault is in keychain mode」——那不是错误，跳过即可；口令不对导致
+        // 仍锁着的话，后面的 create 会报「vault is locked」，错误信息更准。
+        let _ = vault.unlock_with_password(&pw);
     }
 
     let cred = Credentials::create(

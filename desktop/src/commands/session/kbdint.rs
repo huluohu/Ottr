@@ -199,7 +199,10 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
         let (tx, rx) = std::sync::mpsc::channel();
         register_prompt_ask(&ctx.asks, ask_id.clone(), tx);
 
-        if let Err(e) = ctx.app.emit(
+        // **只发给主窗口**（emit_to）：载荷里含明文验证码，全局广播等于把它
+        // 发给将来可能出现的任何其他 webview（当前只有 main 窗，但这是白送的面）。
+        if let Err(e) = ctx.app.emit_to(
+            "main",
             "ottr://kbd-interactive-ask",
             PromptAskPayload {
                 ask_id: ask_id.clone(),
@@ -230,7 +233,8 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
                     // 槽位一并回收：否则过期后前端再回传答案会命中一个死端
                     // （send 失败被吞，前端以为提交成功）。
                     ctx.asks.lock().unwrap().remove(&ask_id);
-                    if let Err(err) = ctx.app.emit(
+                    if let Err(err) = ctx.app.emit_to(
+                        "main",
                         "ottr://kbd-interactive-timeout",
                         PromptTimeoutPayload {
                             ask_id: ask_id.clone(),

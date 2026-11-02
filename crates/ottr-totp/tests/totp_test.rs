@@ -119,3 +119,19 @@ fn convenience_entry_matches_two_step_api() {
     let via_two_step = generate(&secret, 1_234_567_890, 6, DEFAULT_PERIOD).unwrap();
     assert_eq!(via_shortcut, via_two_step);
 }
+
+/// Debug 不得输出种子内容（derive(Debug) 会把字节数组原样打印 = 写进日志）。
+#[test]
+fn debug_output_does_not_leak_seed_bytes() {
+    let secret = TotpSecret::from_base32("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ").unwrap();
+    let dumped = format!("{secret:?}");
+    assert!(
+        !dumped.contains("GEZD"),
+        "Debug 输出不得含 base32 种子：{dumped}"
+    );
+    assert!(
+        !dumped.contains("18, 61, 33"),
+        "Debug 输出不得含种子字节数组：{dumped}"
+    );
+    assert!(dumped.contains("redacted"), "应给出存在标记：{dumped}");
+}

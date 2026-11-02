@@ -59,9 +59,21 @@ impl std::fmt::Display for TotpError {
 impl std::error::Error for TotpError {}
 
 /// 已解码的 TOTP 种子。
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// **手写 Debug**：不 derive——derive 会把 `bytes: Vec<u8>` 原样打印成字节数组，
+/// 等于把**种子写进日志**（谁 `{:?}` 打印一次就泄露一次）。这里只输出存在标记。
+#[derive(Clone, PartialEq, Eq)]
 pub struct TotpSecret {
     bytes: Vec<u8>,
+}
+
+impl std::fmt::Debug for TotpSecret {
+    /// **不输出种子内容**——derive(Debug) 会把字节数组原样打印（= 写进日志）。
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TotpSecret")
+            .field("bytes", &format_args!("<{} bytes redacted>", self.bytes.len()))
+            .finish()
+    }
 }
 
 impl TotpSecret {

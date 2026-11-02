@@ -556,7 +556,8 @@
       "ruleName": "Rule name (e.g. order_id)",
       "rulePattern": "Regex (e.g. OTTR-\\d{6})",
       "errRuleIncomplete": "Both rule name and regex are required",
-      "errRuleInvalid": "Regex does not compile"
+      "errRuleInvalid": "Regex does not compile",
+      "errRemoteHttp": "Remote endpoints must use https:// (plain http would send the API key unencrypted, and the app only allows plain http to localhost)"
     },
     "followupPlaceholder": "Ask a follow-up… (Enter to send, Shift+Enter for a new line)"
   },

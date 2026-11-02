@@ -21,9 +21,129 @@
           "url": "https://*:*/*"
         },
         {
-          "url": "http://*:*/*"
+          "url": "http://localhost:*/*"
+        },
+        {
+          "url": "http://127.0.0.1:*/*"
         }
-      ]
+      ],
+      "deny": [
+        {
+          "url": "http://169.254.169.254/*"
+        },
+        {
+          "url": "https://169.254.169.254/*"
+        },
+        {
+          "url": "http://localhost:6379/*"
+        },
+        {
+          "url": "http://127.0.0.1:6379/*"
+        },
+        {
+          "url": "http://localhost:11211/*"
+        },
+        {
+          "url": "http://127.0.0.1:11211/*"
+        },
+        {
+          "url": "http://localhost:5432/*"
+        },
+        {
+          "url": "http://127.0.0.1:5432/*"
+        },
+        {
+          "url": "http://localhost:3306/*"
+        },
+        {
+          "url": "http://127.0.0.1:3306/*"
+        },
+        {
+          "url": "http://localhost:27017/*"
+        },
+        {
+          "url": "http://127.0.0.1:27017/*"
+        },
+        {
+          "url": "http://localhost:2375/*"
+        },
+        {
+          "url": "http://127.0.0.1:2375/*"
+        },
+        {
+          "url": "http://localhost:2376/*"
+        },
+        {
+          "url": "http://127.0.0.1:2376/*"
+        },
+        {
+          "url": "http://localhost:2379/*"
+        },
+        {
+          "url": "http://127.0.0.1:2379/*"
+        },
+        {
+          "url": "http://localhost:9200/*"
+        },
+        {
+          "url": "http://127.0.0.1:9200/*"
+        },
+        {
+          "url": "http://localhost:9090/*"
+        },
+        {
+          "url": "http://127.0.0.1:9090/*"
+        },
+        {
+          "url": "http://localhost:8200/*"
+        },
+        {
+          "url": "http://127.0.0.1:8200/*"
+        },
+        {
+          "url": "http://localhost:6443/*"
+        },
+        {
+          "url": "http://127.0.0.1:6443/*"
+        },
+        {
+          "url": "http://localhost:10250/*"
+        },
+        {
+          "url": "http://127.0.0.1:10250/*"
+        },
+        {
+          "url": "http://localhost:8500/*"
+        },
+        {
+          "url": "http://127.0.0.1:8500/*"
+        },
+        {
+          "url": "http://localhost:8300/*"
+        },
+        {
+          "url": "http://127.0.0.1:8300/*"
+        },
+        {
+          "url": "http://localhost:8600/*"
+        },
+        {
+          "url": "http://127.0.0.1:8600/*"
+        },
+        {
+          "url": "http://localhost:5672/*"
+        },
+        {
+          "url": "http://127.0.0.1:5672/*"
+        },
+        {
+          "url": "http://localhost:15672/*"
+        },
+        {
+          "url": "http://127.0.0.1:15672/*"
+        }
+      ],
+      "description": "AI 出网（BYOK 端点）。https 任意主机（端点由用户在设置页自配）；http 仅放行本机（Ollama/LM Studio 等本地端点）——非本机明文 http 会把 API key 裸传在链路上，且插件侧无 CORS、webview 内任意脚本都能读任意 http 地址（含云厂商元数据 169.254.169.254），故默认收窄。deny 段是纵深防御：元数据地址 + 常见本地敏感服务端口（Redis/DB/Docker 等）。非本机端点请用 https。注：IPv6 本机地址（http://[::1]:…）无法用 URLPattern 表达（hostname 词法器不吃方括号，实测编译失败），故本机端点请用 localhost / 127.0.0.1。"
     },
     "opener:default",
     "opener:allow-open-path",

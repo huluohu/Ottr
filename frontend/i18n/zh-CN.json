@@ -555,7 +555,8 @@
       "ruleName": "规则名（如 order_id）",
       "rulePattern": "正则（如 OTTR-\\d{6}）",
       "errRuleIncomplete": "规则名与正则都要填",
-      "errRuleInvalid": "正则无法编译"
+      "errRuleInvalid": "正则无法编译",
+      "errRemoteHttp": "非本机端点必须使用 https://（明文 http 会把 API key 裸传在链路上，且应用只放行本机 http 端点）"
     },
     "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）"
   },

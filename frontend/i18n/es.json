@@ -556,7 +556,8 @@
       "ruleName": "Nombre de la regla (p. ej. order_id)",
       "rulePattern": "Regex (p. ej. OTTR-\\d{6})",
       "errRuleIncomplete": "Son obligatorios el nombre de la regla y la regex",
-      "errRuleInvalid": "La regex no compila"
+      "errRuleInvalid": "La regex no compila",
+      "errRemoteHttp": "Los endpoints remotos deben usar https:// (http sin cifrar enviaría la API key en claro y la app solo permite http local)"
     },
     "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar, Shift+Enter para salto de línea)"
   },

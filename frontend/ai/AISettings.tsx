@@ -77,6 +77,27 @@ const PRESET_DEFAULT_MODELS: Record<string, string> = {
   zhipu: "glm-4-flash",
 };
 
+/**
+ * 端点是否「非本机的明文 http」。
+ *
+ * 应用的能力门（desktop/capabilities/default.json）只放行**本机** http
+ * （Ollama / LM Studio 等本地端点预设）；非本机的明文 http 会把 API key 裸传
+ * 在链路上，故在设置页保存前就拒绝并说清原因。
+ *
+ * 本机判定：`localhost` / `127.0.0.1` / `::1` / `[::1]`。
+ */
+export function isRemotePlainHttp(baseURL: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(baseURL);
+  } catch {
+    return false; // 解析不了 → 交给上面的格式校验报错
+  }
+  if (u.protocol !== "http:") return false;
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return !(host === "localhost" || host === "127.0.0.1" || host === "::1");
+}
+
 export function AISettings({ open, onClose, embedded = false }: AISettingsProps) {
   const { t } = useTranslation();
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
@@ -133,6 +154,11 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
     if (d.name.trim() === "") return t("ai.settings.errName");
     if (d.baseURL.trim() === "") return t("ai.settings.errBaseUrl");
     if (!/^https?:\/\//.test(d.baseURL.trim())) return t("ai.settings.errBaseUrlFormat");
+    // 非本机的明文 http 端点：**应用的能力门只放行本机 http**（非本机明文
+    // http 会把 API key 裸传在链路上，且插件侧无 CORS、webview 内任意脚本
+    // 都能读任意 http 地址）。与其让用户配好了却在调用时报「url not allowed
+    // on the configured scope」，不如在保存前说清。
+    if (isRemotePlainHttp(d.baseURL.trim())) return t("ai.settings.errRemoteHttp");
     if (d.model.trim() === "") return t("ai.settings.errModel");
     return null;
   }

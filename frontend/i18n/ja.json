@@ -556,7 +556,8 @@
       "ruleName": "ルール名 (例: order_id)",
       "rulePattern": "正規表現 (例: OTTR-\\d{6})",
       "errRuleIncomplete": "ルール名と正規表現の両方が必須です",
-      "errRuleInvalid": "正規表現をコンパイルできません"
+      "errRuleInvalid": "正規表現をコンパイルできません",
+      "errRemoteHttp": "リモートのエンドポイントには https:// が必要です（平文 http では API キーが平文で送られ、アプリもローカル http のみ許可しています）"
     },
     "followupPlaceholder": "追加質問…（Enter で送信、Shift+Enter で改行）"
   },

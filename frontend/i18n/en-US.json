@@ -561,7 +561,8 @@
       "rulePattern": "Regex (e.g. OTTR-\\d{6})",
       "errRuleIncomplete": "Both rule name and regex are required",
       "errRuleInvalid": "Regex does not compile"
-    }
+    },
+    "followupPlaceholder": "Ask a follow-up… (Enter to send)"
   },
   "tabs": {
     "duplicate": "Duplicate Tab",

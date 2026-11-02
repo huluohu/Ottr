@@ -37,6 +37,7 @@ function reset(req: DiagnoseRequest | null, patch: Partial<SessionAiState> = {})
     usage: null,
     modelUsed: null,
     elapsedMs: null,
+    messages: [],
     ...patch,
   };
   useAiStore.setState({ sessions: req ? { "tab-1": slice } : {} });

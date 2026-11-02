@@ -118,6 +118,7 @@ function seedSlice(id: string, over: Partial<SessionAiState>): void {
         usage: null,
         modelUsed: null,
         elapsedMs: null,
+        messages: [],
         ...over,
       },
     },

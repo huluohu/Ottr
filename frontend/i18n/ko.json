@@ -561,7 +561,8 @@
       "rulePattern": "정규식 (예: OTTR-\\d{6})",
       "errRuleIncomplete": "규칙 이름과 정규식을 모두 입력해야 합니다",
       "errRuleInvalid": "정규식을 컴파일할 수 없습니다"
-    }
+    },
+    "followupPlaceholder": "추가 질문… (Enter로 전송)"
   },
   "tabs": {
     "duplicate": "탭 복제",

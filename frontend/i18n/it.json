@@ -561,7 +561,8 @@
       "rulePattern": "Regex (es. OTTR-\\d{6})",
       "errRuleIncomplete": "Sono obbligatori sia il nome della regola sia la regex",
       "errRuleInvalid": "La regex non viene compilata"
-    }
+    },
+    "followupPlaceholder": "Fai una domanda di follow-up… (Invio con Invio)"
   },
   "tabs": {
     "duplicate": "Duplica scheda",

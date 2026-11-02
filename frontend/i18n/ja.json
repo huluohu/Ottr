@@ -561,7 +561,8 @@
       "rulePattern": "正規表現 (例: OTTR-\\d{6})",
       "errRuleIncomplete": "ルール名と正規表現の両方が必須です",
       "errRuleInvalid": "正規表現をコンパイルできません"
-    }
+    },
+    "followupPlaceholder": "追加質問…（Enter で送信）"
   },
   "tabs": {
     "duplicate": "タブを複製",

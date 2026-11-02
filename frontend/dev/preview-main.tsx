@@ -402,6 +402,16 @@ async function renderShot(): Promise<void> {
           usage: { inputTokens: 321, outputTokens: 87 },
           modelUsed: "ottr-verify-model",
           elapsedMs: 117,
+          messages: [
+            {
+              role: "user",
+              content: "check disk usage",
+            },
+            {
+              role: "assistant",
+              content: "**原因**\n\n磁盘已满。\n\n```bash\ndf -h /data\n```",
+            },
+          ],
         },
       },
     });

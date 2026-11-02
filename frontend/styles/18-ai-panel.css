@@ -136,6 +136,84 @@
   flex-direction: column;
   gap: 8px;
 }
+
+/* --- 多轮追问会话（2026-11-02 批次二 C 项）：气泡流 + 底部追问输入条 --- */
+.ai-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  flex: 1;
+  min-height: 0;
+}
+.ai-bubble {
+  border-radius: var(--radius-lg);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: var(--text-sm);
+  word-break: break-word;
+}
+.ai-bubble-user {
+  background: var(--surface-raised);
+  color: var(--fg-muted);
+  white-space: pre-wrap;
+}
+.ai-bubble-assistant {
+  background: transparent;
+  color: var(--color-fg);
+  padding-left: 0;
+  padding-right: 0;
+}
+/* 追问输入条：贴在面板底部（面板已是整高右栏，输入条随面板走）。 */
+.ai-followup-row {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: center;
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-subtle);
+}
+.ai-followup-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.ai-followup-input:focus {
+  outline: none;
+  border-color: var(--color-accent-border);
+}
+/* Markdown 渲染的行内元素（react-markdown 输出）：与面板排版对齐。 */
+.ai-answer-text p {
+  margin: 0 0 var(--space-2, 8px);
+  white-space: pre-wrap;
+}
+.ai-answer-text p:last-child {
+  margin-bottom: 0;
+}
+.ai-answer-text ul,
+.ai-answer-text ol {
+  margin: 0 0 var(--space-2, 8px);
+  padding-left: var(--space-4, 16px);
+}
+.ai-answer-text code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+  padding: 0 3px;
+}
+.ai-answer-text table {
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+.ai-answer-text th,
+.ai-answer-text td {
+  border: 1px solid var(--border-subtle);
+  padding: 3px 6px;
+  text-align: left;
+}
 .ai-answer-text {
   margin: 0;
   white-space: pre-wrap;

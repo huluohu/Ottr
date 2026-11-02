@@ -560,7 +560,8 @@
       "rulePattern": "正则（如 OTTR-\\d{6}）",
       "errRuleIncomplete": "规则名与正则都要填",
       "errRuleInvalid": "正则无法编译"
-    }
+    },
+    "followupPlaceholder": "追问…（Enter 发送）"
   },
   "tabs": {
     "duplicate": "复制页签",

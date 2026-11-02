@@ -10,11 +10,12 @@
 //   messages——见 aiStore 步骤 3），面板以「已脱敏 N 处」标注外发侧命中；
 // * 错误面：noProvider/noKey → 「去设置」按钮（App 注入 openSettings）；
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAiStore, useSessionAi } from "./aiStore";
 import { activeProvider } from "./settings";
 import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
+import { MarkdownText } from "./Markdown";
 import { useTerminalFocus } from "../terminal/terminalFocus";
 
 /** 从 markdown 形态的回复中提取 ``` 围栏代码块（位置 + 内容），供插终端按钮。 */
@@ -63,7 +64,7 @@ export function AnswerView({
     <div className="ai-answer" data-testid="ai-answer">
       {parts.map((p, i) =>
         p.kind === "text" ? (
-          <p key={i} className="ai-answer-text">{p.content}</p>
+          <MarkdownText key={i} content={p.content} />
         ) : (
           <CodeBlockRow key={i} code={p.content} rustId={rustId} inserter={inserter} disabled={disabled} onInserted={onInserted} />
         ),
@@ -96,6 +97,17 @@ export function DiagnosePanel({
   const usage = useSessionAi(sessionId).usage;
   const modelUsed = useSessionAi(sessionId).modelUsed;
   const elapsedMs = useSessionAi(sessionId).elapsedMs;
+  const messages = useSessionAi(sessionId).messages;
+  // 追问输入（本地态——输入框内容是瞬时 UI 状态，不进领域 store）。
+  const [followup, setFollowup] = useState("");
+  // 展示用轮次：正常走 messages；**兜底**——messages 为空但 answer 非空时，
+  // 把 answer 当作单条 assistant 轮（会话状态可能来自旧路径/恢复）。
+  const threadTurns =
+    messages.length > 0
+      ? messages
+      : answer !== ""
+        ? [{ role: "assistant" as const, content: answer }]
+        : [];
 
   // 「待看」徽标口径：面板渲染 = 用户已看到（MainArea 只在所属会话激活时
   // 挂载本组件，key=sessionId——切走再切回会重挂并再次 markSeen，无害）。
@@ -196,7 +208,30 @@ export function DiagnosePanel({
         </p>
       )}
 
-      <AnswerView disabled={status !== "done"} answer={answer} rustId={request.kind === "diagnose" ? request.rustId : null} inserter={inserter} onInserted={onInserted} />
+      {/* 对话气泡流（多轮追问会话，2026-11-02 批次二 C 项）：
+          user 轮 = 用户诉求（含首轮装配后的诊断上下文），assistant 轮 = 模型
+          回答（沿用 AnswerView：围栏代码块带插终端三档确认）。
+          **流式中的当前回答也在 messages 里**（末条 assistant 轮内容原地增长），
+          故此处不重复渲染 answer。 */}
+      <div className="ai-thread" data-testid="ai-thread">
+        {threadTurns.map((m, i) =>
+          m.role === "user" ? (
+            <div key={`u${i}`} className="ai-bubble ai-bubble-user" data-testid="ai-msg-user">
+              {m.content}
+            </div>
+          ) : (
+            <div key={`a${i}`} className="ai-bubble ai-bubble-assistant" data-testid="ai-msg-assistant">
+              <AnswerView
+                disabled={status !== "done"}
+                answer={m.content}
+                rustId={request.kind === "diagnose" ? request.rustId : null}
+                inserter={inserter}
+                onInserted={onInserted}
+              />
+            </div>
+          ),
+        )}
+      </div>
 
       {/* 用量透明化（2026-11-02 批次一 B 项）：模型 · token · 耗时。
           端点不回 usage 时只显示模型与耗时（不显示 token 数）——透明化是
@@ -221,6 +256,49 @@ export function DiagnosePanel({
           )}
         </div>
       )}
+
+      {/* 追问输入条（多轮追问会话，2026-11-02 批次二 C 项）：
+          Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）。 */}
+      <div className="ai-followup-row">
+        <input
+          type="text"
+          className="ai-followup-input"
+          data-testid="ai-followup-input"
+          aria-label={t("ai.followupPlaceholder")}
+          placeholder={t("ai.followupPlaceholder")}
+          value={followup}
+          disabled={running}
+          onChange={(e) => setFollowup(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              const text = followup.trim();
+              if (text === "") return;
+              setFollowup("");
+              void run(sessionId, text);
+            }
+          }}
+        />
+        {running ? (
+          <button className="ai-stop" data-testid="ai-followup-stop" onClick={() => abort(sessionId)}>
+            {t("ai.stop")}
+          </button>
+        ) : (
+          <button
+            className="btn-accent"
+            data-testid="ai-followup-send"
+            disabled={followup.trim() === ""}
+            onClick={() => {
+              const text = followup.trim();
+              if (text === "") return;
+              setFollowup("");
+              void run(sessionId, text);
+            }}
+          >
+            {t("ai.send")}
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

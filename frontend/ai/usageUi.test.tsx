@@ -44,6 +44,7 @@ describe("诊断面板用量行", () => {
           usage: { inputTokens: 120, outputTokens: 45 },
           modelUsed: "deepseek-chat",
           elapsedMs: 1234,
+          messages: [],
         },
       },
     });
@@ -78,6 +79,7 @@ describe("诊断面板用量行", () => {
           usage: null,
           modelUsed: "local-model",
           elapsedMs: 800,
+          messages: [],
         },
       },
     });
@@ -110,6 +112,7 @@ describe("诊断面板用量行", () => {
           usage: { inputTokens: 10, outputTokens: 2 },
           modelUsed: "m",
           elapsedMs: null,
+          messages: [],
         },
       },
     });

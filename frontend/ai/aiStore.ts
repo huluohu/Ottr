@@ -67,6 +67,16 @@ export type AiStatus = "idle" | "running" | "done" | "aborted" | "error";
 /** 错误细分（面板引导用）：未配 provider / 未配 key / 端点与网络错误。 */
 export type AiErrorKind = "noProvider" | "noKey" | "request";
 
+/** 对话的一轮（2026-11-02 批次二 C 项：多轮追问会话）。
+ *
+ * **内容一律脱敏后存**（追加进历史时 redact 一次）——历史要反复发给模型，
+ * 存明文等于把敏感值长期留在内存里并多次出网。
+ */
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 /** 单会话的 AI 面板状态切片（诊断/解释共用同一份）。 */
 export interface SessionAiState {
   request: AiRequest | null;
@@ -86,6 +96,9 @@ export interface SessionAiState {
   modelUsed: string | null;
   /** 本轮耗时（毫秒；发请求 → 流结束）。 */
   elapsedMs: number | null;
+  /** 对话历史（多轮追问会话，2026-11-02 批次二 C 项；脱敏后存储）。
+   * 首轮的 user 轮 = 装配后的诊断/解释上下文（含命令 + 输出尾 + 主机备注）。 */
+  messages: ChatTurn[];
 }
 
 const EMPTY_SLICE: SessionAiState = {
@@ -100,6 +113,7 @@ const EMPTY_SLICE: SessionAiState = {
   usage: null,
   modelUsed: null,
   elapsedMs: null,
+  messages: [],
 };
 
 interface AiStore {
@@ -123,7 +137,9 @@ interface AiStore {
   /** 会话收尾清理（App 搭 setSessionEndHook 钩子；abort + 摘除切片）。 */
   dropSession: (sessionId: string) => void;
   /** 执行/重试当前会话的请求。 */
-  run: (sessionId: string) => Promise<void>;
+  /** 执行/重试当前会话的请求；`followupText` 非空 = 追问轮（只带对话历史，
+   *  不重取输出尾 / 不重注入主机备注）。 */
+  run: (sessionId: string, followupText?: string) => Promise<void>;
 }
 
 /** 各会话在途请求的取消器（模块级——非响应式资源，与 sinks/定时器同一放置惯例）。 */
@@ -260,9 +276,12 @@ export const useAiStore = create<AiStore>((set, get) => {
       get().close(sessionId);
     },
 
-    run: async (sessionId) => {
+    run: async (sessionId, followupText) => {
       const req = slice(sessionId).request;
       if (!req) return;
+      // 追问轮（followupText 非空）：**不重取输出尾、不重注入主机备注**——
+      // 首轮已经把这些发给模型了，追问只带对话历史（省 token、不重复出网）。
+      const isFollowup = typeof followupText === "string" && followupText.trim() !== "";
       patch(sessionId, {
         status: "running",
         answer: "",
@@ -317,10 +336,16 @@ export const useAiStore = create<AiStore>((set, get) => {
         hostname: settings.redaction.hostname,
         custom: settings.redaction.custom,
       };
-      const subject = redact(req.kind === "diagnose" ? req.command : req.text, redactOpts);
+      // 追问轮：只把追问本身脱敏后并入历史（首轮上下文不重取）。
+      const followupRedacted = isFollowup
+        ? redact(followupText as string, redactOpts)
+        : null;
+      const subject = isFollowup
+        ? { text: followupRedacted?.text ?? "", findings: followupRedacted?.findings ?? [] }
+        : redact(req.kind === "diagnose" ? req.command : req.text, redactOpts);
       let outputTail = "";
       let outputRedactions: RedactFinding[] = [];
-      if (req.kind === "diagnose" && req.rustId) {
+      if (!isFollowup && req.kind === "diagnose" && req.rustId) {
         try {
           const tail = await vaultApi.sessionTail(req.rustId, TAIL_BYTES);
           const red = redact(tail, redactOpts);
@@ -331,15 +356,19 @@ export const useAiStore = create<AiStore>((set, get) => {
         }
       }
       // 主机备注注入（2026-11-02 批次一 A 项）：持久化在 vault 的上下文
-      // （系统版本、服务管理方式、日志路径…），脱敏后随本轮发出。
+      // （系统版本、服务管理方式、日志路径…），脱敏后随**首轮**发出。
       // 取数失败一律回落「无备忘段」——增强项不是前置条件。
-      const notes = await fetchHostNotes(req.hostId);
-      const hostCtx = buildHostContextBlock(notes, redactOpts);
-      const hostContext = hostCtx.text
-        ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}`
-        : "";
+      // 追问轮不重复注入（首轮已发过）。
+      let hostContext = "";
+      let hostCtxFindings: RedactFinding[] = [];
+      if (!isFollowup) {
+        const notes = await fetchHostNotes(req.hostId);
+        const hostCtx = buildHostContextBlock(notes, redactOpts);
+        hostCtxFindings = hostCtx.findings;
+        hostContext = hostCtx.text ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}` : "";
+      }
       patch(sessionId, {
-        redactions: [...subject.findings, ...outputRedactions, ...hostCtx.findings],
+        redactions: [...subject.findings, ...outputRedactions, ...hostCtxFindings],
       });
 
       // 空内容不诊断（2026-10-21 用户裁定，AI 层的第二道防线）：命令与输出
@@ -348,6 +377,7 @@ export const useAiStore = create<AiStore>((set, get) => {
       // 这里兜住其余路径（迟到的空 tail、未来新入口）。手动「解释」不受限
       // （选区非空才可达菜单）。
       if (
+        !isFollowup &&
         req.kind === "diagnose" &&
         subject.text.trim() === "" &&
         outputTail.trim() === ""
@@ -362,12 +392,20 @@ export const useAiStore = create<AiStore>((set, get) => {
       }
 
       // --- 4. 流式（BYOK 直连；取消器按会话隔离）---
+      // 对话历史：首轮 = 装配后的诊断上下文；追问轮 = 只带历史 + 本次追问。
+      // 历史内容一律脱敏后存（追加时已 redact）。
+      const history = slice(sessionId).messages;
+      const userContent = isFollowup
+        ? subject.text
+        : buildUserMessage(req, subject.text, outputTail, hostContext);
       const messages: ChatMessage[] = [
-        {
-          role: "user",
-          content: buildUserMessage(req, subject.text, outputTail, hostContext),
-        },
+        ...history.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user", content: userContent },
       ];
+      // 本轮的 assistant 占位（流式期间原地追加内容）。
+      const assistantTurn: ChatTurn = { role: "assistant", content: "" };
+      const turnsSoFar: ChatTurn[] = [...history, { role: "user", content: userContent }];
+      patch(sessionId, { messages: [...turnsSoFar, assistantTurn] });
       const ac = new AbortController();
       controllers.set(sessionId, ac);
       const startedAt = performance.now();
@@ -381,8 +419,10 @@ export const useAiStore = create<AiStore>((set, get) => {
         })) {
           if (controllers.get(sessionId) !== ac) return; // 已被本会话新一轮取代/关闭
           if (ac.signal.aborted) break;
+          assistantTurn.content += delta.text;
           patch(sessionId, {
             answer: slice(sessionId).answer + delta.text,
+            messages: [...turnsSoFar, { ...assistantTurn }],
             status: "running",
             // 用量/模型：端点给了才更新（拿不到就是 null → UI 只显示耗时）。
             usage: delta.usage ?? slice(sessionId).usage,

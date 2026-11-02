@@ -351,7 +351,8 @@ async function renderShot(): Promise<void> {
   ];
 
   // 会话：仅终端配图需要（欢迎首页配图走零会话空态）。
-  const withSession = shotMode === "terminal" || shotMode === "ai-panel";
+  const withSession =
+    shotMode === "terminal" || shotMode === "ai-panel" || shotMode === "ai-ask";
   useSessionStore.setState({
     sessions: withSession
       ? [
@@ -387,6 +388,34 @@ async function renderShot(): Promise<void> {
   // AI 诊断面板夹具（2026-11-02）：面板整高右栏后，「标题/退出码徽章是否被上方
   // 视图切换器工具行压住」这类布局回归需要能量测的稳定夹具——面板必须有
   // request 才渲染（DiagnosePanel 无请求返回 null），故此处种一条假请求。
+  // Ask Ottr 提问态（批次四 P0）：面板开着、还没回答——底部输入条即提问框。
+  if (shotMode === "ai-ask") {
+    const { useAiStore } = await import("./../ai/aiStore");
+    useAiStore.setState({
+      sessions: {
+        "shot-tab": {
+          request: {
+            kind: "ask",
+            sessionId: "shot-tab",
+            rustId: "pty-shot",
+            hostId: 1,
+            hostName: "fixture",
+          },
+          status: "idle",
+          answer: "",
+          errorKind: null,
+          error: null,
+          redactions: [],
+          settingsUsed: null,
+          seen: true,
+          usage: null,
+          modelUsed: null,
+          elapsedMs: null,
+          messages: [],
+        },
+      },
+    });
+  }
   if (shotMode === "ai-panel") {
     const { useAiStore } = await import("./../ai/aiStore");
     useAiStore.setState({

@@ -72,8 +72,49 @@ fn fingerprint_from_key_b64(b64: &str) -> Option<String> {
     Some(fingerprint_from_blob(&blob))
 }
 
-/// 解析整份 known_hosts → `(host, port, fingerprint)` 列表
-/// （导入本地 known_hosts 的解析面，2026-11-02）。
+/// known_hosts 的一条解析结果（含**密钥型**——择一优先级要用）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnownHostEntry {
+    /// 主机地址（IPv6 为裸地址，方括号由上层统一补回）。
+    pub host: String,
+    /// 端口（22 = 裸 host 形态）。
+    pub port: u16,
+    /// 密钥型（`ssh-ed25519` / `ecdsa-sha2-nistp256` / `ssh-rsa` …）。
+    pub key_type: String,
+    /// `SHA256:…` 指纹。
+    pub fingerprint: String,
+}
+
+/// 端点归组后的择一结果（导入落库的输入面）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectedEndpoint {
+    pub host: String,
+    pub port: u16,
+    /// **择一后**的落库指纹（按 [`key_type_rank`] 优先级）。
+    pub fingerprint: String,
+    /// 该端点在源文件中的**全部**候选指纹（重复判定用：既有锚 ∈ 候选集 → 重复）。
+    pub candidates: Vec<String>,
+}
+
+/// 密钥型优先级（用户裁定 2026-11-02：同端点多密钥型**优先 ed25519**）。
+///
+/// 序号小 = 优先。`ssh-rsa`（SHA-1）垫底——现代 OpenSSH 已默认关闭
+/// `ssh-rsa` 主机密钥算法，服务端出示它的概率最低。
+pub const KEY_TYPE_PRIORITY: &[&str] = &[
+    "ssh-ed25519",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+    "ssh-rsa",
+];
+
+/// 密钥型 → 优先级序号（越小越优先）；未知型 = `None`（按文件序兜底）。
+pub fn key_type_rank(key_type: &str) -> Option<usize> {
+    KEY_TYPE_PRIORITY.iter().position(|k| *k == key_type)
+}
+
+/// 解析整份 known_hosts → 条目列表（含密钥型；导入本地 known_hosts 的解析面，
+/// 2026-11-02）。
 ///
 /// 指纹算法复用 [`line_fingerprint`]（与 `ssh-keygen -lf` 逐字一致），本函数
 /// 只做「host 列 → 端点」这层解析。跳过：
@@ -90,8 +131,8 @@ fn fingerprint_from_key_b64(b64: &str) -> Option<String> {
 ///   上层 `host_endpoint_key` 统一补回）。
 ///
 /// **一个 host 可能有多枚密钥**（rsa/ecdsa/ed25519 并存）——本函数**全部返回**，
-/// 由上层择一（择一语义见 `ottr_vault::KnownHosts::import`）。
-pub fn parse_known_hosts_file(content: &str) -> Vec<(String, u16, String)> {
+/// 由 [`select_by_endpoint`] 择一。
+pub fn parse_known_hosts_file(content: &str) -> Vec<KnownHostEntry> {
     let mut out = Vec::new();
     for raw in content.lines() {
         let line = raw.trim();
@@ -107,17 +148,78 @@ pub fn parse_known_hosts_file(content: &str) -> Vec<(String, u16, String)> {
         let Some(fingerprint) = line_fingerprint(line) else {
             continue;
         };
-        let Some(host_field) = line.split_whitespace().next() else {
+        let mut parts = line.split_whitespace();
+        let (Some(host_field), Some(key_type)) = (parts.next(), parts.next()) else {
             continue;
         };
         for pattern in host_field.split(',') {
             let Some((host, port)) = parse_host_port(pattern) else {
                 continue;
             };
-            out.push((host, port, fingerprint.clone()));
+            out.push(KnownHostEntry {
+                host,
+                port,
+                key_type: key_type.to_string(),
+                fingerprint: fingerprint.clone(),
+            });
         }
     }
     out
+}
+
+/// 端点归组 + 密钥型优先级择一（用户裁定 2026-11-02：优先 ed25519）。
+///
+/// 同端点的多枚密钥里挑**优先级最高**的一枚落库（[`key_type_rank`]：
+/// ed25519 > ecdsa > rsa）——落库的是「服务端最可能实际出示」的那一枚，
+/// 否则首次连接会因指纹不符被判成 changed 强提醒，导入白做。
+///
+/// 优先级相同（同一密钥型多行）或全部为未知型 → 取**文件序第一条**
+/// （与既有 `fingerprint_for_host` 的「取首条」口径一致）。
+///
+/// 候选集（candidates）保留同端点的**全部**指纹：落库层据此判定「既有锚
+/// 是否仍在候选集内」——在则算重复（用户先前锚的是同一台服务器的另一型
+/// 密钥），不在才算真冲突。
+pub fn select_by_endpoint(entries: &[KnownHostEntry]) -> Vec<SelectedEndpoint> {
+    let mut grouped: Vec<SelectedEndpoint> = Vec::new();
+    for entry in entries {
+        let found = grouped
+            .iter_mut()
+            .find(|g| g.host == entry.host && g.port == entry.port);
+        match found {
+            Some(g) => {
+                if !g.candidates.contains(&entry.fingerprint) {
+                    g.candidates.push(entry.fingerprint.clone());
+                }
+                // 优先级更高者夺魁（同优先级不动，保留文件序首条）。
+                let challenger_rank = key_type_rank(&entry.key_type);
+                let incumbent_rank = ranked_key_type(entries, g, &g.fingerprint);
+                if challenger_rank.is_some()
+                    && (incumbent_rank.is_none() || challenger_rank < incumbent_rank)
+                {
+                    g.fingerprint = entry.fingerprint.clone();
+                }
+            }
+            None => grouped.push(SelectedEndpoint {
+                host: entry.host.clone(),
+                port: entry.port,
+                fingerprint: entry.fingerprint.clone(),
+                candidates: vec![entry.fingerprint.clone()],
+            }),
+        }
+    }
+    grouped
+}
+
+/// 归组内当前落库指纹对应的密钥型（用于比优先级；找不到 = 未知型）。
+fn ranked_key_type(
+    entries: &[KnownHostEntry],
+    group: &SelectedEndpoint,
+    fingerprint: &str,
+) -> Option<usize> {
+    entries
+        .iter()
+        .find(|e| e.host == group.host && e.port == group.port && e.fingerprint == fingerprint)
+        .and_then(|e| key_type_rank(&e.key_type))
 }
 
 /// known_hosts host 列的一段 → `(地址, 端口)`。

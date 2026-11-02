@@ -1234,6 +1234,23 @@ pub struct KnownHostsImportReport {
     pub errors: Vec<String>,
 }
 
+/// 导入条目（2026-11-02）：**择一后**的端点 + 该端点的全部候选指纹。
+///
+/// 「择一」（同端点多密钥型挑一枚落库）由解析层完成——密钥型优先级是
+/// OpenSSH 语义（`ottr_ssh::known_hosts::select_by_endpoint`），vault 层不
+/// 认识密钥型，只接收择一结果。
+pub struct KnownHostImportEntry {
+    /// 主机地址（IPv6 裸地址）。
+    pub host: String,
+    /// 端口。
+    pub port: u16,
+    /// 落库指纹（择一后的那一枚）。
+    pub fingerprint: String,
+    /// 该端点在源文件里的**全部**候选指纹——既有锚 ∈ 候选集 → 重复；
+    /// 不在 → 真冲突。
+    pub candidates: Vec<String>,
+}
+
 impl KnownHosts {
     /// 首见入库（state=pending、verified=0）；该端点已有记录则原样返回
     /// （first_seen 不刷新、fingerprint 不覆盖——换钥必须走 changed 流程，
@@ -1313,38 +1330,26 @@ impl KnownHosts {
     /// * 同端点已存在但指纹不同 → 计入 `skipped_conflict`（不覆盖——既有
     ///   changed 状态由用户显式裁定，导入不得擅自改锚）。
     ///
-    /// 择一（多枚密钥）：一个端点常有 rsa/ecdsa/ed25519 多枚密钥，解析层
-    /// 全部返回；本层按端点归组后**只落一枚**（文件里第一条），其余候选
-    /// 仅用于「既有锚是否仍在文件候选集内」的判定（是 → 重复，非冲突——
-    /// 服务器多型密钥下用户先前锚的可能是另一型，误判成冲突会满屏噪声）。
+    /// 择一（多枚密钥）：择一由解析层完成（`ottr_ssh::known_hosts::
+    /// select_by_endpoint`，按 ed25519 > ecdsa > rsa 优先级）——本层只收
+    /// 择一结果与该端点的**全部**候选指纹。
     ///
     /// 端点键用 [`host_endpoint_key`] 构造（与运行时 TOFU 记账同口径）。
-    pub fn import(vault: &Vault, entries: &[(String, u16, String)]) -> KnownHostsImportReport {
+    pub fn import(vault: &Vault, entries: &[KnownHostImportEntry]) -> KnownHostsImportReport {
         let mut report = KnownHostsImportReport::default();
-        // 端点 → 候选指纹（保序去重）：同端点多枚密钥归组，避免互相覆盖。
-        let mut grouped: Vec<(String, Vec<String>)> = Vec::new();
-        for (host, port, fingerprint) in entries {
-            let host_key = host_endpoint_key(host, i64::from(*port));
-            match grouped.iter_mut().find(|(key, _)| *key == host_key) {
-                Some((_, candidates)) => {
-                    if !candidates.contains(fingerprint) {
-                        candidates.push(fingerprint.clone());
-                    }
-                }
-                None => grouped.push((host_key, vec![fingerprint.clone()])),
-            }
-        }
-        for (host_key, candidates) in grouped {
-            let chosen = candidates[0].clone();
+        for entry in entries {
+            let host_key = host_endpoint_key(&entry.host, i64::from(entry.port));
             match Self::get(vault, &host_key) {
                 Ok(Some(existing)) => {
-                    if candidates.contains(&existing.fingerprint) {
+                    // 既有锚 ∈ 候选集 → 重复（用户先前锚的是同一台服务器的
+                    // 另一型密钥，误判成冲突会满屏噪声）；不在 → 真冲突。
+                    if entry.candidates.contains(&existing.fingerprint) {
                         report.skipped_duplicate += 1;
                     } else {
                         report.skipped_conflict += 1;
                     }
                 }
-                Ok(None) => match Self::verify(vault, &host_key, &chosen) {
+                Ok(None) => match Self::verify(vault, &host_key, &entry.fingerprint) {
                     Ok(_) => report.added += 1,
                     Err(e) => report.errors.push(format!("{host_key}: {e}")),
                 },

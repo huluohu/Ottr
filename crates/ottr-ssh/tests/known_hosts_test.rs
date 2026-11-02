@@ -4,7 +4,10 @@
 //!
 //! 金样向量：ed25519 公钥（`ssh-keygen -lf` 实测指纹），
 //! `SHA256:aQYbRlhLOCUDFmDqZp0i2/ltZvBtACX57D/77LUPAU4`。
-use ottr_ssh::known_hosts::{fingerprint_for_host, line_fingerprint, parse_known_hosts_file};
+use ottr_ssh::known_hosts::{
+    KnownHostEntry, fingerprint_for_host, key_type_rank, line_fingerprint, parse_known_hosts_file,
+    select_by_endpoint,
+};
 
 const GOLDEN_B64: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIKGG+QLrOYImKV/X+7f0EJ1eqaBx7XCX7Dqa2/+VS+/w";
 const GOLDEN_FP: &str = "SHA256:aQYbRlhLOCUDFmDqZp0i2/ltZvBtACX57D/77LUPAU4";
@@ -116,7 +119,12 @@ fn parse_known_hosts_file_skips_comments_blanks_hashed_and_markers() {
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
         parsed,
-        vec![("real.example.com".to_string(), 22, ED_A_FP.to_string())]
+        vec![KnownHostEntry {
+            host: "real.example.com".to_string(),
+            port: 22,
+            key_type: "ssh-ed25519".to_string(),
+            fingerprint: ED_A_FP.to_string(),
+        }]
     );
 }
 
@@ -133,9 +141,24 @@ fn parse_known_hosts_file_extracts_port_and_defaults_to_22() {
     assert_eq!(
         parsed,
         vec![
-            ("10.0.0.1".to_string(), 2222, ED_A_FP.to_string()),
-            ("bare.example.com".to_string(), 22, ED_C_FP.to_string()),
-            ("example.org".to_string(), 2200, ED_C_FP.to_string()),
+            KnownHostEntry {
+                host: "10.0.0.1".to_string(),
+                port: 2222,
+                key_type: "ssh-ed25519".to_string(),
+                fingerprint: ED_A_FP.to_string(),
+            },
+            KnownHostEntry {
+                host: "bare.example.com".to_string(),
+                port: 22,
+                key_type: "ssh-ed25519".to_string(),
+                fingerprint: ED_C_FP.to_string(),
+            },
+            KnownHostEntry {
+                host: "example.org".to_string(),
+                port: 2200,
+                key_type: "ssh-ed25519".to_string(),
+                fingerprint: ED_C_FP.to_string(),
+            },
         ]
     );
 }
@@ -148,7 +171,12 @@ fn parse_known_hosts_file_handles_ipv6_bracket_form() {
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
         parsed,
-        vec![("fe80::1".to_string(), 2222, ED_A_FP.to_string())]
+        vec![KnownHostEntry {
+            host: "fe80::1".to_string(),
+            port: 2222,
+            key_type: "ssh-ed25519".to_string(),
+            fingerprint: ED_A_FP.to_string(),
+        }]
     );
 }
 
@@ -165,9 +193,24 @@ fn parse_known_hosts_file_returns_every_key_of_a_host() {
     assert_eq!(
         parsed,
         vec![
-            ("multi.example.com".to_string(), 22, ED_A_FP.to_string()),
-            ("multi.example.com".to_string(), 22, RSA_B_FP.to_string()),
-            ("multi.example.com".to_string(), 22, ED_C_FP.to_string()),
+            KnownHostEntry {
+                host: "multi.example.com".to_string(),
+                port: 22,
+                key_type: "ssh-ed25519".to_string(),
+                fingerprint: ED_A_FP.to_string(),
+            },
+            KnownHostEntry {
+                host: "multi.example.com".to_string(),
+                port: 22,
+                key_type: "ssh-rsa".to_string(),
+                fingerprint: RSA_B_FP.to_string(),
+            },
+            KnownHostEntry {
+                host: "multi.example.com".to_string(),
+                port: 22,
+                key_type: "ssh-ed25519".to_string(),
+                fingerprint: ED_C_FP.to_string(),
+            },
         ]
     );
 }
@@ -181,8 +224,18 @@ fn parse_known_hosts_file_splits_comma_separated_patterns() {
     assert_eq!(
         parsed,
         vec![
-            ("a.example.com".to_string(), 22, ED_A_FP.to_string()),
-            ("b.example.com".to_string(), 22, ED_A_FP.to_string()),
+            KnownHostEntry {
+                host: "a.example.com".to_string(),
+                port: 22,
+                key_type: "ssh-ed25519".to_string(),
+                fingerprint: ED_A_FP.to_string(),
+            },
+            KnownHostEntry {
+                host: "b.example.com".to_string(),
+                port: 22,
+                key_type: "ssh-ed25519".to_string(),
+                fingerprint: ED_A_FP.to_string(),
+            },
         ]
     );
 }
@@ -200,6 +253,85 @@ fn parse_known_hosts_file_skips_malformed_lines() {
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
         parsed,
-        vec![("good.example.com".to_string(), 22, ED_A_FP.to_string())]
+        vec![KnownHostEntry {
+            host: "good.example.com".to_string(),
+            port: 22,
+            key_type: "ssh-ed25519".to_string(),
+            fingerprint: ED_A_FP.to_string(),
+        }]
     );
+}
+
+// ---------------------------------------------------------------------------
+// 端点归组 + 择一（用户裁定 2026-11-02：同端点多密钥型**优先 ed25519**）
+// ---------------------------------------------------------------------------
+
+/// 择一优先级：同端点并存 rsa 与 ed25519 时，**ed25519 夺魁**——落库的是
+/// 服务端最可能实际出示的那一枚（否则首次连接会因指纹不符被判 changed）。
+#[test]
+fn select_by_endpoint_prefers_ed25519_over_rsa_regardless_of_file_order() {
+    let content = format!(
+        "multi.example.com ssh-rsa {RSA_B_B64}\n\
+         multi.example.com ssh-ed25519 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    let selected = select_by_endpoint(&parsed);
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].host, "multi.example.com");
+    assert_eq!(selected[0].port, 22);
+    // 落库的是 ed25519 那一枚（尽管它在文件里排第二）。
+    assert_eq!(selected[0].fingerprint, ED_A_FP);
+    // 候选集保留两枚——既有锚 ∈ 候选集 → 判重复而非冲突。
+    assert_eq!(selected[0].candidates.len(), 2);
+    assert!(selected[0].candidates.iter().any(|c| c == RSA_B_FP));
+    assert!(selected[0].candidates.iter().any(|c| c == ED_A_FP));
+}
+
+/// 择一优先级：ecdsa-sha2-nistp256 优先于 ssh-rsa。
+#[test]
+fn select_by_endpoint_prefers_ecdsa_over_rsa() {
+    let content = format!(
+        "multi.example.com ssh-rsa {RSA_B_B64}\n\
+         multi.example.com ecdsa-sha2-nistp256 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    let selected = select_by_endpoint(&parsed);
+    assert_eq!(selected[0].fingerprint, ED_A_FP);
+}
+
+/// 择一优先级表：ed25519 > ecdsa-256/384/521 > rsa，未知型无排名。
+#[test]
+fn key_type_rank_orders_ed25519_first_and_rsa_last() {
+    assert_eq!(key_type_rank("ssh-ed25519"), Some(0));
+    assert_eq!(key_type_rank("ecdsa-sha2-nistp256"), Some(1));
+    assert_eq!(key_type_rank("ssh-rsa"), Some(4));
+    assert_eq!(key_type_rank("sk-ssh-ed25519@openssh.com"), None);
+}
+
+/// 同密钥型多行（文件序首条夺魁——与既有 `fingerprint_for_host` 的取首条
+/// 口径一致），候选集仍收全。
+#[test]
+fn select_by_endpoint_keeps_first_of_same_key_type() {
+    let content = format!(
+        "multi.example.com ssh-ed25519 {ED_A_B64}\n\
+         multi.example.com ssh-ed25519 {ED_C_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    let selected = select_by_endpoint(&parsed);
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0].fingerprint, ED_A_FP);
+    assert_eq!(selected[0].candidates.len(), 2);
+}
+
+/// 不同端点互不干扰（归组按 host+port）。
+#[test]
+fn select_by_endpoint_groups_per_endpoint() {
+    let content = format!(
+        "a.example.com ssh-rsa {RSA_B_B64}\n\
+         b.example.com ssh-rsa {RSA_B_B64}\n\
+         [a.example.com]:2222 ssh-rsa {RSA_B_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    let selected = select_by_endpoint(&parsed);
+    assert_eq!(selected.len(), 3);
 }

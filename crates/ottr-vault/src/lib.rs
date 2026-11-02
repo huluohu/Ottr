@@ -28,9 +28,9 @@ pub use crypto::{Cipher, aad};
 // 主机清单 CSV 导出（BL-206：join/序列化随实体同库可单测；desktop 只管路径与落盘）
 pub use entities::{
     Credential, CredentialInput, CredentialKind, CredentialPatch, Credentials, Host, HostGroup,
-    HostGroups, HostInput, HostProtocol, Hosts, KnownHost, KnownHostState, KnownHosts,
-    KnownHostsImportReport, SecretField, Snippet, SnippetInput, Snippets, host_endpoint_key,
-    parse_endpoint_key,
+    HostGroups, HostInput, HostProtocol, Hosts, KnownHost, KnownHostImportEntry, KnownHostState,
+    KnownHosts, KnownHostsImportReport, SecretField, Snippet, SnippetInput, Snippets,
+    host_endpoint_key, parse_endpoint_key,
 };
 pub use export::{hosts_csv, ssh_config_text, tabby_json, xshell_sessions};
 pub use forwards::{ForwardKind, PortForward, PortForwardInput, PortForwards};

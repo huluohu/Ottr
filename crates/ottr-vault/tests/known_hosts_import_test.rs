@@ -12,10 +12,35 @@
 
 mod common;
 use ottr_vault::entities::KnownHostState;
-use ottr_vault::{KnownHosts, Vault, host_endpoint_key};
+use ottr_vault::{KnownHostImportEntry, KnownHosts, Vault, host_endpoint_key};
 
 fn open_vault(dir: &std::path::Path) -> Vault {
     common::open_vault(dir)
+}
+
+/// 构造导入条目（单候选）。
+fn entry(host: &str, port: u16, fingerprint: &str) -> KnownHostImportEntry {
+    KnownHostImportEntry {
+        host: host.to_string(),
+        port,
+        fingerprint: fingerprint.to_string(),
+        candidates: vec![fingerprint.to_string()],
+    }
+}
+
+/// 构造导入条目（多候选——择一后的落库指纹 + 端点全部候选）。
+fn entry_with_candidates(
+    host: &str,
+    port: u16,
+    fingerprint: &str,
+    candidates: &[&str],
+) -> KnownHostImportEntry {
+    KnownHostImportEntry {
+        host: host.to_string(),
+        port,
+        fingerprint: fingerprint.to_string(),
+        candidates: candidates.iter().map(|c| c.to_string()).collect(),
+    }
 }
 
 const FP_A: &str = "SHA256:pa73sHYbI8OWfh46t85LS1g0pTlqeryQLEvZ6rSlJYI";
@@ -29,10 +54,7 @@ fn import_lands_verified_trust_anchors() {
 
     let report = KnownHosts::import(
         &vault,
-        &[
-            ("10.0.0.1".to_string(), 22, FP_A.to_string()),
-            ("10.0.0.2".to_string(), 2222, FP_B.to_string()),
-        ],
+        &[entry("10.0.0.1", 22, FP_A), entry("10.0.0.2", 2222, FP_B)],
     );
     assert_eq!(report.added, 2);
     assert_eq!(report.skipped_duplicate, 0);
@@ -60,7 +82,7 @@ fn import_lands_verified_trust_anchors() {
 fn repeated_import_counts_duplicate_and_keeps_anchor() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
-    let entries = vec![("10.0.0.1".to_string(), 22, FP_A.to_string())];
+    let entries = vec![entry("10.0.0.1", 22, FP_A)];
 
     let first = KnownHosts::import(&vault, &entries);
     assert_eq!(first.added, 1);
@@ -84,14 +106,11 @@ fn conflicting_fingerprint_is_skipped_and_never_overwrites_the_anchor() {
     let key = host_endpoint_key("10.0.0.1", 22);
 
     // 既有锚 = FP_A（ok 态）。
-    KnownHosts::import(&vault, &[("10.0.0.1".to_string(), 22, FP_A.to_string())]);
+    KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)]);
     let before = KnownHosts::get(&vault, &key).unwrap().unwrap();
 
     // 文件里同一端点是另一枚指纹 → 冲突：计入冲突、**不覆盖**。
-    let report = KnownHosts::import(
-        &vault,
-        &[("10.0.0.1".to_string(), 22, FP_OTHER.to_string())],
-    );
+    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_OTHER)]);
     assert_eq!(report.added, 0);
     assert_eq!(report.skipped_conflict, 1);
     assert_eq!(report.skipped_duplicate, 0);
@@ -112,13 +131,13 @@ fn import_does_not_clear_a_changed_state() {
     let key = host_endpoint_key("10.0.0.1", 22);
 
     // 服务器换钥 → changed（锚保留旧指纹）。
-    KnownHosts::import(&vault, &[("10.0.0.1".to_string(), 22, FP_A.to_string())]);
+    KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)]);
     let changed = KnownHosts::mark_changed(&vault, &key, FP_OTHER).unwrap();
     assert_eq!(changed.state, KnownHostState::Changed);
 
     // 导入旧锚（文件里还是旧钥）——不得把 changed 洗回 ok（安全信号不许被
     // 导入顺手抹掉），也不得改锚。
-    let report = KnownHosts::import(&vault, &[("10.0.0.1".to_string(), 22, FP_A.to_string())]);
+    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)]);
     assert_eq!(report.added, 0);
     assert_eq!(report.skipped_duplicate, 1);
     let after = KnownHosts::get(&vault, &key).unwrap().unwrap();
@@ -139,10 +158,12 @@ fn multi_key_endpoint_is_collapsed_to_one_anchor() {
 
     let report = KnownHosts::import(
         &vault,
-        &[
-            ("multi.example.com".to_string(), 22, FP_A.to_string()),
-            ("multi.example.com".to_string(), 22, FP_B.to_string()),
-        ],
+        &[entry_with_candidates(
+            "multi.example.com",
+            22,
+            FP_A,
+            &[FP_A, FP_B],
+        )],
     );
     assert_eq!(report.added, 1, "同端点多枚密钥只落一条锚");
     assert_eq!(report.skipped_conflict, 0, "同端点候选之间不算冲突");
@@ -151,10 +172,12 @@ fn multi_key_endpoint_is_collapsed_to_one_anchor() {
     // 再导一次：既有锚就是文件里的候选之一 → 重复（非冲突）。
     let again = KnownHosts::import(
         &vault,
-        &[
-            ("multi.example.com".to_string(), 22, FP_A.to_string()),
-            ("multi.example.com".to_string(), 22, FP_B.to_string()),
-        ],
+        &[entry_with_candidates(
+            "multi.example.com",
+            22,
+            FP_A,
+            &[FP_A, FP_B],
+        )],
     );
     assert_eq!(again.added, 0);
     assert_eq!(again.skipped_duplicate, 1);
@@ -171,17 +194,16 @@ fn existing_anchor_within_candidates_is_duplicate_not_conflict() {
     let key = host_endpoint_key("multi.example.com", 22);
 
     // 既有锚 = FP_B（用户先前锚的另一型密钥）。
-    KnownHosts::import(
-        &vault,
-        &[("multi.example.com".to_string(), 22, FP_B.to_string())],
-    );
+    KnownHosts::import(&vault, &[entry("multi.example.com", 22, FP_B)]);
 
     let report = KnownHosts::import(
         &vault,
-        &[
-            ("multi.example.com".to_string(), 22, FP_A.to_string()),
-            ("multi.example.com".to_string(), 22, FP_B.to_string()),
-        ],
+        &[entry_with_candidates(
+            "multi.example.com",
+            22,
+            FP_A,
+            &[FP_A, FP_B],
+        )],
     );
     assert_eq!(report.added, 0);
     assert_eq!(report.skipped_duplicate, 1);

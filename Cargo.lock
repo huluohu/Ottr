@@ -3806,6 +3806,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ottr-totp"
+version = "0.1.0"
+dependencies = [
+ "data-encoding",
+ "hmac",
+ "sha1",
+]
+
+[[package]]
 name = "ottr-transfer"
 version = "0.1.0"
 dependencies = [

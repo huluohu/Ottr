@@ -1,7 +1,7 @@
 [workspace]
 
 resolver = "2"
-members = ["desktop", "crates/ottr-mcp", "crates/ottr-ssh", "crates/ottr-transfer", "crates/ottr-term", "crates/ottr-bench", "crates/ottr-vault", "crates/ottr-monitor", "crates/ottr-cron"]
+members = ["desktop", "crates/ottr-mcp", "crates/ottr-ssh", "crates/ottr-transfer", "crates/ottr-term", "crates/ottr-bench", "crates/ottr-vault", "crates/ottr-monitor", "crates/ottr-cron", "crates/ottr-totp"]
 
 # Mobile targets (P4-T5, docs/adr/0001-mobile-scope.md): aarch64-apple-ios /
 # aarch64-linux-android are CHECK-ONLY targets (rustup target add; no committed
@@ -27,11 +27,16 @@ strip = true
 [workspace.dependencies]
 base64 = "0.22"
 bytes = "1"
+# TOTP（RFC 6238）用：data-encoding = base32 编解码；hmac/sha1 = HMAC-SHA1
+# （三者均已在锁文件中，提升为直接依赖不引入新 crate）。
+data-encoding = "2"
+hmac = "0.13"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rand = "0.10"
 russh = "0.63.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha1 = "0.11"
 sha2 = "0.10"
 # 本机监控采样（本地终端会话）：CPU/内存/负载/网速/磁盘 + 进程列表/用户名
 # 跨三平台；开 system/disk/network/user 四个 feature（不拉 component/rayon；

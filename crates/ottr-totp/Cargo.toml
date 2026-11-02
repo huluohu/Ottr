@@ -1,0 +1,17 @@
+# TOTP 生成器（RFC 6238）——纯本地计算，绝不联网。
+#
+# 依赖选型说明（2026-11-02）：data-encoding / sha1 / hmac 三者**均已在
+# Cargo.lock 中**（russh 与 ssh-key 的传递依赖），提为直接依赖**不引入任何
+# 新 crate**。刻意不用 workspace 的 sha2 0.10 —— 它走 digest 0.10，与
+# hmac 0.13 / sha1 0.11 的 digest 0.11 **主版本不兼容**；TOTP 按 RFC 6238
+# 强制用 HMAC-SHA1，压根不碰 sha2，天然避开该分叉。
+[package]
+name = "ottr-totp"
+version = "0.1.0"
+edition = "2021"
+description = "RFC 6238 TOTP generation (local-only, never touches the network)"
+
+[dependencies]
+data-encoding = { workspace = true }
+hmac = { workspace = true }
+sha1 = { workspace = true }

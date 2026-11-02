@@ -6,7 +6,7 @@
 // * 手动锁定按钮（password 模式；Task 14 快捷键接 vault_lock 同一命令）；
 // * 外观（主题网格）/语言两项沿用 T2 词典键——persist 已迁 vault settings
 //   （ThemeContext / i18n index 负责读写，本页只触发 setMode/setLang）。
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
@@ -105,7 +105,7 @@ const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
   { id: "about", labelKey: "settings.sectionAbout" },
 ];
 
-const PANE_ICONS: Record<SettingsPane, JSX.Element> = {
+const PANE_ICONS: Record<SettingsPane, ReactNode> = {
   general: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />

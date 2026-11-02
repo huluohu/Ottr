@@ -148,3 +148,103 @@
   right: 0;
   height: var(--ottr-titlebar-inset);
 }
+
+/* --- 统一全宽顶栏（UnifiedHeader，40px 高度跨平台架构）--- */
+.unified-header {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  background: var(--surface-overlay);
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+  z-index: var(--z-topbar);
+  padding: 0 var(--space-2);
+}
+.unified-header-traffic-safe {
+  width: 76px;
+  height: 100%;
+  flex: none;
+}
+.unified-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 100%;
+}
+.unified-header-title {
+  padding: 0 var(--space-1);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  color: var(--color-accent-text);
+}
+.unified-header-drag {
+  flex: 1;
+  align-self: stretch;
+}
+.unified-header-search {
+  flex: none;
+  width: 100%;
+  max-width: 420px;
+  height: 26px;
+  background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-fg) 10%, transparent);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.unified-header-search:hover {
+  background: color-mix(in srgb, var(--color-fg) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  color: var(--color-fg);
+}
+.unified-header-search .search-icon {
+  flex: none;
+  opacity: 0.75;
+}
+.unified-header-search .search-text {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unified-header-search .search-kbd {
+  font-size: var(--text-2xs);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-fg) 8%, transparent);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-weight: 500;
+}
+.unified-header-mac-right {
+  width: 76px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: var(--space-2);
+  flex: none;
+}
+.unified-header-badge {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  padding: 1px var(--space-2);
+  border: 1px solid color-mix(in srgb, var(--color-fg) 8%, transparent);
+  border-radius: var(--radius-sm);
+}
+.unified-header-controls {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+

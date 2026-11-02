@@ -747,3 +747,77 @@
   justify-content: space-between;
   gap: var(--space-3);
 }
+
+/* --- 工具调用（批次五 P2）：待确认卡片 + 工具返回 ---------------------- */
+/* 待确认卡片是「确认闸门」：模型发起、**用户点执行才真跑**（既有安全模型：
+   AI 只给建议、用户执行）。视觉上要比普通气泡显眼（强调色左边框），
+   但不用 danger 红——红色在本应用语义 = 危险/删除，工具调用本身不是危险操作。 */
+.ai-tool-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ai-tool-pending-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.ai-tool-card {
+  border: 1px solid var(--color-accent-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--surface-raised);
+}
+.ai-tool-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.ai-tool-server {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.ai-tool-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-fg);
+  word-break: break-all;
+}
+.ai-tool-args {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  /* 参数可能很长：卡片不撑高面板，内部滚动。 */
+  max-height: 10em;
+  overflow-y: auto;
+}
+.ai-tool-card-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+/* 工具返回文本（气泡流的 assistant 侧）：原样输出，不走 Markdown 渲染。 */
+.ai-tool-result {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 16em;
+  overflow-y: auto;
+}

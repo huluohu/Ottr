@@ -494,7 +494,8 @@
     "openSettings": "Open settings",
     "prompt": {
       "diagnose": "You are a senior ops engineer. The user ran a failing command in an SSH terminal. Provide: **Cause** (1-3 sentences based on the output), **Fix commands** (each in a ```bash fenced block, independently runnable), **Notes** (optional, 1 sentence). Answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",
-      "explain": "You are a terminal assistant. Explain the selected terminal content (error/log/text): what it means, likely causes, and (if applicable) suggested next commands in ```bash fenced blocks. Be concise, answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim."
+      "explain": "You are a terminal assistant. Explain the selected terminal content (error/log/text): what it means, likely causes, and (if applicable) suggested next commands in ```bash fenced blocks. Be concise, answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim.",
+      "tools": "You may call the tools listed above to gather information or act on the system. **Tool calls only run after the user approves them**; if the user rejects a tool, answer with the information you already have."
     },
     "msg": {
       "exitCode": "Exit code",
@@ -502,6 +503,22 @@
       "outputTail": "Output tail",
       "explainTarget": "Explain this terminal content",
       "hostContext": "Host notes"
+    },
+    "tool": {
+      "awaiting": "Waiting for tool approval",
+      "server": "Server",
+      "tool": "Tool",
+      "args": "Arguments",
+      "approve": "Run",
+      "reject": "Reject",
+      "running": "Running…",
+      "callLabel": "Call {{server}}.{{tool}}",
+      "rejected": "The user rejected running this tool.",
+      "failedTag": "(tool run failed)",
+      "failed": "Tool run failed: {{error}}",
+      "unknownTool": "This tool is no longer available (its MCP server was removed or renamed).",
+      "limitReached": "Tool-call round limit reached ({{count}} rounds); no further tools will run. Answer with the information you already have.",
+      "truncated": "… (truncated)"
     },
     "nl2cmd": {
       "title": "AI Command",

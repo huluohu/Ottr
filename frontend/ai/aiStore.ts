@@ -26,9 +26,17 @@ import { create } from "zustand";
 import i18n from "../i18n";
 import { notify } from "../notify/core";
 import { vaultApi } from "../vault/api";
-import { createProvider, type ChatMessage, type ChatUsage } from "./provider";
-import { redact, type RedactFinding } from "./redact";
+import {
+  createProvider,
+  type ChatMessage,
+  type ChatTool,
+  type ChatUsage,
+  type ProviderMeta,
+  type ToolCall,
+} from "./provider";
+import { redact, type RedactFinding, type RedactOptions } from "./redact";
 import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
+import { loadMcpTools, resolveMcpTool } from "./mcpTools";
 import {
   TAIL_BYTES,
   activeProvider,
@@ -78,20 +86,62 @@ export interface AskRequest {
 
 export type AiRequest = DiagnoseRequest | ExplainRequest | AskRequest;
 
-export type AiStatus = "idle" | "running" | "done" | "aborted" | "error";
+export type AiStatus =
+  | "idle"
+  | "running"
+  | "done"
+  | "aborted"
+  | "error"
+  /** 工具调用待用户确认（本轮**暂停**——模型不得自动触发工具）。 */
+  | "awaiting_tool_approval";
 
 /** 错误细分（面板引导用）：未配 provider / 未配 key / 端点与网络错误。 */
 export type AiErrorKind = "noProvider" | "noKey" | "request";
 
-/** 对话的一轮（2026-11-02 批次二 C 项：多轮追问会话）。
+/**
+ * 对话的一轮（2026-11-02 批次二 C 项：多轮追问会话）。
  *
  * **内容一律脱敏后存**（追加进历史时 redact 一次）——历史要反复发给模型，
  * 存明文等于把敏感值长期留在内存里并多次出网。
+ *
+ * 角色扩到三种（批次五 P2 工具轮）：assistant 轮可带 `toolCalls`（它发起了
+ * 哪些工具调用），tool 轮带 `toolCallId` / `toolName`（对应哪次调用、什么工具）。
  */
 export interface ChatTurn {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
+  /** assistant 轮：它发起的工具调用。 */
+  toolCalls?: ToolCall[];
+  /** tool 轮：对应的调用 id（provider 的 call id）。 */
+  toolCallId?: string;
+  /** tool 轮：工具名（原始名）。 */
+  toolName?: string;
+  /** tool 轮：展示用的 server 名。 */
+  serverName?: string;
 }
+
+/**
+ * 待确认的工具调用（批次五 P2）。
+ *
+ * **AI 不自动执行任何东西**——本应用的既有安全模型是「模型给建议、用户执行」
+ * （诊断面板里的命令是插入终端、不是自动跑）。工具调用同此：模型发起后**挂起**
+ * 本轮，等用户点「执行 / 拒绝」。
+ */
+export interface PendingToolCall {
+  /** provider 的调用 id（与助手轮的 toolCalls 对应）。 */
+  id: string;
+  /** MCP server id（vault uuid；调用时还原用）。 */
+  serverId: string;
+  /** 展示名（server 的 name）。 */
+  serverName: string;
+  /** 原始工具名（调用时还原用）。 */
+  tool: string;
+  /** 参数 JSON 文本（**原样展示**——用户看到的即将被执行的参数）。 */
+  args: string;
+}
+
+/** 工具循环轮次上限（防模型无限调工具烧 token；BYOK 用户自掏腰包）。 */
+export const MAX_TOOL_ROUNDS = 5;
 
 /** 单会话的 AI 面板状态切片（诊断/解释共用同一份）。 */
 export interface SessionAiState {
@@ -115,6 +165,12 @@ export interface SessionAiState {
   /** 对话历史（多轮追问会话，2026-11-02 批次二 C 项；脱敏后存储）。
    * 首轮的 user 轮 = 装配后的诊断/解释上下文（含命令 + 输出尾 + 主机备注）。 */
   messages: ChatTurn[];
+  /** 待确认的工具调用（批次五 P2；**模型发起、用户点执行**才真跑）。 */
+  pendingToolCalls?: PendingToolCall[];
+  /** 本链已消耗的工具轮次（上限 MAX_TOOL_ROUNDS）。 */
+  toolRounds?: number;
+  /** 正在执行的工具调用 id（非空 = 执行中，按钮置灰）。 */
+  runningToolCallId?: string | null;
 }
 
 const EMPTY_SLICE: SessionAiState = {
@@ -130,6 +186,9 @@ const EMPTY_SLICE: SessionAiState = {
   modelUsed: null,
   elapsedMs: null,
   messages: [],
+  pendingToolCalls: [],
+  toolRounds: 0,
+  runningToolCallId: null,
 };
 
 interface AiStore {
@@ -159,6 +218,11 @@ interface AiStore {
   /** 执行/重试当前会话的请求；`followupText` 非空 = 追问轮（只带对话历史，
    *  不重取输出尾 / 不重注入主机备注）。 */
   run: (sessionId: string, followupText?: string) => Promise<void>;
+  /** 处置一个待确认的工具调用（批次五 P2）：
+   *  approve=true → 调 MCP server，结果作为 tool 消息入历史并**续跑一轮**；
+   *  approve=false → 追加一条「用户拒绝执行」的 tool 消息，同样续跑一轮。
+   *  同一时刻只允许一个工具在执行（防重复点击二次执行）。 */
+  resolveToolCall: (sessionId: string, callId: string, approve: boolean) => Promise<void>;
 }
 
 /** 各会话在途请求的取消器（模块级——非响应式资源，与 sinks/定时器同一放置惯例）。 */
@@ -227,14 +291,103 @@ export function buildUserMessage(
 const HISTORY_TURN_CAP = 8;
 const HISTORY_CHAR_CAP = 16 * 1024;
 
-export function capHistory<T extends { content: string }>(turns: T[]): T[] {
+export function capHistory<T extends { content: string }>(
+  turns: T[],
+  charCap = HISTORY_CHAR_CAP,
+): T[] {
   let out = turns.length > HISTORY_TURN_CAP ? turns.slice(turns.length - HISTORY_TURN_CAP) : turns;
   let total = out.reduce((n, t) => n + t.content.length, 0);
-  while (out.length > 1 && total > HISTORY_CHAR_CAP) {
+  while (out.length > 1 && total > charCap) {
     total -= out[0].content.length;
     out = out.slice(1);
   }
   return out;
+}
+
+/**
+ * 历史 → provider 消息（**出网前再脱敏一次**，幂等）。
+ *
+ * 工具相关字段原样带走：assistant 轮的 toolCalls（id/name/arguments）与 tool
+ * 轮的 toolCallId —— 它们是协议面结构，不是自由文本，脱敏会破坏配对。
+ */
+export function toProviderMessages(turns: ChatTurn[], redactOpts: RedactOptions): ChatMessage[] {
+  return turns.map((m) => {
+    const msg: ChatMessage = { role: m.role, content: redact(m.content, redactOpts).text };
+    if (m.toolCalls?.length) msg.toolCalls = m.toolCalls;
+    if (m.toolCallId) msg.toolCallId = m.toolCallId;
+    if (m.toolName) msg.toolName = m.toolName;
+    return msg;
+  });
+}
+
+/**
+ * 剔除「孤儿」tool 轮（其对应的 assistant 工具调用轮已被封顶丢弃）。
+ *
+ * provider 协议面要求 tool 消息紧跟在发起它的 assistant 轮之后——历史封顶
+ * （capHistory）从最老处丢轮时可能把 assistant 轮丢掉、留下孤零零的 tool
+ * 轮，端点会直接 400。这里把这种轮次摘掉。
+ */
+export function pruneOrphanToolTurns(turns: ChatTurn[]): ChatTurn[] {
+  const out: ChatTurn[] = [];
+  let openCallIds: string[] = [];
+  for (const t of turns) {
+    if (t.role === "assistant" && t.toolCalls?.length) {
+      openCallIds = t.toolCalls.map((tc) => tc.id);
+      out.push(t);
+      continue;
+    }
+    if (t.role === "tool") {
+      if (!t.toolCallId || !openCallIds.includes(t.toolCallId)) continue; // 孤儿
+      out.push(t);
+      continue;
+    }
+    openCallIds = [];
+    out.push(t);
+  }
+  return out;
+}
+
+/** 工具调用增量合并（同一 id 的参数碎片续接；不同 id 追加）。 */
+export function mergeToolCalls(prev: ToolCall[], next: ToolCall[]): ToolCall[] {
+  const out = [...prev];
+  for (const tc of next) {
+    if (!tc) continue;
+    const i = out.findIndex((x) => x.id === tc.id);
+    if (i >= 0) {
+      out[i] = {
+        ...out[i],
+        name: out[i].name || tc.name,
+        arguments: (out[i].arguments ?? "") + (tc.arguments ?? ""),
+      };
+    } else {
+      out.push({ id: tc.id ?? "", name: tc.name ?? "", arguments: tc.arguments ?? "" });
+    }
+  }
+  return out;
+}
+
+/** 系统提示词（有工具时补一句「工具需用户确认才执行」）。 */
+export function systemPrompt(req: AiRequest, hasTools: boolean): string {
+  const base = i18n.t(req.kind === "diagnose" ? "ai.prompt.diagnose" : "ai.prompt.explain");
+  return hasTools ? `${base}\n\n${i18n.t("ai.prompt.tools")}` : base;
+}
+
+/**
+ * 工具调用 → 待确认项（还原 serverId 与**原始**工具名）。
+ *
+ * 还原不出来的（server 已被删/改名，注册表里没有该名字）→ serverId 留空，
+ * 执行面据此回一条「工具不可用」的说明给模型，而不是拿错 server 去调。
+ */
+export function toPendingToolCall(tc: ToolCall): PendingToolCall {
+  const binding = resolveMcpTool(tc.name);
+  const args = tc.arguments ?? "";
+  return {
+    id: tc.id,
+    serverId: binding?.serverId ?? "",
+    serverName: binding?.serverName ?? "",
+    tool: binding?.tool ?? tc.name,
+    args: args.trim() === "" ? "{}" : args,
+  };
 }
 
 /** 通知正文的命令摘要（首行、80 字符截断；已脱敏文本入通知）。 */
@@ -263,6 +416,245 @@ export const useAiStore = create<AiStore>((set, get) => {
   const slice = (sessionId: string): SessionAiState =>
     get().sessions[sessionId] ?? EMPTY_SLICE;
 
+  /**
+   * 一轮流式对话（**普通轮与工具续跑轮共用**）。
+   *
+   * * 装配好的消息 → provider.chat → 收集文本与工具调用；
+   * * **有工具调用** → 助手轮落库（含 toolCalls）+ 挂「待确认」态：本轮**暂停**
+   *   （status=awaiting_tool_approval），等用户点执行/拒绝——模型不得自动触发
+   *   工具（与既有「AI 只给建议、用户执行」的安全模型一致）；
+   * * **无工具调用** → 正常收尾（空回答判失败 / done / 落通知）。
+   */
+  const streamTurn = async (
+    sessionId: string,
+    ctx: {
+      /** 本轮发出的消息（已装配）。 */
+      messages: ChatMessage[];
+      /** 历史基准（落库时拼在本轮之前）。 */
+      baseTurns: ChatTurn[];
+      system: string;
+      maxTokens: number;
+      apiKey: string;
+      meta: ProviderMeta;
+      /** 可用工具（空 = 本轮不带 tools）。 */
+      tools: ChatTool[];
+      /** 已消耗的工具轮次（上限判定）。 */
+      toolRounds: number;
+      redactOpts: RedactOptions;
+      /** 完成落通知用（null = 本轮不发）。 */
+      notify: { req: AiRequest; body: string } | null;
+    },
+  ): Promise<void> => {
+    const ac = new AbortController();
+    controllers.set(sessionId, ac);
+    const startedAt = performance.now();
+    const assistantTurn: ChatTurn = { role: "assistant", content: "" };
+    patch(sessionId, {
+      status: "running",
+      answer: "",
+      usage: null,
+      modelUsed: null,
+      elapsedMs: null,
+      messages: [...ctx.baseTurns, assistantTurn],
+    });
+    try {
+      const provider = createProvider(ctx.meta, ctx.apiKey);
+      let toolCalls: ToolCall[] = [];
+      for await (const delta of provider.chat({
+        system: ctx.system,
+        messages: ctx.messages,
+        maxTokens: ctx.maxTokens,
+        signal: ac.signal,
+        ...(ctx.tools.length > 0 ? { tools: ctx.tools } : {}),
+      })) {
+        if (controllers.get(sessionId) !== ac) return; // 已被本会话新一轮取代/关闭
+        if (ac.signal.aborted) break;
+        assistantTurn.content += delta.text;
+        if (delta.toolCalls?.length) toolCalls = mergeToolCalls(toolCalls, delta.toolCalls);
+        patch(sessionId, {
+          answer: slice(sessionId).answer + delta.text,
+          messages: [...ctx.baseTurns, { ...assistantTurn }],
+          status: "running",
+          // 用量/模型：端点给了才更新（拿不到就是 null → UI 只显示耗时）。
+          usage: delta.usage ?? slice(sessionId).usage,
+          modelUsed: delta.model ?? slice(sessionId).modelUsed,
+        });
+      }
+      if (controllers.get(sessionId) !== ac) return;
+      // 注意：**这里不删 controller**——删了会让下面收尾段抛出的异常被 catch
+      // 块的「已被本会话新一轮取代」早退吞掉（面板卡在 running 永不定稿）。
+      // 删除交给 finally（只在还是同一个 controller 时删）。
+      const done = !ac.signal.aborted;
+      const elapsed = Math.round(performance.now() - startedAt);
+
+      // --- 工具调用分支：本轮**暂停**，等用户确认（不自动执行）---
+      if (toolCalls.length > 0) {
+        const turn: ChatTurn = {
+          role: "assistant",
+          content: redact(assistantTurn.content, ctx.redactOpts).text,
+          toolCalls,
+        };
+        const base = [...ctx.baseTurns, turn];
+        // 轮次上限（MAX_TOOL_ROUNDS）：超限就不再执行工具——把「已到上限」作为
+        // tool 结果回给模型，续跑**不带工具**的一轮，让它据现有信息作答
+        // （防模型无限调工具烧 token；BYOK 用户自掏腰包）。
+        if (ctx.toolRounds >= MAX_TOOL_ROUNDS) {
+          const limitText = i18n.t("ai.tool.limitReached", { count: MAX_TOOL_ROUNDS });
+          const toolTurns: ChatTurn[] = toolCalls.map((tc) => ({
+            role: "tool",
+            content: limitText,
+            toolCallId: tc.id,
+            toolName: tc.name,
+          }));
+          const next = [...base, ...toolTurns];
+          patch(sessionId, { messages: next, pendingToolCalls: [] });
+          await streamTurn(sessionId, {
+            ...ctx,
+            messages: toProviderMessages(next, ctx.redactOpts),
+            baseTurns: next,
+            tools: [],
+          });
+          return;
+        }
+        patch(sessionId, {
+          messages: base,
+          pendingToolCalls: toolCalls.map(toPendingToolCall),
+          toolRounds: ctx.toolRounds + 1,
+          status: "awaiting_tool_approval",
+          elapsedMs: elapsed,
+        });
+        return;
+      }
+
+      // --- 普通收尾 ---
+      // assistant 轮落库前脱敏：模型回显的敏感值不留明文在历史里
+      // （存储面与出网面都守住「内容一律脱敏后存」的契约）。
+      if (assistantTurn.content !== "") {
+        patch(sessionId, {
+          messages: [
+            ...ctx.baseTurns,
+            { role: "assistant", content: redact(assistantTurn.content, ctx.redactOpts).text },
+          ],
+        });
+      }
+      // **空回答 = 失败**（2026-11-02 审计）：端点返回 200 但正文不是 SSE
+      // （反向代理的登录页/HTML 错误页）时，一个 delta 都不会来——此前会
+      // 置成 done 且答案为空，用户看到「成功但一片空白」，没有任何错误提示。
+      // 这里按失败收尾，并让用户看到可重试的错误面。
+      if (done && assistantTurn.content.trim() === "") {
+        patch(sessionId, {
+          status: "error",
+          errorKind: "request",
+          error: i18n.t("ai.emptyAnswer"),
+          elapsedMs: elapsed,
+        });
+        return;
+      }
+      patch(sessionId, {
+        status: done ? "done" : "aborted",
+        elapsedMs: elapsed,
+      });
+      if (done && ctx.notify) {
+        // --- 完成落通知（T12 管线预留位；取消不发；失败只记 console 不反噬）---
+        try {
+          await notify({
+            kind: "ai",
+            severity: "success",
+            host_id: ctx.notify.req.hostId,
+            title_key:
+              ctx.notify.req.kind === "diagnose" ? "notify.title.aiDone" : "notify.title.aiExplain",
+            body: ctx.notify.body,
+            payload: { session_id: ctx.notify.req.sessionId, provider: ctx.meta.name },
+          });
+        } catch (e) {
+          console.warn("[ai] notify failed:", e);
+        }
+      }
+    } catch (e) {
+      if (controllers.get(sessionId) !== ac) return;
+      controllers.delete(sessionId);
+      if (ac.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+        patch(sessionId, { status: "aborted" });
+        return;
+      }
+      // 断流/报错：把**半截** assistant 轮从历史里摘掉——它不完整，下一轮
+      // 追问会把它当上下文发出去（模型拿到一段没写完的回答）。
+      patch(sessionId, {
+        status: "error",
+        errorKind: "request",
+        error: e instanceof Error ? e.message : String(e),
+        messages: ctx.baseTurns,
+      });
+    } finally {
+      if (controllers.get(sessionId) === ac) controllers.delete(sessionId);
+    }
+  };
+
+  /**
+   * 工具链续跑：把**完整历史**（含助手工具调用轮 + tool 结果轮）再发给模型，
+   * 让模型据工具返回给出最终回答。
+   *
+   * 设置与 key 重新取（用户确认可能隔了很久，配置可能已变）；工具清单**现取**。
+   */
+  const continueChain = async (sessionId: string, messages: ChatTurn[]): Promise<void> => {
+    const req = slice(sessionId).request;
+    if (!req) return;
+    let settings: AiSettings;
+    try {
+      settings = await loadAiSettings();
+    } catch (e) {
+      patch(sessionId, {
+        status: "error",
+        errorKind: "noProvider",
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
+    const meta = activeProvider(settings.providers);
+    if (!meta) {
+      patch(sessionId, { status: "error", errorKind: "noProvider", error: null });
+      return;
+    }
+    let apiKey: string;
+    try {
+      apiKey = (await vaultApi.secrets.get(apiKeySecretKey(meta.id))) ?? "";
+    } catch (e) {
+      patch(sessionId, {
+        status: "error",
+        errorKind: "noKey",
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
+    const redactOpts: RedactOptions = {
+      hostname: settings.redaction.hostname,
+      custom: settings.redaction.custom,
+    };
+    const tools = await loadMcpTools();
+    // 工具链的历史**只按轮数封顶**：按字符封顶会把工具返回（模型续跑的唯一
+    // 依据）从历史里裁掉——模型拿不到结果就答不了。
+    const capped = pruneOrphanToolTurns(capHistory(messages, Number.POSITIVE_INFINITY));
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    const rawSubject =
+      req.kind === "diagnose"
+        ? req.command
+        : req.kind === "explain"
+          ? req.text
+          : (lastUser?.content ?? "");
+    await streamTurn(sessionId, {
+      messages: toProviderMessages(capped, redactOpts),
+      baseTurns: capped,
+      system: systemPrompt(req, tools.length > 0),
+      maxTokens: settings.maxTokens,
+      apiKey,
+      meta,
+      tools,
+      toolRounds: slice(sessionId).toolRounds ?? 0,
+      redactOpts,
+      notify: { req, body: commandExcerpt(redact(rawSubject, redactOpts).text) },
+    });
+  };
+
   return {
     sessions: {},
 
@@ -283,6 +675,10 @@ export const useAiStore = create<AiStore>((set, get) => {
       error: null,
       seen: false,
       messages: [],
+      // 新问题 = 新链：待确认的工具调用与轮次计数一并清零。
+      pendingToolCalls: [],
+      toolRounds: 0,
+      runningToolCallId: null,
     });
   },
 
@@ -307,6 +703,9 @@ export const useAiStore = create<AiStore>((set, get) => {
           // 带上（同一会话连着两次诊断，模型看到的是两个不相关的问题 + 前一轮
           // 的答案 → 答非所问，且 token 白花一倍）。
           messages: [],
+          pendingToolCalls: [],
+          toolRounds: 0,
+          runningToolCallId: null,
         });
         await get().run(req.sessionId);
       })();
@@ -324,6 +723,9 @@ export const useAiStore = create<AiStore>((set, get) => {
         seen: false,
         // 新问题 = 新会话（同 onCommandFailed：历史不重置就会串上下文）。
         messages: [],
+        pendingToolCalls: [],
+        toolRounds: 0,
+        runningToolCallId: null,
       });
       void get().run(req.sessionId);
     },
@@ -358,6 +760,8 @@ export const useAiStore = create<AiStore>((set, get) => {
     run: async (sessionId, followupText) => {
       const req = slice(sessionId).request;
       if (!req) return;
+      // 有待确认的工具调用 → 不开新链（会把用户还没处置的工具调用丢掉）。
+      if ((slice(sessionId).pendingToolCalls ?? []).length > 0) return;
       // 追问轮（followupText 非空）：**不重取输出尾、不重注入主机备注**——
       // 首轮已经把这些发给模型了，追问只带对话历史（省 token、不重复出网）。
       // 「追问轮」的判据 = **带追问文本 且 已有对话历史**。
@@ -377,6 +781,10 @@ export const useAiStore = create<AiStore>((set, get) => {
         usage: null,
         modelUsed: null,
         elapsedMs: null,
+        // 新链 = 工具轮次清零（上一链的待确认项已在上一条守卫里挡掉）。
+        pendingToolCalls: [],
+        toolRounds: 0,
+        runningToolCallId: null,
       });
 
       // --- 1. 设置（坏键独立回落）---
@@ -488,112 +896,116 @@ export const useAiStore = create<AiStore>((set, get) => {
       // **历史出网前再脱敏一次**（幂等）：用户轮入库时已 redact，但 assistant
       // 轮是模型原文——模型可能把上下文里的敏感值**回显**出来（审计实测这条
       // 路径会绕过脱敏引擎再次出网）。redact 幂等，重复应用安全。
-      const history = capHistory(
-        slice(sessionId).messages.map((m) => ({
-          role: m.role,
-          content: redact(m.content, redactOpts).text,
-        })),
+      const history = pruneOrphanToolTurns(
+        capHistory(
+          slice(sessionId).messages.map((m) => ({
+            ...m,
+            content: redact(m.content, redactOpts).text,
+          })),
+        ),
       );
       const userContent = isFollowup
         ? subject.text
         : buildUserMessage(req, subject.text, outputTail, hostContext);
       const messages: ChatMessage[] = [
-        ...history.map((m) => ({ role: m.role, content: m.content })),
+        ...toProviderMessages(history, { enabled: false }),
         { role: "user", content: userContent },
       ];
-      // 本轮的 assistant 占位（流式期间原地追加内容）。
-      const assistantTurn: ChatTurn = { role: "assistant", content: "" };
       // 存储面也封顶：否则 store 里的 messages 无限增长（每轮追问又把全部
       // 历史重发）——封顶在「组装请求」与「落库」两处都做。
-      const turnsSoFar: ChatTurn[] = capHistory([...history, { role: "user", content: userContent }]);
-      patch(sessionId, { messages: [...turnsSoFar, assistantTurn] });
-      const ac = new AbortController();
-      controllers.set(sessionId, ac);
-      const startedAt = performance.now();
+      const turnsSoFar: ChatTurn[] = pruneOrphanToolTurns(
+        capHistory([...history, { role: "user", content: userContent }]),
+      );
+      // 工具清单（批次五 P2）：**每次 run 现取**（server 的工具目录会变，不缓存）；
+      // 取不到就当没有工具——增强项不是前置条件（AI 照常聊天）。
+      const tools = await loadMcpTools();
+      await streamTurn(sessionId, {
+        messages,
+        baseTurns: turnsSoFar,
+        system: systemPrompt(req, tools.length > 0),
+        maxTokens: settings.maxTokens,
+        apiKey,
+        meta,
+        tools,
+        toolRounds: 0,
+        redactOpts,
+        notify: { req, body: commandExcerpt(subject.text) },
+      });
+    },
+
+    /**
+     * 处置一个待确认的工具调用（批次五 P2）。
+     *
+     * * **执行**（approve=true）→ 调 MCP server（`mcp_server_call`），结果作为
+     *   tool 消息入历史 → **续跑一轮**（把完整历史再发给模型）；
+     * * **拒绝**（approve=false）→ 追加一条「用户拒绝执行」的 tool 消息，同样
+     *   续跑一轮（模型据此换一种说法作答）。
+     *
+     * 同一时刻只允许一个工具在执行（重复点击不二次执行）；全部待确认项处置
+     * 完毕后自动续跑。
+     */
+    resolveToolCall: async (sessionId, callId, approve) => {
+      const st = slice(sessionId);
+      if (st.runningToolCallId) return; // 已有工具在执行（防重复点击）
+      const pending = (st.pendingToolCalls ?? []).find((p) => p.id === callId);
+      if (!pending) return;
+      // 脱敏配置（工具返回也要脱敏后存——与「内容一律脱敏后存」纪律一致）。
+      let redactOpts: RedactOptions = { hostname: true, custom: [] };
       try {
-        const provider = createProvider(meta, apiKey);
-        for await (const delta of provider.chat({
-          system: i18n.t(req.kind === "diagnose" ? "ai.prompt.diagnose" : "ai.prompt.explain"),
-          messages,
-          maxTokens: settings.maxTokens,
-          signal: ac.signal,
-        })) {
-          if (controllers.get(sessionId) !== ac) return; // 已被本会话新一轮取代/关闭
-          if (ac.signal.aborted) break;
-          assistantTurn.content += delta.text;
-          patch(sessionId, {
-            answer: slice(sessionId).answer + delta.text,
-            messages: [...turnsSoFar, { ...assistantTurn }],
-            status: "running",
-            // 用量/模型：端点给了才更新（拿不到就是 null → UI 只显示耗时）。
-            usage: delta.usage ?? slice(sessionId).usage,
-            modelUsed: delta.model ?? slice(sessionId).modelUsed,
-          });
-        }
-        if (controllers.get(sessionId) === ac) {
-          controllers.delete(sessionId);
-          const done = !ac.signal.aborted;
-          // assistant 轮落库前脱敏：模型回显的敏感值不留明文在历史里
-          // （存储面与出网面都守住「内容一律脱敏后存」的契约）。
-          if (assistantTurn.content !== "") {
-            patch(sessionId, {
-              messages: [
-                ...turnsSoFar,
-                { role: "assistant", content: redact(assistantTurn.content, redactOpts).text },
-              ],
-            });
-          }
-          // **空回答 = 失败**（2026-11-02 审计）：端点返回 200 但正文不是 SSE
-          // （反向代理的登录页/HTML 错误页）时，一个 delta 都不会来——此前会
-          // 置成 done 且答案为空，用户看到「成功但一片空白」，没有任何错误提示。
-          // 这里按失败收尾，并让用户看到可重试的错误面。
-          if (done && assistantTurn.content.trim() === "") {
-            patch(sessionId, {
-              status: "error",
-              errorKind: "request",
-              error: i18n.t("ai.emptyAnswer"),
-              elapsedMs: Math.round(performance.now() - startedAt),
-            });
-            return;
-          }
-          patch(sessionId, {
-            status: done ? "done" : "aborted",
-            elapsedMs: Math.round(performance.now() - startedAt),
-          });
-          if (done) {
-            // --- 5. 完成落通知（T12 管线预留位；取消不发；失败只记 console 不反噬）---
-            try {
-              await notify({
-                kind: "ai",
-                severity: "success",
-                host_id: req.hostId,
-                title_key: req.kind === "diagnose" ? "notify.title.aiDone" : "notify.title.aiExplain",
-                body: commandExcerpt(subject.text),
-                payload: { session_id: req.sessionId, provider: meta.name },
-              });
-            } catch (e) {
-              console.warn("[ai] notify failed:", e);
-            }
-          }
-        }
-      } catch (e) {
-        if (controllers.get(sessionId) !== ac) return;
-        controllers.delete(sessionId);
-        if (ac.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) {
-          patch(sessionId, { status: "aborted" });
-          return;
-        }
-        // 断流/报错：把**半截** assistant 轮从历史里摘掉——它不完整，下一轮
-        // 追问会把它当上下文发出去（模型拿到一段没写完的回答）。
-        patch(sessionId, {
-          status: "error",
-          errorKind: "request",
-          error: e instanceof Error ? e.message : String(e),
-          messages: turnsSoFar,
-        });
-      } finally {
-        if (controllers.get(sessionId) === ac) controllers.delete(sessionId);
+        const settings = await loadAiSettings();
+        redactOpts = {
+          hostname: settings.redaction.hostname,
+          custom: settings.redaction.custom,
+        };
+      } catch {
+        // 读不到就用默认规则（脱敏引擎的默认规则恒开）
       }
+      patch(sessionId, { runningToolCallId: callId });
+      let content: string;
+      if (approve) {
+        try {
+          if (pending.serverId === "") {
+            // 工具已不在注册表里（server 被删/改名）→ 如实告诉模型，别猜。
+            throw new Error(i18n.t("ai.tool.unknownTool"));
+          }
+          const result = await vaultApi.mcpClients.call(
+            pending.serverId,
+            pending.tool,
+            pending.args,
+          );
+          content = result.text ?? "";
+          if (result.isError) {
+            content =
+              content !== ""
+                ? `${content}\n${i18n.t("ai.tool.failedTag")}`
+                : i18n.t("ai.tool.failedTag");
+          }
+        } catch (e) {
+          content = i18n.t("ai.tool.failed", {
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      } else {
+        content = i18n.t("ai.tool.rejected");
+      }
+      const cur = slice(sessionId);
+      if (!cur.request) return; // 面板已关闭（会话结束）——不留幽灵切片
+      const toolTurn: ChatTurn = {
+        role: "tool",
+        content: redact(content, redactOpts).text,
+        toolCallId: pending.id,
+        toolName: pending.tool,
+        serverName: pending.serverName,
+      };
+      const messages = [...cur.messages, toolTurn];
+      const remaining = (cur.pendingToolCalls ?? []).filter((p) => p.id !== callId);
+      patch(sessionId, {
+        messages,
+        pendingToolCalls: remaining,
+        runningToolCallId: null,
+      });
+      if (remaining.length > 0) return; // 还有待确认项 → 等用户处置完再续跑
+      await continueChain(sessionId, messages);
     },
   };
 });

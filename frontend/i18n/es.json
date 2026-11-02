@@ -494,7 +494,8 @@
     "openSettings": "Abrir Ajustes",
     "prompt": {
       "diagnose": "Eres un ingeniero de ops senior. El usuario ejecutó un comando fallido en una terminal SSH. Proporciona: **Causa** (1-3 frases basadas en la salida), **Comandos de solución** (cada uno en un bloque delimitado por ```bash, ejecutable de forma independiente), **Notas** (opcional, 1 frase). Responde en el idioma de la interfaz. [REDACTED_*] son marcadores de redacción: consérvalos tal cual y nunca adivines su contenido.",
-      "explain": "Eres un asistente de terminal. Explica el contenido seleccionado de la terminal (error/registro/texto): qué significa, causas probables y, si procede, los siguientes comandos sugeridos en bloques delimitados por ```bash. Sé conciso y responde en el idioma de la interfaz. [REDACTED_*] son marcadores de redacción: consérvalos tal cual."
+      "explain": "Eres un asistente de terminal. Explica el contenido seleccionado de la terminal (error/registro/texto): qué significa, causas probables y, si procede, los siguientes comandos sugeridos en bloques delimitados por ```bash. Sé conciso y responde en el idioma de la interfaz. [REDACTED_*] son marcadores de redacción: consérvalos tal cual.",
+      "tools": "Puedes llamar a las herramientas de la lista anterior para obtener información o actuar sobre el sistema. **Las llamadas a herramientas solo se ejecutan cuando el usuario las aprueba**; si el usuario rechaza una, responde con la información que ya tienes."
     },
     "msg": {
       "exitCode": "Código de salida",
@@ -502,6 +503,22 @@
       "outputTail": "Final de la salida",
       "explainTarget": "Explicar este contenido de la terminal",
       "hostContext": "Notas del host"
+    },
+    "tool": {
+      "awaiting": "Esperando aprobación de la herramienta",
+      "server": "Servidor",
+      "tool": "Herramienta",
+      "args": "Argumentos",
+      "approve": "Ejecutar",
+      "reject": "Rechazar",
+      "running": "Ejecutando…",
+      "callLabel": "Llamada a {{server}}.{{tool}}",
+      "rejected": "El usuario rechazó ejecutar esta herramienta.",
+      "failedTag": "(la ejecución de la herramienta falló)",
+      "failed": "Error al ejecutar la herramienta: {{error}}",
+      "unknownTool": "Esta herramienta ya no está disponible (su servidor MCP se eliminó o se renombró).",
+      "limitReached": "Se alcanzó el límite de rondas de herramientas ({{count}}); no se ejecutarán más herramientas. Responde con la información que ya tienes.",
+      "truncated": "… (truncado)"
     },
     "nl2cmd": {
       "title": "Comando AI",

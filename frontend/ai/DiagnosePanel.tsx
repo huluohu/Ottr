@@ -10,13 +10,24 @@
 //   messages——见 aiStore 步骤 3），面板以「已脱敏 N 处」标注外发侧命中；
 // * 错误面：noProvider/noKey → 「去设置」按钮（App 注入 openSettings）；
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { useAiStore, useSessionAi } from "./aiStore";
 import { activeProvider } from "./settings";
 import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
 import { MarkdownText } from "./Markdown";
 import { useTerminalFocus } from "../terminal/terminalFocus";
+
+/** 工具返回文本在面板里的显示上限（**发给模型的完整文本不截断**——
+ *  截断只发生在渲染面；MCP 侧本身有 1 MiB 上限）。 */
+export const TOOL_RESULT_DISPLAY_LIMIT = 2000;
+
+/** 工具返回文本的截断展示（超限则补「…（已截断）」）。 */
+export function truncateToolResult(text: string, limit = TOOL_RESULT_DISPLAY_LIMIT): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}${i18n.t("ai.tool.truncated")}`;
+}
 
 /** 从 markdown 形态的回复中提取 ``` 围栏代码块（位置 + 内容），供插终端按钮。 */
 export interface AnswerCodeBlock {
@@ -98,6 +109,9 @@ export function DiagnosePanel({
   const modelUsed = useSessionAi(sessionId).modelUsed;
   const elapsedMs = useSessionAi(sessionId).elapsedMs;
   const messages = useSessionAi(sessionId).messages;
+  // 待确认的工具调用（批次五 P2）：模型发起、**用户点执行才真跑**。
+  const pendingToolCalls = useSessionAi(sessionId).pendingToolCalls ?? [];
+  const runningToolCallId = useSessionAi(sessionId).runningToolCallId ?? null;
   // 追问输入（本地态——输入框内容是瞬时 UI 状态，不进领域 store）。
   const [followup, setFollowup] = useState("");
   // 展示用轮次：正常走 messages；**兜底**——messages 为空但 answer 非空时，
@@ -122,6 +136,7 @@ export function DiagnosePanel({
   const abort = useAiStore((s) => s.abort);
   const run = useAiStore((s) => s.run);
   const close = useAiStore((s) => s.close);
+  const resolveToolCall = useAiStore((s) => s.resolveToolCall);
 
   if (!sessionId || !request) return null;
   const running = status === "running";
@@ -218,7 +233,9 @@ export function DiagnosePanel({
           user 轮 = 用户诉求（含首轮装配后的诊断上下文），assistant 轮 = 模型
           回答（沿用 AnswerView：围栏代码块带插终端三档确认）。
           **流式中的当前回答也在 messages 里**（末条 assistant 轮内容原地增长），
-          故此处不重复渲染 answer。 */}
+          故此处不重复渲染 answer。
+          **tool 轮**（批次五 P2）= 工具调用结果：user 侧显示「调用 <server>.<tool>」，
+          assistant 侧显示工具返回文本（长文本在面板里截断显示）。 */}
       <div className="ai-thread" data-testid="ai-thread">
         {threadTurns.map((m, i) => {
           // **首轮诊断上下文不进气泡流**：它的内容是「退出码 + 命令 + 最长
@@ -228,6 +245,26 @@ export function DiagnosePanel({
           // 保留），这里只是**不把它当「用户说的话」显示**。
           const isDiagnosticContext = i === 0 && m.role === "user" && request.kind === "diagnose";
           if (isDiagnosticContext) return null;
+          if (m.role === "tool") {
+            return (
+              <Fragment key={`t${i}`}>
+                <div className="ai-bubble ai-bubble-user" data-testid="ai-msg-tool-call">
+                  {t("ai.tool.callLabel", {
+                    server: m.serverName ?? "",
+                    tool: m.toolName ?? "",
+                  })}
+                </div>
+                <div
+                  className="ai-bubble ai-bubble-assistant"
+                  data-testid="ai-msg-tool-result"
+                >
+                  <pre className="ai-tool-result" data-testid="ai-tool-result-text">
+                    {truncateToolResult(m.content)}
+                  </pre>
+                </div>
+              </Fragment>
+            );
+          }
           return m.role === "user" ? (
             <div key={`u${i}`} className="ai-bubble ai-bubble-user" data-testid="ai-msg-user">
               {m.content}
@@ -244,6 +281,55 @@ export function DiagnosePanel({
             </div>
           );
         })}
+
+        {/* 待确认的工具调用（批次五 P2）：**模型发起、用户点执行才真跑**
+            （与既有「AI 只给建议、用户执行」的安全模型一致——没有自动执行开关）。
+            卡片：服务器名 + 工具名 + 参数（代码块）+ 执行/拒绝两钮。 */}
+        {pendingToolCalls.length > 0 && (
+          <div className="ai-tool-pending" data-testid="ai-tool-pending">
+            <p className="ai-tool-pending-hint" data-testid="ai-tool-awaiting">
+              {t("ai.tool.awaiting")}
+            </p>
+            {pendingToolCalls.map((p) => {
+              const running = runningToolCallId === p.id;
+              const busy = runningToolCallId !== null;
+              return (
+                <div key={p.id} className="ai-tool-card" data-testid={`ai-tool-card-${p.id}`}>
+                  <div className="ai-tool-card-head">
+                    <span className="ai-tool-server" data-testid={`ai-tool-server-${p.id}`}>
+                      {p.serverName}
+                    </span>
+                    <span className="ai-tool-name" data-testid={`ai-tool-name-${p.id}`}>
+                      {p.tool}
+                    </span>
+                  </div>
+                  <pre className="ai-tool-args" data-testid={`ai-tool-args-${p.id}`}>
+                    {p.args}
+                  </pre>
+                  <div className="ai-tool-card-actions">
+                    <button
+                      type="button"
+                      className="btn-accent"
+                      data-testid={`ai-tool-approve-${p.id}`}
+                      disabled={busy}
+                      onClick={() => void resolveToolCall(sessionId, p.id, true)}
+                    >
+                      {running ? t("ai.tool.running") : t("ai.tool.approve")}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`ai-tool-reject-${p.id}`}
+                      disabled={busy}
+                      onClick={() => void resolveToolCall(sessionId, p.id, false)}
+                    >
+                      {t("ai.tool.reject")}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 用量透明化（2026-11-02 批次一 B 项）：模型 · token · 耗时。
@@ -272,7 +358,8 @@ export function DiagnosePanel({
       )}
 
       {/* 追问输入条（多轮追问会话，2026-11-02 批次二 C 项）：
-          Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）。 */}
+          Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）；
+          **有待确认的工具调用时同样禁用**（用户得先处置工具调用）。 */}
       <div className="ai-followup-row">
         <textarea
           className="ai-followup-input"
@@ -289,7 +376,7 @@ export function DiagnosePanel({
               : t("ai.followupPlaceholder")
           }
           value={followup}
-          disabled={running}
+          disabled={running || pendingToolCalls.length > 0 || runningToolCallId !== null}
           onChange={(e) => setFollowup(e.target.value)}
           onKeyDown={(e) => {
             // Enter 发送 / Shift+Enter 换行。textarea 的 Enter 默认是换行，

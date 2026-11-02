@@ -7,7 +7,13 @@
 //
 // testConnection：非流式一发（max_tokens=16），校验 HTTP 状态与响应可解析——
 // 「测试连接」按钮的消费面；错误尽量带端点返回的 message。
+//
+// 工具调用（批次五 P2）：请求体带 `tools: [{type:"function", function:{…}}]`；
+// assistant 轮 → `tool_calls`，tool 轮 → `{role:"tool", tool_call_id, content}`；
+// 流式解析 `choices[].delta.tool_calls`（按 index 拼装）→ 流末尾作为 toolCalls 增量给出。
+// **端点不认 tools**（400/422）→ 自动重发不带 tools 的请求（降级为普通对话，不报错）。
 import { outboundFetch } from "../notify/channels/outboundFetch";
+import type { ChatMessage, ChatRequest, ChatTool, ToolCall } from "./provider";
 /** 设置页存储的 Provider 元数据（settings `ai_providers` JSON 数组；**不含
  * apiKey**——key 走 vault secrets 表按 providerId 密封）。 */
 export interface ProviderMeta {
@@ -95,6 +101,62 @@ export function parseOpenAiUsage(
   return { inputTokens: input, outputTokens: output };
 }
 
+/**
+ * 工具定义 → OpenAI 兼容面请求体形态。
+ * （Anthropic 面形态不同：`{name, description, input_schema}`——见 anthropic.ts。）
+ */
+export function encodeTool(tool: ChatTool): {
+  type: "function";
+  function: { name: string; description: string; parameters: unknown };
+} {
+  return {
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters ?? { type: "object", properties: {} },
+    },
+  };
+}
+
+/**
+ * 消息 → OpenAI 兼容面请求体形态。
+ *
+ * * assistant 带工具调用 → `{role:"assistant", content, tool_calls:[{id, type, function}]}`；
+ * * tool 轮 → `{role:"tool", tool_call_id, content}`；
+ * * 其余（user/assistant）原样。
+ */
+export function encodeOpenAiMessages(messages: ChatMessage[]): unknown[] {
+  return messages.map((m) => {
+    if (m.role === "tool") {
+      return { role: "tool", tool_call_id: m.toolCallId ?? "", content: m.content };
+    }
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      return {
+        role: "assistant",
+        content: m.content,
+        tool_calls: m.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.name, arguments: tc.arguments },
+        })),
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+
+/**
+ * 端点是否「不支持 tools」（400/422）。
+ *
+ * 部分 OpenAI 兼容端点与自建网关不认 `tools` 字段（400 "Unsupported parameter"
+ * 或 422 schema 校验失败）——命中即**降级为普通对话**（重发不带 tools 的请求），
+ * 工具是增强项，不能反过来把 AI 功能搞挂。
+ */
+export function isToolUnsupported(status: number): boolean {
+  return status === 400 || status === 422;
+}
+
 export class OpenAICompatibleProvider {
   constructor(
     private readonly baseURL: string,
@@ -112,35 +174,61 @@ export class OpenAICompatibleProvider {
     return h;
   }
 
-  async *chat(req: import("./provider").ChatRequest): AsyncIterable<import("./provider").ChatDelta> {
-    const res = await outboundFetch(this.endpoint, {
-      method: "POST",
-      headers: this.headers(),
-      signal: req.signal,
-      body: JSON.stringify({
-        model: this.model,
-        stream: true,
-        max_tokens: req.maxTokens,
-        // 用量透明化（2026-11-02 批次一 B 项）：OpenAI 兼容面靠这个开关才在
-        // 流式末帧回 usage。部分国产/代理端点不认该字段（400 或静默忽略）——
-        // 那时拿不到 usage，UI 降级为只显示模型名与耗时（见 ChatDelta 注释）。
-        stream_options: { include_usage: true },
-        // stop 序列（NL→命令）：OpenAI 兼容面字段即 `stop`（string[]）
-        ...(req.stop?.length ? { stop: req.stop } : {}),
-        messages: [
-          ...(req.system ? [{ role: "system", content: req.system }] : []),
-          ...req.messages,
-        ],
-      }),
+  /** 请求体（`withTools=false` 时不带 tools 字段——降级面）。 */
+  private body(req: ChatRequest, withTools: boolean): string {
+    return JSON.stringify({
+      model: this.model,
+      stream: true,
+      max_tokens: req.maxTokens,
+      // 用量透明化（2026-11-02 批次一 B 项）：OpenAI 兼容面靠这个开关才在
+      // 流式末帧回 usage。部分国产/代理端点不认该字段（400 或静默忽略）——
+      // 那时拿不到 usage，UI 降级为只显示模型名与耗时（见 ChatDelta 注释）。
+      stream_options: { include_usage: true },
+      // stop 序列（NL→命令）：OpenAI 兼容面字段即 `stop`（string[]）
+      ...(req.stop?.length ? { stop: req.stop } : {}),
+      // 工具定义（批次五 P2）：有 tools 才带（端点不认 → 降级重发，见 chat）。
+      ...(withTools && req.tools?.length
+        ? { tools: req.tools.map((t: ChatTool) => encodeTool(t)) }
+        : {}),
+      messages: [
+        ...(req.system ? [{ role: "system", content: req.system }] : []),
+        ...encodeOpenAiMessages(req.messages),
+      ],
     });
+  }
+
+  async *chat(req: ChatRequest): AsyncIterable<import("./provider").ChatDelta> {
+    const useTools = Array.isArray(req.tools) && req.tools.length > 0;
+    const send = async (withTools: boolean): Promise<Response> =>
+      outboundFetch(this.endpoint, {
+        method: "POST",
+        headers: this.headers(),
+        signal: req.signal,
+        body: this.body(req, withTools),
+      });
+    let res = await send(useTools);
+    if (!res.ok && useTools && isToolUnsupported(res.status)) {
+      // 端点不认 tools（部分国产/自建网关）→ **降级为普通对话**（不报错）：
+      // 重发一不带 tools 的请求，模型照常回答。
+      res = await send(false);
+    }
     if (!res.ok || !res.body) {
       throw new Error(await httpError(res));
     }
+    // 工具调用碎片拼装器（按 index 聚合 name/arguments；id 只在首帧出现）。
+    const pending = new Map<number, { id: string; name: string; args: string }>();
     for await (const data of sseData(res.body)) {
-      if (data === "[DONE]") return;
+      if (data === "[DONE]") break;
       let json: {
         choices?: {
-          delta?: { content?: string | null };
+          delta?: {
+            content?: string | null;
+            tool_calls?: {
+              index?: number;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }[];
+          };
           text?: string;
           finish_reason?: string | null;
         }[];
@@ -151,6 +239,15 @@ export class OpenAICompatibleProvider {
         json = JSON.parse(data);
       } catch {
         continue; // 非法行跳过（端点注释/心跳）
+      }
+      // 工具调用碎片（旁路收集：拼装在流末尾统一给出）。
+      for (const tc of json.choices?.[0]?.delta?.tool_calls ?? []) {
+        const idx = typeof tc.index === "number" ? tc.index : 0;
+        const cur = pending.get(idx) ?? { id: "", name: "", args: "" };
+        if (tc.id) cur.id = tc.id;
+        if (tc.function?.name) cur.name += tc.function.name;
+        if (tc.function?.arguments) cur.args += tc.function.arguments;
+        pending.set(idx, cur);
       }
       // usage 解析是**旁路**：畸形字段不得污染主文本流（整帧 try 已在上面）。
       const usage = parseOpenAiUsage(json.usage);
@@ -164,6 +261,17 @@ export class OpenAICompatibleProvider {
       } else if (usage || model || finishReason) {
         yield { text: "", usage, model, finishReason };
       }
+    }
+    // 工具调用增量（流末尾给出；有则必带 id/name/arguments）。
+    if (pending.size > 0) {
+      const toolCalls: ToolCall[] = [...pending.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([idx, c]) => ({
+          id: c.id || `call_${idx}`,
+          name: c.name,
+          arguments: c.args,
+        }));
+      yield { text: "", toolCalls };
     }
   }
 

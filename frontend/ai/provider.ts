@@ -6,8 +6,11 @@
 //   * 三实现：OpenAICompatibleProvider（一个类覆盖 OpenAI/DeepSeek/Ollama 等
 //     任意兼容端点）/ AnthropicProvider / MockProvider（测试）；
 //   * baseURL 约定：OpenAI 兼容 = 已含版本前缀的根（如 https://api.openai.com/v1、
-//     https://api.deepseek.com、http://localhost:11434/v1），本层只追加
+//     https://api.deepseek.com,http://localhost:11434/v1），本层只追加
 //     /chat/completions；Anthropic = https://api.anthropic.com，本层追加 /v1/messages。
+//   * 工具调用（批次五 P2）：ChatRequest.tools + 消息里的 toolCalls/tool 轮，
+//     两家协议面的编码差异在各自 provider 内换算；**端点不支持工具时自动降级
+//     为普通对话**（工具是增强项，不能反过来把 AI 功能搞挂）。
 import { AnthropicProvider } from "./anthropic";
 import { MockProvider } from "./mock";
 import { OpenAICompatibleProvider, type ProviderMeta } from "./openai";
@@ -17,10 +20,39 @@ export { MockProvider } from "./mock";
 export { OpenAICompatibleProvider } from "./openai";
 export type { ProviderMeta } from "./openai";
 
-/** 单条消息（system 走 ChatRequest.system 单列——Anthropic 的 system 是顶层参数）。 */
+/** 工具定义（provider 中立）：名字 + 描述 + JSON Schema 入参。 */
+export interface ChatTool {
+  name: string;
+  description: string;
+  /** JSON Schema（对象形态；各家协议面的字段名差异在 provider 内换算）。 */
+  parameters: unknown;
+}
+
+/** 一次工具调用（流式碎片拼装后的完整形态）。 */
+export interface ToolCall {
+  /** 调用 id（OpenAI 兼容面 = tool_call id；Anthropic = tool_use id）。 */
+  id: string;
+  /** 工具名（provider 中立名——MCP 侧为 `mcp__<server>__<tool>`）。 */
+  name: string;
+  /** 参数 JSON 文本（流式碎片拼装后的完整形态）。 */
+  arguments: string;
+}
+
+/**
+ * 单条消息（system 走 ChatRequest.system 单列——Anthropic 的 system 是顶层参数）。
+ *
+ * 角色扩到三种以承载工具轮；**既有的 `{ role: "user" | "assistant"; content: string }`
+ * 写法原样可用**（工具相关字段皆为可选）。
+ */
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
+  /** assistant 轮：它发起的工具调用（id/name/arguments 齐）。 */
+  toolCalls?: ToolCall[];
+  /** tool 轮：对应哪次调用（call id）。 */
+  toolCallId?: string;
+  /** tool 轮：工具名（展示与还原用；协议面不用）。 */
+  toolName?: string;
 }
 
 export interface ChatRequest {
@@ -29,6 +61,8 @@ export interface ChatRequest {
   messages: ChatMessage[];
   /** 单请求 token 上限（成本护栏，settings ai.max_tokens，默认 1024）。 */
   maxTokens: number;
+  /** 可用工具（**增强项**：端点不支持时 provider 自动降级为普通对话）。 */
+  tools?: ChatTool[];
   /** 停止序列（可选；NL→命令场景钉「只输出一条命令」——模型一碰到即收口，
    * 端点侧兜底，客户端 sanitize 仍兜不服从的端点）。各实现的请求字段名
    * 差异在各自 provider 内换算（OpenAI `stop` / Anthropic `stop_sequences`）。 */
@@ -61,6 +95,11 @@ export interface ChatDelta {
   model?: string;
   /** 停止原因（end_turn / max_tokens / stop / length）。 */
   finishReason?: string;
+  /**
+   * 本轮新增的工具调用（流式碎片由 provider 内部按 index 拼装，**消费面只拿
+   * 完整形态**；无工具调用 = 不带此字段）。
+   */
+  toolCalls?: ToolCall[];
 }
 
 /** Provider 实例（工厂入参 = 设置页元数据 + vault secrets 出库的明文 key）。 */

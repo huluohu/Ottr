@@ -1344,35 +1344,59 @@ export function SecuritySettings({
                   <span aria-hidden="true">·</span>
                   <span>MIT</span>
                 </div>
-                <div className="about-links">
-                  <span className="about-link-line">
-                    <span className="about-link-label">{t("settings.blogLabel")}</span>
-                    <a
-                      href="https://www.huluohu.com"
-                      target="_blank"
-                      rel="noreferrer"
-                      data-testid="about-blog"
-                    >
-                      www.huluohu.com
-                    </a>
-                  </span>
-                  <span className="about-link-line">
-                    <span className="about-link-label">{t("settings.afdianLabel")}</span>
-                    <a
-                      href="https://afdian.com/a/huluohu"
-                      target="_blank"
-                      rel="noreferrer"
-                      data-testid="about-afdian"
-                    >
-                      afdian.com/a/huluohu
-                    </a>
-                  </span>
-                  <span className="about-link-line">
-                    <span className="about-link-label">{t("settings.repoLabel")}</span>
-                    <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
-                      https://github.com/huluohu/Ottr
-                    </a>
-                  </span>
+                <div className="about-links about-support-group" data-testid="about-support-group">
+                  <span className="about-support-title">{t("settings.supportTitle")}</span>
+                  <div className="about-support-links">
+                    <span className="about-link-line">
+                      <a
+                        href="https://www.huluohu.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="about-support-item"
+                        data-testid="about-blog"
+                      >
+                        <span className="about-link-label">{t("settings.websiteLabel")}</span>
+                        <span className="about-arrow" aria-hidden="true">↗</span>
+                      </a>
+                    </span>
+                    <span className="about-link-line">
+                      <a
+                        href="https://github.com/huluohu/Ottr"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="about-support-item"
+                        data-testid="about-repo"
+                      >
+                        <span className="about-link-label">GitHub</span>
+                        <span className="about-arrow" aria-hidden="true">↗</span>
+                      </a>
+                    </span>
+                    <span className="about-link-line">
+                      <a
+                        href="https://github.com/huluohu/Ottr/issues"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="about-support-item"
+                        data-testid="about-issues"
+                      >
+                        <span className="about-link-label">{t("settings.reportIssueLabel")}</span>
+                        <span className="about-arrow" aria-hidden="true">↗</span>
+                      </a>
+                    </span>
+                    <span className="about-link-line">
+                      <a
+                        href="https://afdian.com/a/huluohu"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="about-support-item about-support-sponsor"
+                        data-testid="about-afdian"
+                      >
+                        <span className="about-link-label">{t("settings.supportOttrLabel")}</span>
+                        <span className="about-heart" aria-hidden="true">❤️</span>
+                        <span className="about-arrow" aria-hidden="true">↗</span>
+                      </a>
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="form-section-title">{t("settings.softwareUpdate")}</div>

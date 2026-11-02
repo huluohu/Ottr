@@ -686,14 +686,63 @@
 }
 .about-link-label {
   flex: none;
-  color: var(--fg-muted);
+  color: inherit;
 }
 .about-links a {
-  color: var(--fg-muted);
+  color: var(--color-accent-text);
   width: fit-content;
 }
 .about-links a:hover {
   color: var(--color-accent-text);
+}
+
+/* 关于页支持与外链（Snapzy 同款右对齐链接列表） */
+.about-support-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--space-3);
+}
+.about-support-title {
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  font-weight: 600;
+}
+.about-support-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.about-support-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--color-accent-text);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.about-support-item:hover {
+  text-decoration: underline;
+}
+.about-support-sponsor {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.about-support-sponsor:hover {
+  filter: brightness(1.15);
+}
+.about-arrow {
+  font-size: var(--text-xs);
+  opacity: 0.85;
+}
+.about-heart {
+  font-size: var(--text-xs);
+  margin-left: 2px;
 }
 
 /* 发现新版单行条（UpdateCheck v2）：accent 弱底，文案左、安装钮右——

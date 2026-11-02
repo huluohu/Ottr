@@ -493,7 +493,8 @@
       "exitCode": "종료 코드",
       "command": "명령",
       "outputTail": "출력 끝부분",
-      "explainTarget": "이 터미널 내용을 설명하세요"
+      "explainTarget": "이 터미널 내용을 설명하세요",
+      "hostContext": "호스트 메모"
     },
     "nl2cmd": {
       "title": "AI 명령",

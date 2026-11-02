@@ -19,6 +19,7 @@ import { vaultApi } from "../vault/api";
 import { createProvider, type ChatMessage } from "./provider";
 import { activeProvider, apiKeySecretKey, loadAiSettings, type AiSettings } from "./settings";
 import { classify, type TrafficLight } from "./danger";
+import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
 
 /** NL 生成请求的装配面（纯函数；nlStore 消费，测试直接断言）。 */
 export interface Nl2cmdPrompt {
@@ -31,14 +32,19 @@ export interface Nl2cmdPrompt {
 /** 装配 system/用户消息/stop（i18n 模板；cwd 有值才带目录锚点段）。 */
 export function buildNl2cmdPrompt(
   input: string,
-  opts: { cwd?: string | null } = {},
+  opts: { cwd?: string | null; hostContext?: string } = {},
 ): Nl2cmdPrompt {
   const cwdLine = opts.cwd
     ? `${i18n.t("ai.nl2cmd.cwd")}: ${opts.cwd}\n\n`
     : "";
+  // 主机备忘段：持久化在 vault 的上下文（脱敏后）。排在用户输入**之前**——
+  // 输入是本次诉求，备忘是背景事实，背景在前更符合模型读法。
+  const contextBlock = opts.hostContext
+    ? `${opts.hostContext}\n\n`
+    : "";
   return {
     system: i18n.t("ai.nl2cmd.prompt"),
-    user: `${cwdLine}${input}`,
+    user: `${cwdLine}${contextBlock}${input}`,
     // Do not truncate at a newline: a prefix can change multiline shell semantics.
     stop: [],
   };
@@ -96,11 +102,14 @@ interface NlStore {
   settingsUsed: AiSettings | null;
   /** 打开面板时锚定的当前目录（OSC7 活值；无则 null）。 */
   cwd: string | null;
+  /** 打开面板时锚定的主机 id（本地终端 = null；用于取主机「备注」注入 AI 上下文）。 */
+  hostId: number | null;
   /** 已完成轮次（最新在前；done 时追加。close/begin 不清——回看面）。 */
   rounds: NlRound[];
 
-  /** 打开时重置（App 持开关；cwd 由 CwdTracker 按聚焦 pane 查询注入）。 */
-  begin: (cwd: string | null) => void;
+  /** 打开时重置（App 持开关；cwd 由 CwdTracker 按聚焦 pane 查询注入，
+   *  hostId 由聚焦会话解析——用于取主机备注注入 AI 上下文）。 */
+  begin: (cwd: string | null, hostId?: number | null) => void;
   setInput: (v: string) => void;
   /** 生成（input 空白则 no-op；在途请求被新一轮取代，同 aiStore 口径）。 */
   submit: () => Promise<void>;
@@ -123,9 +132,10 @@ export const useNlStore = create<NlStore>((set, get) => ({
   error: null,
   settingsUsed: null,
   cwd: null,
+  hostId: null,
   rounds: [],
 
-  begin: (cwd) => {
+  begin: (cwd, hostId = null) => {
     get().abort();
     set({
       input: "",
@@ -137,6 +147,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
       error: null,
       settingsUsed: null,
       cwd,
+      hostId,
     });
   },
 
@@ -203,7 +214,15 @@ export const useNlStore = create<NlStore>((set, get) => ({
     }
 
     // --- 3. 输入与 cwd 不脱敏；生成结果不在服务端截断 ---
-    const prompt = buildNl2cmdPrompt(input, { cwd: get().cwd });
+    // 主机备注**要脱敏**（2026-11-02 批次一 A 项）：它是持久化在 vault 的
+    // 另一份数据，不是用户本次输入——与「输入原样发端点」是两条不同纪律。
+    const notes = await fetchHostNotes(get().hostId);
+    const hostCtx = buildHostContextBlock(notes, {
+      hostname: settings.redaction.hostname,
+      custom: settings.redaction.custom,
+    });
+    const hostContext = hostCtx.text ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}` : "";
+    const prompt = buildNl2cmdPrompt(input, { cwd: get().cwd, hostContext });
     const messages: ChatMessage[] = [{ role: "user", content: prompt.user }];
     const ac = new AbortController();
     controller = ac;

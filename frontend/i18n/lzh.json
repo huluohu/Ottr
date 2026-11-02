@@ -492,7 +492,8 @@
       "exitCode": "退出碼",
       "command": "令",
       "outputTail": "輸出尾部",
-      "explainTarget": "解釋下終端文"
+      "explainTarget": "解釋下終端文",
+      "hostContext": "主機備註"
     },
     "nl2cmd": {
       "title": "AI 生成令",

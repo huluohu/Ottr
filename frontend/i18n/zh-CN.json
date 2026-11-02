@@ -492,7 +492,8 @@
       "exitCode": "退出码",
       "command": "命令",
       "outputTail": "输出尾部",
-      "explainTarget": "解释以下终端内容"
+      "explainTarget": "解释以下终端内容",
+      "hostContext": "主机备注"
     },
     "nl2cmd": {
       "title": "AI 生成命令",

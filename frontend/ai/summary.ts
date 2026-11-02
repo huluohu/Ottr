@@ -28,6 +28,7 @@ import { notify } from "../notify/core";
 import { vaultApi } from "../vault/api";
 import { createProvider, type AIProvider, type ChatMessage } from "./provider";
 import { redact } from "./redact";
+import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
 import { activeProvider, apiKeySecretKey, loadAiSettings } from "./settings";
 import { stripPromptPrefix } from "../history/format";
 
@@ -49,11 +50,17 @@ export interface SummaryPrompt {
   user: string;
 }
 
-/** 装配 system/用户消息（i18n 模板；命令逐条编号，时间顺序即数组顺序）。 */
-export function buildSummaryPrompt(commands: string[]): SummaryPrompt {
+/**
+ * 装配 system/用户消息（i18n 模板；命令逐条编号，时间顺序即数组顺序）。
+ *
+ * `hostContext` = 主机「备注」注入块（已脱敏；空串 = 无备忘）。排在命令
+ * 序列**之后**——纪要要总结的是命令序列，备忘是解释这些命令的背景。
+ */
+export function buildSummaryPrompt(commands: string[], hostContext = ""): SummaryPrompt {
   const user = [
     `${i18n.t("ai.summary.header")}:`,
     ...commands.map((c, i) => `${i + 1}. ${c}`),
+    ...(hostContext ? ["", hostContext] : []),
   ].join("\n");
   return {
     system: i18n.t("ai.summary.prompt"),
@@ -150,7 +157,13 @@ export async function generateSessionSummary(
       custom: settings.redaction.custom,
     };
     const commands = rows.map((r) => redact(stripPromptPrefix(r.command), redactOpts).text);
-    const prompt = buildSummaryPrompt(commands);
+    // 主机备注注入（2026-11-02 批次一 A 项）：持久化上下文，脱敏后随本轮发出。
+    const notes = await fetchHostNotes(req.hostId);
+    const hostCtx = buildHostContextBlock(notes, redactOpts);
+    const hostContext = hostCtx.text
+      ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}`
+      : "";
+    const prompt = buildSummaryPrompt(commands, hostContext);
     const messages: ChatMessage[] = [{ role: "user", content: prompt.user }];
 
     // --- 5. 单轮非流式（后台任务不需要流式；聚合全部增量）---

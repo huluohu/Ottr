@@ -28,6 +28,7 @@ import { notify } from "../notify/core";
 import { vaultApi } from "../vault/api";
 import { createProvider, type ChatMessage } from "./provider";
 import { redact, type RedactFinding } from "./redact";
+import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
 import {
   TAIL_BYTES,
   activeProvider,
@@ -128,20 +129,34 @@ export function openAiSettings(): void {
   openSettingsHook?.();
 }
 
-/** 组装诊断/解释的用户消息（脱敏后调用；格式稳定便于模型按段作答）。 */
-export function buildUserMessage(req: AiRequest, redactedSubject: string, output: string): string {
+/**
+ * 组装诊断/解释的用户消息（脱敏后调用；格式稳定便于模型按段作答）。
+ *
+ * `hostContext` = 主机「备注」注入块（已脱敏；空串 = 该主机无备忘）。
+ * 追加在最后一段——模型对末段（最靠近生成点）的指令依从度更高，
+ * 备忘是「这台机器的额外事实」，排在命令与输出尾之后不抢主问题的注意力。
+ */
+export function buildUserMessage(
+  req: AiRequest,
+  redactedSubject: string,
+  output: string,
+  hostContext = "",
+): string {
+  const contextBlock = hostContext ? `\n\n${hostContext}` : "";
   if (req.kind === "diagnose") {
-    return [
-      `${i18n.t("ai.msg.exitCode")}: ${req.exitCode ?? "?"}`,
-      `${i18n.t("ai.msg.command")}:`,
-      redactedSubject,
-      `${i18n.t("ai.msg.outputTail")}:`,
-      "```",
-      output,
-      "```",
-    ].join("\n");
+    return (
+      [
+        `${i18n.t("ai.msg.exitCode")}: ${req.exitCode ?? "?"}`,
+        `${i18n.t("ai.msg.command")}:`,
+        redactedSubject,
+        `${i18n.t("ai.msg.outputTail")}:`,
+        "```",
+        output,
+        "```",
+      ].join("\n") + contextBlock
+    );
   }
-  return `${i18n.t("ai.msg.explainTarget")}:\n${redactedSubject}`;
+  return `${i18n.t("ai.msg.explainTarget")}:\n${redactedSubject}${contextBlock}`;
 }
 
 /** 通知正文的命令摘要（首行、80 字符截断；已脱敏文本入通知）。 */
@@ -285,7 +300,7 @@ export const useAiStore = create<AiStore>((set, get) => {
         return;
       }
 
-      // --- 3. 组装上下文：脱敏（命令/选区 + 输出尾 8KB）---
+      // --- 3. 组装上下文：脱敏（命令/选区 + 输出尾 8KB + 主机备注）---
       const redactOpts = {
         hostname: settings.redaction.hostname,
         custom: settings.redaction.custom,
@@ -303,8 +318,16 @@ export const useAiStore = create<AiStore>((set, get) => {
           // 会话已关/迟到：空输出照发诊断（命令本身通常已足够定位）
         }
       }
+      // 主机备注注入（2026-11-02 批次一 A 项）：持久化在 vault 的上下文
+      // （系统版本、服务管理方式、日志路径…），脱敏后随本轮发出。
+      // 取数失败一律回落「无备忘段」——增强项不是前置条件。
+      const notes = await fetchHostNotes(req.hostId);
+      const hostCtx = buildHostContextBlock(notes, redactOpts);
+      const hostContext = hostCtx.text
+        ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}`
+        : "";
       patch(sessionId, {
-        redactions: [...subject.findings, ...outputRedactions],
+        redactions: [...subject.findings, ...outputRedactions, ...hostCtx.findings],
       });
 
       // 空内容不诊断（2026-10-21 用户裁定，AI 层的第二道防线）：命令与输出
@@ -328,7 +351,10 @@ export const useAiStore = create<AiStore>((set, get) => {
 
       // --- 4. 流式（BYOK 直连；取消器按会话隔离）---
       const messages: ChatMessage[] = [
-        { role: "user", content: buildUserMessage(req, subject.text, outputTail) },
+        {
+          role: "user",
+          content: buildUserMessage(req, subject.text, outputTail, hostContext),
+        },
       ];
       const ac = new AbortController();
       controllers.set(sessionId, ac);

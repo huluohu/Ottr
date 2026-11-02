@@ -29,11 +29,18 @@ export function focusedSessionId(s: Pick<
   return s.activeId != null ? (s.activePane[s.activeId] ?? s.activeId) : null;
 }
 
-/** ⌘J 打开时的上下文锚点：聚焦 pane 的 OSC7 cwd 活值（无记录 → null）。 */
+/**
+ * ⌘J 打开时的上下文锚点：聚焦 pane 的 OSC7 cwd 活值（无记录 → null）
+ * 与聚焦会话的主机 id（取主机「备注」注入 AI 上下文；本地终端 → null）。
+ */
 export function nlBegin(): void {
   const s = useSessionStore.getState();
   const focused = focusedSessionId(s);
-  useNlStore.getState().begin(focused != null ? lastCwd(focused) : null);
+  const session = focused != null ? s.sessions.find((x) => x.id === focused) : undefined;
+  useNlStore.getState().begin(
+    focused != null ? lastCwd(focused) : null,
+    session?.hostId ?? null,
+  );
 }
 
 export function NLCommandPanel({

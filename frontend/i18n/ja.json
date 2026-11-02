@@ -493,7 +493,8 @@
       "exitCode": "終了コード",
       "command": "コマンド",
       "outputTail": "出力の末尾",
-      "explainTarget": "このターミナル内容を説明"
+      "explainTarget": "このターミナル内容を説明",
+      "hostContext": "ホストのメモ"
     },
     "nl2cmd": {
       "title": "AI コマンド",

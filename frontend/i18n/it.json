@@ -493,7 +493,8 @@
       "exitCode": "Codice di uscita",
       "command": "Comando",
       "outputTail": "Coda dell'output",
-      "explainTarget": "Spiega questo contenuto del terminale"
+      "explainTarget": "Spiega questo contenuto del terminale",
+      "hostContext": "Note dell'host"
     },
     "nl2cmd": {
       "title": "Comando AI",

@@ -14,6 +14,7 @@ import {
   type JumpChain,
   type JumpChainInput,
 } from "./api";
+import { invalidateHostNotes } from "../ai/hostContext";
 
 interface VaultStore {
   hosts: Host[];
@@ -89,6 +90,10 @@ export const useVaultStore = create<VaultStore>((set, get) => {
   updateHost: async (id, input) =>
     mutate(async () => {
       const host = await vaultApi.hosts.update(id, input);
+      // 主机备注被 AI 备忘注入缓存（frontend/ai/hostContext.ts）——改了备注要
+      // 让缓存失效，否则下一轮 AI 仍用旧上下文。删缓存在 store 层做（唯一的
+      // 主机写入收口），避免各写入点各漏一处。
+      invalidateHostNotes(id);
       await get().refresh();
       return host;
     }),
@@ -96,6 +101,7 @@ export const useVaultStore = create<VaultStore>((set, get) => {
   deleteHost: async (id) =>
     mutate(async () => {
       await vaultApi.hosts.remove(id);
+      invalidateHostNotes(id);
       await get().refresh();
     }),
 

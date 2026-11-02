@@ -797,7 +797,12 @@
     "importSkipped": "Se omitieron {{hashed}} entradas con hash (los nombres de host están hasheados y no se pueden revertir) y {{other}} entradas de comentario/marcador/malformadas.",
     "importNotFound": "No se encontró el archivo known_hosts.",
     "importConflictNotice": "Los endpoints conflictivos no se sobrescribieron: los que tienen otra huella siguen pidiendo confirmación; revísalos manualmente.",
-    "importSkippedHashed": "Las entradas con hash (|1|…) no se pueden revertir y se omitieron."
+    "importSkippedHashed": "Las entradas con hash (|1|…) no se pueden revertir y se omitieron.",
+    "errFileNotFound": "No se encontró el archivo known_hosts",
+    "errPathRejected": "Esta ruta no se puede importar (debe ser una ruta absoluta a un archivo normal, no un enlace simbólico)",
+    "errTooManyEntries": "Demasiadas entradas: se superó el límite de importación",
+    "errVaultLocked": "La bóveda está bloqueada; desbloquéala para gestionar hosts conocidos",
+    "errOperationFailed": "Operación fallida"
   },
   "hostKey": {
     "firstTitle": "Primera conexión",
@@ -820,7 +825,8 @@
     "autoFilled": "Ottr rellenó el código de verificación (desde la credencial TOTP de este host).",
     "codeExpiresIn": "El código caduca en {{n}} s",
     "codeExpired": "El código ha caducado",
-    "codeRefresh": "Renovar código"
+    "codeRefresh": "Renovar código",
+    "codeRefreshed": "Código de verificación actualizado"
   },
   "security": {
     "mode": "Modo de clave",

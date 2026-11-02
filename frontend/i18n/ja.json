@@ -797,7 +797,12 @@
     "importSkipped": "ホスト名がハッシュ化されて復元できない hashed エントリ {{hashed}} 件と、コメント/マーカー/不正形式のエントリ {{other}} 件をスキップしました。",
     "importNotFound": "known_hosts ファイルが見つかりません。",
     "importConflictNotice": "競合するエンドポイントは上書きされませんでした。異なるフィンガープリントのエンドポイントは依然として確認を求めるため、手動で確認してください。",
-    "importSkippedHashed": "ハッシュ化エントリ（|1|…）は逆算できないためスキップしました。"
+    "importSkippedHashed": "ハッシュ化エントリ（|1|…）は逆算できないためスキップしました。",
+    "errFileNotFound": "known_hosts ファイルが見つかりません",
+    "errPathRejected": "このパスはインポートできません（絶対パス指定の通常ファイルが必要、シンボリックリンク不可）",
+    "errTooManyEntries": "エントリ数が上限を超えています",
+    "errVaultLocked": "保管庫がロックされています。解锁すると既知ホストを操作できます",
+    "errOperationFailed": "操作に失敗しました"
   },
   "hostKey": {
     "firstTitle": "初回接続",
@@ -820,7 +825,8 @@
     "autoFilled": "認証コードは Ottr が自動的に入力しました（このホストの TOTP 資格情報より）。",
     "codeExpiresIn": "認証コードは {{n}} 秒で期限切れになります",
     "codeExpired": "認証コードの有効期限が切れました",
-    "codeRefresh": "認証コードを更新"
+    "codeRefresh": "認証コードを更新",
+    "codeRefreshed": "認証コードを更新しました"
   },
   "security": {
     "mode": "キーモード",

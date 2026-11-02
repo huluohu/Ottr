@@ -797,7 +797,12 @@
     "importSkipped": "Skipped {{hashed}} hashed entries (host names are hashed and cannot be reversed) and {{other}} comment/marker/malformed entries.",
     "importNotFound": "known_hosts file not found.",
     "importConflictNotice": "Conflicting endpoints were not overwritten: endpoints with a different fingerprint still prompt for confirmation — check them manually.",
-    "importSkippedHashed": "Hashed entries (|1|…) cannot be reversed and were skipped."
+    "importSkippedHashed": "Hashed entries (|1|…) cannot be reversed and were skipped.",
+    "errFileNotFound": "known_hosts file not found",
+    "errPathRejected": "This path can't be imported (needs an absolute path to a regular file, not a symlink)",
+    "errTooManyEntries": "Too many entries — over the import limit",
+    "errVaultLocked": "The vault is locked; unlock it to manage known hosts",
+    "errOperationFailed": "Operation failed"
   },
   "hostKey": {
     "firstTitle": "First connection",
@@ -820,7 +825,8 @@
     "autoFilled": "The verification code was filled in by Ottr (from this host's TOTP credential).",
     "codeExpiresIn": "Code expires in {{n}}s",
     "codeExpired": "Code expired",
-    "codeRefresh": "Refresh code"
+    "codeRefresh": "Refresh code",
+    "codeRefreshed": "Verification code refreshed"
   },
   "security": {
     "mode": "Key mode",

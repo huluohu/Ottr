@@ -46,6 +46,9 @@ export function PromptDialog() {
   /** 用户是否手动改过输入框——改过就不自动覆盖他。 */
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** 换码播报（读屏）：码被自动刷新/手动刷新后给一句提示——输入框里的值
+   * 静默变了，盯屏幕的人也不易察觉，读屏用户更无从知道。 */
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const firstRef = useRef<HTMLInputElement>(null);
   /** 走秒针（500ms 足够显示精度，且到期判定不受 setInterval 漂移影响）。 */
   const [now, setNow] = useState(() => Date.now());
@@ -99,6 +102,7 @@ export function PromptDialog() {
       });
       setExpiresAt(Date.now() + res.remaining_seconds * 1000);
       setTouched(false);
+      setRefreshNotice(t("promptAsk.codeRefreshed"));
       return res.code;
     } catch {
       // 算不出新码（比如凭据被删/种子坏了）→ 保留旧值，让用户手输。
@@ -181,6 +185,11 @@ export function PromptDialog() {
         {hasSuggestion && (
           <p className="settings-hint" data-testid="prompt-autofill-hint">
             {t("promptAsk.autoFilled")}
+          </p>
+        )}
+        {refreshNotice && (
+          <p className="settings-hint" role="status" data-testid="prompt-code-refreshed">
+            {refreshNotice}
           </p>
         )}
         {hasSuggestion && (

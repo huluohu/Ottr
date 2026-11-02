@@ -796,7 +796,12 @@
     "importSkipped": "已跳过 {{hashed}} 条 hashed 条目（主机名被哈希，无法反解）与 {{other}} 条注释/标记/格式异常条目。",
     "importNotFound": "未找到 known_hosts 文件。",
     "importConflictNotice": "冲突端点未被覆盖：已有不同指纹的端点仍会弹确认，请手动核对后处理。",
-    "importSkippedHashed": "哈希条目（|1|…）无法反解，已跳过。"
+    "importSkippedHashed": "哈希条目（|1|…）无法反解，已跳过。",
+    "errFileNotFound": "找不到该 known_hosts 文件",
+    "errPathRejected": "该路径不可导入（需绝对路径的普通文件，不能是符号链接）",
+    "errTooManyEntries": "条目太多，已超过导入上限",
+    "errVaultLocked": "保险库已锁定，解锁后才能操作已知主机",
+    "errOperationFailed": "操作失败"
   },
   "hostKey": {
     "firstTitle": "首次连接确认",
@@ -819,7 +824,8 @@
     "autoFilled": "验证码已由 Ottr 自动填入（来自该主机的 TOTP 凭据）。",
     "codeExpiresIn": "验证码 {{n}} 秒后过期",
     "codeExpired": "验证码已过期",
-    "codeRefresh": "刷新验证码"
+    "codeRefresh": "刷新验证码",
+    "codeRefreshed": "验证码已刷新"
   },
   "security": {
     "mode": "密钥模式",

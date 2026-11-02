@@ -203,10 +203,22 @@ pub const KNOWN_HOSTS_FILE_NOT_FOUND: &str = "known_hosts_file_not_found";
 /// （可提示换个路径）与「路径不可用」（提示必须是绝对路径的真实文件）。
 /// 格式：`"<code>: <原因>"`。
 pub const KNOWN_HOSTS_PATH_REJECTED: &str = "known_hosts_path_rejected";
+/// 条目数超限（[`KNOWN_HOSTS_PATH_REJECTED`] 同款前缀风格：前端据此分流提示，
+/// 不把「known_hosts has too many entries (limit 20000)」这种机器语甩给用户）。
+pub const KNOWN_HOSTS_TOO_MANY_ENTRIES: &str = "known_hosts_too_many_entries";
 
 /// 默认 known_hosts 路径：`~/.ssh/known_hosts`（HOME / USERPROFILE 均兼顾三端；
 /// 与 `ssh_config::default_ssh_config_path` 同款兼容写法）。
 fn default_known_hosts_path() -> Option<PathBuf> {
+    // **Windows 优先 USERPROFILE**：HOME 在装了 Git Bash / MSYS 的 Windows 上
+    // 可能是 POSIX 形态（`/c/Users/foo`），`PathBuf::from` 不会转换 → 拼出
+    // `/c/Users/foo/.ssh/known_hosts` 这种根本不存在的路径（审计 2026-11-03）。
+    // Unix 上 HOME 才是对的（USERPROFILE 不存在）。
+    #[cfg(windows)]
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .ok()?;
+    #[cfg(not(windows))]
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .ok()?;
@@ -364,7 +376,14 @@ fn import_known_hosts_sync(
         content,
         ottr_ssh::known_hosts::MAX_KNOWN_HOSTS_ENTRIES,
     )
-    .map_err(|e| format!("{}: {e}", path.display()))?;
+    .map_err(|e| {
+        let code = match e {
+            ottr_ssh::known_hosts::KnownHostsParseError::TooManyEntries { .. } => {
+                KNOWN_HOSTS_TOO_MANY_ENTRIES
+            }
+        };
+        format!("{code}: {}: {e}", path.display())
+    })?;
     // 择一（同端点多密钥型 → 优先 ed25519，OpenSSH 语义在 ottr-ssh 层）。
     let selected = ottr_ssh::known_hosts::select_by_endpoint(&parsed.entries);
     let import_entries: Vec<ottr_vault::KnownHostImportEntry> = selected

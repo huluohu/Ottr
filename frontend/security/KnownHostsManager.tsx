@@ -31,6 +31,35 @@ const STATE_BADGE: Record<KnownHostState, string> = {
 /** Rust 侧「文件不存在」错误码前缀（desktop/src/vault/hosts.rs 同名字面量）。
  *  命中即展示本地化的「未找到文件」提示，而不是把原始路径当导入失败抛给用户。 */
 const FILE_NOT_FOUND_CODE = "known_hosts_file_not_found";
+const PATH_REJECTED_CODE = "known_hosts_path_rejected";
+const TOO_MANY_ENTRIES_CODE = "known_hosts_too_many_entries";
+
+/**
+ * 操作失败 → **可读文案**（2026-11-02 审计 M11）。
+ *
+ * 此前直接把 Rust 的原始报错串甩给用户（「read /x/y: Permission denied (os
+ * error 13)」这类机器语）。现在：**已知错误码**走本地化文案；**未知错误**给一句
+ * 通用提示，原始串留在 `title` 属性里（悬停可见，便于排障），不再占据正文。
+ */
+function describeError(
+  e: unknown,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): { text: string; detail: string } {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (raw.startsWith(FILE_NOT_FOUND_CODE)) {
+    return { text: t("knownHosts.errFileNotFound"), detail: raw };
+  }
+  if (raw.startsWith(PATH_REJECTED_CODE)) {
+    return { text: t("knownHosts.errPathRejected"), detail: raw };
+  }
+  if (raw.startsWith(TOO_MANY_ENTRIES_CODE)) {
+    return { text: t("knownHosts.errTooManyEntries"), detail: raw };
+  }
+  if (/vault is locked/i.test(raw)) {
+    return { text: t("knownHosts.errVaultLocked"), detail: raw };
+  }
+  return { text: t("knownHosts.errOperationFailed"), detail: raw };
+}
 
 /** 秒级 unix → 本地时间串（epoch 0 / 缺失 = —）。 */
 function fmtTs(ts: number | null, neverLabel: string): string {
@@ -48,7 +77,7 @@ interface ProbeState {
 export function KnownHostsManager() {
   const { t } = useTranslation();
   const [rows, setRows] = useState<KnownHost[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ text: string; detail: string } | null>(null);
   const [auditMsg, setAuditMsg] = useState<string | null>(null);
   const [auditing, setAuditing] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -67,7 +96,7 @@ export function KnownHostsManager() {
     return vaultApi.knownHosts
       .list()
       .then(setRows)
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(describeError(e, t)));
   }, []);
 
   useEffect(() => {
@@ -81,7 +110,7 @@ export function KnownHostsManager() {
       await fn();
       await refresh();
     } catch (e) {
-      setError(String(e));
+      setError(describeError(e, t));
     } finally {
       setBusyKey(null);
     }
@@ -120,7 +149,7 @@ export function KnownHostsManager() {
       );
       await refresh();
     } catch (e) {
-      setError(String(e));
+      setError(describeError(e, t));
     } finally {
       setAuditing(false);
     }
@@ -135,7 +164,7 @@ export function KnownHostsManager() {
       setImportReport(report);
       await refresh();
     } catch (e) {
-      setError(String(e));
+      setError(describeError(e, t));
     } finally {
       setImporting(false);
     }
@@ -234,8 +263,14 @@ export function KnownHostsManager() {
           {importReport.errors.length > 0 && (
             <ul className="kh-seen" data-testid="kh-import-errors">
               {importReport.errors.map((e, i) => (
-                <li key={`${e}-${i}`}>
-                  {e.startsWith(FILE_NOT_FOUND_CODE) ? t("knownHosts.importNotFound") : e}
+                <li key={`${e}-${i}`} title={e}>
+                  {e.startsWith(FILE_NOT_FOUND_CODE)
+                    ? t("knownHosts.importNotFound")
+                    : e.startsWith(PATH_REJECTED_CODE)
+                      ? t("knownHosts.errPathRejected")
+                      : e.startsWith(TOO_MANY_ENTRIES_CODE)
+                        ? t("knownHosts.errTooManyEntries")
+                        : t("knownHosts.errOperationFailed")}
                 </li>
               ))}
             </ul>
@@ -248,8 +283,8 @@ export function KnownHostsManager() {
         </p>
       )}
       {error && (
-        <p className="form-error" data-testid="kh-error">
-          {error}
+        <p className="form-error" data-testid="kh-error" title={error.detail}>
+          {error.text}
         </p>
       )}
 

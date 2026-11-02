@@ -212,3 +212,25 @@ describe("PromptDialog", () => {
     });
   });
 });
+
+/** 换码后要有播报（读屏用户无从知道输入框里的值静默变了）。 */
+describe("换码播报", () => {
+  it("码刷新后出现 role=status 的提示", async () => {
+    seedAsk();
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "credential_totp_code") {
+        return Promise.resolve({ code: "999888", remaining_seconds: 30 });
+      }
+      return Promise.resolve(null);
+    });
+    render(<PromptDialog />);
+    // 点「刷新验证码」触发换码（自动换码要等窗口过期，用按钮更确定）
+    fireEvent.click(screen.getByTestId("prompt-code-refresh"));
+    await waitFor(() => {
+      expect(screen.getByTestId("prompt-code-refreshed")).toBeTruthy();
+    });
+    const el = screen.getByTestId("prompt-code-refreshed");
+    expect(el.getAttribute("role")).toBe("status");
+    expect(el.textContent?.trim()).not.toBe("");
+  });
+});

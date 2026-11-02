@@ -796,7 +796,12 @@
     "importSkipped": "已跳 {{hashed}} 條 hashed 條目（主機名被雜湊，不可反解）與 {{other}} 條註/標記/格式異常條目。",
     "importNotFound": "未得 known_hosts 檔。",
     "importConflictNotice": "衝突之端點未覆：既存指紋相異者仍請確認，請自察後處之。",
-    "importSkippedHashed": "雜湊條目（|1|…）不能逆推，已略。"
+    "importSkippedHashed": "雜湊條目（|1|…）不能逆推，已略。",
+    "errFileNotFound": "覓不得該 known_hosts 檔",
+    "errPathRejected": "該徑不可匯入（須絕對徑之常檔，非符連結）",
+    "errTooManyEntries": "條目過多，已逾匯入之上限",
+    "errVaultLocked": "密庫已鎖，解而後方可用已知主機",
+    "errOperationFailed": "事敗"
   },
   "hostKey": {
     "firstTitle": "首次連諾",
@@ -819,7 +824,8 @@
     "autoFilled": "驗碼已由 Ottr 自動填入（出該主之 TOTP 憑）。",
     "codeExpiresIn": "驗碼 {{n}} 秒而後失效",
     "codeExpired": "驗碼已失效",
-    "codeRefresh": "換驗碼"
+    "codeRefresh": "換驗碼",
+    "codeRefreshed": "驗碼已換新"
   },
   "security": {
     "mode": "密鑰模式",

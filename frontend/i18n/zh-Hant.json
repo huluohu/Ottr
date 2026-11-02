@@ -796,7 +796,12 @@
     "importSkipped": "已跳過 {{hashed}} 條 hashed 條目（主機名被雜湊，無法反解）與 {{other}} 條註解/標記/格式異常條目。",
     "importNotFound": "找不到 known_hosts 檔。",
     "importConflictNotice": "衝突端點未被覆寫：已有不同指紋的端點仍會彈確認，請手動核對後處理。",
-    "importSkippedHashed": "雜湊條目（|1|…）無法反解，已跳過。"
+    "importSkippedHashed": "雜湊條目（|1|…）無法反解，已跳過。",
+    "errFileNotFound": "找不到該 known_hosts 檔案",
+    "errPathRejected": "該路徑不可匯入（需絕對路徑的普通檔案，不能是符號連結）",
+    "errTooManyEntries": "條目太多，已超過匯入上限",
+    "errVaultLocked": "保險庫已鎖定，解鎖後才能操作已知主機",
+    "errOperationFailed": "操作失敗"
   },
   "hostKey": {
     "firstTitle": "首次連接確認",
@@ -819,7 +824,8 @@
     "autoFilled": "驗證碼已由 Ottr 自動填入（來自該主機的 TOTP 憑證）。",
     "codeExpiresIn": "驗證碼 {{n}} 秒後過期",
     "codeExpired": "驗證碼已過期",
-    "codeRefresh": "重新整理驗證碼"
+    "codeRefresh": "重新整理驗證碼",
+    "codeRefreshed": "驗證碼已刷新"
   },
   "security": {
     "mode": "密鑰模式",

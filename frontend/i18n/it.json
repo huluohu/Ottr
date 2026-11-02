@@ -797,7 +797,12 @@
     "importSkipped": "Saltate {{hashed}} voci con hash (i nomi host sono hashati e non reversibili) e {{other}} voci commento/marker/malformate.",
     "importNotFound": "File known_hosts non trovato.",
     "importConflictNotice": "Gli endpoint in conflitto non sono stati sovrascritti: quelli con un'impronta diversa richiedono ancora conferma; controllali manualmente.",
-    "importSkippedHashed": "Le voci con hash (|1|…) non sono reversibili e sono state ignorate."
+    "importSkippedHashed": "Le voci con hash (|1|…) non sono reversibili e sono state ignorate.",
+    "errFileNotFound": "File known_hosts non trovato",
+    "errPathRejected": "Questo percorso non è importabile (serve un percorso assoluto verso un file regolare, non un collegamento simbolico)",
+    "errTooManyEntries": "Troppe voci: superato il limite di importazione",
+    "errOperationFailed": "Operazione non riuscita",
+    "errVaultLocked": "Il vault è bloccato; sbloccalo per gestire gli host noti"
   },
   "hostKey": {
     "firstTitle": "Prima connessione",
@@ -820,7 +825,8 @@
     "autoFilled": "Il codice di verifica è stato compilato da Ottr (dalla credenziale TOTP di questo host).",
     "codeExpiresIn": "Il codice scade tra {{n}} s",
     "codeExpired": "Il codice è scaduto",
-    "codeRefresh": "Aggiorna codice"
+    "codeRefresh": "Aggiorna codice",
+    "codeRefreshed": "Codice di verifica aggiornato"
   },
   "security": {
     "mode": "Modalità chiave",

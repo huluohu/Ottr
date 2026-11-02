@@ -37,9 +37,30 @@ export interface ChatRequest {
   signal?: AbortSignal;
 }
 
-/** 流式增量。 */
+/** Token 用量（端点回传；拿不到时为 undefined——UI 降级为只显示模型名）。 */
+export interface ChatUsage {
+  /** 输入 token（prompt tokens）。 */
+  inputTokens: number;
+  /** 输出 token（completion tokens）。 */
+  outputTokens: number;
+}
+
+/**
+ * 流式增量。
+ *
+ * `usage` / `model` / `finishReason` 均为**可选**——端点不一定回（部分
+ * OpenAI 兼容端点需显式 `stream_options.include_usage` 才有；Anthropic 的
+ * 用量分散在 message_start / message_delta 两个事件里）。拿不到就是
+ * undefined，**不得因此报错**——透明化是增强项，不能反过来把 AI 功能搞挂。
+ */
 export interface ChatDelta {
   text: string;
+  /** 累计用量（拿到即最终值）。 */
+  usage?: ChatUsage;
+  /** 端点回传的模型名（缺失时调用方回落 settings 快照里的 model）。 */
+  model?: string;
+  /** 停止原因（end_turn / max_tokens / stop / length）。 */
+  finishReason?: string;
 }
 
 /** Provider 实例（工厂入参 = 设置页元数据 + vault secrets 出库的明文 key）。 */

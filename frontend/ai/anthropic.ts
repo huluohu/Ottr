@@ -41,10 +41,17 @@ export class AnthropicProvider {
     if (!res.ok || !res.body) {
       throw new Error(await httpError(res));
     }
+    // Anthropic 的用量**分散在两个事件**里：message_start 给 input_tokens，
+    // message_delta 给 output_tokens——两端都到齐才产出 usage（半截数据不显示）。
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
+    let model: string | undefined;
     for await (const data of sseData(res.body)) {
       let json: {
         type?: string;
-        delta?: { type?: string; text?: string };
+        delta?: { type?: string; text?: string; stop_reason?: string | null };
+        message?: { model?: string; usage?: { input_tokens?: number } };
+        usage?: { output_tokens?: number; input_tokens?: number };
         error?: { message?: string };
       };
       try {
@@ -55,8 +62,33 @@ export class AnthropicProvider {
       if (json.type === "error") {
         throw new Error(json.error?.message ?? "anthropic stream error");
       }
-      if (json.type === "content_block_delta" && json.delta?.text) {
-        yield { text: json.delta.text };
+      if (json.type === "message_start") {
+        if (typeof json.message?.usage?.input_tokens === "number") {
+          inputTokens = json.message.usage.input_tokens;
+        }
+        if (typeof json.message?.model === "string") {
+          model = json.message.model;
+        }
+      }
+      if (json.type === "message_delta") {
+        if (typeof json.usage?.output_tokens === "number") {
+          outputTokens = json.usage.output_tokens;
+        }
+        // 有些端点在 message_delta 也带 input_tokens（补齐口径）。
+        if (inputTokens === undefined && typeof json.usage?.input_tokens === "number") {
+          inputTokens = json.usage.input_tokens;
+        }
+      }
+      const finishReason = json.delta?.stop_reason ?? undefined;
+      const usage =
+        inputTokens !== undefined && outputTokens !== undefined
+          ? { inputTokens, outputTokens }
+          : undefined;
+      const text = json.type === "content_block_delta" ? (json.delta?.text ?? "") : "";
+      if (text !== "") {
+        yield { text, usage, model, finishReason };
+      } else if (usage || model || finishReason) {
+        yield { text: "", usage, model, finishReason };
       }
       // message_stop / ping / content_block_start 等事件不产文本
     }

@@ -474,6 +474,8 @@
     "aborted": "已取消",
     "retry": "重试",
     "redacted": "已脱敏 {{count}} 处",
+    "usageTokens": "入 {{input}} / 出 {{output}} tok",
+    "usageElapsed": "{{ms}} ms",
     "levelGreen": "安全",
     "levelYellow": "需确认",
     "levelRed": "危险",

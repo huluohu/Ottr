@@ -26,7 +26,7 @@ import { create } from "zustand";
 import i18n from "../i18n";
 import { notify } from "../notify/core";
 import { vaultApi } from "../vault/api";
-import { createProvider, type ChatMessage } from "./provider";
+import { createProvider, type ChatMessage, type ChatUsage } from "./provider";
 import { redact, type RedactFinding } from "./redact";
 import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
 import {
@@ -80,6 +80,12 @@ export interface SessionAiState {
   settingsUsed: AiSettings | null;
   /** 面板已被用户看过（页签「待看」徽标 = 有 request 且未看过）。 */
   seen: boolean;
+  /** 本轮用量（2026-11-02 批次一 B 项）：端点回传的 token 数；端点不给 = null。 */
+  usage: ChatUsage | null;
+  /** 本轮实际使用的模型名（端点回传优先，回落 settings 快照）。 */
+  modelUsed: string | null;
+  /** 本轮耗时（毫秒；发请求 → 流结束）。 */
+  elapsedMs: number | null;
 }
 
 const EMPTY_SLICE: SessionAiState = {
@@ -91,6 +97,9 @@ const EMPTY_SLICE: SessionAiState = {
   redactions: [],
   settingsUsed: null,
   seen: false,
+  usage: null,
+  modelUsed: null,
+  elapsedMs: null,
 };
 
 interface AiStore {
@@ -260,6 +269,9 @@ export const useAiStore = create<AiStore>((set, get) => {
         errorKind: null,
         error: null,
         redactions: [],
+        usage: null,
+        modelUsed: null,
+        elapsedMs: null,
       });
 
       // --- 1. 设置（坏键独立回落）---
@@ -358,6 +370,7 @@ export const useAiStore = create<AiStore>((set, get) => {
       ];
       const ac = new AbortController();
       controllers.set(sessionId, ac);
+      const startedAt = performance.now();
       try {
         const provider = createProvider(meta, apiKey);
         for await (const delta of provider.chat({
@@ -368,12 +381,21 @@ export const useAiStore = create<AiStore>((set, get) => {
         })) {
           if (controllers.get(sessionId) !== ac) return; // 已被本会话新一轮取代/关闭
           if (ac.signal.aborted) break;
-          patch(sessionId, { answer: slice(sessionId).answer + delta.text, status: "running" });
+          patch(sessionId, {
+            answer: slice(sessionId).answer + delta.text,
+            status: "running",
+            // 用量/模型：端点给了才更新（拿不到就是 null → UI 只显示耗时）。
+            usage: delta.usage ?? slice(sessionId).usage,
+            modelUsed: delta.model ?? slice(sessionId).modelUsed,
+          });
         }
         if (controllers.get(sessionId) === ac) {
           controllers.delete(sessionId);
           const done = !ac.signal.aborted;
-          patch(sessionId, { status: done ? "done" : "aborted" });
+          patch(sessionId, {
+            status: done ? "done" : "aborted",
+            elapsedMs: Math.round(performance.now() - startedAt),
+          });
           if (done) {
             // --- 5. 完成落通知（T12 管线预留位；取消不发；失败只记 console 不反噬）---
             try {

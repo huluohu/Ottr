@@ -475,6 +475,8 @@
     "aborted": "취소됨",
     "retry": "다시 시도",
     "redacted": "{{count}}개 항목 마스킹됨",
+    "usageTokens": "입 {{input}} / 출 {{output}} tok",
+    "usageElapsed": "{{ms}} ms",
     "levelGreen": "안전",
     "levelYellow": "확인 필요",
     "levelRed": "위험",

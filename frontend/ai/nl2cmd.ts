@@ -16,7 +16,7 @@
 import { create } from "zustand";
 import i18n from "../i18n";
 import { vaultApi } from "../vault/api";
-import { createProvider, type ChatMessage } from "./provider";
+import { createProvider, type ChatMessage, type ChatUsage } from "./provider";
 import { activeProvider, apiKeySecretKey, loadAiSettings, type AiSettings } from "./settings";
 import { classify, type TrafficLight } from "./danger";
 import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
@@ -104,6 +104,12 @@ interface NlStore {
   cwd: string | null;
   /** 打开面板时锚定的主机 id（本地终端 = null；用于取主机「备注」注入 AI 上下文）。 */
   hostId: number | null;
+  /** 本轮用量（2026-11-02 批次一 B 项）：端点回传的 token 数；不给 = null。 */
+  usage: ChatUsage | null;
+  /** 本轮实际使用的模型名（端点回传优先，回落 settings 快照）。 */
+  modelUsed: string | null;
+  /** 本轮耗时（毫秒）。 */
+  elapsedMs: number | null;
   /** 已完成轮次（最新在前；done 时追加。close/begin 不清——回看面）。 */
   rounds: NlRound[];
 
@@ -133,6 +139,9 @@ export const useNlStore = create<NlStore>((set, get) => ({
   settingsUsed: null,
   cwd: null,
   hostId: null,
+  usage: null,
+  modelUsed: null,
+  elapsedMs: null,
   rounds: [],
 
   begin: (cwd, hostId = null) => {
@@ -148,6 +157,9 @@ export const useNlStore = create<NlStore>((set, get) => ({
       settingsUsed: null,
       cwd,
       hostId,
+      usage: null,
+      modelUsed: null,
+      elapsedMs: null,
     });
   },
 
@@ -177,7 +189,16 @@ export const useNlStore = create<NlStore>((set, get) => ({
   submit: async () => {
     const input = get().input.trim();
     if (input === "") return;
-    set({ status: "running", answer: "", command: null, errorKind: null, error: null });
+    set({
+      status: "running",
+      answer: "",
+      command: null,
+      errorKind: null,
+      error: null,
+      usage: null,
+      modelUsed: null,
+      elapsedMs: null,
+    });
 
     // --- 1. 设置（坏键独立回落，同 aiStore 口径）---
     let settings: AiSettings;
@@ -226,6 +247,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
     const messages: ChatMessage[] = [{ role: "user", content: prompt.user }];
     const ac = new AbortController();
     controller = ac;
+    const startedAt = performance.now();
     try {
       const provider = createProvider(meta, apiKey);
       for await (const delta of provider.chat({
@@ -237,11 +259,17 @@ export const useNlStore = create<NlStore>((set, get) => ({
       })) {
         if (controller !== ac) return; // 已被新一轮取代
         if (ac.signal.aborted) break;
-        set((st) => ({ answer: st.answer + delta.text, status: "running" }));
+        set((st) => ({
+          answer: st.answer + delta.text,
+          status: "running",
+          usage: delta.usage ?? st.usage,
+          modelUsed: delta.model ?? st.modelUsed,
+        }));
       }
       if (controller === ac) {
         controller = null;
         const done = !ac.signal.aborted;
+        set({ elapsedMs: Math.round(performance.now() - startedAt) });
         if (done) {
           const command = sanitizeNlCommand(get().answer);
           if (command === "") {

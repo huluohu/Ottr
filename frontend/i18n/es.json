@@ -475,6 +475,8 @@
     "aborted": "Cancelado",
     "retry": "Reintentar",
     "redacted": "{{count}} elemento(s) redactado(s)",
+    "usageTokens": "{{input}} ent. / {{output}} sal. tok",
+    "usageElapsed": "{{ms}} ms",
     "levelGreen": "Seguro",
     "levelYellow": "Confirmar",
     "levelRed": "Peligro",

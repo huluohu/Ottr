@@ -475,6 +475,8 @@
     "aborted": "Annullato",
     "retry": "Riprova",
     "redacted": "{{count}} elementi offuscati",
+    "usageTokens": "{{input}} in / {{output}} out tok",
+    "usageElapsed": "{{ms}} ms",
     "levelGreen": "Sicuro",
     "levelYellow": "Conferma",
     "levelRed": "Pericolo",

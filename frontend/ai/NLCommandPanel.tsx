@@ -62,6 +62,10 @@ export function NLCommandPanel({
   const errorKind = useNlStore((s) => s.errorKind);
   const error = useNlStore((s) => s.error);
   const rounds = useNlStore((s) => s.rounds);
+  const usage = useNlStore((s) => s.usage);
+  const modelUsed = useNlStore((s) => s.modelUsed);
+  const elapsedMs = useNlStore((s) => s.elapsedMs);
+  const settingsUsed = useNlStore((s) => s.settingsUsed);
   const setInput = useNlStore((s) => s.setInput);
   const submit = useNlStore((s) => s.submit);
   const abort = useNlStore((s) => s.abort);
@@ -239,6 +243,29 @@ export function NLCommandPanel({
             </div>
           );
         })()}
+
+        {/* 用量透明化（2026-11-02 批次一 B 项）：模型 · token · 耗时。
+            端点不回 usage 时只显示模型与耗时（降级，不留空）。 */}
+        {(status === "done" || status === "aborted") && (
+          <div className="ai-usage-row" data-testid="nl2cmd-usage">
+            <span className="ai-usage-model">
+              {modelUsed ?? settingsUsed?.providers?.[0]?.model ?? ""}
+            </span>
+            {usage && (
+              <span className="ai-usage-tokens" data-testid="nl2cmd-usage-tokens">
+                {t("ai.usageTokens", {
+                  input: usage.inputTokens,
+                  output: usage.outputTokens,
+                })}
+              </span>
+            )}
+            {elapsedMs !== null && (
+              <span className="ai-usage-elapsed" data-testid="nl2cmd-usage-elapsed">
+                {t("ai.usageElapsed", { ms: elapsedMs })}
+              </span>
+            )}
+          </div>
+        )}
 
         {status === "aborted" && (
           <p className="ai-aborted" data-testid="nl2cmd-aborted">

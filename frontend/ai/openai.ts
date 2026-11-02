@@ -78,6 +78,23 @@ export async function httpError(res: Response): Promise<string> {
   return `HTTP ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`;
 }
 
+/**
+ * OpenAI 兼容面的 usage 段 → ChatUsage（畸形/缺失 → undefined）。
+ *
+ * 独立成函数是为了让「解析失败 = 拿不到」这件事**局部化**：端点回
+ * `"usage":"not-an-object"` 或只回一半字段时，这里返回 undefined，调用方
+ * 降级为不显示 token 数，绝不影响文本流。
+ */
+export function parseOpenAiUsage(
+  usage: { prompt_tokens?: number; completion_tokens?: number } | undefined,
+): { inputTokens: number; outputTokens: number } | undefined {
+  if (!usage || typeof usage !== "object") return undefined;
+  const { prompt_tokens: input, completion_tokens: output } = usage;
+  if (typeof input !== "number" || typeof output !== "number") return undefined;
+  if (!Number.isFinite(input) || !Number.isFinite(output)) return undefined;
+  return { inputTokens: input, outputTokens: output };
+}
+
 export class OpenAICompatibleProvider {
   constructor(
     private readonly baseURL: string,
@@ -104,6 +121,10 @@ export class OpenAICompatibleProvider {
         model: this.model,
         stream: true,
         max_tokens: req.maxTokens,
+        // 用量透明化（2026-11-02 批次一 B 项）：OpenAI 兼容面靠这个开关才在
+        // 流式末帧回 usage。部分国产/代理端点不认该字段（400 或静默忽略）——
+        // 那时拿不到 usage，UI 降级为只显示模型名与耗时（见 ChatDelta 注释）。
+        stream_options: { include_usage: true },
         // stop 序列（NL→命令）：OpenAI 兼容面字段即 `stop`（string[]）
         ...(req.stop?.length ? { stop: req.stop } : {}),
         messages: [
@@ -118,15 +139,31 @@ export class OpenAICompatibleProvider {
     for await (const data of sseData(res.body)) {
       if (data === "[DONE]") return;
       let json: {
-        choices?: { delta?: { content?: string | null }; text?: string }[];
+        choices?: {
+          delta?: { content?: string | null };
+          text?: string;
+          finish_reason?: string | null;
+        }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        model?: string;
       };
       try {
         json = JSON.parse(data);
       } catch {
         continue; // 非法行跳过（端点注释/心跳）
       }
+      // usage 解析是**旁路**：畸形字段不得污染主文本流（整帧 try 已在上面）。
+      const usage = parseOpenAiUsage(json.usage);
       const delta = json.choices?.[0]?.delta?.content ?? json.choices?.[0]?.text ?? "";
-      if (delta !== "") yield { text: delta };
+      const finishReason = json.choices?.[0]?.finish_reason ?? undefined;
+      const model = json.model;
+      // 产出规则：文本帧产 text；usage/model/finishReason 帧即便无文本也产出，
+      // 让调用方拿到「这一轮的用量」——但纯空帧（无任何附加信息）不产出。
+      if (delta !== "") {
+        yield { text: delta, usage, model, finishReason };
+      } else if (usage || model || finishReason) {
+        yield { text: "", usage, model, finishReason };
+      }
     }
   }
 

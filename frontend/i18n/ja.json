@@ -475,6 +475,8 @@
     "aborted": "キャンセル",
     "retry": "再試行",
     "redacted": "{{count}} 件を秘匿",
+    "usageTokens": "入 {{input}} / 出 {{output}} tok",
+    "usageElapsed": "{{ms}} ms",
     "levelGreen": "安全",
     "levelYellow": "確認",
     "levelRed": "危険",

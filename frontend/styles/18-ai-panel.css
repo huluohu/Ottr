@@ -92,6 +92,27 @@
   font-size: var(--text-xs);
   opacity: 0.7;
 }
+/* 用量透明化（2026-11-02 批次一 B 项）：模型 · token · 耗时。弱化色小字，
+   排在面板最底——是「交代本轮开销」的信息条，不是主内容。 */
+.ai-usage-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  opacity: 0.85;
+}
+.ai-usage-model {
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.ai-usage-tokens,
+.ai-usage-elapsed {
+  font-variant-numeric: tabular-nums;
+}
 .ai-thinking {
   opacity: 0.7;
   font-size: var(--text-sm);

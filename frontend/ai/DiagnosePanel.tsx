@@ -93,6 +93,9 @@ export function DiagnosePanel({
   const error = useSessionAi(sessionId).error;
   const redactions = useSessionAi(sessionId).redactions;
   const settingsUsed = useSessionAi(sessionId).settingsUsed;
+  const usage = useSessionAi(sessionId).usage;
+  const modelUsed = useSessionAi(sessionId).modelUsed;
+  const elapsedMs = useSessionAi(sessionId).elapsedMs;
 
   // 「待看」徽标口径：面板渲染 = 用户已看到（MainArea 只在所属会话激活时
   // 挂载本组件，key=sessionId——切走再切回会重挂并再次 markSeen，无害）。
@@ -194,6 +197,30 @@ export function DiagnosePanel({
       )}
 
       <AnswerView disabled={status !== "done"} answer={answer} rustId={request.kind === "diagnose" ? request.rustId : null} inserter={inserter} onInserted={onInserted} />
+
+      {/* 用量透明化（2026-11-02 批次一 B 项）：模型 · token · 耗时。
+          端点不回 usage 时只显示模型与耗时（不显示 token 数）——透明化是
+          增强项，拿不到就降级，绝不让面板空白。 */}
+      {(status === "done" || status === "aborted") && (
+        <div className="ai-usage-row" data-testid="ai-usage">
+          <span className="ai-usage-model">
+            {modelUsed ?? active?.model ?? ""}
+          </span>
+          {usage && (
+            <span className="ai-usage-tokens" data-testid="ai-usage-tokens">
+              {t("ai.usageTokens", {
+                input: usage.inputTokens,
+                output: usage.outputTokens,
+              })}
+            </span>
+          )}
+          {elapsedMs !== null && (
+            <span className="ai-usage-elapsed" data-testid="ai-usage-elapsed">
+              {t("ai.usageElapsed", { ms: elapsedMs })}
+            </span>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

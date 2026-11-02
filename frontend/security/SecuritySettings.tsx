@@ -1344,59 +1344,59 @@ export function SecuritySettings({
                   <span aria-hidden="true">·</span>
                   <span>MIT</span>
                 </div>
-                <div className="about-links about-support-group" data-testid="about-support-group">
-                  <span className="about-support-title">{t("settings.supportTitle")}</span>
-                  <div className="about-support-links">
-                    <span className="about-link-line">
-                      <a
-                        href="https://www.huluohu.com"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="about-support-item"
-                        data-testid="about-blog"
-                      >
-                        <span className="about-link-label">{t("settings.websiteLabel")}</span>
-                        <span className="about-arrow" aria-hidden="true">↗</span>
-                      </a>
-                    </span>
-                    <span className="about-link-line">
-                      <a
-                        href="https://github.com/huluohu/Ottr"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="about-support-item"
-                        data-testid="about-repo"
-                      >
-                        <span className="about-link-label">GitHub</span>
-                        <span className="about-arrow" aria-hidden="true">↗</span>
-                      </a>
-                    </span>
-                    <span className="about-link-line">
-                      <a
-                        href="https://github.com/huluohu/Ottr/issues"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="about-support-item"
-                        data-testid="about-issues"
-                      >
-                        <span className="about-link-label">{t("settings.reportIssueLabel")}</span>
-                        <span className="about-arrow" aria-hidden="true">↗</span>
-                      </a>
-                    </span>
-                    <span className="about-link-line">
-                      <a
-                        href="https://afdian.com/a/huluohu"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="about-support-item about-support-sponsor"
-                        data-testid="about-afdian"
-                      >
-                        <span className="about-link-label">{t("settings.supportOttrLabel")}</span>
-                        <span className="about-heart" aria-hidden="true">❤️</span>
-                        <span className="about-arrow" aria-hidden="true">↗</span>
-                      </a>
-                    </span>
-                  </div>
+                {/* 外链区（2026-11-02 用户反馈「只是参考、没让你照抄」）：
+                    回到 Ottr 原生的「标签 + 值」左对齐行式语言——此前照抄外部
+                    应用的右对齐链接块，在 Ottr 的窄内容列里成了悬空孤块、
+                    左右失衡，且「报告错误」是从别人那儿抄来的入口。
+                    现为：赞助主入口独占一行并带品牌强调，其余次级入口横排一行。 */}
+                <div className="about-links" data-testid="about-support-group">
+                  <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.blogLabel")}</span>
+                    <a
+                      href="https://www.huluohu.com"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="about-blog"
+                    >
+                      www.huluohu.com
+                    </a>
+                  </span>
+                  <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.repoLabel")}</span>
+                    <a
+                      href="https://github.com/huluohu/Ottr"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="about-repo"
+                    >
+                      github.com/huluohu/Ottr
+                    </a>
+                  </span>
+                  <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.reportIssueLabel")}</span>
+                    <a
+                      href="https://github.com/huluohu/Ottr/issues"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="about-issues"
+                    >
+                      github.com/huluohu/Ottr/issues
+                    </a>
+                  </span>
+                  {/* 赞助主入口：唯一带品牌强调色的行——「支持 Ottr」是本页的
+                      唯一主动作，其余三条是参考信息。 */}
+                  <span className="about-link-line about-link-primary">
+                    <span className="about-link-label">{t("settings.supportOttrLabel")}</span>
+                    <a
+                      href="https://afdian.com/a/huluohu"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="about-afdian"
+                    >
+                      <span className="about-heart" aria-hidden="true">❤️</span>
+                      afdian.com/a/huluohu
+                    </a>
+                  </span>
                 </div>
               </div>
               <div className="form-section-title">{t("settings.softwareUpdate")}</div>

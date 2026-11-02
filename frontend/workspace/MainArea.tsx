@@ -277,8 +277,25 @@ export function MainArea({
   // 任何视图切换都不卸载终端（xterm 缓冲/滚动回看不丢，运行中会话保留）。
   // 视图切换器 + 录制钮移入终端工具行（TerminalArea toolbarExtra），与分屏
   // 按钮同行——页签行只剩会话页签，视觉边界一条线。
+  // AI 诊断面板是否整高右栏（2026-11-02 用户反馈「顶部被遮盖」）：
+  // 此前面板是 term-main-row 内的第三项，**位于视图切换器工具行之下**——
+  // 工具行横跨整行宽（含面板列），面板标题与退出码徽章被工具行压住/顶出
+  // 视口。现改为：面板与「页签行 + 工具行 + 内容行」**平级**，占主区整高右栏，
+  // 工具行只横跨终端列，不再切面板。
+  const aiPanelOut =
+    slotView === null && termViewActive && activeSession != null ? (
+      <DiagnosePanel
+        key={activeSession.id}
+        sessionId={activeSession.id}
+        onOpenSettings={onOpenAiSettings}
+      />
+    ) : null;
+
   return (
-    <main className="main-area terminal-mode" data-testid="main-area">
+    <main
+      className={`main-area terminal-mode${aiPanelOut ? " has-ai-panel" : ""}`}
+      data-testid="main-area"
+    >
       {/* 库级错误横幅（2026-11-01 功能审计 P2-20）：此前 storeError 只渲染在
           「零会话」分支的空态里——有会话时（常态）删除主机/凭据失败、刷新失败
           全部静默，用户只看到界面毫无变化。此处常驻渲染，会话态也可见。 */}
@@ -287,6 +304,10 @@ export function MainArea({
           {t("mainArea.loadFailed", { message: storeError })}
         </p>
       )}
+      {/* 主区左列（页签行 + 工具行 + 内容行）：AI 面板整高右栏时收缩让位。
+          面板在场与否不改变左列内部结构——只改宽度，避免「有面板/无面板」
+          两套布局各自漂移。 */}
+      <div className="main-area-body">
       <div className="tabbar-row" {...dragRegion}>
         {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
             命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}
@@ -399,20 +420,13 @@ export function MainArea({
         >
           <TerminalArea />
         </div>
-        {slotView !== null ? (
-          slotPane
-        ) : (
-          termViewActive && (
-            // 方案 A 会话作用域（2026-10-19）：面板读写都落 active 会话自己的
-            // 切片；key=sessionId 保证切会话即重挂（markSeen 徽标口径随之正确）。
-            <DiagnosePanel
-              key={activeSession?.id ?? "none"}
-              sessionId={activeSession?.id ?? ""}
-              onOpenSettings={onOpenAiSettings}
-            />
-          )
-        )}
+        {slotView !== null ? slotPane : null}
       </div>
+      </div>
+      {/* AI 诊断面板：主区**整高右栏**（2026-11-02 用户反馈「顶部被遮盖」
+          ——此前面板挂在 term-main-row 内、被上方视图切换器工具行压住标题与
+          退出码徽章）。整高后：标题/徽章恒在主区顶部，工具行只横跨终端列。 */}
+      {aiPanelOut}
       {/* 监控/插件（2026-10-17 批次三）：满幅视图 + 统一外壳，平级渲染同
           文件/进程；终端 visibility 隐藏常驻（缓冲/滚动回看不丢）。 */}
       {monitorVisible && rootSession && (

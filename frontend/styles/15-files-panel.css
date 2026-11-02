@@ -61,6 +61,40 @@
 .main-area.terminal-mode {
   position: relative;
 }
+/* 主区左列（页签行 + 工具行 + 内容行）：AI 面板整高右栏时收缩让位。
+   **必须有这组基础样式**——.main-area-body 是 flex 列容器，缺了它，
+   .term-main-row 的 flex:1 在块级父容器下失效 → 内容区塌陷（无面板时
+   也会塌）。面板在场与否只改主区的 flex 方向，不改左列内部结构。 */
+.main-area-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* AI 诊断面板整高右栏（2026-11-02 用户反馈「顶部被遮盖」）：面板从主区顶部
+   到底部占满一列，页签行/工具行/内容行收进左列 .main-area-body 让位——
+   工具行不再横跨面板列，面板标题与退出码徽章不再被压住。 */
+.main-area.has-ai-panel {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+.main-area.has-ai-panel .ai-panel {
+  align-self: stretch;
+}
+/* 面板在场时终端列被压窄，工具行内容（分屏组 + 视图切换 + 录制 + 编码）可能
+   宽于终端列——**绝不允许它溢出到面板底下**（那正是「顶部被遮盖」的另一种
+   表现）。改为行内横向滚动：内容一行放不下时滚动可达，永不越界压面板。
+   窄窗口（终端列 < 内容宽）才会出现滚动条，常规窗口不受影响。 */
+.main-area.has-ai-panel .term-toolbar-row {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.main-area.has-ai-panel .term-toolbar-row .term-toolbar {
+  min-width: max-content;
+}
 .term-area-holder[data-hidden="true"] {
   position: absolute;
   inset: 0;

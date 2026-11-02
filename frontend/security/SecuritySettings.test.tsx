@@ -703,26 +703,28 @@ describe("关于分区的博客地址（2026-10-29 用户需求；2026-10-31 单
     const card = screen.getByTestId("about-card");
     const blog = screen.getByTestId("about-blog");
     expect(blog.getAttribute("href")).toBe("https://www.huluohu.com");
-    expect(blog.textContent).toContain("网站");
+    expect(blog.textContent).toContain("www.huluohu.com");
     expect(blog.getAttribute("target")).toBe("_blank");
     expect(blog.getAttribute("rel")).toBe("noreferrer");
     // 博客在独立链接区（.about-links），不在作者/许可元信息行内
     expect(blog.closest(".about-links")).toBeTruthy();
     expect(blog.closest(".about-meta")).toBeNull();
-    // 各行带标签，标签在链接内
+    // 标签在链接**之前**同行（Ottr 原生左对齐行式语言，非右对齐孤块）
     const blogLine = blog.closest(".about-link-line") as Element;
-    expect(blogLine.querySelector(".about-link-label")?.textContent).toBe("网站");
+    expect(blogLine.querySelector(".about-link-label")?.textContent).toBe("博客");
     const afdian = screen.getByTestId("about-afdian");
     expect(afdian.getAttribute("href")).toBe("https://afdian.com/a/huluohu");
-    expect(afdian.textContent).toContain("支持 Ottr");
+    expect(afdian.textContent).toContain("afdian.com/a/huluohu");
     expect(afdian.getAttribute("target")).toBe("_blank");
     expect(afdian.getAttribute("rel")).toBe("noreferrer");
     const afdianLine = afdian.closest(".about-link-line") as Element;
     expect(afdianLine.querySelector(".about-link-label")?.textContent).toBe("支持 Ottr");
+    // 赞助是本页唯一主动作 → 行上带强调标记
+    expect(afdianLine.classList.contains("about-link-primary")).toBe(true);
     const repo = card.querySelector('a[href="https://github.com/huluohu/Ottr"]') as Element;
     expect(repo).toBeTruthy();
     const repoLabel = repo.closest(".about-link-line")?.querySelector(".about-link-label");
-    expect(repoLabel?.textContent).toBe("GitHub");
+    expect(repoLabel?.textContent).toBe("项目");
     const issues = card.querySelector('a[href="https://github.com/huluohu/Ottr/issues"]') as Element;
     expect(issues).toBeTruthy();
     // 顺序：网站在仓库之前

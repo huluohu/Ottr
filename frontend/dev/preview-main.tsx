@@ -342,7 +342,7 @@ async function renderShot(): Promise<void> {
   ];
 
   // 会话：仅终端配图需要（欢迎首页配图走零会话空态）。
-  const withSession = shotMode === "terminal";
+  const withSession = shotMode === "terminal" || shotMode === "ai-panel";
   useSessionStore.setState({
     sessions: withSession
       ? [
@@ -374,6 +374,38 @@ async function renderShot(): Promise<void> {
   // 主区视图（定时任务 / 总览是主区视图态，不走弹窗）。
   if (shotMode === "cron") useWorkspaceStore.getState().openMainView("cron");
   if (shotMode === "overview") useWorkspaceStore.getState().openMainView("overview");
+
+  // AI 诊断面板夹具（2026-11-02）：面板整高右栏后，「标题/退出码徽章是否被上方
+  // 视图切换器工具行压住」这类布局回归需要能量测的稳定夹具——面板必须有
+  // request 才渲染（DiagnosePanel 无请求返回 null），故此处种一条假请求。
+  if (shotMode === "ai-panel") {
+    const { useAiStore } = await import("./../ai/aiStore");
+    useAiStore.setState({
+      sessions: {
+        "shot-tab": {
+          request: {
+            kind: "diagnose",
+            sessionId: "shot-tab",
+            rustId: "pty-shot",
+            hostId: 1,
+            hostName: "fixture",
+            exitCode: 127,
+            command: "check disk usage",
+          },
+          status: "done",
+          answer: "**原因**\n\n`/var/log/syslog` 里的日志文件属主是 root。\n\n**修复命令**\n\n推荐用 truncate 清空而不是删除。",
+          errorKind: null,
+          error: null,
+          redactions: [],
+          settingsUsed: null,
+          seen: true,
+          usage: { inputTokens: 321, outputTokens: 87 },
+          modelUsed: "ottr-verify-model",
+          elapsedMs: 117,
+        },
+      },
+    });
+  }
 
   const { MainArea } = await import("./../workspace/MainArea");
   const { CommandPalette } = await import("./../palette/CommandPalette");

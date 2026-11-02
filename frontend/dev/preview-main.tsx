@@ -11,6 +11,9 @@ import ReactDOM from "react-dom/client";
 
 // --- Tauri internals 假件（必须在 @tauri-apps/api 模块求值前就位）----------
 type InvokeTable = Record<string, unknown>;
+/** TOTP 码桩的调用计数（每次换一个码）。 */
+let totpCodeSeq = 0;
+
 const invokeTable: InvokeTable = {
   // 常用查询面给空集合/空对象，写面给可链式空值；未命中命令一律 null
   hosts_list: [],
@@ -105,6 +108,43 @@ if (recMode) {
     if (settingsMode && cmd === "settings_get") {
       if (args?.key === "sync.channel") return Promise.resolve("localdir");
       if (args?.key === "sync.config.localdir") return Promise.resolve({ path: "/tmp/ottr-sync-preview" });
+    }
+    // 交互式认证弹窗的「换码」通道：每次调用返回**不同的**码 + 剩余秒数，
+    // 这样无头浏览器脚本能证明「码过期后确实自动换了一个新码」。
+    if (cmd === "credential_totp_code") {
+      totpCodeSeq += 1;
+      return Promise.resolve({
+        code: `111${String(totpCodeSeq).padStart(2, "0")}`.slice(0, 6),
+        remaining_seconds: 30,
+      });
+    }
+    // MCP 客户端（批次五）：server 清单 / 工具清单 / 调工具
+    if (cmd === "mcp_servers_list") {
+      return Promise.resolve([
+        {
+          id: "srv-demo",
+          name: "demo-files",
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+          enabled: true,
+          envNames: ["DEMO_TOKEN"],
+        },
+      ]);
+    }
+    if (cmd === "mcp_server_tools") {
+      return Promise.resolve([
+        {
+          name: "read_file",
+          description: "读取文件内容",
+          inputSchema: '{"type":"object"}',
+        },
+      ]);
+    }
+    if (cmd === "mcp_server_call") {
+      return Promise.resolve({
+        text: "file contents here",
+        isError: false,
+      });
     }
     if (cmd in invokeTable) return Promise.resolve(invokeTable[cmd]);
     return Promise.resolve(null);
@@ -352,7 +392,10 @@ async function renderShot(): Promise<void> {
 
   // 会话：仅终端配图需要（欢迎首页配图走零会话空态）。
   const withSession =
-    shotMode === "terminal" || shotMode === "ai-panel" || shotMode === "ai-ask";
+    shotMode === "terminal" ||
+    shotMode === "ai-panel" ||
+    shotMode === "ai-ask" ||
+    shotMode === "prompt-dialog";
   useSessionStore.setState({
     sessions: withSession
       ? [
@@ -388,6 +431,65 @@ async function renderShot(): Promise<void> {
   // AI 诊断面板夹具（2026-11-02）：面板整高右栏后，「标题/退出码徽章是否被上方
   // 视图切换器工具行压住」这类布局回归需要能量测的稳定夹具——面板必须有
   // request 才渲染（DiagnosePanel 无请求返回 null），故此处种一条假请求。
+  // 交互式认证提问弹窗（批次二）：会话在等作答，弹窗开着、码已预填。
+  if (shotMode === "prompt-dialog") {
+    const { useSessionStore } = await import("./../session/SessionStore");
+    const { useModalStore } = await import("./../ui/modalStore");
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: "shot-tab",
+          hostId: 1,
+          hostName: "bastion-a",
+          address: "10.0.0.1",
+          port: 22,
+          username: "spike",
+          protocol: "ssh",
+          rustId: "pty-shot",
+          paneOf: null,
+          status: "waiting_prompt",
+          attempt: 0,
+          nextRetryAt: null,
+          lastError: null,
+          restored: false,
+          encoding: "utf-8",
+          isProduction: false,
+        } as never,
+      ],
+      activeId: "shot-tab",
+      trees: { "shot-tab": { kind: "leaf", id: "shot-tab" } },
+      activePane: { "shot-tab": "shot-tab" },
+      promptAsk: {
+        ask_id: "1:1",
+        host_id: 1,
+        host_name: "bastion-a",
+        credential_id: 42,
+        prompts: [
+          { text: "Verification code:", suggestion: "123456", suggestion_expires_in: 2 },
+        ],
+        sessionId: "shot-tab",
+      },
+    } as never);
+    useModalStore.setState({ active: "promptAsk" });
+  }
+
+  // MCP 客户端设置（批次五）：外部 MCP server 的列表与工具。
+  if (shotMode === "mcp-client") {
+    const { McpClientSettings } = await import("./../security/McpClientSettings");
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <div className="app-shell">
+            <div className="dialog credentials-dialog">
+              <McpClientSettings />
+            </div>
+          </div>
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
+
   // Ask Ottr 提问态（批次四 P0）：面板开着、还没回答——底部输入条即提问框。
   if (shotMode === "ai-ask") {
     const { useAiStore } = await import("./../ai/aiStore");
@@ -480,6 +582,7 @@ async function renderShot(): Promise<void> {
   }
 
   const { MainArea } = await import("./../workspace/MainArea");
+  const { PromptDialog } = await import("./../session/PromptDialog");
   const { CommandPalette } = await import("./../palette/CommandPalette");
   const { CredentialsDialog } = await import("./../credentials/CredentialsDialog");
   const { TitleBar } = await import("./../titlebar/TitleBar");
@@ -538,6 +641,9 @@ async function renderShot(): Promise<void> {
           />
         )}
         {shotMode === "credentials" && <CredentialsDialog onClose={() => {}} />}
+        {/* 交互式认证提问弹窗（真组件）——预览树里也要挂，否则 ?shot=prompt-dialog
+            看不到弹窗（App.tsx 里的挂载在预览树之外）。 */}
+        <PromptDialog />
       </ThemeProvider>
     </React.StrictMode>,
   );

@@ -91,7 +91,7 @@ fn digits_out_of_range_is_rejected() {
     );
     assert_eq!(
         generate(&secret, 59, DEFAULT_DIGITS, 0),
-        Err(TotpError::InvalidDigits)
+        Err(TotpError::InvalidPeriod)
     );
 }
 

@@ -898,9 +898,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         set((st) => ({
           sessions: patchSession(st.sessions, ask.sessionId, {
             status: "disconnected",
-            lastError: raw.includes("no pending prompt ask")
-              ? PROMPT_TIMEOUT_MARKER
-              : raw,
+            // 两种「问询已死」的形态都归并为「未作答」：槽位不存在（Rust 侧
+            // 超时已回收）与接收端消失（connect 任务被外层超时 drop）。
+            lastError:
+              raw.includes("no pending prompt ask") || raw.includes("no longer waiting")
+                ? PROMPT_TIMEOUT_MARKER
+                : raw,
           }),
         }));
       }

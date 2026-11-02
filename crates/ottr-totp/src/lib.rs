@@ -26,6 +26,7 @@ use data_encoding::BASE32;
 use hmac::KeyInit;
 use hmac::{Hmac, Mac};
 use sha1::Sha1;
+use zeroize::Zeroizing;
 
 /// 默认位数（RFC 4226 建议 6 位，主流验证器均用 6）。
 pub const DEFAULT_DIGITS: u32 = 6;
@@ -43,6 +44,8 @@ pub enum TotpError {
     SecretTooShort,
     /// 位数不合法（0 或 > 10）。
     InvalidDigits,
+    /// 时间步长不合法（0）。
+    InvalidPeriod,
 }
 
 impl std::fmt::Display for TotpError {
@@ -52,6 +55,7 @@ impl std::fmt::Display for TotpError {
             Self::EmptySecret => write!(f, "empty TOTP secret"),
             Self::SecretTooShort => write!(f, "TOTP secret too short"),
             Self::InvalidDigits => write!(f, "TOTP digits must be within 1..=10"),
+            Self::InvalidPeriod => write!(f, "TOTP period must be at least 1 second"),
         }
     }
 }
@@ -64,7 +68,7 @@ impl std::error::Error for TotpError {}
 /// 等于把**种子写进日志**（谁 `{:?}` 打印一次就泄露一次）。这里只输出存在标记。
 #[derive(Clone, PartialEq, Eq)]
 pub struct TotpSecret {
-    bytes: Vec<u8>,
+    bytes: Zeroizing<Vec<u8>>,
 }
 
 impl std::fmt::Debug for TotpSecret {
@@ -113,7 +117,11 @@ impl TotpSecret {
         if bytes.len() < 10 {
             return Err(TotpError::SecretTooShort);
         }
-        Ok(Self { bytes })
+        Ok(Self {
+            // Zeroizing：drop 时把种子字节清零——种子在堆上留多久就暴露多久，
+            // drop 清零是机密材料的标准纪律（与 vault 侧 aes-gcm zeroize 同源）。
+            bytes: Zeroizing::new(bytes),
+        })
     }
 
     /// 原始种子字节。
@@ -152,7 +160,7 @@ pub fn generate(
         return Err(TotpError::InvalidDigits);
     }
     if period == 0 {
-        return Err(TotpError::InvalidDigits);
+        return Err(TotpError::InvalidPeriod);
     }
     let counter = unix_time.div_euclid(period as i64) as u64;
     let mut mac =

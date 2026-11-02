@@ -261,6 +261,9 @@ fn register_prompt_ask(
 /// 前端作答回传：一组答案（条数须等于提问数）。
 ///
 /// **槽位不存在即报错**（已超时 / 已裁定 / ask_id 无效）——不落任何账、不放行。
+/// **接收端已消失同样报错**（connect 任务被外层超时 drop、测试连接被放弃等）：
+/// 吞掉 send 失败 = 前端以为提交成功、实际什么都没发生，用户会盯着一个死问询
+/// 重试到超时（审计 2026-11-02：jump.rs 预算错配 + 槽位残留的组合路径）。
 #[tauri::command]
 pub(crate) fn kbd_interactive_answer(
     state: State<'_, AppState>,
@@ -269,10 +272,9 @@ pub(crate) fn kbd_interactive_answer(
 ) -> Result<(), String> {
     let tx = state.prompt_asks.lock().unwrap().remove(&ask_id);
     match tx {
-        Some(tx) => {
-            let _ = tx.send(answers);
-            Ok(())
-        }
+        Some(tx) => tx.send(answers).map_err(|_| {
+            format!("prompt ask for {ask_id} is no longer waiting (connection attempt ended)")
+        }),
         None => Err(format!(
             "no pending prompt ask for {ask_id} (expired or already answered)"
         )),
@@ -283,11 +285,22 @@ pub(crate) fn kbd_interactive_answer(
 ///
 /// **返回明文码是本功能的目的**（用户要用它登录跳板机）；种子只在本函数
 /// 内部解密，不出 Rust 侧。非 TOTP 凭据 → 报错（不泄漏其它凭据形态）。
+///
+/// **纵深（2026-11-03 审计）**：仅在存在**挂起问询**时出码。webview 即信任
+/// 边界的既有模型下，这仍避免了「webview 内任何脚本可随时用凭据 id 换出明文
+/// 码」的无差别面——正常链路（弹窗显示期间码过期 → 前端重算）挂起问询必然
+/// 存在，故不改变任何可用行为。
 #[tauri::command]
 pub(crate) fn credential_totp_code(
+    state: State<'_, AppState>,
     vault: State<'_, VaultState>,
     credential_id: i64,
 ) -> Result<TotpCodePayload, String> {
+    if state.prompt_asks.lock().unwrap().is_empty() {
+        return Err(
+            "no pending interactive prompt; the TOTP code is only available while an authentication prompt is pending".into(),
+        );
+    }
     let (code, remaining_seconds) = totp_code_for(&vault.0, credential_id)
         .ok_or_else(|| format!("credential id={credential_id} has no usable TOTP secret"))?;
     Ok(TotpCodePayload {

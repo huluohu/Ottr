@@ -3814,6 +3814,7 @@ dependencies = [
  "data-encoding",
  "hmac",
  "sha1",
+ "zeroize",
 ]
 
 [[package]]

@@ -13,5 +13,7 @@ description = "RFC 6238 TOTP generation (local-only, never touches the network)"
 
 [dependencies]
 data-encoding = { workspace = true }
+# 种子字节的 drop 清零（已在依赖树：aes-gcm 的 zeroize feature 同源；显式声明以直接使用）
+zeroize = "1"
 hmac = { workspace = true }
 sha1 = { workspace = true }

@@ -19,6 +19,8 @@ const existing: Credential = {
   kind: "password",
   name: null,
   key_pub: null,
+  totp_digits: null,
+  totp_period: null,
   created_at: 1,
   updated_at: 1,
 };
@@ -210,7 +212,17 @@ describe("CredentialForm", () => {
     await waitFor(() =>
       expect(mockedInvoke).toHaveBeenCalledWith("credentials_update", {
         id: 7,
-        patch: { kind: "totp", name: null, secret: "", key_pub: "", passphrase: "", totp_secret: "JBSWY3DPEHPK3PXP" },
+        patch: {
+          kind: "totp",
+          name: null,
+          secret: "",
+          key_pub: "",
+          passphrase: "",
+          totp_secret: "JBSWY3DPEHPK3PXP",
+          // 位数/步长留空 = 改回缺省（6 位 / 30 秒）
+          totp_digits: null,
+          totp_period: null,
+        },
       }),
     );
   });

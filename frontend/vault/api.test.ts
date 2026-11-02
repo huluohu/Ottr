@@ -37,6 +37,8 @@ const sampleCredential: Credential = {
   kind: "password",
   name: null,
   key_pub: null,
+  totp_digits: null,
+  totp_period: null,
   created_at: 1,
   updated_at: 2,
 };

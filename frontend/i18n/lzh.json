@@ -320,7 +320,13 @@
     "saveFailed": "藏敗：{{message}}",
     "save": "藏信物",
     "name": "名（可選）",
-    "namePlaceholder": "如：生產網關密鑰"
+    "namePlaceholder": "如：生產網關密鑰",
+    "totpDigits": "驗碼位數",
+    "totpDigitsPlaceholder": "缺省 6",
+    "totpPeriod": "時步（秒）",
+    "totpPeriodPlaceholder": "缺省 30",
+    "errTotpDigits": "驗碼位數須為 1–10 之整數",
+    "errTotpPeriod": "時步須為正整數秒"
   },
   "keyManager": {
     "generateTitle": "生成密鑰",

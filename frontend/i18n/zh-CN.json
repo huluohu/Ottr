@@ -320,7 +320,13 @@
     "saveFailed": "保存失败：{{message}}",
     "save": "保存凭据",
     "name": "名称（可选）",
-    "namePlaceholder": "如：生产网关密钥"
+    "namePlaceholder": "如：生产网关密钥",
+    "totpDigits": "验证码位数",
+    "totpDigitsPlaceholder": "默认 6",
+    "totpPeriod": "时间步长（秒）",
+    "totpPeriodPlaceholder": "默认 30",
+    "errTotpDigits": "验证码位数必须是 1–10 的整数",
+    "errTotpPeriod": "时间步长必须是正整数秒"
   },
   "keyManager": {
     "generateTitle": "生成密钥",

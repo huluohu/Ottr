@@ -135,6 +135,10 @@ pub(crate) fn is_code_prompt(text: &str) -> bool {
 /// 取该凭据的当前 TOTP 码 + 剩余有效秒数（非 TOTP 凭据 / 解密失败 / 种子非法 → `None`）。
 ///
 /// **纯本地计算**：种子只在 Rust 侧解密，明文码不进日志、不落盘。
+///
+/// 位数/步长取**凭据自身的配置**（0025 起可配；缺省 6 位 / 30 秒）——写死
+/// 6/30 时，Steam（5 位）、8 位服务、60 秒步长的自建服务**自动填码恒错**，
+/// 用户只能手输，而界面仍提示「已自动填」。
 fn totp_code_for(
     vault: &ottr_vault::Vault,
     credential_id: i64,
@@ -146,15 +150,15 @@ fn totp_code_for(
     let secret = Credentials::reveal(vault, credential_id, SecretField::TotpSecret)
         .ok()
         .flatten()?;
+    let digits = credential.totp_digits.unwrap_or(ottr_totp::DEFAULT_DIGITS);
+    let period = credential
+        .totp_period
+        .map(|p| p as u64)
+        .unwrap_or(ottr_totp::DEFAULT_PERIOD);
     let now = unix_now();
-    let code = ottr_totp::generate_from_base32(
-        &secret,
-        now,
-        ottr_totp::DEFAULT_DIGITS,
-        ottr_totp::DEFAULT_PERIOD,
-    )
-    .ok()?;
-    Some((code, ottr_totp::remaining_seconds(now, ottr_totp::DEFAULT_PERIOD)))
+    let code =
+        ottr_totp::generate_from_base32(&secret, now, digits, period).ok()?;
+    Some((code, ottr_totp::remaining_seconds(now, period)))
 }
 
 /// 当前 Unix 秒。

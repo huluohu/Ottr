@@ -321,7 +321,13 @@
     "saveFailed": "Salvataggio non riuscito: {{message}}",
     "save": "Salva credenziale",
     "name": "Nome (facoltativo)",
-    "namePlaceholder": "es. chiave gateway prod"
+    "namePlaceholder": "es. chiave gateway prod",
+    "totpDigits": "Cifre del codice",
+    "totpDigitsPlaceholder": "Predefinito 6",
+    "totpPeriod": "Passo di tempo (secondi)",
+    "totpPeriodPlaceholder": "Predefinito 30",
+    "errTotpDigits": "Le cifre del codice devono essere un intero tra 1 e 10",
+    "errTotpPeriod": "Il passo di tempo deve essere un numero positivo di secondi"
   },
   "keyManager": {
     "generateTitle": "Genera chiave",

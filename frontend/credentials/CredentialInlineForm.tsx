@@ -130,18 +130,47 @@ export function CredentialInlineForm({ draft, onDraftChange, error, onCancel }: 
       )}
 
       {draft.kind === "totp" && (
-        <label>
-          <span>{t("credentialForm.totpSecret")}</span>
-          <input
-            data-testid="cred-totp-secret"
-            type="password"
-            value={draft.totpSecret}
-            placeholder={t("credentialForm.totpSecretPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(e) => patch({ totpSecret: e.currentTarget.value })}
-          />
-        </label>
+        <>
+          <label>
+            <span>{t("credentialForm.totpSecret")}</span>
+            <input
+              data-testid="cred-totp-secret"
+              type="password"
+              value={draft.totpSecret}
+              placeholder={t("credentialForm.totpSecretPlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => patch({ totpSecret: e.currentTarget.value })}
+            />
+          </label>
+          {/* 位数/步长：6 位/30 秒之外的取值（Steam 5 位、部分服务 8 位、
+              60 秒步长）——不填就用缺省值。 */}
+          <div className="cred-totp-params">
+            <label>
+              <span>{t("credentialForm.totpDigits")}</span>
+              <input
+                data-testid="cred-totp-digits"
+                type="number"
+                min={1}
+                max={10}
+                value={draft.totpDigits}
+                placeholder={t("credentialForm.totpDigitsPlaceholder")}
+                onChange={(e) => patch({ totpDigits: e.currentTarget.value })}
+              />
+            </label>
+            <label>
+              <span>{t("credentialForm.totpPeriod")}</span>
+              <input
+                data-testid="cred-totp-period"
+                type="number"
+                min={1}
+                value={draft.totpPeriod}
+                placeholder={t("credentialForm.totpPeriodPlaceholder")}
+                onChange={(e) => patch({ totpPeriod: e.currentTarget.value })}
+              />
+            </label>
+          </div>
+        </>
       )}
 
       {error && (

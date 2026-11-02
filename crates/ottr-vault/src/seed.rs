@@ -48,6 +48,8 @@ pub fn seed_walkthrough_vault(dir: &Path, password: &str) -> Result<SeedOutcome,
             key_pub: None,
             passphrase: None,
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .map_err(|e| e.to_string())?;

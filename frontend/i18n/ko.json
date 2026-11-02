@@ -321,7 +321,13 @@
     "saveFailed": "저장 실패: {{message}}",
     "save": "자격 증명 저장",
     "name": "이름 (선택)",
-    "namePlaceholder": "예: prod gateway key"
+    "namePlaceholder": "예: prod gateway key",
+    "totpDigits": "인증 코드 자릿수",
+    "totpDigitsPlaceholder": "기본 6",
+    "totpPeriod": "타임 스텝(초)",
+    "totpPeriodPlaceholder": "기본 30",
+    "errTotpDigits": "인증 코드 자릿수는 1~10 정수여야 합니다",
+    "errTotpPeriod": "타임 스텝은 양의 정수 초여야 합니다"
   },
   "keyManager": {
     "generateTitle": "키 생성",

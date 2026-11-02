@@ -68,9 +68,68 @@ describe("credentialInputFrom（trim/null 语义）", () => {
       credentialInputFrom(
         draft({ kind: "key", secret: "  x  ", keyPub: "  ssh-ed25519 AAAA ", passphrase: " pp ", totpSecret: "" }),
       ),
-    ).toEqual({ kind: "key", name: null, secret: "  x  ", key_pub: "ssh-ed25519 AAAA", passphrase: " pp ", totp_secret: null });
+    ).toEqual({
+      kind: "key",
+      name: null,
+      secret: "  x  ",
+      key_pub: "ssh-ed25519 AAAA",
+      passphrase: " pp ",
+      totp_secret: null,
+      // TOTP 位数/步长留空 = 缺省（Rust 侧读 null → 6 位 / 30 秒）
+      totp_digits: null,
+      totp_period: null,
+    });
     expect(
       credentialInputFrom(draft({ kind: "password", secret: " p " })),
-    ).toEqual({ kind: "password", name: null, secret: " p ", key_pub: null, passphrase: null, totp_secret: null });
+    ).toEqual({
+      kind: "password",
+      name: null,
+      secret: " p ",
+      key_pub: null,
+      passphrase: null,
+      totp_secret: null,
+      totp_digits: null,
+      totp_period: null,
+    });
+  });
+});
+
+// --- TOTP 位数/步长（0025）-------------------------------------------------
+//
+// 写死 6 位/30 秒时，Steam（5 位）、8 位服务、60 秒步长的自建服务**自动填码
+// 恒错**，用户只能手输而界面仍提示「已自动填」（审计 2026-11-02 实测）。
+describe("TOTP 位数/步长可配", () => {
+  it("草稿 → CredentialInput：留空 = null（用缺省），填了 = 数值", () => {
+    expect(
+      credentialInputFrom(draft({ kind: "totp", totpSecret: "JBSWY3DPEHPK3PXP" })),
+    ).toMatchObject({ totp_digits: null, totp_period: null });
+    expect(
+      credentialInputFrom(
+        draft({
+          kind: "totp",
+          totpSecret: "JBSWY3DPEHPK3PXP",
+          totpDigits: "5",
+          totpPeriod: "60",
+        }),
+      ),
+    ).toMatchObject({ totp_digits: 5, totp_period: 60 });
+  });
+
+  it("非法取值（0 / 负数 / 非整数 / 超范围位数）→ 校验拦下", () => {
+    expect(
+      validateCredentialDraft(
+        draft({ kind: "totp", totpSecret: "JBSWY3DPEHPK3PXP", totpDigits: "0" }),
+      ),
+    ).toBe("credentialForm.errTotpDigits");
+    expect(
+      validateCredentialDraft(
+        draft({ kind: "totp", totpSecret: "JBSWY3DPEHPK3PXP", totpDigits: "11" }),
+      ),
+    ).toBe("credentialForm.errTotpDigits");
+    expect(
+      validateCredentialDraft(
+        draft({ kind: "totp", totpSecret: "JBSWY3DPEHPK3PXP", totpPeriod: "0" }),
+      ),
+    ).toBe("credentialForm.errTotpPeriod");
   });
 });

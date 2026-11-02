@@ -306,7 +306,16 @@ async function renderShot(): Promise<void> {
     // 凭据列表（凭据配图）：凭据面从 vault store 取，本页直接种子一条
     // 未命名密码凭据（与真机配图同款：显示「凭据 #1」+ 绑定主机数）。
     credentials: [
-      { id: 1, kind: "password", name: null, key_pub: null, created_at: 1, updated_at: 1 },
+      {
+        id: 1,
+        kind: "password",
+        name: null,
+        key_pub: null,
+        totp_digits: null,
+        totp_period: null,
+        created_at: 1,
+        updated_at: 1,
+      },
     ],
     loading: false,
     error: null,

@@ -47,7 +47,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 24;
+pub const LATEST_SCHEMA_VERSION: u32 = 25;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -197,6 +197,13 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         24,
         include_str!("../migrations/0024_alert_rules_host_nullable.sql"),
+    ),
+    // 0025 TOTP 凭据的位数/步长可配（6 位/30 秒之外的取值：Steam 5 位、
+    // 8 位服务、60 秒步长等——写死会让这些服务的自动填码恒错）。非敏感配置列，
+    // NULL = 缺省（存量库语义不变）。
+    (
+        25,
+        include_str!("../migrations/0025_totp_digits_period.sql"),
     ),
 ];
 

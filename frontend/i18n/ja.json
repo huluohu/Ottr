@@ -321,7 +321,13 @@
     "saveFailed": "保存に失敗しました: {{message}}",
     "save": "資格情報を保存",
     "name": "名前 (任意)",
-    "namePlaceholder": "例: prod gateway key"
+    "namePlaceholder": "例: prod gateway key",
+    "totpDigits": "認証コードの桁数",
+    "totpDigitsPlaceholder": "既定 6",
+    "totpPeriod": "タイムステップ（秒）",
+    "totpPeriodPlaceholder": "既定 30",
+    "errTotpDigits": "認証コードの桁数は 1〜10 の整数で指定してください",
+    "errTotpPeriod": "タイムステップは正の整数秒で指定してください"
   },
   "keyManager": {
     "generateTitle": "キーを生成",

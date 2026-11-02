@@ -320,7 +320,13 @@
     "saveFailed": "保存失敗：{{message}}",
     "save": "保存憑證",
     "name": "名稱（可選）",
-    "namePlaceholder": "如：生產網關密鑰"
+    "namePlaceholder": "如：生產網關密鑰",
+    "totpDigits": "驗證碼位數",
+    "totpDigitsPlaceholder": "預設 6",
+    "totpPeriod": "時間步長（秒）",
+    "totpPeriodPlaceholder": "預設 30",
+    "errTotpDigits": "驗證碼位數必須是 1–10 的整數",
+    "errTotpPeriod": "時間步長必須是正整數秒"
   },
   "keyManager": {
     "generateTitle": "生成密鑰",

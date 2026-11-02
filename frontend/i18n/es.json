@@ -321,7 +321,13 @@
     "saveFailed": "Error al guardar: {{message}}",
     "save": "Guardar credencial",
     "name": "Nombre (opcional)",
-    "namePlaceholder": "p. ej. clave de gateway de producción"
+    "namePlaceholder": "p. ej. clave de gateway de producción",
+    "totpDigits": "Dígitos del código",
+    "totpDigitsPlaceholder": "Por defecto 6",
+    "totpPeriod": "Paso de tiempo (segundos)",
+    "totpPeriodPlaceholder": "Por defecto 30",
+    "errTotpDigits": "Los dígitos del código deben ser un entero entre 1 y 10",
+    "errTotpPeriod": "El paso de tiempo debe ser un número positivo de segundos"
   },
   "keyManager": {
     "generateTitle": "Generar clave",

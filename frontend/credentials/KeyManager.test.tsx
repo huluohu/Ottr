@@ -41,8 +41,26 @@ const hostRow: Host = {
   updated_at: 1,
 };
 
-const passCred: Credential = { id: 5, kind: "password", name: null, key_pub: null, created_at: 1, updated_at: 1 };
-const totpCred: Credential = { id: 6, kind: "totp", name: null, key_pub: null, created_at: 1, updated_at: 1 };
+const passCred: Credential = {
+  id: 5,
+  kind: "password",
+  name: null,
+  key_pub: null,
+  totp_digits: null,
+  totp_period: null,
+  created_at: 1,
+  updated_at: 1,
+};
+const totpCred: Credential = {
+  id: 6,
+  kind: "totp",
+  name: null,
+  key_pub: null,
+  totp_digits: null,
+  totp_period: null,
+  created_at: 1,
+  updated_at: 1,
+};
 
 function seedStore() {
   useVaultStore.setState({

@@ -121,6 +121,10 @@ export interface Credential {
   /** 用户可见名称/标签（0021；未命名 = null，UI 按 kind 兜底）。 */
   name: string | null;
   key_pub: string | null;
+  /** TOTP 验证码位数（0025；null = 缺省 6）。 */
+  totp_digits: number | null;
+  /** TOTP 时间步长秒数（0025；null = 缺省 30）。 */
+  totp_period: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -134,6 +138,10 @@ export interface CredentialInput {
   key_pub: string | null;
   passphrase: string | null;
   totp_secret: string | null;
+  /** TOTP 位数（0025；null = 用缺省 6）。 */
+  totp_digits?: number | null;
+  /** TOTP 步长秒数（0025；null = 用缺省 30）。 */
+  totp_period?: number | null;
 }
 
 /** Rust `entities::CredentialPatch`：null = 保留现值（未重输的密钥不重密封）。 */
@@ -145,6 +153,10 @@ export interface CredentialPatch {
   key_pub: string | null;
   passphrase: string | null;
   totp_secret: string | null;
+  /** TOTP 位数（0025）：省略 = 保留现值；null = 改回缺省（6）。 */
+  totp_digits?: number | null;
+  /** TOTP 步长秒数（0025）：省略 = 保留现值；null = 改回缺省（30）。 */
+  totp_period?: number | null;
 }
 
 /** Rust `entities::HostGroup` 同构。 */

@@ -21,6 +21,10 @@ export interface CredentialDraft {
   keyPub: string;
   passphrase: string;
   totpSecret: string;
+  /** TOTP 验证码位数（'' = 缺省 6；Steam 5 位 / 部分服务 8 位）。 */
+  totpDigits: string;
+  /** TOTP 时间步长秒数（'' = 缺省 30；部分自建服务用 60）。 */
+  totpPeriod: string;
 }
 
 /** TOTP secret base32 粗检（裁定 #6）：RFC 4648 字符集（A-Z、2-7）+ `=` 填充，
@@ -60,6 +64,19 @@ export function validateCredentialDraft(draft: CredentialDraft): string | null {
     if (!isRoughBase32(totpSecret)) {
       return "credentialForm.errTotpBase32";
     }
+    // 位数 1..=10（ottr-totp 的合法域），步长 ≥1 秒
+    if (draft.totpDigits.trim() !== "") {
+      const d = Number(draft.totpDigits.trim());
+      if (!Number.isInteger(d) || d < 1 || d > 10) {
+        return "credentialForm.errTotpDigits";
+      }
+    }
+    if (draft.totpPeriod.trim() !== "") {
+      const p = Number(draft.totpPeriod.trim());
+      if (!Number.isInteger(p) || p < 1) {
+        return "credentialForm.errTotpPeriod";
+      }
+    }
   }
   return null;
 }
@@ -73,10 +90,30 @@ export function credentialInputFrom(draft: CredentialDraft): CredentialInput {
     key_pub: draft.keyPub.trim() === "" ? null : draft.keyPub.trim(),
     passphrase: draft.passphrase === "" ? null : draft.passphrase,
     totp_secret: draft.totpSecret === "" ? null : draft.totpSecret,
+    totp_digits: parsePositiveInt(draft.totpDigits),
+    totp_period: parsePositiveInt(draft.totpPeriod),
   };
+}
+
+/** 空串/非法 → null（= 用缺省值）；合法正整数 → 数值。 */
+function parsePositiveInt(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
 }
 
 /** 空草稿（内联展开的初始值：默认密码型）。 */
 export function emptyCredentialDraft(): CredentialDraft {
-  return { name: "", kind: "password", secret: "", keyPub: "", passphrase: "", totpSecret: "" };
+  return {
+    name: "",
+    kind: "password",
+    secret: "",
+    keyPub: "",
+    passphrase: "",
+    totpSecret: "",
+    totpDigits: "",
+    totpPeriod: "",
+  };
 }

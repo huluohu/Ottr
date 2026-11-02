@@ -321,7 +321,13 @@
     "saveFailed": "Save failed: {{message}}",
     "save": "Save credential",
     "name": "Name (optional)",
-    "namePlaceholder": "e.g. prod gateway key"
+    "namePlaceholder": "e.g. prod gateway key",
+    "totpDigits": "Code digits",
+    "totpDigitsPlaceholder": "Default 6",
+    "totpPeriod": "Time step (seconds)",
+    "totpPeriodPlaceholder": "Default 30",
+    "errTotpDigits": "Code digits must be an integer between 1 and 10",
+    "errTotpPeriod": "Time step must be a positive number of seconds"
   },
   "keyManager": {
     "generateTitle": "Generate key",

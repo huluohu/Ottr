@@ -337,6 +337,11 @@ pub struct Credential {
     /// 用户可见的明文名称/标签（0021；非敏感不加密）。NULL = 未命名。
     pub name: Option<String>,
     pub key_pub: Option<String>,
+    /// TOTP 验证码位数（0025）：`None` = 缺省 6 位（RFC 6238 典型值）。
+    /// 非 6 位的服务（Steam 5 位、部分自建 8 位）写死 6 位会导致自动填码恒错。
+    pub totp_digits: Option<u32>,
+    /// TOTP 时间步长秒数（0025）：`None` = 缺省 30 秒。
+    pub totp_period: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -353,6 +358,10 @@ pub struct CredentialInput {
     pub key_pub: Option<String>,
     pub passphrase: Option<String>,
     pub totp_secret: Option<String>,
+    /// TOTP 验证码位数（0025；`None` = 缺省 6）。
+    pub totp_digits: Option<u32>,
+    /// TOTP 时间步长秒数（0025；`None` = 缺省 30）。
+    pub totp_period: Option<i64>,
 }
 
 /// 更新凭据的补丁：全部 `None = 保留现值`（UI 语义：未重输的密钥不重密封）。
@@ -366,6 +375,10 @@ pub struct CredentialPatch {
     pub key_pub: Option<String>,
     pub passphrase: Option<String>,
     pub totp_secret: Option<String>,
+    /// TOTP 位数（0025）：`Some(None)` = 改回缺省（6 位）；`None` = 不改。
+    pub totp_digits: Option<Option<u32>>,
+    /// TOTP 步长秒数（0025）：`Some(None)` = 改回缺省（30 秒）；`None` = 不改。
+    pub totp_period: Option<Option<i64>>,
 }
 
 /// [`Credential`] 的存储入口。
@@ -378,9 +391,17 @@ impl Credentials {
         let tx = conn.unchecked_transaction()?;
         // 密文列先置 NULL：AAD 需要 row id，行落地后回填（同一事务，无中间可见态）。
         tx.execute(
-            "INSERT INTO credentials (kind, name, key_pub, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?4)",
-            params![input.kind.as_str(), input.name, input.key_pub, ts],
+            "INSERT INTO credentials (kind, name, key_pub, totp_digits, totp_period,
+                                     created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+            params![
+                input.kind.as_str(),
+                input.name,
+                input.key_pub,
+                input.totp_digits,
+                input.totp_period,
+                ts
+            ],
         )?;
         let id = tx.last_insert_rowid();
         seal_fields(
@@ -397,6 +418,8 @@ impl Credentials {
             kind: input.kind,
             name: input.name.clone(),
             key_pub: input.key_pub.clone(),
+            totp_digits: input.totp_digits,
+            totp_period: input.totp_period,
             created_at: ts,
             updated_at: ts,
         })
@@ -407,16 +430,35 @@ impl Credentials {
         let ts = now_ts();
         let conn = vault.connection();
         let tx = conn.unchecked_transaction()?;
-        let (existing_kind, existing_name, existing_key_pub, created_at): (
+        let (
+            existing_kind,
+            existing_name,
+            existing_key_pub,
+            existing_totp_digits,
+            existing_totp_period,
+            created_at,
+        ): (
             String,
             Option<String>,
             Option<String>,
+            Option<u32>,
+            Option<i64>,
             i64,
         ) = tx
             .query_row(
-                "SELECT kind, name, key_pub, created_at FROM credentials WHERE id = ?1",
+                "SELECT kind, name, key_pub, totp_digits, totp_period, created_at
+                 FROM credentials WHERE id = ?1",
                 [id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                },
             )
             .optional()?
             .ok_or_else(|| VaultError::NotFound(format!("credential id={id}")))?;
@@ -442,6 +484,17 @@ impl Credentials {
                 params![key_pub, id],
             )?;
         }
+        // TOTP 位数/步长（0025）：非敏感配置列，可改（改了立即影响自动填码）。
+        if patch.totp_digits.is_some() || patch.totp_period.is_some() {
+            tx.execute(
+                "UPDATE credentials SET totp_digits = ?1, totp_period = ?2 WHERE id = ?3",
+                params![
+                    patch.totp_digits.flatten(),
+                    patch.totp_period.flatten(),
+                    id
+                ],
+            )?;
+        }
         seal_fields(
             &vault.cipher()?,
             &tx,
@@ -460,6 +513,8 @@ impl Credentials {
             kind,
             name: patch.name.clone().unwrap_or(existing_name),
             key_pub: patch.key_pub.clone().or(existing_key_pub),
+            totp_digits: patch.totp_digits.unwrap_or(existing_totp_digits),
+            totp_period: patch.totp_period.unwrap_or(existing_totp_period),
             created_at,
             updated_at: ts,
         })
@@ -553,6 +608,8 @@ fn row_to_credential(row: &Row) -> rusqlite::Result<Credential> {
             .map_err(|e: VaultError| conv_failure(row, "kind", e))?,
         name: row.get("name")?,
         key_pub: row.get("key_pub")?,
+        totp_digits: row.get("totp_digits")?,
+        totp_period: row.get("totp_period")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })

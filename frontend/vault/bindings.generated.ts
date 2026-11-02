@@ -58,6 +58,13 @@ export const commands = {
 	/**  用户可见的明文名称/标签（0021；非敏感不加密）。NULL = 未命名。 */
 	name: string | null,
 	key_pub: string | null,
+	/**
+	 *  TOTP 验证码位数（0025）：`None` = 缺省 6 位（RFC 6238 典型值）。
+	 *  非 6 位的服务（Steam 5 位、部分自建 8 位）写死 6 位会导致自动填码恒错。
+	 */
+	totp_digits: number | null,
+	/**  TOTP 时间步长秒数（0025）：`None` = 缺省 30 秒。 */
+	totp_period: number | null,
 	created_at: number,
 	updated_at: number,
 } | null, string>(__TAURI_INVOKE("credentials_get", { id })),
@@ -157,6 +164,13 @@ export type Credential = {
 	/**  用户可见的明文名称/标签（0021；非敏感不加密）。NULL = 未命名。 */
 	name: string | null,
 	key_pub: string | null,
+	/**
+	 *  TOTP 验证码位数（0025）：`None` = 缺省 6 位（RFC 6238 典型值）。
+	 *  非 6 位的服务（Steam 5 位、部分自建 8 位）写死 6 位会导致自动填码恒错。
+	 */
+	totp_digits: number | null,
+	/**  TOTP 时间步长秒数（0025）：`None` = 缺省 30 秒。 */
+	totp_period: number | null,
 	created_at: number,
 	updated_at: number,
 };
@@ -173,6 +187,10 @@ export type CredentialInput = {
 	key_pub: string | null,
 	passphrase: string | null,
 	totp_secret: string | null,
+	/**  TOTP 验证码位数（0025；`None` = 缺省 6）。 */
+	totp_digits: number | null,
+	/**  TOTP 时间步长秒数（0025；`None` = 缺省 30）。 */
+	totp_period: number | null,
 };
 
 /**
@@ -191,6 +209,10 @@ export type CredentialPatch = {
 	key_pub: string | null,
 	passphrase: string | null,
 	totp_secret: string | null,
+	/**  TOTP 位数（0025）：`Some(None)` = 改回缺省（6 位）；`None` = 不改。 */
+	totp_digits: number | null,
+	/**  TOTP 步长秒数（0025）：`Some(None)` = 改回缺省（30 秒）；`None` = 不改。 */
+	totp_period: number | null,
 };
 
 /**  历史行（serde 面与 `frontend/vault/api.ts` 的 `HistoryEntry` 同构，snake_case）。 */

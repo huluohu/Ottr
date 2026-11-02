@@ -32,6 +32,15 @@ export interface CredentialFormProps {
   onClose: () => void;
 }
 
+/** 空串/非法 → null（= 缺省值）；合法正整数 → 数值。 */
+function parsePositiveIntOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
 export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   const { t } = useTranslation();
   useEscClose(true, onClose);
@@ -44,6 +53,12 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   const [keyPub, setKeyPub] = useState(credential?.key_pub ?? "");
   const [passphrase, setPassphrase] = useState("");
   const [totpSecret, setTotpSecret] = useState("");
+  const [totpDigits, setTotpDigits] = useState(
+    credential?.totp_digits != null ? String(credential.totp_digits) : "",
+  );
+  const [totpPeriod, setTotpPeriod] = useState(
+    credential?.totp_period != null ? String(credential.totp_period) : "",
+  );
   const [showSecret, setShowSecret] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +76,16 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
   }
 
   function validate(): boolean {
-    const errKey = validateCredentialDraft({ name: name.trim(), kind, secret, keyPub, passphrase, totpSecret });
+    const errKey = validateCredentialDraft({
+      name: name.trim(),
+      kind,
+      secret,
+      keyPub,
+      passphrase,
+      totpSecret,
+      totpDigits,
+      totpPeriod,
+    });
     if (errKey == null) {
       setError(null);
       return true;
@@ -98,6 +122,9 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
             key_pub: kind === "key" ? keyPub.trim() : "",
             passphrase: kind === "key" ? passphrase : "",
             totp_secret: kind === "totp" ? totpSecret : "",
+            // 非 TOTP 凭据没有「位数/步长」可言 → 字段省略（Rust 侧 = 保留现值）
+            totp_digits: kind === "totp" ? parsePositiveIntOrNull(totpDigits) : undefined,
+            totp_period: kind === "totp" ? parsePositiveIntOrNull(totpPeriod) : undefined,
           };
         } else {
           patch = {
@@ -107,11 +134,24 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
             key_pub: keyPub.trim() === "" ? null : keyPub.trim(),
             passphrase: passphrase === "" ? null : passphrase,
             totp_secret: totpSecret === "" ? null : totpSecret,
+            totp_digits: kind === "totp" ? parsePositiveIntOrNull(totpDigits) : undefined,
+            totp_period: kind === "totp" ? parsePositiveIntOrNull(totpPeriod) : undefined,
           };
         }
         await updateCredential(credential.id, patch);
       } else {
-        await createCredential(credentialInputFrom({ name: name.trim(), kind, secret, keyPub, passphrase, totpSecret }));
+        await createCredential(
+          credentialInputFrom({
+            name: name.trim(),
+            kind,
+            secret,
+            keyPub,
+            passphrase,
+            totpSecret,
+            totpDigits,
+            totpPeriod,
+          }),
+        );
       }
       onClose();
     } catch (err) {
@@ -229,18 +269,47 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
         )}
 
         {kind === "totp" && (
-          <label>
-            <span>{t("credentialForm.totpSecret")}</span>
-            <input
-              data-testid="cred-totp-secret"
-              type="password"
-              value={totpSecret}
-              placeholder={editing ? t("credentialForm.keepSecret") : t("credentialForm.totpSecretPlaceholder")}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(e) => setTotpSecret(e.currentTarget.value)}
-            />
-          </label>
+          <>
+            <label>
+              <span>{t("credentialForm.totpSecret")}</span>
+              <input
+                data-testid="cred-totp-secret"
+                type="password"
+                value={totpSecret}
+                placeholder={editing ? t("credentialForm.keepSecret") : t("credentialForm.totpSecretPlaceholder")}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => setTotpSecret(e.currentTarget.value)}
+              />
+            </label>
+            {/* 位数/步长：6 位/30 秒之外的取值（Steam 5 位、部分服务 8 位、
+                60 秒步长）——留空 = 缺省值。 */}
+            <div className="cred-totp-params">
+              <label>
+                <span>{t("credentialForm.totpDigits")}</span>
+                <input
+                  data-testid="cred-totp-digits"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={totpDigits}
+                  placeholder={t("credentialForm.totpDigitsPlaceholder")}
+                  onChange={(e) => setTotpDigits(e.currentTarget.value)}
+                />
+              </label>
+              <label>
+                <span>{t("credentialForm.totpPeriod")}</span>
+                <input
+                  data-testid="cred-totp-period"
+                  type="number"
+                  min={1}
+                  value={totpPeriod}
+                  placeholder={t("credentialForm.totpPeriodPlaceholder")}
+                  onChange={(e) => setTotpPeriod(e.currentTarget.value)}
+                />
+              </label>
+            </div>
+          </>
         )}
 
         {error && (

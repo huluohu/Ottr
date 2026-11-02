@@ -102,6 +102,18 @@ interface SessionStore {
   hostKeyAsk: HostKeyAsk | null;
   /** 挂起中的 keyboard-interactive 问询（TOTP/2FA 交互登录，2026-11-02 批次二）。 */
   promptAsk: PromptAsk | null;
+  /**
+   * 等待展示的交互式认证问询队列（2026-11-02 审计）。
+   *
+   * 弹窗是**模态唯一槽**（一次只能显示一个），但问询可能**并发**（同一主机
+   * 开两个标签 / 分屏 pane 与根标签同主机 → 两个会话各自进入认证）。原先
+   * `promptAsk` 单槽直接被后来的问询覆盖，前一个 ask_id 从前端消失 →
+   * 它的超时事件找不到归属 → 「未作答」这个真因丢失，用户只看到无信息量的
+   * 「认证被服务端拒绝」。
+   *
+   * 队列 + 逐个弹出：并发问询不会互相顶掉，每个问询的超时都能归到自己的会话。
+   */
+  promptAskQueue: PromptAsk[];
   settings: SessionSettings;
   /** 分屏 pane 树（Task 8）：键 = 标签根会话 id；树叶 id = 会话 id。 */
   trees: Record<string, PaneTree>;
@@ -233,6 +245,30 @@ function deferConnect(id: string): void {
 // disconnected」，用户看到的是「后端无响应」这种假报错（真机实测过：100s 的
 // 看门狗抢在 180s 的问询超时前面，把「用户没作答」误报成「后端无响应」）。
 const ATTACH_WATCHDOG_MS = 290_000;
+
+/**
+ * 会话 connect 序号（问询归属用）。
+ *
+ * 同一主机可能同时有多个会话在途（同一主机多标签、���屏 pane 与根标签同主机）。
+ * 问询到达时要落到「最近发起 connect 的那个会话」——原先靠数组顺序 find，
+ * 会归到数组里靠前的那个（未必是在途的那个）。
+ */
+const connectSeq = new Map<string, number>();
+let connectSeqCounter = 0;
+
+/**
+ * 登记一个交互式认证问询：没有正在显示的问询就直接显示；有则排队。
+ * （弹窗是模态唯一槽，并发问询靠队列逐个弹出，不互相顶掉。）
+ */
+function enqueuePromptAsk(ask: PromptAsk): void {
+  const st = useSessionStore.getState();
+  if (st.promptAsk == null) {
+    useSessionStore.setState({ promptAsk: ask });
+    useModalStore.getState().open("promptAsk");
+    return;
+  }
+  useSessionStore.setState({ promptAskQueue: [...st.promptAskQueue, ask] });
+}
 const attachWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
 function armAttachWatchdog(id: string, gen: number): void {
@@ -279,6 +315,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   activeId: null,
   hostKeyAsk: null,
   promptAsk: null,
+  promptAskQueue: [],
   settings: { maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS },
   trees: {},
   activePane: {},
@@ -416,12 +453,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
     if (st0.promptAsk && doomedIds.has(st0.promptAsk.sessionId)) {
       // 同理：关掉等待交互式作答的标签 → 回空答案（= 认证失败，fail-closed），
-      // 别让 Rust 侧问询白挂 60s。
+      // 别让 Rust 侧问询白挂 180s。
       void invoke("kbd_interactive_answer", {
         askId: st0.promptAsk.ask_id,
         answers: [],
       }).catch(() => {});
       useModalStore.getState().close("promptAsk");
+    }
+    // 队列里的问询同样要回空答案（并发问询时可能有别的会话在排队）。
+    for (const q of st0.promptAskQueue) {
+      if (!doomedIds.has(q.sessionId)) continue;
+      void invoke("kbd_interactive_answer", {
+        askId: q.ask_id,
+        answers: [],
+      }).catch(() => {});
     }
     set((st) => {
       const sessions = st.sessions.filter((s) => !doomedIds.has(s.id));
@@ -443,6 +488,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           st.hostKeyAsk && doomedIds.has(st.hostKeyAsk.sessionId) ? null : st.hostKeyAsk,
         promptAsk:
           st.promptAsk && doomedIds.has(st.promptAsk.sessionId) ? null : st.promptAsk,
+        promptAskQueue: st.promptAskQueue.filter((a) => !doomedIds.has(a.sessionId)),
         searchSessionId:
           st.searchSessionId != null && doomedIds.has(st.searchSessionId)
             ? null
@@ -484,6 +530,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // 首连失败不自动重连（认证/网络错误重试易变成打凭据的循环），只标终态。
     const priorAttempts = session.attempt;
     const gen = bumpGeneration(id);
+    // connect 序号：问询归属要落到「最近发起 connect 的那个会话」——同一主机
+    // 可能同时有多个会话在途（多标签/分屏），靠数组顺序归属会归错。
+    connectSeq.set(id, ++connectSeqCounter);
     set((st) => ({
       sessions: patchSession(st.sessions, id, {
         status: "connecting",
@@ -754,25 +803,34 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // 只认 "connecting" 会把「TOFU 之后的交互式认证」误判成孤儿问询：弹窗照
     // 弹，但会话不进 waiting_prompt → attach 看门狗（100s）到点误报「后端无
     // 响应」，而用户明明在答题（真机 192.168.9.102 实测，2026-11-02）。
-    const session = get().sessions.find(
+    // 归属：同主机可能多个会话在途 → 取**最近发起 connect** 的那个。
+    const candidates = get().sessions.filter(
       (s) =>
         s.hostId === originId &&
         (s.status === "connecting" ||
           s.status === "waiting_host_key" ||
           s.status === "waiting_prompt"),
     );
+    // 已经在等作答的会话（waiting_prompt）**不再接收新问询**——同一主机多标签
+    // 同时认证时，两个问询必须落到不同会话（否则一个会话背两个 ask）。
+    const fresh = candidates.filter(
+      (s) => s.status === "connecting" || s.status === "waiting_host_key",
+    );
+    const pool = fresh.length > 0 ? fresh : candidates;
+    const session = pool.sort(
+      (a, b) => (connectSeq.get(b.id) ?? 0) - (connectSeq.get(a.id) ?? 0),
+    )[0];
     if (!session) {
       // 无在途 connect（孤儿问询）：仍弹窗——不弹则 Rust 侧超时按空答案
       // 收尾（= 认证失败）。sessionId 空串 = 无关联会话。
-      set({ promptAsk: { ...payload, sessionId: "" } });
-      useModalStore.getState().open("promptAsk");
+      enqueuePromptAsk({ ...payload, sessionId: "" });
       return;
     }
-    set({
-      promptAsk: { ...payload, sessionId: session.id },
-      sessions: patchSession(get().sessions, session.id, { status: "waiting_prompt" }),
-    });
-    useModalStore.getState().open("promptAsk");
+    const ask: PromptAsk = { ...payload, sessionId: session.id };
+    set((st) => ({
+      sessions: patchSession(st.sessions, session.id, { status: "waiting_prompt" }),
+    }));
+    enqueuePromptAsk(ask);
   },
 
   /**
@@ -782,11 +840,29 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
    * 有人听的输入框敲码，也不让随后那句无信息量的「认证被服务端拒绝」盖掉真因。
    */
   onPromptTimeout: (payload: PromptTimeoutPayload) => {
-    const ask = get().promptAsk;
-    // 不是当前那个问询（已作答 / 已换问询）→ 迟到的超时通知，忽略。
-    if (!ask || ask.ask_id !== payload.ask_id) return;
-    set({ promptAsk: null });
-    useModalStore.getState().close("promptAsk");
+    const st0 = get();
+    // 可能在显示中，也可能在队列里（并发问询）——两处都要能找到，
+    // 否则并发场景下被覆盖的那个问询超时后真因丢失。
+    const displayed = st0.promptAsk?.ask_id === payload.ask_id ? st0.promptAsk : null;
+    const queued = st0.promptAskQueue.find((a) => a.ask_id === payload.ask_id) ?? null;
+    const ask = displayed ?? queued;
+    // 都不是 → 迟到的超时通知（已作答 / 已换问询），忽略。
+    if (!ask) return;
+    if (displayed) {
+      // 当前显示的：关掉它，并把队列里的下一个顶上。
+      const next = st0.promptAskQueue[0] ?? null;
+      set({
+        promptAsk: next,
+        promptAskQueue: next ? st0.promptAskQueue.slice(1) : [],
+      });
+      if (next) useModalStore.getState().open("promptAsk");
+      else useModalStore.getState().close("promptAsk");
+    } else {
+      // 队列里的：直接从队列里摘掉（没显示过，弹窗不受影响）。
+      set({
+        promptAskQueue: st0.promptAskQueue.filter((a) => a.ask_id !== payload.ask_id),
+      });
+    }
     if (!ask.sessionId) return;
     set((st) => ({
       sessions: patchSession(st.sessions, ask.sessionId, {
@@ -799,10 +875,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   answerPrompt: async (answers) => {
-    const ask = get().promptAsk;
+    const st0 = get();
+    const ask = st0.promptAsk;
     if (!ask) return;
-    set({ promptAsk: null });
-    useModalStore.getState().close("promptAsk");
+    // 作答完当前这个 → 把队列里下一个顶上（并发问询不丢）。
+    const next = st0.promptAskQueue[0] ?? null;
+    set({
+      promptAsk: next,
+      promptAskQueue: next ? st0.promptAskQueue.slice(1) : [],
+    });
+    if (next) useModalStore.getState().open("promptAsk");
+    else useModalStore.getState().close("promptAsk");
     try {
       await invoke("kbd_interactive_answer", { askId: ask.ask_id, answers });
     } catch (e) {
@@ -939,6 +1022,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     unregisterSink(sessionId);
     if (session.rustId) {
       void invoke("drop_session", { id: session.rustId }).catch(() => {});
+    }
+    // 队列里属于该会话的问询：Rust 侧问询会白挂到超时，一并回空答案。
+    for (const q of st.promptAskQueue) {
+      if (q.sessionId !== sessionId) continue;
+      void invoke("kbd_interactive_answer", { askId: q.ask_id, answers: [] }).catch(() => {});
     }
     if (st.promptAsk?.sessionId === sessionId) {
       void invoke("kbd_interactive_answer", {

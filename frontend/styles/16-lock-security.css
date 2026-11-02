@@ -752,3 +752,100 @@
   font-size: var(--text-xs);
   color: var(--color-danger);
 }
+
+/* --- 图形化微缩主题选择器（ThemeVisualPicker，Snapzy 风格）--- */
+.theme-visual-picker {
+  display: flex;
+  gap: var(--space-4, 16px);
+  padding: var(--space-2, 8px) 0;
+  width: 100%;
+}
+.theme-visual-picker[data-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.theme-preview-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  cursor: pointer;
+  outline: none;
+}
+.theme-thumb {
+  width: 100%;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  border: 2px solid transparent;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-fg) 8%, transparent);
+  position: relative;
+  overflow: hidden;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.theme-preview-card:hover .theme-thumb {
+  border-color: color-mix(in srgb, var(--color-accent-border) 40%, transparent);
+}
+.theme-preview-card:focus-visible .theme-thumb,
+.theme-preview-card.selected .theme-thumb {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent),
+              0 2px 8px color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+.theme-thumb-split {
+  background: linear-gradient(to right, #f4f4f7 50%, #161e22 50%);
+}
+.theme-thumb-light {
+  background: #f4f4f7;
+}
+.theme-thumb-dark {
+  background: #141b1e;
+}
+.thumb-bar {
+  height: 11px;
+  background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 4%, transparent);
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+  gap: 3px;
+}
+.thumb-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+.dot-r { background: var(--color-danger, #ff5f56); }
+.dot-y { background: var(--color-warning, #ffbd2e); }
+.dot-g { background: var(--color-success, #27c93f); }
+
+.thumb-body {
+  display: flex;
+  height: calc(100% - 11px);
+}
+.thumb-side {
+  width: 16px;
+  border-right: 1px solid color-mix(in srgb, var(--color-fg) 6%, transparent);
+}
+.thumb-content {
+  flex: 1;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.thumb-line {
+  height: 3px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+}
+.line-short { width: 45%; }
+.line-long { width: 75%; }
+
+.theme-label {
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  font-weight: 500;
+  text-align: center;
+}
+

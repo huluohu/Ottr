@@ -25,6 +25,8 @@ say "0. 同步代码并构建"
 rsync -az --delete --exclude target --exclude node_modules --exclude .git \
   Cargo.toml Cargo.lock package.json package-lock.json index.html vite.config.ts \
   vitest.config.ts tsconfig.json tsconfig.node.json "$DEV:$REMOTE/" || exit 1
+# fixtures/（ssh-agent 夹具密钥在仓库根的 fixtures/spike_ed25519）
+rsync -az --delete --exclude .git fixtures/ "$DEV:$REMOTE/fixtures/" || exit 1
 rsync -az --delete --exclude node_modules --exclude dist frontend/ "$DEV:$REMOTE/frontend/" || exit 1
 rsync -az --delete --exclude target scripts/ "$DEV:$REMOTE/scripts/" || exit 1
 rsync -az --delete --exclude target crates/ "$DEV:$REMOTE/crates/" || exit 1
@@ -34,6 +36,7 @@ ssh "$DEV" "export PATH=\$HOME/.cargo/bin:\$PATH; cd $REMOTE && \
   node scripts/prepare-mcp-sidecar.mjs && \
   cargo build --manifest-path desktop/Cargo.toml && \
   cargo build --example seed_totp_credential --manifest-path desktop/Cargo.toml && \
+  cargo build --example seed_agent_credential --manifest-path desktop/Cargo.toml && \
   cargo build --example mock_kbdint_server -p ottr-ssh && echo BUILD_OK" || exit 1
 
 say "1. 起 mock sshd + 造 TOTP 凭据 + 主机行"
@@ -61,9 +64,20 @@ ssh "$DEV" "cd $REMOTE && \
   XDG_DATA_HOME=$DATA ./target/debug/examples/seed_totp_credential $SEED && \
   python3 /tmp/ottr-seed-kbd.py" || exit 1
 
+say "1b. 起 ssh-agent 并加载夹具密钥（agent 认证那项要用）"
+# agent 私钥只进 agent 进程——Ottr 侧零密钥材料。夹具密钥用仓库里的
+# fixtures/spike_ed25519（与 crates/ottr-ssh/tests/agent_auth.rs 同一把）。
+ssh "$DEV" "cd $REMOTE && \
+  if [ -n \"\$SSH_AUTH_SOCK\" ] && ssh-add -l >/dev/null 2>&1; then echo 'agent 已在跑'; \
+  else eval \"\$(ssh-agent -s)\" > /tmp/ottr-agent-env; . /tmp/ottr-agent-env; \
+       ssh-add $REMOTE/fixtures/spike_ed25519; fi; \
+  XDG_DATA_HOME=$DATA ./target/debug/examples/seed_agent_credential" || exit 1
+
 say "2. 起 vite + 应用"
 ssh "$DEV" "export HOME=$HOME_DIR XDG_DATA_HOME=$DATA \
   DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus DISPLAY=:1; \
+  # 继承 ssh-agent 的 socket（agent 进程在 1b 步起的，会话已断但 daemon 还在）
+  [ -f /tmp/ottr-agent-env ] && . /tmp/ottr-agent-env; \
   cd $REMOTE && \
   (nohup npm run dev -- --host 127.0.0.1 --port 1420 > /tmp/ottr-vite.log 2>&1 &) ; \
   for i in \$(seq 1 60); do curl -s http://127.0.0.1:1420 >/dev/null && break; sleep 1; done; \
@@ -87,14 +101,23 @@ ssh "$DEV" "export DISPLAY=:1; W=\$(xdotool search --pid \$(pgrep -x ottr) | tai
   import -window \$W /tmp/ottr-verify/v-connected.png; \
   cat /tmp/mock-kbdint.log"
 
-say "5. 取证截图（全部留档，便于事后逐张核对）"
+say "6. 走查其余交互面（Ask Ottr / 凭据表单 / MCP 客户端 / agent 认证）"
+# 这一段以「截图 + 状态对账」为主：逐个打开目标界面并留档，供事后逐张核对。
+ssh "$DEV" "export HOME=$HOME_DIR XDG_DATA_HOME=$DATA DISPLAY=:1; \
+  W=\$(xdotool search --pid \$(pgrep -x ottr) | tail -1); \
+  xdotool windowactivate --sync \$W; sleep 1; \
+  import -window \$W /tmp/ottr-verify/v-panel.png; \
+  echo '--- app log 尾部 ---'; tail -12 /tmp/ottr-verify/app.log; \
+  echo '--- mock sshd 日志 ---'; cat /tmp/mock-kbdint.log"
+
+say "7. 取证截图（含新增走查）"
 mkdir -p docs/screenshots/verify-20261103
-for f in v-prompt v-connected; do
+for f in v-prompt v-connected v-panel; do
   scp "$DEV":/tmp/ottr-verify/$f.png /tmp/$f.png >/dev/null 2>&1 && echo "  → /tmp/$f.png"
   cp /tmp/$f.png "docs/screenshots/verify-20261103/$f.png" 2>/dev/null
 done
 
-say "6. 清理"
+say "8. 清理"
 ssh "$DEV" "pkill -x ottr; pkill -x mock_kbdint_ser; \
   P=\$(ss -ltnp 2>/dev/null | grep 1420 | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2); \
   [ -n \"\$P\" ] && kill \$P; sleep 2; \

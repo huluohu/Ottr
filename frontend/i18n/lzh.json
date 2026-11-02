@@ -757,7 +757,15 @@
     "trustAnchor": "信任原指紋",
     "trustNew": "信任此指紋",
     "deleteTitle": "忘記該端點？",
-    "deleteHint": "將削 {{endpoint}} 的信任籍，下次連會再走首見（TOFU）諾。"
+    "deleteHint": "將削 {{endpoint}} 的信任籍，下次連會再走首見（TOFU）諾。",
+    "import": "匯入 known_hosts",
+    "importHint": "自本機 known_hosts 檔批次匯入信任之錨：新端點直記為已驗（初連不再請認），既有端點不覆。",
+    "importUseDefault": "用預設路徑",
+    "importChoose": "擇 known_hosts 檔…",
+    "importDone": "匯入畢：新增 {{added}} 條信任之錨，略重複 {{duplicate}} 條，略衝突 {{conflict}} 條。",
+    "importNotFound": "未得 known_hosts 檔。",
+    "importConflictNotice": "衝突之端點未覆：既存指紋相異者仍請確認，請自察後處之。",
+    "importSkippedHashed": "加密條目（|1|…）不能反解，已略。"
   },
   "hostKey": {
     "firstTitle": "首次連諾",

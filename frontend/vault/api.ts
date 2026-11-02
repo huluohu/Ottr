@@ -190,6 +190,19 @@ export interface KnownHost {
   state: KnownHostState;
 }
 
+/** Rust `entities::KnownHostsImportReport` 同构（serde camelCase）。
+ * 导入本地 known_hosts 的回执：新增锚 / 跳过重复 / 跳过冲突 / 错误列表。 */
+export interface KnownHostsImportReport {
+  /** 新落地的信任锚条数（导入走 verify 语义：state=ok / verified=1）。 */
+  added: number;
+  /** 已存在且指纹相同（未覆盖既有锚）。 */
+  skippedDuplicate: number;
+  /** 已存在但指纹不同（未覆盖——仍会弹确认）。 */
+  skippedConflict: number;
+  /** 逐条错误文案；「文件不存在」以 `known_hosts_file_not_found: <路径>` 前缀给出。 */
+  errors: string[];
+}
+
 /** `ottr://host-key-changed` 事件载荷（Rust HostKeyChangedPayload 同构，B9
  * 指纹巡检；seen = 本次观测集，锚消失时在场钥匙 = 新锚候选面）。 */
 export interface HostKeyChangedPayload {
@@ -668,6 +681,10 @@ export const vaultApi = {
     auditStatus: () => invoke<HostKeyAuditStatus>("hostkey_audit_status"),
     /** 手动全量巡检一轮（探测 + changed 落账 + 通知事件），返回巡检回执。 */
     auditRun: () => invoke<HostKeyAuditOutcome>("known_hosts_audit_run"),
+    /** 导入本地 known_hosts（path=null → ~/.ssh/known_hosts）。报告供导入
+     *  完成面展示（新增 / 跳过重复 / 跳过冲突 / 错误）。 */
+    import: (path: string | null) =>
+      invoke<KnownHostsImportReport>("known_hosts_import", { path }),
   },
   /** 密钥管理（Task 6，A4；Rust 侧 desktop/src/keys.rs）。
    * 导出调用契约（裁定 #2）：加密私钥必须先经 keyInspect 验证 passphrase

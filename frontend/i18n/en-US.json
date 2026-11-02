@@ -758,7 +758,15 @@
     "trustAnchor": "Trust original",
     "trustNew": "Trust this key",
     "deleteTitle": "Forget this endpoint?",
-    "deleteHint": "The trust record for {{endpoint}} will be removed; the next connect re-runs first-use (TOFU) confirmation."
+    "deleteHint": "The trust record for {{endpoint}} will be removed; the next connect re-runs first-use (TOFU) confirmation.",
+    "import": "Import known_hosts",
+    "importHint": "Import trust anchors from a local known_hosts file: new endpoints are recorded as verified (no first-use prompt), and existing endpoints are never overwritten.",
+    "importUseDefault": "Use default path",
+    "importChoose": "Select a known_hosts file…",
+    "importDone": "Import finished: {{added}} anchors added, {{duplicate}} duplicates skipped, {{conflict}} conflicts skipped.",
+    "importNotFound": "known_hosts file not found.",
+    "importConflictNotice": "Conflicting endpoints were not overwritten: endpoints with a different fingerprint still prompt for confirmation — check them manually.",
+    "importSkippedHashed": "Hashed entries (|1|…) cannot be reversed and were skipped."
   },
   "hostKey": {
     "firstTitle": "First connection",

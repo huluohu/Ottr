@@ -757,7 +757,15 @@
     "trustAnchor": "信任原指纹",
     "trustNew": "信任此指纹",
     "deleteTitle": "忘记该端点？",
-    "deleteHint": "将删除 {{endpoint}} 的信任记录，下次连接会重新走首见（TOFU）确认。"
+    "deleteHint": "将删除 {{endpoint}} 的信任记录，下次连接会重新走首见（TOFU）确认。",
+    "import": "导入 known_hosts",
+    "importHint": "从本地 known_hosts 文件批量导入信任锚：新端点直接记为已核验（首次连接不再弹确认），已存在的端点不会被覆盖。",
+    "importUseDefault": "使用默认路径",
+    "importChoose": "选择 known_hosts 文件…",
+    "importDone": "导入完成：新增 {{added}} 条信任锚，跳过重复 {{duplicate}} 条，跳过冲突 {{conflict}} 条。",
+    "importNotFound": "未找到 known_hosts 文件。",
+    "importConflictNotice": "冲突端点未被覆盖：已有不同指纹的端点仍会弹确认，请手动核对后处理。",
+    "importSkippedHashed": "加密条目（|1|…）无法反解，已跳过。"
   },
   "hostKey": {
     "firstTitle": "首次连接确认",

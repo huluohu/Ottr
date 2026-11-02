@@ -5,7 +5,11 @@
 //     接管新锚）/ 信任原锚（观测集仍含锚 = 误报或超集）/ 删除；
 //   * 删除 = 忘记该端点（下次连接重走 TOFU）；确认框说明后果；
 //   * 「立即巡检」：known_hosts_audit_run 手动跑一轮（与后台调度同一命令核，
-//     changed 落账与 security 通知由 Rust 侧统一发出）。
+//     changed 落账与 security 通知由 Rust 侧统一发出）；
+//   * 「导入 known_hosts」（2026-11-02）：从本地 known_hosts 批量落地信任锚
+//     ——原生文件对话框选文件，或用默认路径 ~/.ssh/known_hosts；导入报告
+//     （新增/跳过重复/跳过冲突/错误）就地展示，冲突显著提示（既有端点未被
+//     覆盖，仍会弹确认）。
 // 入口：凭据与密钥对话框第三页签（KeyManager 区，简报裁定 #1）。
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,6 +18,7 @@ import {
   vaultApi,
   type KnownHost,
   type KnownHostState,
+  type KnownHostsImportReport,
 } from "../vault/api";
 import { InfoHint } from "../ui/InfoHint";
 
@@ -22,6 +27,10 @@ const STATE_BADGE: Record<KnownHostState, string> = {
   changed: "kh-badge-changed",
   pending: "kh-badge-pending",
 };
+
+/** Rust 侧「文件不存在」错误码前缀（desktop/src/vault/hosts.rs 同名字面量）。
+ *  命中即展示本地化的「未找到文件」提示，而不是把原始路径当导入失败抛给用户。 */
+const FILE_NOT_FOUND_CODE = "known_hosts_file_not_found";
 
 /** 秒级 unix → 本地时间串（epoch 0 / 缺失 = —）。 */
 function fmtTs(ts: number | null, neverLabel: string): string {
@@ -45,6 +54,9 @@ export function KnownHostsManager() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [probe, setProbe] = useState<ProbeState | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<KnownHost | null>(null);
+  // 导入面（2026-11-02）：报告 + 导入中态。
+  const [importReport, setImportReport] = useState<KnownHostsImportReport | null>(null);
+  const [importing, setImporting] = useState(false);
   // 取证对话框与删除确认互斥弹出，Esc 收当前层（probe 优先）。
   useEscClose(probe != null || confirmDelete != null, () => {
     if (probe != null) setProbe(null);
@@ -114,6 +126,36 @@ export function KnownHostsManager() {
     }
   }
 
+  /** 导入本地 known_hosts（path=null → Rust 侧默认 ~/.ssh/known_hosts）。 */
+  async function runImport(path: string | null) {
+    setImporting(true);
+    setError(null);
+    try {
+      const report = await vaultApi.knownHosts.import(path);
+      setImportReport(report);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  /** 原生文件选择（plugin-dialog 动态引入——纯浏览器/测试环境缺席即静默）。
+   *  选到文件才发起导入；取消（null）不发请求。 */
+  async function pickAndImport() {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({
+        multiple: false,
+        title: t("knownHosts.importChoose"),
+      });
+      if (typeof picked === "string") await runImport(picked);
+    } catch {
+      // 非 Tauri 环境：无原生对话框（静默——用户可改用「默认路径」按钮）
+    }
+  }
+
   return (
     <section aria-label={t("knownHosts.title")} data-testid="known-hosts-manager">
       <div className="kh-toolbar">
@@ -127,7 +169,58 @@ export function KnownHostsManager() {
         >
           {auditing ? t("knownHosts.auditing") : t("knownHosts.auditNow")}
         </button>
+        {/* 导入本地 known_hosts（2026-11-02）：选文件 / 用默认路径两条入口 */}
+        <button
+          type="button"
+          data-testid="kh-import"
+          disabled={importing}
+          onClick={() => void pickAndImport()}
+        >
+          {t("knownHosts.import")}
+        </button>
+        <button
+          type="button"
+          data-testid="kh-import-default"
+          disabled={importing}
+          onClick={() => void runImport(null)}
+        >
+          {t("knownHosts.importUseDefault")}
+        </button>
       </div>
+      <p className="settings-hint" data-testid="kh-import-hint">
+        {t("knownHosts.importHint")} {t("knownHosts.importSkippedHashed")}
+      </p>
+      {importReport && (
+        <div data-testid="kh-import-report">
+          {importReport.errors.some((e) => e.startsWith(FILE_NOT_FOUND_CODE)) ? (
+            <p className="tree-status" data-testid="kh-import-notfound">
+              {t("knownHosts.importNotFound")}
+            </p>
+          ) : (
+            <p className="tree-status" data-testid="kh-import-result">
+              {t("knownHosts.importDone", {
+                added: importReport.added,
+                duplicate: importReport.skippedDuplicate,
+                conflict: importReport.skippedConflict,
+              })}
+            </p>
+          )}
+          {importReport.skippedConflict > 0 && (
+            <p className="form-error" data-testid="kh-import-conflict">
+              {t("knownHosts.importConflictNotice")}
+            </p>
+          )}
+          {importReport.errors.length > 0 && (
+            <ul className="kh-seen" data-testid="kh-import-errors">
+              {importReport.errors.map((e, i) => (
+                <li key={`${e}-${i}`}>
+                  {e.startsWith(FILE_NOT_FOUND_CODE) ? t("knownHosts.importNotFound") : e}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {auditMsg && (
         <p className="tree-status" data-testid="kh-audit-result">
           {auditMsg}

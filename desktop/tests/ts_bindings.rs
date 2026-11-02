@@ -45,6 +45,7 @@ fn run_bindings_check() -> Result<(), String> {
             ottr_lib::vault::known_hosts_verify,
             ottr_lib::vault::known_hosts_mark_changed,
             ottr_lib::vault::known_hosts_delete,
+            ottr_lib::vault::known_hosts_import,
             ottr_lib::vault::credentials_list,
             ottr_lib::vault::credentials_get,
             ottr_lib::vault::credentials_create,

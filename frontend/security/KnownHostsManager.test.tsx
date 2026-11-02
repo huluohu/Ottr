@@ -1,18 +1,22 @@
 // KnownHostsManager 组件测试（B9 裁定 #1）：列表渲染 / pending 一键 verify /
 // changed「检查」取证对话框（信任新锚 or 信任原锚）/ 删除确认（忘记端点）/
-// 立即巡检回执。vaultApi 直 mock——组件面只测编排，不测 Rust。
+// 立即巡检回执 / 导入本地 known_hosts（2026-11-02）。vaultApi 直 mock——
+// 组件面只测编排，不测 Rust。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import "../i18n";
 import i18n from "../i18n";
-import { vaultApi, type KnownHost } from "../vault/api";
+import { vaultApi, type KnownHost, type KnownHostsImportReport } from "../vault/api";
 import { KnownHostsManager } from "./KnownHostsManager";
 
 const mockedInvoke = invoke as unknown as Mock;
+const mockedOpen = open as unknown as Mock;
 
 function row(partial: Partial<KnownHost>): KnownHost {
   return {
@@ -55,14 +59,26 @@ function mockImpl(list: KnownHost[]) {
         return Promise.resolve(true);
       case "known_hosts_audit_run":
         return Promise.resolve({ checked: 1, changed: [] });
+      case "known_hosts_import":
+        return Promise.resolve(importReport);
       default:
         return Promise.reject(new Error(`unexpected command ${cmd}`));
     }
   });
 }
 
+/** 导入回执（mockImpl 的 known_hosts_import 返回值；用例内可覆写）。 */
+let importReport: KnownHostsImportReport = {
+  added: 0,
+  skippedDuplicate: 0,
+  skippedConflict: 0,
+  errors: [],
+};
+
 beforeEach(() => {
   mockedInvoke.mockReset();
+  mockedOpen.mockReset();
+  importReport = { added: 0, skippedDuplicate: 0, skippedConflict: 0, errors: [] };
 });
 
 afterEach(() => {
@@ -191,5 +207,105 @@ describe("KnownHostsManager", () => {
     await waitFor(() => expect(screen.getByTestId("kh-audit-result")).toBeTruthy());
     expect(mockedInvoke).toHaveBeenCalledWith("known_hosts_audit_run");
     expect(screen.getByTestId("kh-audit-result").textContent).toContain("1");
+  });
+});
+
+// --- 导入本地 known_hosts（2026-11-02）-------------------------------------
+
+describe("KnownHostsManager 导入 known_hosts", () => {
+  it("工具条渲染导入按钮（选文件）与默认路径按钮 + 提示", async () => {
+    mockImpl([okRow]);
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import")).toBeTruthy());
+    expect(screen.getByTestId("kh-import-default")).toBeTruthy();
+    expect(screen.getByTestId("kh-import-hint")).toBeTruthy();
+  });
+
+  it("使用默认路径：known_hosts_import 以 path=null 发起", async () => {
+    mockImpl([okRow]);
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import-default")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import-default"));
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("known_hosts_import", { path: null }),
+    );
+    // 默认路径按钮不弹原生对话框
+    expect(mockedOpen).not.toHaveBeenCalled();
+  });
+
+  it("选择文件：先弹原生对话框，选中路径后以该路径发起导入", async () => {
+    mockImpl([okRow]);
+    mockedOpen.mockResolvedValue("/tmp/known_hosts");
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import"));
+    await waitFor(() => expect(mockedOpen).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("known_hosts_import", {
+        path: "/tmp/known_hosts",
+      }),
+    );
+  });
+
+  it("原生对话框取消（返回 null）：不发起导入", async () => {
+    mockImpl([okRow]);
+    mockedOpen.mockResolvedValue(null);
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import"));
+    await waitFor(() => expect(mockedOpen).toHaveBeenCalled());
+    expect(
+      mockedInvoke.mock.calls.filter(([cmd]) => cmd === "known_hosts_import"),
+    ).toHaveLength(0);
+  });
+
+  it("报告显示新增/重复/冲突计数；冲突显著提示（既有端点未被覆盖，仍会弹确认）", async () => {
+    mockImpl([okRow]);
+    importReport = {
+      added: 3,
+      skippedDuplicate: 1,
+      skippedConflict: 2,
+      errors: [],
+    };
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import-default")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import-default"));
+    await waitFor(() => expect(screen.getByTestId("kh-import-result")).toBeTruthy());
+    const text = screen.getByTestId("kh-import-result").textContent ?? "";
+    expect(text).toContain("3");
+    expect(text).toContain("1");
+    expect(text).toContain("2");
+    // 冲突必须显著提示
+    expect(screen.getByTestId("kh-import-conflict")).toBeTruthy();
+  });
+
+  it("文件不存在：展示「未找到文件」提示（不算导入失败）", async () => {
+    mockImpl([okRow]);
+    importReport = {
+      added: 0,
+      skippedDuplicate: 0,
+      skippedConflict: 0,
+      errors: ["known_hosts_file_not_found: /Users/me/.ssh/known_hosts"],
+    };
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import-default")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import-default"));
+    await waitFor(() => expect(screen.getByTestId("kh-import-notfound")).toBeTruthy());
+    expect(
+      screen.getByTestId("kh-import-notfound").textContent,
+    ).not.toBe("knownHosts.importNotFound");
+  });
+
+  it("导入后刷新列表（新锚出现在表里）", async () => {
+    mockImpl([okRow]);
+    importReport = { added: 1, skippedDuplicate: 0, skippedConflict: 0, errors: [] };
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import-default")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import-default"));
+    await waitFor(() =>
+      expect(
+        mockedInvoke.mock.calls.filter(([cmd]) => cmd === "known_hosts_list").length,
+      ).toBeGreaterThan(1),
+    );
   });
 });

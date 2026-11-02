@@ -495,6 +495,7 @@ pub fn run() {
             vault::known_hosts_verify,
             vault::known_hosts_mark_changed,
             vault::known_hosts_delete,
+            vault::known_hosts_import,
             // 指纹巡检（Phase 3 Task 6，B9 收口；模块 hostkey_audit.rs）
             hostkey_audit::known_hosts_probe,
             hostkey_audit::known_hosts_audit_run,

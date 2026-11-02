@@ -12,6 +12,8 @@
 //!   目标端点的规范行（22 端口裸 hostname、非 22 端口 `[host]:port` 方括号
 //!   形态，OpenSSH 惯例）；找不到 = `None`（fail-closed：调用方拒绝连接，
 //!   绝不退化为「随便取一条」）。
+//! * [`parse_known_hosts_file`]：整文件 → `(host, port, fingerprint)` 列表
+//!   （导入本地 known_hosts 的解析面，2026-11-02）。
 
 use base64::Engine as _;
 use sha2::Digest;
@@ -68,6 +70,92 @@ pub fn fingerprint_for_host(content: &str, host: &str, port: u16) -> Option<Stri
 fn fingerprint_from_key_b64(b64: &str) -> Option<String> {
     let blob = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
     Some(fingerprint_from_blob(&blob))
+}
+
+/// 解析整份 known_hosts → `(host, port, fingerprint)` 列表
+/// （导入本地 known_hosts 的解析面，2026-11-02）。
+///
+/// 指纹算法复用 [`line_fingerprint`]（与 `ssh-keygen -lf` 逐字一致），本函数
+/// 只做「host 列 → 端点」这层解析。跳过：
+/// * 注释行（`#`）、纯空白行；
+/// * `|1|…` hashed 条目——**不可反解**（哈希的是 host 名），无法还原端点；
+/// * `@cert-authority` / `@revoked` marker 行——CA 公钥与已吊销钥不是该主机
+///   的个人密钥（语义同 [`line_fingerprint`]）；
+/// * 畸形行：列数不对 / b64 非法 / 端口非法（宁可少导不错导）。
+///
+/// host 列口径沿用 [`fingerprint_for_host`] 的既有惯例：22 端口裸 hostname，
+/// 其余 `[host]:port` 方括号形态（OpenSSH）。另有两处 OpenSSH 语义：
+/// * 一行多 pattern（`a,b`）→ 拆成各自端点（绝不把 "a,b" 当主机名）；
+/// * IPv6 一律 `[addr]:port`（含 22 端口）→ 地址还原为裸 IPv6（方括号由
+///   上层 `host_endpoint_key` 统一补回）。
+///
+/// **一个 host 可能有多枚密钥**（rsa/ecdsa/ed25519 并存）——本函数**全部返回**，
+/// 由上层择一（择一语义见 `ottr_vault::KnownHosts::import`）。
+pub fn parse_known_hosts_file(content: &str) -> Vec<(String, u16, String)> {
+    let mut out = Vec::new();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty()
+            || line.starts_with('#')
+            || line.starts_with('|')
+            || line.starts_with('@')
+        {
+            // 注释 / 空白 / hashed（不可反解）/ marker 行（见模块文档）。
+            continue;
+        }
+        // 指纹走既有算法核（列数/b64 合法性一并由它把关）。
+        let Some(fingerprint) = line_fingerprint(line) else {
+            continue;
+        };
+        let Some(host_field) = line.split_whitespace().next() else {
+            continue;
+        };
+        for pattern in host_field.split(',') {
+            let Some((host, port)) = parse_host_port(pattern) else {
+                continue;
+            };
+            out.push((host, port, fingerprint.clone()));
+        }
+    }
+    out
+}
+
+/// known_hosts host 列的一段 → `(地址, 端口)`。
+///
+/// * `[addr]:port` → `(addr, port)`（OpenSSH 非 22 端口惯例；IPv6 亦如此）；
+/// * `[addr]`（无端口段）→ `(addr, 22)`；
+/// * 裸 host → `(host, 22)`。
+///
+/// 端口须落在 `1..=65535`（0 端口不是可探测端点）；非法 → `None`（该行跳过）。
+fn parse_host_port(field: &str) -> Option<(String, u16)> {
+    let field = field.trim();
+    if field.is_empty() {
+        return None;
+    }
+    if let Some(rest) = field.strip_prefix('[') {
+        let close = rest.find(']')?;
+        let addr = &rest[..close];
+        if addr.is_empty() {
+            return None;
+        }
+        let tail = &rest[close + 1..];
+        let port = if tail.is_empty() {
+            22
+        } else {
+            let port_str = tail.strip_prefix(':')?;
+            let port: u16 = port_str.parse().ok()?;
+            if port == 0 {
+                return None;
+            }
+            port
+        };
+        return Some((addr.to_string(), port));
+    }
+    // 裸形态：含 ']' 必是畸形（方括号不闭合）。
+    if field.contains(']') {
+        return None;
+    }
+    Some((field.to_string(), 22))
 }
 
 /// ssh public key blob → 指纹（[`line_fingerprint`] 的算法核）。

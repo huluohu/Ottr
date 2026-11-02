@@ -4,10 +4,20 @@
 //!
 //! 金样向量：ed25519 公钥（`ssh-keygen -lf` 实测指纹），
 //! `SHA256:aQYbRlhLOCUDFmDqZp0i2/ltZvBtACX57D/77LUPAU4`。
-use ottr_ssh::known_hosts::{fingerprint_for_host, line_fingerprint};
+use ottr_ssh::known_hosts::{fingerprint_for_host, line_fingerprint, parse_known_hosts_file};
 
 const GOLDEN_B64: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIKGG+QLrOYImKV/X+7f0EJ1eqaBx7XCX7Dqa2/+VS+/w";
 const GOLDEN_FP: &str = "SHA256:aQYbRlhLOCUDFmDqZp0i2/ltZvBtACX57D/77LUPAU4";
+
+// 导入面（parse_known_hosts_file）的三枚真实密钥向量——`ssh-keygen -lf` 实测：
+// ed25519（A）、rsa 2048（B）、ed25519（C）。多密钥型并存（A+B 同端点）
+// 与「同端点两枚 ed25519」（A+C）各占一条。
+const ED_A_B64: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIKPIUNPWpfNnFCOjjQie93LwEi1mRo+R3tX36v8IKGxH";
+const ED_A_FP: &str = "SHA256:pa73sHYbI8OWfh46t85LS1g0pTlqeryQLEvZ6rSlJYI";
+const RSA_B_B64: &str = "AAAAB3NzaC1yc2EAAAADAQABAAABAQDSWJhNr4MnPr7HacgxTTDzwtD549oSc0jOxBOu0S3Vcql5gXZvypHcKEqw47EFaQPzCz5CoA4TiJ9s/spxSvlckfn+sJUQdCC2VIIMcsjyn/Iim8mHXLOR2GK02Gl+yTxT9oa9GrQHUfcqZSeLNB96+7ikwmFoTxxVQ/PG7CGz++OQAx8T+KhxmMCNiELFQVValZgSXNhvtDdXGQrB21a2bc9nIWn8l9XRIBZIx9IqfuGT9j3X9O1/w6o/lV0JcW3arcHnqArrk1lDsogVIUrKTVX7L4Gioc+zr6qHxo/Vm3CLiaz8n7q7bKizBEwRLMIoYhCCSpLDIiBfTmlr/UBN";
+const RSA_B_FP: &str = "SHA256:ovJfhD+XEYlrF+6vhXXCG2f+7ks1NfxeCvaF1HDSpis";
+const ED_C_B64: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIPlkTG/1N2iFOeEV+2UFSL23f4iYIVeFONGUhzMg8jAc";
+const ED_C_FP: &str = "SHA256:m6ASW1c91g6d2RVPQBvGpXHKQHQNKuAL43L772eAgc4";
 
 /// keyscan 输出形态：`[127.0.0.1]:2222 ssh-ed25519 <b64>`（非 22 端口的
 /// OpenSSH 惯例方括号形态）。
@@ -84,4 +94,112 @@ fn junk_inputs_yield_none() {
     assert_eq!(line_fingerprint("host ssh-ed25519 !!!not-b64!!!"), None);
     assert_eq!(line_fingerprint("a b c d"), None);
     assert_eq!(fingerprint_for_host("garbage", "h", 22), None);
+}
+
+// ---------------------------------------------------------------------------
+// 整文件解析（导入本地 known_hosts 的解析面，2026-11-02）
+// ---------------------------------------------------------------------------
+
+/// 注释行 / 空行 / 纯空白行 / hashed（`|1|…`）/ marker（`@cert-authority`、
+/// `@revoked`）行一律跳过——只留规范三列行。
+#[test]
+fn parse_known_hosts_file_skips_comments_blanks_hashed_and_markers() {
+    let content = format!(
+        "# a comment\n\
+         \n\
+         \x20  \t \n\
+         |1|c2FsdHNhbHQ=|aGFzaA==|ssh-ed25519 {ED_A_B64}\n\
+         @cert-authority *.example.com ssh-ed25519 {ED_A_B64}\n\
+         @revoked old.example.com ssh-ed25519 {ED_A_B64}\n\
+         real.example.com ssh-ed25519 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(
+        parsed,
+        vec![("real.example.com".to_string(), 22, ED_A_FP.to_string())]
+    );
+}
+
+/// 端口解析：`[host]:port` 取方括号里的端口；裸 host 缺省 22
+/// （OpenSSH 惯例，与 `fingerprint_for_host` 同口径）。
+#[test]
+fn parse_known_hosts_file_extracts_port_and_defaults_to_22() {
+    let content = format!(
+        "[10.0.0.1]:2222 ssh-ed25519 {ED_A_B64}\n\
+         bare.example.com ssh-ed25519 {ED_C_B64}\n\
+         [example.org]:2200 ssh-ed25519 {ED_C_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(
+        parsed,
+        vec![
+            ("10.0.0.1".to_string(), 2222, ED_A_FP.to_string()),
+            ("bare.example.com".to_string(), 22, ED_C_FP.to_string()),
+            ("example.org".to_string(), 2200, ED_C_FP.to_string()),
+        ]
+    );
+}
+
+/// IPv6 端点：OpenSSH 一律写成 `[addr]:port`（含 22 端口）——地址还原为裸
+/// IPv6（方括号由上层 `host_endpoint_key` 统一补回）。
+#[test]
+fn parse_known_hosts_file_handles_ipv6_bracket_form() {
+    let content = format!("[fe80::1]:2222 ssh-ed25519 {ED_A_B64}\n");
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(
+        parsed,
+        vec![("fe80::1".to_string(), 2222, ED_A_FP.to_string())]
+    );
+}
+
+/// 一个 host 多枚密钥（rsa/ecdsa/ed25519 并存）——**全部返回**（由上层择一，
+/// 本函数不做取舍）。
+#[test]
+fn parse_known_hosts_file_returns_every_key_of_a_host() {
+    let content = format!(
+        "multi.example.com ssh-ed25519 {ED_A_B64}\n\
+         multi.example.com ssh-rsa {RSA_B_B64}\n\
+         multi.example.com ssh-ed25519 {ED_C_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(
+        parsed,
+        vec![
+            ("multi.example.com".to_string(), 22, ED_A_FP.to_string()),
+            ("multi.example.com".to_string(), 22, RSA_B_FP.to_string()),
+            ("multi.example.com".to_string(), 22, ED_C_FP.to_string()),
+        ]
+    );
+}
+
+/// host 列的逗号分隔 pattern（OpenSSH 允许一行多 host）——拆成各自端点，
+/// 绝不把 "a,b" 当成一个主机名（那会生出查无此主的伪端点）。
+#[test]
+fn parse_known_hosts_file_splits_comma_separated_patterns() {
+    let content = format!("a.example.com,b.example.com ssh-ed25519 {ED_A_B64}\n");
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(
+        parsed,
+        vec![
+            ("a.example.com".to_string(), 22, ED_A_FP.to_string()),
+            ("b.example.com".to_string(), 22, ED_A_FP.to_string()),
+        ]
+    );
+}
+
+/// 垃圾/畸形行不产出条目：列数不对、b64 非法、端口非法。
+#[test]
+fn parse_known_hosts_file_skips_malformed_lines() {
+    let content = format!(
+        "only-two-columns ssh-ed25519\n\
+         bad.b64.example.com ssh-ed25519 !!!not-b64!!!\n\
+         [h.example.com]:notaport ssh-ed25519 {ED_A_B64}\n\
+         [h.example.com]:0 ssh-ed25519 {ED_A_B64}\n\
+         good.example.com ssh-ed25519 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(
+        parsed,
+        vec![("good.example.com".to_string(), 22, ED_A_FP.to_string())]
+    );
 }

@@ -758,7 +758,15 @@
     "trustAnchor": "Considera attendibile l'originale",
     "trustNew": "Considera attendibile questa chiave",
     "deleteTitle": "Dimenticare questo endpoint?",
-    "deleteHint": "Il record di fiducia per {{endpoint}} verrà rimosso; la connessione successiva ripete la conferma al primo utilizzo (TOFU)."
+    "deleteHint": "Il record di fiducia per {{endpoint}} verrà rimosso; la connessione successiva ripete la conferma al primo utilizzo (TOFU).",
+    "import": "Importa known_hosts",
+    "importHint": "Importa le ancoraggi di fiducia da un file known_hosts locale: i nuovi endpoint vengono registrati come verificati (nessun avviso al primo uso) e quelli esistenti non vengono mai sovrascritti.",
+    "importUseDefault": "Usa il percorso predefinito",
+    "importChoose": "Seleziona un file known_hosts…",
+    "importDone": "Importazione completata: {{added}} ancoraggi aggiunti, {{duplicate}} duplicati e {{conflict}} in conflitto ignorati.",
+    "importNotFound": "File known_hosts non trovato.",
+    "importConflictNotice": "Gli endpoint in conflitto non sono stati sovrascritti: quelli con un'impronta diversa richiedono ancora conferma; controllali manualmente.",
+    "importSkippedHashed": "Le voci con hash (|1|…) non sono reversibili e sono state ignorate."
   },
   "hostKey": {
     "firstTitle": "Prima connessione",

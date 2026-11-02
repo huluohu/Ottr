@@ -1216,6 +1216,24 @@ pub struct KnownHost {
 /// 键 = host 端点，换钥检测由策略层比对 `get` 的 fingerprint 与实际指纹）。
 pub struct KnownHosts;
 
+/// 批量导入报告（2026-11-02 known_hosts 导入）。
+///
+/// 字段名走 camelCase（`serde(rename_all)`）——前端 `KnownHostsImportReport`
+/// 同构；报告是「导入完成」对话框的唯一数据源。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct KnownHostsImportReport {
+    /// 新落地的信任锚条数（verify 语义：state=ok / verified=1）。
+    pub added: usize,
+    /// 已存在且指纹相同（**未覆盖**既有锚）。
+    pub skipped_duplicate: usize,
+    /// 已存在但指纹不同（**未覆盖**——既有 changed 状态由用户显式裁定）。
+    pub skipped_conflict: usize,
+    /// 逐条错误文案（单条失败不阻断整批导入）。
+    pub errors: Vec<String>,
+}
+
 impl KnownHosts {
     /// 首见入库（state=pending、verified=0）；该端点已有记录则原样返回
     /// （first_seen 不刷新、fingerprint 不覆盖——换钥必须走 changed 流程，
@@ -1283,6 +1301,57 @@ impl KnownHosts {
 
     pub fn get(vault: &Vault, host_key: &str) -> Result<Option<KnownHost>> {
         vault.with_conn(|conn| Self::get_conn(conn, host_key))
+    }
+
+    /// 批量导入（2026-11-02）：把 `(host, port, fingerprint)` 列表落为信任锚。
+    ///
+    /// **必须走 verify 语义（state=ok / verified=1）**——走 upsert 是 pending，
+    /// 首次连接照样弹 TOFU 确认框，导入等于白做。
+    ///
+    /// 既有端点**一律不写**：
+    /// * 同端点已存在且指纹相同 → 计入 `skipped_duplicate`（不覆盖既有锚）；
+    /// * 同端点已存在但指纹不同 → 计入 `skipped_conflict`（不覆盖——既有
+    ///   changed 状态由用户显式裁定，导入不得擅自改锚）。
+    ///
+    /// 择一（多枚密钥）：一个端点常有 rsa/ecdsa/ed25519 多枚密钥，解析层
+    /// 全部返回；本层按端点归组后**只落一枚**（文件里第一条），其余候选
+    /// 仅用于「既有锚是否仍在文件候选集内」的判定（是 → 重复，非冲突——
+    /// 服务器多型密钥下用户先前锚的可能是另一型，误判成冲突会满屏噪声）。
+    ///
+    /// 端点键用 [`host_endpoint_key`] 构造（与运行时 TOFU 记账同口径）。
+    pub fn import(vault: &Vault, entries: &[(String, u16, String)]) -> KnownHostsImportReport {
+        let mut report = KnownHostsImportReport::default();
+        // 端点 → 候选指纹（保序去重）：同端点多枚密钥归组，避免互相覆盖。
+        let mut grouped: Vec<(String, Vec<String>)> = Vec::new();
+        for (host, port, fingerprint) in entries {
+            let host_key = host_endpoint_key(host, i64::from(*port));
+            match grouped.iter_mut().find(|(key, _)| *key == host_key) {
+                Some((_, candidates)) => {
+                    if !candidates.contains(fingerprint) {
+                        candidates.push(fingerprint.clone());
+                    }
+                }
+                None => grouped.push((host_key, vec![fingerprint.clone()])),
+            }
+        }
+        for (host_key, candidates) in grouped {
+            let chosen = candidates[0].clone();
+            match Self::get(vault, &host_key) {
+                Ok(Some(existing)) => {
+                    if candidates.contains(&existing.fingerprint) {
+                        report.skipped_duplicate += 1;
+                    } else {
+                        report.skipped_conflict += 1;
+                    }
+                }
+                Ok(None) => match Self::verify(vault, &host_key, &chosen) {
+                    Ok(_) => report.added += 1,
+                    Err(e) => report.errors.push(format!("{host_key}: {e}")),
+                },
+                Err(e) => report.errors.push(format!("{host_key}: {e}")),
+            }
+        }
+        report
     }
 
     /// 锁内读取——多语句实体操作的组合件，只收 `&Connection`，绝不自行加锁。

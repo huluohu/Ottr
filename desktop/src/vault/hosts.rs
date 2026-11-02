@@ -1,6 +1,8 @@
 //! hosts / host_groups / known_hosts 存储面（0004 迁移起 known_hosts 按
 //! host 端点记账）。纯搬家拆分（原 vault.rs 单文件）。
 
+use std::path::PathBuf;
+
 use tauri::State;
 
 use ottr_vault::{Host, HostGroups, HostInput, Hosts, KnownHosts};
@@ -164,4 +166,59 @@ pub fn known_hosts_mark_changed(
 pub fn known_hosts_delete(state: State<'_, VaultState>, host_key: String) -> CmdResult<bool> {
     ensure_unlocked(&state.0)?;
     cmd(KnownHosts::delete(&state.0, &host_key))
+}
+
+/// known_hosts 文件不存在时的错误码前缀（前端据此展示「未找到文件」提示，
+/// 不把路径/文案硬编码进前端）。格式：`"<code>: <path>"`。
+pub const KNOWN_HOSTS_FILE_NOT_FOUND: &str = "known_hosts_file_not_found";
+
+/// 默认 known_hosts 路径：`~/.ssh/known_hosts`（HOME / USERPROFILE 均兼顾三端；
+/// 与 `ssh_config::default_ssh_config_path` 同款兼容写法）。
+fn default_known_hosts_path() -> Option<PathBuf> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()?;
+    let home = PathBuf::from(home);
+    if home.as_os_str().is_empty() {
+        return None;
+    }
+    Some(home.join(".ssh").join("known_hosts"))
+}
+
+/// 导入本地 known_hosts（`path=None` → 默认路径 `~/.ssh/known_hosts`；
+/// Windows 用 `%USERPROFILE%\.ssh\known_hosts`）。报告含 added /
+/// skipped_duplicate / skipped_conflict / errors。
+///
+/// 语义（见 `ottr_vault::KnownHosts::import`）：导入走 **verify 语义**
+/// （state=ok / verified=1）——否则首次连接照样弹 TOFU 确认框，导入白做；
+/// 同端点已存在的**一律不覆盖**（相同指纹 = 跳过重复，不同指纹 = 跳过冲突）。
+///
+/// 文件不存在**不报错**（用户没这个文件是常态）：返回全零报告 + 一条说明性
+/// errors 文案（[`KNOWN_HOSTS_FILE_NOT_FOUND`] 前缀），前端展示「未找到文件」。
+#[specta::specta]
+#[tauri::command]
+pub async fn known_hosts_import(
+    state: State<'_, VaultState>,
+    path: Option<String>,
+) -> CmdResult<ottr_vault::KnownHostsImportReport> {
+    ensure_unlocked(&state.0)?;
+    let path = path
+        .map(PathBuf::from)
+        .or_else(default_known_hosts_path)
+        .ok_or_else(|| "cannot resolve home directory".to_string())?;
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // 用户没这个文件是常态——不报错，报「未找到」让前端展示。
+            return Ok(ottr_vault::KnownHostsImportReport {
+                added: 0,
+                skipped_duplicate: 0,
+                skipped_conflict: 0,
+                errors: vec![format!("{KNOWN_HOSTS_FILE_NOT_FOUND}: {}", path.display())],
+            });
+        }
+        Err(e) => return Err(format!("read {}: {e}", path.display())),
+    };
+    let entries = ottr_ssh::known_hosts::parse_known_hosts_file(&content);
+    Ok(ottr_vault::KnownHosts::import(&state.0, &entries))
 }

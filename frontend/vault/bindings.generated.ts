@@ -38,6 +38,19 @@ export const commands = {
 	 *  TOFU（首见 pending）。返回是否有行被删（幂等面）。
 	 */
 	knownHostsDelete: (hostKey: string) => typedError<boolean, string>(__TAURI_INVOKE("known_hosts_delete", { hostKey })),
+	/**
+	 *  导入本地 known_hosts（`path=None` → 默认路径 `~/.ssh/known_hosts`；
+	 *  Windows 用 `%USERPROFILE%\.ssh\known_hosts`）。报告含 added /
+	 *  skipped_duplicate / skipped_conflict / errors。
+	 * 
+	 *  语义（见 `ottr_vault::KnownHosts::import`）：导入走 **verify 语义**
+	 *  （state=ok / verified=1）——否则首次连接照样弹 TOFU 确认框，导入白做；
+	 *  同端点已存在的**一律不覆盖**（相同指纹 = 跳过重复，不同指纹 = 跳过冲突）。
+	 * 
+	 *  文件不存在**不报错**（用户没这个文件是常态）：返回全零报告 + 一条说明性
+	 *  errors 文案（[`KNOWN_HOSTS_FILE_NOT_FOUND`] 前缀），前端展示「未找到文件」。
+	 */
+	knownHostsImport: (path: string | null) => typedError<KnownHostsImportReport, string>(__TAURI_INVOKE("known_hosts_import", { path })),
 	credentialsList: () => typedError<Credential[], string>(__TAURI_INVOKE("credentials_list")),
 	credentialsGet: (id: number) => typedError<{
 	id: number,
@@ -317,6 +330,23 @@ export type KnownHost = {
  *  作废）——verify 可再回到 ok。
  */
 export type KnownHostState = "ok" | "changed" | "pending";
+
+/**
+ *  批量导入报告（2026-11-02 known_hosts 导入）。
+ * 
+ *  字段名走 camelCase（`serde(rename_all)`）——前端 `KnownHostsImportReport`
+ *  同构；报告是「导入完成」对话框的唯一数据源。
+ */
+export type KnownHostsImportReport = {
+	/**  新落地的信任锚条数（verify 语义：state=ok / verified=1）。 */
+	added: number,
+	/**  已存在且指纹相同（**未覆盖**既有锚）。 */
+	skippedDuplicate: number,
+	/**  已存在但指纹不同（**未覆盖**——既有 changed 状态由用户显式裁定）。 */
+	skippedConflict: number,
+	/**  逐条错误文案（单条失败不阻断整批导入）。 */
+	errors: string[],
+};
 
 /**
  *  可开封的密文字段（列名与 AAD 字段名一一对应）。

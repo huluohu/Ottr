@@ -411,6 +411,30 @@ async function renderShot(): Promise<void> {
               role: "assistant",
               content: "**原因**\n\n磁盘已满。\n\n```bash\ndf -h /data\n```",
             },
+            {
+              role: "user",
+              content: "不要删日志，先用 truncate 清空",
+            },
+            {
+              role: "assistant",
+              content:
+                "**补充**\n\n先别删日志——用 `truncate -s 0` 清空比 `rm` 安全，还能留着 inode。\n\n" +
+                "- 保留文件：`truncate -s 0 /var/log/app.log`\n" +
+                "- 归档后清：`journalctl --rotate && journalctl --vacuum-time=7d`\n\n" +
+                "```bash\njournalctl --disk-usage\n```\n",
+            },
+            {
+              role: "user",
+              content: "再确认一遍：还有别的清理手段吗？",
+            },
+            {
+              role: "assistant",
+              content:
+                "**还有**\n\n1. 旧轮转日志：`find /var/log -name '*.gz' -mtime +30 -delete`\n" +
+                "2. 缓存目录：清包管理器缓存\n" +
+                "3. 孤儿 inode：重启持有它的进程\n\n" +
+                "```bash\nlsof +L1\n```\n",
+            },
           ],
         },
       },

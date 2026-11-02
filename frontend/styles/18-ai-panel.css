@@ -144,12 +144,18 @@
   gap: var(--space-2, 8px);
   flex: 1;
   min-height: 0;
+  /* 多轮气泡流内容常超框：线程自身滚动，不外溢。
+     不加这行时，flex 列里的气泡被压到比内容还矮，文字**画到框外**，
+     盖住下一节（用量行）——真机 192.168.9.102 多轮追问时抓到过。 */
+  overflow-y: auto;
 }
 .ai-bubble {
   border-radius: var(--radius-lg);
   padding: var(--space-2, 8px) var(--space-3, 12px);
   font-size: var(--text-sm);
   word-break: break-word;
+  /* flex 列里默认可收缩 → 气泡被压扁、内容溢出；保持自然高度。 */
+  flex: none;
 }
 .ai-bubble-user {
   background: var(--surface-raised);

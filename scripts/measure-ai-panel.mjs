@@ -38,8 +38,22 @@ async function measure(mode, viewport) {
         right: b.right,
         width: b.width,
         height: b.height,
+        // 内容高（盒子被压扁时 > height——气泡溢出盖住下一节的判据）
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
       };
     };
+    const bubbles = [...document.querySelectorAll(".ai-bubble")].map((el) => {
+      const b = el.getBoundingClientRect();
+      return {
+        top: b.top,
+        bottom: b.bottom,
+        height: b.height,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        role: el.getAttribute("data-testid"),
+      };
+    });
     return {
       panel: r('[data-testid="ai-panel"]'),
       mainArea: r('[data-testid="main-area"]'),
@@ -49,6 +63,14 @@ async function measure(mode, viewport) {
       toolbarRow: r(".term-toolbar-row"),
       badge: r('[data-testid="ai-exit-code"]'),
       panelHead: r(".ai-panel-head"),
+      thread: r(".ai-thread"),
+      usage: r('[data-testid="ai-usage"]'),
+      followup: r(".ai-followup-row"),
+      threadOverflowY: (() => {
+        const el = document.querySelector(".ai-thread");
+        return el ? getComputedStyle(el).overflowY : null;
+      })(),
+      bubbles,
     };
   });
   await page.close();
@@ -105,6 +127,38 @@ const checks = [
   [
     "窄窗(1024)：工具行不越面板列",
     narrow.toolbarRow.right <= narrow.panel.left + EPS,
+  ],
+  // --- 多轮气泡流（批次二 C 项）：气泡不得被 flex 压扁、不得画出线程框 ---
+  //
+  // 回归由来（真机 192.168.9.102 多轮追问时抓到）：`.ai-thread` 是 flex 列
+  // 且 flex:1，气泡默认可收缩 → 内容高度超出盒子后**溢出**画到下一节
+  // （用量行被答案文字穿过）。判据：
+  //   a) 气泡内容高 ≤ 盒高（没被压扁）；
+  //   b) 线程框自身裁剪内容（overflow-y=auto/scroll）且框底不越过用量行。
+  ...withPanel.bubbles.map((b, i) => [
+    `气泡 ${i} 未被压扁（内容高 ≤ 盒高）`,
+    b.scrollHeight <= b.clientHeight + EPS,
+  ]),
+  [
+    "线程内容被裁剪在框内（overflow-y=auto/scroll）",
+    withPanel.threadOverflowY === "auto" || withPanel.threadOverflowY === "scroll",
+  ],
+  [
+    "线程框底 ≤ 用量行顶（答案文字不压用量行）",
+    withPanel.thread.bottom <= withPanel.usage.top + EPS,
+  ],
+  [
+    "末气泡可见部分 ≤ 用量行顶（滚动区外不外溢）",
+    withPanel.bubbles.length > 0 &&
+      Math.min(
+        withPanel.bubbles[withPanel.bubbles.length - 1].bottom,
+        withPanel.thread.bottom,
+      ) <= withPanel.usage.top + EPS,
+  ],
+  [
+    "追问输入条在面板内（贴底不越界）",
+    withPanel.followup != null &&
+      withPanel.followup.bottom <= withPanel.panel.bottom + EPS,
   ],
 ];
 

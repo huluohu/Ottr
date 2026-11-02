@@ -324,6 +324,16 @@ pub(crate) struct RegisterArgs {
 /// 60s 无裁定即按拒绝处理（超时安全侧）。
 pub(crate) type HostKeyAsks = Arc<Mutex<HashMap<String, std::sync::mpsc::Sender<bool>>>>;
 
+/// 挂起中的 keyboard-interactive 问询（TOTP / PAM 二次验证交互）。
+/// key = ask_id（Rust 生成的单调序号，形如 `"{host_id}:{n}"`）；value = 答案回传端
+/// （`kbd_interactive_answer` 发送一整组答案）。
+///
+/// 与 [`HostKeyAsks`] 同构：问询在 russh 连接专属任务内 `recv_timeout` 阻塞等待
+/// 前端作答，60s 无答案即按**空答案**收尾（服务端拒绝 → 认证失败，fail-closed）。
+/// **同键单槽覆盖**：并发同主机问询时顶掉旧端，旧等待方随 sender drop 立即
+/// 断开（折算为空答案 = 拒绝），绝不双向放行。
+pub(crate) type PromptAsks = Arc<Mutex<HashMap<String, std::sync::mpsc::Sender<Vec<String>>>>>;
+
 /// 在途传输（Task 10）：取消令牌句柄表。键 = transfer_id；任务结束时自清
 /// （cancel 后令牌仍在表里直到任务退出——重复 cancel 幂等无害）。
 pub(crate) struct TransferEntry {
@@ -346,6 +356,8 @@ pub(crate) struct AppState {
     /// 采样轮，持锁毫秒级。
     pub(crate) local_sampler: Arc<Mutex<ottr_monitor::LocalSampler>>,
     pub(crate) host_key_asks: HostKeyAsks,
+    /// 挂起中的 keyboard-interactive 问询（TOTP / PAM 2FA 交互登录）。
+    pub(crate) prompt_asks: PromptAsks,
     /// 在途传输的取消令牌（Task 10）：键 = transfer_id；传输结束由任务自清。
     pub(crate) transfers: TransferMap,
     /// 端口转发生命周期 owner（Phase 2 Task 1，commands/forward.rs）：
@@ -382,6 +394,14 @@ pub(crate) const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(60);
 
 /// host key 问询超时（简报定值）：前端确认框挂起 connect 的最长等待。
 pub(crate) const HOST_KEY_ASK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// keyboard-interactive 问询超时（前端作答的最长等待）。
+///
+/// **必须小于 connect 预算**（直连 75s / 链式 75s×(hops+1)，见
+/// `commands/session/attach.rs`）——否则 connect 的 `tokio::time::timeout`
+/// 先到期，返回的却是「连接超时」而非「认证未作答」，用户得不到正确归因。
+/// 取 60s 与 TOFU 问询对齐（同一交互面、同一量级）。
+pub(crate) const PROMPT_ASK_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// LANG 探测命令/超时（Task 9 detect_hint：连接建立后独立 exec 通道跑一次，
 /// 不进 PTY 数据流、不阻塞 attach 返回；失败/超时 = 不提示，安全侧）。

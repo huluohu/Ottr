@@ -35,3 +35,38 @@
   font-size: var(--text-base);
 }
 
+/* --- 交互式认证提问框（keyboard-interactive / TOTP / PAM 2FA）---
+   与 TOFU 框同族：同底色、同卡片、同发丝线，仅提问区换成「问题 + 输入框」
+   逐条排列；验证码类提问由 Rust 侧算好预填。 */
+.prompt-dialog {
+  width: min(440px, 92vw);
+}
+.prompt-dialog h2 {
+  margin-top: 0;
+  font-size: var(--text-md);
+}
+.prompt-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin-bottom: var(--space-3, 12px);
+}
+.prompt-item-text {
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.prompt-item input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--color-fg);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.prompt-item input:focus {
+  outline: none;
+  border-color: var(--color-accent-border);
+}

@@ -785,6 +785,13 @@
     "acceptAnyway": "Connect anyway",
     "hopLabel": "Hop {{hop}}"
   },
+  "promptAsk": {
+    "title": "Authentication required",
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "hop": "Hop {{n}}",
+    "autoFilled": "The verification code was filled in by Ottr (from this host's TOTP credential)."
+  },
   "security": {
     "mode": "Key mode",
     "modeKeyring": "System keychain",

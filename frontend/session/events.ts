@@ -2,6 +2,7 @@
 // 独立模块让 store 保持纯状态机（测试无需 mock @tauri-apps/api/event）。
 // 事件名契约（Rust 侧 lib.rs）：
 //   ottr://host-key-ask   HostKeyAskPayload — TOFU 确认框问询
+//   ottr://kbd-interactive-ask PromptAskPayload — 交互式认证提问（TOTP/2FA）
 //   ottr://session-closed SessionClosedPayload — 连接丢失/主动关闭通知
 //   ottr://encoding-hint  EncodingHintPayload — detect_hint 命中 GBK（Task 9）
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -9,6 +10,7 @@ import {
   useSessionStore,
   type EncodingHintPayload,
   type HostKeyAskPayload,
+  type PromptAskPayload,
   type SessionClosedPayload,
 } from "./SessionStore";
 
@@ -24,6 +26,11 @@ export async function initSessionEvents(): Promise<void> {
   unlisteners.push(
     await listen<HostKeyAskPayload>("ottr://host-key-ask", (e) => {
       store.getState().onHostKeyAsk(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen<PromptAskPayload>("ottr://kbd-interactive-ask", (e) => {
+      store.getState().onPromptAsk(e.payload);
     }),
   );
   unlisteners.push(

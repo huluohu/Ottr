@@ -12,6 +12,7 @@
 //     `owned(id) || activeModal === null` 门）；
 //     store 的槽位认领上，且订阅外部弹窗开启即清槽（Sidebar 激活态不残留）；
 //   * SessionStore.hostKeyAsk（Rust 事件驱动）——置问询即认领 hostKey 槽；
+//   * SessionStore.promptAsk（Rust 事件驱动）——置问询即认领 promptAsk 槽；
 //   * McpApprovalDialog 审批队列、FilePanel 文件操作小对话框——事件/交互
 //     点同步认领，渲染门 = 本地态 && 槽位在手。
 //
@@ -33,6 +34,8 @@ export type ModalId =
   | "history"
   | "nl2cmd"
   | "hostKey"
+  /** keyboard-interactive 交互式认证提问（TOTP/2FA，2026-11-02 批次二）。 */
+  | "promptAsk"
   | "mcpApproval"
   | "filesDialog";
 

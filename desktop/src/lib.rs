@@ -266,6 +266,8 @@ pub fn run() {
             // FTP/FTPS 文件会话（Phase 2 Task 5；命令域 commands/ftp.rs）
             commands::ftp::ftp_attach_host_session,
             commands::session::host_key_decision,
+            commands::session::kbd_interactive_answer,
+            commands::session::credential_totp_code,
             commands::session::write_session,
             // 本地终端（2026-10-20）：连接本机 shell 的会话；写/缩放/尾部/
             // 关闭复用上方同名单命令（双表回退，见 commands/local_term.rs）。

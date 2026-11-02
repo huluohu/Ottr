@@ -784,6 +784,13 @@
     "acceptAnyway": "仍要連接",
     "hopLabel": "第 {{hop}} 跳"
   },
+  "promptAsk": {
+    "title": "需要身分驗證",
+    "submit": "送出",
+    "cancel": "取消",
+    "hop": "第 {{n}} 跳",
+    "autoFilled": "驗證碼已由 Ottr 自動填入（來自該主機的 TOTP 憑證）。"
+  },
   "security": {
     "mode": "密鑰模式",
     "modeKeyring": "系統鑰匙鏈",

@@ -72,6 +72,8 @@ import {
 import {
   type HostKeyAsk,
   type HostKeyAskPayload,
+  type PromptAsk,
+  type PromptAskPayload,
   type Session,
 } from "./types";
 import { loadDismissedEncodingHosts } from "./encoding";
@@ -95,6 +97,8 @@ interface SessionStore {
   sessions: Session[];
   activeId: string | null;
   hostKeyAsk: HostKeyAsk | null;
+  /** 挂起中的 keyboard-interactive 问询（TOTP/2FA 交互登录，2026-11-02 批次二）。 */
+  promptAsk: PromptAsk | null;
   settings: SessionSettings;
   /** 分屏 pane 树（Task 8）：键 = 标签根会话 id；树叶 id = 会话 id。 */
   trees: Record<string, PaneTree>;
@@ -130,6 +134,10 @@ interface SessionStore {
   reconnectNow: (id: string) => void;
   /** ottr://host-key-ask 事件入口：置 waiting_host_key + 弹窗态。 */
   onHostKeyAsk: (payload: HostKeyAskPayload) => void;
+  /** keyboard-interactive 问询入口（Rust 事件 → 弹窗 + 在途 connect 挂起）。 */
+  onPromptAsk: (payload: PromptAskPayload) => void;
+  /** 提交一组答案（条数须等于提问数）；空数组 = 放弃（Rust 侧按空答案 = 拒绝）。 */
+  answerPrompt: (answers: string[]) => Promise<void>;
   /** 确认框裁定：accept=true 放行在途 attach；false = 主动断开（Rust 侧已拒）。 */
   decideHostKey: (accept: boolean) => Promise<void>;
   /** ottr://session-closed 事件入口：仅对 connected 会话触发重连（cancelled 忽略）。 */
@@ -254,6 +262,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   activeId: null,
   hostKeyAsk: null,
+  promptAsk: null,
   settings: { maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS },
   trees: {},
   activePane: {},
@@ -389,6 +398,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }).catch(() => {});
       useModalStore.getState().close("hostKey");
     }
+    if (st0.promptAsk && doomedIds.has(st0.promptAsk.sessionId)) {
+      // 同理：关掉等待交互式作答的标签 → 回空答案（= 认证失败，fail-closed），
+      // 别让 Rust 侧问询白挂 60s。
+      void invoke("kbd_interactive_answer", {
+        askId: st0.promptAsk.ask_id,
+        answers: [],
+      }).catch(() => {});
+      useModalStore.getState().close("promptAsk");
+    }
     set((st) => {
       const sessions = st.sessions.filter((s) => !doomedIds.has(s.id));
       persistOpenTabs(sessions);
@@ -407,6 +425,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         activePane,
         hostKeyAsk:
           st.hostKeyAsk && doomedIds.has(st.hostKeyAsk.sessionId) ? null : st.hostKeyAsk,
+        promptAsk:
+          st.promptAsk && doomedIds.has(st.promptAsk.sessionId) ? null : st.promptAsk,
         searchSessionId:
           st.searchSessionId != null && doomedIds.has(st.searchSessionId)
             ? null
@@ -700,6 +720,48 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // 注意 waiting → connecting 的展示由 attach 解析自然完成（无中间动作）。
   },
 
+  onPromptAsk: (payload) => {
+    // 归属：同 TOFU —— 链式逐跳问询落在链上 hop 主机上，origin_host_id
+    // 才是发起连接的主机；直连问询无 origin 字段，host_id 即发起方。
+    const originId = payload.origin_host_id ?? payload.host_id;
+    const session = get().sessions.find(
+      (s) => s.hostId === originId && s.status === "connecting",
+    );
+    if (!session) {
+      // 无在途 connect（孤儿问询）：仍弹窗——不弹则 Rust 侧 60s 超时按空答案
+      // 收尾（= 认证失败）。sessionId 空串 = 无关联会话。
+      set({ promptAsk: { ...payload, sessionId: "" } });
+      useModalStore.getState().open("promptAsk");
+      return;
+    }
+    set({
+      promptAsk: { ...payload, sessionId: session.id },
+      sessions: patchSession(get().sessions, session.id, { status: "waiting_prompt" }),
+    });
+    useModalStore.getState().open("promptAsk");
+  },
+
+  answerPrompt: async (answers) => {
+    const ask = get().promptAsk;
+    if (!ask) return;
+    set({ promptAsk: null });
+    useModalStore.getState().close("promptAsk");
+    try {
+      await invoke("kbd_interactive_answer", { askId: ask.ask_id, answers });
+    } catch (e) {
+      // 问询已超时/已裁定：Rust 侧报错。放弃作答 = 认证失败（fail-closed），
+      // 会话按断开收尾。
+      if (ask.sessionId) {
+        set((st) => ({
+          sessions: patchSession(st.sessions, ask.sessionId, {
+            status: "disconnected",
+            lastError: String(e),
+          }),
+        }));
+      }
+    }
+  },
+
   onSessionClosed: (payload) => {
     const session = get().sessions.find((s) => s.rustId === payload.id);
     if (!session) return; // 未知会话（已关标签）——忽略
@@ -815,6 +877,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     unregisterSink(sessionId);
     if (session.rustId) {
       void invoke("drop_session", { id: session.rustId }).catch(() => {});
+    }
+    if (st.promptAsk?.sessionId === sessionId) {
+      void invoke("kbd_interactive_answer", {
+        askId: st.promptAsk.ask_id,
+        answers: [],
+      }).catch(() => {});
+      useModalStore.getState().close("promptAsk");
     }
     if (st.hostKeyAsk?.sessionId === sessionId) {
       void invoke("host_key_decision", {

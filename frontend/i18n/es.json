@@ -785,6 +785,13 @@
     "acceptAnyway": "Conectar de todos modos",
     "hopLabel": "Salto {{hop}}"
   },
+  "promptAsk": {
+    "title": "Se requiere autenticación",
+    "submit": "Enviar",
+    "cancel": "Cancelar",
+    "hop": "Salto {{n}}",
+    "autoFilled": "Ottr rellenó el código de verificación (desde la credencial TOTP de este host)."
+  },
   "security": {
     "mode": "Modo de clave",
     "modeKeyring": "Llavero del sistema",

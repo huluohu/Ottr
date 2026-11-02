@@ -18,7 +18,7 @@ use tauri::{AppHandle, State};
 use ottr_ssh::HopSpec;
 use ottr_vault::{JumpChain, JumpChainInput, JumpChains};
 
-use super::state::HostKeyAsks;
+use super::state::{HostKeyAsks, PromptAsks};
 use crate::keys;
 use crate::vault::{CmdResult, VaultState, ensure_unlocked};
 
@@ -40,10 +40,12 @@ pub(crate) struct ChainSpecs {
 /// （载荷带跳序号 + `origin_host_id`，UI 归属到发起连接的主机标签）。
 /// 任一跳缺用户名/凭据/端口越界 → 显式报错（不静默跳过——链的安全性与
 /// 可达性等价于最弱一跳）。
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn build_hop_specs(
     vault: &VaultState,
     app: &AppHandle,
     asks: &HostKeyAsks,
+    prompt_asks: &PromptAsks,
     hop_host_ids: &[i64],
     origin_host_id: i64,
 ) -> Result<ChainSpecs, String> {
@@ -67,7 +69,19 @@ pub(crate) async fn build_hop_specs(
                 hop_host.name
             )
         })?;
-        let (auth, guard) = keys::resolve_credential_auth(vault, credential_id).await?;
+        // 链上每一跳都可能绑 TOTP 凭据 → 各自一份 keyboard-interactive 上下文
+        // （跳序号进事件载荷，UI 带「第 N 跳」标识，与 TOFU 逐跳问询同构）。
+        let kbd = crate::commands::session::KbdContext {
+            app: app.clone(),
+            asks: std::sync::Arc::clone(prompt_asks),
+            vault: std::sync::Arc::clone(&vault.0),
+            host_id: hop_host_id,
+            host_name: hop_host.name.clone(),
+            credential_id,
+            hop: Some(index),
+            origin_host_id: Some(origin_host_id),
+        };
+        let (auth, guard) = keys::resolve_credential_auth(vault, credential_id, Some(kbd)).await?;
         let port = u16::try_from(hop_host.port).map_err(|_| {
             format!(
                 "chain hop {} ({}): port {} out of range",
@@ -172,6 +186,7 @@ pub(crate) async fn jc_test(
         &vault,
         &app,
         &state.host_key_asks,
+        &state.prompt_asks,
         &hops,
         hops[hops.len() - 1],
     )

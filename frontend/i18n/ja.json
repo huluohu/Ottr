@@ -785,6 +785,13 @@
     "acceptAnyway": "強制接続",
     "hopLabel": "ホップ {{hop}}"
   },
+  "promptAsk": {
+    "title": "認証が必要です",
+    "submit": "送信",
+    "cancel": "キャンセル",
+    "hop": "第 {{n}} ホップ",
+    "autoFilled": "認証コードは Ottr が自動的に入力しました（このホストの TOTP 資格情報より）。"
+  },
   "security": {
     "mode": "キーモード",
     "modeKeyring": "システムキーチェーン",

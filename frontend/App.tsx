@@ -31,6 +31,7 @@ import { ImportDialog } from "./hosts/ImportDialog";
 import { ExportHostsDialog } from "./hosts/ExportHostsDialog";
 import { CredentialsDialog } from "./credentials/CredentialsDialog";
 import { HostKeyDialog } from "./session/HostKeyDialog";
+import { PromptDialog } from "./session/PromptDialog";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
 import { setAiSettingsOpener, useAiStore } from "./ai/aiStore";
 import { onSessionEnded } from "./ai/summary";
@@ -800,6 +801,9 @@ function HomeLayout() {
       {/* A12 命令面板（T5 QuickConnect 并入收口）：主机 + 命令统一搜索。
           动作经 handleAction 分派；连主机即开标签。 */}
       <HostKeyDialog />
+      {/* keyboard-interactive 交互式认证提问（TOTP/2FA，2026-11-02 批次二）——
+          事件驱动（Rust 问询事件），无事件即不渲染；与 TOFU 框同款模态槽。 */}
+      <PromptDialog />
       {/* T11 锁定遮罩：盖在一切之上（最后渲染保证 z 序）；boot 阶段不遮防闪烁。 */}
       {lockView.shouldRender && <LockScreen closing={lockView.closing} />}
       {/* Task 16.5 vault 初始化门遮罩（BL-208 F3 迁入 security/VaultInitGateOverlay：

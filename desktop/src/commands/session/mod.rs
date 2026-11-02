@@ -3,6 +3,8 @@
 //! * [`attach`] —— attach（scripts 直传面 / vault host 面 + 跳板链）+ 会话
 //!   生命周期命令（drop / quit / disconnect_all）；
 //! * [`hostkey`] —— 主机指纹 pin（夹具）+ TOFU 状态机与前端问询裁定；
+//! * [`kbdint`] —— keyboard-interactive 交互式认证（TOTP / PAM 2FA）：提问
+//!   闭包 + 前端作答回传 + TOTP 码生成（2026-11-02 批次二）；
 //! * [`register`] —— 连接注册生命周期骨架（open_and_register / register_opened
 //!   / open_shell_channel / 收尾断开）；
 //! * [`relay`] —— write / stats / tail / resize + 合批转发循环
@@ -13,6 +15,7 @@
 
 mod attach;
 mod hostkey;
+mod kbdint;
 mod register;
 mod relay;
 mod shell_integration;
@@ -25,6 +28,9 @@ pub(crate) use attach::{
 #[cfg(debug_assertions)]
 pub(crate) use attach::attach_session;
 pub(crate) use hostkey::{host_key_decision, tofu_host_key_policy};
+pub(crate) use kbdint::{
+    KbdContext, credential_totp_code, keyboard_interactive_responder, kbd_interactive_answer,
+};
 pub use relay::{SessionCloseReason, forward_pty_loop};
 pub(crate) use relay::{resize_session, session_stats, session_tail, write_session};
 pub use shell_integration::{ShellIntegrationOutcome, inject_shell_integration};
@@ -47,6 +53,10 @@ pub(crate) use attach::__tauri_command_name_quit_app;
 pub(crate) use attach::__tauri_command_name_session_disconnect_all;
 pub(crate) use hostkey::__cmd__host_key_decision;
 pub(crate) use hostkey::__tauri_command_name_host_key_decision;
+pub(crate) use kbdint::__cmd__credential_totp_code;
+pub(crate) use kbdint::__cmd__kbd_interactive_answer;
+pub(crate) use kbdint::__tauri_command_name_credential_totp_code;
+pub(crate) use kbdint::__tauri_command_name_kbd_interactive_answer;
 pub(crate) use relay::__cmd__resize_session;
 pub(crate) use relay::__cmd__session_stats;
 pub(crate) use relay::__cmd__session_tail;

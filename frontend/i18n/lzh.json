@@ -784,6 +784,13 @@
     "acceptAnyway": "仍要連",
     "hopLabel": "第 {{hop}} 跳"
   },
+  "promptAsk": {
+    "title": "須驗身分",
+    "submit": "呈上",
+    "cancel": "罷",
+    "hop": "第 {{n}} 跳",
+    "autoFilled": "驗碼已由 Ottr 自動填入（出該主之 TOTP 憑）。"
+  },
   "security": {
     "mode": "密鑰模式",
     "modeKeyring": "系統鑰匙鏈",

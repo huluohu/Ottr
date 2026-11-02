@@ -139,8 +139,22 @@ pub(crate) async fn attach_host_session(
 
     // --- 直连路径（现状语义不变）------------------------------------------
     let Some(chain_id) = host.jump_chain_id else {
-        // 明文凭据只在此（Rust 侧）出现；key 凭据的临时 PEM 由 guard 持有至连接完成
-        let (auth, _temp_key_guard) = keys::resolve_credential_auth(&vault, credential_id).await?;
+        // 明文凭据只在此（Rust 侧）出现；key 凭据的临时 PEM 由 guard 持有至连接完成。
+        // kbd 上下文仅 TOTP 凭据用得上（keyboard-interactive 提问需事件面）——
+        // 但**始终构造**：密码/私钥凭据走不到该分支，构造无害且避免「按凭据类型
+        // 分叉参数」的脆写法。
+        let kbd = super::KbdContext {
+            app: app.clone(),
+            asks: Arc::clone(&state.prompt_asks),
+            vault: Arc::clone(&vault.0),
+            host_id,
+            host_name: host.name.clone(),
+            credential_id,
+            hop: None,
+            origin_host_id: None,
+        };
+        let (auth, _temp_key_guard) =
+            keys::resolve_credential_auth(&vault, credential_id, Some(kbd)).await?;
         let policy = tofu_host_key_policy(
             Arc::clone(&vault.0),
             app.clone(),
@@ -188,12 +202,24 @@ pub(crate) async fn attach_host_session(
         &vault,
         &app,
         &state.host_key_asks,
+        &state.prompt_asks,
         &chain_row.hops,
         host_id,
     )
     .await?;
+    // 链式 target 主机同样可能绑 TOTP 凭据 → 同样给 keyboard-interactive 上下文。
+    let target_kbd = super::KbdContext {
+        app: app.clone(),
+        asks: Arc::clone(&state.prompt_asks),
+        vault: Arc::clone(&vault.0),
+        host_id,
+        host_name: host.name.clone(),
+        credential_id,
+        hop: None,
+        origin_host_id: Some(host_id),
+    };
     let (target_auth, _target_key_guard) =
-        keys::resolve_credential_auth(&vault, credential_id).await?;
+        keys::resolve_credential_auth(&vault, credential_id, Some(target_kbd)).await?;
     let target_policy = tofu_host_key_policy(
         Arc::clone(&vault.0),
         app.clone(),

@@ -3709,6 +3709,7 @@ dependencies = [
  "ottr-monitor",
  "ottr-ssh",
  "ottr-term",
+ "ottr-totp",
  "ottr-transfer",
  "ottr-vault",
  "portable-pty",

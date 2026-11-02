@@ -785,6 +785,13 @@
     "acceptAnyway": "그대로 연결",
     "hopLabel": "홉 {{hop}}"
   },
+  "promptAsk": {
+    "title": "인증이 필요합니다",
+    "submit": "제출",
+    "cancel": "취소",
+    "hop": "{{n}}번째 홉",
+    "autoFilled": "인증 코드는 Ottr가 자동으로 입력했습니다(이 호스트의 TOTP 자격 증명에서)."
+  },
   "security": {
     "mode": "키 모드",
     "modeKeyring": "시스템 키체인",

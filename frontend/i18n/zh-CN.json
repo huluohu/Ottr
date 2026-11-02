@@ -784,6 +784,13 @@
     "acceptAnyway": "仍要连接",
     "hopLabel": "第 {{hop}} 跳"
   },
+  "promptAsk": {
+    "title": "需要身份验证",
+    "submit": "提交",
+    "cancel": "取消",
+    "hop": "第 {{n}} 跳",
+    "autoFilled": "验证码已由 Ottr 自动填入（来自该主机的 TOTP 凭据）。"
+  },
   "security": {
     "mode": "密钥模式",
     "modeKeyring": "系统钥匙链",

@@ -40,6 +40,7 @@ ottr-term = { path = "../crates/ottr-term" }
 # Task 10（A5）：SFTP 传输/文件操作（FileTransfer trait + SftpClient ops）
 ottr-transfer = { path = "../crates/ottr-transfer" }
 # Task 5：数据层接线（vault 命令 + ssh-config 导入）
+ottr-totp = { path = "../crates/ottr-totp" }
 ottr-vault = { path = "../crates/ottr-vault", features = ["specta"] }
 # Phase 3 Task 1（B4 上半）：监控采集（/proc|df 解析 + 抖动调度 + 采样循环）
 ottr-monitor = { path = "../crates/ottr-monitor" }

@@ -8,7 +8,9 @@ export type SessionStatus =
   | "connecting"
   | "connected"
   | "reconnecting"
-  | "waiting_host_key";
+  | "waiting_host_key"
+  /** 等待 keyboard-interactive 作答（TOTP/2FA，2026-11-02 批次二）。 */
+  | "waiting_prompt";
 
 /** `ottr://host-key-ask` 事件载荷（Rust HostKeyAskPayload 同构，serde snake_case）。
  * 跳板链逐跳问询（Phase 2 Task 2）：host_id = 该跳自己的主机 id（裁定时按它
@@ -25,6 +27,29 @@ export interface HostKeyAskPayload {
 
 /** 弹窗态的问询（挂上发起问询的会话）。 */
 export interface HostKeyAsk extends HostKeyAskPayload {
+  sessionId: string;
+}
+
+/** `ottr://kbd-interactive-ask` 事件载荷（Rust PromptAskPayload 同构）。
+ *
+ * keyboard-interactive 交互式认证（TOTP / PAM 2FA，2026-11-02 批次二）：
+ * 服务器一次下发若干条提问，客户端逐条作答。`suggestion` 是 Ottr 自动算好的
+ * TOTP 验证码（`undefined` = 该提问需用户手输，如密码）。
+ */
+export interface PromptAskPayload {
+  /** 问询回执号（原样回传给 `kbd_interactive_answer`）。 */
+  ask_id: string;
+  host_id: number;
+  host_name: string;
+  prompts: { text: string; suggestion?: string }[];
+  /** 链上跳序号（0 起；缺省 = 直连）。 */
+  hop?: number;
+  /** 发起连接的主机 id（链式时 = 被连主机）。 */
+  origin_host_id?: number;
+}
+
+/** 弹窗态的问询（挂上发起问询的会话）。 */
+export interface PromptAsk extends PromptAskPayload {
   sessionId: string;
 }
 

@@ -785,6 +785,13 @@
     "acceptAnyway": "Connetti comunque",
     "hopLabel": "Salto {{hop}}"
   },
+  "promptAsk": {
+    "title": "Autenticazione richiesta",
+    "submit": "Invia",
+    "cancel": "Annulla",
+    "hop": "Hop {{n}}",
+    "autoFilled": "Il codice di verifica è stato compilato da Ottr (dalla credenziale TOTP di questo host)."
+  },
   "security": {
     "mode": "Modalità chiave",
     "modeKeyring": "Portachiavi di sistema",

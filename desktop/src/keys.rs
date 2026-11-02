@@ -158,6 +158,7 @@ impl Drop for TempKeyGuard {
 pub(crate) async fn resolve_credential_auth(
     vault: &VaultState,
     auth_credential_id: i64,
+    kbd: Option<crate::commands::session::KbdContext>,
 ) -> Result<(AuthMethod, TempKeyGuard), String> {
     let vault = vault.0.clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<(AuthMethod, TempKeyGuard), String> {
@@ -210,9 +211,29 @@ pub(crate) async fn resolve_credential_auth(
                 }
                 Ok((AuthMethod::Key { path: path.clone(), passphrase }, TempKeyGuard(Some(path))))
             }
-            ottr_vault::CredentialKind::Totp => Err(
-                "totp credential cannot authenticate deployment (keyboard-interactive unsupported for deploy)".to_string(),
-            ),
+            // TOTP 凭据 → keyboard-interactive 认证（2026-11-02 批次二）。
+            //
+            // SSH 协议里「密码 + 二次验证码」本身就是 keyboard-interactive
+            // 一次交互（服务器一次下发多条 prompt，客户端逐条作答）——所以
+            // **不需要**扩展数据模型去表达「主密码 + 二次 TOTP」两个凭据位：
+            // 主机绑 TOTP 凭据即走 kbd-interactive，密码由用户在弹窗里手输，
+            // 验证码由 Ottr 自动算好随事件下发（见 kbdint.rs）。
+            //
+            // 部署路径（key_deploy）**不支持** TOTP（部署只接受密码/私钥，
+            // 前端 deployableAuths 也已过滤掉 totp）——故此处 kbd=None 时
+            // 显式拒绝并给出可读文案，不做静默降级。
+            ottr_vault::CredentialKind::Totp => match kbd {
+                Some(ctx) => Ok((
+                    AuthMethod::KeyboardInteractive {
+                        responder: crate::commands::session::keyboard_interactive_responder(ctx),
+                    },
+                    TempKeyGuard(None),
+                )),
+                None => Err(
+                    "totp credential requires an interactive session (not supported for key deployment)"
+                        .to_string(),
+                ),
+            },
             // FTP/FTPS 凭据是密码型但不服务 SSH 认证（attach_host_session 分派面
             // 会走 ftp_attach 路径，不经此处；防御性显式拒绝，Phase 2 Task 5）。
             ottr_vault::CredentialKind::Ftp | ottr_vault::CredentialKind::Ftps => Err(
@@ -289,7 +310,9 @@ async fn key_deploy_inner(
     policy: ottr_ssh::HostKeyPolicy,
 ) -> CmdResult<KeyDeployReport> {
     // guard 持有临时私钥路径直到本函数返回（含 ? 提前返回），Drop 即删
-    let (auth, _temp_key_guard) = resolve_credential_auth(vault, auth_credential_id).await?;
+    // 部署只接受密码/私钥（前端 deployableAuths 已过滤 totp）；kbd=None →
+    // TOTP 凭据在此显式拒绝并给出可读文案。
+    let (auth, _temp_key_guard) = resolve_credential_auth(vault, auth_credential_id, None).await?;
     let port = u16::try_from(port).map_err(|_| format!("port {port} out of range"))?;
 
     let outcome = tokio::time::timeout(
@@ -407,7 +430,7 @@ mod tests {
 
         // 对照组：guard 存活期内文件确实在（证明「落盘发生过」，断言不是恒真）
         let (auth, guard) =
-            tauri::async_runtime::block_on(resolve_credential_auth(&state, cred.id)).unwrap();
+            tauri::async_runtime::block_on(resolve_credential_auth(&state, cred.id, None)).unwrap();
         assert!(matches!(auth, AuthMethod::Key { .. }));
         let paths = leaked_temp_keys();
         assert_eq!(paths.len(), 1, "guard 存活期内临时 PEM 应存在");

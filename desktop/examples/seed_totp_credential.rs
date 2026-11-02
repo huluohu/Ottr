@@ -17,14 +17,16 @@
 use ottr_vault::{CredentialInput, CredentialKind, Credentials, Vault};
 
 fn main() -> Result<(), String> {
-    let data_dir = std::env::var("XDG_DATA_HOME").map_err(|_| "XDG_DATA_HOME not set".to_string())?;
+    let data_dir =
+        std::env::var("XDG_DATA_HOME").map_err(|_| "XDG_DATA_HOME not set".to_string())?;
     let vault_dir = format!("{data_dir}/com.ottr.app");
     // RFC 6238 测试向量同款种子（16 字节 base32）
     let seed = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ".into());
 
-    let vault = Vault::open_auto(std::path::Path::new(&vault_dir)).map_err(|e| format!("open: {e}"))?;
+    let vault =
+        Vault::open_auto(std::path::Path::new(&vault_dir)).map_err(|e| format!("open: {e}"))?;
 
     let cred = Credentials::create(
         &vault,

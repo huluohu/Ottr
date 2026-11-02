@@ -44,18 +44,18 @@
  * 对应图标左缘 teal 光点常亮。 */
 .rail-light {
   position: absolute;
-  left: 3px;
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 4px;
-  height: 4px;
+  width: 3px;
+  height: 18px;
   border-radius: var(--radius-pill);
-  background: var(--color-accent-border);
+  background: var(--color-accent);
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-out);
 }
 .rail-btn[data-active="true"] {
-  background: var(--surface-raised);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   color: var(--color-accent-text);
 }
 .rail-btn[data-active="true"] .rail-light {

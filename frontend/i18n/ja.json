@@ -67,10 +67,7 @@
     "langIt": "イタリア語",
     "langLzh": "文言（古典）",
     "blogLabel": "ブログ",
-    "afdianLabel": "Afdian",
     "repoLabel": "プロジェクト",
-    "supportTitle": "サポート",
-    "websiteLabel": "ウェブサイト",
     "reportIssueLabel": "問題を報告",
     "supportOttrLabel": "Ottr を支援",
     "sectionSecurity": "セキュリティ",
@@ -441,8 +438,6 @@
     "send": "送信",
     "stop": "停止",
     "thinking": "思考中…",
-    "newChat": "新しいチャット",
-    "empty": "最初の会話を始めましょう",
     "copyCode": "コードをコピー",
     "insertBlocked": "挿入できません: 複数行のテキストまたは制御文字を検出しました。全文を確認し、単一行のコマンドを手動で作成してください。",
     "insertIncomplete": "挿入は生成完了後に利用できます。",
@@ -563,7 +558,7 @@
       "errRuleIncomplete": "ルール名と正規表現の両方が必須です",
       "errRuleInvalid": "正規表現をコンパイルできません"
     },
-    "followupPlaceholder": "追加質問…（Enter で送信）"
+    "followupPlaceholder": "追加質問…（Enter で送信、Shift+Enter で改行）"
   },
   "tabs": {
     "duplicate": "タブを複製",

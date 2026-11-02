@@ -67,10 +67,7 @@
     "langIt": "Italiano",
     "langLzh": "文言 (Classical)",
     "blogLabel": "Blog",
-    "afdianLabel": "Afdian",
     "repoLabel": "Project",
-    "supportTitle": "Support",
-    "websiteLabel": "Website",
     "reportIssueLabel": "Report an issue",
     "supportOttrLabel": "Support Ottr",
     "sectionSecurity": "Security",
@@ -441,8 +438,6 @@
     "send": "Send",
     "stop": "Stop",
     "thinking": "Thinking…",
-    "newChat": "New Chat",
-    "empty": "Start your first conversation",
     "copyCode": "Copy code",
     "insertBlocked": "Insertion disabled: multiline text or control characters detected. Please review the full text and prepare a single-line command manually.",
     "insertIncomplete": "Insertion is available only after generation completes.",
@@ -563,7 +558,7 @@
       "errRuleIncomplete": "Both rule name and regex are required",
       "errRuleInvalid": "Regex does not compile"
     },
-    "followupPlaceholder": "Ask a follow-up… (Enter to send)"
+    "followupPlaceholder": "Ask a follow-up… (Enter to send, Shift+Enter for a new line)"
   },
   "tabs": {
     "duplicate": "Duplicate Tab",

@@ -270,23 +270,26 @@ export function DiagnosePanel({
       {/* 追问输入条（多轮追问会话，2026-11-02 批次二 C 项）：
           Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）。 */}
       <div className="ai-followup-row">
-        <input
-          type="text"
+        <textarea
           className="ai-followup-input"
           data-testid="ai-followup-input"
+          rows={2}
           aria-label={t("ai.followupPlaceholder")}
           placeholder={t("ai.followupPlaceholder")}
           value={followup}
           disabled={running}
           onChange={(e) => setFollowup(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              const text = followup.trim();
-              if (text === "") return;
-              setFollowup("");
-              void run(sessionId, text);
-            }
+            // Enter 发送 / Shift+Enter 换行。textarea 的 Enter 默认是换行，
+            // 这里在「无 Shift」时拦下并提交；Shift+Enter 保留原生换行。
+            // IME 组字过程中的 Enter 是「上屏候选词」，不能当发送。
+            if (e.key !== "Enter" || e.shiftKey) return;
+            if (e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            const text = followup.trim();
+            if (text === "") return;
+            setFollowup("");
+            void run(sessionId, text);
           }}
         />
         {running ? (

@@ -613,7 +613,7 @@
   font-weight: 500;
 }
 .vault-mode-badge.vault-mode-password {
-  color: var(--color-accent-text, inherit);
+  color: var(--color-accent-text);
   border-color: currentColor;
 }
 
@@ -671,7 +671,10 @@
   color: var(--fg-muted);
 }
 /* 链接区（2026-10-31 用户需求：博客地址单独一行；同日跟进：分别标记
-   博客/项目——裸 URL 并排无法自明）。标签弱化色在前，链接随后。 */
+   博客/项目——裸 URL 并排无法自明）。沿用 Ottr 原生的「标签 + 值」左对齐行式
+   语言（2026-11-02 用户反馈：此前照抄外部应用的右对齐链接块，在 Ottr 的窄内容
+   列里成了悬空孤块、左右失衡——参考的是「有支持分组」这个思路，不是它的排版）。
+   标签弱化色在前，链接随后。 */
 /* grid 两列：标签列按最长标签取宽（max-content），值列自动对齐成一列——
    四种语言的标签长度不同，逐行 flex 会让值列参差；grid 让列宽一次算清。 */
 .about-links {
@@ -686,35 +689,6 @@
   display: contents;
 }
 .about-link-label {
-  flex: none;
-  color: inherit;
-}
-.about-links a {
-  color: var(--color-accent-text);
-  width: fit-content;
-}
-.about-links a:hover {
-  color: var(--color-accent-text);
-}
-
-/* 关于页外链区：沿用 Ottr 原生的「标签 + 值」左对齐行式语言。
-   （2026-11-02 用户反馈：此前照抄外部应用的右对齐链接块，在 Ottr 的窄内容列
-   里成了悬空孤块、左右失衡——参考的是「有支持分组」这个思路，不是它的排版。） */
-/* grid 两列：标签列按最长标签取宽（max-content），值列自动对齐成一列——
-   四种语言的标签长度不同，逐行 flex 会让值列参差；grid 让列宽一次算清。 */
-.about-links {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 3px var(--space-3);
-  align-items: baseline;
-  font-size: var(--text-sm);
-}
-.about-link-line {
-  /* 行壳不占格（子项直接入 grid）——标签与值各占一格，跨行对齐。 */
-  display: contents;
-}
-.about-link-label {
-  flex: none;
   color: var(--fg-muted);
 }
 .about-links a {
@@ -728,13 +702,15 @@
 .about-links a:hover {
   text-decoration: underline;
 }
-/* 赞助主入口：唯一带品牌强调色的行——本页唯一主动作。 */
+/* 赞助主入口：唯一带品牌强调色的行——本页唯一主动作。
+   强调色用 accent（红=danger 在语义上是「危险/删除」，与「支持」相反，
+   且暗色主题下对比度不足）。 */
 .about-link-primary .about-link-label {
   color: var(--color-fg);
   font-weight: 600;
 }
 .about-link-primary a {
-  color: var(--color-danger);
+  color: var(--color-accent-text);
   font-weight: 600;
 }
 .about-heart {
@@ -830,7 +806,7 @@
   gap: 4px;
 }
 .shortcut-kbd {
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--color-fg);
   background: var(--surface-raised);
@@ -889,8 +865,8 @@
 /* --- 图形化微缩主题选择器（ThemeVisualPicker，Snapzy 风格）--- */
 .theme-visual-picker {
   display: flex;
-  gap: var(--space-4, 16px);
-  padding: var(--space-2, 8px) 0;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
   width: 100%;
 }
 .theme-visual-picker[data-disabled="true"] {
@@ -902,7 +878,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   cursor: pointer;
   outline: none;
 }

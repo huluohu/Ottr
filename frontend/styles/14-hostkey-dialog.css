@@ -41,6 +41,11 @@
 .prompt-dialog {
   width: min(440px, 92vw);
 }
+/* 服务端下发的主机名可能很长（内网 FQDN / 跳板机别名）——440px 弹窗里
+   横向溢出。anywhere 让长名在任意字符处折行，不撑破弹窗。 */
+.prompt-dialog .dialog-intro {
+  overflow-wrap: anywhere;
+}
 .prompt-dialog h2 {
   margin-top: 0;
   font-size: var(--text-md);
@@ -48,8 +53,8 @@
 .prompt-item {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1, 4px);
-  margin-bottom: var(--space-3, 12px);
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
 }
 .prompt-item-text {
   color: var(--fg-muted);
@@ -58,7 +63,7 @@
 .prompt-item input {
   width: 100%;
   box-sizing: border-box;
-  padding: 6px 8px;
+  padding: var(--space-1) var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-base);
   color: var(--color-fg);
@@ -76,10 +81,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   /* 上间距交给上一段 .settings-hint 自己的下外边距——这里别再往上顶，
      否则倒计时会贴住提示文字。 */
-  margin: 0 0 var(--space-3, 12px);
+  margin: 0 0 var(--space-3);
   font-size: var(--text-sm);
 }
 .prompt-code-countdown {
@@ -88,23 +93,23 @@
 /* 「码已过期、提交必被拒」是最关键的状态——用 danger 色时暗色主题下对比度
    只有 4.11:1（AA 要 4.5:1）。加深 danger 的呈现（加底色 + 描边）而不是
    换语义色：这一态确实该是警示色，但不该只有颜色这一条信息通道。 */
+/* 「码已过期、提交必被拒」是最关键的状态——用 danger 色文字承载。
+ *
+ * 对比度：tokens.css 已把亮色 danger 校准为 #b42318（overlay 上 5.27:1）、
+ * 暗色 #f97066（5.80:1），**纯文字**即过 WCAG AA。
+ * 不要加半透明底色 chip——12% danger 叠在 overlay 上会把亮色主题的对比度拖到
+ * 4.39:1（掉出 AA），暗色也从 5.80 降到 4.91（实算）。
+ * 语义不依赖颜色：文案本身就是「验证码已过期」，颜色只是强化。 */
 .prompt-code-expired {
   color: var(--color-danger);
   font-weight: 600;
-  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
-  border-radius: var(--radius-sm, 4px);
-  padding: 0 4px;
 }
+/* 换码按钮：沿用项目既有的次级按钮变体（.btn：中性底 + 发丝线描边 + 全局
+   圆角 --radius-lg）。此前自造透明底 + 描边 + --radius-md 与全局 button
+   的圆角相反，还自带一条与全局 button:hover 重复的 hover 规则——此处只留
+   布局与紧凑尺寸，外观交给 .btn。 */
 .prompt-code-refresh {
   flex: none;
-  padding: 2px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--text-sm);
-  color: var(--color-accent-text);
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-.prompt-code-refresh:hover {
-  border-color: var(--color-accent-border);
 }

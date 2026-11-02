@@ -159,33 +159,40 @@ export function KnownHostsManager() {
   return (
     <section aria-label={t("knownHosts.title")} data-testid="known-hosts-manager">
       <div className="kh-toolbar">
-        <h3>{t("knownHosts.title")}</h3>
-        <InfoHint text={t("knownHosts.hint")} />
-        <button
-          type="button"
-          data-testid="kh-audit-now"
-          disabled={auditing}
-          onClick={() => void runAudit()}
-        >
-          {auditing ? t("knownHosts.auditing") : t("knownHosts.auditNow")}
-        </button>
-        {/* 导入本地 known_hosts（2026-11-02）：选文件 / 用默认路径两条入口 */}
-        <button
-          type="button"
-          data-testid="kh-import"
-          disabled={importing}
-          onClick={() => void pickAndImport()}
-        >
-          {t("knownHosts.import")}
-        </button>
-        <button
-          type="button"
-          data-testid="kh-import-default"
-          disabled={importing}
-          onClick={() => void runImport(null)}
-        >
-          {t("knownHosts.importUseDefault")}
-        </button>
+        <div className="kh-toolbar-head">
+          <h3>{t("knownHosts.title")}</h3>
+          <InfoHint text={t("knownHosts.hint")} />
+        </div>
+        {/* 动作组（2026-11-02）：按钮成组、内部换行——标签长度随语言变
+            （意大利语「Usa il percorso predefinito」30 字符），640px 弹窗里
+            一行放不下时组内折行，标题与 ⓘ 提示留在原位不被挤走。 */}
+        <div className="kh-toolbar-actions">
+          <button
+            type="button"
+            data-testid="kh-audit-now"
+            disabled={auditing}
+            onClick={() => void runAudit()}
+          >
+            {auditing ? t("knownHosts.auditing") : t("knownHosts.auditNow")}
+          </button>
+          {/* 导入本地 known_hosts（2026-11-02）：选文件 / 用默认路径两条入口 */}
+          <button
+            type="button"
+            data-testid="kh-import"
+            disabled={importing}
+            onClick={() => void pickAndImport()}
+          >
+            {t("knownHosts.import")}
+          </button>
+          <button
+            type="button"
+            data-testid="kh-import-default"
+            disabled={importing}
+            onClick={() => void runImport(null)}
+          >
+            {t("knownHosts.importUseDefault")}
+          </button>
+        </div>
       </div>
       <p className="settings-hint" data-testid="kh-import-hint">
         {t("knownHosts.importHint")} {t("knownHosts.importSkippedHashed")}

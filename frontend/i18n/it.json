@@ -66,11 +66,8 @@
     "langEs": "Spagnolo (Español)",
     "langIt": "Italiano",
     "langLzh": "文言 (Classico)",
-    "blogLabel": "Sito web",
-    "afdianLabel": "Afdian",
+    "blogLabel": "Blog",
     "repoLabel": "Progetto",
-    "supportTitle": "Supporto",
-    "websiteLabel": "Sito web",
     "reportIssueLabel": "Segnala un problema",
     "supportOttrLabel": "Supporta Ottr",
     "sectionSecurity": "Sicurezza",
@@ -441,8 +438,6 @@
     "send": "Invia",
     "stop": "Interrompi",
     "thinking": "Sto pensando…",
-    "newChat": "Nuova chat",
-    "empty": "Inizia la tua prima conversazione",
     "copyCode": "Copia codice",
     "insertBlocked": "Inserimento disabilitato: rilevato testo su più righe o caratteri di controllo. Rivedi il testo completo e prepara manualmente un comando su una sola riga.",
     "insertIncomplete": "L'inserimento è disponibile solo al termine della generazione.",
@@ -563,7 +558,7 @@
       "errRuleIncomplete": "Sono obbligatori sia il nome della regola sia la regex",
       "errRuleInvalid": "La regex non viene compilata"
     },
-    "followupPlaceholder": "Fai una domanda di follow-up… (premi Invio per inviare)"
+    "followupPlaceholder": "Fai una domanda di follow-up… (Invio per inviare, Shift+Invio per andare a capo)"
   },
   "tabs": {
     "duplicate": "Duplica scheda",

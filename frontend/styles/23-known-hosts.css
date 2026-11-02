@@ -3,8 +3,24 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  /* 工具条按钮有 3 个（巡检 / 导入 / 用默认路径），标签长度随语言变（意大利语
+     「Usa il percorso predefinito」30 字符）——640px 弹窗里一行放不下就换行，
+     别把按钮挤爆。 */
+  flex-wrap: wrap;
+  margin-bottom: var(--space-1);
+}
+/* 标题组（标题 + ⓘ 提示）与动作组各占一格：动作组内部换行时标题不跟着跑。 */
+.kh-toolbar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.kh-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 .kh-toolbar h3 {
   margin: 0;

@@ -2,7 +2,8 @@
 //
 // 钉住：
 // 1. 气泡流按角色渲染（user / assistant）；
-// 2. 底部追问输入条：Enter 提交 → run(sessionId, 文本)；
+// 2. 底部追问输入条：textarea——Enter 提交 → run(sessionId, 文本)；
+//    Shift+Enter 换行不提交；IME 组字中的 Enter 不提交；
 // 3. Markdown：**原始 HTML 不被渲染成 DOM**（不引入 rehype-raw 的安全取舍），
 //    但强调/列表正常渲染。
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
@@ -118,10 +119,38 @@ describe("诊断面板多轮 UI", () => {
     seed();
     const runSpy = vi.spyOn(useAiStore.getState(), "run").mockResolvedValue(undefined);
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
-    const input = screen.getByTestId("ai-followup-input") as HTMLInputElement;
+    const input = screen.getByTestId("ai-followup-input") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "不对，请用 truncate" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(runSpy).toHaveBeenCalledWith("tab-1", "不对，请用 truncate");
+  });
+
+  it("追问输入条是 textarea（多行可写：Shift+Enter 换行）", () => {
+    seed();
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    expect(screen.getByTestId("ai-followup-input").tagName).toBe("TEXTAREA");
+  });
+
+  it("追问输入条：Shift+Enter 不提交（换行，不发请求）", () => {
+    seed();
+    const runSpy = vi.spyOn(useAiStore.getState(), "run").mockResolvedValue(undefined);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const input = screen.getByTestId("ai-followup-input") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "第一行" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(runSpy).not.toHaveBeenCalled();
+    // 内容不丢（换行留在框里）
+    expect(input.value).toBe("第一行");
+  });
+
+  it("追问输入条：IME 组字中的 Enter 不提交（候选词上屏 ≠ 发送）", () => {
+    seed();
+    const runSpy = vi.spyOn(useAiStore.getState(), "run").mockResolvedValue(undefined);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const input = screen.getByTestId("ai-followup-input") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "你好" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(runSpy).not.toHaveBeenCalled();
   });
 
   it("追问输入条：空文本不提交", () => {
@@ -137,7 +166,7 @@ describe("诊断面板多轮 UI", () => {
   it("运行中：追问输入禁用、显示停止钮", () => {
     seed({ status: "running" });
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
-    expect((screen.getByTestId("ai-followup-input") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByTestId("ai-followup-input") as HTMLTextAreaElement).disabled).toBe(true);
     expect(screen.getByTestId("ai-followup-stop")).toBeTruthy();
   });
 });

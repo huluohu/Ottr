@@ -193,7 +193,7 @@ export function PromptDialog() {
             </span>
             <button
               type="button"
-              className="prompt-code-refresh"
+              className="btn prompt-code-refresh"
               data-testid="prompt-code-refresh"
               onClick={() => void refreshCode()}
             >

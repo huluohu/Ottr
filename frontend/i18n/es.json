@@ -66,11 +66,8 @@
     "langEs": "Español",
     "langIt": "Italiano",
     "langLzh": "Chino clásico (文言)",
-    "blogLabel": "Bitácora",
-    "afdianLabel": "Afdian",
+    "blogLabel": "Blog",
     "repoLabel": "Proyecto",
-    "supportTitle": "Soporte",
-    "websiteLabel": "Sitio web",
     "reportIssueLabel": "Reportar un problema",
     "supportOttrLabel": "Apoyar Ottr",
     "sectionSecurity": "Seguridad",
@@ -441,8 +438,6 @@
     "send": "Enviar",
     "stop": "Detener",
     "thinking": "Pensando…",
-    "newChat": "Nuevo chat",
-    "empty": "Inicia tu primera conversación",
     "copyCode": "Copiar código",
     "insertBlocked": "Inserción deshabilitada: se detectaron varias líneas o caracteres de control. Revisa el texto completo y prepara a mano un comando de una sola línea.",
     "insertIncomplete": "La inserción solo está disponible cuando termine la generación.",
@@ -563,7 +558,7 @@
       "errRuleIncomplete": "Son obligatorios el nombre de la regla y la regex",
       "errRuleInvalid": "La regex no compila"
     },
-    "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar)"
+    "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar, Shift+Enter para salto de línea)"
   },
   "tabs": {
     "duplicate": "Duplicar pestaña",

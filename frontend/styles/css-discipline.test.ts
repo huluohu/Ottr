@@ -141,4 +141,69 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
       "wizard-step input 满宽规则未排除 checkbox——勾选框/开关将再被拉成通栏",
     ).toBe(true);
   });
+
+  // 2026-11-02 低危整改批次（UI/本地化）：以下几处曾各自出过一次可见缺陷，
+  // 结构性钉死，防回流。
+  describe("低危整改批次守卫（2026-11-02）", () => {
+    const css = allAppCss();
+
+    it("AI 面板宽度带 vw 上限且有保底（固定 400px 时最小窗口 720px 里终端列只剩 320px）", () => {
+      expect(css).toMatch(/\.ai-panel \{[^}]*width: min\(400px, 38vw\)/s);
+      expect(css).toMatch(/\.ai-panel \{[^}]*min-width: 280px/s);
+    });
+
+    it("markdown 内容层横向滚动（宽表自己滚，不撑破 400px 面板）", () => {
+      expect(css).toMatch(/\.ai-answer-text \{[^}]*overflow-x: auto/s);
+      // 容器不得再 pre-wrap：react-markdown 的块间 \"\\n\" 文本节点会被渲染成
+      // 整行空行（段落/列表之间多一行空白）。
+      expect(css).toMatch(/\.ai-answer-text \{[^}]*white-space: normal/s);
+      expect(css).not.toMatch(/\.ai-answer-text \{[^}]*white-space: pre-wrap/s);
+      // 容器改 normal 后，代码块必须自带保留换行（否则代码被压成一行）。
+      expect(css).toMatch(/\.ai-answer-text pre \{[^}]*white-space: pre/s);
+    });
+
+    it("known_hosts 工具条允许换行（按钮多 + 标签随语言变长，640px 弹窗挤爆）", () => {
+      expect(css).toMatch(/\.kh-toolbar \{[^}]*flex-wrap: wrap/s);
+    });
+
+    it("about 外链规则只有一份（前一块被后一块整块覆盖 = 死代码回流）", () => {
+      // 行首锚定：`.about-link-label {` 是 `.about-link-primary .about-link-label {`
+      // 的子串，不锚定会把后者误计成第二份。
+      for (const sel of [".about-links {", ".about-link-line {", ".about-link-label {"]) {
+        const n = (css.match(new RegExp(`^${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gm")) ?? []).length;
+        expect(n, `${sel} 出现 ${n} 次——重复声明即死代码`).toBe(1);
+      }
+      // display:contents 的父级下标签是 grid item，flex:none 无效。
+      expect(css).not.toMatch(/\.about-link-label \{[^}]*flex: none/s);
+    });
+
+    it("赞助链接不用 danger 红（红=危险/删除，与「支持」语义相反且暗色对比度不足）", () => {
+      expect(css).toMatch(/\.about-link-primary a \{[^}]*color: var\(--color-accent-text\)/s);
+      expect(css).not.toMatch(/\.about-link-primary a \{[^}]*--color-danger/s);
+    });
+
+    it("验证码刷新钮不自造外观（沿用既有 .btn 变体：圆角/描边/hover 归全局）", () => {
+      expect(css).not.toMatch(/\.prompt-code-refresh \{[^}]*border-radius/s);
+      expect(css).not.toMatch(/\.prompt-code-refresh \{[^}]*background/s);
+      expect(css).not.toMatch(/\.prompt-code-refresh:hover/s);
+    });
+
+    it("验证码过期态：纯 danger 文字、**不加半透明底色**（加了会把亮色拖出 AA）", () => {
+      // 实算：tokens 校准后 danger 在 overlay 上亮 5.27:1 / 暗 5.80:1（过 AA）；
+      // 再叠 12% danger 半透明底色 → 亮 4.39 / 暗 4.91（亮色掉出 AA）。
+      expect(css).toMatch(/\.prompt-code-expired \{[^}]*color: var\(--color-danger\)/s);
+      expect(css).not.toMatch(
+        /\.prompt-code-expired \{[^}]*color-mix\([^}]*var\(--color-danger\)[^}]*\}/s,
+      );
+    });
+
+    it("交互式认证弹窗的长主机名折行（440px 弹窗不横向溢出）", () => {
+      expect(css).toMatch(/\.prompt-dialog \.dialog-intro \{[^}]*overflow-wrap: anywhere/s);
+    });
+
+    it("空间/圆角令牌不留 fallback（tokens.css 全有定义，带 fallback 是冗余写法）", () => {
+      expect(css).not.toMatch(/var\(--space-\d+,/);
+      expect(css).not.toMatch(/var\(--radius-[a-z]+,/);
+    });
+  });
 });

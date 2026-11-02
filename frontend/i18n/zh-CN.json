@@ -67,10 +67,7 @@
     "langIt": "意大利语",
     "langLzh": "文言（古语）",
     "blogLabel": "博客",
-    "afdianLabel": "爱发电",
     "repoLabel": "项目",
-    "supportTitle": "支持",
-    "websiteLabel": "网站",
     "reportIssueLabel": "报告错误",
     "supportOttrLabel": "支持 Ottr",
     "sectionSecurity": "安全",
@@ -440,8 +437,6 @@
     "send": "发送",
     "stop": "停止",
     "thinking": "思考中…",
-    "newChat": "新对话",
-    "empty": "开始你的第一次对话",
     "copyCode": "复制代码",
     "insertBlocked": "无法插入：内容含多行或控制字符。请审阅完整原文，再手动准备单行命令。",
     "insertIncomplete": "生成完成后才能插入终端。",
@@ -562,7 +557,7 @@
       "errRuleIncomplete": "规则名与正则都要填",
       "errRuleInvalid": "正则无法编译"
     },
-    "followupPlaceholder": "追问…（Enter 发送）"
+    "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）"
   },
   "tabs": {
     "duplicate": "复制页签",

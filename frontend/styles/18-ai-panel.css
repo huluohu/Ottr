@@ -22,7 +22,11 @@
 
 .ai-panel {
   flex: none;
-  width: 400px;
+  /* 面板宽度带 vw 上限：固定 400px 时，最小窗口 720px（tauri.conf.json
+     minWidth）里终端列只剩 320px——终端被挤成一条缝。改 min(400px, 38vw)
+     后窄窗按比例收窄，宽窗仍是 400px；min-width 280px 保底，面板不许窄到
+     读不了字（38vw < 280px 时以保底为准，此时终端列仍余 ~440px）。 */
+  width: min(400px, 38vw);
   min-width: 280px;
   border-left: 1px solid var(--border-subtle);
   overflow-y: auto;
@@ -144,7 +148,7 @@
 .ai-thread {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   flex: 1;
   min-height: 0;
   /* 多轮气泡流内容常超框：线程自身滚动，不外溢。
@@ -154,7 +158,7 @@
 }
 .ai-bubble {
   border-radius: var(--radius-lg);
-  padding: var(--space-2, 8px) var(--space-3, 12px);
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
   word-break: break-word;
   /* flex 列里默认可收缩 → 气泡被压扁、内容溢出；保持自然高度。 */
@@ -174,20 +178,26 @@
 /* 追问输入条：贴在面板底部（面板已是整高右栏，输入条随面板走）。 */
 .ai-followup-row {
   display: flex;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   align-items: center;
-  padding-top: var(--space-2, 8px);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--border-subtle);
 }
 .ai-followup-input {
   flex: 1;
   min-width: 0;
-  padding: 6px 8px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--text-sm);
+  line-height: 1.5;
   color: var(--color-fg);
   background: var(--surface-raised);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
+  /* 追问框是 textarea（Enter 发送 / Shift+Enter 换行）：默认两行，写长了
+     内部滚动——面板窄（最小 280px），输入条不许长高把气泡流挤没。 */
+  resize: none;
+  max-height: 8em;
+  overflow-y: auto;
 }
 .ai-followup-input:focus {
   outline: none;
@@ -195,7 +205,10 @@
 }
 /* Markdown 渲染的行内元素（react-markdown 输出）：与面板排版对齐。 */
 .ai-answer-text p {
-  margin: 0 0 var(--space-2, 8px);
+  margin: 0 0 var(--space-2);
+  /* 段内换行保留成硬换行（模型爱用「第一步：\n第二步：」这种分行写法）；
+     段与段之间的多余空行由容器自身的 white-space 负责（见下方
+     .ai-answer-text）——两处职责不重叠。 */
   white-space: pre-wrap;
 }
 .ai-answer-text p:last-child {
@@ -203,8 +216,8 @@
 }
 .ai-answer-text ul,
 .ai-answer-text ol {
-  margin: 0 0 var(--space-2, 8px);
-  padding-left: var(--space-4, 16px);
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-4);
 }
 .ai-answer-text code {
   font-family: var(--font-mono);
@@ -213,9 +226,30 @@
   border-radius: var(--radius-sm);
   padding: 0 3px;
 }
+/* 代码块（缩进代码块 / 未被切走的围栏）：容器改 white-space: normal 之后
+   必须自带保留换行 + 等宽，否则代码会被压成一行读不了。 */
+.ai-answer-text pre {
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  overflow-x: auto;
+  background: var(--surface-raised);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre;
+}
+.ai-answer-text pre code {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  font-size: inherit;
+}
 .ai-answer-text table {
   border-collapse: collapse;
   font-size: var(--text-xs);
+  /* 宽表按自然宽度排版（不因窄面板被挤成竖排），超出部分由容器横向滚动 */
+  min-width: max-content;
 }
 .ai-answer-text th,
 .ai-answer-text td {
@@ -225,8 +259,14 @@
 }
 .ai-answer-text {
   margin: 0;
-  white-space: pre-wrap;
+  /* 容器不再 pre-wrap：react-markdown 在块级元素之间会输出 "\n" 文本节点，
+     pre-wrap 会把它渲染成整行空行（段落/列表之间多一行空白）。本容器只服务
+     markdown（纯文本路径已被 MarkdownText 取代），段内硬换行由上方 p 规则
+     单独承担。 */
+  white-space: normal;
   word-break: break-word;
+  /* 宽表/长代码在内容层横向滚动，不撑破整块面板 */
+  overflow-x: auto;
   font-size: var(--text-sm);
   line-height: 1.55;
 }
@@ -239,7 +279,7 @@
   border-color: var(--color-danger);
 }
 .ai-codeblock[data-level="yellow"] {
-  border-color: var(--color-warning, #d9a648);
+  border-color: var(--color-warning);
 }
 .ai-codeblock-head {
   display: flex;
@@ -260,8 +300,8 @@
   border: 1px solid var(--color-success);
 }
 .ai-level-yellow {
-  color: var(--color-warning, #d9a648);
-  border: 1px solid var(--color-warning, #d9a648);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning);
 }
 .ai-level-red {
   color: var(--color-danger);
@@ -650,7 +690,7 @@
 }
 .jump-hop-row[data-over="true"] {
   border-style: solid;
-  border-color: var(--color-accent-border, var(--border-subtle));
+  border-color: var(--color-accent-border);
 }
 .jump-hop-index {
   flex: none;

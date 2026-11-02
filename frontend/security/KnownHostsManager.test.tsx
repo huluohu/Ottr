@@ -95,6 +95,22 @@ afterEach(() => {
 });
 
 describe("KnownHostsManager", () => {
+  it("工具条：标题组与动作组分开（动作组内部换行，标题不被挤走）", async () => {
+    mockImpl([]);
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-empty")).toBeTruthy());
+    const toolbar = screen.getByTestId("known-hosts-manager").querySelector(".kh-toolbar");
+    expect(toolbar).toBeTruthy();
+    const head = toolbar?.querySelector(".kh-toolbar-head");
+    const actions = toolbar?.querySelector(".kh-toolbar-actions");
+    expect(head).toBeTruthy();
+    expect(actions).toBeTruthy();
+    // 三个动作按钮同在动作组里（组内换行 = 意大利语长标签不撑爆工具条）
+    for (const id of ["kh-audit-now", "kh-import", "kh-import-default"]) {
+      expect(actions?.querySelector(`[data-testid="${id}"]`)).toBeTruthy();
+    }
+  });
+
   it("列表渲染：端点/指纹/状态/时间列齐备，空表显示占位", async () => {
     mockImpl([pendingRow, okRow, changedRow]);
     const { unmount } = render(<KnownHostsManager />);

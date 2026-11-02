@@ -50,7 +50,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /** 凭据类型（Rust CredentialKind 同构；ftp/ftps = FTP 密码型凭据，Phase 2 Task 5）。 */
-export type CredentialKind = "password" | "key" | "totp" | "ftp" | "ftps";
+export type CredentialKind = "password" | "key" | "totp" | "ftp" | "ftps" | "agent";
 /** 主机协议（Rust HostProtocol 同构；ftp/ftps = 文件传输会话，无 PTY 终端）。 */
 export type HostProtocol = "ssh" | "ftp" | "ftps";
 export type KnownHostState = "ok" | "changed" | "pending";

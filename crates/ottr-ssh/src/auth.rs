@@ -36,6 +36,11 @@ pub enum AuthMethod {
     },
     /// keyboard-interactive（TOTP 等挑战应答）。`responder` 收集 prompt 并给出答案。
     KeyboardInteractive { responder: PromptResponder },
+    /// **系统 ssh-agent 认证**（批次五 P2）：私钥留在 agent 里，Ottr 只借用签名
+    /// 能力（永远拿不到私钥）。`socket` = `Some(path)` 时连指定 agent
+    /// （unix：UDS；windows：命名管道），`None` = 取环境（unix：`$SSH_AUTH_SOCK`；
+    /// windows：Pageant）。
+    Agent { socket: Option<PathBuf> },
 }
 
 /// 私钥来源。
@@ -178,11 +183,58 @@ pub(crate) async fn authenticate(
         AuthMethod::KeyboardInteractive { responder } => {
             return keyboard_interactive_auth(handle, username, responder).await;
         }
+        AuthMethod::Agent { socket } => {
+            return agent_auth(handle, username, socket.as_deref()).await;
+        }
     };
     match result {
         russh::client::AuthResult::Success => Ok(()),
         russh::client::AuthResult::Failure { .. } => Err(Error::AuthRejected),
     }
+}
+
+/// 系统 ssh-agent 认证（批次五 P2）：逐个 agent 身份尝试，服务端拒掉某把就换
+/// 下一把（与 `ssh` 的行为一致）。
+///
+/// 私钥全程在 agent 进程里——Ottr 只把「待签数据」交给 agent，拿回签名。
+async fn agent_auth(
+    handle: &mut Handle<ClientAuthHandler>,
+    username: &str,
+    socket: Option<&std::path::Path>,
+) -> Result<(), Error> {
+    let mut session = crate::agent::AgentSession::connect(socket)
+        .await
+        .map_err(|e| Error::Agent(e.to_string()))?;
+    if session.identities().is_empty() {
+        return Err(Error::Agent("ssh-agent holds no identities".to_string()));
+    }
+    // 身份清单要先克隆出来：签名需要 &mut session（借用其连接），
+    // 遍历时不能同时持有不可变借用。
+    let identities: Vec<russh::keys::agent::AgentIdentity> = session.identities().to_vec();
+    for identity in &identities {
+        let result = match identity {
+            russh::keys::agent::AgentIdentity::PublicKey { key, .. } => {
+                let mut signer = session.signer();
+                handle
+                    .authenticate_publickey_with(username, key.clone(), None, &mut signer)
+                    .await
+                    .map_err(|e| Error::Agent(e.to_string()))?
+            }
+            russh::keys::agent::AgentIdentity::Certificate { certificate, .. } => {
+                let mut signer = session.signer();
+                handle
+                    .authenticate_certificate_with(username, certificate.clone(), None, &mut signer)
+                    .await
+                    .map_err(|e| Error::Agent(e.to_string()))?
+            }
+        };
+        match result {
+            russh::client::AuthResult::Success => return Ok(()),
+            // 这把钥匙被拒 → 试下一把
+            russh::client::AuthResult::Failure { .. } => continue,
+        }
+    }
+    Err(Error::AuthRejected)
 }
 
 /// keyboard-interactive 循环：start -> (InfoRequest -> responder 收集 prompt -> respond)*

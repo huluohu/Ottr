@@ -294,7 +294,9 @@
     "copied": "Copiato",
     "copyFailed": "Copia non riuscita: {{message}}",
     "kind_ftp": "Password FTP",
-    "kind_ftps": "Password FTPS"
+    "kind_ftps": "Password FTPS",
+    "kind_agent": "ssh-agent di sistema",
+    "agentHint": "Autenticati con le chiavi del tuo ssh-agent di sistema: le chiavi private non entrano mai in Ottr (le conserva e firma il processo dell'agente). Avvia prima ssh-agent e aggiungi le chiavi."
   },
   "credentialForm": {
     "newTitle": "Nuova credenziale",

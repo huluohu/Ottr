@@ -37,6 +37,8 @@ fn main() {
             key_pub: Some("ssh-ed25519 AAAA t17-sample".into()),
             passphrase: Some(PASSPHRASE_SAMPLE.into()),
             totp_secret: Some(TOTP_SAMPLE.into()),
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .expect("create credential");

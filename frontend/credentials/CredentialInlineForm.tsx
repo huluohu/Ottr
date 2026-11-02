@@ -173,6 +173,12 @@ export function CredentialInlineForm({ draft, onDraftChange, error, onCancel }: 
         </>
       )}
 
+      {draft.kind === "agent" && (
+        <p className="settings-hint" data-testid="cred-agent-hint">
+          {t("credentials.agentHint")}
+        </p>
+      )}
+
       {error && (
         <p className="form-error" data-testid="cred-error">
           {error}

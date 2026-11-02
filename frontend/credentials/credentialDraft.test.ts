@@ -57,7 +57,15 @@ describe("validateCredentialDraft（i18n 键契约）", () => {
   });
 
   it("类型候选全集（与凭据对话框一致，功能零丢失）", () => {
-    expect(CREDENTIAL_KINDS).toEqual(["password", "key", "totp", "ftp", "ftps"]);
+    expect(CREDENTIAL_KINDS).toEqual([
+      "password",
+      "key",
+      "totp",
+      "ftp",
+      "ftps",
+      // 系统 ssh-agent（批次五 P2）：私钥不入 Ottr
+      "agent",
+    ]);
     expect(PASSWORD_LIKE_KINDS).toEqual(["password", "ftp", "ftps"]);
   });
 });

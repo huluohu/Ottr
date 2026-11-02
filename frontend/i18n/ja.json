@@ -294,7 +294,9 @@
     "copied": "コピーしました",
     "copyFailed": "コピーに失敗しました: {{message}}",
     "kind_ftp": "FTP パスワード",
-    "kind_ftps": "FTPS パスワード"
+    "kind_ftps": "FTPS パスワード",
+    "kind_agent": "システムの ssh-agent",
+    "agentHint": "システムの ssh-agent が保持する鍵で認証します。秘密鍵は Ottr に入りません（agent プロセスが保持して署名します）。先に ssh-agent を起動して鍵を追加してください。"
   },
   "credentialForm": {
     "newTitle": "新しい資格情報",

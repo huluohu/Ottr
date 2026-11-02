@@ -261,6 +261,9 @@ pub enum CredentialKind {
     Totp,
     Ftp,
     Ftps,
+    /// 系统 ssh-agent（批次五 P2）：**不存任何密钥材料**，认证时向系统 agent
+    /// 请求签名（私钥留在 agent 进程里，Ottr 永远拿不到）。
+    Agent,
 }
 
 impl CredentialKind {
@@ -271,6 +274,7 @@ impl CredentialKind {
             Self::Totp => "totp",
             Self::Ftp => "ftp",
             Self::Ftps => "ftps",
+            Self::Agent => "agent",
         }
     }
 
@@ -288,6 +292,7 @@ impl std::str::FromStr for CredentialKind {
             "key" => Ok(Self::Key),
             "totp" => Ok(Self::Totp),
             "ftp" => Ok(Self::Ftp),
+            "agent" => Ok(Self::Agent),
             "ftps" => Ok(Self::Ftps),
             other => Err(VaultError::InvalidInput(format!(
                 "unknown credential kind: {other}"

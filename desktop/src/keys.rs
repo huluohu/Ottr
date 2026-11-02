@@ -191,6 +191,12 @@ pub(crate) async fn resolve_credential_auth(
                     TempKeyGuard(None),
                 ))
             }
+            // 系统 ssh-agent 凭据（2026-11-02 批次五 P2）→ agent 认证：
+            // 私钥留在 agent 进程里，Ottr 只借用签名能力（不存任何密钥材料）。
+            ottr_vault::CredentialKind::Agent => Ok((
+                AuthMethod::Agent { socket: None },
+                TempKeyGuard(None),
+            )),
             // TOTP 凭据 → keyboard-interactive 认证（2026-11-02 批次二）。
             //
             // SSH 协议里「密码 + 二次验证码」本身就是 keyboard-interactive
@@ -376,6 +382,8 @@ mod tests {
                 key_pub: None,
                 passphrase: None,
                 totp_secret: None,
+                totp_digits: None,
+                totp_period: None,
             },
         )
         .expect("create key credential");

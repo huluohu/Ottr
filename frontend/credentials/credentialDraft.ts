@@ -7,7 +7,14 @@ import type { CredentialInput, CredentialKind } from "../vault/api";
 
 /** 凭据类型候选（与 CredentialForm KINDS 一致：Phase 2 Task 5 起 ftp/ftps
  * 为密码型；内联子表单同样全类型可选——功能零丢失）。 */
-export const CREDENTIAL_KINDS: CredentialKind[] = ["password", "key", "totp", "ftp", "ftps"];
+export const CREDENTIAL_KINDS: CredentialKind[] = [
+  "password",
+  "key",
+  "totp",
+  "ftp",
+  "ftps",
+  "agent",
+];
 
 /** 密码型凭据（secret 字段面与 password 完全一致）。 */
 export const PASSWORD_LIKE_KINDS: CredentialKind[] = ["password", "ftp", "ftps"];

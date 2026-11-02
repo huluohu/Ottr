@@ -294,7 +294,9 @@
     "copied": "복사됨",
     "copyFailed": "복사 실패: {{message}}",
     "kind_ftp": "FTP 비밀번호",
-    "kind_ftps": "FTPS 비밀번호"
+    "kind_ftps": "FTPS 비밀번호",
+    "kind_agent": "시스템 ssh-agent",
+    "agentHint": "시스템 ssh-agent가 가진 키로 인증합니다. 개인 키는 Ottr에 저장되지 않습니다(agent 프로세스가 보관하고 서명). 먼저 ssh-agent를 시작하고 키를 추가하세요."
   },
   "credentialForm": {
     "newTitle": "새 자격 증명",

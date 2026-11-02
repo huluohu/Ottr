@@ -492,6 +492,8 @@ mod tests {
                 key_pub: None,
                 passphrase: None,
                 totp_secret: None,
+                totp_digits: None,
+                totp_period: None,
             },
         )
         .unwrap();

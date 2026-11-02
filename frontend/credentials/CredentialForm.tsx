@@ -312,6 +312,12 @@ export function CredentialForm({ credential, onClose }: CredentialFormProps) {
           </>
         )}
 
+        {kind === "agent" && (
+          <p className="settings-hint" data-testid="cred-agent-hint">
+            {t("credentials.agentHint")}
+          </p>
+        )}
+
         {error && (
           <p className="form-error" data-testid="cred-error">
             {error}

@@ -19,6 +19,7 @@
 //! # }
 //! ```
 
+pub mod agent;
 pub mod auth;
 pub mod deploy;
 pub mod forward;
@@ -30,6 +31,7 @@ pub mod pty;
 pub mod russh_impl;
 pub mod shell_integration;
 
+pub use agent::{AgentError, AgentSession};
 pub use auth::{AuthMethod, HostKeyPolicy, KeySource, PromptResponder};
 pub use deploy::{DeployOutcome, DeployStatus, deploy_public_key};
 pub use forward::{
@@ -73,6 +75,8 @@ pub enum Error {
     },
     /// 网络 I/O 错误。
     Io(std::io::Error),
+    /// 系统 ssh-agent 侧错误（连接失败 / agent 未运行 / 无可用身份 / 签名被拒）。
+    Agent(String),
 }
 
 impl fmt::Display for Error {
@@ -83,6 +87,7 @@ impl fmt::Display for Error {
                 "host key rejected by policy (server fingerprint: {fingerprint})"
             ),
             Error::AuthRejected => write!(f, "authentication rejected by server"),
+            Error::Agent(m) => write!(f, "{m}"),
             Error::PromptAnswerMismatch { prompts, answers } => write!(
                 f,
                 "keyboard-interactive: got {answers} answers for {prompts} prompts"

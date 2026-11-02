@@ -59,6 +59,8 @@ fn seed_source(vault: &Vault) {
             key_pub: None,
             passphrase: None,
             totp_secret: Some("TOTP-SEED-43".into()),
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -71,6 +73,8 @@ fn seed_source(vault: &Vault) {
             key_pub: Some("ssh-ed25519 AAAA PUBLIC-KEY".into()),
             passphrase: Some("KEY-PASS-44".into()),
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -605,6 +609,8 @@ fn locked_vault_rejects_secret_bearing_export_and_any_import() {
             key_pub: None,
             passphrase: None,
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -654,6 +660,8 @@ fn credential_patch_semantics_unaffected_after_import() {
             key_pub: Some("ssh-ed25519 NEW".into()),
             passphrase: None,
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();

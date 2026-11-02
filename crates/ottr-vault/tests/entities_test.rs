@@ -42,6 +42,8 @@ fn password_input(plain: &str) -> CredentialInput {
         key_pub: None,
         passphrase: None,
         totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
     }
 }
 
@@ -384,6 +386,8 @@ fn credential_key_kind_roundtrip_and_patch_semantics() {
             key_pub: Some("ssh-ed25519 AAA".into()),
             passphrase: Some("pp".into()),
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -424,6 +428,8 @@ fn credential_key_kind_roundtrip_and_patch_semantics() {
             key_pub: Some("ssh-ed25519 BBB".into()),
             passphrase: Some("pp2".into()),
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -572,6 +578,8 @@ fn migration_0018_dedupes_legacy_sibling_duplicates_and_creates_unique_index() {
              DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;
              ALTER TABLE notifications DROP COLUMN delivery_failures;
              ALTER TABLE credentials DROP COLUMN name;
+         ALTER TABLE credentials DROP COLUMN totp_digits;
+         ALTER TABLE credentials DROP COLUMN totp_period;
              INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
                SELECT name, parent_id, color, created_at, updated_at
                FROM host_groups WHERE name = 'legacy';",
@@ -1133,6 +1141,8 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
         key_pub: None,
         passphrase: None,
         totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
     };
     let cred = Credentials::create(&vault, &input).unwrap();
     assert_eq!(cred.kind, CredentialKind::Ftp);
@@ -1150,6 +1160,8 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
             key_pub: None,
             passphrase: None,
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -1163,6 +1175,8 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
         key_pub: None,
         passphrase: None,
         totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
     };
     let changed = Credentials::update(&vault, cred.id, &patch).unwrap();
     assert_eq!(changed.kind, CredentialKind::Ftps);
@@ -1403,6 +1417,8 @@ fn migration_0012_legacy_v11_rows_default_to_zero() {
          ALTER TABLE hosts DROP COLUMN is_production;
          ALTER TABLE notifications DROP COLUMN delivery_failures;
          ALTER TABLE credentials DROP COLUMN name;
+         ALTER TABLE credentials DROP COLUMN totp_digits;
+         ALTER TABLE credentials DROP COLUMN totp_period;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_root;
          DROP INDEX IF EXISTS idx_host_groups_sibling_name_child;",
     )

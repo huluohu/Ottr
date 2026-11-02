@@ -302,6 +302,9 @@ fn migration_0020_is_replayable_and_old_rows_default_to_no_marker() {
         )
         .unwrap();
         conn.execute("ALTER TABLE credentials DROP COLUMN name", [])
+        // 0025 新增的两列也要剥掉（否则重跑 0025 撞「duplicate column name」）
+        .and_then(|_| conn.execute("ALTER TABLE credentials DROP COLUMN totp_digits", []))
+        .and_then(|_| conn.execute("ALTER TABLE credentials DROP COLUMN totp_period", []))
             .unwrap();
         conn.execute("UPDATE meta SET value='19' WHERE key='schema_version'", [])
             .unwrap();

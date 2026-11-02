@@ -293,7 +293,9 @@
     "copied": "已複製",
     "copyFailed": "複製失敗：{{message}}",
     "kind_ftp": "FTP 密碼",
-    "kind_ftps": "FTPS 密碼"
+    "kind_ftps": "FTPS 密碼",
+    "kind_agent": "系統 ssh-agent",
+    "agentHint": "使用系統 ssh-agent 裡的密鑰認證——私鑰不存入 Ottr（由 agent 行程持有並簽章）。需先啟動 ssh-agent 並加入密鑰。"
   },
   "credentialForm": {
     "newTitle": "新建憑證",

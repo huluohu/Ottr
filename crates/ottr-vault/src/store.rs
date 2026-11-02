@@ -47,7 +47,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 25;
+pub const LATEST_SCHEMA_VERSION: u32 = 26;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -204,6 +204,12 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         25,
         include_str!("../migrations/0025_totp_digits_period.sql"),
+    ),
+    // 0026 凭据类型加 'agent'（系统 ssh-agent 桥接，批次五 P2）：不存任何密钥
+    // 材料，认证时向系统 agent 请求签名。CHECK 放开需重建表（0010 同款做法）。
+    (
+        26,
+        include_str!("../migrations/0026_credential_agent.sql"),
     ),
 ];
 

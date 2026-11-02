@@ -293,7 +293,9 @@
     "copied": "已謄",
     "copyFailed": "謄敗：{{message}}",
     "kind_ftp": "FTP 密語",
-    "kind_ftps": "FTPS 密語"
+    "kind_ftps": "FTPS 密語",
+    "kind_agent": "系統 ssh-agent",
+    "agentHint": "用系統 ssh-agent 之密鑰驗——私鑰不入 Ottr（由 agent 程序持有而簽）。須先起 ssh-agent 並加鑰。"
   },
   "credentialForm": {
     "newTitle": "創信物",

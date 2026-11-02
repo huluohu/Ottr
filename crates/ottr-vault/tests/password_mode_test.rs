@@ -24,6 +24,8 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
             key_pub: None,
             passphrase: Some("folder-passphrase".into()),
             totp_secret: Some("JBSWY3DPEHPK3PXP".into()),
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -39,6 +41,8 @@ fn seed_fixed_credentials(vault: &Vault) -> (i64, i64) {
             key_pub: Some("ssh-ed25519 AAAA seed-b".into()),
             passphrase: None,
             totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
         },
     )
     .unwrap();
@@ -344,6 +348,8 @@ fn locked_vault_keeps_plain_metadata_usable_but_rejects_keyed_ops() {
                 key_pub: None,
                 passphrase: None,
                 totp_secret: None,
+            totp_digits: None,
+            totp_period: None,
             },
         ),
         Err(VaultError::Locked)

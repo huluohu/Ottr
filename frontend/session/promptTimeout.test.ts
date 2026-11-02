@@ -102,6 +102,50 @@ afterEach(() => {
   useModalStore.setState({ active: null });
 });
 
+describe("交互式认证问询的会话归属", () => {
+  it("TOFU 接受后（状态仍 waiting_host_key）来的问询 → 归属到会话，不当孤儿", () => {
+    // 真机 192.168.9.102 实测（2026-11-02）：TOFU 接受后状态**不复位**
+    // （decideHostKey 注释明说），紧接着的交互式认证问询若只认 "connecting"
+    // 就会被误判成孤儿 → 会话不进 waiting_prompt → attach 看门狗 100s 后
+    // 误报「后端无响应」，而用户明明在答题。
+    const s = seedSession();
+    useSessionStore.setState((st) => ({
+      sessions: st.sessions.map((x) =>
+        x.id === s.id ? { ...x, status: "waiting_host_key" } : x,
+      ),
+    }));
+    useSessionStore.getState().onPromptAsk({
+      ask_id: "1:7",
+      host_id: 1,
+      host_name: "bastion-a",
+      credential_id: 42,
+      prompts: [{ text: "Verification code:", suggestion: "123456" }],
+    });
+    const st = useSessionStore.getState();
+    expect(st.promptAsk?.sessionId).toBe("tab-1");
+    expect(st.sessions[0].status).toBe("waiting_prompt");
+  });
+
+  it("直连（connecting）来的问询 → 同样归属到会话", () => {
+    const s = seedSession();
+    useSessionStore.setState((st) => ({
+      sessions: st.sessions.map((x) =>
+        x.id === s.id ? { ...x, status: "connecting" } : x,
+      ),
+    }));
+    useSessionStore.getState().onPromptAsk({
+      ask_id: "1:7",
+      host_id: 1,
+      host_name: "bastion-a",
+      credential_id: 42,
+      prompts: [{ text: "Verification code:", suggestion: "123456" }],
+    });
+    const st = useSessionStore.getState();
+    expect(st.promptAsk?.sessionId).toBe("tab-1");
+    expect(st.sessions[0].status).toBe("waiting_prompt");
+  });
+});
+
 describe("交互式认证未作答（超时）", () => {
   it("超时通知 → 关弹窗 + 会话记真因（未作答）", () => {
     seedSession();

@@ -218,9 +218,14 @@ function deferConnect(id: string): void {
 // settle 时，把会话复位为 disconnected（带 lastError），让用户可重试；若丢失的
 // 响应只是迟到，随后照常走守卫路径（gen 未变 → 迟到成功照常落 connected；用户
 // 已重试 → 孤儿分支 drop_session 清掉迟到会话），两条出路都收敛。
-// **只护直连**（评审 I-2，fix 1/5）：链式预算 75s×(跳数+1)（2 跳合法最坏 ≈170s
-// > 100s），前端拿不到跳数、不可缩放——链式不武装，由 Rust 侧全程超时兜底
+// **只护直连**（评审 I-2，fix 1/5）：链式预算按跳数累乘（Rust 侧每跳预算
+// = 两个问询窗口之和 + 网络余量，见 Rust state.rs CONNECT_BUDGET_PER_HOP），
+// 前端拿不到跳数、不可缩放——链式不武装，由 Rust 侧全程超时兜底
 // （见 connect() 武装点注释）。
+//
+// **不覆盖交互式认证阶段**：问询期会话状态是 waiting_prompt（不在本看门狗的
+// 武装状态里），超时由 Rust 侧问询窗口（180s）+ `ottr://kbd-interactive-timeout`
+// 事件负责——否则看门狗会抢在它前面把「用户没作答」误报成「后端无响应」。
 const ATTACH_WATCHDOG_MS = 100_000;
 const attachWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -734,11 +739,24 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // 归属：同 TOFU —— 链式逐跳问询落在链上 hop 主机上，origin_host_id
     // 才是发起连接的主机；直连问询无 origin 字段，host_id 即发起方。
     const originId = payload.origin_host_id ?? payload.host_id;
+    // 连接在途的三种状态都算「这次问询属于这个会话」：
+    //   connecting      —— 直连，认证前；
+    //   waiting_host_key—— **TOFU 接受后状态不复位**（见 decideHostKey 的注释：
+    //                      在途 attach 继续走），所以走完主机密钥确认、紧接着
+    //                      进交互式认证时，状态仍是 waiting_host_key；
+    //   waiting_prompt  —— 上一轮交互式认证（多轮问询）。
+    // 只认 "connecting" 会把「TOFU 之后的交互式认证」误判成孤儿问询：弹窗照
+    // 弹，但会话不进 waiting_prompt → attach 看门狗（100s）到点误报「后端无
+    // 响应」，而用户明明在答题（真机 192.168.9.102 实测，2026-11-02）。
     const session = get().sessions.find(
-      (s) => s.hostId === originId && s.status === "connecting",
+      (s) =>
+        s.hostId === originId &&
+        (s.status === "connecting" ||
+          s.status === "waiting_host_key" ||
+          s.status === "waiting_prompt"),
     );
     if (!session) {
-      // 无在途 connect（孤儿问询）：仍弹窗——不弹则 Rust 侧 60s 超时按空答案
+      // 无在途 connect（孤儿问询）：仍弹窗——不弹则 Rust 侧超时按空答案
       // 收尾（= 认证失败）。sessionId 空串 = 无关联会话。
       set({ promptAsk: { ...payload, sessionId: "" } });
       useModalStore.getState().open("promptAsk");

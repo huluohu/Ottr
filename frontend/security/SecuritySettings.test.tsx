@@ -722,3 +722,28 @@ describe("关于分区的博客地址（2026-10-29 用户需求；2026-10-31 单
     ).toBeTruthy();
   });
 });
+
+describe("SecuritySettings Snapzy 风格侧边栏（品牌徽标卡片与搜索）", () => {
+  it("渲染正统 Ottr 官方品牌卡片与设置搜索框", () => {
+    render(
+      <ThemeProvider>
+        <SecuritySettings open onClose={() => {}} />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId("settings-brand-banner")).toBeTruthy();
+    expect(screen.getByTestId("settings-search-input")).toBeTruthy();
+  });
+
+  it("搜索输入实时过滤匹配分区", () => {
+    render(
+      <ThemeProvider>
+        <SecuritySettings open onClose={() => {}} />
+      </ThemeProvider>,
+    );
+    const searchInput = screen.getByTestId("settings-search-input");
+    fireEvent.change(searchInput, { target: { value: "外观" } });
+
+    expect(screen.getByTestId("settings-nav-appearance").style.display).not.toBe("none");
+    expect(screen.getByTestId("settings-nav-security").style.display).toBe("none");
+  });
+});

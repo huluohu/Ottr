@@ -104,6 +104,70 @@ const PANE_TABS: ReadonlyArray<{ id: SettingsPane; labelKey: string }> = [
   { id: "ai", labelKey: "settings.sectionAi" },
   { id: "about", labelKey: "settings.sectionAbout" },
 ];
+
+const PANE_ICONS: Record<SettingsPane, JSX.Element> = {
+  general: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  ),
+  appearance: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z" />
+    </svg>
+  ),
+  security: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  ),
+  sync: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+    </svg>
+  ),
+  alerts: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  ),
+  mcp: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M19.439 7.85c0-1.57-1.28-2.85-2.85-2.85a2.85 2.85 0 0 0-2.85 2.85V10H9.5V7.85A2.85 2.85 0 0 0 6.65 5C5.08 5 3.8 6.28 3.8 7.85c0 1.25.8 2.3 1.93 2.68L5.7 14.5c0 1.57 1.28 2.85 2.85 2.85a2.85 2.85 0 0 0 2.85-2.85V12h4.24v2.15c0 1.57 1.28 2.85 2.85 2.85 1.57 0 2.85-1.28 2.85-2.85 0-1.25-.8-2.3-1.93-2.68l.03-3.97c1.13-.38 1.93-1.43 1.93-2.68z" />
+    </svg>
+  ),
+  shortcuts: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <line x1="6" y1="8" x2="6" y2="8" />
+      <line x1="10" y1="8" x2="10" y2="8" />
+      <line x1="14" y1="8" x2="14" y2="8" />
+      <line x1="18" y1="8" x2="18" y2="8" />
+      <line x1="6" y1="12" x2="6" y2="12" />
+      <line x1="18" y1="12" x2="18" y2="12" />
+      <line x1="8" y1="16" x2="16" y2="16" />
+    </svg>
+  ),
+  ai: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
+    </svg>
+  ),
+  about: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  ),
+};
 // B9 指纹巡检间隔（秒）：1h / 6h / 24h（默认）/ 7d（Rust 校验 60-604800）
 const HOSTKEY_AUDIT_CHOICES = [3_600, 21_600, 86_400, 604_800] as const;
 
@@ -219,6 +283,7 @@ export function SecuritySettings({
   }, [sudoConfirm]);
   // 分区导航当前面板（默认安全——对话框的历史主区）。
   const [pane, setPane] = useState<SettingsPane>("general");
+  const [searchQuery, setSearchQuery] = useState("");
   // 关于分区版本号（getVersion；非 Tauri 隐藏行）
   const [appVersion, setAppVersion] = useState<string | null>(null);
   useEffect(() => {
@@ -467,18 +532,78 @@ export function SecuritySettings({
             aria-label={t("settings.title")}
             data-testid="settings-nav"
           >
-            {PANE_TABS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                aria-selected={pane === p.id}
-                data-testid={`settings-nav-${p.id}`}
-                onClick={() => setPane(p.id)}
-              >
-                {t(p.labelKey)}
-              </button>
-            ))}
+            <div className="settings-sidebar-header">
+              <input
+                type="search"
+                className="settings-search-input"
+                data-testid="settings-search-input"
+                placeholder={t("settings.searchPlaceholder", { defaultValue: "搜索设置..." })}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <div className="settings-brand-banner" data-testid="settings-brand-banner">
+                <div className="brand-logo-wrap" aria-hidden="true">
+                  <svg width="34" height="34" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <linearGradient id="ottr_sb_g" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stopColor="#2DD4BF" />
+                        <stop offset="1" stopColor="#0B7C6E" />
+                      </linearGradient>
+                      <clipPath id="ottr_sb_c">
+                        <rect x="16" y="16" width="480" height="480" rx="112" />
+                      </clipPath>
+                    </defs>
+                    <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#ottr_sb_g)" />
+                    <g clipPath="url(#ottr_sb_c)">
+                      <rect x="16" y="296" width="480" height="200" fill="#0B7C6E" />
+                      <rect x="16" y="296" width="480" height="200" fill="#065F55" opacity="0.5" />
+                      <rect x="118" y="200" width="40" height="96" rx="20" fill="#0F172A" />
+                      <rect x="354" y="200" width="40" height="96" rx="20" fill="#0F172A" />
+                      <path d="M 156 286 L 156 208 C 156 132 196 100 256 100 C 316 100 356 132 356 208 L 356 286 Z" fill="#0F172A" />
+                      <circle cx="182" cy="124" r="18" fill="#0F172A" />
+                      <circle cx="330" cy="124" r="18" fill="#0F172A" />
+                      <path d="M 248 108 C 242 92 244 80 258 74 C 252 86 254 96 261 104 Z" fill="#0F172A" />
+                      <rect x="180" y="214" width="152" height="50" rx="25" fill="#F6E7D4" />
+                      <rect x="228" y="204" width="56" height="26" rx="13" fill="#F59E0B" />
+                      <circle cx="210" cy="189" r="15" fill="#0F172A" />
+                      <circle cx="302" cy="184" r="15" fill="#0F172A" />
+                      <circle cx="206" cy="186" r="5" fill="#5EEAD4" />
+                      <circle cx="298" cy="181" r="5" fill="#5EEAD4" />
+                      <rect x="16" y="278" width="480" height="12" fill="#FFFFFF" opacity="0.95" />
+                    </g>
+                  </svg>
+                </div>
+                <div className="brand-info">
+                  <span className="brand-name">Ottr</span>
+                  <span className="brand-version">
+                    <span className="brand-status-dot" aria-hidden="true" />
+                    v1.5.19 · 稳定版
+                  </span>
+                </div>
+              </div>
+            </div>
+            {PANE_TABS.map((p) => {
+              const matchesSearch =
+                !searchQuery.trim() ||
+                t(p.labelKey).toLowerCase().includes(searchQuery.trim().toLowerCase());
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={pane === p.id}
+                  data-testid={`settings-nav-${p.id}`}
+                  className="settings-nav-item"
+                  style={matchesSearch ? undefined : { display: "none" }}
+                  onClick={() => setPane(p.id)}
+                >
+                  <span className={`nav-icon-badge badge-${p.id}`} aria-hidden="true">
+                    {PANE_ICONS[p.id]}
+                  </span>
+                  <span className="nav-label">{t(p.labelKey)}</span>
+                </button>
+              );
+            })}
           </nav>
           <div className="settings-panes">
             {/* --- 安全（T11 主区）--- */}

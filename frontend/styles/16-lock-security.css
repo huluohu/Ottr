@@ -297,12 +297,12 @@
   font-size: var(--text-lg);
 }
 .settings-dialog {
-  width: min(720px, 100%);
+  width: min(800px, 100%);
   display: flex;
   flex-direction: column;
   /* 固定高度（用户反馈：切分区时窗口高度随内容跳变，交互差）——各分区
      共用同一壳高，内容差异由面板内滚动消化，导航与窗框纹丝不动。 */
-  height: min(620px, 86vh);
+  height: min(640px, 88vh);
   overflow: hidden;
 }
 .settings-body {
@@ -311,32 +311,120 @@
   min-height: 0;
 }
 .settings-nav {
-  flex: 0 0 148px;
+  flex: 0 0 210px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-right: var(--space-3);
+  border-right: 1px solid var(--border-subtle);
+  overflow-y: auto;
+}
+.settings-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.settings-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-fg) 4%, transparent);
+  color: var(--color-fg);
+  font-size: var(--text-xs);
+  outline: none;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.settings-search-input:focus {
+  border-color: var(--color-accent);
+  background: var(--surface-raised);
+}
+.settings-brand-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-fg) 3%, transparent);
+  border: 1px solid var(--border-subtle);
+}
+.brand-logo-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex: none;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-fg) 10%, transparent);
+}
+.brand-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-right: var(--space-3);
-  border-right: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+.brand-name {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-fg);
+  line-height: 1.1;
+}
+.brand-version {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.brand-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-success);
 }
 .settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   text-align: left;
   background: none;
   border: none;
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-base);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-2);
+  font-size: var(--text-sm);
   color: var(--fg-muted);
   cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
 }
 .settings-nav button:hover {
   color: var(--color-fg);
   background: var(--surface-raised);
 }
 .settings-nav button[aria-selected="true"] {
-  color: var(--color-accent-text);
-  background: var(--surface-raised);
+  color: #ffffff;
+  background: var(--color-accent);
   font-weight: 600;
 }
+.nav-icon-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: #ffffff;
+}
+.badge-general { background: linear-gradient(135deg, #8e8e93, #636366); }
+.badge-appearance { background: linear-gradient(135deg, #5856d6, #3634a3); }
+.badge-security { background: linear-gradient(135deg, #ff9500, #c97500); }
+.badge-sync { background: linear-gradient(135deg, #0071e3, #0056b3); }
+.badge-alerts { background: linear-gradient(135deg, #ff3b30, #d70015); }
+.badge-mcp { background: linear-gradient(135deg, #30b0c7, #008299); }
+.badge-shortcuts { background: linear-gradient(135deg, #64748b, #475569); }
+.badge-ai { background: linear-gradient(135deg, #af52de, #8930b8); }
+.badge-about { background: linear-gradient(135deg, #0284c7, #0369a1); }
 .settings-panes {
   flex: 1;
   min-width: 0;

@@ -132,6 +132,16 @@ echo "  WIN=$WIN"
 [ -z "$WIN" ] && { bad "找不到应用窗口"; exit 1; }
 
 # 设备上驱动交互（坐标按设备分辨率实测；每步留档）
+# 驱动前清 known_hosts：mock sshd 每次启动换随机主机密钥，库里留着旧锚会弹
+# 「host key changed」框——那个框的按钮位置与「首次连接」框不同，固定坐标会点错
+# （点成 Refuse = 拒绝 = 直接失败）。
+ssh "$DEV" "python3 -c \"
+import sqlite3
+c=sqlite3.connect('/tmp/ottr-verify/data/com.ottr.app/vault.db')
+c.execute('DELETE FROM known_hosts'); c.commit(); c.close()
+print('known_hosts cleared')
+\"" 2>/dev/null
+
 cat > /tmp/ottr-drive.sh <<'DRIVE'
 export DISPLAY=:1
 W=$1
@@ -147,11 +157,12 @@ shot v-prompt
 echo "--- 4b. 等 35s 跨过 30s 窗（应自动换码）---"
 sleep 35
 shot v-after-expiry
-echo "--- 4c. 提交 ---"
-act 1859 1201; sleep 7
+echo "--- 4c. 提交（输入框自动获焦 → 直接回车，比点坐标稳）---"
+xdotool windowactivate --sync $W 2>/dev/null; sleep 0.4
+xdotool key --clearmodifiers Return; sleep 8
 shot v-connected
-echo "--- 5. Ask Ottr（工具行按钮）---"
-act 561 109; sleep 3
+echo "--- 5. Ask Ottr（工具行按钮；坐标按设备分辨率 2560 宽窗口换算）---"
+act 571 314; sleep 3
 shot v-ask
 echo "--- 5b. agent-box（agent 凭据）---"
 actd 464 500; sleep 6

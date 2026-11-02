@@ -152,6 +152,16 @@ pub fn known_hosts_upsert(
     cmd(KnownHosts::upsert(&state.0, &host_key, &fingerprint))
 }
 
+/// 把某端点的信任锚置为「已核验」（state=ok）。
+///
+/// 【信任模型，已记录】本命令是**用户可见功能**（已知主机管理页里，用户看着
+/// 指纹点「信任」），不是内部接口。它**不做**「只有连接流程能写 ok」的闸门——
+/// 本应用的安全边界是 **webview 即信任边界**（同 TOFU 问询的既有口径）：能调用
+/// IPC 的代码已被视为可信。因此「webview 内任意脚本可写一条受信锚」是既有模型
+/// 的固有面，不是本命令独有的洞。
+///
+/// 若将来要收紧，正解是给写操作加**用户在场令牌**（用户在 UI 上确认 → 后端发
+/// 一次性 token → 写操作必须带 token），而不是在这里加启发式校验。
 #[specta::specta]
 #[tauri::command]
 pub fn known_hosts_verify(

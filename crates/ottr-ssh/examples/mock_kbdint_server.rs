@@ -82,7 +82,11 @@ impl Handler for MockAuth {
                     ottr_totp::remaining_seconds(unix_now(), ottr_totp::DEFAULT_PERIOD),
                     if correct { "ACCEPT" } else { "REJECT" }
                 );
-                Ok(if correct { Auth::Accept } else { Auth::reject() })
+                Ok(if correct {
+                    Auth::Accept
+                } else {
+                    Auth::reject()
+                })
             }
         }
     }

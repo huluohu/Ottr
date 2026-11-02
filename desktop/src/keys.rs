@@ -306,8 +306,7 @@ async fn key_deploy_inner(
     // 用户的选择作废，且 host_key_asks 槽位残留（Rust 任务被 drop，闭包里的
     // recv_timeout 一并消失，用户稍后再点确认会命中死端、send 失败被忽略 →
     // 前端收到 Ok 但毫无效果）。
-    const DEPLOY_TIMEOUT_SECS: u64 =
-        crate::commands::state::HOST_KEY_ASK_TIMEOUT.as_secs() + 15;
+    const DEPLOY_TIMEOUT_SECS: u64 = crate::commands::state::HOST_KEY_ASK_TIMEOUT.as_secs() + 15;
     let outcome = tokio::time::timeout(
         std::time::Duration::from_secs(DEPLOY_TIMEOUT_SECS),
         deploy_public_key(&address, port, &username, auth, policy, &public_key),

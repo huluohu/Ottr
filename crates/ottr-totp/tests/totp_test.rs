@@ -5,7 +5,10 @@
 //! 注：RFC 6238 的 8 位种子是 20 字节（160 bit）——本 crate 的最短门槛是
 //! 10 字节（80 bit），官方向量满足。
 
-use ottr_totp::{DEFAULT_DIGITS, DEFAULT_PERIOD, TotpError, TotpSecret, generate, generate_from_base32, remaining_seconds};
+use ottr_totp::{
+    DEFAULT_DIGITS, DEFAULT_PERIOD, TotpError, TotpSecret, generate, generate_from_base32,
+    remaining_seconds,
+};
 
 /// RFC 6238 Appendix B 的 SHA-1 种子（ASCII "12345678901234567890"）的 base32。
 const RFC_SEED_B32: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
@@ -26,10 +29,7 @@ fn rfc6238_appendix_b_vectors_match() {
     let secret = TotpSecret::from_base32(RFC_SEED_B32).expect("官方向量种子应可解码");
     for (time, expected_8) in RFC_VECTORS {
         let got = generate(&secret, *time, 8, DEFAULT_PERIOD).expect("生成应成功");
-        assert_eq!(
-            &got, expected_8,
-            "RFC 6238 向量在 t={time} 不符（8 位）"
-        );
+        assert_eq!(&got, expected_8, "RFC 6238 向量在 t={time} 不符（8 位）");
     }
 }
 
@@ -39,7 +39,10 @@ fn six_digit_mode_matches_eight_digit_prefix() {
     let secret = TotpSecret::from_base32(RFC_SEED_B32).unwrap();
     let code8 = generate(&secret, 59, 8, DEFAULT_PERIOD).unwrap();
     let code6 = generate(&secret, 59, 6, DEFAULT_PERIOD).unwrap();
-    assert_eq!(code6, format!("{:06}", code8.parse::<u32>().unwrap() % 1_000_000));
+    assert_eq!(
+        code6,
+        format!("{:06}", code8.parse::<u32>().unwrap() % 1_000_000)
+    );
     assert_eq!(code6.len(), 6);
 }
 
@@ -114,7 +117,8 @@ fn remaining_seconds_counts_down_within_step() {
 
 #[test]
 fn convenience_entry_matches_two_step_api() {
-    let via_shortcut = generate_from_base32(RFC_SEED_B32, 1_234_567_890, 6, DEFAULT_PERIOD).unwrap();
+    let via_shortcut =
+        generate_from_base32(RFC_SEED_B32, 1_234_567_890, 6, DEFAULT_PERIOD).unwrap();
     let secret = TotpSecret::from_base32(RFC_SEED_B32).unwrap();
     let via_two_step = generate(&secret, 1_234_567_890, 6, DEFAULT_PERIOD).unwrap();
     assert_eq!(via_shortcut, via_two_step);

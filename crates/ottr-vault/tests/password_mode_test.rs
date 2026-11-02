@@ -348,8 +348,8 @@ fn locked_vault_keeps_plain_metadata_usable_but_rejects_keyed_ops() {
                 key_pub: None,
                 passphrase: None,
                 totp_secret: None,
-            totp_digits: None,
-            totp_period: None,
+                totp_digits: None,
+                totp_period: None,
             },
         ),
         Err(VaultError::Locked)

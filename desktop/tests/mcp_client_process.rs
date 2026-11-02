@@ -135,9 +135,9 @@ fn maybe_run_mock_server() -> bool {
         return false;
     }
     let args: Vec<String> = std::env::args().collect();
-    let looks_like_test_run = args.iter().any(|a| {
-        a.starts_with("--test") || a.starts_with("--nocapture") || a == "--list"
-    });
+    let looks_like_test_run = args
+        .iter()
+        .any(|a| a.starts_with("--test") || a.starts_with("--nocapture") || a == "--list");
     if looks_like_test_run {
         return false;
     }

@@ -23,8 +23,8 @@
 //! 这样测试可用 RFC 官方向量做确定性断言，生产侧再由调用方取当前时间。
 
 use data_encoding::BASE32;
-use hmac::{Hmac, Mac};
 use hmac::KeyInit;
+use hmac::{Hmac, Mac};
 use sha1::Sha1;
 
 /// 默认位数（RFC 4226 建议 6 位，主流验证器均用 6）。
@@ -71,7 +71,10 @@ impl std::fmt::Debug for TotpSecret {
     /// **不输出种子内容**——derive(Debug) 会把字节数组原样打印（= 写进日志）。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TotpSecret")
-            .field("bytes", &format_args!("<{} bytes redacted>", self.bytes.len()))
+            .field(
+                "bytes",
+                &format_args!("<{} bytes redacted>", self.bytes.len()),
+            )
             .finish()
     }
 }
@@ -97,14 +100,16 @@ impl TotpSecret {
         }
         if !cleaned
             .chars()
-            .all(|c| c.is_ascii_uppercase() && ('A'..='Z').contains(&c) || ('2'..='7').contains(&c))
+            .all(|c| c.is_ascii_uppercase() || ('2'..='7').contains(&c))
         {
             return Err(TotpError::InvalidBase32);
         }
         // 补 padding：base32 每 5 字节 → 8 字符
         let padded_len = cleaned.len().div_ceil(8) * 8;
         let padded = format!("{}{}", cleaned, "=".repeat(padded_len - cleaned.len()));
-        let bytes = BASE32.decode(padded.as_bytes()).map_err(|_| TotpError::InvalidBase32)?;
+        let bytes = BASE32
+            .decode(padded.as_bytes())
+            .map_err(|_| TotpError::InvalidBase32)?;
         if bytes.len() < 10 {
             return Err(TotpError::SecretTooShort);
         }
@@ -150,8 +155,8 @@ pub fn generate(
         return Err(TotpError::InvalidDigits);
     }
     let counter = unix_time.div_euclid(period as i64) as u64;
-    let mut mac = Hmac::<Sha1>::new_from_slice(secret.as_bytes())
-        .map_err(|_| TotpError::InvalidBase32)?;
+    let mut mac =
+        Hmac::<Sha1>::new_from_slice(secret.as_bytes()).map_err(|_| TotpError::InvalidBase32)?;
     mac.update(&counter.to_be_bytes());
     let digest = mac.finalize().into_bytes();
 

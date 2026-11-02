@@ -24,9 +24,9 @@
 
 use std::path::Path;
 
-use russh::keys::agent::client::{AgentClient, AgentStream};
-use russh::keys::agent::AgentIdentity;
 use russh::keys::HashAlg;
+use russh::keys::agent::AgentIdentity;
+use russh::keys::agent::client::{AgentClient, AgentStream};
 
 /// 类型擦除后的 agent 客户端：unix（UDS）与 windows（命名管道）的流类型不同，
 /// 擦除后上层逻辑一份。

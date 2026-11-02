@@ -29,7 +29,7 @@ pub(crate) use attach::{
 pub(crate) use attach::attach_session;
 pub(crate) use hostkey::{host_key_decision, tofu_host_key_policy};
 pub(crate) use kbdint::{
-    KbdContext, credential_totp_code, keyboard_interactive_responder, kbd_interactive_answer,
+    KbdContext, credential_totp_code, kbd_interactive_answer, keyboard_interactive_responder,
 };
 pub use relay::{SessionCloseReason, forward_pty_loop};
 pub(crate) use relay::{resize_session, session_stats, session_tail, write_session};

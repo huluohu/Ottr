@@ -110,14 +110,7 @@ pub(crate) fn is_code_prompt(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     // ASCII 关键词走**词边界**匹配——子串匹配会把 "postcode" / "barcode" 误判成
     // 验证码型（真机回归测试抓到过），进而把 TOTP 码塞进一个非验证码提问。
-    const ASCII_KEYWORDS: &[&str] = &[
-        "code",
-        "otp",
-        "verification",
-        "verify",
-        "one-time",
-        "token",
-    ];
+    const ASCII_KEYWORDS: &[&str] = &["code", "otp", "verification", "verify", "one-time", "token"];
     let ascii_hit = ASCII_KEYWORDS.iter().any(|kw| {
         lower
             .split(|c: char| !c.is_ascii_alphanumeric() && c != '-')
@@ -139,10 +132,7 @@ pub(crate) fn is_code_prompt(text: &str) -> bool {
 /// 位数/步长取**凭据自身的配置**（0025 起可配；缺省 6 位 / 30 秒）——写死
 /// 6/30 时，Steam（5 位）、8 位服务、60 秒步长的自建服务**自动填码恒错**，
 /// 用户只能手输，而界面仍提示「已自动填」。
-fn totp_code_for(
-    vault: &ottr_vault::Vault,
-    credential_id: i64,
-) -> Option<(String, u64)> {
+fn totp_code_for(vault: &ottr_vault::Vault, credential_id: i64) -> Option<(String, u64)> {
     let credential = Credentials::get(vault, credential_id).ok()??;
     if credential.kind != CredentialKind::Totp {
         return None;
@@ -156,8 +146,7 @@ fn totp_code_for(
         .map(|p| p as u64)
         .unwrap_or(ottr_totp::DEFAULT_PERIOD);
     let now = unix_now();
-    let code =
-        ottr_totp::generate_from_base32(&secret, now, digits, period).ok()?;
+    let code = ottr_totp::generate_from_base32(&secret, now, digits, period).ok()?;
     Some((code, ottr_totp::remaining_seconds(now, period)))
 }
 
@@ -195,7 +184,11 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
             })
             .collect();
 
-        let ask_id = format!("{}:{}", ctx.host_id, ASK_SEQ.fetch_add(1, Ordering::Relaxed));
+        let ask_id = format!(
+            "{}:{}",
+            ctx.host_id,
+            ASK_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
         let (tx, rx) = std::sync::mpsc::channel();
         register_prompt_ask(&ctx.asks, ask_id.clone(), tx);
 

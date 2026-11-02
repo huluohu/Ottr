@@ -493,11 +493,7 @@ impl Credentials {
         if patch.totp_digits.is_some() || patch.totp_period.is_some() {
             tx.execute(
                 "UPDATE credentials SET totp_digits = ?1, totp_period = ?2 WHERE id = ?3",
-                params![
-                    patch.totp_digits.flatten(),
-                    patch.totp_period.flatten(),
-                    id
-                ],
+                params![patch.totp_digits.flatten(), patch.totp_period.flatten(), id],
             )?;
         }
         seal_fields(

@@ -52,7 +52,12 @@ fn import_lands_verified_trust_anchors() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
 
-    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A), entry("10.0.0.2", 2222, FP_B)], 0, 0);
+    let report = KnownHosts::import(
+        &vault,
+        &[entry("10.0.0.1", 22, FP_A), entry("10.0.0.2", 2222, FP_B)],
+        0,
+        0,
+    );
     assert_eq!(report.added, 2);
     assert_eq!(report.skipped_duplicate, 0);
     assert_eq!(report.skipped_conflict, 0);
@@ -155,7 +160,12 @@ fn multi_key_endpoint_is_collapsed_to_one_anchor() {
 
     let report = KnownHosts::import(
         &vault,
-        &[entry_with_candidates("multi.example.com", 22, FP_A, &[FP_A, FP_B])],
+        &[entry_with_candidates(
+            "multi.example.com",
+            22,
+            FP_A,
+            &[FP_A, FP_B],
+        )],
         0,
         0,
     );
@@ -166,7 +176,12 @@ fn multi_key_endpoint_is_collapsed_to_one_anchor() {
     // 再导一次：既有锚就是文件里的候选之一 → 重复（非冲突）。
     let again = KnownHosts::import(
         &vault,
-        &[entry_with_candidates("multi.example.com", 22, FP_A, &[FP_A, FP_B])],
+        &[entry_with_candidates(
+            "multi.example.com",
+            22,
+            FP_A,
+            &[FP_A, FP_B],
+        )],
         0,
         0,
     );
@@ -189,7 +204,12 @@ fn existing_anchor_within_candidates_is_duplicate_not_conflict() {
 
     let report = KnownHosts::import(
         &vault,
-        &[entry_with_candidates("multi.example.com", 22, FP_A, &[FP_A, FP_B])],
+        &[entry_with_candidates(
+            "multi.example.com",
+            22,
+            FP_A,
+            &[FP_A, FP_B],
+        )],
         0,
         0,
     );

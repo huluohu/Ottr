@@ -27,8 +27,8 @@
 //!   * `http://localhost:*/*` / `http://127.0.0.1:*/*` / `http://[::1]:*/*`
 //!     —— 明文 http 只放行**本机**（Ollama / LM Studio 等本地端点预设）；
 //!   * deny：`169.254.169.254`（云厂商元数据）——deny 优先于 allow。
-//! 非本机端点必须用 https（设置页保存时校验并给文案）。
 //!
+//! 非本机端点必须用 https（设置页保存时校验并给文案）。
 //! 本文件用**与插件同版本**的 `urlpattern` crate 把匹配语义钉死，防回归。
 //!
 //! 用法：cargo test --test http_scope_probe
@@ -134,7 +134,10 @@ fn capability_scope_allows_https_and_localhost_http() {
 #[test]
 fn capability_scope_denies_remote_http_and_metadata() {
     for url in MUST_DENY {
-        assert!(!scope_allows(url), "scope 必须拒绝 {url}（明文 http 非本机 / 元数据）");
+        assert!(
+            !scope_allows(url),
+            "scope 必须拒绝 {url}（明文 http 非本机 / 元数据）"
+        );
     }
 }
 
@@ -143,10 +146,22 @@ fn legacy_double_star_scope_rejects_explicit_ports() {
     // 缺陷形态记录：`http://**` / `https://**` 在 URLPattern 语义下等价于
     // 「默认端口」，带显式端口的 URL 一律不放行——这正是真机报错的根因。
     // 本断言把根因钉死：若哪天 urlpattern 改了语义，本测试会提醒复核。
-    assert!(!allowed("http://**", "http://127.0.0.1:8899/v1/chat/completions"));
-    assert!(!allowed("http://**", "http://localhost:11434/v1/chat/completions"));
+    assert!(!allowed(
+        "http://**",
+        "http://127.0.0.1:8899/v1/chat/completions"
+    ));
+    assert!(!allowed(
+        "http://**",
+        "http://localhost:11434/v1/chat/completions"
+    ));
     assert!(!allowed("https://**", "https://api.example.com:8443/v1"));
     // 无端口时旧写法是放行的——这解释了为什么只有部分端点可用。
-    assert!(allowed("http://**", "http://example.com/v1/chat/completions"));
-    assert!(allowed("https://**", "https://api.deepseek.com/chat/completions"));
+    assert!(allowed(
+        "http://**",
+        "http://example.com/v1/chat/completions"
+    ));
+    assert!(allowed(
+        "https://**",
+        "https://api.deepseek.com/chat/completions"
+    ));
 }

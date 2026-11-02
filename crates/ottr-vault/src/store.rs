@@ -207,10 +207,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     ),
     // 0026 凭据类型加 'agent'（系统 ssh-agent 桥接，批次五 P2）：不存任何密钥
     // 材料，认证时向系统 agent 请求签名。CHECK 放开需重建表（0010 同款做法）。
-    (
-        26,
-        include_str!("../migrations/0026_credential_agent.sql"),
-    ),
+    (26, include_str!("../migrations/0026_credential_agent.sql")),
     // 0027 mcp_servers（Ottr 作为 MCP 客户端——外部 server 清单）：命令/参数/
     // 启用位/环境变量**名**明文面；env 的**值**走 secrets 密文面（不进本表，
     // 见迁移文件头）。id 由上层生成（TEXT 主键，非自增——导入导出不撞号）。

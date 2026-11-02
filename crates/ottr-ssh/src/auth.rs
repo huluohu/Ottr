@@ -167,14 +167,11 @@ pub(crate) async fn authenticate(
                     })?
                 }
                 // 内存私钥：russh 的解码入口与文件版同源（decode_secret_key）。
-                KeySource::Pem(pem) => {
-                    russh::keys::decode_secret_key(&pem, passphrase.as_deref()).map_err(|e| {
-                        Error::KeyLoad {
-                            path: "(in-memory)".to_string(),
-                            source: KeyError::from(e),
-                        }
-                    })?
-                }
+                KeySource::Pem(pem) => russh::keys::decode_secret_key(&pem, passphrase.as_deref())
+                    .map_err(|e| Error::KeyLoad {
+                        path: "(in-memory)".to_string(),
+                        source: KeyError::from(e),
+                    })?,
             };
             // 非 RSA 密钥 hash_alg 被忽略；RSA 走 best_supported_rsa_hash（Task 4 再接）。
             let key = PrivateKeyWithHashAlg::new(Arc::new(key), None);

@@ -29,8 +29,7 @@ use crate::vault::{CmdResult, VaultState, ensure_unlocked};
 /// 不能写死旧值 75s：那早于交互式认证的 180s 问询窗口——「测试连接」遇到
 /// TOTP/2FA 凭据时会在用户还能作答的窗口里先判超时（归因错成「连接超时」），
 /// Rust 侧的 180s 超时事件永不触发，前端弹窗留在一个已死的问询上。
-const BUDGET_PER_HOP_SECS: u64 =
-    crate::commands::state::CONNECT_BUDGET_PER_HOP.as_secs();
+const BUDGET_PER_HOP_SECS: u64 = crate::commands::state::CONNECT_BUDGET_PER_HOP.as_secs();
 
 /// 链上逐跳解析结果：specs 按跳序排列；guards 是各跳 key 凭据的临时 PEM
 /// 文件守卫（必须活到连接完成后——认证期间文件要存在；调用方把它们绑在

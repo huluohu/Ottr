@@ -42,8 +42,8 @@ fn password_input(plain: &str) -> CredentialInput {
         key_pub: None,
         passphrase: None,
         totp_secret: None,
-            totp_digits: None,
-            totp_period: None,
+        totp_digits: None,
+        totp_period: None,
     }
 }
 
@@ -1141,8 +1141,8 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
         key_pub: None,
         passphrase: None,
         totp_secret: None,
-            totp_digits: None,
-            totp_period: None,
+        totp_digits: None,
+        totp_period: None,
     };
     let cred = Credentials::create(&vault, &input).unwrap();
     assert_eq!(cred.kind, CredentialKind::Ftp);
@@ -1175,8 +1175,8 @@ fn migration_0010_credential_kind_ftp_rebuild_preserves_secrets_and_sequence() {
         key_pub: None,
         passphrase: None,
         totp_secret: None,
-            totp_digits: None,
-            totp_period: None,
+        totp_digits: None,
+        totp_period: None,
     };
     let changed = Credentials::update(&vault, cred.id, &patch).unwrap();
     assert_eq!(changed.kind, CredentialKind::Ftps);

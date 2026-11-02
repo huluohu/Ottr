@@ -413,9 +413,8 @@ pub(crate) const PROMPT_ASK_TIMEOUT: Duration = Duration::from_secs(180);
 /// 交互式认证」必然撞上 connect 超时，用户看到的是「连接超时」。
 ///
 /// 15s 是网络余量（握手 + 通道打开 + 认证往返）。
-pub(crate) const CONNECT_BUDGET_PER_HOP: Duration = Duration::from_secs(
-    HOST_KEY_ASK_TIMEOUT.as_secs() + PROMPT_ASK_TIMEOUT.as_secs() + 15,
-);
+pub(crate) const CONNECT_BUDGET_PER_HOP: Duration =
+    Duration::from_secs(HOST_KEY_ASK_TIMEOUT.as_secs() + PROMPT_ASK_TIMEOUT.as_secs() + 15);
 
 /// LANG 探测命令/超时（Task 9 detect_hint：连接建立后独立 exec 通道跑一次，
 /// 不进 PTY 数据流、不阻塞 attach 返回；失败/超时 = 不提示，安全侧）。

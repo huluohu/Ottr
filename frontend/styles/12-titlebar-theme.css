@@ -133,20 +133,13 @@
  * 由 App/Sidebar/MainArea 按 mac+Tauri 注入；属性只命中元素本身才起拖，
  * 子元素交互不受影响）。Win/Linux 无此属性，零影响。 */
 .app-shell[data-titlebar="overlay"] {
-  --ottr-titlebar-inset: 52px;
+  --ottr-titlebar-inset: 0px;
 }
 .sidebar-v2 {
   position: relative;
 }
-.app-shell[data-titlebar="overlay"] .sidebar-v2 {
-  padding-top: calc(var(--ottr-titlebar-inset) + 10px);
-}
 .titlebar-inset {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--ottr-titlebar-inset);
+  display: none;
 }
 
 /* --- 统一全宽顶栏（UnifiedHeader，40px 高度跨平台架构）--- */

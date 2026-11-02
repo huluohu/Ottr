@@ -50,7 +50,7 @@ import { initCronEvents } from "./cron/events";
 import { CommandPalette } from "./palette/CommandPalette";
 import { HistorySearch } from "./history/HistorySearch";
 import { stripPromptPrefix } from "./history/format";
-import { TitleBar } from "./titlebar/TitleBar";
+import { UnifiedHeader } from "./titlebar/UnifiedHeader";
 import { OttyMoments } from "./ui/otty/OttyMoments";
 import { syncOttyFromVault } from "./ui/otty/ottyStore";
 import { useTerminalFocus } from "./terminal/terminalFocus";
@@ -666,13 +666,13 @@ function HomeLayout() {
       // Sidebar titlebarInset / MainArea 拖拽区 / 12-titlebar-theme.css。
       data-titlebar={PLATFORM === "mac" && IS_TAURI ? "overlay" : undefined}
     >
-      {/* A12：Win/Linux 自绘标题栏（decorations:false 的窗口壳；mac 不渲染走
-          原生红绿灯 + 系统菜单栏）。动作收口同一 handleAction。 */}
-      {PLATFORM !== "mac" && IS_TAURI && (
-        <TitleBar
+      {/* 跨平台全宽统一顶栏（40px 独立 Header；mac 原生红绿灯留白，Win/Linux 自绘按键） */}
+      {IS_TAURI && (
+        <UnifiedHeader
           plat={PLATFORM}
           onAction={handleAction}
           onSnap={(layout) => invoke("window_snap", { layout }).catch(() => {})}
+          onOpenPalette={() => openModal("palette")}
         />
       )}
       {/* 锁定态背景虚化（2026-10-19 用户三次反馈：隐私/防窥）：data-locked
@@ -680,9 +680,8 @@ function HomeLayout() {
           filter 不会破坏遮罩的 fixed 定位；解锁相位撤销属性，模糊随过渡消退。 */}
       <div className="app-body" data-locked={lockPhase === "locked" ? "true" : undefined}>
         {/* 48px 图标轨（2026-10-16 视觉重设计 M3「獭居·浮岛」）：高频入口恒驻
-            + Otty 球设置入口；mac 红绿灯随轨道移到窗口最左。 */}
+            + Otty 球设置入口；全宽顶栏下无需再让位红绿灯。 */}
         <IconRail
-          titlebarInset={PLATFORM === "mac" && IS_TAURI}
           onOpenCredentials={() => openModal("credentials")}
           onOpenSettings={() => openSettingsToPane(null)}
           onOpenMcpSettings={() => openSettingsToPane("mcp")}
@@ -694,7 +693,6 @@ function HomeLayout() {
           style={{ width: sidebarCollapsed ? SIDEBAR_CAPSULE_WIDTH : sidebarWidth }}
           collapsed={sidebarCollapsed}
           onExpand={toggleSidebarCollapsed}
-          titlebarInset={PLATFORM === "mac" && IS_TAURI}
           newGroupSignal={newGroupSignal}
           selectedId={selectedId}
           onSelect={(host) => setSelectedId(host.id)}

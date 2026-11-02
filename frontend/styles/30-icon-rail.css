@@ -12,11 +12,6 @@
   padding: 10px 0;
   border-right: 1px solid var(--border-subtle);
 }
-/* macOS 融合式标题栏：红绿灯随图标轨移到窗口最左——让位 + 拖拽面同侧栏旧制
- * （--ottr-titlebar-inset 定义在 12-titlebar-theme.css）。 */
-.app-shell[data-titlebar="overlay"] .icon-rail {
-  padding-top: calc(var(--ottr-titlebar-inset) + 10px);
-}
 
 .rail-btn {
   position: relative;

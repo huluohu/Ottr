@@ -560,6 +560,57 @@
   color: var(--fg-muted);
 }
 
+/* MCP 客户端（Ottr 作为 MCP 客户端——外部 server 清单 + 工具面）：
+ * 行内元素多（命令 / 开关 / 变量名 / 四个动作钮）——行可换行，标签不收缩。 */
+.mcp-client-row {
+  flex-wrap: wrap;
+}
+.mcp-client-row > .settings-label {
+  flex: none;
+  white-space: nowrap;
+}
+.mcp-client-cmd {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+.mcp-client-args-row textarea {
+  flex: 1 1 240px;
+  min-height: 72px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.mcp-client-delete-dialog,
+.mcp-client-tools-dialog,
+.mcp-client-call-dialog {
+  max-width: 640px;
+}
+.mcp-client-call-dialog textarea {
+  width: 100%;
+  min-height: 120px;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  resize: vertical;
+}
+/* 工具调用结果：等宽原文块 + 横向自滚（长输出不撑破弹框）。 */
+.mcp-client-result {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  max-height: 320px;
+  overflow: auto;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* 升级向导步骤区（password → progress → done）。 */
 .wizard-step {
   /* box-sizing 口径统一（批次三 T3，ui1 T1 minor「3px 口径不一致」随手清）：

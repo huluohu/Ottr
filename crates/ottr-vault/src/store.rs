@@ -47,7 +47,7 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 26;
+pub const LATEST_SCHEMA_VERSION: u32 = 27;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -211,6 +211,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
         26,
         include_str!("../migrations/0026_credential_agent.sql"),
     ),
+    // 0027 mcp_servers（Ottr 作为 MCP 客户端——外部 server 清单）：命令/参数/
+    // 启用位/环境变量**名**明文面；env 的**值**走 secrets 密文面（不进本表，
+    // 见迁移文件头）。id 由上层生成（TEXT 主键，非自增——导入导出不撞号）。
+    (27, include_str!("../migrations/0027_mcp_servers.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。

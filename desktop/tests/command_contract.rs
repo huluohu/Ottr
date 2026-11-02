@@ -80,7 +80,15 @@ fn invoked_commands() -> BTreeSet<(String, PathBuf)> {
 
     let mut found = BTreeSet::new();
     for file in files {
-        let text = std::fs::read_to_string(&file).expect("read frontend file");
+        let raw = std::fs::read_to_string(&file).expect("read frontend file");
+        // **先剥掉注释**：扫描器是朴素文本扫描，注释里的 `invoke<...>("cmd", …)`
+        // 会被当成真的调用点 → 报「前端 invoke 了未注册的命令名」。这类误报会让
+        // 守卫本身失效（真出问题也会被淹没在误报里）。行注释 `//` 与块注释
+        // `/* */` 都剥，字符串字面量里的内容不动（那才是真调用点）。
+        //
+        // 注意：bytes 必须取自**剥注释后**的文本——否则偏移量与文本错位，
+        // 扫描出来的命令名会少得离谱（口径守卫自己先失效）。
+        let text = strip_comments(&raw);
         let bytes = text.as_bytes();
         let mut i = 0;
         while let Some(pos) = text[i..].find("invoke") {
@@ -135,6 +143,77 @@ fn invoked_commands() -> BTreeSet<(String, PathBuf)> {
         }
     }
     found
+}
+
+/// 剥掉 `//` 行注释与 `/* */` 块注释（保留字符串字面量内容不变）。
+fn strip_comments(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0usize;
+    let mut in_line = false;
+    let mut in_block = false;
+    let mut in_str: Option<u8> = None;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = in_str {
+            out.push(b as char);
+            if b == b'\\' && i + 1 < bytes.len() {
+                // 转义：原样带上下一个字节
+                out.push(bytes[i + 1] as char);
+                i += 2;
+                continue;
+            }
+            if b == q {
+                in_str = None;
+            }
+            i += 1;
+            continue;
+        }
+        if in_line {
+            if b == b'\n' {
+                in_line = false;
+                out.push('\n');
+            }
+            i += 1;
+            continue;
+        }
+        if in_block {
+            if b == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+                in_block = false;
+                i += 2;
+                continue;
+            }
+            // 块注释里的换行要保留（行号信息对报错有用）
+            if b == b'\n' {
+                out.push('\n');
+            }
+            i += 1;
+            continue;
+        }
+        // 字符串起始
+        if b == b'"' || b == b'\'' || b == b'`' {
+            in_str = Some(b);
+            out.push(b as char);
+            i += 1;
+            continue;
+        }
+        // 注释起始
+        if b == b'/' && i + 1 < bytes.len() {
+            if bytes[i + 1] == b'/' {
+                in_line = true;
+                i += 2;
+                continue;
+            }
+            if bytes[i + 1] == b'*' {
+                in_block = true;
+                i += 2;
+                continue;
+            }
+        }
+        out.push(b as char);
+        i += 1;
+    }
+    out
 }
 
 #[test]

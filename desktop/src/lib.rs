@@ -26,6 +26,9 @@ mod vibrancy;
 // MCP 协议核（Phase 4 Task 3，C1）：纯 JSON-RPC/MCP 消息层（无 tauri/IO 依赖），
 // 引擎装配与命令面在 commands/mcp.rs，stdio relay 子进程在 bin/ottr-mcp.rs。
 pub mod mcp;
+// MCP 客户端协议核（Ottr 作为 MCP 客户端）：连**外部** MCP server（stdio 传输），
+// 列工具 / 调工具。与上面的 server 侧协议核严格对偶，常量不复制一份。
+pub mod mcp_client;
 pub mod security;
 pub mod ssh_config;
 pub mod vault;
@@ -343,6 +346,14 @@ pub fn run() {
             commands::mcp::mcp_grants_upsert,
             commands::mcp::mcp_grants_delete,
             commands::mcp::mcp_approval_decision,
+            // MCP 客户端（Ottr 作为 MCP 客户端——连外部 MCP server）：server
+            // 清单 CRUD（过锁定门卫）+ 列工具/调工具（起子进程的一次性会话）
+            commands::mcp_servers::mcp_servers_list,
+            commands::mcp_servers::mcp_server_upsert,
+            commands::mcp_servers::mcp_server_remove,
+            commands::mcp_servers::mcp_server_env_delete,
+            commands::mcp_servers::mcp_server_tools,
+            commands::mcp_servers::mcp_server_call,
             // Task 13（AI BYOK）：secrets 密封 KV（provider api key）
             vault::secret_set,
             vault::secret_get,

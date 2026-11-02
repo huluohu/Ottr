@@ -623,6 +623,46 @@ export interface McpApprovalAsk {
   command: string;
 }
 
+// --- MCP 客户端（Ottr 作为 MCP 客户端；Rust commands/mcp_servers.rs）----------
+
+/** Rust `commands::mcp_servers::McpServerInfo` 同构：外部 MCP server 配置。 */
+export interface McpServerInfo {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  /** 已配置环境变量的**名**列表（值在 vault 密文面，永不出库）。 */
+  envNames: string[];
+}
+
+/** Rust `commands::mcp_servers::McpServerInput` 同构（upsert 全量提交）。
+ *  env 的值为 null = 保留旧值不动（编辑表单只带用户真正改过的项）。 */
+export interface McpServerInput {
+  id?: string | null;
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+  env: Record<string, string | null>;
+}
+
+/** Rust `commands::mcp_servers::McpToolInfo` 同构：外部 server 的工具目录。 */
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  /** inputSchema 的原始 JSON 文本（前端自行 pretty-print 或原样展示）。 */
+  inputSchema: string;
+}
+
+/** Rust `commands::mcp_servers::McpToolResult` 同构：工具调用结果。 */
+export interface McpToolResult {
+  /** 所有 text 内容块按顺序拼接；非 text 块以 `[<type>]` 占位。 */
+  text: string;
+  /** 结果自带的 isError 标记。 */
+  isError: boolean;
+}
+
 export const vaultApi = {
   hosts: {
     list: () => invoke<Host[]>("hosts_list"),
@@ -902,6 +942,23 @@ export const vaultApi = {
     grantsDelete: (id: number) => invoke<void>("mcp_grants_delete", { id }),
     approvalDecision: (requestId: number, allow: boolean) =>
       invoke<boolean>("mcp_approval_decision", { requestId, allow }),
+  },
+  /** MCP 客户端（Ottr 作为 MCP 客户端——连外部 MCP server；Rust
+   *  commands/mcp_servers.rs，协议核 desktop/src/mcp_client.rs）。
+   *  CRUD = 配置面（过锁定门卫，同 hosts）；tools/call = 连接面
+   *  （起子进程的一次性会话：initialize → tools/* → 收进程）。 */
+  mcpClients: {
+    list: () => invoke<McpServerInfo[]>("mcp_servers_list"),
+    upsert: (input: McpServerInput) => invoke<McpServerInfo>("mcp_server_upsert", { input }),
+    remove: (id: string) => invoke<void>("mcp_server_remove", { id }),
+    /** 删一个环境变量（清密文 + 摘名字）——编辑面「删除某个变量」的入口。 */
+    envDelete: (id: string, name: string) =>
+      invoke<void>("mcp_server_env_delete", { id, name }),
+    /** 连上 server 列工具（起进程的一次性会话）。 */
+    tools: (id: string) => invoke<McpToolInfo[]>("mcp_server_tools", { id }),
+    /** 调一个工具（argsJson = 参数 JSON 文本，必须是对象）。 */
+    call: (id: string, tool: string, argsJson: string) =>
+      invoke<McpToolResult>("mcp_server_call", { id, tool, argsJson }),
   },
   /** 凭据密文复制（Rust 侧解密写剪贴板 + 定时清空；明文不回前端）。 */
   copyCredentialSecret: (id: number, field: SecretField) =>

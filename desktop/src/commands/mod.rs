@@ -28,6 +28,10 @@ pub mod monitor;
 // 授权矩阵执行 + 逐次审批门）+ mcp_* 命令面。协议核在 crate::mcp，
 // relay 子进程在 bin/ottr-mcp.rs；形态裁定论证见模块文档。
 pub mod mcp;
+// MCP 客户端命令域（Ottr 作为 MCP 客户端——连外部 MCP server）：server 清单
+// CRUD + 列工具/调工具（一次性会话：起进程 → initialize → tools/* → 收进程）。
+// 协议核在 crate::mcp_client，配置表在 ottr-vault 的 mcp_servers。
+pub mod mcp_servers;
 // 会话录制命令域（Phase 3 Task 5，B3）：RecordingHandle（tee 写盘线程 owner）
 // + recording_start/stop/read/list/search/delete/export + 会话退出自动收尾。
 pub mod recording;

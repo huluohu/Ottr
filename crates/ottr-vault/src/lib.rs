@@ -14,6 +14,7 @@ pub mod history;
 pub mod jump_chains;
 pub mod master_key;
 pub mod mcp_grants;
+pub mod mcp_servers;
 pub mod notifications;
 pub mod notify_channels;
 pub mod recordings;
@@ -55,6 +56,13 @@ pub use cron_jobs::{
 // MCP 授权矩阵（Phase 4 Task 3，C1；协议引擎在 desktop commands/mcp.rs，
 // 本 crate 只供表——cron_jobs 同款分工）
 pub use mcp_grants::{MCP_READ_PATHS_MAX, McpGrant, McpGrantInput, McpGrants};
+// 外部 MCP server 清单（Ottr 作为 MCP 客户端；协议核在 desktop mcp_client.rs，
+// 本 crate 只供表 + env 密文面登记——同款分工）
+pub use mcp_servers::{
+    MCP_ARG_MAX_BYTES, MCP_ARGS_MAX, MCP_COMMAND_MAX, MCP_ENV_NAME_MAX, MCP_ENV_VALUE_MAX,
+    MCP_ENV_VARS_MAX, MCP_ID_MAX, MCP_NAME_MAX, McpServer, McpServerInput, McpServers,
+    env_secret_key,
+};
 pub use secrets::Secrets;
 pub use settings::Settings;
 pub use settings::{SETTING_SHORTCUT_OVERRIDES, SHORTCUT_OVERRIDES_MAX_ENTRIES};

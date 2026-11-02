@@ -198,7 +198,12 @@ export type CredentialInput = {
  *  ftp/ftps）。FTP/FTPS 凭据 = 密码型（secret 通道密封），与 SSH 密码凭据
  *  同存储面，只在 UI/连接分派时区分协议（Phase 2 Task 5）。
  */
-export type CredentialKind = "password" | "key" | "totp" | "ftp" | "ftps";
+export type CredentialKind = "password" | "key" | "totp" | "ftp" | "ftps" | 
+/**
+ *  系统 ssh-agent（批次五 P2）：**不存任何密钥材料**，认证时向系统 agent
+ *  请求签名（私钥留在 agent 进程里，Ottr 永远拿不到）。
+ */
+"agent";
 
 /**  更新凭据的补丁：全部 `None = 保留现值`（UI 语义：未重输的密钥不重密封）。 */
 export type CredentialPatch = {

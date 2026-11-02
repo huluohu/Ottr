@@ -21,6 +21,7 @@ import {
 import { Switch } from "../ui/Switch";
 import { Checkbox } from "../ui/Checkbox";
 import { InfoHint } from "../ui/InfoHint";
+import { McpClientSettings } from "./McpClientSettings";
 
 export interface McpSettingsProps {
   open: boolean;
@@ -350,6 +351,11 @@ export function McpSettings({ open }: McpSettingsProps) {
             {error}
           </p>
         )}
+
+        {/* --- 客户端侧（Ottr 作为 MCP 客户端：连外部 MCP server）---
+            与上面的 server 侧分区同域（MCP 配置面），组件自持清单/工具/调用
+            三块子面板。 */}
+        <McpClientSettings />
 
     </div>
   );

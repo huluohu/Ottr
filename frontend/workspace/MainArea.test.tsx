@@ -38,6 +38,7 @@ vi.mock("../history/RecordToggle", () => ({
 import "../i18n";
 import type { Session } from "../session/SessionStore";
 import { useSessionStore } from "../session/SessionStore";
+import { useAiStore } from "../ai/aiStore";
 import type { Host } from "../vault/api";
 import { useVaultStore } from "../vault/store";
 import { MainArea } from "./MainArea";
@@ -106,6 +107,34 @@ afterEach(() => {
 describe("MainArea：terminal 视图（默认）", () => {
   it("终端可见 + 诊断面板 + 视图切换三按钮（监控/插件侧栏已退役 2026-10-13）", () => {
     seedSessions([fakeSession()]);
+    // 面板只在**有请求**时占位（has-ai-panel 类同理）——无请求时面板不渲染，
+    // 工具行也不必为它让位（长语言下工具行折行而非被切）。
+    useAiStore.setState({
+      sessions: {
+        "sess-1": {
+          request: {
+            kind: "diagnose",
+            sessionId: "sess-1",
+            rustId: "pty-1",
+            hostId: 1,
+            hostName: "h1",
+            exitCode: 1,
+            command: "false",
+          },
+          status: "done",
+          answer: "",
+          errorKind: null,
+          error: null,
+          redactions: [],
+          settingsUsed: null,
+          seen: true,
+          usage: null,
+          modelUsed: null,
+          elapsedMs: null,
+          messages: [],
+        },
+      },
+    });
     render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
     expect(screen.getByTestId("terminal-area")).toBeTruthy();
     expect(screen.getByTestId("term-holder").getAttribute("data-hidden")).toBe("false");
@@ -115,6 +144,18 @@ describe("MainArea：terminal 视图（默认）", () => {
     expect(screen.getByTestId("view-terminal").getAttribute("data-active")).toBe("true");
     expect(screen.getByTestId("view-files")).toBeTruthy();
     expect(screen.getByTestId("view-processes")).toBeTruthy();
+  });
+
+  it("无 AI 请求 → 面板不占位（has-ai-panel 类不加，工具行可折行）", () => {
+    // 2026-11-03 审计整改：面板列只在**真的有请求**时占位。此前类是无条件加的
+    // → 工具行被强制 max-content + 横向滚动 → 长语言（西/意）下右侧按钮被切掉。
+    seedSessions([fakeSession()]);
+    useAiStore.setState({ sessions: {} });
+    render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(screen.queryByTestId("diagnose-panel")).toBeNull();
+    expect(
+      screen.getByTestId("main-area").className.includes("has-ai-panel"),
+    ).toBe(false);
   });
 
   it("零会话：占位面（选中主机 / 错误横幅）", () => {

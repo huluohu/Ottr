@@ -39,6 +39,7 @@ import { TerminalArea, TerminalToolbar } from "../terminal/Terminal";
 import { FilePanel } from "../files/FilePanel";
 import { ProcessBrowser } from "../monitor/ProcessBrowser";
 import { DiagnosePanel } from "../ai/DiagnosePanel";
+import { useAiStore } from "../ai/aiStore";
 import { RecordToggle, useAnyRecording } from "../history/RecordToggle";
 import { OverviewPage } from "../monitor/OverviewPage";
 import { BatchPanel } from "../batch/BatchPanel";
@@ -207,6 +208,15 @@ export function MainArea({
       </WorkspaceViewShell>
     );
 
+  // ⚠️ 这个 hook 必须放在**所有早返回之前**（本函数有「非终端模式」的早返回，
+  // 放在后面会导致渲染路径切换时 Hooks 数量变化 → React 报
+  // 「Rendered more hooks than during the previous render」）。
+  // 也不能写进 `&&` 短路（activeSession 为 null 时跳过调用）。
+  const aiRequest = useAiStore((s) =>
+    activeSession != null ? s.sessions[activeSession.id]?.request : undefined,
+  );
+  const aiHasContent = activeSession != null && aiRequest != null;
+
   // 零会话空态内容（错误横幅 / 已选中占位 / 欢迎页）——总览标签在场时挂在
   // 标签条下方（mainView 被切回 terminal 的零会话形态，如启动落地后用户
   // 显式回终端视图），无标签时独占主区（原分支原样）。
@@ -282,14 +292,19 @@ export function MainArea({
   // 工具行横跨整行宽（含面板列），面板标题与退出码徽章被工具行压住/顶出
   // 视口。现改为：面板与「页签行 + 工具行 + 内容行」**平级**，占主区整高右栏，
   // 工具行只横跨终端列，不再切面板。
-  const aiPanelOut =
-    slotView === null && termViewActive && activeSession != null ? (
-      <DiagnosePanel
-        key={activeSession.id}
-        sessionId={activeSession.id}
-        onOpenSettings={onOpenAiSettings}
-      />
-    ) : null;
+  // 面板**真正有内容**（有 request）才算可见：DiagnosePanel 无 request 时
+  // 内部返回 null（不渲染任何东西），但外层的 `has-ai-panel` 类仍会加上 →
+  // 工具行被强制成 max-content + 横向滚动 → 长语言（西/意）下右侧按钮被切
+  // 掉（能滚到，但看着像坏了）。这个类只应在**面板真的占位**时才加。
+  const aiPanelVisible =
+    slotView === null && termViewActive && activeSession != null && aiHasContent;
+  const aiPanelOut = aiPanelVisible ? (
+    <DiagnosePanel
+      key={activeSession.id}
+      sessionId={activeSession.id}
+      onOpenSettings={onOpenAiSettings}
+    />
+  ) : null;
 
   return (
     <main

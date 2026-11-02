@@ -175,6 +175,12 @@
   flex: none;
   display: flex;
   gap: 6px;
+  /* 长语言（西/意/德等）下按钮标签更长 → 工具行会溢出视口，右侧按钮被裁掉
+     **够不着**（不是「被裁但能滚」——这行本来不滚）。折行即可保全所有按钮。
+     AI 面板同开时（.has-ai-panel）由 .term-toolbar-row 横向滚动承载，
+     那条路径给 .term-toolbar 加了 min-width:max-content → 不会折行（保持一行）。 */
+  flex-wrap: wrap;
+  row-gap: 4px;
   padding: 4px 8px;
   /* 去框化（2026-10-16 M3「主区即水面」）：与内容区靠底色深浅（6% 差）
      分区，不再画 1px 硬线。 */

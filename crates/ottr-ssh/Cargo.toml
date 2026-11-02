@@ -27,4 +27,6 @@ sha2 = { workspace = true }
 [dev-dependencies]
 # Task 6 spike#11：osc133_spike example 消费 ottr-term 的 OSC 133 解析器
 ottr-term = { path = "../ottr-term" }
+# mock keyboard-interactive server 按种子实时算期望码（仅夹具；不进生产依赖树）。
+ottr-totp = { path = "../ottr-totp" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "sync", "io-util"] }

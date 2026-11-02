@@ -3789,6 +3789,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "ottr-term",
+ "ottr-totp",
  "rand 0.10.3",
  "russh",
  "serde",

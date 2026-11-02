@@ -1357,6 +1357,17 @@ export function SecuritySettings({
                     </a>
                   </span>
                   <span className="about-link-line">
+                    <span className="about-link-label">{t("settings.afdianLabel")}</span>
+                    <a
+                      href="https://afdian.com/a/huluohu"
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="about-afdian"
+                    >
+                      afdian.com/a/huluohu
+                    </a>
+                  </span>
+                  <span className="about-link-line">
                     <span className="about-link-label">{t("settings.repoLabel")}</span>
                     <a href="https://github.com/huluohu/Ottr" target="_blank" rel="noreferrer">
                       https://github.com/huluohu/Ottr

@@ -712,6 +712,13 @@ describe("关于分区的博客地址（2026-10-29 用户需求；2026-10-31 单
     // 各行带弱化标签（博客/项目），标签在链接之前同行
     const blogLine = blog.closest(".about-link-line") as Element;
     expect(blogLine.querySelector(".about-link-label")?.textContent).toBe("博客");
+    const afdian = screen.getByTestId("about-afdian");
+    expect(afdian.getAttribute("href")).toBe("https://afdian.com/a/huluohu");
+    expect(afdian.textContent).toContain("afdian.com/a/huluohu");
+    expect(afdian.getAttribute("target")).toBe("_blank");
+    expect(afdian.getAttribute("rel")).toBe("noreferrer");
+    const afdianLine = afdian.closest(".about-link-line") as Element;
+    expect(afdianLine.querySelector(".about-link-label")?.textContent).toBe("爱发电");
     const repo = card.querySelector('a[href="https://github.com/huluohu/Ottr"]') as Element;
     expect(repo).toBeTruthy();
     const repoLabel = repo.closest(".about-link-line")?.querySelector(".about-link-label");

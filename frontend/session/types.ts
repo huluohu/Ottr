@@ -35,13 +35,23 @@ export interface HostKeyAsk extends HostKeyAskPayload {
  * keyboard-interactive 交互式认证（TOTP / PAM 2FA，2026-11-02 批次二）：
  * 服务器一次下发若干条提问，客户端逐条作答。`suggestion` 是 Ottr 自动算好的
  * TOTP 验证码（`undefined` = 该提问需用户手输，如密码）。
+ *
+ * `suggestion_expires_in` 是该码的剩余有效秒数——TOTP 码 30 秒一换，弹窗
+ * 停留久了旧码会被服务端拒（真机 E2E 实测过），前端据此倒计时并自动换码。
  */
 export interface PromptAskPayload {
   /** 问询回执号（原样回传给 `kbd_interactive_answer`）。 */
   ask_id: string;
   host_id: number;
   host_name: string;
-  prompts: { text: string; suggestion?: string }[];
+  /** 本次认证用的凭据 id——码过期时据此重算。 */
+  credential_id: number;
+  prompts: {
+    text: string;
+    suggestion?: string;
+    /** 建议码的剩余有效秒数（缺省 = 未知有效期）。 */
+    suggestion_expires_in?: number;
+  }[];
   /** 链上跳序号（0 起；缺省 = 直连）。 */
   hop?: number;
   /** 发起连接的主机 id（链式时 = 被连主机）。 */

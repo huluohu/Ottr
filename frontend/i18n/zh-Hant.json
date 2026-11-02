@@ -790,7 +790,10 @@
     "submit": "送出",
     "cancel": "取消",
     "hop": "第 {{n}} 跳",
-    "autoFilled": "驗證碼已由 Ottr 自動填入（來自該主機的 TOTP 憑證）。"
+    "autoFilled": "驗證碼已由 Ottr 自動填入（來自該主機的 TOTP 憑證）。",
+    "codeExpiresIn": "驗證碼 {{n}} 秒後過期",
+    "codeExpired": "驗證碼已過期",
+    "codeRefresh": "重新整理驗證碼"
   },
   "security": {
     "mode": "密鑰模式",

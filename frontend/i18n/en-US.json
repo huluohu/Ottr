@@ -791,7 +791,10 @@
     "submit": "Submit",
     "cancel": "Cancel",
     "hop": "Hop {{n}}",
-    "autoFilled": "The verification code was filled in by Ottr (from this host's TOTP credential)."
+    "autoFilled": "The verification code was filled in by Ottr (from this host's TOTP credential).",
+    "codeExpiresIn": "Code expires in {{n}}s",
+    "codeExpired": "Code expired",
+    "codeRefresh": "Refresh code"
   },
   "security": {
     "mode": "Key mode",

@@ -791,7 +791,10 @@
     "submit": "送信",
     "cancel": "キャンセル",
     "hop": "第 {{n}} ホップ",
-    "autoFilled": "認証コードは Ottr が自動的に入力しました（このホストの TOTP 資格情報より）。"
+    "autoFilled": "認証コードは Ottr が自動的に入力しました（このホストの TOTP 資格情報より）。",
+    "codeExpiresIn": "認証コードは {{n}} 秒で期限切れになります",
+    "codeExpired": "認証コードの有効期限が切れました",
+    "codeRefresh": "認証コードを更新"
   },
   "security": {
     "mode": "キーモード",

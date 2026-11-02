@@ -791,7 +791,10 @@
     "submit": "Invia",
     "cancel": "Annulla",
     "hop": "Hop {{n}}",
-    "autoFilled": "Il codice di verifica è stato compilato da Ottr (dalla credenziale TOTP di questo host)."
+    "autoFilled": "Il codice di verifica è stato compilato da Ottr (dalla credenziale TOTP di questo host).",
+    "codeExpiresIn": "Il codice scade tra {{n}} s",
+    "codeExpired": "Il codice è scaduto",
+    "codeRefresh": "Aggiorna codice"
   },
   "security": {
     "mode": "Modalità chiave",

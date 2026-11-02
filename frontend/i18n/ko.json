@@ -791,7 +791,10 @@
     "submit": "제출",
     "cancel": "취소",
     "hop": "{{n}}번째 홉",
-    "autoFilled": "인증 코드는 Ottr가 자동으로 입력했습니다(이 호스트의 TOTP 자격 증명에서)."
+    "autoFilled": "인증 코드는 Ottr가 자동으로 입력했습니다(이 호스트의 TOTP 자격 증명에서).",
+    "codeExpiresIn": "인증 코드가 {{n}}초 후 만료됩니다",
+    "codeExpired": "인증 코드가 만료되었습니다",
+    "codeRefresh": "인증 코드 새로고침"
   },
   "security": {
     "mode": "키 모드",

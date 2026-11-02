@@ -70,3 +70,35 @@
   outline: none;
   border-color: var(--color-accent-border);
 }
+/* 验证码有效期条：倒计时 / 已过期 + 手动换码按钮。
+   过期态用 danger 色提示「这个码提交了也会被拒」。 */
+.prompt-code-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  /* 上间距交给上一段 .settings-hint 自己的下外边距——这里别再往上顶，
+     否则倒计时会贴住提示文字。 */
+  margin: 0 0 var(--space-3, 12px);
+  font-size: var(--text-sm);
+}
+.prompt-code-countdown {
+  color: var(--fg-muted);
+}
+.prompt-code-expired {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.prompt-code-refresh {
+  flex: none;
+  padding: 2px 8px;
+  font-size: var(--text-sm);
+  color: var(--color-accent-text);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.prompt-code-refresh:hover {
+  border-color: var(--color-accent-border);
+}

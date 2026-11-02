@@ -61,6 +61,12 @@ pub(crate) struct PromptItem {
     /// Ottr 自动算出的答案建议（TOTP 验证码；`None` = 需用户手输）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) suggestion: Option<String>,
+    /// 建议码的**剩余有效秒数**（TOTP 30s 窗）——前端据此倒计时并到期刷新。
+    ///
+    /// 没有这个字段的话，弹窗停留超过一个时间窗后提交的仍是旧码（真机 E2E
+    /// 实测：提交的是上一窗的码，服务端直接拒）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) suggestion_expires_in: Option<u64>,
 }
 
 /// `ottr://kbd-interactive-ask` 事件载荷。
@@ -70,6 +76,8 @@ pub(crate) struct PromptAskPayload {
     pub(crate) ask_id: String,
     pub(crate) host_id: i64,
     pub(crate) host_name: String,
+    /// 本次认证用的凭据 id——前端据此在码过期时**重算**一个新码。
+    pub(crate) credential_id: i64,
     /// 本轮全部提问（条数 = 需作答条数）。
     pub(crate) prompts: Vec<PromptItem>,
     /// 链上跳序号（0 起；None = 直连）。
@@ -110,13 +118,13 @@ pub(crate) fn is_code_prompt(text: &str) -> bool {
     CJK_KEYWORDS.iter().any(|k| lower.contains(k))
 }
 
-/// 取该凭据的当前 TOTP 码（非 TOTP 凭据 / 解密失败 / 种子非法 → `None`）。
+/// 取该凭据的当前 TOTP 码 + 剩余有效秒数（非 TOTP 凭据 / 解密失败 / 种子非法 → `None`）。
 ///
 /// **纯本地计算**：种子只在 Rust 侧解密，明文码不进日志、不落盘。
 fn totp_code_for(
     vault: &ottr_vault::Vault,
     credential_id: i64,
-) -> Option<String> {
+) -> Option<(String, u64)> {
     let credential = Credentials::get(vault, credential_id).ok()??;
     if credential.kind != CredentialKind::Totp {
         return None;
@@ -124,17 +132,23 @@ fn totp_code_for(
     let secret = Credentials::reveal(vault, credential_id, SecretField::TotpSecret)
         .ok()
         .flatten()?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs() as i64;
-    ottr_totp::generate_from_base32(
+    let now = unix_now();
+    let code = ottr_totp::generate_from_base32(
         &secret,
         now,
         ottr_totp::DEFAULT_DIGITS,
         ottr_totp::DEFAULT_PERIOD,
     )
-    .ok()
+    .ok()?;
+    Some((code, ottr_totp::remaining_seconds(now, ottr_totp::DEFAULT_PERIOD)))
+}
+
+/// 当前 Unix 秒。
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// 构造 keyboard-interactive 提问闭包（`PromptResponder`）。
@@ -145,13 +159,21 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
     Arc::new(move |prompts: &[String]| -> Vec<String> {
         let items: Vec<PromptItem> = prompts
             .iter()
-            .map(|text| PromptItem {
-                text: text.clone(),
-                suggestion: if is_code_prompt(text) {
-                    totp_code_for(&ctx.vault, ctx.credential_id)
+            .map(|text| {
+                // 验证码型提问 → 现算一个码 + 剩余有效秒数（前端据此到期刷新）。
+                let (suggestion, suggestion_expires_in) = if is_code_prompt(text) {
+                    match totp_code_for(&ctx.vault, ctx.credential_id) {
+                        Some((code, expires_in)) => (Some(code), Some(expires_in)),
+                        None => (None, None),
+                    }
                 } else {
-                    None
-                },
+                    (None, None)
+                };
+                PromptItem {
+                    text: text.clone(),
+                    suggestion,
+                    suggestion_expires_in,
+                }
             })
             .collect();
 
@@ -165,6 +187,7 @@ pub(crate) fn keyboard_interactive_responder(ctx: KbdContext) -> PromptResponder
                 ask_id: ask_id.clone(),
                 host_id: ctx.host_id,
                 host_name: ctx.host_name.clone(),
+                credential_id: ctx.credential_id,
                 prompts: items,
                 hop: ctx.hop,
                 origin_host_id: ctx.origin_host_id,
@@ -226,15 +249,11 @@ pub(crate) fn credential_totp_code(
     vault: State<'_, VaultState>,
     credential_id: i64,
 ) -> Result<TotpCodePayload, String> {
-    let code = totp_code_for(&vault.0, credential_id)
+    let (code, remaining_seconds) = totp_code_for(&vault.0, credential_id)
         .ok_or_else(|| format!("credential id={credential_id} has no usable TOTP secret"))?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
     Ok(TotpCodePayload {
         code,
-        remaining_seconds: ottr_totp::remaining_seconds(now, ottr_totp::DEFAULT_PERIOD),
+        remaining_seconds,
     })
 }
 

@@ -791,7 +791,10 @@
     "submit": "Enviar",
     "cancel": "Cancelar",
     "hop": "Salto {{n}}",
-    "autoFilled": "Ottr rellenó el código de verificación (desde la credencial TOTP de este host)."
+    "autoFilled": "Ottr rellenó el código de verificación (desde la credencial TOTP de este host).",
+    "codeExpiresIn": "El código caduca en {{n}} s",
+    "codeExpired": "El código ha caducado",
+    "codeRefresh": "Renovar código"
   },
   "security": {
     "mode": "Modo de clave",

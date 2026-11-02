@@ -767,6 +767,7 @@
     "importUseDefault": "既定のパスを使う",
     "importChoose": "known_hosts ファイルを選択…",
     "importDone": "インポート完了：アンカー {{added}} 件を追加、重複 {{duplicate}} 件と競合 {{conflict}} 件をスキップしました。",
+    "importSkipped": "ホスト名がハッシュ化されて復元できない hashed エントリ {{hashed}} 件と、コメント/マーカー/不正形式のエントリ {{other}} 件をスキップしました。",
     "importNotFound": "known_hosts ファイルが見つかりません。",
     "importConflictNotice": "競合するエンドポイントは上書きされませんでした。異なるフィンガープリントのエンドポイントは依然として確認を求めるため、手動で確認してください。",
     "importSkippedHashed": "ハッシュ化エントリ（|1|…）は逆算できないためスキップしました。"

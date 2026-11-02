@@ -193,6 +193,10 @@ export interface KnownHost {
 /** Rust `entities::KnownHostsImportReport` 同构（serde camelCase）。
  * 导入本地 known_hosts 的回执：新增锚 / 跳过重复 / 跳过冲突 / 错误列表。 */
 export interface KnownHostsImportReport {
+  /** 跳过的 hashed 条目数（|1|… 不可反解 host）。 */
+  skippedHashed: number;
+  /** 跳过的其他条目数（marker / 注释 / 畸形行合计）。 */
+  skippedOther: number;
   /** 新落地的信任锚条数（导入走 verify 语义：state=ok / verified=1）。 */
   added: number;
   /** 已存在且指纹相同（未覆盖既有锚）。 */

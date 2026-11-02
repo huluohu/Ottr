@@ -1232,6 +1232,14 @@ pub struct KnownHostsImportReport {
     pub skipped_conflict: usize,
     /// 逐条错误文案（单条失败不阻断整批导入）。
     pub errors: Vec<String>,
+    /// 跳过的 hashed 条目数（`|1|salt|hash`——host 被哈希，**不可反解**）。
+    ///
+    /// 真机实测（192.168.9.102 的真实 `~/.ssh/known_hosts`）37 条全是 hashed：
+    /// 报告若只说「新增 0 条」而不交代去向，用户分不清「文件空的」「全是
+    /// hashed」「路径指错」——数字必须诚实。
+    pub skipped_hashed: usize,
+    /// 跳过的其他条目数（marker 行 / 注释行 / 畸形行合计）。
+    pub skipped_other: usize,
 }
 
 /// 导入条目（2026-11-02）：**择一后**的端点 + 该端点的全部候选指纹。
@@ -1335,8 +1343,17 @@ impl KnownHosts {
     /// 择一结果与该端点的**全部**候选指纹。
     ///
     /// 端点键用 [`host_endpoint_key`] 构造（与运行时 TOFU 记账同口径）。
-    pub fn import(vault: &Vault, entries: &[KnownHostImportEntry]) -> KnownHostsImportReport {
-        let mut report = KnownHostsImportReport::default();
+    pub fn import(
+        vault: &Vault,
+        entries: &[KnownHostImportEntry],
+        skipped_hashed: usize,
+        skipped_other: usize,
+    ) -> KnownHostsImportReport {
+        let mut report = KnownHostsImportReport {
+            skipped_hashed,
+            skipped_other,
+            ..KnownHostsImportReport::default()
+        };
         for entry in entries {
             let host_key = host_endpoint_key(&entry.host, i64::from(entry.port));
             match Self::get(vault, &host_key) {

@@ -766,6 +766,7 @@
     "importUseDefault": "使用默认路径",
     "importChoose": "选择 known_hosts 文件…",
     "importDone": "导入完成：新增 {{added}} 条信任锚，跳过重复 {{duplicate}} 条，跳过冲突 {{conflict}} 条。",
+    "importSkipped": "已跳过 {{hashed}} 条 hashed 条目（主机名被哈希，无法反解）与 {{other}} 条注释/标记/格式异常条目。",
     "importNotFound": "未找到 known_hosts 文件。",
     "importConflictNotice": "冲突端点未被覆盖：已有不同指纹的端点仍会弹确认，请手动核对后处理。",
     "importSkippedHashed": "加密条目（|1|…）无法反解，已跳过。"

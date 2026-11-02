@@ -118,7 +118,7 @@ fn parse_known_hosts_file_skips_comments_blanks_hashed_and_markers() {
     );
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
-        parsed,
+        parsed.entries,
         vec![KnownHostEntry {
             host: "real.example.com".to_string(),
             port: 22,
@@ -139,7 +139,7 @@ fn parse_known_hosts_file_extracts_port_and_defaults_to_22() {
     );
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
-        parsed,
+        parsed.entries,
         vec![
             KnownHostEntry {
                 host: "10.0.0.1".to_string(),
@@ -170,7 +170,7 @@ fn parse_known_hosts_file_handles_ipv6_bracket_form() {
     let content = format!("[fe80::1]:2222 ssh-ed25519 {ED_A_B64}\n");
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
-        parsed,
+        parsed.entries,
         vec![KnownHostEntry {
             host: "fe80::1".to_string(),
             port: 2222,
@@ -191,7 +191,7 @@ fn parse_known_hosts_file_returns_every_key_of_a_host() {
     );
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
-        parsed,
+        parsed.entries,
         vec![
             KnownHostEntry {
                 host: "multi.example.com".to_string(),
@@ -222,7 +222,7 @@ fn parse_known_hosts_file_splits_comma_separated_patterns() {
     let content = format!("a.example.com,b.example.com ssh-ed25519 {ED_A_B64}\n");
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
-        parsed,
+        parsed.entries,
         vec![
             KnownHostEntry {
                 host: "a.example.com".to_string(),
@@ -252,7 +252,7 @@ fn parse_known_hosts_file_skips_malformed_lines() {
     );
     let parsed = parse_known_hosts_file(&content);
     assert_eq!(
-        parsed,
+        parsed.entries,
         vec![KnownHostEntry {
             host: "good.example.com".to_string(),
             port: 22,
@@ -275,7 +275,7 @@ fn select_by_endpoint_prefers_ed25519_over_rsa_regardless_of_file_order() {
          multi.example.com ssh-ed25519 {ED_A_B64}\n"
     );
     let parsed = parse_known_hosts_file(&content);
-    let selected = select_by_endpoint(&parsed);
+    let selected = select_by_endpoint(&parsed.entries);
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].host, "multi.example.com");
     assert_eq!(selected[0].port, 22);
@@ -295,7 +295,7 @@ fn select_by_endpoint_prefers_ecdsa_over_rsa() {
          multi.example.com ecdsa-sha2-nistp256 {ED_A_B64}\n"
     );
     let parsed = parse_known_hosts_file(&content);
-    let selected = select_by_endpoint(&parsed);
+    let selected = select_by_endpoint(&parsed.entries);
     assert_eq!(selected[0].fingerprint, ED_A_FP);
 }
 
@@ -317,7 +317,7 @@ fn select_by_endpoint_keeps_first_of_same_key_type() {
          multi.example.com ssh-ed25519 {ED_C_B64}\n"
     );
     let parsed = parse_known_hosts_file(&content);
-    let selected = select_by_endpoint(&parsed);
+    let selected = select_by_endpoint(&parsed.entries);
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].fingerprint, ED_A_FP);
     assert_eq!(selected[0].candidates.len(), 2);
@@ -332,6 +332,45 @@ fn select_by_endpoint_groups_per_endpoint() {
          [a.example.com]:2222 ssh-rsa {RSA_B_B64}\n"
     );
     let parsed = parse_known_hosts_file(&content);
-    let selected = select_by_endpoint(&parsed);
+    let selected = select_by_endpoint(&parsed.entries);
     assert_eq!(selected.len(), 3);
+}
+
+// ---------------------------------------------------------------------------
+// 跳过计数（真机 2026-11-02 实测驱动）：设备真实 known_hosts 37 条全是 hashed，
+// 报告若只说「新增 0 条」而不交代去向，用户分不清「文件空的 / 全是 hashed /
+// 路径指错」——跳过计数是报告诚实性的地基。
+// ---------------------------------------------------------------------------
+
+/// hashed 条目（`|1|salt|hash`）不可反解 host → 单独计数，不混入其他跳过。
+#[test]
+fn parse_counts_hashed_entries_separately() {
+    let content = format!(
+        "|1|c2FsdHNhbHQ=|aGFzaA==|ssh-ed25519 {ED_A_B64}\n\
+         |1|b3RoZXJzYWx0|hash2|ssh-ed25519 {ED_C_B64}\n\
+         plain.example.com ssh-ed25519 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(parsed.entries.len(), 1, "只有明文条目可解析");
+    assert_eq!(parsed.skipped_hashed, 2, "两条 hashed 单独计数");
+    assert_eq!(parsed.skipped_other, 0);
+}
+
+/// marker 行 / 注释行 / 空行 / 畸形行 → 计入其他跳过。
+#[test]
+fn parse_counts_other_skips() {
+    let content = format!(
+        "# comment\n\
+         \n\
+         @cert-authority *.example.com ssh-ed25519 {ED_A_B64}\n\
+         @revoked old.example.com ssh-ed25519 {ED_A_B64}\n\
+         only-two-columns ssh-ed25519\n\
+         bad.b64.example.com ssh-ed25519 !!!not-b64!!!\n\
+         good.example.com ssh-ed25519 {ED_A_B64}\n"
+    );
+    let parsed = parse_known_hosts_file(&content);
+    assert_eq!(parsed.entries.len(), 1);
+    assert_eq!(parsed.skipped_hashed, 0);
+    // 注释 + 空行 + 2 条 marker + 2 条畸形 = 6
+    assert_eq!(parsed.skipped_other, 6, "其他跳过项合计计数");
 }

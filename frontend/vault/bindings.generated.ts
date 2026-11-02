@@ -346,6 +346,16 @@ export type KnownHostsImportReport = {
 	skippedConflict: number,
 	/**  逐条错误文案（单条失败不阻断整批导入）。 */
 	errors: string[],
+	/**
+	 *  跳过的 hashed 条目数（`|1|salt|hash`——host 被哈希，**不可反解**）。
+	 * 
+	 *  真机实测（192.168.9.102 的真实 `~/.ssh/known_hosts`）37 条全是 hashed：
+	 *  报告若只说「新增 0 条」而不交代去向，用户分不清「文件空的」「全是
+	 *  hashed」「路径指错」——数字必须诚实。
+	 */
+	skippedHashed: number,
+	/**  跳过的其他条目数（marker 行 / 注释行 / 畸形行合计）。 */
+	skippedOther: number,
 };
 
 /**

@@ -205,6 +205,17 @@ export function KnownHostsManager() {
               })}
             </p>
           )}
+          {/* 跳过条目的去向必须交代（真机 2026-11-02 实测：设备真实
+              known_hosts 37 条全是 hashed，报告只说「新增 0 条」会让用户
+              分不清「文件空的 / 全是 hashed / 路径指错」）。 */}
+          {(importReport.skippedHashed > 0 || importReport.skippedOther > 0) && (
+            <p className="settings-hint" data-testid="kh-import-skipped">
+              {t("knownHosts.importSkipped", {
+                hashed: importReport.skippedHashed,
+                other: importReport.skippedOther,
+              })}
+            </p>
+          )}
           {importReport.skippedConflict > 0 && (
             <p className="form-error" data-testid="kh-import-conflict">
               {t("knownHosts.importConflictNotice")}

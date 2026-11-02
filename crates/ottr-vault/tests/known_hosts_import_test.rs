@@ -52,10 +52,7 @@ fn import_lands_verified_trust_anchors() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
 
-    let report = KnownHosts::import(
-        &vault,
-        &[entry("10.0.0.1", 22, FP_A), entry("10.0.0.2", 2222, FP_B)],
-    );
+    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A), entry("10.0.0.2", 2222, FP_B)], 0, 0);
     assert_eq!(report.added, 2);
     assert_eq!(report.skipped_duplicate, 0);
     assert_eq!(report.skipped_conflict, 0);
@@ -84,10 +81,10 @@ fn repeated_import_counts_duplicate_and_keeps_anchor() {
     let vault = open_vault(dir.path());
     let entries = vec![entry("10.0.0.1", 22, FP_A)];
 
-    let first = KnownHosts::import(&vault, &entries);
+    let first = KnownHosts::import(&vault, &entries, 0, 0);
     assert_eq!(first.added, 1);
 
-    let second = KnownHosts::import(&vault, &entries);
+    let second = KnownHosts::import(&vault, &entries, 0, 0);
     assert_eq!(second.added, 0);
     assert_eq!(second.skipped_duplicate, 1);
     assert_eq!(second.skipped_conflict, 0);
@@ -106,11 +103,11 @@ fn conflicting_fingerprint_is_skipped_and_never_overwrites_the_anchor() {
     let key = host_endpoint_key("10.0.0.1", 22);
 
     // 既有锚 = FP_A（ok 态）。
-    KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)]);
+    KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)], 0, 0);
     let before = KnownHosts::get(&vault, &key).unwrap().unwrap();
 
     // 文件里同一端点是另一枚指纹 → 冲突：计入冲突、**不覆盖**。
-    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_OTHER)]);
+    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_OTHER)], 0, 0);
     assert_eq!(report.added, 0);
     assert_eq!(report.skipped_conflict, 1);
     assert_eq!(report.skipped_duplicate, 0);
@@ -131,13 +128,13 @@ fn import_does_not_clear_a_changed_state() {
     let key = host_endpoint_key("10.0.0.1", 22);
 
     // 服务器换钥 → changed（锚保留旧指纹）。
-    KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)]);
+    KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)], 0, 0);
     let changed = KnownHosts::mark_changed(&vault, &key, FP_OTHER).unwrap();
     assert_eq!(changed.state, KnownHostState::Changed);
 
     // 导入旧锚（文件里还是旧钥）——不得把 changed 洗回 ok（安全信号不许被
     // 导入顺手抹掉），也不得改锚。
-    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)]);
+    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)], 0, 0);
     assert_eq!(report.added, 0);
     assert_eq!(report.skipped_duplicate, 1);
     let after = KnownHosts::get(&vault, &key).unwrap().unwrap();
@@ -158,12 +155,9 @@ fn multi_key_endpoint_is_collapsed_to_one_anchor() {
 
     let report = KnownHosts::import(
         &vault,
-        &[entry_with_candidates(
-            "multi.example.com",
-            22,
-            FP_A,
-            &[FP_A, FP_B],
-        )],
+        &[entry_with_candidates("multi.example.com", 22, FP_A, &[FP_A, FP_B])],
+        0,
+        0,
     );
     assert_eq!(report.added, 1, "同端点多枚密钥只落一条锚");
     assert_eq!(report.skipped_conflict, 0, "同端点候选之间不算冲突");
@@ -172,12 +166,9 @@ fn multi_key_endpoint_is_collapsed_to_one_anchor() {
     // 再导一次：既有锚就是文件里的候选之一 → 重复（非冲突）。
     let again = KnownHosts::import(
         &vault,
-        &[entry_with_candidates(
-            "multi.example.com",
-            22,
-            FP_A,
-            &[FP_A, FP_B],
-        )],
+        &[entry_with_candidates("multi.example.com", 22, FP_A, &[FP_A, FP_B])],
+        0,
+        0,
     );
     assert_eq!(again.added, 0);
     assert_eq!(again.skipped_duplicate, 1);
@@ -194,16 +185,13 @@ fn existing_anchor_within_candidates_is_duplicate_not_conflict() {
     let key = host_endpoint_key("multi.example.com", 22);
 
     // 既有锚 = FP_B（用户先前锚的另一型密钥）。
-    KnownHosts::import(&vault, &[entry("multi.example.com", 22, FP_B)]);
+    KnownHosts::import(&vault, &[entry("multi.example.com", 22, FP_B)], 0, 0);
 
     let report = KnownHosts::import(
         &vault,
-        &[entry_with_candidates(
-            "multi.example.com",
-            22,
-            FP_A,
-            &[FP_A, FP_B],
-        )],
+        &[entry_with_candidates("multi.example.com", 22, FP_A, &[FP_A, FP_B])],
+        0,
+        0,
     );
     assert_eq!(report.added, 0);
     assert_eq!(report.skipped_duplicate, 1);
@@ -218,10 +206,24 @@ fn import_of_empty_input_is_a_noop() {
     let dir = tempfile::tempdir().unwrap();
     let vault = open_vault(dir.path());
 
-    let report = KnownHosts::import(&vault, &[]);
+    let report = KnownHosts::import(&vault, &[], 0, 0);
     assert_eq!(report.added, 0);
     assert_eq!(report.skipped_duplicate, 0);
     assert_eq!(report.skipped_conflict, 0);
     assert!(report.errors.is_empty());
     assert!(KnownHosts::list(&vault).unwrap().is_empty());
+}
+
+/// 跳过计数透传（真机 2026-11-02 实测驱动）：设备真实 known_hosts 37 条全是
+/// hashed，报告必须交代「跳过了 37 条 hashed」——否则用户看到「新增 0 条」
+/// 无法区分「文件空的 / 全是 hashed / 路径指错」。
+#[test]
+fn import_report_carries_skipped_counts_through() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = open_vault(dir.path());
+
+    let report = KnownHosts::import(&vault, &[entry("10.0.0.1", 22, FP_A)], 37, 12);
+    assert_eq!(report.added, 1);
+    assert_eq!(report.skipped_hashed, 37, "hashed 跳过数原样透传到报告");
+    assert_eq!(report.skipped_other, 12, "其他跳过数原样透传到报告");
 }

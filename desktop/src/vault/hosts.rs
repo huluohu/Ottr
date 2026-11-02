@@ -214,14 +214,16 @@ pub async fn known_hosts_import(
                 added: 0,
                 skipped_duplicate: 0,
                 skipped_conflict: 0,
+                skipped_hashed: 0,
+                skipped_other: 0,
                 errors: vec![format!("{KNOWN_HOSTS_FILE_NOT_FOUND}: {}", path.display())],
             });
         }
         Err(e) => return Err(format!("read {}: {e}", path.display())),
     };
-    let entries = ottr_ssh::known_hosts::parse_known_hosts_file(&content);
+    let parsed = ottr_ssh::known_hosts::parse_known_hosts_file(&content);
     // 择一（同端点多密钥型 → 优先 ed25519，OpenSSH 语义在 ottr-ssh 层）。
-    let selected = ottr_ssh::known_hosts::select_by_endpoint(&entries);
+    let selected = ottr_ssh::known_hosts::select_by_endpoint(&parsed.entries);
     let import_entries: Vec<ottr_vault::KnownHostImportEntry> = selected
         .into_iter()
         .map(|s| ottr_vault::KnownHostImportEntry {
@@ -231,5 +233,10 @@ pub async fn known_hosts_import(
             candidates: s.candidates,
         })
         .collect();
-    Ok(ottr_vault::KnownHosts::import(&state.0, &import_entries))
+    Ok(ottr_vault::KnownHosts::import(
+        &state.0,
+        &import_entries,
+        parsed.skipped_hashed,
+        parsed.skipped_other,
+    ))
 }

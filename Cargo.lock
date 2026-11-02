@@ -3713,6 +3713,7 @@ dependencies = [
  "ottr-vault",
  "portable-pty",
  "rand 0.10.3",
+ "regex",
  "reqwest 0.12.28",
  "russh",
  "serde",
@@ -3733,6 +3734,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-util",
+ "urlpattern 0.6.0",
  "window-vibrancy",
  "zeroize",
 ]

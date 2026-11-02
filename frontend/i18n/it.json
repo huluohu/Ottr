@@ -767,6 +767,7 @@
     "importUseDefault": "Usa il percorso predefinito",
     "importChoose": "Seleziona un file known_hosts…",
     "importDone": "Importazione completata: {{added}} ancoraggi aggiunti, {{duplicate}} duplicati e {{conflict}} in conflitto ignorati.",
+    "importSkipped": "Saltate {{hashed}} voci con hash (i nomi host sono hashati e non reversibili) e {{other}} voci commento/marker/malformate.",
     "importNotFound": "File known_hosts non trovato.",
     "importConflictNotice": "Gli endpoint in conflitto non sono stati sovrascritti: quelli con un'impronta diversa richiedono ancora conferma; controllali manualmente.",
     "importSkippedHashed": "Le voci con hash (|1|…) non sono reversibili e sono state ignorate."

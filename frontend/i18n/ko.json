@@ -767,6 +767,7 @@
     "importUseDefault": "기본 경로 사용",
     "importChoose": "known_hosts 파일 선택…",
     "importDone": "가져오기 완료: 앵커 {{added}}개 추가, 중복 {{duplicate}}개와 충돌 {{conflict}}개를 건너뛰었습니다.",
+    "importSkipped": "호스트 이름이 해시되어 되돌릴 수 없는 hashed 항목 {{hashed}}건과 주석/마커/형식 오류 항목 {{other}}건을 건너뛰었습니다.",
     "importNotFound": "known_hosts 파일을 찾을 수 없습니다.",
     "importConflictNotice": "충돌하는 엔드포인트는 덮어쓰지 않았습니다. 다른 지문을 가진 엔드포인트는 계속 확인을 요청하므로 직접 확인해 처리하세요.",
     "importSkippedHashed": "해시 항목(|1|…)은 되돌릴 수 없어 건너뛰었습니다."

@@ -767,6 +767,7 @@
     "importUseDefault": "Use default path",
     "importChoose": "Select a known_hosts file…",
     "importDone": "Import finished: {{added}} anchors added, {{duplicate}} duplicates skipped, {{conflict}} conflicts skipped.",
+    "importSkipped": "Skipped {{hashed}} hashed entries (host names are hashed and cannot be reversed) and {{other}} comment/marker/malformed entries.",
     "importNotFound": "known_hosts file not found.",
     "importConflictNotice": "Conflicting endpoints were not overwritten: endpoints with a different fingerprint still prompt for confirmation — check them manually.",
     "importSkippedHashed": "Hashed entries (|1|…) cannot be reversed and were skipped."

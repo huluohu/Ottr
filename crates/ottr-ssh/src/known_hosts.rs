@@ -113,6 +113,22 @@ pub fn key_type_rank(key_type: &str) -> Option<usize> {
     KEY_TYPE_PRIORITY.iter().position(|k| *k == key_type)
 }
 
+/// 解析结果（导入面）：条目 + **各类跳过计数**。
+///
+/// 计数不是装饰——真机实测（192.168.9.102 的真实 `~/.ssh/known_hosts`）里
+/// **37 条全是 hashed 条目**（`|1|…`，不可反解 host），导入报告若只说
+/// 「新增 0 条」而不说「跳过了 37 条 hashed」，用户无法区分「文件是空的」
+/// 「文件全是 hashed」还是「路径指错了」——报告必须诚实交代去向。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct KnownHostsParseResult {
+    /// 成功解析出的条目（含密钥型）。
+    pub entries: Vec<KnownHostEntry>,
+    /// 跳过的 hashed 条目数（`|1|salt|hash`，host 被哈希不可反解）。
+    pub skipped_hashed: usize,
+    /// 跳过的注释 / 空行 / marker 行 / 畸形行合计（除 hashed 外的全部跳过）。
+    pub skipped_other: usize,
+}
+
 /// 解析整份 known_hosts → 条目列表（含密钥型；导入本地 known_hosts 的解析面，
 /// 2026-11-02）。
 ///
@@ -132,36 +148,51 @@ pub fn key_type_rank(key_type: &str) -> Option<usize> {
 ///
 /// **一个 host 可能有多枚密钥**（rsa/ecdsa/ed25519 并存）——本函数**全部返回**，
 /// 由 [`select_by_endpoint`] 择一。
-pub fn parse_known_hosts_file(content: &str) -> Vec<KnownHostEntry> {
-    let mut out = Vec::new();
+pub fn parse_known_hosts_file(content: &str) -> KnownHostsParseResult {
+    let mut out = KnownHostsParseResult::default();
     for raw in content.lines() {
         let line = raw.trim();
-        if line.is_empty()
-            || line.starts_with('#')
-            || line.starts_with('|')
-            || line.starts_with('@')
-        {
-            // 注释 / 空白 / hashed（不可反解）/ marker 行（见模块文档）。
+        if line.is_empty() || line.starts_with('#') {
+            // 注释 / 空白行。
+            out.skipped_other += 1;
+            continue;
+        }
+        if line.starts_with('|') {
+            // hashed（`|1|salt|hash`）：host 被哈希，**不可反解** → 跳过并计数。
+            out.skipped_hashed += 1;
+            continue;
+        }
+        if line.starts_with('@') {
+            // marker 行（`@cert-authority` / `@revoked`）：CA 钥与已吊销钥不是
+            // 该主机的个人密钥，不参与 pin（见模块文档）。
+            out.skipped_other += 1;
             continue;
         }
         // 指纹走既有算法核（列数/b64 合法性一并由它把关）。
         let Some(fingerprint) = line_fingerprint(line) else {
+            out.skipped_other += 1;
             continue;
         };
         let mut parts = line.split_whitespace();
         let (Some(host_field), Some(key_type)) = (parts.next(), parts.next()) else {
+            out.skipped_other += 1;
             continue;
         };
+        let mut matched = false;
         for pattern in host_field.split(',') {
             let Some((host, port)) = parse_host_port(pattern) else {
                 continue;
             };
-            out.push(KnownHostEntry {
+            matched = true;
+            out.entries.push(KnownHostEntry {
                 host,
                 port,
                 key_type: key_type.to_string(),
                 fingerprint: fingerprint.clone(),
             });
+        }
+        if !matched {
+            out.skipped_other += 1;
         }
     }
     out

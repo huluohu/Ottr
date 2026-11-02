@@ -72,13 +72,22 @@ let importReport: KnownHostsImportReport = {
   added: 0,
   skippedDuplicate: 0,
   skippedConflict: 0,
+  skippedHashed: 0,
+  skippedOther: 0,
   errors: [],
 };
 
 beforeEach(() => {
   mockedInvoke.mockReset();
   mockedOpen.mockReset();
-  importReport = { added: 0, skippedDuplicate: 0, skippedConflict: 0, errors: [] };
+  importReport = {
+    added: 0,
+    skippedDuplicate: 0,
+    skippedConflict: 0,
+    skippedHashed: 0,
+    skippedOther: 0,
+    errors: [],
+  };
 });
 
 afterEach(() => {
@@ -265,6 +274,8 @@ describe("KnownHostsManager 导入 known_hosts", () => {
       added: 3,
       skippedDuplicate: 1,
       skippedConflict: 2,
+      skippedHashed: 0,
+      skippedOther: 0,
       errors: [],
     };
     render(<KnownHostsManager />);
@@ -279,12 +290,50 @@ describe("KnownHostsManager 导入 known_hosts", () => {
     expect(screen.getByTestId("kh-import-conflict")).toBeTruthy();
   });
 
+  it("跳过计数必须展示（真机 2026-11-02：设备真实 known_hosts 37 条全 hashed，报告只说「新增 0 条」用户无法判断原因）", async () => {
+    mockImpl([okRow]);
+    importReport = {
+      added: 0,
+      skippedDuplicate: 0,
+      skippedConflict: 0,
+      skippedHashed: 37,
+      skippedOther: 5,
+      errors: [],
+    };
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import-default")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import-default"));
+    await waitFor(() => expect(screen.getByTestId("kh-import-skipped")).toBeTruthy());
+    const skipped = screen.getByTestId("kh-import-skipped").textContent ?? "";
+    expect(skipped).toContain("37");
+    expect(skipped).toContain("5");
+  });
+
+  it("无跳过项时不展示跳过行（不制造噪音）", async () => {
+    mockImpl([okRow]);
+    importReport = {
+      added: 2,
+      skippedDuplicate: 0,
+      skippedConflict: 0,
+      skippedHashed: 0,
+      skippedOther: 0,
+      errors: [],
+    };
+    render(<KnownHostsManager />);
+    await waitFor(() => expect(screen.getByTestId("kh-import-default")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("kh-import-default"));
+    await waitFor(() => expect(screen.getByTestId("kh-import-result")).toBeTruthy());
+    expect(screen.queryByTestId("kh-import-skipped")).toBeNull();
+  });
+
   it("文件不存在：展示「未找到文件」提示（不算导入失败）", async () => {
     mockImpl([okRow]);
     importReport = {
       added: 0,
       skippedDuplicate: 0,
       skippedConflict: 0,
+      skippedHashed: 0,
+      skippedOther: 0,
       errors: ["known_hosts_file_not_found: /Users/me/.ssh/known_hosts"],
     };
     render(<KnownHostsManager />);
@@ -298,7 +347,14 @@ describe("KnownHostsManager 导入 known_hosts", () => {
 
   it("导入后刷新列表（新锚出现在表里）", async () => {
     mockImpl([okRow]);
-    importReport = { added: 1, skippedDuplicate: 0, skippedConflict: 0, errors: [] };
+    importReport = {
+      added: 1,
+      skippedDuplicate: 0,
+      skippedConflict: 0,
+      skippedHashed: 0,
+      skippedOther: 0,
+      errors: [],
+    };
     render(<KnownHostsManager />);
     await waitFor(() => expect(screen.getByTestId("kh-import-default")).toBeTruthy());
     fireEvent.click(screen.getByTestId("kh-import-default"));

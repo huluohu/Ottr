@@ -766,6 +766,7 @@
     "importUseDefault": "使用預設路徑",
     "importChoose": "選擇 known_hosts 檔…",
     "importDone": "匯入完成：新增 {{added}} 條信任錨，略過重複 {{duplicate}} 條，略過衝突 {{conflict}} 條。",
+    "importSkipped": "已跳過 {{hashed}} 條 hashed 條目（主機名被雜湊，無法反解）與 {{other}} 條註解/標記/格式異常條目。",
     "importNotFound": "找不到 known_hosts 檔。",
     "importConflictNotice": "衝突端點未被覆寫：已有不同指紋的端點仍會彈確認，請手動核對後處理。",
     "importSkippedHashed": "加密項目（|1|…）無法反解，已略過。"

@@ -60,7 +60,23 @@ export interface ExplainRequest {
   text: string;
 }
 
-export type AiRequest = DiagnoseRequest | ExplainRequest;
+/**
+ * 主动提问（2026-11-02 批次四 P0「Ask Ottr 上下文入口」）。
+ *
+ * 与诊断的区别：**没有失败命令**——用户对当前会话/主机自由提问（"这台机器
+ * 还剩多少内存？" "刚才那个报错到底什么意思？"）。上下文仍然带（最近输出尾
+ * + 主机备注），但不带「退出码 + 失败命令」那段诊断语境。
+ */
+export interface AskRequest {
+  kind: "ask";
+  sessionId: string;
+  /** Rust 侧会话 id（取输出尾用；null = 未连接）。 */
+  rustId: string | null;
+  hostId: number | null;
+  hostName: string;
+}
+
+export type AiRequest = DiagnoseRequest | ExplainRequest | AskRequest;
 
 export type AiStatus = "idle" | "running" | "done" | "aborted" | "error";
 
@@ -127,6 +143,9 @@ interface AiStore {
   onCommandFailed: (req: DiagnoseRequest) => void;
   /** 右键「解释」入口（不受 ai.enabled 管——用户显式动作）。 */
   openExplain: (req: ExplainRequest) => void;
+  /** Ask Ottr 入口（批次四 P0）：为会话开「提问」态面板（用户显式动作，
+   *  不受 ai.enabled 管——那是「命令失败自动诊断」的开关）。 */
+  openAsk: (req: AskRequest) => void;
   /** 关闭某会话的面板（在途请求一并 abort；不影响他会话）。 */
   close: (sessionId: string) => void;
   /** 取消某会话的在途流（面板停止按钮）：面板保留、status 落 aborted
@@ -179,6 +198,18 @@ export function buildUserMessage(
         output,
         "```",
       ].join("\n") + contextBlock
+    );
+  }
+  if (req.kind === "ask") {
+    // Ask Ottr（批次四 P0）：**用户的问题在前**，会话上下文（输出尾 + 主机
+    // 备注）在后——模型看到的是「问题 + 现场」，而不是一段诊断报告。
+    return (
+      [
+        redactedSubject,
+        output.trim() === "" ? "" : `${i18n.t("ai.msg.outputTail")}:\n\`\`\`\n${output}\n\`\`\``,
+      ]
+        .filter((s) => s !== "")
+        .join("\n\n") + contextBlock
     );
   }
   return `${i18n.t("ai.msg.explainTarget")}:\n${redactedSubject}${contextBlock}`;
@@ -235,7 +266,27 @@ export const useAiStore = create<AiStore>((set, get) => {
   return {
     sessions: {},
 
-    onCommandFailed: (req) => {
+    /**
+   * Ask Ottr 入口（批次四 P0）：为聚焦会话开一个「提问」态的 AI 面板。
+   *
+   * 面板此时还没有回答——用户直接在面板底部的输入条里敲问题，提交后
+   * run() 走**首轮**路径（取输出尾 + 主机备注作上下文），之后可继续追问。
+   */
+  openAsk: (req: AskRequest) => {
+    controllers.get(req.sessionId)?.abort();
+    controllers.delete(req.sessionId);
+    patch(req.sessionId, {
+      request: req,
+      status: "idle",
+      answer: "",
+      errorKind: null,
+      error: null,
+      seen: false,
+      messages: [],
+    });
+  },
+
+  onCommandFailed: (req) => {
       void (async () => {
         try {
           const s = await loadAiSettings();
@@ -309,7 +360,14 @@ export const useAiStore = create<AiStore>((set, get) => {
       if (!req) return;
       // 追问轮（followupText 非空）：**不重取输出尾、不重注入主机备注**——
       // 首轮已经把这些发给模型了，追问只带对话历史（省 token、不重复出网）。
-      const isFollowup = typeof followupText === "string" && followupText.trim() !== "";
+      // 「追问轮」的判据 = **带追问文本 且 已有对话历史**。
+      // 只看文本会踩两个坑：① Ask Ottr 的首轮（问题在输入条里、尚无历史）
+      // 会被误判成追问轮 → 拿不到上下文（输出尾/主机备注）；② 诊断的「重试」
+      // （无追问文本）会把首轮上下文**再追加一遍**到历史里。
+      const isFollowup =
+        typeof followupText === "string" &&
+        followupText.trim() !== "" &&
+        slice(sessionId).messages.length > 0;
       patch(sessionId, {
         status: "running",
         answer: "",
@@ -370,10 +428,15 @@ export const useAiStore = create<AiStore>((set, get) => {
         : null;
       const subject = isFollowup
         ? { text: followupRedacted?.text ?? "", findings: followupRedacted?.findings ?? [] }
-        : redact(req.kind === "diagnose" ? req.command : req.text, redactOpts);
+        : redact(
+            req.kind === "diagnose" ? req.command : req.kind === "ask" ? (followupText ?? "") : req.text,
+            redactOpts,
+          );
       let outputTail = "";
       let outputRedactions: RedactFinding[] = [];
-      if (!isFollowup && req.kind === "diagnose" && req.rustId) {
+      // diagnose 与 ask 都带输出尾（ask 的语境就是「刚发生了什么」）；
+      // explain 面向选区，不带。
+      if (!isFollowup && (req.kind === "diagnose" || req.kind === "ask") && req.rustId) {
         try {
           const tail = await vaultApi.sessionTail(req.rustId, TAIL_BYTES);
           const red = redact(tail, redactOpts);

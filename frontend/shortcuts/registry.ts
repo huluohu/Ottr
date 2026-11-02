@@ -37,6 +37,7 @@ export type ActionId =
   | "session.splitRight"
   | "session.splitDown"
   | "ai.nl2cmd"
+  | "ai.ask"
   | "vault.lock"
   | "hosts.new_group"
   | "hosts.import"
@@ -146,6 +147,15 @@ export const ACTIONS: readonly ActionDef[] = [
     id: "ai.nl2cmd",
     labelKey: "ai.nl2cmd.title",
     keys: { mac: "CmdOrCtrl+J", win: "Ctrl+J", linux: "Ctrl+J" },
+    terminalSafe: true,
+  },
+  {
+    // Ask Ottr（批次四 P0）：对当前会话自由提问。与 ⌘J 同为「呼出键」——
+    // 终端聚焦时也命中（用户正盯着输出想提问，此刻恰恰要呼出）。
+    // ⌘⇧A：避开 ⌘A（终端全选）与既有单键绑定。
+    id: "ai.ask",
+    labelKey: "ai.askEntry",
+    keys: { mac: "CmdOrCtrl+Shift+A", win: "Ctrl+Shift+A", linux: "Ctrl+Shift+A" },
     terminalSafe: true,
   },
   { id: "vault.lock", labelKey: "security.lockNow" },

@@ -566,7 +566,10 @@
       "errRuleInvalid": "La regex non viene compilata",
       "errRemoteHttp": "G endpoint remoti devono usare https:// (http in chiaro invierebbe la API key in chiaro e l'app consente solo http locale)"
     },
-    "followupPlaceholder": "Fai una domanda di follow-up… (Invio per inviare, Shift+Invio per andare a capo)"
+    "followupPlaceholder": "Fai una domanda di follow-up… (Invio per inviare, Shift+Invio per andare a capo)",
+    "askEntry": "Chiedi a Ottr",
+    "askPlaceholder": "Chiedi quello che vuoi… (Invio per inviare)",
+    "panelAsk": "Chiedi a Ottr"
   },
   "tabs": {
     "duplicate": "Duplica scheda",

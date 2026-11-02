@@ -1098,6 +1098,30 @@ export function TerminalToolbar({
           {t("terminal.closePane")}
         </button>
       )}
+      {/* Ask Ottr（批次四 P0）：对当前会话自由提问的入口——面板在右栏打开，
+          输入条即提问框（首轮带输出尾 + 主机备注作上下文）。 */}
+      {terminalControls && focusedPane != null && (
+        <button
+          data-testid="ask-ottr"
+          title={t("ai.askEntry")}
+          aria-label={t("ai.askEntry")}
+          onClick={() => {
+            const session = useSessionStore
+              .getState()
+              .sessions.find((x) => x.id === focusedPane);
+            if (!session) return;
+            useAiStore.getState().openAsk({
+              kind: "ask",
+              sessionId: session.id,
+              rustId: session.rustId,
+              hostId: session.kind === "local" ? null : session.hostId,
+              hostName: session.hostName,
+            });
+          }}
+        >
+          {t("ai.askEntry")}
+        </button>
+      )}
       {toolbarExtra}
       {terminalControls && activeEncoding != null && focusedPane != null && (
         <button

@@ -565,7 +565,10 @@
       "errRuleInvalid": "正则无法编译",
       "errRemoteHttp": "非本机端点必须使用 https://（明文 http 会把 API key 裸传在链路上，且应用只放行本机 http 端点）"
     },
-    "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）"
+    "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）",
+    "askEntry": "问 Ottr",
+    "askPlaceholder": "问点什么…（Enter 发送）",
+    "panelAsk": "问 Ottr"
   },
   "tabs": {
     "duplicate": "复制页签",

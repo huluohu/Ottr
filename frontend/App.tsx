@@ -453,6 +453,22 @@ function HomeLayout() {
         case "history.search":
           modal.active === "history" ? modal.close("history") : modal.open("history");
           break;
+        case "ai.ask": {
+          // Ask Ottr（批次四 P0）：对**聚焦 pane**的会话开「提问」态面板。
+          // 无聚焦会话 → 无事发生（不弹空面板）。
+          const st = useSessionStore.getState();
+          const focused = st.activeId != null ? (st.activePane[st.activeId] ?? st.activeId) : null;
+          const session = focused != null ? st.sessions.find((x) => x.id === focused) : undefined;
+          if (!session) break;
+          useAiStore.getState().openAsk({
+            kind: "ask",
+            sessionId: session.id,
+            rustId: session.rustId,
+            hostId: session.kind === "local" ? null : session.hostId,
+            hostName: session.hostName,
+          });
+          break;
+        }
         case "ai.nl2cmd":
           // 打开 = 清场 + 聚焦 pane 的 cwd 锚点（OSC7 活值）；关闭 = 顺带清场
           // （在途请求 abort，panel 卸载后 store 不留尾巴）。副作用在 updater

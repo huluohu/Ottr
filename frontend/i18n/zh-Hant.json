@@ -565,7 +565,10 @@
       "errRuleInvalid": "正則無法編譯",
       "errRemoteHttp": "非本機端點必須使用 https://（明文 http 會把 API key 裸傳在鏈路上，且應用只放行本機 http 端點）"
     },
-    "followupPlaceholder": "追問…（Enter 送出，Shift+Enter 換行）"
+    "followupPlaceholder": "追問…（Enter 送出，Shift+Enter 換行）",
+    "askEntry": "問 Ottr",
+    "askPlaceholder": "問點什麼…（Enter 送出）",
+    "panelAsk": "問 Ottr"
   },
   "tabs": {
     "duplicate": "複製頁籤",

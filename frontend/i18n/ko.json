@@ -566,7 +566,10 @@
       "errRuleInvalid": "정규식을 컴파일할 수 없습니다",
       "errRemoteHttp": "원격 엔드포인트는 https://를 사용해야 합니다(평문 http는 API 키를 암호화 없이 전송하며, 앱은 로컬 http만 허용합니다)"
     },
-    "followupPlaceholder": "추가 질문… (Enter로 전송, Shift+Enter로 줄바꿈)"
+    "followupPlaceholder": "추가 질문… (Enter로 전송, Shift+Enter로 줄바꿈)",
+    "askEntry": "Ottr에게 묻기",
+    "askPlaceholder": "무엇이든 물어보세요… (Enter로 전송)",
+    "panelAsk": "Ottr에게 묻기"
   },
   "tabs": {
     "duplicate": "탭 복제",

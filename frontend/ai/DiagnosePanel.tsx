@@ -133,7 +133,11 @@ export function DiagnosePanel({
     <aside className="ai-panel" data-testid="ai-panel" aria-label={t("ai.title")}>
       <div className="ai-panel-head">
         <span className="ai-panel-title">
-          {request.kind === "diagnose" ? t("ai.panelDiagnose") : t("ai.panelExplain")}
+          {request.kind === "diagnose"
+            ? t("ai.panelDiagnose")
+            : request.kind === "ask"
+              ? t("ai.panelAsk")
+              : t("ai.panelExplain")}
         </span>
         <span className="ai-panel-meta">
           {request.hostName ? `${request.hostName} · ` : ""}
@@ -274,8 +278,16 @@ export function DiagnosePanel({
           className="ai-followup-input"
           data-testid="ai-followup-input"
           rows={2}
-          aria-label={t("ai.followupPlaceholder")}
-          placeholder={t("ai.followupPlaceholder")}
+          aria-label={
+            request.kind === "ask" && messages.length === 0
+              ? t("ai.askPlaceholder")
+              : t("ai.followupPlaceholder")
+          }
+          placeholder={
+            request.kind === "ask" && messages.length === 0
+              ? t("ai.askPlaceholder")
+              : t("ai.followupPlaceholder")
+          }
           value={followup}
           disabled={running}
           onChange={(e) => setFollowup(e.target.value)}

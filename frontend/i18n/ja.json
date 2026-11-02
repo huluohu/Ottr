@@ -566,7 +566,10 @@
       "errRuleInvalid": "正規表現をコンパイルできません",
       "errRemoteHttp": "リモートのエンドポイントには https:// が必要です（平文 http では API キーが平文で送られ、アプリもローカル http のみ許可しています）"
     },
-    "followupPlaceholder": "追加質問…（Enter で送信、Shift+Enter で改行）"
+    "followupPlaceholder": "追加質問…（Enter で送信、Shift+Enter で改行）",
+    "askEntry": "Ottr に聞く",
+    "askPlaceholder": "何でも聞いてください…（Enter で送信）",
+    "panelAsk": "Ottr に聞く"
   },
   "tabs": {
     "duplicate": "タブを複製",

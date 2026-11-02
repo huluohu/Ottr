@@ -566,7 +566,10 @@
       "errRuleInvalid": "La regex no compila",
       "errRemoteHttp": "Los endpoints remotos deben usar https:// (http sin cifrar enviaría la API key en claro y la app solo permite http local)"
     },
-    "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar, Shift+Enter para salto de línea)"
+    "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar, Shift+Enter para salto de línea)",
+    "askEntry": "Preguntar a Ottr",
+    "askPlaceholder": "Pregunta lo que quieras… (Enter para enviar)",
+    "panelAsk": "Preguntar a Ottr"
   },
   "tabs": {
     "duplicate": "Duplicar pestaña",

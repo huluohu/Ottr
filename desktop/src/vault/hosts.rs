@@ -220,5 +220,16 @@ pub async fn known_hosts_import(
         Err(e) => return Err(format!("read {}: {e}", path.display())),
     };
     let entries = ottr_ssh::known_hosts::parse_known_hosts_file(&content);
-    Ok(ottr_vault::KnownHosts::import(&state.0, &entries))
+    // 择一（同端点多密钥型 → 优先 ed25519，OpenSSH 语义在 ottr-ssh 层）。
+    let selected = ottr_ssh::known_hosts::select_by_endpoint(&entries);
+    let import_entries: Vec<ottr_vault::KnownHostImportEntry> = selected
+        .into_iter()
+        .map(|s| ottr_vault::KnownHostImportEntry {
+            host: s.host,
+            port: s.port,
+            fingerprint: s.fingerprint,
+            candidates: s.candidates,
+        })
+        .collect();
+    Ok(ottr_vault::KnownHosts::import(&state.0, &import_entries))
 }

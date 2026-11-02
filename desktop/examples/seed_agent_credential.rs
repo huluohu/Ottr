@@ -21,6 +21,15 @@ fn main() -> Result<(), String> {
     let vault =
         Vault::open_auto(std::path::Path::new(&vault_dir)).map_err(|e| format!("open: {e}"))?;
 
+    // 无系统钥匙链的环境（Linux 容器 / 无 keyring 的机器）→ vault 落主密码模式
+    // 且锁着；夹具需要能解锁。`OTTR_VAULT_PASSWORD` 给出主密码时先解锁
+    // （真机上 vault 通常在钥匙链模式，这段是 no-op）。
+    if let Ok(pw) = std::env::var("OTTR_VAULT_PASSWORD") {
+        vault
+            .unlock_with_password(&pw)
+            .map_err(|e| format!("unlock: {e}"))?;
+    }
+
     let cred = Credentials::create(
         &vault,
         &CredentialInput {

@@ -23,7 +23,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use russh::keys::Algorithm;
+use russh::keys::{Algorithm, HashAlg, PublicKey, load_secret_key};
 use russh::server::{Auth, Handler, Response, Server as _};
 
 /// 固定账号（与仓库夹具 `scripts/spike-sshd.sh` 同口径）。
@@ -39,10 +39,54 @@ const SHELL_BANNER: &[u8] = b"[mock-kbdint] interactive shell ready\r\nspike@moc
 struct MockAuth {
     passwords: Arc<HashMap<&'static str, &'static str>>,
     totp_seed: Arc<String>,
+    /// 公钥白名单（user → 公钥）：ssh-agent 验收用。
+    key_whitelist: Arc<HashMap<&'static str, PublicKey>>,
 }
 
 impl Handler for MockAuth {
     type Error = russh::Error;
+
+    /// 公钥**探测**（客户端先问「这把钥行不行」，不带签名）。
+    ///
+    /// ⚠️ russh 0.63 的服务端把 publickey 分两段：先调**本方法**（探测）决定
+    /// 是否回 PK_OK，客户端收到 PK_OK 才带签名重发；签名验过后才调
+    /// [`auth_publickey`]。只实现后者 → 探测阶段就被拒（服务端不回 PK_OK，
+    /// 客户端永远走不到签名那步）——表现为「agent 认证被拒」但服务端日志里
+    /// 一条 publickey 记录都没有。**两个都要实现。**
+    async fn auth_publickey_offered(
+        &mut self,
+        user: &str,
+        key: &PublicKey,
+    ) -> Result<Auth, Self::Error> {
+        let ok = self
+            .key_whitelist
+            .get(user)
+            .map(|expected| expected.key_data() == key.key_data())
+            .unwrap_or(false);
+        println!(
+            "[mock-kbdint] publickey probe user={user} fp={} -> {}",
+            key.fingerprint(HashAlg::Sha256),
+            if ok { "ACCEPT" } else { "REJECT" }
+        );
+        Ok(if ok { Auth::Accept } else { Auth::reject() })
+    }
+
+    /// 公钥认证（**系统 ssh-agent 桥接的验收面**：agent 持钥、由 agent 签名，
+    /// 服务端只见公钥）。白名单取仓库夹具 `fixtures/spike_ed25519` 的公钥——
+    /// 真机验收时把同一把私钥装进 agent，即可端到端验「Ottr 侧零密钥材料」。
+    async fn auth_publickey(&mut self, user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
+        let ok = self
+            .key_whitelist
+            .get(user)
+            .map(|expected| expected.key_data() == key.key_data())
+            .unwrap_or(false);
+        println!(
+            "[mock-kbdint] publickey user={user} fp={} -> {}",
+            key.fingerprint(HashAlg::Sha256),
+            if ok { "ACCEPT" } else { "REJECT" }
+        );
+        Ok(if ok { Auth::Accept } else { Auth::reject() })
+    }
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         Ok(match self.passwords.get(user) {
@@ -195,6 +239,12 @@ fn current_totp_at(seed_b32: &str, unix_time: i64) -> String {
     .unwrap_or_default()
 }
 
+/// 仓库夹具公钥（`fixtures/spike_ed25519`）——公钥白名单用。
+fn fixture_public_key() -> Result<PublicKey, Box<dyn std::error::Error>> {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/spike_ed25519");
+    Ok(load_secret_key(path, None)?.public_key().clone())
+}
+
 /// 按种子 + 当前时间算期望验证码。
 fn current_totp(seed_b32: &str) -> String {
     current_totp_at(seed_b32, unix_now())
@@ -221,6 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let auth = MockAuth {
         passwords: Arc::new(HashMap::from([(MOCK_USER, MOCK_PASSWORD)])),
         totp_seed: Arc::new(totp_seed.clone()),
+        key_whitelist: Arc::new(HashMap::from([(MOCK_USER, fixture_public_key()?)])),
     };
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;

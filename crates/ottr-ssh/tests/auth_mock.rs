@@ -239,8 +239,8 @@ async fn key_auth_ok() {
         addr,
         MOCK_USER,
         AuthMethod::Key {
-            path: FIXTURE_KEY_PATH.into(),
-            passphrase: None,
+                source: ottr_ssh::KeySource::Path(FIXTURE_KEY_PATH.into()),
+                passphrase: None,
         },
         &fingerprints,
     )
@@ -259,8 +259,8 @@ async fn key_auth_ok() {
         addr,
         "intruder",
         AuthMethod::Key {
-            path: FIXTURE_KEY_PATH.into(),
-            passphrase: None,
+                source: ottr_ssh::KeySource::Path(FIXTURE_KEY_PATH.into()),
+                passphrase: None,
         },
         &fingerprints,
     )

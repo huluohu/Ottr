@@ -480,6 +480,19 @@ export const useAiStore = create<AiStore>((set, get) => {
               ],
             });
           }
+          // **空回答 = 失败**（2026-11-02 审计）：端点返回 200 但正文不是 SSE
+          // （反向代理的登录页/HTML 错误页）时，一个 delta 都不会来——此前会
+          // 置成 done 且答案为空，用户看到「成功但一片空白」，没有任何错误提示。
+          // 这里按失败收尾，并让用户看到可重试的错误面。
+          if (done && assistantTurn.content.trim() === "") {
+            patch(sessionId, {
+              status: "error",
+              errorKind: "request",
+              error: i18n.t("ai.emptyAnswer"),
+              elapsedMs: Math.round(performance.now() - startedAt),
+            });
+            return;
+          }
           patch(sessionId, {
             status: done ? "done" : "aborted",
             elapsedMs: Math.round(performance.now() - startedAt),
@@ -507,10 +520,13 @@ export const useAiStore = create<AiStore>((set, get) => {
           patch(sessionId, { status: "aborted" });
           return;
         }
+        // 断流/报错：把**半截** assistant 轮从历史里摘掉——它不完整，下一轮
+        // 追问会把它当上下文发出去（模型拿到一段没写完的回答）。
         patch(sessionId, {
           status: "error",
           errorKind: "request",
           error: e instanceof Error ? e.message : String(e),
+          messages: turnsSoFar,
         });
       } finally {
         if (controllers.get(sessionId) === ac) controllers.delete(sessionId);

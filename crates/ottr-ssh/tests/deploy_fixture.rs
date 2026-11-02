@@ -112,7 +112,7 @@ async fn deploy_is_idempotent_and_deployed_key_authenticates() {
             PORT,
             USER,
             AuthMethod::Key {
-                path: key_path.clone(),
+                source: ottr_ssh::KeySource::Path(key_path.clone()),
                 passphrase: None,
             },
             pinned_host_key_policy(),

@@ -443,6 +443,7 @@
     "insertIncomplete": "Insertion is available only after generation completes.",
     "insertToTerminal": "Insert to terminal",
     "failed": "Request failed, please retry",
+    "emptyAnswer": "The endpoint returned no content (it may not be an OpenAI-compatible endpoint, or a gateway blocked the request)",
     "danger": {
       "recursive-delete": "Recursive force delete",
       "delete-root": "Delete root path",

@@ -442,6 +442,7 @@
     "insertIncomplete": "生成完成後才能插入終端。",
     "insertToTerminal": "插入終端",
     "failed": "請求失敗，請重試",
+    "emptyAnswer": "端點沒有回傳任何內容（可能不是 OpenAI 相容端點，或被閘道攔截）",
     "danger": {
       "recursive-delete": "遞歸強制刪除",
       "delete-root": "刪除根路徑",

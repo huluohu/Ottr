@@ -442,6 +442,7 @@
     "insertIncomplete": "生成完成后才能插入终端。",
     "insertToTerminal": "插入终端",
     "failed": "请求失败，请重试",
+    "emptyAnswer": "端点没有返回任何内容（可能不是 OpenAI 兼容端点，或被网关拦截）",
     "danger": {
       "recursive-delete": "递归强制删除",
       "delete-root": "删除根路径",

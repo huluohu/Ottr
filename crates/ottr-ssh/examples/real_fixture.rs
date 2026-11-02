@@ -97,8 +97,8 @@ async fn main() -> ottr_ssh::Result<()> {
         PORT,
         USER,
         AuthMethod::Key {
-            path: CLIENT_KEY.into(),
-            passphrase: None,
+                source: ottr_ssh::KeySource::Path(CLIENT_KEY.into()),
+                passphrase: None,
         },
         policy,
     )

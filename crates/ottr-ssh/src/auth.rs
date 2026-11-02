@@ -24,13 +24,27 @@ pub type PromptResponder = Arc<dyn Fn(&[String]) -> Vec<String> + Send + Sync>;
 pub enum AuthMethod {
     /// 密码认证。
     Password(String),
-    /// 私钥认证。`path` 为 OpenSSH 私钥文件，`passphrase` 为解密口令（无口令传 `None`）。
+    /// 私钥认证。`source` 决定私钥从哪来，`passphrase` 为解密口令（无口令传 `None`）。
+    ///
+    /// **优先用 [`KeySource::Pem`]**（私钥文本在内存里）：调用方无需把私钥落到
+    /// 磁盘，也就一并消掉了临时文件的权限（Windows 上没有 0600 等价物，
+    /// 非 Unix 分支是普通 OpenOptions → 继承目录 ACL，同机其他用户可能可读）、
+    /// 可预测文件名、以及任何提前返回路径下的残留。
     Key {
-        path: PathBuf,
+        source: KeySource,
         passphrase: Option<String>,
     },
     /// keyboard-interactive（TOTP 等挑战应答）。`responder` 收集 prompt 并给出答案。
     KeyboardInteractive { responder: PromptResponder },
+}
+
+/// 私钥来源。
+#[derive(Clone, Debug)]
+pub enum KeySource {
+    /// 磁盘上的 OpenSSH 私钥文件路径。
+    Path(PathBuf),
+    /// **内存里的 PEM 文本**（推荐：私钥不落盘）。
+    Pem(String),
 }
 
 /// russh client Handler：
@@ -137,13 +151,26 @@ pub(crate) async fn authenticate(
 ) -> Result<(), Error> {
     let result = match auth {
         AuthMethod::Password(password) => handle.authenticate_password(username, password).await?,
-        AuthMethod::Key { path, passphrase } => {
-            let key = russh::keys::load_secret_key(&path, passphrase.as_deref()).map_err(|e| {
-                Error::KeyLoad {
-                    path: path.display().to_string(),
-                    source: KeyError::from(e), // russh 错误在此转为自有分类
+        AuthMethod::Key { source, passphrase } => {
+            let key = match source {
+                KeySource::Path(path) => {
+                    russh::keys::load_secret_key(&path, passphrase.as_deref()).map_err(|e| {
+                        Error::KeyLoad {
+                            path: path.display().to_string(),
+                            source: KeyError::from(e), // russh 错误在此转为自有分类
+                        }
+                    })?
                 }
-            })?;
+                // 内存私钥：russh 的解码入口与文件版同源（decode_secret_key）。
+                KeySource::Pem(pem) => {
+                    russh::keys::decode_secret_key(&pem, passphrase.as_deref()).map_err(|e| {
+                        Error::KeyLoad {
+                            path: "(in-memory)".to_string(),
+                            source: KeyError::from(e),
+                        }
+                    })?
+                }
+            };
             // 非 RSA 密钥 hash_alg 被忽略；RSA 走 best_supported_rsa_hash（Task 4 再接）。
             let key = PrivateKeyWithHashAlg::new(Arc::new(key), None);
             handle.authenticate_publickey(username, key).await?

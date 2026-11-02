@@ -443,6 +443,7 @@
     "insertIncomplete": "挿入は生成完了後に利用できます。",
     "insertToTerminal": "ターミナルに挿入",
     "failed": "リクエストに失敗しました。再試行してください",
+    "emptyAnswer": "エンドポイントから何も返されませんでした（OpenAI 互換エンドポイントでないか、ゲートウェイに遮られた可能性があります）",
     "danger": {
       "recursive-delete": "再帰的な強制削除",
       "delete-root": "root パスの削除",

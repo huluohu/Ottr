@@ -136,10 +136,15 @@ pub struct KeyDeployReport {
     pub known_hosts_state: KnownHostState,
 }
 
-/// 临时私钥文件的 Drop guard（评审 I-1）：离开作用域即删——key_deploy 的任何
-/// 提前返回（port 越界 / 部署超时 / 连接失败）与成功路径统一收尾，杜绝明文
-/// 私钥滞留 OS temp dir。此前为手动 remove_file，只覆盖成功路径（泄漏已修）。
-/// Task 7 起 `attach_host_session` 复用（key 凭据连接的同一收尾语义）。
+/// 临时私钥文件的 Drop guard（评审 I-1）。
+///
+/// **2026-11-02 起私钥不再落盘**：key 凭据走 `KeySource::Pem`（私钥文本留在
+/// 内存里），因此不再需要临时文件，也就没有了它的三个问题——Windows 上没有
+/// 0600 等价物（非 Unix 分支是普通 OpenOptions → 继承目录 ACL，同机其他用户
+/// 可能可读）、文件名可预测、以及任何提前返回路径下的残留。
+///
+/// 保留本类型是为了**不改动调用方的收尾语义**（guard 必须活到连接完成，
+/// 见 `commands/jump.rs` 的 guards 字段）；现在它恒为空。
 pub(crate) struct TempKeyGuard(Option<PathBuf>);
 
 impl Drop for TempKeyGuard {
@@ -175,41 +180,16 @@ pub(crate) async fn resolve_credential_auth(
                     .ok_or_else(|| "key credential has no private key".to_string())?;
                 let passphrase =
                     Credentials::reveal(&vault, auth_credential_id, SecretField::Passphrase).map_err(vault_err)?;
-                // 临时文件 0600：AuthMethod::Key 的 path 语义要求；guard Drop 即删
-                let mut path = std::env::temp_dir();
-                path.push(format!(
-                    "ottr-deploy-{}-{}.pem",
-                    std::process::id(),
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_nanos()
-                ));
-                {
-                    use std::io::Write as _;
-                    #[cfg(unix)]
-                    let mut f = {
-                        use std::os::unix::fs::OpenOptionsExt;
-                        std::fs::OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .truncate(true)
-                            .mode(0o600)
-                            .open(&path)
-                    }
-                    .map_err(|e| format!("temp key file: {e}"))?;
-                    #[cfg(not(unix))]
-                    let mut f = std::fs::OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(true)
-                        .open(&path)
-                        .map_err(|e| format!("temp key file: {e}"))?;
-                    f.write_all(pem.as_bytes())
-                        .and_then(|_| f.flush())
-                        .map_err(|e| format!("temp key file write: {e}"))?;
-                }
-                Ok((AuthMethod::Key { path: path.clone(), passphrase }, TempKeyGuard(Some(path))))
+                // **私钥不落盘**：走 KeySource::Pem，明文只活在本次连接的内存里。
+                // （旧实现写 OS temp 目录的 0600 文件：Windows 上没有 0600 等价物，
+                // 文件名可预测，且任何提前返回路径都可能留下残留。）
+                Ok((
+                    AuthMethod::Key {
+                        source: ottr_ssh::KeySource::Pem(pem),
+                        passphrase,
+                    },
+                    TempKeyGuard(None),
+                ))
             }
             // TOTP 凭据 → keyboard-interactive 认证（2026-11-02 批次二）。
             //
@@ -315,12 +295,19 @@ async fn key_deploy_inner(
     let (auth, _temp_key_guard) = resolve_credential_auth(vault, auth_credential_id, None).await?;
     let port = u16::try_from(port).map_err(|_| format!("port {port} out of range"))?;
 
+    // 部署限时必须**装得下**部署期间的 TOFU 问询窗口（HOST_KEY_ASK_TIMEOUT
+    // = 60s）——30s 的旧值会让「用户 30s 后才点信任并连接」时部署先失败、
+    // 用户的选择作废，且 host_key_asks 槽位残留（Rust 任务被 drop，闭包里的
+    // recv_timeout 一并消失，用户稍后再点确认会命中死端、send 失败被忽略 →
+    // 前端收到 Ok 但毫无效果）。
+    const DEPLOY_TIMEOUT_SECS: u64 =
+        crate::commands::state::HOST_KEY_ASK_TIMEOUT.as_secs() + 15;
     let outcome = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
+        std::time::Duration::from_secs(DEPLOY_TIMEOUT_SECS),
         deploy_public_key(&address, port, &username, auth, policy, &public_key),
     )
     .await
-    .map_err(|_| "deploy timed out after 30s".to_string())?
+    .map_err(|_| format!("deploy timed out after {DEPLOY_TIMEOUT_SECS}s"))?
     .map_err(|e| e.to_string())?;
 
     // A3 联动：部署会话观察到的服务器指纹按 TOFU 首见落库（已存在则原样返回，
@@ -428,13 +415,27 @@ mod tests {
             leaked_temp_keys()
         );
 
-        // 对照组：guard 存活期内文件确实在（证明「落盘发生过」，断言不是恒真）
-        let (auth, guard) =
+        // 对照组：私钥**在内存里**（KeySource::Pem），磁盘上**没有任何**临时
+        // 私钥文件——这正是本次改动的核心（旧实现会写 OS temp 目录的 0600 文件：
+        // Windows 上没有 0600 等价物、文件名可预测、任何提前返回都可能留残留）。
+        let (auth, _guard) =
             tauri::async_runtime::block_on(resolve_credential_auth(&state, cred.id, None)).unwrap();
-        assert!(matches!(auth, AuthMethod::Key { .. }));
-        let paths = leaked_temp_keys();
-        assert_eq!(paths.len(), 1, "guard 存活期内临时 PEM 应存在");
-        drop(guard);
-        assert!(leaked_temp_keys().is_empty(), "guard Drop 后应删除");
+        match auth {
+            AuthMethod::Key { source, .. } => match source {
+                ottr_ssh::KeySource::Pem(pem) => {
+                    assert!(
+                        pem.contains("BEGIN OPENSSH PRIVATE KEY"),
+                        "内存里应是完整 PEM"
+                    );
+                }
+                _ => panic!("key 凭据应走内存私钥（Pem）"),
+            },
+            _ => panic!("应为 key 认证"),
+        }
+        assert!(
+            leaked_temp_keys().is_empty(),
+            "私钥不得落盘（临时 PEM 残留）：{:?}",
+            leaked_temp_keys()
+        );
     }
 }

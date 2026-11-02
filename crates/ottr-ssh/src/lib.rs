@@ -30,7 +30,7 @@ pub mod pty;
 pub mod russh_impl;
 pub mod shell_integration;
 
-pub use auth::{AuthMethod, HostKeyPolicy, PromptResponder};
+pub use auth::{AuthMethod, HostKeyPolicy, KeySource, PromptResponder};
 pub use deploy::{DeployOutcome, DeployStatus, deploy_public_key};
 pub use forward::{
     ForwardKind, ForwardRunning, ForwardSpec, ForwardState, ForwardStats, ForwardStatsSnapshot,

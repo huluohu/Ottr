@@ -1277,7 +1277,32 @@ fn migration_0010_preserves_sequence_watermark_from_v9_db_with_delete_history() 
                  payload   TEXT,
                  read      INTEGER NOT NULL DEFAULT 0,
                  ts        INTEGER NOT NULL
-             );",
+             );
+             -- history + history_fts（0007 建）必须在：0023 迁移要重建 history
+             -- 并对 history_fts 做 'rebuild'——缺表 = 夹具失真（真实 v9 库
+             -- 必然带 0007 的 history）。
+             CREATE TABLE history (
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 host_id    INTEGER NOT NULL REFERENCES hosts (id) ON DELETE CASCADE,
+                 command    TEXT NOT NULL,
+                 cwd        TEXT,
+                 exit_code  INTEGER,
+                 session_id TEXT,
+                 ts         INTEGER NOT NULL
+             );
+             CREATE VIRTUAL TABLE history_fts USING fts5(
+                 command,
+                 content = 'history',
+                 content_rowid = 'id',
+                 tokenize = 'trigram'
+             );
+             CREATE TRIGGER history_fts_ai AFTER INSERT ON history BEGIN
+                 INSERT INTO history_fts (rowid, command) VALUES (new.id, new.command);
+             END;
+             CREATE TRIGGER history_fts_ad AFTER DELETE ON history BEGIN
+                 INSERT INTO history_fts (history_fts, rowid, command)
+                 VALUES ('delete', old.id, old.command);
+             END;",
         )
         .unwrap();
         // 确认弱面前提：seq > max(id)（删行历史在 sqlite_sequence 留痕）

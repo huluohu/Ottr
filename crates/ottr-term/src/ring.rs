@@ -115,7 +115,16 @@ impl RingBuffer {
             let sep = usize::from(!parts.is_empty());
             if total + sep + line.len() > limit {
                 if parts.is_empty() && line.len() > limit {
-                    return line[line.len() - limit..].to_vec();
+                    // 取行尾 limit 字节——但**不能从多字节字符中间切开**：
+                    // 切出半个 UTF-8 字符时，调用方 from_utf8_lossy 会把它变成
+                    // U+FFFD 替换符（AI 看到的输出尾首字符是个「�」）。
+                    // 故向前回退到字符边界：UTF-8 的续字节形如 0b10xxxxxx，
+                    // 跳过它们即落在下一个起始字节上（最多回退 3 字节）。
+                    let mut start = line.len() - limit;
+                    while start < line.len() && (line[start] & 0xC0) == 0x80 {
+                        start += 1;
+                    }
+                    return line[start..].to_vec();
                 }
                 break;
             }
@@ -236,6 +245,30 @@ mod tests {
         let mut ring = RingBuffer::with_capacity(4);
         ring.push(b"abcdefgh\n");
         assert_eq!(ring.tail_bytes(3), b"fgh".to_vec());
+    }
+
+    /// 截尾不得从多字节字符中间切开（2026-11-02 审计）：切出半个 UTF-8 字符时，
+    /// 调用方 from_utf8_lossy 会把它变成 U+FFFD 替换符——AI 看到的输出尾首字符
+    /// 是个「�」。这里用中文（3 字节）钉住：limit 切在字符中间时必须回退到
+    /// 下一个起始字节。
+    #[test]
+    fn tail_bytes_never_splits_multibyte_char() {
+        // 容量要放得下整行；行必须以换行收尾（未闭合的残行不计入 tail）。
+        let mut ring = RingBuffer::with_capacity(16);
+        // "磁盘已满" = 12 字节（4 个 3 字节字符）
+        ring.push("磁盘已满\n".as_bytes());
+        // 取 8 字节 → 起点落在「盘」中间 → 必须回退到下一个起始字节，
+        // 结果是 2 个完整字（6 字节）。
+        let out = ring.tail_bytes(8);
+        assert_eq!(
+            String::from_utf8_lossy(&out),
+            "已满",
+            "截尾必须落在字符边界上"
+        );
+        assert!(
+            std::str::from_utf8(&out).is_ok(),
+            "截断结果必须是合法 UTF-8（不能有半个字符）"
+        );
     }
 
     #[test]

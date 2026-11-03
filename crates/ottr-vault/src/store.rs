@@ -216,7 +216,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     // credentials 表时，外键的 ON DELETE SET NULL 把用户所有主机的凭据绑定
     // 静默清空（升级即断连）。本迁移只建审计表；恢复由 Rust 修复器做
     // （名称匹配需逻辑，SQL 表达不了）——见 restore_lost_credential_bindings。
-    (28, include_str!("../migrations/0028_binding_repair_audit.sql")),
+    (
+        28,
+        include_str!("../migrations/0028_binding_repair_audit.sql"),
+    ),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -404,16 +407,16 @@ impl Vault {
         // 这里把绑定按名称匹配找回来，并把结果写进 settings 供前端告知用户
         // （哪些自动恢复了、哪些要手动）——不静默改数据，审计表逐条留痕。
         let repair = restore_lost_credential_bindings(&conn)?;
-        if !repair.restored.is_empty() || !repair.unmatched_hosts.is_empty() {
-            if let Ok(payload) = serde_json::to_string(&repair) {
-                // 写 **settings 表**（不是 meta）：前端经 Settings::get 读的就是
-                // 这张表；meta 是库内部簿记（schema_version 等），前端读不到。
-                let _ = conn.execute(
-                    "INSERT INTO settings(key, value) VALUES (?1, ?2)
-                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    rusqlite::params!["repair.binding_report", &payload],
-                );
-            }
+        if let Ok(payload) = serde_json::to_string(&repair)
+            && (!repair.restored.is_empty() || !repair.unmatched_hosts.is_empty())
+        {
+            // 写 **settings 表**（不是 meta）：前端经 Settings::get 读的就是
+            // 这张表；meta 是库内部簿记（schema_version 等），前端读不到。
+            let _ = conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                rusqlite::params!["repair.binding_report", &payload],
+            );
         }
         Ok(Self {
             conn: Mutex::new(conn),
@@ -1101,7 +1104,8 @@ pub struct BindingRepair {
 pub fn restore_lost_credential_bindings(conn: &Connection) -> Result<BindingRepairReport> {
     let mut report = BindingRepairReport::default();
 
-    let credential_count: i64 = conn.query_row("SELECT COUNT(*) FROM credentials", [], |r| r.get(0))?;
+    let credential_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM credentials", [], |r| r.get(0))?;
     if credential_count == 0 {
         return Ok(report);
     }

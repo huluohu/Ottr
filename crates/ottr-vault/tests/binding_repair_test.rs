@@ -105,7 +105,8 @@ fn migration_0026_preserves_credential_bindings() {
         let v = open_vault(dir.path());
         let conn = v.connection();
         // 回到 0025 的表形状（kind 不含 'agent'）+ 版本号 25。
-        conn.pragma_update(None, "foreign_keys", "OFF").expect("fk off");
+        conn.pragma_update(None, "foreign_keys", "OFF")
+            .expect("fk off");
         conn.execute_batch(
             "CREATE TABLE credentials_v25 (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,7 +123,8 @@ fn migration_0026_preserves_credential_bindings() {
              UPDATE meta SET value = '25' WHERE key = 'schema_version';",
         )
         .expect("downgrade schema to v25");
-        conn.pragma_update(None, "foreign_keys", "ON").expect("fk on");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("fk on");
     }
 
     // 用 v25 形状的库建凭据 + 绑定（模拟用户升级前的库）。
@@ -143,7 +145,8 @@ fn migration_0026_preserves_credential_bindings() {
         .expect("set version back to 25");
         // 0026 需要把 credentials 还原成 v25 形状（上面已被迁移成 v27 形状，
         // 这里再退一次，保证升级路径与真实场景一致）。
-        conn.pragma_update(None, "foreign_keys", "OFF").expect("fk off");
+        conn.pragma_update(None, "foreign_keys", "OFF")
+            .expect("fk off");
         conn.execute_batch(
             "CREATE TABLE credentials_v25b (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,7 +161,8 @@ fn migration_0026_preserves_credential_bindings() {
              ALTER TABLE credentials_v25b RENAME TO credentials;",
         )
         .expect("restore v25 credentials shape");
-        conn.pragma_update(None, "foreign_keys", "ON").expect("fk on");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("fk on");
     }
 
     // 重新打开 → 迁移器跑 0026（重建 credentials 表）。
@@ -196,13 +200,18 @@ fn repair_restores_binding_by_name() {
         clear_binding(&v, h);
     }
 
-    let report = ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
+    let report =
+        ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
     assert_eq!(report.restored.len(), 4, "四台都应恢复：{report:?}");
     assert!(report.unmatched_hosts.is_empty(), "{report:?}");
 
     assert_eq!(binding_of(&v, h_office), Some(c_office), "中文二字片段匹配");
     assert_eq!(binding_of(&v, h_nas_local), Some(c_nas), "子串匹配");
-    assert_eq!(binding_of(&v, h_nas_remote), Some(c_nas), "同一凭据可绑多台");
+    assert_eq!(
+        binding_of(&v, h_nas_remote),
+        Some(c_nas),
+        "同一凭据可绑多台"
+    );
     assert_eq!(binding_of(&v, h_58), Some(c_58), "数字名子串匹配");
 }
 
@@ -217,7 +226,8 @@ fn repair_skips_ambiguous_hosts() {
     let h = make_host(&v, "web", Some(c1));
     clear_binding(&v, h);
 
-    let report = ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
+    let report =
+        ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
     assert!(report.restored.is_empty(), "歧义不应自动恢复：{report:?}");
     assert_eq!(report.unmatched_hosts, vec![h], "应记为待人工处理");
     assert_eq!(binding_of(&v, h), None, "歧义主机保持未绑定");
@@ -230,7 +240,8 @@ fn repair_is_noop_when_bindings_intact() {
     let cred = make_credential(&v, "office");
     let host = make_host(&v, "office-box", Some(cred));
 
-    let report = ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
+    let report =
+        ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
     assert!(report.restored.is_empty(), "绑定完好时不得改动：{report:?}");
     assert_eq!(binding_of(&v, host), Some(cred));
 }
@@ -258,7 +269,8 @@ fn repair_keeps_unrelated_credentials_untouched() {
     let h = make_host(&v, "office-box", Some(c.id));
     clear_binding(&v, h);
 
-    let report = ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
+    let report =
+        ottr_vault::store::restore_lost_credential_bindings(&v.connection()).expect("repair");
     assert!(report.restored.is_empty(), "无名凭据不参与匹配：{report:?}");
     assert_eq!(binding_of(&v, h), None);
 }

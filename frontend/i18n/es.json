@@ -1509,5 +1509,9 @@
     "plugins": {
       "desc": "Los complementos amplían el panel con tarjetas y comandos rápidos; por ahora, ejemplos integrados."
     }
+  },
+  "hosts": {
+    "bindingRepaired": "Se restauraron las credenciales de {{count}} host(s). Aún sin credencial: {{pending}}.",
+    "bindingRepairPending": "Estos hosts aún no tienen credencial: {{count}}."
   }
 }

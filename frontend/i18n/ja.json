@@ -1509,5 +1509,9 @@
     "plugins": {
       "desc": "プラグインはカードとクイックコマンドでパネルを拡張します。現在は組み込み例のみです。"
     }
+  },
+  "hosts": {
+    "bindingRepaired": "{{count}} 台のホストの認証情報バインドを復元しました。バインドが必要なホスト：{{pending}}",
+    "bindingRepairPending": "バインドが必要なホスト：{{count}}"
   }
 }

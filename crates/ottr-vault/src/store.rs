@@ -212,6 +212,14 @@ const MIGRATIONS: &[(u32, &str)] = &[
     // 启用位/环境变量**名**明文面；env 的**值**走 secrets 密文面（不进本表，
     // 见迁移文件头）。id 由上层生成（TEXT 主键，非自增——导入导出不撞号）。
     (27, include_str!("../migrations/0027_mcp_servers.sql")),
+    // 0028 绑定修复审计表（2026-11-03，v1.6.2 数据事故）：0026 重建
+    // credentials 表时，外键的 ON DELETE SET NULL 把用户所有主机的凭据绑定
+    // 静默清空（升级即断连）。本迁移只建审计表；恢复由 Rust 修复器做
+    // （名称匹配需逻辑，SQL 表达不了）——见 restore_lost_credential_bindings。
+    (
+        28,
+        include_str!("../migrations/0028_binding_repair_audit.sql"),
+    ),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -394,6 +402,22 @@ impl Vault {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
         migrate(&conn)?;
+        // v1.6.2 数据事故修复（2026-11-03）：0026 重建 credentials 表时，外键的
+        // ON DELETE SET NULL 把用户所有主机的凭据绑定静默清空（升级即断连）。
+        // 这里把绑定按名称匹配找回来，并把结果写进 settings 供前端告知用户
+        // （哪些自动恢复了、哪些要手动）——不静默改数据，审计表逐条留痕。
+        let repair = restore_lost_credential_bindings(&conn)?;
+        if let Ok(payload) = serde_json::to_string(&repair)
+            && (!repair.restored.is_empty() || !repair.unmatched_hosts.is_empty())
+        {
+            // 写 **settings 表**（不是 meta）：前端经 Settings::get 读的就是
+            // 这张表；meta 是库内部簿记（schema_version 等），前端读不到。
+            let _ = conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                rusqlite::params!["repair.binding_report", &payload],
+            );
+        }
         Ok(Self {
             conn: Mutex::new(conn),
             cipher_slot: Mutex::new(None),
@@ -1001,17 +1025,207 @@ fn migrate(conn: &Connection) -> Result<()> {
             app: LATEST_SCHEMA_VERSION,
         });
     }
-    for &(version, sql) in MIGRATIONS {
-        if version <= current {
-            continue;
+    // **迁移期间关掉外键强制**（2026-11-03 用户裁定「别搞外键限制这种过时
+    // 范式」后的根因修复）。
+    //
+    // 事故：0026 为加 kind='agent' 重建 credentials 表（建新表 → 搬数据 →
+    // DROP 旧表 → RENAME）。而 hosts.credential_id 上挂着
+    // `REFERENCES credentials(id) ON DELETE SET NULL` —— SQLite 在
+    // `foreign_keys=ON` 时，DROP 父表会**立即执行 SET NULL 动作**，把用户
+    // 所有主机的凭据绑定静默清空（v1.6.2 升级即断连，14/14 台全丢）。
+    //
+    // 为什么必须在这里关：`PRAGMA foreign_keys` 是连接级开关且**在事务内是
+    // no-op**（SQLite 文档明载），而每个迁移都在事务里跑 → 只能在事务外
+    // 切。表重建期间外键检查本来就是多余的（重建后引用关系由搬数据保证），
+    // 关掉既防级联改数据，又不影响正确性。
+    //
+    // 迁移全部完成后恢复 ON，并跑一次 foreign_key_check 把「真·悬空引用」
+    // 记成告警（不阻断开库——阻断等于把用户锁在门外）。
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    let result = (|| -> Result<()> {
+        for &(version, sql) in MIGRATIONS {
+            if version <= current {
+                continue;
+            }
+            // 每个迁移一个事务：DDL+版本记录原子生效，中断不留半套表。
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(sql)?;
+            upsert_schema_version(&tx, version)?;
+            tx.commit()?;
         }
-        // 每个迁移一个事务：DDL+版本记录原子生效，中断不留半套表。
-        let tx = conn.unchecked_transaction()?;
-        tx.execute_batch(sql)?;
-        upsert_schema_version(&tx, version)?;
-        tx.commit()?;
-    }
+        Ok(())
+    })();
+    // 无论迁移成败都把开关复位（失败时库保持原状，下次 open 重新试）。
+    let _ = conn.pragma_update(None, "foreign_keys", "ON");
+    result?;
     Ok(())
+}
+
+/// 凭据绑定修复报告（v1.6.2 数据事故的自动修复结果）。
+///
+/// 供上层（desktop 命令 → 前端横幅）告知用户：哪些主机的绑定被自动恢复、
+/// 哪些仍需手动重绑——**不静默改数据**：恢复动作逐条写审计表，用户可查可撤。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct BindingRepairReport {
+    /// 自动恢复的绑定（host_id → credential_id）。
+    pub restored: Vec<BindingRepair>,
+    /// 仍未绑定凭据的主机 id（需用户手动处理）。
+    pub unmatched_hosts: Vec<i64>,
+}
+
+/// 单条自动恢复记录。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BindingRepair {
+    pub host_id: i64,
+    pub credential_id: i64,
+    /// 匹配依据（exact / contains / cjk_substring）——审计用。
+    pub method: &'static str,
+}
+
+/// v1.6.2 事故修复：把被外键级联清空的「主机 → 凭据」绑定找回来。
+///
+/// **触发条件（双重保险，宁可不修也不误修）**：
+///   1. 库里存在凭据（`credentials` 非空）；
+///   2. **没有任何主机**持有凭据绑定（`hosts.credential_id` 全为 NULL）；
+///   3. 修复审计表尚未记过本次修复（幂等：修完就不再进）。
+///
+/// 条件 2 命中时，最可能的解释就是「绑定被批量清空」；若用户本来就建了
+/// 凭据却一台都没绑（罕见），条件 3 之外**名称匹配也不会命中**（凭据名与
+/// 主机名毫无关系），自然空转。
+///
+/// **匹配规则**（凭据名 ↔ 主机名，规范化后逐级放宽）：
+///   * `exact`：规范化后完全相等；
+///   * `contains`：一方是另一方的子串（"9.58" ↔ "58"、"home-macmini" ↔ "macmini"）；
+///   * `cjk_substring`：有公共的中文二字片段（"办公Ubuntu" ↔ "办公电脑"）。
+///
+/// **歧义即放弃**：一个主机名同时命中多个凭据 → 不动它（宁可让用户手动，
+/// 也不能把主机绑到错误的凭据上——绑错的症状是认证失败，会误导排查方向）。
+/// 反之一个凭据被多个主机命中是正常的（同一台凭据给多台机器用）。
+pub fn restore_lost_credential_bindings(conn: &Connection) -> Result<BindingRepairReport> {
+    let mut report = BindingRepairReport::default();
+
+    let credential_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM credentials", [], |r| r.get(0))?;
+    if credential_count == 0 {
+        return Ok(report);
+    }
+    let bound_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM hosts WHERE credential_id IS NOT NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    if bound_count > 0 {
+        return Ok(report); // 绑定还在（或用户本来就没绑）——不动
+    }
+    // 审计表存在且已有记录 → 已修过，不重复。
+    let already: i64 = conn
+        .query_row("SELECT COUNT(*) FROM binding_repairs", [], |r| r.get(0))
+        .unwrap_or(0);
+    if already > 0 {
+        return Ok(report);
+    }
+
+    // 取凭据（id + 名字）与主机（id + 名字）。
+    let mut creds: Vec<(i64, String)> = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT id, COALESCE(name, '') FROM credentials")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        for row in rows {
+            creds.push(row?);
+        }
+    }
+    let mut hosts: Vec<(i64, String)> = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT id, name FROM hosts")?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        for row in rows {
+            hosts.push(row?);
+        }
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    for (host_id, host_name) in hosts {
+        let hn = normalize_name(&host_name);
+        let mut hits: Vec<(i64, &'static str)> = Vec::new();
+        for (cred_id, cred_name) in &creds {
+            let cn = normalize_name(cred_name);
+            if cn.is_empty() || hn.is_empty() {
+                continue;
+            }
+            if hn == cn {
+                hits.push((*cred_id, "exact"));
+            } else if (hn.contains(&cn) && cn.chars().count() >= 2)
+                || (cn.contains(&hn) && hn.chars().count() >= 2)
+            {
+                hits.push((*cred_id, "contains"));
+            } else if share_cjk_bigram(&hn, &cn) {
+                hits.push((*cred_id, "cjk_substring"));
+            }
+        }
+        // 命中多个 → 歧义，不动（见函数文档）。
+        if hits.len() == 1 {
+            let (cred_id, method) = hits[0];
+            conn.execute(
+                "UPDATE hosts SET credential_id = ?2 WHERE id = ?1",
+                rusqlite::params![host_id, cred_id],
+            )?;
+            conn.execute(
+                "INSERT INTO binding_repairs (host_id, credential_id, method, restored_at)
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![host_id, cred_id, method, now],
+            )?;
+            report.restored.push(BindingRepair {
+                host_id,
+                credential_id: cred_id,
+                method,
+            });
+        } else {
+            report.unmatched_hosts.push(host_id);
+        }
+    }
+    Ok(report)
+}
+
+/// 名称规范化：去掉所有非字母数字（含分隔符）并小写。
+///
+/// 中文按字符保留（`char::is_alphanumeric` 对汉字为真）——"办公Ubuntu" 与
+/// "办公电脑" 规范化后分别是 "办公ubuntu" / "办公电脑"，公共二字片段得以
+/// 保留。
+fn normalize_name(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+/// 两个规范化名称是否共享某个中文二字片段（"办公" / "电脑" / "阿里" …）。
+///
+/// 只认**中文**二字片段：ASCII 名字（"58" / "NAS"）由 `contains` 规则处理，
+/// 拿 ASCII 二元组做公共片段会产生大量假匹配（"9.58" 与 "9.59" 共享 "58"?—
+/// 不共享，但 "abc" 与 "xab" 共享 "ab" 这类在用户名里太常见）。
+fn share_cjk_bigram(a: &str, b: &str) -> bool {
+    fn bigrams(s: &str) -> Vec<String> {
+        let chars: Vec<char> = s.chars().filter(|c| is_cjk(*c)).collect();
+        chars.windows(2).map(|w| w.iter().collect()).collect()
+    }
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    let ab = bigrams(a);
+    if ab.is_empty() {
+        return false;
+    }
+    let bb = bigrams(b);
+    ab.iter().any(|g| bb.contains(g))
+}
+
+/// 是否 CJK 汉字（基本区 + 扩展 A）。
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32, 0x4E00..=0x9FFF | 0x3400..=0x4DBF)
 }
 
 fn upsert_schema_version(conn: &Connection, version: u32) -> Result<()> {

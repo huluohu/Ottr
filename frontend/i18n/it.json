@@ -1509,5 +1509,9 @@
     "plugins": {
       "desc": "I plugin estendono il pannello con card e comandi rapidi; per ora sono esempi integrati."
     }
+  },
+  "hosts": {
+    "bindingRepaired": "Ripristinate le credenziali di {{count}} host. Ancora senza credenziale: {{pending}}.",
+    "bindingRepairPending": "Questi host non hanno ancora una credenziale: {{count}}."
   }
 }

@@ -23,7 +23,7 @@
 set -u
 
 DEV=muniu@192.168.9.102
-REMOTE=~/ottr-e2e
+REMOTE=/home/muniu/ottr-e2e
 DATA=/tmp/ottr-verify/data
 HOME_DIR=/tmp/ottr-verify/home
 SEED=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ
@@ -91,9 +91,17 @@ c.execute(
     """INSERT OR REPLACE INTO hosts (id, name, group_id, tags, address, port, credential_id,
        jump_chain_id, encoding_override, theme_override, monitor_enabled, notes,
        created_at, updated_at, username, protocol, is_production)
-       VALUES (1, ?, NULL, '[]', '127.0.0.1', 2223, 1, NULL, NULL, NULL, 0, ?,
+       VALUES (1, 'kbd-e2e-box', NULL, '[]', '127.0.0.1', 2223, 1, NULL, NULL, NULL, 0, ?,
                ?, ?, 'spike', 'ssh', 0)""",
-    ("kbd-e2e-box", "Ubuntu 24.04 systemd 服务，日志在 /var/log/syslog，内网 10.20.30.41", now, now),
+    ("Ubuntu 24.04 systemd 服务，日志在 /var/log/syslog，内网 10.20.30.41", now, now),
+)
+c.execute(
+    """INSERT OR REPLACE INTO hosts (id, name, group_id, tags, address, port, credential_id,
+       jump_chain_id, encoding_override, theme_override, monitor_enabled, notes,
+       created_at, updated_at, username, protocol, is_production)
+       VALUES (2, 'z-agent-box', NULL, '[]', '127.0.0.1', 2223, 2, NULL, NULL, NULL, 0, ?,
+               ?, ?, 'spike', 'ssh', 0)""",
+    ("系统 ssh-agent 认证", now, now),
 )
 c.commit()
 print("hosts:", list(c.execute("SELECT id, name, address, port, username, credential_id FROM hosts")))
@@ -102,7 +110,7 @@ SEEDPY
 scp /tmp/ottr-seed-kbd.py "$DEV":/tmp/ottr-seed-kbd.py >/dev/null
 ssh "$DEV" "cd $REMOTE && \
   (./target/debug/examples/mock_kbdint_server 2223 $SEED > /tmp/mock-kbdint.log 2>&1 &) ; \
-  XDG_DATA_HOME=$DATA ./target/debug/examples/seed_totp_credential $SEED && \
+  XDG_DATA_HOME=$DATA DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus" ./target/debug/examples/seed_totp_credential $SEED && \
   python3 /tmp/ottr-seed-kbd.py" || exit 1
 
 say "1b. 起 ssh-agent 并加载夹具密钥（agent 认证那项要用）"
@@ -110,7 +118,7 @@ ssh "$DEV" "cd $REMOTE && \
   if ssh-add -l >/dev/null 2>&1; then echo 'agent 已在跑'; \
   else ssh-agent -s | grep -v '^Agent pid' > /tmp/ottr-agent-env; . /tmp/ottr-agent-env; \
        ssh-add $REMOTE/fixtures/spike_ed25519; fi; \
-  XDG_DATA_HOME=\$XDG_DATA_HOME ./target/debug/examples/seed_agent_credential" || exit 1
+  XDG_DATA_HOME=$DATA DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus" ./target/debug/examples/seed_agent_credential" || exit 1
 
 say "2. 起 vite + 应用（继承 agent 的 SSH_AUTH_SOCK）"
 ssh "$DEV" "export HOME=$HOME_DIR XDG_DATA_HOME=$DATA \
@@ -161,12 +169,15 @@ echo "--- 4c. 提交（输入框自动获焦 → 直接回车，比点坐标稳�
 xdotool windowactivate --sync $W 2>/dev/null; sleep 0.4
 xdotool key --clearmodifiers Return; sleep 8
 shot v-connected
-echo "--- 5. Ask Ottr（工具行按钮；坐标按设备分辨率 2560 宽窗口换算）---"
-act 571 314; sleep 3
+echo "--- 5. Ask Ottr（快捷键 ctrl+shift+a + 工具行按钮）---"
+act 1080 334; sleep 1
+xdotool windowactivate --sync $W 2>/dev/null; sleep 0.4
+xdotool key --clearmodifiers ctrl+shift+a; sleep 3
 shot v-ask
-echo "--- 5b. agent-box（agent 凭据）---"
+echo "--- 5b. z-agent-box（agent 凭据）---"
 actd 464 500; sleep 6
-act 1980 1096; sleep 7          # Trust & connect（主机密钥变了时是 changed 框）
+# 同端点已信任，不需要再点 TOFU；如果弹了 changed 则点确认
+xdotool mousemove 1980 1096 2>/dev/null; sleep 0.3; xdotool click 1 2>/dev/null; sleep 5
 shot v-agent
 echo "--- 6. 凭据表单（⌘K → 凭据）---"
 xdotool key --clearmodifiers Escape; sleep 1
@@ -197,11 +208,11 @@ fi
 # ④ MCP 客户端：**在真机上跑进程级测试**（真 spawn / 环境最小化 / 帧上限 /
 #    超时 / 子进程早退）——比「点 UI 再看截图」是更硬的门，且不依赖坐标。
 assert_remote "④ MCP 客户端：真机进程级 E2E（真 spawn → initialize → list → call）" \
-  "test result: ok" "cd $REMOTE && XDG_DATA_HOME=/tmp/ottr-verify/data \
+  "test result: ok" "export PATH=\$HOME/.cargo/bin:\$PATH; cd $REMOTE && XDG_DATA_HOME=/tmp/ottr-verify/data \
     cargo test -p ottr --test mcp_client_process 2>&1 | tail -6"
 # ⑤ ssh-agent 凭据实际认证：同样用真机上的进程级测试（真 agent + mock sshd）
 assert_remote "⑤ ssh-agent 认证：真机进程级 E2E（真 agent → 签名 → 服务端接受）" \
-  "test result: ok" "cd $REMOTE && . /tmp/ottr-agent-env 2>/dev/null; \
+  "test result: ok" "export PATH=\$HOME/.cargo/bin:\$PATH; cd $REMOTE && . /tmp/ottr-agent-env 2>/dev/null; \
     cargo test -p ottr-ssh --test agent_auth 2>&1 | tail -6"
 # ⑤b 同一台机器上，用**应用**（而非测试）走一遍 agent 认证 → mock 日志留证
 assert_remote "⑤ ssh-agent 认证：应用侧公钥探测被接受" \

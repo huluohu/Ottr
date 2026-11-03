@@ -301,3 +301,43 @@ fn credential_patch_does_not_clear_binding() {
 
     assert_eq!(binding_of(&v, host), Some(cred), "改凭据不动主机绑定");
 }
+
+#[test]
+fn open_vault_runs_repair_and_publishes_report_to_settings() {
+    // 端到端：开库 → 修复器自动接回绑定 → 报告写进 **settings 表**（前端经
+    // Settings::get 读的就是这张表；写进 meta 的话前端读不到）。
+    let dir = tempfile::tempdir().expect("tmp");
+    {
+        let v = open_vault(dir.path());
+        let _cred = make_credential(&v, "办公电脑");
+        let _host = make_host(&v, "办公Ubuntu", None); // 绑定为空（= 中招后的样子）
+    }
+    {
+        let v = open_vault(dir.path());
+        let conn = v.connection();
+        let bound: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM hosts WHERE credential_id IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .expect("count bound");
+        assert_eq!(bound, 1, "开库时修复器应自动接回绑定");
+
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'repair.binding_report'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("read report");
+        let raw = raw.expect("报告应写进 settings 供前端读取");
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("报告是合法 JSON");
+        assert_eq!(parsed["restored"].as_array().map(|a| a.len()), Some(1));
+        // 审计表留痕（可查、可审计）。
+        let repairs: i64 = conn
+            .query_row("SELECT COUNT(*) FROM binding_repairs", [], |r| r.get(0))
+            .expect("count repairs");
+        assert_eq!(repairs, 1, "每次自动恢复都应写审计表");
+    }
+}

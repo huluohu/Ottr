@@ -47,7 +47,13 @@ use crate::master_key::{KeyStorage, MasterKey};
 use crate::{Cipher, Result, VaultError};
 
 /// 程序支持的最新 schema 版本（= MIGRATIONS 末位）。
-pub const LATEST_SCHEMA_VERSION: u32 = 27;
+///
+/// **加迁移必须同步改这里**（2026-11-03 v1.6.3 事故：加了 0028 却忘了改
+/// 本常量 → 用户第一次启动跑完 0028（schema_version=28），第二次启动就撞
+/// `SchemaTooNew { db: 28, app: 27 }` → **应用打不开库**）。
+///
+/// 下面有断言钉住「本常量 == MIGRATIONS 末位」，改迁移忘了改常量会当场红。
+pub const LATEST_SCHEMA_VERSION: u32 = 28;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -1255,5 +1261,34 @@ fn current_schema_version(conn: &Connection) -> Result<u32> {
     match raw.parse::<u32>() {
         Ok(v) => Ok(v),
         Err(_) => Err(VaultError::CorruptedSchemaVersion(raw)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn latest_schema_version_matches_last_migration() {
+        // 加迁移忘了改 LATEST_SCHEMA_VERSION → 用户第二次启动就撞
+        // SchemaTooNew（库版本 > 程序版本）→ **应用打不开库**（2026-11-03
+        // v1.6.3 事故）。本断言把它变成编译期/测试期可见的红。
+        let last = MIGRATIONS.last().map(|(v, _)| *v).unwrap_or(0);
+        assert_eq!(
+            LATEST_SCHEMA_VERSION, last,
+            "LATEST_SCHEMA_VERSION({LATEST_SCHEMA_VERSION}) 必须等于 MIGRATIONS 末位({last})——\
+             加了迁移忘了改常量，用户第二次启动就会打不开库"
+        );
+    }
+
+    #[test]
+    fn migration_versions_are_strictly_increasing() {
+        // 版本号必须严格递增且连续（MIGRATIONS 的顺序即执行顺序；跳号会让
+        // "库里有什么版本" 与 "该跑哪些迁移" 对不上）。
+        let mut prev = 0;
+        for (v, _) in MIGRATIONS {
+            assert_eq!(*v, prev + 1, "迁移版本号必须从 1 起连续递增");
+            prev = *v;
+        }
     }
 }

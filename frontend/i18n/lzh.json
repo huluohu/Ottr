@@ -1418,7 +1418,11 @@
     "panelProgress": "{{received}}/{{total}} KB · {{pct}}%",
     "later": "少頃",
     "retry": "再試",
-    "viewOnGitHub": "在 GitHub 觀"
+    "viewOnGitHub": "在 GitHub 觀",
+    "errorNetwork": "無法連結更新伺服器，請檢查網路後重試",
+    "errorManifest": "搣唔到版本清單，更新服務可能暫時唔用",
+    "errorSignature": "更新包簽章驗證未通過，無法安裝",
+    "errorGeneric": "檢查更新失敗"
   },
   "home": {
     "tagline": "選一臺機，始下潛。",

@@ -1421,7 +1421,11 @@
     "panelProgress": "{{received}}/{{total}} KB · {{pct}}%",
     "later": "Later",
     "retry": "Retry",
-    "viewOnGitHub": "View on GitHub"
+    "viewOnGitHub": "View on GitHub",
+    "errorNetwork": "Could not reach the update server. Check your connection and try again.",
+    "errorManifest": "Update manifest not found. The update service may be temporarily unavailable.",
+    "errorSignature": "The update package failed signature verification and cannot be installed.",
+    "errorGeneric": "Update check failed"
   },
   "home": {
     "tagline": "Pick a host and dive in.",

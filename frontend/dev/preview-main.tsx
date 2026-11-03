@@ -473,6 +473,35 @@ async function renderShot(): Promise<void> {
     useModalStore.setState({ active: "promptAsk" });
   }
 
+  // 设置页「软件更新」区（2026-11-03 用户实锤「按钮都变形了」）：错误态 +
+  // 长错误文案——量测「检查更新」按钮会不会被长文案挤到文字竖排两行。
+  if (shotMode === "settings-update") {
+    const { useUpdateStore } = await import("./../update/updateStore");
+    useUpdateStore.setState({
+      portable: false,
+      current: "1.6.1",
+      phase: {
+        kind: "error",
+        message: "Could not reach the update server. Check your connection and try again.",
+        detail:
+          "error sending request for url (https://github.com/huluohu/Ottr/releases/latest/download/latest.json)",
+      },
+    });
+    const { UpdateCheck } = await import("./../update/UpdateCheck");
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <div className="app-shell">
+            <div className="dialog credentials-dialog">
+              <UpdateCheck />
+            </div>
+          </div>
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
+
   // MCP 客户端设置（批次五）：外部 MCP server 的列表与工具。
   if (shotMode === "mcp-client") {
     const { McpClientSettings } = await import("./../security/McpClientSettings");

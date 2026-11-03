@@ -133,17 +133,28 @@ async fn connect_client(socket: Option<&Path>) -> Result<DynAgentClient, AgentEr
 }
 
 /// 按平台连接 agent 客户端（Windows：命名管道 / Pageant）。
+///
+/// **两个 connect 返回不同的流类型**（命名管道 `NamedPipeClient` vs
+/// `PageantStream`）——不能塞进同一个 `match`（合成一个类型）：Windows
+/// 交叉编译才会报 `expected NamedPipeClient, found PageantStream`（v1.6.1
+/// 流水线在 Windows 平台构建阶段暴露）。这里各自 `dynamic()` 擦除后汇合。
 #[cfg(windows)]
 async fn connect_client(socket: Option<&Path>) -> Result<DynAgentClient, AgentError> {
-    let client = match socket {
+    match socket {
         Some(p) => {
             // Windows 上 OpenSSH agent 暴露的是命名管道（\\.\pipe\openssh-ssh-agent）。
-            AgentClient::connect_named_pipe(p.as_os_str()).await
+            let client = AgentClient::connect_named_pipe(p.as_os_str())
+                .await
+                .map_err(|e| AgentError::Client(e.to_string()))?;
+            Ok(client.dynamic())
         }
-        None => AgentClient::connect_pageant().await,
+        None => {
+            let client = AgentClient::connect_pageant()
+                .await
+                .map_err(|e| AgentError::Client(e.to_string()))?;
+            Ok(client.dynamic())
+        }
     }
-    .map_err(|e| AgentError::Client(e.to_string()))?;
-    Ok(client.dynamic())
 }
 
 /// 非 unix 非 windows（wasm 等）——agent 不可用。

@@ -1421,7 +1421,11 @@
     "panelProgress": "進捗 {{received}}/{{total}} KB · {{pct}}%",
     "later": "後で",
     "retry": "再試行",
-    "viewOnGitHub": "GitHub で表示"
+    "viewOnGitHub": "GitHub で表示",
+    "errorNetwork": "更新サーバーに接続できません。ネットワークを確認して再試行してください。",
+    "errorManifest": "バージョン情報を取得できませんでした。更新サービスは一時的に利用できない可能性があります。",
+    "errorSignature": "更新パッケージの署名検証に失敗したためインストールできません。",
+    "errorGeneric": "更新の確認に失敗しました"
   },
   "home": {
     "tagline": "ホストを選んで、すぐ始めましょう。",

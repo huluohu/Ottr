@@ -1421,7 +1421,11 @@
     "panelProgress": "{{received}}/{{total}} KB · {{pct}} %",
     "later": "Más tarde",
     "retry": "Reintentar",
-    "viewOnGitHub": "Ver en GitHub"
+    "viewOnGitHub": "Ver en GitHub",
+    "errorNetwork": "No se pudo conectar con el servidor de actualizaciones. Comprueba tu conexión e inténtalo de nuevo.",
+    "errorManifest": "No se encontró el manifiesto de versión. El servicio de actualizaciones puede no estar disponible temporalmente.",
+    "errorSignature": "La firma del paquete de actualización no es válida y no se puede instalar.",
+    "errorGeneric": "Error al comprobar actualizaciones"
   },
   "home": {
     "tagline": "Elige un host y sumérgete.",

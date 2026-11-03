@@ -1,7 +1,13 @@
 // UpdateCheck 组件测试（2026-10-09 检查更新功能）：当前版本回显、已是最新、
 // 发现新版 → 下载安装（进度事件 → 完成提示）。plugin-updater/api/app 全 mock
 // （jsdom 无 Tauri runtime）；core.invoke mock 供便携标记（app_portable）用。
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const checkMock = vi.fn();
@@ -67,7 +73,9 @@ describe("UpdateCheck", () => {
   it("便携模式：检查按钮隐藏，就地显示手动更新指引（2026-10-13）", async () => {
     invokeMock.mockResolvedValue(true); // app_portable → true
     render(<UpdateCheck />);
-    await waitFor(() => expect(screen.getByTestId("update-portable-hint")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId("update-portable-hint")).toBeTruthy(),
+    );
     expect(screen.queryByTestId("update-check-button")).toBeNull();
   });
 
@@ -97,7 +105,10 @@ describe("UpdateCheck", () => {
     // 变更即落盘（选 3 小时档 → 落 interval:3）
     fireEvent.change(select, { target: { value: "interval:3" } });
     await waitFor(() =>
-      expect(settingsSetMock).toHaveBeenCalledWith(SETTING_UPDATE_CHECK_MODE, "interval:3"),
+      expect(settingsSetMock).toHaveBeenCalledWith(
+        SETTING_UPDATE_CHECK_MODE,
+        "interval:3",
+      ),
     );
   });
 
@@ -120,7 +131,9 @@ describe("UpdateCheck", () => {
   it("便携模式：指引 + 「打开下载页」直达 Releases 链接（2026-10-13）", async () => {
     invokeMock.mockResolvedValue(true); // app_portable → true
     render(<UpdateCheck />);
-    const link = await waitFor(() => screen.getByTestId("update-portable-link"));
+    const link = await waitFor(() =>
+      screen.getByTestId("update-portable-link"),
+    );
     expect(link.getAttribute("href")).toContain("releases/latest");
     expect(screen.queryByTestId("update-check-button")).toBeNull();
   });
@@ -129,7 +142,9 @@ describe("UpdateCheck", () => {
     checkMock.mockResolvedValue(null);
     render(<UpdateCheck />);
     fireEvent.click(screen.getByTestId("update-check-button"));
-    await waitFor(() => expect(screen.getByTestId("update-uptodate")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId("update-uptodate")).toBeTruthy(),
+    );
   });
 
   it("发现新版 → 可用面板带版本号；安装走进度事件 → 完成提示", async () => {
@@ -144,7 +159,9 @@ describe("UpdateCheck", () => {
     const panel = await waitFor(() => screen.getByTestId("update-available"));
     expect(panel.textContent).toContain("0.4.0");
     fireEvent.click(screen.getByTestId("update-install"));
-    await waitFor(() => expect(screen.getByTestId("update-installed")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId("update-installed")).toBeTruthy(),
+    );
     expect(update.downloadAndInstall).toHaveBeenCalledTimes(1);
   });
 
@@ -157,17 +174,42 @@ describe("UpdateCheck", () => {
     render(<UpdateCheck />);
     fireEvent.click(screen.getByTestId("update-check-button"));
     fireEvent.click(await waitFor(() => screen.getByTestId("update-install")));
-    await waitFor(() => expect(screen.getByTestId("update-installed")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByTestId("update-installed")).toBeTruthy(),
+    );
     fireEvent.click(screen.getByTestId("update-restart"));
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("app_restart"));
   });
 
-  it("检查失败：错误文本就地展示", async () => {
-    checkMock.mockRejectedValue(new Error("network down"));
+  it("检查失败：正文给人话、原始报错只在悬停提示里（2026-11-03 用户反馈「按钮都变形了」——reqwest 原始串直接上屏，把同行的「检查更新」按钮压到文字竖排）", async () => {
+    const raw =
+      "error sending request for url (https://github.com/huluohu/Ottr/releases/latest/download/latest.json)";
+    checkMock.mockRejectedValue(new Error(raw));
     render(<UpdateCheck />);
     fireEvent.click(screen.getByTestId("update-check-button"));
-    await waitFor(() =>
-      expect(screen.getByTestId("update-error").textContent).toContain("network down"),
+    // 网络类失败会自动重试一次（1.2s 退避），两次都失败才落到错误态。
+    const el = await waitFor(() => screen.getByTestId("update-error"), {
+      timeout: 5000,
+    });
+    expect(el.textContent).not.toContain("error sending request");
+    expect(el.textContent).not.toContain("github.com");
+    expect(el.getAttribute("title")).toContain("error sending request");
+  });
+
+  it("检查失败：给出「重试」按钮（不必再点同一个「检查更新」）", async () => {
+    checkMock.mockRejectedValue(
+      new Error("error sending request for url (https://x.invalid/a.json)"),
+    );
+    render(<UpdateCheck />);
+    fireEvent.click(screen.getByTestId("update-check-button"));
+    await waitFor(() => screen.getByTestId("update-retry"), { timeout: 5000 });
+    const before = checkMock.mock.calls.length;
+    fireEvent.click(screen.getByTestId("update-retry"));
+    await waitFor(
+      () => expect(checkMock.mock.calls.length).toBeGreaterThan(before),
+      {
+        timeout: 5000,
+      },
     );
   });
 });

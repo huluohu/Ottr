@@ -1,7 +1,14 @@
 // updateToasts 单测（2026-10-13 重构回归钉）：单飞防重（双份 toast 根因）/
 // 发现新版 → toast 内「下载并安装」就地下载 / 完成提示。编排走真实
 // updateStore + toastStore（集成面），仅 mock updater 插件的 check。
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const checkMock = vi.fn();
@@ -20,7 +27,9 @@ import { runUpdateCheckToasts } from "./updateToasts";
 function fakeUpdate(version: string) {
   return {
     version,
-    downloadAndInstall: async (cb?: (e: { event: string; data?: unknown }) => void) => {
+    downloadAndInstall: async (
+      cb?: (e: { event: string; data?: unknown }) => void,
+    ) => {
       cb?.({ event: "Started", data: { contentLength: 2048 } });
       cb?.({ event: "Progress", data: { chunkLength: 1024 } });
       cb?.({ event: "Finished" });
@@ -30,7 +39,11 @@ function fakeUpdate(version: string) {
 
 beforeEach(() => {
   useToastStore.setState({ toasts: [] });
-  useUpdateStore.setState({ current: "0.9.0", portable: false, phase: { kind: "idle" } });
+  useUpdateStore.setState({
+    current: "0.9.0",
+    portable: false,
+    phase: { kind: "idle" },
+  });
   checkMock.mockReset();
 });
 
@@ -53,17 +66,21 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
       resolveCheck(null);
     });
     await waitFor(() =>
-      expect(useToastStore.getState().toasts.some((t) => t.message.includes("up to date"))).toBe(
-        true,
-      ),
+      expect(
+        useToastStore
+          .getState()
+          .toasts.some((t) => t.message.includes("up to date")),
+      ).toBe(true),
     );
     // 单飞窗已关：再次触发是新的一次检查（新 checking toast）
     checkMock.mockResolvedValue(null);
     runUpdateCheckToasts();
     await waitFor(() =>
-      expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(
-        true,
-      ),
+      expect(
+        useToastStore
+          .getState()
+          .toasts.some((t) => t.message.includes("Checking")),
+      ).toBe(true),
     );
   });
 
@@ -75,21 +92,27 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
       }),
     );
     runUpdateCheckToasts();
-    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(
-      true,
-    );
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some((t) => t.message.includes("Checking")),
+    ).toBe(true);
     await act(async () => {
       resolveCheck(null);
     });
     await waitFor(() =>
-      expect(useToastStore.getState().toasts.some((t) => t.message.includes("up to date"))).toBe(
-        true,
-      ),
+      expect(
+        useToastStore
+          .getState()
+          .toasts.some((t) => t.message.includes("up to date")),
+      ).toBe(true),
     );
     // 「正在检查」即刻消失：结果 toast 与它不再同屏共存
-    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(
-      false,
-    );
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some((t) => t.message.includes("Checking")),
+    ).toBe(false);
   });
 
   it("发现新版：单条 toast 内「下载 & 安装」按钮，点击就地下载（不再跳设置页）", async () => {
@@ -107,9 +130,11 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
 
     fireEvent.click(screen.getByTestId(/toast-action-/));
     await waitFor(() =>
-      expect(useToastStore.getState().toasts.some((t) => t.message.includes("Restart"))).toBe(
-        true,
-      ),
+      expect(
+        useToastStore
+          .getState()
+          .toasts.some((t) => t.message.includes("Restart")),
+      ).toBe(true),
     );
     expect(useUpdateStore.getState().phase.kind).toBe("installed");
     // 安装完成 toast 带「立即重启」动作（2026-10-13：不再要求手动退出重开）
@@ -126,18 +151,33 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
     runUpdateCheckToasts();
     await waitFor(() =>
       expect(
-        useToastStore.getState().toasts.some((t) => t.message.includes("portable")),
+        useToastStore
+          .getState()
+          .toasts.some((t) => t.message.includes("portable")),
       ).toBe(true),
     );
     expect(checkMock).not.toHaveBeenCalled();
     expect(useUpdateStore.getState().phase.kind).toBe("idle");
   });
 
-  it("检查失败：错误原样入 toast", async () => {
-    checkMock.mockRejectedValue(new Error("network down"));
+  it("检查失败：toast 给人话，原始报错不外露（2026-11-03：reqwest 原始串上屏会把同行的「检查更新」按钮压变形，且把内部 URL 甩给用户）", async () => {
+    checkMock.mockRejectedValue(
+      new Error(
+        "error sending request for url (https://github.com/huluohu/Ottr/releases/latest/download/latest.json)",
+      ),
+    );
     runUpdateCheckToasts();
-    await waitFor(() =>
-      expect(useToastStore.getState().toasts.some((t) => t.message === "network down")).toBe(true),
+    await waitFor(
+      () => {
+        const msgs = useToastStore
+          .getState()
+          .toasts.map((t) => t.message)
+          .join("\n");
+        expect(msgs.length).toBeGreaterThan(0);
+        expect(msgs).not.toContain("error sending request");
+        expect(msgs).not.toContain("github.com");
+      },
+      { timeout: 5000 },
     );
   });
 
@@ -148,7 +188,10 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
     runUpdateCheckToasts();
     // 单飞语义保持：不重复发起检查/下载，但必须有可感知的反馈
     expect(checkMock).not.toHaveBeenCalled();
-    const msg = useToastStore.getState().toasts.map((t) => t.message).join("\n");
+    const msg = useToastStore
+      .getState()
+      .toasts.map((t) => t.message)
+      .join("\n");
     expect(msg).toContain("Downloading");
     expect(msg).toContain("1/2");
   });
@@ -159,22 +202,33 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
     });
     runUpdateCheckToasts();
     expect(checkMock).not.toHaveBeenCalled();
-    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Downloading"))).toBe(
-      true,
-    );
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some((t) => t.message.includes("Downloading")),
+    ).toBe(true);
   });
 
   it("检查中（他入口发起，如设置页）再点菜单检查：提示正在检查，不二次发起", () => {
     useUpdateStore.setState({ phase: { kind: "checking" } });
     runUpdateCheckToasts();
     expect(checkMock).not.toHaveBeenCalled();
-    expect(useToastStore.getState().toasts.some((t) => t.message.includes("Checking"))).toBe(true);
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some((t) => t.message.includes("Checking")),
+    ).toBe(true);
   });
 
   it("已装待重启再点「检查更新」：就地给「立即重启」toast，不再发起检查（2026-10-26：同一版本重查会被当新版本再报）", async () => {
     render(<Toaster />);
-    const restart = vi.spyOn(useUpdateStore.getState(), "restartNow").mockImplementation(() => {});
-    useUpdateStore.setState({ phase: { kind: "installed" }, info: { version: "1.0.0", date: null, body: null } });
+    const restart = vi
+      .spyOn(useUpdateStore.getState(), "restartNow")
+      .mockImplementation(() => {});
+    useUpdateStore.setState({
+      phase: { kind: "installed" },
+      info: { version: "1.0.0", date: null, body: null },
+    });
     runUpdateCheckToasts();
     expect(checkMock).not.toHaveBeenCalled();
     const t = useToastStore.getState().toasts.find((x) => x.action);
@@ -204,7 +258,12 @@ describe("runUpdateCheckToasts（四端检查更新入口的 toast 编排）", (
       body: "## 0.9.1\n- x",
     });
     await useUpdateStore.getState().downloadAndInstall();
-    expect(useUpdateStore.getState().phase).toEqual({ kind: "error", message: "disk full" });
+    // 下载失败同样人话化（2026-11-03）：原始报错只进 detail，正文给用户话。
+    expect(useUpdateStore.getState().phase).toEqual({
+      kind: "error",
+      message: expect.not.stringContaining("disk full"),
+      detail: "disk full",
+    });
     expect(useUpdateStore.getState().info?.version).toBe("0.9.1"); // 失败不丢提醒
     checkMock.mockResolvedValue(null);
     await useUpdateStore.getState().checkForUpdate();

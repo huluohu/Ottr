@@ -13,7 +13,11 @@
 #   不配置签名私钥也能出包，CI 才叠加签名。pubkey（非秘密）在基础配置。
 # - upload 路径按 Tauri v2 实际产物收窄：dmg / msi+nsis / deb / AppImage
 #   + updater 产物（*.sig、macOS *.app.tar.gz、msi *.msi.zip）。
-# - fail-fast: false：任一平台失败不取消其余平台，spike 期需要三端全量信号。
+# - fail-fast: false（2026-11-03 用户裁定后分工）：PR 门保留「一平台失败不取消
+#   其余」——这里要的是**一轮拿到三端全量信号**（macOS 与 Windows 同时坏时，
+#   fail-fast 只会先报一个，修完再跑才发现下一个也坏，来回多几轮）。
+#   发版流水线（release.yml）相反：一平台失败就必然没有 Release（创建步骤
+#   被跳过），其余平台跑完也是白跑，故那边已改为 fail-fast: true。
 
 name: spike-build
 

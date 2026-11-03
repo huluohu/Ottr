@@ -1418,7 +1418,11 @@
     "panelProgress": "{{received}}/{{total}} KB · {{pct}}%",
     "later": "稍后",
     "retry": "重试",
-    "viewOnGitHub": "在 GitHub 查看"
+    "viewOnGitHub": "在 GitHub 查看",
+    "errorNetwork": "无法连接更新服务器，请检查网络后重试",
+    "errorManifest": "未找到版本清单，更新服务可能暂不可用",
+    "errorSignature": "更新包签名校验未通过，无法安装",
+    "errorGeneric": "检查更新失败"
   },
   "home": {
     "tagline": "选一台主机，开始下潜。",

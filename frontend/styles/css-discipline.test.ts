@@ -205,5 +205,12 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
       expect(css).not.toMatch(/var\(--space-\d+,/);
       expect(css).not.toMatch(/var\(--radius-[a-z]+,/);
     });
+
+    it("更新状态行的动作钮不参与收缩、错误文案可断行（2026-11-03 用户反馈「按钮都变形了」：reqwest 原始报错是一整句带 URL 的长串，在 flex 行里把「检查更新」按钮压到文字宽度不足 → 文字竖排成两行；同 MCP 授权行「勾选文字被挤成竖排」的同一病根）", () => {
+      expect(css).toMatch(/\.update-status-row > button \{[^}]*flex: none/s);
+      expect(css).toMatch(/\.update-status-row > button \{[^}]*white-space: nowrap/s);
+      expect(css).toMatch(/\.update-status-row > \.form-error \{[^}]*min-width: 0/s);
+      expect(css).toMatch(/\.update-status-row > \.form-error \{[^}]*overflow-wrap: anywhere/s);
+    });
   });
 });

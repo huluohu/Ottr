@@ -1421,7 +1421,11 @@
     "panelProgress": "Download {{received}}/{{total}} KB · {{pct}}%",
     "later": "Più tardi",
     "retry": "Riprova",
-    "viewOnGitHub": "Vedi su GitHub"
+    "viewOnGitHub": "Vedi su GitHub",
+    "errorNetwork": "Impossibile raggiungere il server degli aggiornamenti. Controlla la connessione e riprova.",
+    "errorManifest": "Manifest della versione non trovato. Il servizio aggiornamenti potrebbe non essere disponibile temporaneamente.",
+    "errorSignature": "Verifica della firma del pacchetto di aggiornamento non riuscita, installazione non possibile.",
+    "errorGeneric": "Controllo aggiornamenti non riuscito"
   },
   "home": {
     "tagline": "Scegli un host e tuffati.",

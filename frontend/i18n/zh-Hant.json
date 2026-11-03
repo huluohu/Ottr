@@ -1418,7 +1418,11 @@
     "panelProgress": "{{received}}/{{total}} KB · {{pct}}%",
     "later": "稍後",
     "retry": "重試",
-    "viewOnGitHub": "在 GitHub 查看"
+    "viewOnGitHub": "在 GitHub 查看",
+    "errorNetwork": "無法連線更新伺服器，請檢查網路後重試",
+    "errorManifest": "找不到版本清單，更新服務可能暫不可用",
+    "errorSignature": "更新包簽章校驗未通過，無法安裝",
+    "errorGeneric": "檢查更新失敗"
   },
   "home": {
     "tagline": "選一臺主機，開始下潛。",

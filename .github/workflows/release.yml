@@ -73,7 +73,13 @@ jobs:
     env:
       APPLE_SIGNING_IDENTITY: OttrCodesign
     strategy:
-      fail-fast: false
+      # fail-fast: true（2026-11-03 用户裁定）：Release 的创建依赖**全部**平台
+      # 构建成功——任一平台失败，Create GitHub Release 就会被跳过，其余平台
+      # 跑完的产物也无处可去（白跑）。故一失败即取消其余，尽快把红灯摆出来
+      # （v1.6.1 实测：Windows 编译失败拖到 04:37 才炸，另两个平台还在跑）。
+      # 注：PR 门（spike.yml）仍用 fail-fast: false —— 那里要的是「一轮拿到
+      # 三端全量信号」，避免修完一个平台再跑一轮才发现下一个也坏。
+      fail-fast: true
       matrix:
         include:
           - name: macOS (Apple Silicon)

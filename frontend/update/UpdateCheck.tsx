@@ -42,7 +42,9 @@ export function UpdateCheck() {
     // 同 hostkey 巡检状态读取的既有先例）。
     Promise.resolve(vaultApi.settings.get<string>(SETTING_UPDATE_CHECK_MODE))
       .then((raw) => setAutoCheck(parseSetting(raw)))
-      .catch(() => setAutoCheck({ kind: "off", hours: DEFAULT_INTERVAL_HOURS }));
+      .catch(() =>
+        setAutoCheck({ kind: "off", hours: DEFAULT_INTERVAL_HOURS }),
+      );
   }, [loadCurrent]);
 
   return (
@@ -87,7 +89,10 @@ export function UpdateCheck() {
                 {AUTO_CHECK_OPTIONS.map((o) => (
                   <option key={encodeSetting(o)} value={encodeSetting(o)}>
                     {o.kind === "interval"
-                      ? t("update.autoCheck_interval", { hours: o.hours, count: o.hours })
+                      ? t("update.autoCheck_interval", {
+                          hours: o.hours,
+                          count: o.hours,
+                        })
                       : t(`update.autoCheck_${o.kind}`)}
                   </option>
                 ))}
@@ -102,10 +107,16 @@ export function UpdateCheck() {
               type="button"
               className="btn-accent"
               data-testid="update-check-button"
-              disabled={phase.kind === "checking" || phase.kind === "downloading" || phase.kind === "installed"}
+              disabled={
+                phase.kind === "checking" ||
+                phase.kind === "downloading" ||
+                phase.kind === "installed"
+              }
               onClick={() => void checkForUpdate()}
             >
-              {phase.kind === "checking" ? t("update.checking") : t("update.check")}
+              {phase.kind === "checking"
+                ? t("update.checking")
+                : t("update.check")}
             </button>
             {phase.kind === "downloading" && (
               <span className="settings-hint" data-testid="update-progress">
@@ -141,9 +152,25 @@ export function UpdateCheck() {
               </>
             )}
             {phase.kind === "error" && (
-              <span className="form-error" data-testid="update-error">
-                {phase.message}
-              </span>
+              <>
+                {/* 原始报错（reqwest 的「error sending request for url (…)」）
+                    只进 title 悬停提示——正文是人话，细节供排查（2026-11-03）。 */}
+                <span
+                  className="form-error"
+                  data-testid="update-error"
+                  title={phase.detail}
+                >
+                  {phase.message}
+                </span>
+                {/* 失败后可当场重试（不必再点同一个「检查更新」按钮）。 */}
+                <button
+                  type="button"
+                  data-testid="update-retry"
+                  onClick={() => void checkForUpdate()}
+                >
+                  {t("update.retry")}
+                </button>
+              </>
             )}
           </div>
           {/* 发现新版：accent 弱底单行条（文案左、安装钮右），一行解决不铺开 */}

@@ -488,6 +488,21 @@
   flex: 1 1 auto;
   text-align: right;
 }
+/* 更新状态行（2026-11-03 用户反馈「按钮都变形了」）：错误文案是一整句带
+ * URL 的长串（reqwest 原始报错），在 flex 行里把「检查更新」按钮压到
+ * 文字宽度不足 → 按钮文字竖排成两行（同 MCP 授权行「勾选文字被挤成竖排」
+ * 的同一个病根）。修法：动作钮不参与收缩 + 文字不许换行；错误文案吃掉
+ * 剩余空间并在长 URL 处断行（overflow-wrap），不外溢也不挤邻。 */
+.update-status-row > button {
+  flex: none;
+  white-space: nowrap;
+}
+.update-status-row > .form-error {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
 .settings-row > label {
   display: inline-flex;
   align-items: center;

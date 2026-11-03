@@ -42,7 +42,7 @@ assert_remote() {
   if printf '%s' "$out" | grep -qE "$pat"; then
     ok "$name"
   else
-    bad "$name（未见 /$pat/）"
+    bad "${name}（未见 /$pat/）"
     printf '%s\n' "$out" | tail -6 | sed 's/^/      /'
   fi
 }
@@ -57,9 +57,9 @@ assert_fresh_window() {
   e=$(printf '%s' "$line" | sed -n 's/.*expected=\([0-9]*\).*/\1/p')
   p=$(printf '%s' "$line" | sed -n 's/.*prev_window=\([0-9]*\).*/\1/p')
   if [ -n "$a" ] && [ "$a" = "$e" ] && [ -n "$p" ] && [ "$a" != "$p" ]; then
-    ok "$name（answer=$a = expected=$e ≠ prev_window=$p → 换码生效）"
+    ok "${name}（answer=${a} = expected=${e} != prev_window=${p} -> 换码生效）"
   else
-    bad "$name（answer=$a expected=$e prev_window=$p）"
+    bad "${name}（answer=${a} expected=${e} prev_window=${p}）"
   fi
 }
 
@@ -75,6 +75,7 @@ rsync -az --delete --exclude target crates/ "$DEV:$REMOTE/crates/" || exit 1
 rsync -az --delete --exclude target desktop/ "$DEV:$REMOTE/desktop/" || exit 1
 
 ssh "$DEV" "export PATH=\$HOME/.cargo/bin:\$PATH; cd $REMOTE && \
+  npm install --no-audit --no-fund && \
   node scripts/prepare-mcp-sidecar.mjs && \
   cargo build --manifest-path desktop/Cargo.toml && \
   cargo build --example seed_totp_credential --manifest-path desktop/Cargo.toml && \
@@ -175,8 +176,10 @@ xdotool windowactivate --sync $W 2>/dev/null; sleep 0.4
 xdotool key --clearmodifiers ctrl+shift+a; sleep 3
 shot v-ask
 echo "--- 5b. z-agent-box（agent 凭据）---"
-actd 464 500; sleep 6
-# 同端点已信任，不需要再点 TOFU；如果弹了 changed 则点确认
+actd 464 534; sleep 3
+xdotool key --clearmodifiers ctrl+k 2>/dev/null; sleep 1
+xdotool type --delay 50 "z-agent" 2>/dev/null; sleep 1
+xdotool key --clearmodifiers Return 2>/dev/null; sleep 6
 xdotool mousemove 1980 1096 2>/dev/null; sleep 0.3; xdotool click 1 2>/dev/null; sleep 5
 shot v-agent
 echo "--- 6. 凭据表单（⌘K → 凭据）---"

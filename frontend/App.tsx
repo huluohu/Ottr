@@ -73,6 +73,7 @@ import { useTerminalThemeStore } from "./theme/terminalThemeStore";
 import { createSplitDedupe } from "./shortcuts/splitDedupe";
 import { initAutoCheck } from "./update/autoCheck";
 import { useUpdateStore } from "./update/updateStore";
+import { announceBindingRepair } from "./hosts/bindingRepair";
 import { useVaultStore } from "./vault/store";
 import { useGlobalFocusTrap } from "./ui/useFocusTrap";
 import { type Host } from "./vault/api";
@@ -291,6 +292,9 @@ function HomeLayout() {
       // 「当前 vX」并按便携标记隐藏钮——此前只有打开过设置→关于才会加载。
       useUpdateStore.getState().loadCurrent();
       void initAutoCheck();
+      // 凭据绑定修复告知（2026-11-03，v1.6.2 数据事故）：若开库时修复器恢复
+      // 了被外键清空的绑定，这里告知用户恢复了多少台、还剩多少台要手动绑。
+      void announceBindingRepair();
       // Otty 情感时刻开关（2026-10-16 M3）：vault 真源 ui.ottyMoments 对齐
       // （默认开；设置页外观分区可一键关——报告红线②）。
       void syncOttyFromVault();

@@ -1509,5 +1509,9 @@
     "plugins": {
       "desc": "플러그인은 카드와 빠른 명령으로 패널을 확장합니다. 현재는 내장 예제만 제공됩니다."
     }
+  },
+  "hosts": {
+    "bindingRepaired": "호스트 {{count}}개의 자격 증명 바인딩을 복구했습니다. 바인딩이 필요한 호스트: {{pending}}",
+    "bindingRepairPending": "바인딩이 필요한 호스트: {{count}}"
   }
 }

@@ -1506,5 +1506,9 @@
     "plugins": {
       "desc": "插件以卡片和快捷命令擴展面板，當前爲內置示例。"
     }
+  },
+  "hosts": {
+    "bindingRepaired": "已自動恢復 {{count}} 台主機的憑據綁定；仍需手動綁定：{{pending}}。",
+    "bindingRepairPending": "仍需手動綁定憑據的主機：{{count}}。"
   }
 }

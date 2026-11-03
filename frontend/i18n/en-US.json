@@ -1509,5 +1509,9 @@
     "plugins": {
       "desc": "Plugins extend the panel with cards and quick commands; built-in examples for now."
     }
+  },
+  "hosts": {
+    "bindingRepaired": "Restored credential bindings for {{count}} host(s). Still need a credential: {{pending}}.",
+    "bindingRepairPending": "These hosts still need a credential: {{count}}."
   }
 }

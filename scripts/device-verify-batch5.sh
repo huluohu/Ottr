@@ -82,44 +82,48 @@ ssh "$DEV" "export PATH=\$HOME/.cargo/bin:\$PATH; cd $REMOTE && \
   cargo build --example seed_agent_credential --manifest-path desktop/Cargo.toml && \
   cargo build --example mock_kbdint_server -p ottr-ssh && echo BUILD_OK" || exit 1
 
-say "1. 部署 mock sshd / mock MCP server + 造凭据与主机行"
+say "1. 启动 mock sshd + ssh-agent + 创建凭据"
+ssh "$DEV" "pkill -x mock_kbdint_ser 2>/dev/null; pkill -x ottr 2>/dev/null; rm -f /tmp/mock-kbdint.log; sleep 1; \
+  mkdir -p $DATA $HOME_DIR; \
+  cd $REMOTE && \
+  (./target/debug/examples/mock_kbdint_server 2223 $SEED > /tmp/mock-kbdint.log 2>&1 &) ; \
+  sleep 1; \
+  XDG_DATA_HOME=$DATA DBUS_SESSION_BUS_ADDRESS=\"unix:path=/run/user/1000/bus\" ./target/debug/examples/seed_totp_credential $SEED && \
+  if ssh-add -l >/dev/null 2>&1; then echo 'agent 已在跑'; \
+  else ssh-agent -s | grep -v '^Agent pid' > /tmp/ottr-agent-env; . /tmp/ottr-agent-env; \
+       ssh-add $REMOTE/fixtures/spike_ed25519; fi && \
+  XDG_DATA_HOME=$DATA DBUS_SESSION_BUS_ADDRESS=\"unix:path=/run/user/1000/bus\" ./target/debug/examples/seed_agent_credential" || exit 1
+
+say "1b. 动态关联凭据并注入主机行"
 cat > /tmp/ottr-seed-kbd.py <<'SEEDPY'
 import sqlite3, time
 db = "/tmp/ottr-verify/data/com.ottr.app/vault.db"
 c = sqlite3.connect(db)
 now = int(time.time())
+totp_id = c.execute("SELECT id FROM credentials WHERE kind='totp' ORDER BY id DESC LIMIT 1").fetchone()[0]
+agent_id = c.execute("SELECT id FROM credentials WHERE kind='agent' ORDER BY id DESC LIMIT 1").fetchone()[0]
 c.execute(
     """INSERT OR REPLACE INTO hosts (id, name, group_id, tags, address, port, credential_id,
        jump_chain_id, encoding_override, theme_override, monitor_enabled, notes,
        created_at, updated_at, username, protocol, is_production)
-       VALUES (1, 'kbd-e2e-box', NULL, '[]', '127.0.0.1', 2223, 1, NULL, NULL, NULL, 0, ?,
+       VALUES (1, 'kbd-e2e-box', NULL, '[]', '127.0.0.1', 2223, ?, NULL, NULL, NULL, 0, ?,
                ?, ?, 'spike', 'ssh', 0)""",
-    ("Ubuntu 24.04 systemd 服务，日志在 /var/log/syslog，内网 10.20.30.41", now, now),
+    (totp_id, "Ubuntu 24.04 systemd 服务，日志在 /var/log/syslog，内网 10.20.30.41", now, now),
 )
 c.execute(
     """INSERT OR REPLACE INTO hosts (id, name, group_id, tags, address, port, credential_id,
        jump_chain_id, encoding_override, theme_override, monitor_enabled, notes,
        created_at, updated_at, username, protocol, is_production)
-       VALUES (2, 'z-agent-box', NULL, '[]', '127.0.0.1', 2223, 2, NULL, NULL, NULL, 0, ?,
+       VALUES (2, 'z-agent-box', NULL, '[]', '127.0.0.1', 2223, ?, NULL, NULL, NULL, 0, ?,
                ?, ?, 'spike', 'ssh', 0)""",
-    ("系统 ssh-agent 认证", now, now),
+    (agent_id, "系统 ssh-agent 认证", now, now),
 )
 c.commit()
 print("hosts:", list(c.execute("SELECT id, name, address, port, username, credential_id FROM hosts")))
 c.close()
 SEEDPY
 scp /tmp/ottr-seed-kbd.py "$DEV":/tmp/ottr-seed-kbd.py >/dev/null
-ssh "$DEV" "cd $REMOTE && \
-  (./target/debug/examples/mock_kbdint_server 2223 $SEED > /tmp/mock-kbdint.log 2>&1 &) ; \
-  XDG_DATA_HOME=$DATA DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus" ./target/debug/examples/seed_totp_credential $SEED && \
-  python3 /tmp/ottr-seed-kbd.py" || exit 1
-
-say "1b. 起 ssh-agent 并加载夹具密钥（agent 认证那项要用）"
-ssh "$DEV" "cd $REMOTE && \
-  if ssh-add -l >/dev/null 2>&1; then echo 'agent 已在跑'; \
-  else ssh-agent -s | grep -v '^Agent pid' > /tmp/ottr-agent-env; . /tmp/ottr-agent-env; \
-       ssh-add $REMOTE/fixtures/spike_ed25519; fi; \
-  XDG_DATA_HOME=$DATA DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus" ./target/debug/examples/seed_agent_credential" || exit 1
+ssh "$DEV" "python3 /tmp/ottr-seed-kbd.py" || exit 1
 
 say "2. 起 vite + 应用（继承 agent 的 SSH_AUTH_SOCK）"
 ssh "$DEV" "export HOME=$HOME_DIR XDG_DATA_HOME=$DATA \

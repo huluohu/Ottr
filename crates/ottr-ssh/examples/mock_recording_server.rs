@@ -116,7 +116,11 @@ impl Handler for MockAuth {
     ) -> Result<(), Self::Error> {
         reply.accept().await;
         let (mut read, write) = channel.split();
-        let conn = format!("#{}.{}", self.log.label, CONN_SEQ.fetch_add(1, Ordering::SeqCst));
+        let conn = format!(
+            "#{}.{}",
+            self.log.label,
+            CONN_SEQ.fetch_add(1, Ordering::SeqCst)
+        );
         let log = self.log.clone();
         tokio::spawn(async move {
             if write.data_bytes(SHELL_BANNER.to_vec()).await.is_err() {
@@ -197,7 +201,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let port: u16 = args.next().and_then(|s| s.parse().ok()).unwrap_or(2223);
     let label = args.next().unwrap_or_else(|| "X".to_string());
-    let log_path = args.next().unwrap_or_else(|| "/tmp/mock-record.log".to_string());
+    let log_path = args
+        .next()
+        .unwrap_or_else(|| "/tmp/mock-record.log".to_string());
 
     let host_key = russh::keys::PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519)?;
     let config = Arc::new(russh::server::Config {

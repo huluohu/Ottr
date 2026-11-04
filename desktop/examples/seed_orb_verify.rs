@@ -17,8 +17,8 @@
 
 use ottr_vault::master_key::InMemoryStorage;
 use ottr_vault::{
-    CredentialInput, CredentialKind, Credentials, HostInput, HostProtocol, Hosts, Secrets, Settings,
-    Vault,
+    CredentialInput, CredentialKind, Credentials, HostInput, HostProtocol, Hosts, Secrets,
+    Settings, Vault,
 };
 
 /// mock sshd 的固定账号（与 `crates/ottr-ssh/examples/mock_recording_server.rs` 同口径）。
@@ -27,12 +27,14 @@ const MOCK_USER: &str = "spike";
 const MOCK_AI_BASE: &str = "http://127.0.0.1:18081/v1";
 
 fn main() -> Result<(), String> {
-    let data_dir = std::env::var("XDG_DATA_HOME").map_err(|_| "XDG_DATA_HOME not set".to_string())?;
+    let data_dir =
+        std::env::var("XDG_DATA_HOME").map_err(|_| "XDG_DATA_HOME not set".to_string())?;
     let vault_dir = format!("{data_dir}/com.ottr.app");
 
     // 无系统钥匙链的环境（测试机常无 gnome-keyring）→ vault 落主密码模式且锁着；
     // 夹具需要能解锁（真机上通常是钥匙链模式，这段是 no-op）。
-    let vault = Vault::open_auto(std::path::Path::new(&vault_dir)).map_err(|e| format!("open: {e}"))?;
+    let vault =
+        Vault::open_auto(std::path::Path::new(&vault_dir)).map_err(|e| format!("open: {e}"))?;
     if let Ok(pw) = std::env::var("OTTR_VAULT_PASSWORD") {
         let _ = vault.unlock_with_password(&pw);
     }
@@ -98,7 +100,8 @@ fn main() -> Result<(), String> {
         "enabled": true,
     }]);
     Settings::set(&vault, "ai_providers", &providers).map_err(|e| format!("ai_providers: {e}"))?;
-    Settings::set(&vault, "ai.enabled", &serde_json::json!(true)).map_err(|e| format!("ai.enabled: {e}"))?;
+    Settings::set(&vault, "ai.enabled", &serde_json::json!(true))
+        .map_err(|e| format!("ai.enabled: {e}"))?;
     // mock AI 端点免 key（openai 兼容且空串不发 Authorization 头）。
     let _ = Secrets::set(&vault, "ai.apikey.orb-mock", "");
 

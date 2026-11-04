@@ -279,6 +279,12 @@ pub fn run() {
             commands::ai_session::ai_scope_context,
             commands::ai_session::ai_scope_insert,
             commands::ai_session::ai_scope_revoke,
+            // Ask Ottr 执行模式 第一步（Plan 档；commands/ai_session.rs）：
+            // 只读面（列目录/读文件，路径规则沿用 read_file 口径）+ 执行面
+            // （按模式分派：plan/manual 只登记计划步骤、绝不执行；auto 本步拒）。
+            commands::ai_session::ai_scope_list_dir,
+            commands::ai_session::ai_scope_read_file,
+            commands::ai_session::ai_scope_exec,
             // 本地终端（2026-10-20）：连接本机 shell 的会话；写/缩放/尾部/
             // 关闭复用上方同名单命令（双表回退，见 commands/local_term.rs）。
             commands::local_term::local_term_open,

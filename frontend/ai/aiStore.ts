@@ -49,7 +49,25 @@ import {
 } from "./provider";
 import { redact, type RedactFinding, type RedactOptions } from "./redact";
 import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
-import { loadMcpToolSnapshot, type McpToolBinding } from "./mcpTools";
+import {
+  loadMcpToolSnapshot,
+  hostToolSnapshot,
+  type HostToolBinding,
+  type HostToolName,
+  type McpToolBinding,
+} from "./mcpTools";
+import {
+  DEFAULT_AI_EXEC_MODE,
+  mergePlanSteps,
+  newPlanStepId,
+  normalizeAiExecMode,
+  planTargetKey,
+  readDefaultAiExecMode,
+  type AiExecMode,
+  type PlanStep,
+} from "./aiModes";
+import { readAiReadProbeEnabled } from "./aiReadProbe";
+import { classify } from "./danger";
 import {
   TAIL_BYTES,
   activeProvider,
@@ -222,6 +240,12 @@ export interface SessionAiState {
   draft: string;
   /** 重连换代后旧对话只读（历史可见 + 提示；续问须走新对话）。 */
   conversationReadonly: boolean;
+  /** 会话级执行模式（2026-11-04 第一步；**可选字段**——缺省视为 plan）。
+   *  plan = 只产计划、绝不执行；auto = 自动（第三步才开放）；manual = 逐条确认。
+   *  随对话保持；新对话复位到默认档。 */
+  mode?: AiExecMode;
+  /** 计划步骤清单（plan 模式下登记的执行类动作；可选字段，缺省视为空）。 */
+  plan?: PlanStep[];
 }
 
 const EMPTY_SLICE: SessionAiState = {
@@ -246,6 +270,8 @@ const EMPTY_SLICE: SessionAiState = {
   runId: null,
   draft: "",
   conversationReadonly: false,
+  mode: DEFAULT_AI_EXEC_MODE,
+  plan: [],
 };
 
 interface AiStore {
@@ -292,6 +318,9 @@ interface AiStore {
    *  approve=false → 追加一条「用户拒绝执行」的 tool 消息，同样续跑一轮。
    *  同一时刻只允许一个工具在执行（防重复点击二次执行）。 */
   resolveToolCall: (sessionId: string, callId: string, approve: boolean) => Promise<void>;
+  /** 切换会话级执行模式（2026-11-04 第一步）：plan / auto / manual。
+   *  会话级——随对话保持；新对话复位到默认档（设置项）。 */
+  setMode: (sessionId: string, mode: AiExecMode) => void;
 }
 
 /** 各会话在途请求的取消器（模块级——非响应式资源，与 sinks/定时器同一放置惯例）。 */
@@ -533,10 +562,20 @@ export function mergeToolCalls(prev: ToolCall[], next: ToolCall[]): ToolCall[] {
   return out;
 }
 
-/** 系统提示词（有工具时补一句「工具需用户确认才执行」）。 */
-export function systemPrompt(req: AiRequest, hasTools: boolean): string {
+/**
+ * 系统提示词。
+ *
+ * * 有外部 MCP 工具 → 补一句「工具调用需要用户确认后才会执行」（既有语义不变）；
+ * * 有内建主机工具 → 另补一句**主机工具的语义**（只读直接跑；执行类在当前
+ *   模式下只登记计划、不真跑）——不说清楚，模型会以为所有工具都要等用户
+ *   点确认（或以为 exec 真的跑了），两边都错。
+ */
+export function systemPrompt(req: AiRequest, hasTools: boolean, hasHostTools = false): string {
   const base = i18n.t(req.kind === "diagnose" ? "ai.prompt.diagnose" : "ai.prompt.explain");
-  return hasTools ? `${base}\n\n${i18n.t("ai.prompt.tools")}` : base;
+  const parts = [base];
+  if (hasTools) parts.push(i18n.t("ai.prompt.tools"));
+  if (hasHostTools) parts.push(i18n.t("ai.prompt.hostTools"));
+  return parts.join("\n\n");
 }
 
 /**
@@ -569,6 +608,149 @@ export function toPendingToolCall(
 export function commandExcerpt(command: string): string {
   const first = command.split("\n")[0] ?? command;
   return first.length > 80 ? `${first.slice(0, 80)}…` : first;
+}
+
+/* ---------------------------------------------------------------------------
+ * 内建主机工具的执行面（2026-11-04 第一步：Plan 模式）
+ *
+ * 语义（对齐契约 §4）：
+ * * **只读工具**（读输出尾 / 读文件 / 列目录）→ 直接执行，结果作 tool 轮回灌
+ *   给模型——读上下文是安全的，不需要用户逐次点头；
+ * * **执行类工具**（ottr_exec_command）→ 按当前模式分派：
+ *   plan（以及本步的 manual）**不执行**，只登记一条计划步骤，
+ *   回灌「已记入计划，暂不执行」，让模型继续把计划列全；
+ * * 绑定随请求快照走（本函数只吃当轮快照里的绑定，不读模块级注册表）。
+ * ------------------------------------------------------------------------- */
+
+/** 工具参数解析（宽松：解析失败 = 空对象——模型偶发发坏 JSON 不该中断整轮）。 */
+function parseToolArgs(raw: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+/** 工具参数取串（非串 = 空串）。 */
+function argString(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+/** 读输出尾的字节数（模型可指定；越界钳制在 1KB..64KB——省 token 也防撑爆）。 */
+function clampTailBytes(v: unknown): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : TAIL_BYTES;
+  return Math.min(64 * 1024, Math.max(1024, n));
+}
+
+/** 一次内建主机工具的执行结果。 */
+export interface HostToolOutcome {
+  /** 回灌给模型的文本（已脱敏后入库）。 */
+  content: string;
+  /** plan 模式下登记的计划步骤（非空 = 记入计划清单）。 */
+  planStep?: PlanStep;
+}
+
+/**
+ * 执行一次内建主机工具。
+ *
+ * 失败一律**不抛**：错误文本回灌给模型（模型据此换路子），本轮不中断。
+ * exec 的失败尤其重要——后端拒绝意味着**零执行、零计划登记**：命令**不进**
+ * 计划清单（清单是「待执行」的步骤，不是日志；审查 M-3/M-4），失败原因
+ * 一并回灌（不静默）。
+ *
+ * 回灌文案按后端回包分三种（2026-11-04 修补 B1：`executed` 与 `planned`
+ * **分别**读，不再只看 `planned`——第二步 manual 真执行时不会再向模型谎报
+ * 「已记入计划，暂不执行」）：
+ * * `executed = true` → 「已执行」（不进待执行清单）；
+ * * `planned = true && executed = false` → 「已记入计划，暂不执行」（进清单）；
+ * * 两者皆假 / 调用被拒 → 「未执行（被拒绝）」（不进清单）。
+ */
+export async function runHostTool(
+  scope: AiScope,
+  tool: HostToolName,
+  args: Record<string, unknown>,
+  ctx: { mode: AiExecMode; actionId: string },
+): Promise<HostToolOutcome> {
+  try {
+    switch (tool) {
+      case "ottr_read_output": {
+        const res = await aiSessionApi.context(scope.scopeId, clampTailBytes(args.bytes));
+        return { content: res.tail ?? "" };
+      }
+      case "ottr_read_file": {
+        const path = argString(args.path);
+        if (path === "") return { content: i18n.t("ai.hostTool.needPath") };
+        // 本地终端会话**不开放主机文件读取面**（2026-11-04 修补 A1）：不打到
+        // 后端，直接回灌本地化拒绝文案（后端同样一律拒——这里是给出人话的
+        // 那道；本地会话仍可读终端输出尾，那本来就是用户自己屏幕上的东西）。
+        if (scope.kind === "local") {
+          return { content: i18n.t("ai.hostTool.localReadRejected") };
+        }
+        const file = await aiSessionApi.readFile(scope.scopeId, path);
+        const body = file.content ?? "";
+        return { content: file.truncated ? `${body}\n${i18n.t("ai.tool.truncated")}` : body };
+      }
+      case "ottr_list_dir": {
+        const path = argString(args.path);
+        if (path === "") return { content: i18n.t("ai.hostTool.needPath") };
+        // 同上：本地会话不开放主机文件读取面。
+        if (scope.kind === "local") {
+          return { content: i18n.t("ai.hostTool.localReadRejected") };
+        }
+        const listing = await aiSessionApi.listDir(scope.scopeId, path);
+        const entries = (listing.entries ?? []).map(
+          (e) => `${e.isDir ? "d" : "-"} ${e.name}`,
+        );
+        return { content: entries.join("\n") };
+      }
+      case "ottr_exec_command": {
+        const command = argString(args.command);
+        if (command === "") return { content: i18n.t("ai.hostTool.needCommand") };
+        // 计划步骤在本地成型（后端登记成功后才进清单）。
+        const local: PlanStep = {
+          id: newPlanStepId(),
+          command,
+          purpose: argString(args.purpose) || undefined,
+          danger: classify(command).level,
+          status: "planned",
+          // 绑定目标（去重键的一半）：同一条命令在不同目标下各自成步。
+          target: planTargetKey(scope),
+        };
+        try {
+          const outcome = await aiSessionApi.exec(scope.scopeId, ctx.actionId, command, ctx.mode);
+          // **已执行**（第二步 manual 真执行）：如实回灌，**不进**「待执行」
+          // 计划清单（它已经跑过了——清单是待执行步骤，不是执行日志）。
+          if (outcome.executed) {
+            return { content: i18n.t("ai.plan.executed") };
+          }
+          // **已记入计划、暂不执行**：进计划清单（这才是「待执行」的步骤）。
+          if (outcome.planned) {
+            return {
+              content: i18n.t("ai.plan.planned"),
+              planStep: { ...local, id: outcome.stepId || local.id },
+            };
+          }
+          // **未执行且被拒**：不进计划清单（后端拒了就没登记这一步）。
+          return { content: outcome.message || i18n.t("ai.plan.rejected") };
+        } catch (e) {
+          // 后端拒绝 → **零执行**、**零计划登记**：命令不进清单（否则用户会
+          // 看到一条「从未登记」的待执行步骤——审查 M-3/M-4），失败原因回灌
+          // 给模型（不静默丢用户的意图）。
+          return {
+            content: i18n.t("ai.plan.rejectedWithError", {
+              error: e instanceof Error ? e.message : String(e),
+            }),
+          };
+        }
+      }
+    }
+  } catch (e) {
+    return {
+      content: i18n.t("ai.tool.failed", { error: e instanceof Error ? e.message : String(e) }),
+    };
+  }
 }
 
 /** 自动诊断触发门槛（2026-10-19 用户反馈）：Ctrl+C（SIGINT → 130）是用户
@@ -647,6 +829,9 @@ export const useAiStore = create<AiStore>((set, get) => {
       runId: string;
       /** 本 run 的 scope（null = 无绑定/开失败——插入面禁用）。 */
       scope: AiScope | null;
+      /** 本轮取一次的执行档位（与工具描述同一份——审查 M-5：运行中切档
+       *  不得让「描述说的档」与「发给后端的档」分叉）。 */
+      mode: AiExecMode;
       /** 本轮发出的消息（已装配）。 */
       messages: ChatMessage[];
       /** 历史基准（落库时拼在本轮之前）。 */
@@ -659,6 +844,8 @@ export const useAiStore = create<AiStore>((set, get) => {
       tools: ChatTool[];
       /** 本请求自己的工具绑定快照（还原模型工具调用用）。 */
       bindings: ReadonlyMap<string, McpToolBinding>;
+      /** 本请求自己的**内建主机工具**绑定快照（随请求走，不读模块级注册表）。 */
+      hostBindings: ReadonlyMap<string, HostToolBinding>;
       /** 已消耗的工具轮次（上限判定）。 */
       toolRounds: number;
       redactOpts: RedactOptions;
@@ -726,7 +913,7 @@ export const useAiStore = create<AiStore>((set, get) => {
       const done = !ac.signal.aborted;
       const elapsed = Math.round(performance.now() - startedAt);
 
-      // --- 工具调用分支：本轮**暂停**，等用户确认（不自动执行）---
+      // --- 工具调用分支：内建主机工具**就地处置**；外部 MCP 工具挂待确认 ---
       if (toolCalls.length > 0) {
         const turn: ChatTurn = {
           role: "assistant",
@@ -759,9 +946,71 @@ export const useAiStore = create<AiStore>((set, get) => {
           return;
         }
         keepScope = true;
+        // 分流：**内建主机工具**（只读三类 + plan 下的 exec）不需要用户点头
+        // ——只读直接跑，exec 只登记计划（一个字节都没执行）；
+        // **外部 MCP 工具**仍逐次确认（既有安全模型不变）。
+        const hostCalls = toolCalls.filter((tc) => ctx.hostBindings.has(tc.name));
+        const mcpCalls = toolCalls.filter((tc) => !ctx.hostBindings.has(tc.name));
+        if (hostCalls.length > 0) {
+          const toolTurns: ChatTurn[] = [];
+          for (const tc of hostCalls) {
+            if (!alive()) {
+              rescueStrandedRun(sessionId, ac, runId);
+              return;
+            }
+            const binding = ctx.hostBindings.get(tc.name) as HostToolBinding;
+            const scope = ctx.scope;
+            if (!scope) {
+              toolTurns.push({
+                role: "tool",
+                content: i18n.t("ai.hostTool.noScope"),
+                toolCallId: tc.id,
+                toolName: binding.tool,
+              });
+              continue;
+            }
+            const mode = ctx.mode;
+            const out = await runHostTool(
+              scope,
+              binding.tool,
+              parseToolArgs(tc.arguments ?? ""),
+              { mode, actionId: `${runId}:exec:${tc.id}` },
+            );
+            if (out.planStep) {
+              patch(sessionId, { plan: mergePlanSteps(slice(sessionId).plan, out.planStep) });
+            }
+            toolTurns.push({
+              role: "tool",
+              content: redact(out.content, ctx.redactOpts).text,
+              toolCallId: tc.id,
+              toolName: binding.tool,
+            });
+          }
+          const next = [...base, ...toolTurns];
+          if (mcpCalls.length > 0) {
+            // 混批（内建 + 外部）：外部那批仍挂待确认——本轮就此暂停。
+            patch(sessionId, {
+              messages: next,
+              pendingToolCalls: mcpCalls.map((tc) => toPendingToolCall(tc, ctx.bindings, runId)),
+              toolRounds: ctx.toolRounds + 1,
+              status: "awaiting_tool_approval",
+              elapsedMs: elapsed,
+            });
+            return;
+          }
+          patch(sessionId, {
+            messages: next,
+            pendingToolCalls: [],
+            toolRounds: ctx.toolRounds + 1,
+          });
+          // 续跑一轮：把工具结果回灌给模型，让它据实继续（plan 模式下即
+          // 「继续把计划列全」）。
+          await continueChain(sessionId, next);
+          return;
+        }
         patch(sessionId, {
           messages: base,
-          pendingToolCalls: toolCalls.map((tc) => toPendingToolCall(tc, ctx.bindings, runId)),
+          pendingToolCalls: mcpCalls.map((tc) => toPendingToolCall(tc, ctx.bindings, runId)),
           toolRounds: ctx.toolRounds + 1,
           status: "awaiting_tool_approval",
           elapsedMs: elapsed,
@@ -907,6 +1156,16 @@ export const useAiStore = create<AiStore>((set, get) => {
       await abandonRunScope(sessionId, runId);
       return;
     }
+    // 内建主机工具（仅当会话有活目标时才有；有 scope 即证明目标此刻活着）。
+    // **执行档位在本轮取一次**（审查 M-5）：工具描述与真正发给后端的 mode
+    // 必须是同一个——用户在 run 进行中切档时，描述说 plan、实际发 manual
+    // 会让模型按错的语义规划。
+    const mode = slice(sessionId).mode ?? DEFAULT_AI_EXEC_MODE;
+    const host = hostToolSnapshot({
+      enabled: scope != null,
+      mode,
+      readProbe: readAiReadProbeEnabled(),
+    });
     // 工具链的历史**只按轮数封顶**：按字符封顶会把工具返回（模型续跑的唯一
     // 依据）从历史里裁掉——模型拿不到结果就答不了。
     const capped = pruneOrphanToolTurns(capHistory(messages, Number.POSITIVE_INFINITY));
@@ -921,14 +1180,20 @@ export const useAiStore = create<AiStore>((set, get) => {
       ac,
       runId,
       scope,
+      mode,
       messages: toProviderMessages(capped, redactOpts),
       baseTurns: capped,
-      system: systemPrompt(req, snapshot.tools.length > 0),
+      system: systemPrompt(
+        req,
+        snapshot.tools.length > 0,
+        host.tools.length > 0,
+      ),
       maxTokens: settings.maxTokens,
       apiKey,
       meta,
-      tools: snapshot.tools,
+      tools: [...snapshot.tools, ...host.tools],
       bindings: snapshot.bindings,
+      hostBindings: host.bindings,
       toolRounds: slice(sessionId).toolRounds ?? 0,
       redactOpts,
       notify: { req, body: commandExcerpt(redact(rawSubject, redactOpts).text) },
@@ -992,6 +1257,9 @@ export const useAiStore = create<AiStore>((set, get) => {
       runId: null,
       draft: "",
       conversationReadonly: false,
+      // 新对话 = 新执行上下文：模式复位到默认档，计划清单清空。
+      mode: readDefaultAiExecMode(),
+      plan: [],
     });
   },
 
@@ -1027,6 +1295,9 @@ export const useAiStore = create<AiStore>((set, get) => {
           runId: null,
           draft: "",
           conversationReadonly: false,
+          // 新对话 = 新执行上下文：模式复位到默认档，计划清单清空。
+          mode: readDefaultAiExecMode(),
+          plan: [],
         });
         await get().run(req.sessionId);
       })();
@@ -1055,6 +1326,9 @@ export const useAiStore = create<AiStore>((set, get) => {
         runId: null,
         draft: "",
         conversationReadonly: false,
+        // 新对话 = 新执行上下文：模式复位到默认档，计划清单清空。
+        mode: readDefaultAiExecMode(),
+        plan: [],
       });
       void get().run(req.sessionId);
     },
@@ -1133,6 +1407,9 @@ export const useAiStore = create<AiStore>((set, get) => {
         scope: null,
         draft: "",
         conversationReadonly: false,
+        // 新对话 = 新执行上下文：模式复位到默认档，计划清单清空。
+        mode: readDefaultAiExecMode(),
+        plan: [],
       });
     },
 
@@ -1394,18 +1671,32 @@ export const useAiStore = create<AiStore>((set, get) => {
         await abandonRunScope(sessionId, runId);
         return;
       }
+      // 内建主机工具（仅当会话有活目标时才有；有 scope 即证明目标此刻活着）。
+      // 执行档位本轮取一次（与工具描述同一份——审查 M-5）。
+      const mode = slice(sessionId).mode ?? DEFAULT_AI_EXEC_MODE;
+      const host = hostToolSnapshot({
+        enabled: scope != null,
+        mode,
+        readProbe: readAiReadProbeEnabled(),
+      });
       await streamTurn(sessionId, {
         ac,
         runId,
         scope,
+        mode,
         messages,
         baseTurns: turnsSoFar,
-        system: systemPrompt(req, snapshot.tools.length > 0),
+        system: systemPrompt(
+          req,
+          snapshot.tools.length > 0,
+          host.tools.length > 0,
+        ),
         maxTokens: settings.maxTokens,
         apiKey,
         meta,
-        tools: snapshot.tools,
+        tools: [...snapshot.tools, ...host.tools],
         bindings: snapshot.bindings,
+        hostBindings: host.bindings,
         toolRounds: 0,
         redactOpts,
         notify: { req, body: commandExcerpt(subject.text) },
@@ -1510,6 +1801,17 @@ export const useAiStore = create<AiStore>((set, get) => {
       });
       if (remaining.length > 0) return; // 还有待确认项 → 等用户处置完再续跑
       await continueChain(sessionId, messages);
+    },
+
+    /**
+     * 切换会话级执行模式（2026-11-04 第一步）。
+     *
+     * 模式是**会话级**的：随对话保持（追问轮沿用），新对话复位到默认档。
+     * 非法值一律归一到默认档（plan）——绝不落到更宽松的档。
+     */
+    setMode: (sessionId, mode) => {
+      if (!(sessionId in get().sessions)) return; // 无切片：不留幽灵状态
+      patch(sessionId, { mode: normalizeAiExecMode(mode) });
     },
   };
 });

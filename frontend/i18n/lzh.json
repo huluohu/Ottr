@@ -500,7 +500,8 @@
     "prompt": {
       "diagnose": "汝是資深運維工程師。用戶在 SSH 終端行了一條敗令，給出：**原因**（1-3 句，基於輸出）、**修復令**（每條用 ```bash 圍欄代碼塊，逐條獨立可行）、**備註**（可選，1 句）。使用介面語言回答；輸出裏的 [REDACTED_*] 是脫敏佔位符，原樣保留，不要猜測其文。",
       "explain": "汝是終端助手。解釋用戶選中的終端文（報錯/誌/文本）：含義、可能原因、（如適用）下一步建議令（```bash 圍欄代碼塊）。簡明扼要，使用介面語言。[REDACTED_*] 是脫敏佔位符，原樣保留。",
-      "tools": "汝可呼叫上列之工具以取資訊或行事。**工具之呼叫須待用戶確認方行**；若用戶拒絕某工具，請改據已有之資作答。"
+      "tools": "汝可呼叫上列之工具以取資訊或行事。**工具之呼叫須待用戶確認方行**；若用戶拒絕某工具，請改據已有之資作答。",
+      "hostTools": "汝亦可呼叫主機工具（ottr_ 前綴）：唯讀類（讀輸出尾 / 讀檔 / 列錄）即行其實，果還於汝；執行類（ottr_exec_command）從其工具說明之今式而行——籌劃式下只登記入計劃，弗真行。據此以決其可否呼之。"
     },
     "msg": {
       "exitCode": "退出碼",
@@ -524,7 +525,39 @@
       "failed": "工具行敗：{{error}}",
       "unknownTool": "工具已弗可用（對應之 MCP 伺已被除去或易名）",
       "limitReached": "工具呼叫輪次已達上限（{{count}} 輪），弗再行更多工具。請據已有之資作答。",
-      "truncated": "…（已截斷）"
+      "truncated": "…（已截斷）",
+      "hostCallLabel": "呼叫主機工具 {{tool}}"
+    },
+    "mode": {
+      "label": "執行之式",
+      "plan": "籌劃",
+      "auto": "自運",
+      "manual": "手行",
+      "autoNotEnabled": "自運之式尚未開"
+    },
+    "plan": {
+      "title": "計劃步驟",
+      "planned": "已記入計劃，暫不行",
+      "executed": "已行",
+      "rejected": "未行（被拒）",
+      "rejectedWithError": "未行（後端拒之：{{error}}）",
+      "statusPlanned": "待行"
+    },
+    "hostTool": {
+      "readOutput": "讀今終端之輸出尾",
+      "readOutputBytes": "讀之字數（常八 KB）",
+      "readFile": "讀主機之檔（絕對路徑）",
+      "listDir": "列主機某錄之內容",
+      "pathArg": "絕對路徑",
+      "commandArg": "將行之單行命令",
+      "purposeArg": "此命令之由（將書入計劃）",
+      "execCommandPlan": "行命令（今為籌劃式：只登記入計劃，弗真行）",
+      "execCommandManual": "行命令（今為手行式：命令將入待確認之列）",
+      "execCommandAuto": "行命令（今為自運式：主機授權尚未開，命令將被拒）",
+      "needPath": "缺路徑之參，未行。",
+      "needCommand": "缺命令之參，未行。",
+      "noScope": "今無可用之目標域，不能訪主機。",
+      "localReadRejected": "本地終端之會不開放主機之檔（可改讀今終端之輸出尾）"
     },
     "nl2cmd": {
       "title": "AI 生成令",
@@ -589,7 +622,11 @@
       "rulePattern": "正則（如 OTTR-\\d{6}）",
       "errRuleIncomplete": "規則名與正則都要填",
       "errRuleInvalid": "正則未能編譯",
-      "errRemoteHttp": "非本機端點須用 https://（明文 http 露 API key 於鏈路，且應用唯放行本機 http）"
+      "errRemoteHttp": "非本機端點須用 https://（明文 http 露 API key 於鏈路，且應用唯放行本機 http）",
+      "defaultExecMode": "新對話之預設執行式",
+      "defaultExecModeHint": "新起對話時之預設執行式。籌劃式只出計劃、不行任何命令；自運式尚未開（須逐主機授權）。",
+      "readProbe": "AI 只讀探查（讀主機之檔與錄）",
+      "readProbeHint": "閉之後，AI 工具之目錄不復有「讀主機之檔」與「列錄」，AI 唯可讀今終端之輸出尾。其餘工具無涉。本機生效，不跨器同步。"
     },
     "followupPlaceholder": "追問…（Enter 呈上，Shift+Enter 換行）",
     "askEntry": "問 Ottr",

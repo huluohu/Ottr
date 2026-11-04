@@ -325,9 +325,41 @@ describe("通用", () => {
     });
   });
 
+  // 2026-11-04 第一步：新对话默认执行模式（**本机偏好 → localStorage**，
+  // 不进 vault/不同步——默认档是安全档，随设备走会传播宽松选择）。
+  it("新对话默认执行模式：默认 plan，点「手动」写本机偏好（localStorage）", async () => {
+    localStorage.clear();
+    render(<AISettings open onClose={() => {}} />);
+    const group = await screen.findByTestId("ai-default-exec-mode");
+    const buttons = Array.from(group.querySelectorAll("button"));
+    expect(buttons.map((b) => b.textContent)).toEqual(["规划", "自动", "手动"]);
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(buttons[2]);
+    expect(localStorage.getItem("ottr.ai.defaultMode")).toBe("manual");
+    expect(buttons[2].getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("关闭（open=false）不渲染", () => {
     const { container } = render(<AISettings open={false} onClose={() => {}} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  // 2026-11-04 修补 B3：AI 只读探查总开关（**本机偏好 → localStorage**，
+  // 不进 vault/不同步——「关掉」是本机的隐私选择）。
+  it("AI 只读探查总开关：默认开，关掉写本机 localStorage（不进 vault）", async () => {
+    localStorage.clear();
+    render(<AISettings open embedded />);
+    const box = (await screen.findByTestId("ai-read-probe")) as HTMLInputElement;
+    expect(box.checked).toBe(true); // 默认开
+    fireEvent.click(box);
+    await waitFor(() => {
+      expect(localStorage.getItem("ottr.ai.readProbe")).toBe("off");
+    });
+    expect(box.checked).toBe(false);
+    // 不落 vault（vault 落库会出现 settings_set 调用——本开关不进 vault）
+    expect(
+      mockedInvoke.mock.calls.some(([c]) => c === "settings_set"),
+    ).toBe(false);
   });
 
   it("Provider 表单弹框化（2026-10-30 用户需求）：点击添加/编辑时弹框叠在设置之上，点取消关闭", async () => {

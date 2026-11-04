@@ -9,6 +9,8 @@ import { invoke } from "@tauri-apps/api/core";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import {
+  hostToolSnapshot,
+  isHostToolName,
   loadMcpTools,
   mcpToolName,
   parseMcpToolName,
@@ -164,5 +166,56 @@ describe("loadMcpTools", () => {
     const tools = await loadMcpTools();
     expect(tools).toHaveLength(1);
     expect(tools[0].name).toBe("mcp__srv-1__a_b");
+  });
+});
+
+// 内建主机工具（2026-11-04 第一步）：工具目录 = 外部 MCP 工具 + 内建主机工具。
+describe("内建主机工具目录", () => {
+  it("有活目标 → 四个内建工具进目录，绑定随快照走（名字可还原）", () => {
+    const snap = hostToolSnapshot({ enabled: true, mode: "plan", readProbe: true });
+    expect(snap.tools.map((t) => t.name)).toEqual([
+      "ottr_read_output",
+      "ottr_read_file",
+      "ottr_list_dir",
+      "ottr_exec_command",
+    ]);
+    expect(snap.bindings.get("ottr_exec_command")?.tool).toBe("ottr_exec_command");
+    expect(snap.bindings.get("ottr_read_file")).toBeTruthy();
+  });
+
+  it("没有活目标 → 不加内建工具（打不到任何主机，给了只是让模型空转）", () => {
+    const snap = hostToolSnapshot({ enabled: false, mode: "plan", readProbe: true });
+    expect(snap.tools).toEqual([]);
+    expect(snap.bindings.size).toBe(0);
+  });
+
+  it("执行类工具的描述随模式变（模型必须知道自己这轮会不会真跑）", () => {
+    const plan = hostToolSnapshot({ enabled: true, mode: "plan", readProbe: true })
+      .tools.find((t) => t.name === "ottr_exec_command");
+    const manual = hostToolSnapshot({ enabled: true, mode: "manual", readProbe: true })
+      .tools.find((t) => t.name === "ottr_exec_command");
+    const auto = hostToolSnapshot({ enabled: true, mode: "auto", readProbe: true })
+      .tools.find((t) => t.name === "ottr_exec_command");
+    expect(plan?.description).not.toBe(manual?.description);
+    expect(manual?.description).not.toBe(auto?.description);
+  });
+
+  // 2026-11-04 修补 B3：AI 只读探查总开关关闭 → 读文件 / 列目录**不进目录**
+  // （模型根本看不到这两个工具），其余工具不受影响。
+  it("只读探查关闭 → 读文件 / 列目录不进目录（其余工具照旧）", () => {
+    const snap = hostToolSnapshot({ enabled: true, mode: "plan", readProbe: false });
+    expect(snap.tools.map((t) => t.name)).toEqual([
+      "ottr_read_output",
+      "ottr_exec_command",
+    ]);
+    expect(snap.bindings.has("ottr_read_file")).toBe(false);
+    expect(snap.bindings.has("ottr_list_dir")).toBe(false);
+    expect(snap.bindings.has("ottr_read_output")).toBe(true);
+    expect(snap.bindings.has("ottr_exec_command")).toBe(true);
+  });
+
+  it("内建工具名不与外部 MCP 工具重名（ottr_ 前缀天然隔离）", () => {
+    expect(isHostToolName("ottr_exec_command")).toBe(true);
+    expect(isHostToolName("mcp__srv-1__read_file")).toBe(false);
   });
 });

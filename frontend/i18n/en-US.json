@@ -501,7 +501,8 @@
     "prompt": {
       "diagnose": "You are a senior ops engineer. The user ran a failing command in an SSH terminal. Provide: **Cause** (1-3 sentences based on the output), **Fix commands** (each in a ```bash fenced block, independently runnable), **Notes** (optional, 1 sentence). Answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",
       "explain": "You are a terminal assistant. Explain the selected terminal content (error/log/text): what it means, likely causes, and (if applicable) suggested next commands in ```bash fenced blocks. Be concise, answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim.",
-      "tools": "You may call the tools listed above to gather information or act on the system. **Tool calls only run after the user approves them**; if the user rejects a tool, answer with the information you already have."
+      "tools": "You may call the tools listed above to gather information or act on the system. **Tool calls only run after the user approves them**; if the user rejects a tool, answer with the information you already have.",
+      "hostTools": "You can also call the host tools (prefix ottr_): read-only ones (read output tail / read file / list directory) run directly and their results are handed back to you; the executing one (ottr_exec_command) follows the current mode stated in its tool description — in plan mode it is only recorded in the plan and never executed. Plan your calls accordingly."
     },
     "msg": {
       "exitCode": "Exit code",
@@ -525,7 +526,39 @@
       "failed": "Tool run failed: {{error}}",
       "unknownTool": "This tool is no longer available (its MCP server was removed or renamed).",
       "limitReached": "Tool-call round limit reached ({{count}} rounds); no further tools will run. Answer with the information you already have.",
-      "truncated": "… (truncated)"
+      "truncated": "… (truncated)",
+      "hostCallLabel": "Host tool {{tool}}"
+    },
+    "mode": {
+      "label": "Execution mode",
+      "plan": "Plan",
+      "auto": "Auto",
+      "manual": "Manual",
+      "autoNotEnabled": "Auto mode is not enabled yet"
+    },
+    "plan": {
+      "title": "Plan steps",
+      "planned": "Recorded in the plan; not executed yet",
+      "executed": "Executed",
+      "rejected": "Not executed (rejected)",
+      "rejectedWithError": "Not executed (rejected by the backend: {{error}})",
+      "statusPlanned": "Pending"
+    },
+    "hostTool": {
+      "readOutput": "Read the tail of the current terminal output",
+      "readOutputBytes": "Bytes to read (8KB by default)",
+      "readFile": "Read a file on the host (absolute path)",
+      "listDir": "List the contents of a directory on the host",
+      "pathArg": "Absolute path",
+      "commandArg": "Single-line command to run",
+      "purposeArg": "Purpose of this command (noted in the plan)",
+      "execCommandPlan": "Run a command (current mode: plan; it is only recorded in the plan and never executed)",
+      "execCommandManual": "Run a command (current mode: manual; the command waits for your confirmation)",
+      "execCommandAuto": "Run a command (current mode: auto; host authorization is not available yet, so it will be rejected)",
+      "needPath": "Missing the path argument; nothing was run.",
+      "needCommand": "Missing the command argument; nothing was run.",
+      "noScope": "No target scope is available, so the host cannot be reached.",
+      "localReadRejected": "Local terminal sessions do not expose host file reads (read the tail of the current terminal output instead)"
     },
     "nl2cmd": {
       "title": "AI Command",
@@ -590,7 +623,11 @@
       "rulePattern": "Regex (e.g. OTTR-\\d{6})",
       "errRuleIncomplete": "Both rule name and regex are required",
       "errRuleInvalid": "Regex does not compile",
-      "errRemoteHttp": "Remote endpoints must use https:// (plain http would send the API key unencrypted, and the app only allows plain http to localhost)"
+      "errRemoteHttp": "Remote endpoints must use https:// (plain http would send the API key unencrypted, and the app only allows plain http to localhost)",
+      "defaultExecMode": "Default execution mode for new conversations",
+      "defaultExecModeHint": "The execution mode a new conversation starts in. Plan mode only produces a plan and never runs a command; auto mode is not enabled yet (it needs per-host authorization).",
+      "readProbe": "AI read-only probing (read host files and directories)",
+      "readProbeHint": "When off, the AI tool catalog no longer offers reading host files or listing directories; the AI can only read the tail of the current terminal output. Other tools are unaffected. Local to this device; not synced."
     },
     "followupPlaceholder": "Ask a follow-up… (Enter to send, Shift+Enter for a new line)",
     "askEntry": "Ask Ottr",

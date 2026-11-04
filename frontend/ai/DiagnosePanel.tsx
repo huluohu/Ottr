@@ -23,6 +23,9 @@ import { MarkdownText } from "./Markdown";
 import { isAiTargetLive } from "../session/aiTarget";
 import { useSessionStore } from "../session/SessionStore";
 import { useTerminalFocus } from "../terminal/terminalFocus";
+import { SegmentedControl } from "../ui/SegmentedControl";
+import { DEFAULT_AI_EXEC_MODE, planStepsOf, type AiExecMode } from "./aiModes";
+import { HOST_TOOL_PREFIX } from "./mcpTools";
 
 /** 工具返回文本在面板里的显示上限（**发给模型的完整文本不截断**——
  *  截断只发生在渲染面；MCP 侧本身有 1 MiB 上限）。 */
@@ -135,6 +138,10 @@ export function DiagnosePanel({
     draft,
     conversationReadonly,
   } = slice;
+  // 执行模式（2026-11-04 第一步）：会话级，缺省 = plan（只产计划、不执行）。
+  const mode: AiExecMode = slice.mode ?? DEFAULT_AI_EXEC_MODE;
+  // 计划步骤清单（plan 模式下登记的执行类动作；跨 run 累积、按命令去重）。
+  const planSteps = planStepsOf(slice);
   // 待确认的工具调用（批次五 P2）：模型发起、**用户点执行才真跑**。
   const pendingToolCalls = slice.pendingToolCalls ?? [];
   const runningToolCallId = slice.runningToolCallId ?? null;
@@ -181,6 +188,7 @@ export function DiagnosePanel({
   const run = useAiStore((s) => s.run);
   const close = useAiStore((s) => s.close);
   const resolveToolCall = useAiStore((s) => s.resolveToolCall);
+  const setMode = useAiStore((s) => s.setMode);
 
   const running = status === "running";
   const inputDisabled =
@@ -283,6 +291,26 @@ export function DiagnosePanel({
       )}
 
       <div className="ai-status-row">
+        {/* 执行模式（2026-11-04 第一步）：**放状态行**——头部 .ai-panel-meta 已
+            是 flex:1 + ellipsis（面板最小宽 280px），塞不下第三组控件。
+            用现成 SegmentedControl（禁裸 checkbox：全仓守卫 ui-no-native-controls）。 */}
+        <SegmentedControl
+          value={mode}
+          options={[
+            { value: "plan", label: t("ai.mode.plan") },
+            { value: "auto", label: t("ai.mode.auto") },
+            { value: "manual", label: t("ai.mode.manual") },
+          ]}
+          onChange={(v) => setMode(sessionId, v)}
+          ariaLabel={t("ai.mode.label")}
+          testid="ai-mode-switch"
+        />
+        {mode === "auto" && (
+          // auto 本步尚未开放（主机授权表是第三步）——说清楚，不装作能用。
+          <span className="ai-mode-hint" data-testid="ai-mode-auto-hint">
+            {t("ai.mode.autoNotEnabled")}
+          </span>
+        )}
         {redactions.length > 0 && (
           <span className="ai-redactions" data-testid="ai-redactions">
             {t("ai.redacted", { count: redactions.reduce((n, r) => n + r.count, 0) })}
@@ -350,13 +378,18 @@ export function DiagnosePanel({
           const isDiagnosticContext = i === 0 && m.role === "user" && request.kind === "diagnose";
           if (isDiagnosticContext) return null;
           if (m.role === "tool") {
+            // 内建主机工具（ottr_ 前缀）没有 MCP server 名——用主机工具标签，
+            // 免得渲染成「调用 .ottr_exec_command」这种半截话。
+            const isHostTool = (m.toolName ?? "").startsWith(HOST_TOOL_PREFIX);
             return (
               <Fragment key={`t${i}`}>
                 <div className="ai-bubble ai-bubble-user" data-testid="ai-msg-tool-call">
-                  {t("ai.tool.callLabel", {
-                    server: m.serverName ?? "",
-                    tool: m.toolName ?? "",
-                  })}
+                  {isHostTool
+                    ? t("ai.tool.hostCallLabel", { tool: m.toolName ?? "" })
+                    : t("ai.tool.callLabel", {
+                        server: m.serverName ?? "",
+                        tool: m.toolName ?? "",
+                      })}
                 </div>
                 <div
                   className="ai-bubble ai-bubble-assistant"
@@ -438,6 +471,55 @@ export function DiagnosePanel({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* 计划清单（2026-11-04 第一步）：plan 模式下模型提出的执行类动作
+            **只登记、不执行**——这里把步骤摊开给用户看：命令原文 + 危险徽章
+            （复用 danger.ts 的分档）+ 状态点。仿 .ai-tool-pending 的插法：
+            作为 thread 内的一块，不另起浮层。
+            本步不实现「执行计划」按钮（第二步接 Manual）。 */}
+        {planSteps.length > 0 && (
+          <div className="ai-plan" data-testid="ai-plan">
+            <p className="ai-plan-hint" data-testid="ai-plan-title">
+              {t("ai.plan.title")}
+            </p>
+            <ul className="ai-plan-list">
+              {planSteps.map((s) => (
+                <li
+                  key={s.id}
+                  className="ai-plan-step"
+                  data-testid={`ai-plan-step-${s.id}`}
+                  data-danger={s.danger}
+                  data-status={s.status}
+                >
+                  <span
+                    className="ai-plan-dot"
+                    data-testid={`ai-plan-dot-${s.id}`}
+                    data-status={s.status}
+                    aria-hidden="true"
+                  />
+                  <span className="ai-plan-cmd" data-testid={`ai-plan-cmd-${s.id}`}>
+                    {s.command}
+                  </span>
+                  <span
+                    className={`ai-level ai-level-${s.danger}`}
+                    data-testid={`ai-plan-level-${s.id}`}
+                  >
+                    {t(
+                      s.danger === "red"
+                        ? "ai.levelRed"
+                        : s.danger === "yellow"
+                          ? "ai.levelYellow"
+                          : "ai.levelGreen",
+                    )}
+                  </span>
+                  <span className="ai-plan-status" data-testid={`ai-plan-status-${s.id}`}>
+                    {t("ai.plan.statusPlanned")}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>

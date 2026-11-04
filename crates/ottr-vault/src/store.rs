@@ -53,7 +53,7 @@ use crate::{Cipher, Result, VaultError};
 /// `SchemaTooNew { db: 28, app: 27 }` → **应用打不开库**）。
 ///
 /// 下面有断言钉住「本常量 == MIGRATIONS 末位」，改迁移忘了改常量会当场红。
-pub const LATEST_SCHEMA_VERSION: u32 = 28;
+pub const LATEST_SCHEMA_VERSION: u32 = 29;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -226,6 +226,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
         28,
         include_str!("../migrations/0028_binding_repair_audit.sql"),
     ),
+    // 0029 主机级自动执行授权表（2026-11-04，Ask Ottr 执行模式第三步）：
+    // 主机粒度的自动档授权矩阵，**默认全拒**（无行 = 该主机不允许 AI 自动
+    // 执行任何命令）——范式与 mcp_grants 同款。见迁移文件头。
+    (29, include_str!("../migrations/0029_ai_host_policies.sql")),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。

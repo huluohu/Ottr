@@ -1,10 +1,16 @@
-//! AI 作用域命令名契约守护（Ask Ottr 执行模式 · 第一步 Plan 档）。
+//! AI 作用域命令名契约守护（Ask Ottr 执行模式 · 第一步 Plan 档 / 第二步
+//! Manual 档）。
 //!
-//! 第一步新增的三个命令必须落在 lib.rs 的 `generate_handler![...]` 注册表里：
+//! 两步新增的命令必须落在 lib.rs 的 `generate_handler![...]` 注册表里：
 //! * `ai_scope_list_dir` —— 只读：列目录（SFTP / 本机 FS 面）；
 //! * `ai_scope_read_file` —— 只读：读文件（SFTP / 本机 FS 面）；
 //! * `ai_scope_exec` —— 执行类：按模式分派（plan/manual 只登记计划步骤、
-//!   auto 本步拒）。
+//!   auto 拒）；
+//! * `ai_scope_run_step` —— 执行类：**真执行**一个已登记的计划步骤
+//!   （第二步 Manual 档；独立 exec 通道 + 消费侧硬超时）；
+//! * `ai_scope_upgrade_step` —— 执行类：**档位升级**（把 plan 档登记的步骤
+//!   以 manual 档新登记一条；命令原文只从该作用域的登记簿里取——2026-11-04
+//!   修补 I-1）。
 //!
 //! 前端 `invoke("<name>")` 调到未注册的命令名 = 运行时必败。本测试从
 //! **注册表真源**（desktop/src/lib.rs 的注册块文本）取名做断言——口径与
@@ -62,7 +68,32 @@ fn registered_commands() -> Vec<String> {
 #[test]
 fn ask_ottr_execution_mode_commands_are_registered() {
     let registered = registered_commands();
-    for command in ["ai_scope_list_dir", "ai_scope_read_file", "ai_scope_exec"] {
+    for command in [
+        "ai_scope_list_dir",
+        "ai_scope_read_file",
+        "ai_scope_exec",
+        "ai_scope_run_step",
+        "ai_scope_upgrade_step",
+    ] {
+        assert!(
+            registered.iter().any(|c| c == command),
+            "unregistered command: {command}"
+        );
+    }
+}
+
+/// 第三步（自动档）的**主机授权面**命令必须在册：
+/// 前端设置页与面板都靠它们读写授权（`ai_policy_get/set/list/delete`）。
+/// 漏注册 = 设置页写不进去、面板判不出「未授权」。
+#[test]
+fn auto_mode_policy_commands_are_registered() {
+    let registered = registered_commands();
+    for command in [
+        "ai_policy_get",
+        "ai_policy_set",
+        "ai_policy_list",
+        "ai_policy_delete",
+    ] {
         assert!(
             registered.iter().any(|c| c == command),
             "unregistered command: {command}"

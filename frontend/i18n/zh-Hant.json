@@ -501,7 +501,7 @@
       "diagnose": "你是資深運維工程師。用戶在 SSH 終端執行了一條失敗命令，給出：**原因**（1-3 句，基於輸出）、**修復命令**（每條用 ```bash 圍欄代碼塊，逐條獨立可執行）、**備註**（可選，1 句）。使用介面語言回答；輸出裏的 [REDACTED_*] 是脫敏佔位符，原樣保留，不要猜測其內容。",
       "explain": "你是終端助手。解釋用戶選中的終端內容（報錯/日誌/文本）：含義、可能原因、（如適用）下一步建議命令（```bash 圍欄代碼塊）。簡明扼要，使用介面語言。[REDACTED_*] 是脫敏佔位符，原樣保留。",
       "tools": "你可以呼叫上面列出的工具來取得資訊或執行操作。**工具呼叫需要使用者確認後才會執行**；若使用者拒絕了某個工具，請改用既有資訊作答。",
-      "hostTools": "你還可以呼叫主機工具（ottr_ 前綴）：唯讀類（讀輸出尾端 / 讀檔案 / 列出目錄）會直接執行並把結果交給你；執行類（ottr_exec_command）依其工具說明裡的目前模式處理——規劃模式下只登記到計劃，不會真正執行。請據此決定是否呼叫。"
+      "hostTools": "你還可以調用主機工具（ottr_ 前綴）：唯讀類（讀輸出尾 / 讀檔案 / 列目錄）會直接執行並把結果交給你；執行類（ottr_exec_command）按其工具說明裡的當前模式處理——規劃模式下只登記到計畫，不會真正執行；手動模式下命令登記為待確認步驟，等你點「執行」才會真正運行；自動模式下唯讀命令直接執行、其餘降級為待你確認、危險命令被直接拒絕。請據此決定是否調用。"
     },
     "msg": {
       "exitCode": "退出碼",
@@ -533,7 +533,8 @@
       "plan": "規劃",
       "auto": "自動",
       "manual": "手動",
-      "autoNotEnabled": "自動模式尚未啟用"
+      "autoNotAuthorized": "該主機未授權自動執行（設定 → AI → 允許自動執行的主機）",
+      "autoLocalDenied": "本地終端會話不給 AI 執行權（只給唯讀上下文）"
     },
     "plan": {
       "title": "計劃步驟",
@@ -541,7 +542,25 @@
       "executed": "已執行",
       "rejected": "未執行（被拒絕）",
       "rejectedWithError": "未執行（後端拒絕：{{error}}）",
-      "statusPlanned": "待執行"
+      "statusPlanned": "待執行",
+      "statusExecuting": "執行中",
+      "statusDone": "已完成",
+      "statusFailed": "失敗",
+      "statusRejected": "已拒絕",
+      "run": "執行",
+      "reject": "拒絕",
+      "running": "執行中…",
+      "runResult": "執行結果：{{summary}}\n退出碼：{{exitCode}}\n標準輸出：\n{{stdout}}\n錯誤輸出：\n{{stderr}}",
+      "runFailed": "命令執行失敗：{{error}}",
+      "timedOut": "執行逾時：命令已被中止，通道已關閉。",
+      "rearmFailed": "未能以「手動」檔重新登記這條命令（未執行）：{{error}}",
+      "rejectedByUser": "使用者拒絕了執行這條命令。",
+      "exitCode": "退出碼 {{code}}",
+      "result": "執行結果",
+      "confirmTitle": "待確認的命令",
+      "confirmHint": "命令尚未執行：點「執行」才會真正執行；點「拒絕」則略過這條命令。",
+      "switchToManual": "有待確認的命令——切到「手動」檔才能執行。",
+      "stepResult": "命令「{{command}}」已執行，結果如下：\n{{result}}"
     },
     "hostTool": {
       "readOutput": "讀取目前終端的輸出尾端",
@@ -552,8 +571,8 @@
       "commandArg": "要執行的單行命令",
       "purposeArg": "這條命令的目的（會寫進計劃清單）",
       "execCommandPlan": "執行命令（目前為規劃模式：只登記到計劃，不會真正執行）",
-      "execCommandManual": "執行命令（目前為手動模式：命令會進入待確認佇列）",
-      "execCommandAuto": "執行命令（目前為自動模式：主機授權尚未開放，命令會被拒絕）",
+      "execCommandManual": "執行命令（目前為手動模式：命令會登記為待確認步驟，你點「執行」後才會真正執行）",
+      "execCommandAuto": "執行命令（目前為自動模式：唯讀命令會直接執行；寫操作與不安全形態會降級為待你確認；危險命令會被直接拒絕）",
       "needPath": "缺少路徑參數，未執行。",
       "needCommand": "缺少命令參數，未執行。",
       "noScope": "目前沒有可用的目標作用域，無法存取主機。",
@@ -624,9 +643,26 @@
       "errRuleInvalid": "正則無法編譯",
       "errRemoteHttp": "非本機端點必須使用 https://（明文 http 會把 API key 裸傳在鏈路上，且應用只放行本機 http 端點）",
       "defaultExecMode": "新對話預設執行模式",
-      "defaultExecModeHint": "新建對話時的預設執行模式。規劃模式只產出計劃、不執行任何命令；自動模式尚未開放（需逐主機授權）。",
+      "defaultExecModeHint": "新建對話時的預設執行模式。規劃模式只產出計畫、不執行任何命令；手動模式下每條命令都要你點「執行」才會真正運行；自動模式需逐主機授權，授權後唯讀命令會直接執行、其餘降級為逐條確認、危險命令被直接拒絕。",
       "readProbe": "AI 只讀探查（讀取主機檔案與目錄）",
-      "readProbeHint": "關閉後，AI 工具目錄不再有「讀取主機檔案」與「列出目錄」，AI 只能讀目前終端的輸出尾端。其餘工具不受影響。本機生效，不跨裝置同步。"
+      "readProbeHint": "關閉後，AI 工具目錄不再有「讀取主機檔案」與「列出目錄」，AI 只能讀目前終端的輸出尾端。其餘工具不受影響。本機生效，不跨裝置同步。",
+      "execTimeout": "單條命令逾時（秒）",
+      "execTimeoutHint": "單條命令最多跑多久，逾時就中止並關閉通道。預設 30 秒。",
+      "autoMaxSteps": "單輪命令步數上限",
+      "autoMaxStepsHint": "一輪裡 AI 最多自動跑幾條命令。預設 10 條。",
+      "autoMaxDuration": "單輪總時長上限（秒）",
+      "autoMaxDurationHint": "一輪最多跑多久，到點即停。預設 300 秒。",
+      "autoHosts": "允許自動執行的主機",
+      "autoHostsHint": "預設任何主機都不允許自動執行：模型提出的命令要你逐條確認，紅檔命令直接拒絕。只有唯讀命令會自動執行，寫操作需在下面勾選類別才自動執行。",
+      "autoHostsEmpty": "還沒有主機",
+      "autoHostToggleLabel": "允許 {{name}} 自動執行",
+      "autoRevoke": "回收授權",
+      "autoCategory": {
+        "package": "包管理",
+        "service": "服務重啟",
+        "file": "檔案編輯",
+        "git": "版本控制寫操作"
+      }
     },
     "followupPlaceholder": "追問…（Enter 送出，Shift+Enter 換行）",
     "askEntry": "問 Ottr",
@@ -638,7 +674,11 @@
     "returnToOriginal": "回到原終端機",
     "conversationReadonlyNotice": "連線已重開：以下對話屬於舊連線，僅供查看。再次提問將開始新對話。",
     "newConversation": "新對話",
-    "headerDisconnected": "已斷線"
+    "headerDisconnected": "已斷線",
+    "auto": {
+      "stepLimitReached": "已到單輪命令上限（{{count}} 條），本輪不再執行更多命令。",
+      "durationLimitReached": "已到單輪時長上限（{{seconds}} 秒），本輪不再執行更多命令。"
+    }
   },
   "tabs": {
     "duplicate": "複製頁籤",

@@ -501,7 +501,7 @@
       "diagnose": "你是资深运维工程师。用户在 SSH 终端执行了一条失败命令，给出：**原因**（1-3 句，基于输出）、**修复命令**（每条用 ```bash 围栏代码块，逐条独立可执行）、**备注**（可选，1 句）。使用界面语言回答；输出里的 [REDACTED_*] 是脱敏占位符，原样保留，不要猜测其内容。",
       "explain": "你是终端助手。解释用户选中的终端内容（报错/日志/文本）：含义、可能原因、（如适用）下一步建议命令（```bash 围栏代码块）。简明扼要，使用界面语言。[REDACTED_*] 是脱敏占位符，原样保留。",
       "tools": "你可以调用上面列出的工具来获取信息或执行操作。**工具调用需要用户确认后才会执行**；如果用户拒绝了某个工具，请改用已有信息作答。",
-      "hostTools": "你还可以调用主机工具（ottr_ 前缀）：只读类（读输出尾 / 读文件 / 列目录）会直接执行并把结果交给你；执行类（ottr_exec_command）按其工具说明里的当前模式处理——规划模式下只登记到计划，不会真正执行。请据此决定是否调用。"
+      "hostTools": "你还可以调用主机工具（ottr_ 前缀）：只读类（读输出尾 / 读文件 / 列目录）会直接执行并把结果交给你；执行类（ottr_exec_command）按其工具说明里的当前模式处理——规划模式下只登记到计划，不会真正执行；手动模式下命令登记为待确认步骤，等你点「执行」才会真正运行；自动模式下只读命令直接执行、其余降级为待你确认、危险命令被直接拒绝。请据此决定是否调用。"
     },
     "msg": {
       "exitCode": "退出码",
@@ -533,7 +533,8 @@
       "plan": "规划",
       "auto": "自动",
       "manual": "手动",
-      "autoNotEnabled": "自动模式尚未启用"
+      "autoNotAuthorized": "该主机未授权自动执行（设置 → AI → 允许自动执行的主机）",
+      "autoLocalDenied": "本地终端会话不给 AI 执行权（只给只读上下文）"
     },
     "plan": {
       "title": "计划步骤",
@@ -541,7 +542,25 @@
       "executed": "已执行",
       "rejected": "未执行（被拒绝）",
       "rejectedWithError": "未执行（后端拒绝：{{error}}）",
-      "statusPlanned": "待执行"
+      "statusPlanned": "待执行",
+      "statusExecuting": "执行中",
+      "statusDone": "已完成",
+      "statusFailed": "失败",
+      "statusRejected": "已拒绝",
+      "run": "执行",
+      "reject": "拒绝",
+      "running": "执行中…",
+      "runResult": "执行结果：{{summary}}\n退出码：{{exitCode}}\n标准输出：\n{{stdout}}\n错误输出：\n{{stderr}}",
+      "runFailed": "命令执行失败：{{error}}",
+      "timedOut": "执行超时：命令已被中止，通道已关闭。",
+      "rearmFailed": "未能以「手动」档重新登记这条命令（未执行）：{{error}}",
+      "rejectedByUser": "用户拒绝了执行这条命令。",
+      "exitCode": "退出码 {{code}}",
+      "result": "执行结果",
+      "confirmTitle": "待确认的命令",
+      "confirmHint": "命令尚未执行：点「执行」才会真正运行；点「拒绝」则跳过这条命令。",
+      "switchToManual": "有待确认的命令——切到「手动」档才能执行。",
+      "stepResult": "命令「{{command}}」已执行，结果如下：\n{{result}}"
     },
     "hostTool": {
       "readOutput": "读取当前终端的输出尾部",
@@ -552,8 +571,8 @@
       "commandArg": "要执行的单行命令",
       "purposeArg": "这条命令的目的（会写进计划清单）",
       "execCommandPlan": "执行命令（当前为规划模式：只登记到计划，不会真正执行）",
-      "execCommandManual": "执行命令（当前为手动模式：命令会进入待确认队列）",
-      "execCommandAuto": "执行命令（当前为自动模式：主机授权尚未开放，命令会被拒绝）",
+      "execCommandManual": "执行命令（当前为手动模式：命令会登记为待确认步骤，你点「执行」后才会真正运行）",
+      "execCommandAuto": "执行命令（当前为自动模式：只读命令会直接执行；写操作与不安全形态会降级为待你确认；危险命令会被直接拒绝）",
       "needPath": "缺少路径参数，未执行。",
       "needCommand": "缺少命令参数，未执行。",
       "noScope": "当前没有可用的目标作用域，无法访问主机。",
@@ -624,9 +643,26 @@
       "errRuleInvalid": "正则无法编译",
       "errRemoteHttp": "非本机端点必须使用 https://（明文 http 会把 API key 裸传在链路上，且应用只放行本机 http 端点）",
       "defaultExecMode": "新对话默认执行模式",
-      "defaultExecModeHint": "新建对话时的默认执行模式。规划模式只产出计划、不执行任何命令；自动模式尚未开放（需逐主机授权）。",
+      "defaultExecModeHint": "新建对话时的默认执行模式。规划模式只产出计划、不执行任何命令；手动模式下每条命令都要你点「执行」才会真正运行；自动模式需逐主机授权，授权后只读命令会直接执行、其余降级为逐条确认、危险命令被直接拒绝。",
       "readProbe": "AI 只读探查（读取主机文件与目录）",
-      "readProbeHint": "关闭后，AI 工具目录里不再有「读取主机文件」与「列出目录」，AI 只能读当前终端的输出尾部。其余工具不受影响。本机生效，不跨设备同步。"
+      "readProbeHint": "关闭后，AI 工具目录里不再有「读取主机文件」与「列出目录」，AI 只能读当前终端的输出尾部。其余工具不受影响。本机生效，不跨设备同步。",
+      "execTimeout": "单条命令超时（秒）",
+      "execTimeoutHint": "单条命令最多跑多久，超时就中止并关闭通道。默认 30 秒。",
+      "autoMaxSteps": "单轮命令步数上限",
+      "autoMaxStepsHint": "一轮里 AI 最多自动跑多少条命令。默认 10 条。",
+      "autoMaxDuration": "单轮总时长上限（秒）",
+      "autoMaxDurationHint": "一轮最多跑多久，到点即停。默认 300 秒。",
+      "autoHosts": "允许自动执行的主机",
+      "autoHostsHint": "默认任何主机都不允许自动执行：模型提出的命令要你逐条确认，红档命令直接拒绝。只有只读命令会自动执行，写操作需在下面勾选类别才自动执行。",
+      "autoHostsEmpty": "还没有主机",
+      "autoHostToggleLabel": "允许 {{name}} 自动执行",
+      "autoRevoke": "回收授权",
+      "autoCategory": {
+        "package": "包管理",
+        "service": "服务重启",
+        "file": "文件编辑",
+        "git": "版本控制写操作"
+      }
     },
     "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）",
     "askEntry": "问 Ottr",
@@ -638,7 +674,11 @@
     "returnToOriginal": "回到原终端",
     "conversationReadonlyNotice": "连接已重开：以下对话属于旧连接，仅供查看。再次提问将开始新对话。",
     "newConversation": "新对话",
-    "headerDisconnected": "已断开"
+    "headerDisconnected": "已断开",
+    "auto": {
+      "stepLimitReached": "已到单轮命令上限（{{count}} 条），本轮不再执行更多命令。",
+      "durationLimitReached": "已到单轮时长上限（{{seconds}} 秒），本轮不再执行更多命令。"
+    }
   },
   "tabs": {
     "duplicate": "复制页签",

@@ -5,6 +5,9 @@ import { invoke } from "@tauri-apps/api/core";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import {
+  DEFAULT_AUTO_MAX_DURATION_SECS,
+  DEFAULT_AUTO_MAX_STEPS,
+  DEFAULT_EXEC_TIMEOUT_SECS,
   DEFAULT_MAX_TOKENS,
   activeProvider,
   apiKeySecretKey,
@@ -35,6 +38,10 @@ describe("loadAiSettings", () => {
       maxTokens: DEFAULT_MAX_TOKENS,
       providers: [],
       redaction: { hostname: true, custom: [] },
+      // 执行护栏三键（2026-11-04 第三步）：缺省值与 Rust 侧同值
+      execTimeoutSecs: DEFAULT_EXEC_TIMEOUT_SECS,
+      autoMaxSteps: DEFAULT_AUTO_MAX_STEPS,
+      autoMaxDurationSecs: DEFAULT_AUTO_MAX_DURATION_SECS,
     });
   });
 

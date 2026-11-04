@@ -58,13 +58,16 @@ import {
 } from "./mcpTools";
 import {
   DEFAULT_AI_EXEC_MODE,
-  mergePlanSteps,
-  newPlanStepId,
+  awaitingPlanSteps,
+  needsModeUpgrade,
   normalizeAiExecMode,
+  newPlanStepId,
   planTargetKey,
   readDefaultAiExecMode,
+  upsertPlanStep,
   type AiExecMode,
   type PlanStep,
+  type PlanStepResult,
 } from "./aiModes";
 import { readAiReadProbeEnabled } from "./aiReadProbe";
 import { classify } from "./danger";
@@ -75,7 +78,7 @@ import {
   loadAiSettings,
   type AiSettings,
 } from "./settings";
-import { aiSessionApi, type AiScope } from "./sessionApi";
+import { aiSessionApi, type AiScope, type AiScopeRunResult } from "./sessionApi";
 import {
   captureAiTarget,
   isAiTargetLive,
@@ -241,7 +244,8 @@ export interface SessionAiState {
   /** 重连换代后旧对话只读（历史可见 + 提示；续问须走新对话）。 */
   conversationReadonly: boolean;
   /** 会话级执行模式（2026-11-04 第一步；**可选字段**——缺省视为 plan）。
-   *  plan = 只产计划、绝不执行；auto = 自动（第三步才开放）；manual = 逐条确认。
+   *  plan = 只产计划、绝不执行；auto = 自动档（授权主机上的白名单命令当场
+   *  执行，其余降级为逐条确认，red 级直接拒）；manual = 逐条确认。
    *  随对话保持；新对话复位到默认档。 */
   mode?: AiExecMode;
   /** 计划步骤清单（plan 模式下登记的执行类动作；可选字段，缺省视为空）。 */
@@ -318,6 +322,17 @@ interface AiStore {
    *  approve=false → 追加一条「用户拒绝执行」的 tool 消息，同样续跑一轮。
    *  同一时刻只允许一个工具在执行（防重复点击二次执行）。 */
   resolveToolCall: (sessionId: string, callId: string, approve: boolean) => Promise<void>;
+  /**
+   * 处置一条待确认的**计划步骤**（2026-11-04 第二步 Manual 模式）：
+   *  approve=true → 调 `ai_scope_run_step`（用该步骤登记时的 scope）→ 结果
+   *  作为 tool 轮入历史并**续跑一轮**；approve=false → 追加一条「已拒绝」的
+   *  tool 消息，同样续跑一轮。已执行/已拒绝的步骤不可重复执行。
+   *
+   *  **档位升级**（2026-11-04 修补 I-1）：plan 档登记的步骤在后端**执行不了**
+   *  （后端按登记时的档位判定），故 approve=true 时若该步骤登记时不是 manual
+   *  档 → **先让后端升档**（`ai_scope_upgrade_step`：命令原文只从登记簿里取，
+   *  新的 actionId），再执行升级后那条；manual 档登记的步骤走直路。 */
+  resolvePlanStep: (sessionId: string, stepId: string, approve: boolean) => Promise<void>;
   /** 切换会话级执行模式（2026-11-04 第一步）：plan / auto / manual。
    *  会话级——随对话保持；新对话复位到默认档（设置项）。 */
   setMode: (sessionId: string, mode: AiExecMode) => void;
@@ -610,15 +625,27 @@ export function commandExcerpt(command: string): string {
   return first.length > 80 ? `${first.slice(0, 80)}…` : first;
 }
 
+/** 执行输出在**面板里**的显示上限（回灌给模型的完整文本不受影响）。 */
+export const PLAN_OUTPUT_DISPLAY_LIMIT = 2000;
+
+/** 执行输出的展示截断（面板就地展示用；发给模型的是完整文本）。 */
+export function truncateForDisplay(text: string, limit = PLAN_OUTPUT_DISPLAY_LIMIT): string {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}${i18n.t("ai.tool.truncated")}`;
+}
+
 /* ---------------------------------------------------------------------------
- * 内建主机工具的执行面（2026-11-04 第一步：Plan 模式）
+ * 内建主机工具的执行面（2026-11-04 第一步：Plan 模式 / 第二步：Manual 模式）
  *
  * 语义（对齐契约 §4）：
  * * **只读工具**（读输出尾 / 读文件 / 列目录）→ 直接执行，结果作 tool 轮回灌
  *   给模型——读上下文是安全的，不需要用户逐次点头；
  * * **执行类工具**（ottr_exec_command）→ 按当前模式分派：
- *   plan（以及本步的 manual）**不执行**，只登记一条计划步骤，
- *   回灌「已记入计划，暂不执行」，让模型继续把计划列全；
+ *   plan **不执行**，只登记一条计划步骤，回灌「已记入计划，暂不执行」，让模型
+ *   继续把计划列全；
+ *   manual（第二步）同样**先只登记**（零执行），但**登记后挂起本轮**——等用户
+ *   点「执行」才调 `ai_scope_run_step` 真跑（结果回灌模型 → 模型续跑），点
+ *   「拒绝」则把「已拒绝」回灌 → 模型续跑；
  * * 绑定随请求快照走（本函数只吃当轮快照里的绑定，不读模块级注册表）。
  * ------------------------------------------------------------------------- */
 
@@ -650,6 +677,15 @@ export interface HostToolOutcome {
   content: string;
   /** plan 模式下登记的计划步骤（非空 = 记入计划清单）。 */
   planStep?: PlanStep;
+  /**
+   * **挂起本次 tool call**（第二步 Manual 模式）：true = 这次调用**先不答**，
+   * 等用户点「执行 / 拒绝」后才回灌 tool 轮。
+   *
+   * 为什么不能当场答掉：provider 协议要求 assistant 的每个 tool_call 都有对应
+   * 的 tool 消息；当场答掉的话，稍后那条「执行结果」的 tool 轮就成了孤儿
+   * （pruneOrphanToolTurns 会把它摘掉）——模型永远看不到执行结果。
+   */
+  deferred?: boolean;
 }
 
 /**
@@ -663,10 +699,26 @@ export interface HostToolOutcome {
  * 回灌文案按后端回包分三种（2026-11-04 修补 B1：`executed` 与 `planned`
  * **分别**读，不再只看 `planned`——第二步 manual 真执行时不会再向模型谎报
  * 「已记入计划，暂不执行」）：
- * * `executed = true` → 「已执行」（不进待执行清单）；
+ * * `executed = true` → 「已执行」（**进清单**，状态 = done / failed——自动档
+ *   在用户主机上跑过的命令，用户必须看得见，见下面 exec 分支）；
  * * `planned = true && executed = false` → 「已记入计划，暂不执行」（进清单）；
  * * 两者皆假 / 调用被拒 → 「未执行（被拒绝）」（不进清单）。
  */
+/**
+ * 自动档已执行的结果 → 回灌给模型的文本。
+ *
+ * **要带真实输出与退出码**：模型据此判断「命令跑成了没有、下一步做什么」；
+ * 只回一句「已执行」等于让模型瞎猜。
+ */
+function formatAutoExecResult(res: AiScopeRunResult): string {
+  const parts: string[] = [];
+  parts.push(res.timedOut ? i18n.t("ai.plan.timedOut") : `exit code: ${res.exitCode ?? "-"}`);
+  if (res.stdout) parts.push(`stdout:\n${res.stdout}`);
+  if (res.stderr) parts.push(`stderr:\n${res.stderr}`);
+  if (res.truncated) parts.push(i18n.t("ai.tool.truncated"));
+  return parts.join("\n");
+}
+
 export async function runHostTool(
   scope: AiScope,
   tool: HostToolName,
@@ -717,20 +769,72 @@ export async function runHostTool(
           status: "planned",
           // 绑定目标（去重键的一半）：同一条命令在不同目标下各自成步。
           target: planTargetKey(scope),
+          // **目标绑定**（第二步 Manual 模式）：执行时用的是**登记时**这个
+          // scope（不是当前焦点终端——切到别的终端后原卡仍打原目标）；
+          // actionId 原样回传（后端按它防串改 + 一次性）。
+          scopeId: scope.scopeId,
+          actionId: ctx.actionId,
+          // **登记时的档位**（2026-11-04 修补）：后端按它判定执行权——plan 档
+          // 登记的步骤执行前必须先由后端升档（见 rearmPlanStep）。
+          registeredMode: ctx.mode,
         };
         try {
           const outcome = await aiSessionApi.exec(scope.scopeId, ctx.actionId, command, ctx.mode);
-          // **已执行**（第二步 manual 真执行）：如实回灌，**不进**「待执行」
-          // 计划清单（它已经跑过了——清单是待执行步骤，不是执行日志）。
+          // 后端登记簿里那条的 stepId（执行面按它取命令原文；缺省 = 本地 id）。
+          const registeredStepId = outcome.stepId || local.id;
+          // **已执行**（自动档当场执行时才会出现）：结果**如实回灌**给模型
+          // （输出与退出码），并**进清单**——但状态是 done / failed，不是
+          // 「待执行」（它已经跑过了；清单这一行承载的是「AI 在我主机上跑过
+          // 什么、结果如何」，见下面）。
           if (outcome.executed) {
-            return { content: i18n.t("ai.plan.executed") };
+            const res = outcome.result;
+            // 没有结果载荷（后端说执行了但没给结果——不该发生）→ 回落本地化
+            // 文案，**不把后端英文原文直接甩给模型**。
+            if (!res) return { content: i18n.t("ai.plan.executed") };
+            // ★ 自动跑过的命令**要进清单**（状态=已完成）：用户必须看得到
+            // AI 在自己主机上自动跑了什么、结果如何——这是自动档的信任面
+            // （设计 §5.1 的「执行日志」由同一张步骤卡承载，不另起一块）。
+            return {
+              content: formatAutoExecResult(res),
+              planStep: {
+                ...local,
+                id: registeredStepId,
+                backendStepId: registeredStepId,
+                // 非零退出码 / 超时 = **失败**（与手动档同口径：清单里的
+                // 「已完成」只给真跑成功的命令）。
+                status: res.exitCode === 0 && !res.timedOut ? "done" : "failed",
+                result: {
+                  exitCode: res.exitCode ?? null,
+                  stdout: truncateForDisplay(res.stdout ?? ""),
+                  stderr: truncateForDisplay(res.stderr ?? ""),
+                  truncated: res.truncated === true,
+                  timedOut: res.timedOut === true,
+                },
+              },
+            };
           }
           // **已记入计划、暂不执行**：进计划清单（这才是「待执行」的步骤）。
           if (outcome.planned) {
-            return {
-              content: i18n.t("ai.plan.planned"),
-              planStep: { ...local, id: outcome.stepId || local.id },
+            const step: PlanStep = {
+              ...local,
+              id: registeredStepId,
+              backendStepId: registeredStepId,
             };
+            // **自动档降级**：后端把命令降级为逐条确认，并已按
+            // **手动档**登记（命令原文在登记簿里、档位=manual）→ 本地步骤也
+            // 标成 manual，用户点「执行」直接跑，**不需要**再升档。
+            const downgraded = outcome.downgradeReason != null;
+            if (ctx.mode === "manual" || downgraded) {
+              // Manual 档（含自动档降级）：**登记即挂起**——命令一个字节都
+              // 没跑，等用户点「执行」才真跑（后端 run_step）。这次 tool
+              // call 先不答（见 HostToolOutcome.deferred 的说明），处置时再回灌。
+              return {
+                content: "",
+                planStep: downgraded ? { ...step, registeredMode: "manual" } : step,
+                deferred: true,
+              };
+            }
+            return { content: i18n.t("ai.plan.planned"), planStep: step };
           }
           // **未执行且被拒**：不进计划清单（后端拒了就没登记这一步）。
           return { content: outcome.message || i18n.t("ai.plan.rejected") };
@@ -760,6 +864,74 @@ export function shouldAutoDiagnose(exitCode: number | null): boolean {
   return exitCode !== null && exitCode !== 130;
 }
 
+/* ---------------------------------------------------------------------------
+ * 档位升级（plan 档登记 → manual 档登记）（2026-11-04 修补 I-1）
+ *
+ * **断裂**：后端 `ai_scope_run_step` 按**步骤登记时落账的档位**判定执行权——
+ * plan 档登记的步骤一律拒「AI run rejected: plan mode does not execute
+ * (register the step in manual mode)」。于是「用户在 plan 档提问 → 看到计划
+ * 清单 → 切到手动档 → 点执行」必然失败——手动档的意义就是「我来确认执行」，
+ * 却不给执行，荒谬。
+ *
+ * **修法（后端出命令原文）**：用户点「执行」的那一刻（**不是切档时**——切档
+ * 即写后端登记簿是多余副作用）把这条步骤**升到 manual 档**，再执行升级后
+ * 那条：
+ * * 调后端 `ai_scope_upgrade_step(scopeId, stepId, actionId)`——**命令原文
+ *   只从后端登记簿里取**（前端**不传命令**）；
+ * * actionId 必须**全新且未被消费过**（后端按它做一次性消费，复用即拒
+ *   「already consumed」）→ `${runId}:rearm:${原stepId}:${递增序号}`；
+ * * 后端返回**新的 stepId**——清单里那一条必须改指新步骤（否则执行的仍是
+ *   那条 plan 档登记的旧步骤，后端照样拒）。
+ * * manual 档登记的步骤走**直路**（直接 runStep，不多一次调用）。
+ *
+ * **为什么不再由前端拿命令副本去重新登记**（旧路径）：那等于把「执行对象」
+ * 的命令文本来源变回前端（前端在两步之间改写 `step.command`，被执行的就是
+ * 改后的文本——后端只校验形态，不校验与原步骤一致）→ 削弱了「执行只认登记簿
+ * 里的命令原文」这条契约不变量。
+ * ------------------------------------------------------------------------- */
+
+/** 档位升级的序号（模块级计数器：连点两次也不会撞同一个 actionId）。 */
+let rearmSeq = 0;
+
+/**
+ * 档位升级用的 actionId：`${runId}:rearm:${原stepId}:${递增序号}`。
+ *
+ * * 前缀带 runId —— 一次 run 内的一次升级归属清晰，后端日志可追；
+ * * 序号单调递增（模块级计数器）——**连点两次也不会复用同一个 id**
+ *   （后端按 actionId 一次性消费，复用即拒「already consumed」）。
+ */
+export function newRearmActionId(runId: string | null, stepId: string): string {
+  rearmSeq += 1;
+  return `${runId ?? "norun"}:rearm:${stepId}:${rearmSeq}`;
+}
+
+/**
+ * 档位升级：把一条 **plan 档登记**的步骤升到 **manual 档**（后端从登记簿里
+ * 取命令原文重新登记一条）。
+ *
+ * **前端不传命令**——后端拿的是登记簿里那一份（前端手里那份 `step.command`
+ * 只是展示用的副本）。
+ *
+ * 失败一律**抛**（调用方按失败面处理：步骤 failed + 原因可见，不吞错）。
+ */
+async function rearmPlanStep(
+  scopeId: string,
+  step: PlanStep,
+  runId: string | null,
+): Promise<{ scopeId: string; stepId: string; actionId: string }> {
+  const actionId = newRearmActionId(runId, step.id);
+  // 登记簿里那条的 stepId（合并过的步骤：行标识与登记事实可能分家——执行面
+  // 只认登记簿里那条）。
+  const registeredStepId = step.backendStepId ?? step.id;
+  const outcome = await aiSessionApi.upgradeStep(scopeId, registeredStepId, actionId);
+  // 后端契约：升级只升级、不执行 → 回一个**新的** stepId（+ 新的 actionId）。
+  // 任何一条不成立 = 没升级成功（不能拿旧步骤去执行）。
+  if (!outcome?.stepId) {
+    throw new Error(outcome?.message || "AI upgrade rejected (no step upgraded)");
+  }
+  return { scopeId, stepId: outcome.stepId, actionId: outcome.actionId || actionId };
+}
+
 export const useAiStore = create<AiStore>((set, get) => {
   /** 切片更新（不存在则落入空切片底上合并；调用方保证 id 非空）。 */
   const patch = (sessionId: string, partial: Partial<SessionAiState>): void => {
@@ -772,6 +944,22 @@ export const useAiStore = create<AiStore>((set, get) => {
   };
   const slice = (sessionId: string): SessionAiState =>
     get().sessions[sessionId] ?? EMPTY_SLICE;
+
+  /**
+   * 改一条计划步骤（状态 / 执行结果回填）——执行面与面板共用一个写入口。
+   * 找不到该步骤时**不写**（步骤已被清掉：换对话/丢会话）。
+   */
+  const patchPlanStep = (
+    sessionId: string,
+    stepId: string,
+    stepPatch: Partial<PlanStep>,
+  ): void => {
+    const list = slice(sessionId).plan ?? [];
+    if (!list.some((s) => s.id === stepId)) return;
+    patch(sessionId, {
+      plan: list.map((s) => (s.id === stepId ? { ...s, ...stepPatch } : s)),
+    });
+  };
 
   /** 取代某会话的在途 run（abort + 在途 scope 收权）。 */
   const supersede = (sessionId: string): void => {
@@ -848,6 +1036,9 @@ export const useAiStore = create<AiStore>((set, get) => {
       hostBindings: ReadonlyMap<string, HostToolBinding>;
       /** 已消耗的工具轮次（上限判定）。 */
       toolRounds: number;
+      /** **执行护栏**（第三步自动档）：单轮命令步数上限与单轮总时长上限。
+       *  超限即**不再执行**本轮后续命令，并把「已到上限」回灌给模型。 */
+      guardrails: { maxSteps: number; maxDurationMs: number };
       redactOpts: RedactOptions;
       /** 完成落通知用（null = 本轮不发）。 */
       notify: { req: AiRequest; body: string } | null;
@@ -946,13 +1137,18 @@ export const useAiStore = create<AiStore>((set, get) => {
           return;
         }
         keepScope = true;
-        // 分流：**内建主机工具**（只读三类 + plan 下的 exec）不需要用户点头
-        // ——只读直接跑，exec 只登记计划（一个字节都没执行）；
+        // 分流：**内建主机工具**（只读三类 + 执行类）不需要外部 MCP 那种逐次
+        // 审批——只读直接跑；执行类按模式：plan 只登记计划（一个字节都没执行），
+        // manual 登记后**挂起本轮**等用户点确认（第二步）；
         // **外部 MCP 工具**仍逐次确认（既有安全模型不变）。
         const hostCalls = toolCalls.filter((tc) => ctx.hostBindings.has(tc.name));
         const mcpCalls = toolCalls.filter((tc) => !ctx.hostBindings.has(tc.name));
         if (hostCalls.length > 0) {
           const toolTurns: ChatTurn[] = [];
+          /** Manual 档挂起的执行类调用数（>0 = 本轮就此暂停，等用户处置）。 */
+          let deferredCalls = 0;
+          /** 本轮**已发起**的执行类调用数（自动档护栏计数用）。 */
+          let execCalls = 0;
           for (const tc of hostCalls) {
             if (!alive()) {
               rescueStrandedRun(sessionId, ac, runId);
@@ -970,6 +1166,37 @@ export const useAiStore = create<AiStore>((set, get) => {
               continue;
             }
             const mode = ctx.mode;
+            // **执行护栏**（第三步自动档）：自动档下本轮的执行类调用**可能
+            // 直接跑在主机上** → 步数与总时长到顶即**不再发起**（后端都不
+            // 调，零副作用），并把「已到上限」如实回灌给模型。
+            //
+            // 语义要分清（两层护栏，各管一件事）：
+            // * 这里的计数是**单轮提案预算**（每次 streamTurn 重置）——拦的是
+            //   「模型一口气提议一大串命令」；
+            // * **执行预算的真源在后端**（`check_auto_guardrails`，按作用域
+            //   计数、跨续跑累计）——真正跑在主机上的条数由它收口，前端这份
+            //   只是提前止损。所以「每轮 10 条 × 多轮」不会突破后端上限。
+            // 手动档不在此计数：那里的命令要等用户点「执行」才跑，每次都
+            // 有一次明确的用户动作，不需要轮内预算。
+            if (binding.tool === "ottr_exec_command" && mode === "auto") {
+              execCalls += 1;
+              const roundElapsedMs = Math.round(performance.now() - startedAt);
+              const overSteps = execCalls > ctx.guardrails.maxSteps;
+              const overTime = roundElapsedMs >= ctx.guardrails.maxDurationMs;
+              if (overSteps || overTime) {
+                toolTurns.push({
+                  role: "tool",
+                  content: overTime
+                    ? i18n.t("ai.auto.durationLimitReached", {
+                        seconds: Math.round(ctx.guardrails.maxDurationMs / 1000),
+                      })
+                    : i18n.t("ai.auto.stepLimitReached", { count: ctx.guardrails.maxSteps }),
+                  toolCallId: tc.id,
+                  toolName: binding.tool,
+                });
+                continue;
+              }
+            }
             const out = await runHostTool(
               scope,
               binding.tool,
@@ -977,7 +1204,18 @@ export const useAiStore = create<AiStore>((set, get) => {
               { mode, actionId: `${runId}:exec:${tc.id}` },
             );
             if (out.planStep) {
-              patch(sessionId, { plan: mergePlanSteps(slice(sessionId).plan, out.planStep) });
+              const step: PlanStep = {
+                ...out.planStep,
+                // Manual 档：这次 tool call **先不答**——处置时按 id 回灌 tool 轮
+                // （登记时把 id 记在步骤上）。plan 档当场就答过，不记 id
+                // （否则会被当成待处置，把追问输入永久禁掉）。
+                ...(out.deferred ? { toolCallIds: [tc.id], runId } : {}),
+              };
+              patch(sessionId, { plan: upsertPlanStep(slice(sessionId).plan, step) });
+            }
+            if (out.deferred) {
+              deferredCalls += 1;
+              continue; // 不答这条 tool call（等用户点执行/拒绝再回灌）
             }
             toolTurns.push({
               role: "tool",
@@ -987,8 +1225,9 @@ export const useAiStore = create<AiStore>((set, get) => {
             });
           }
           const next = [...base, ...toolTurns];
-          if (mcpCalls.length > 0) {
-            // 混批（内建 + 外部）：外部那批仍挂待确认——本轮就此暂停。
+          if (mcpCalls.length > 0 || deferredCalls > 0) {
+            // 混批（内建 + 外部）/ manual 挂起：外部那批仍挂待确认、manual 的
+            // 执行类等用户处置——本轮就此暂停（模型不得自行触发工具）。
             patch(sessionId, {
               messages: next,
               pendingToolCalls: mcpCalls.map((tc) => toPendingToolCall(tc, ctx.bindings, runId)),
@@ -1181,6 +1420,12 @@ export const useAiStore = create<AiStore>((set, get) => {
       runId,
       scope,
       mode,
+      // 执行护栏（第三步）：从设置读（缺省 10 步 / 300 秒），工具轮里按它
+      // 收口——超限不再发起执行类调用。
+      guardrails: {
+        maxSteps: settings.autoMaxSteps,
+        maxDurationMs: settings.autoMaxDurationSecs * 1000,
+      },
       messages: toProviderMessages(capped, redactOpts),
       baseTurns: capped,
       system: systemPrompt(
@@ -1439,6 +1684,9 @@ export const useAiStore = create<AiStore>((set, get) => {
       if (!req) return;
       // 有待确认的工具调用 → 不开新链（会把用户还没处置的工具调用丢掉）。
       if ((cur0.pendingToolCalls ?? []).length > 0) return;
+      // 有待处置的**执行步骤**（Manual 档）→ 同样不开新链：那次 tool call 还
+      // 没被回答，插入新的一轮会让 provider 协议缺 tool 消息（400）。
+      if (awaitingPlanSteps(cur0).length > 0) return;
       // 只读对话（重连换代）：续问须走新对话（openAsk 对新代数目标自动开）。
       if (cur0.conversationReadonly) return;
       // 追问轮（followupText 非空）：**不重取输出尾、不重注入主机备注**——
@@ -1684,6 +1932,11 @@ export const useAiStore = create<AiStore>((set, get) => {
         runId,
         scope,
         mode,
+        // 执行护栏（第三步）：设置读到的缺省值同样在这里生效。
+        guardrails: {
+          maxSteps: settings.autoMaxSteps,
+          maxDurationMs: settings.autoMaxDurationSecs * 1000,
+        },
         messages,
         baseTurns: turnsSoFar,
         system: systemPrompt(
@@ -1800,6 +2053,196 @@ export const useAiStore = create<AiStore>((set, get) => {
         runningToolCallId: null,
       });
       if (remaining.length > 0) return; // 还有待确认项 → 等用户处置完再续跑
+      await continueChain(sessionId, messages);
+    },
+
+    /**
+     * 处置一条**待确认的计划步骤**（2026-11-04 第二步：Manual 模式）。
+     *
+     * * **执行**（approve=true）→ 调 `ai_scope_run_step(scopeId, stepId,
+     *   actionId)`：目标 = **该步骤登记时的 scope**（不是当前焦点终端——
+     *   切到别的终端后原卡仍打原目标），命令原文取登记簿里那条（前端不传
+     *   命令，防前端改写）；结果（退出码 + 输出）作为 tool 轮回灌给模型 →
+     *   **续跑一轮**；
+     * * **拒绝**（approve=false）→ 把「已拒绝」作为 tool 轮回灌 → 同样续跑。
+     *
+     * 双重保险：前端按钮态（已执行/已拒绝的步骤不再给入口）+ 后端 actionId
+     * 一次性消费（同一 actionId 二次调用被拒）。执行中的步骤同步置
+     * `executing`（**先于一切 await**）——双击第二击在同步检查处被挡下。
+     *
+     * **档位升级**（2026-11-04 修补 I-1）：后端按**登记时落账的档位**判定执行权
+     * （plan 档登记的步骤一律拒「plan mode does not execute」）→ approve=true
+     * 时若该步骤登记时不是 manual 档，**先调后端 `ai_scope_upgrade_step` 升档**
+     * （命令原文只从后端登记簿里取——前端不传命令），再执行升级后那条；升级
+     * 后的清单条目改指新 stepId。
+     */
+    resolvePlanStep: async (sessionId, stepId, approve) => {
+      const st = slice(sessionId);
+      if (st.request == null) return; // 面板已关：无对话可处置
+      // **规划档不提供执行入口**（后端也会拒）——前端不暴露。
+      // 自动档**开放**执行入口：降级下来的步骤登记为**手动档**（等用户确认），
+      // 不能因为会话档位是「自动」就把这条路堵死（否则降级 = 死路）。
+      const sessionMode = st.mode ?? DEFAULT_AI_EXEC_MODE;
+      if (sessionMode !== "manual" && sessionMode !== "auto") return;
+      const step = (st.plan ?? []).find((s) => s.id === stepId);
+      if (!step) return;
+      // 自动档：**只**执行自动档降级下来的那类步骤（登记为手动档）。规划档
+      // 登记的步骤在自动档**不**给执行入口——自动档的放行判断只走后端的
+      // 白名单判定（走「升档」会绕开那道判定）。
+      if (sessionMode === "auto" && (step.registeredMode ?? "plan") !== "manual") return;
+      // 只处置「待执行」的步骤：执行中 / 已执行 / 已拒绝一律不再动
+      // （重复点击的第一道闸）。
+      if (step.status !== "planned") return;
+      // 运行身份复验：步骤必须仍属于当前 run（被取代的链不得执行）。
+      if (step.runId != null && st.runId != null && step.runId !== st.runId) return;
+      // 目标绑定缺失（老数据 / 手工构造的步骤）→ 无从执行（没有 scope/action）。
+      if (approve && (step.scopeId == null || step.actionId == null)) return;
+      const capturedRunId = st.runId ?? null;
+      // 挂起标记先于一切 await（双击第二击在此同步挡下）。
+      patchPlanStep(sessionId, stepId, { status: "executing" });
+      // **当前步骤 id**：档位升级成功后换成新登记的那条（清单里那一条改指新
+      // 步骤）——后续回填按新 id 写（否则补丁打不回这条）。
+      let liveStepId = stepId;
+      // 丢弃路径收尾：把步骤放回「待执行」（竞态平息后可再批）。
+      const discard = (): void => {
+        patchPlanStep(sessionId, liveStepId, { status: "planned", result: undefined });
+      };
+      // 脱敏配置（执行结果也要脱敏后存——与「内容一律脱敏后存」纪律一致）。
+      let redactOpts: RedactOptions = { hostname: true, custom: [] };
+      try {
+        const settings = await loadAiSettings();
+        redactOpts = {
+          hostname: settings.redaction.hostname,
+          custom: settings.redaction.custom,
+        };
+      } catch {
+        // 读不到就用默认规则（脱敏引擎的默认规则恒开）
+      }
+      let content: string;
+      if (approve) {
+        // --- 档位升级（plan 档登记 → manual 档）---
+        // 后端按**登记时落账的档位**判定执行权：plan 档登记的步骤调 run_step
+        // 必被拒（"plan mode does not execute"）。手动档的意义就是「我来确认
+        // 执行」——用户在手动档点「执行」的那一刻，先让**后端**把这条步骤升到
+        // manual 档（`ai_scope_upgrade_step`：命令原文只从登记簿里取，前端不传
+        // 命令；新 actionId：已消费的 id 后端会拒「already consumed」），再执行
+        // 升级后那条；manual 档登记的步骤走直路（不多一次调用）。
+        let scopeId = step.scopeId as string;
+        // 执行面认的是**登记簿里那条**（合并过的步骤：行标识与登记事实可能
+        // 分家——行标识保持稳定，登记事实跟着当前那次登记走）。
+        let execStepId = step.backendStepId ?? step.id;
+        let execActionId = step.actionId as string;
+        /** 升档失败的原因（非空 = 升级没做成，命令**没跑**）。 */
+        let rearmError: string | null = null;
+        if (needsModeUpgrade(step)) {
+          try {
+            const rearmed = await rearmPlanStep(scopeId, step, capturedRunId);
+            scopeId = rearmed.scopeId;
+            execStepId = rearmed.stepId;
+            execActionId = rearmed.actionId;
+            liveStepId = rearmed.stepId;
+            // 清单里那一条改指新步骤（重复点不再用旧 id）。
+            patchPlanStep(sessionId, stepId, {
+              id: rearmed.stepId,
+              backendStepId: rearmed.stepId,
+              actionId: rearmed.actionId,
+              registeredMode: "manual",
+            });
+          } catch (e) {
+            rearmError = e instanceof Error ? e.message : String(e);
+          }
+        }
+        if (rearmError !== null) {
+          // 升档失败 → 步骤 failed + 原因可见（沿用既有失败呈现，不吞错）。
+          patchPlanStep(sessionId, liveStepId, {
+            status: "failed",
+            result: {
+              exitCode: null,
+              stdout: "",
+              stderr: "",
+              truncated: false,
+              error: rearmError,
+            },
+          });
+          content = i18n.t("ai.plan.rearmFailed", { error: rearmError });
+        } else {
+          try {
+            const res = await aiSessionApi.runStep(scopeId, execStepId, execActionId);
+            const exitCode = res.exitCode ?? null;
+            // 退出码非 0 = 步骤失败；**无退出码**（被信号杀掉 / 超时）同样算
+            // 失败（null !== 0）。
+            const failed = exitCode !== 0;
+            const result: PlanStepResult = {
+              exitCode,
+              stdout: truncateForDisplay(res.stdout ?? ""),
+              stderr: truncateForDisplay(res.stderr ?? ""),
+              truncated: res.truncated === true,
+              timedOut: res.timedOut === true,
+            };
+            patchPlanStep(sessionId, liveStepId, { status: failed ? "failed" : "done", result });
+            // ★ 回灌给模型的内容要带**后端摘要**（`res.message`）：它区分
+            // 「超时被中止」「非零退出码」「无退出码」三件事——只给退出码的话，
+            // 超时那条看起来像「跑完了但没退出码」，模型会据此误判。
+            content = i18n.t("ai.plan.runResult", {
+              summary: res.message ?? "",
+              exitCode: exitCode ?? "-",
+              stdout: res.stdout ?? "",
+              stderr: res.stderr ?? "",
+            });
+          } catch (e) {
+            const err = e instanceof Error ? e.message : String(e);
+            const result: PlanStepResult = {
+              exitCode: null,
+              stdout: "",
+              stderr: "",
+              truncated: false,
+              error: err,
+            };
+            patchPlanStep(sessionId, liveStepId, { status: "failed", result });
+            content = i18n.t("ai.plan.runFailed", { error: err });
+          }
+        }
+      } else {
+        patchPlanStep(sessionId, stepId, { status: "rejected" });
+        content = i18n.t("ai.plan.rejectedByUser");
+      }
+      // 写回前复验：面板已关（不留幽灵写入）或已被新一轮取代 → 丢弃。
+      const cur = slice(sessionId);
+      if (!cur.request || (cur.runId != null && capturedRunId != null && cur.runId !== capturedRunId)) {
+        discard();
+        return;
+      }
+      const redacted = redact(content, redactOpts).text;
+      // tool 轮：按登记时记下的 tool call id 回灌（**每个都要答**——provider
+      // 协议：assistant 的每个 tool_call 必须有对应 tool 消息，缺一个就 400）。
+      const callIds = step.toolCallIds ?? [];
+      const messages: ChatTurn[] = callIds.length
+        ? [
+            ...cur.messages,
+            ...callIds.map((id) => ({
+              role: "tool" as const,
+              content: redacted,
+              toolCallId: id,
+              toolName: "ottr_exec_command",
+            })),
+          ]
+        : [
+            ...cur.messages,
+            // plan 档登记的步骤（那次 tool call 当场就答过，没有待答 id）：
+            // 结果以「用户轮」告知模型（tool 轮会是孤儿，被 prune 掉）。
+            {
+              role: "user" as const,
+              content: redact(
+                i18n.t("ai.plan.stepResult", { command: step.command, result: redacted }),
+                redactOpts,
+              ).text,
+            },
+          ];
+      patch(sessionId, { messages });
+      if (awaitingPlanSteps(slice(sessionId)).length > 0) {
+        return; // 还有待处置的执行步骤 → 等用户处置完再续跑
+      }
+      if ((cur.pendingToolCalls ?? []).length > 0) return; // 还有待确认的 MCP 工具
       await continueChain(sessionId, messages);
     },
 

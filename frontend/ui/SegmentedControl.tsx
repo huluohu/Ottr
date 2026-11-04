@@ -12,6 +12,9 @@ import { useRef, useState, type KeyboardEvent } from "react";
 export interface SegmentedOption<T extends string> {
   value: T;
   label: string;
+  /** 该选项不可选（禁用）。**默认 false**——既有调用方零改动，
+   *  DOM 契约（role=group + button[data-active][aria-pressed]）不变。 */
+  disabled?: boolean;
 }
 
 export interface SegmentedControlProps<T extends string> {
@@ -36,8 +39,9 @@ export function SegmentedControl<T extends string>({
   const [roving, setRoving] = useState<string | null>(null);
 
   function moveFocus(delta: number | "first" | "last"): void {
+    // 禁用段不参与漫游（disabled 的按钮拿不到焦点）。
     const btns = Array.from(
-      rootRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+      rootRef.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? [],
     );
     if (btns.length === 0) return;
     // 键盘语义只对「焦点已在组内」生效（真浏览器里焦点在外时组也收不到
@@ -99,9 +103,12 @@ export function SegmentedControl<T extends string>({
           data-active={value === o.value}
           aria-pressed={value === o.value}
           data-value={o.value}
+          // 禁用段（第三步自动档：该主机未授权 → 该档不可选）
+          disabled={o.disabled === true}
           // roving tabindex：tabStop 在选中段；键盘漫游后跟随焦点段
           tabIndex={tabStop === o.value ? 0 : -1}
           onClick={() => {
+            if (o.disabled === true) return;
             setRoving(null);
             onChange(o.value);
           }}

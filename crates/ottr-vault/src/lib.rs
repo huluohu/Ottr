@@ -4,6 +4,7 @@
 //! AES-256-GCM 密封（随机 nonce + AAD 绑定实体，防换绑）→ SQLite WAL 单文件
 //! 落盘（FTS5 检索，见 migrations/）。
 
+pub mod ai_host_policies;
 pub mod alert_rules;
 pub mod cron_jobs;
 pub mod crypto;
@@ -55,6 +56,9 @@ pub use cron_jobs::{
 };
 // MCP 授权矩阵（Phase 4 Task 3，C1；协议引擎在 desktop commands/mcp.rs，
 // 本 crate 只供表——cron_jobs 同款分工）
+// 主机级自动执行授权（Ask Ottr 执行模式第三步：自动档——面板内 AI 对本机
+// 连接的自动执行授权；与 mcp_grants 的外部客户端授权是两套面，不共用）
+pub use ai_host_policies::{AiHostPolicies, AiHostPolicy, AiHostPolicyInput, AiWriteCategory};
 pub use mcp_grants::{MCP_READ_PATHS_MAX, McpGrant, McpGrantInput, McpGrants};
 // 外部 MCP server 清单（Ottr 作为 MCP 客户端；协议核在 desktop mcp_client.rs，
 // 本 crate 只供表 + env 密文面登记——同款分工）
@@ -66,6 +70,12 @@ pub use mcp_servers::{
 pub use secrets::Secrets;
 pub use settings::Settings;
 pub use settings::{SETTING_SHORTCUT_OVERRIDES, SHORTCUT_OVERRIDES_MAX_ENTRIES};
+// AI 执行护栏三键（Ask Ottr 执行模式第三步：自动档）+ 它们的写入侧范围常量
+pub use settings::{
+    AI_AUTO_MAX_DURATION_MAX, AI_AUTO_MAX_DURATION_MIN, AI_AUTO_MAX_STEPS_MAX,
+    AI_AUTO_MAX_STEPS_MIN, AI_EXEC_TIMEOUT_MAX, AI_EXEC_TIMEOUT_MIN, SETTING_AI_AUTO_MAX_DURATION,
+    SETTING_AI_AUTO_MAX_STEPS, SETTING_AI_EXEC_TIMEOUT,
+};
 // 同步分类快照导出/导入（Phase 5 Task 3；编排引擎在 frontend/sync/SyncStore.ts，
 // 本 crate 只供 vault ↔ 快照 JSON 的双向翻译——cron_jobs 同款分工）
 pub use store::{KeyMode, Vault};

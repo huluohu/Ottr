@@ -524,7 +524,7 @@ describe("修补批次（2026-11-04）", () => {
   it("A4：后端拒绝（抛错）→ 回灌「未执行（后端拒绝…）」，且不进计划清单", async () => {
     mockBackend();
     seedLivePanes();
-    execResult = { error: "AI exec rejected: auto mode is not enabled yet" };
+    execResult = { error: "AI exec rejected: auto mode is not authorized for host 7" };
     script = (turn) =>
       turn === 0
         ? [

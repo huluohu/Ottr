@@ -71,6 +71,10 @@ lettre = { version = "0.11", default-features = false, features = [
 tokio = { workspace = true, features = ["io-util", "io-std", "rt", "sync", "time", "net", "process"] }
 base64 = { workspace = true }
 sha2 = { workspace = true }
+# 自动档命令分级器（commands/ai_policy.rs）：red 规则表与前端
+# frontend/ai/danger.ts 逐条对应（跨语言钉死测试读那份 TS 比对正则源）。
+# regex 本就在依赖树里（tauri-specta / russh 链路上），提为常规依赖不新增编译成本。
+regex = "1"
 # spike-pragmatic 收口（pty.rs 落地）：PTY 读循环/建通道面已收敛到
 # ottr_ssh::pty（PtyChannel/PtyEvent），本 crate 生产代码零 russh 依赖；
 # russh 仅存于 [dev-dependencies]——进程内 mock sshd（russh::server::Handler）
@@ -145,7 +149,6 @@ keyring = { version = "3", features = ["sync-secret-service"] }
 # HTTP 插件 scope 匹配语义回归守卫（desktop/tests/http_scope_probe.rs）：
 # 与 tauri-plugin-http 同版本 urlpattern（能力门 scope 的匹配语义）。仅测试用。
 urlpattern = "0.6"
-regex = "1"
 # vault 相关单测（tempfile 临时目录 + InMemoryStorage，测试纪律见 ottr-vault）
 tempfile = { workspace = true }
 # 终审 A1 回归：进程内 mock sshd（russh::server::Handler）——生产代码已经

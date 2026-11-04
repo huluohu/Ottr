@@ -119,6 +119,25 @@ pub const HISTORY_LIMIT_MIN: u64 = 100;
 pub const HISTORY_LIMIT_MAX: u64 = 1_000_000;
 /// AI 单请求 token 上限（Task 13 成本护栏）：写入侧上限 8192（缺省 1024）。
 pub const AI_MAX_TOKENS_LIMIT: u64 = 8192;
+
+/// AI 执行护栏（Ask Ottr 执行模式第三步：自动档）——三个键都在
+/// **写入侧**做范围校验（同步导入也走这里，超范围的档位写不进去）。
+///
+/// * `ai.exec.timeout_secs`：单条命令消费侧硬超时（秒）。缺省 30。
+/// * `ai.auto.max_steps`：单轮工具步数上限。缺省 10。
+/// * `ai.auto.max_duration_secs`：单轮总时长上限（秒）。缺省 300。
+///
+/// 范围取「保守侧」：超时下限 5s（再短几乎必然误杀正常命令）、上限 300s；
+/// 步数 1..=100；总时长 30..=3600s。
+pub const SETTING_AI_EXEC_TIMEOUT: &str = "ai.exec.timeout_secs";
+pub const SETTING_AI_AUTO_MAX_STEPS: &str = "ai.auto.max_steps";
+pub const SETTING_AI_AUTO_MAX_DURATION: &str = "ai.auto.max_duration_secs";
+pub const AI_EXEC_TIMEOUT_MIN: u64 = 5;
+pub const AI_EXEC_TIMEOUT_MAX: u64 = 300;
+pub const AI_AUTO_MAX_STEPS_MIN: u64 = 1;
+pub const AI_AUTO_MAX_STEPS_MAX: u64 = 100;
+pub const AI_AUTO_MAX_DURATION_MIN: u64 = 30;
+pub const AI_AUTO_MAX_DURATION_MAX: u64 = 3600;
 /// 自动检查更新频率（2026-10-13 用户需求）：off / startup / interval（24h）。
 /// 消费方在前端 update/autoCheck.ts；Rust 侧只管写入校验（枚举白名单）。
 ///
@@ -255,6 +274,22 @@ pub fn validate_known_setting(
             Err(format!("{key} expects a boolean"))
         }
     }
+    /// 闭区间整数校验（AI 执行护栏用：上下限都写明，报错能直接告诉用户
+    /// 合法范围，而不是只说「超限」）。
+    fn u64_in_range_inclusive(
+        value: &serde_json::Value,
+        min: u64,
+        max: u64,
+        key: &str,
+    ) -> std::result::Result<(), String> {
+        let n = value
+            .as_u64()
+            .ok_or_else(|| format!("expected a non-negative integer, got {value}"))?;
+        if !(min..=max).contains(&n) {
+            return Err(format!("{key} must be {min}-{max}, got {n}"));
+        }
+        Ok(())
+    }
     match key {
         SETTING_AUTOLOCK => u64_in_range(value, AUTOLOCK_MAX_MINUTES),
         SETTING_CLIPBOARD => u64_in_range(value, CLIPBOARD_MAX_SECS),
@@ -335,6 +370,20 @@ pub fn validate_known_setting(
         // Task 13：AI 成本护栏（单请求 max_tokens 上限）与诊断自动触发开关
         "ai.max_tokens" => u64_in_range(value, AI_MAX_TOKENS_LIMIT),
         "ai.enabled" => bool_value(key, value),
+        // Ask Ottr 执行模式第三步：AI 执行护栏（自动档用）——三个键都做
+        // **范围**校验（同步导入也走这里）。
+        SETTING_AI_EXEC_TIMEOUT => {
+            u64_in_range_inclusive(value, AI_EXEC_TIMEOUT_MIN, AI_EXEC_TIMEOUT_MAX, key)
+        }
+        SETTING_AI_AUTO_MAX_STEPS => {
+            u64_in_range_inclusive(value, AI_AUTO_MAX_STEPS_MIN, AI_AUTO_MAX_STEPS_MAX, key)
+        }
+        SETTING_AI_AUTO_MAX_DURATION => u64_in_range_inclusive(
+            value,
+            AI_AUTO_MAX_DURATION_MIN,
+            AI_AUTO_MAX_DURATION_MAX,
+            key,
+        ),
         "ui.theme" => {
             let s = value
                 .as_str()
@@ -399,6 +448,62 @@ mod tests {
             "字符串拒绝（布尔键）"
         );
         assert!(validate_known_setting(key, &serde_json::json!(1)).is_err());
+    }
+
+    /// Ask Ottr 执行模式第三步：AI 执行护栏三键的写入侧校验——范围内放行，
+    /// 越界/类型错显式拒绝（同步导入也走这里，导入侧不得绕过）。
+    #[test]
+    fn ai_exec_guardrail_write_side_validation() {
+        // 单条命令超时
+        assert!(validate_known_setting(SETTING_AI_EXEC_TIMEOUT, &serde_json::json!(30)).is_ok());
+        assert!(
+            validate_known_setting(
+                SETTING_AI_EXEC_TIMEOUT,
+                &serde_json::json!(AI_EXEC_TIMEOUT_MIN)
+            )
+            .is_ok(),
+            "下限边界放行"
+        );
+        assert!(
+            validate_known_setting(
+                SETTING_AI_EXEC_TIMEOUT,
+                &serde_json::json!(AI_EXEC_TIMEOUT_MAX)
+            )
+            .is_ok(),
+            "上限边界放行"
+        );
+        assert!(
+            validate_known_setting(SETTING_AI_EXEC_TIMEOUT, &serde_json::json!(0)).is_err(),
+            "0 秒超时会让每条命令都超时——拒绝"
+        );
+        assert!(
+            validate_known_setting(SETTING_AI_EXEC_TIMEOUT, &serde_json::json!(301)).is_err(),
+            "超上限拒绝"
+        );
+        assert!(
+            validate_known_setting(SETTING_AI_EXEC_TIMEOUT, &serde_json::json!("30")).is_err(),
+            "字符串拒绝"
+        );
+        // 单轮步数
+        assert!(validate_known_setting(SETTING_AI_AUTO_MAX_STEPS, &serde_json::json!(10)).is_ok());
+        assert!(
+            validate_known_setting(SETTING_AI_AUTO_MAX_STEPS, &serde_json::json!(0)).is_err(),
+            "0 步 = 一条都跑不了——拒绝"
+        );
+        assert!(
+            validate_known_setting(SETTING_AI_AUTO_MAX_STEPS, &serde_json::json!(101)).is_err()
+        );
+        // 单轮总时长
+        assert!(
+            validate_known_setting(SETTING_AI_AUTO_MAX_DURATION, &serde_json::json!(300)).is_ok()
+        );
+        assert!(
+            validate_known_setting(SETTING_AI_AUTO_MAX_DURATION, &serde_json::json!(29)).is_err(),
+            "低于下限拒绝"
+        );
+        assert!(
+            validate_known_setting(SETTING_AI_AUTO_MAX_DURATION, &serde_json::json!(3601)).is_err()
+        );
     }
 
     /// BL-205①（TDD 红）：history.limit 写入侧校验——范围内放行，越界/类型错

@@ -281,10 +281,29 @@ pub fn run() {
             commands::ai_session::ai_scope_revoke,
             // Ask Ottr 执行模式 第一步（Plan 档；commands/ai_session.rs）：
             // 只读面（列目录/读文件，路径规则沿用 read_file 口径）+ 执行面
-            // （按模式分派：plan/manual 只登记计划步骤、绝不执行；auto 本步拒）。
+            // （按模式分派：plan/manual 只登记计划步骤、绝不执行；auto 走
+            // 后端放行判定链——授权 + 分级，见 commands/ai_policy.rs）。
             commands::ai_session::ai_scope_list_dir,
             commands::ai_session::ai_scope_read_file,
             commands::ai_session::ai_scope_exec,
+            // Ask Ottr 执行模式 第二步（Manual 档；commands/ai_session.rs）：
+            // 真执行面——只执行该作用域**已登记**的步骤（stepId 命中登记簿 +
+            // actionId 与登记时一致），独立 exec 通道 + 消费侧硬超时（超时显式
+            // 关通道，不留悬挂远端 shell），plan/auto 档一律拒。
+            commands::ai_session::ai_scope_run_step,
+            // 档位升级面（2026-11-04 修补 I-1）：把 plan 档登记的步骤以
+            // manual 档**新登记**一条——命令原文只从该作用域的登记簿里取
+            // （前端不传命令），新 actionId 一次性；升级只升级、不执行。
+            commands::ai_session::ai_scope_upgrade_step,
+            // Ask Ottr 执行模式 第三步（自动档；commands/ai_policy.rs）：
+            // 逐主机自动执行授权 CRUD（默认全拒——无授权行 = 该主机不允许
+            // AI 自动执行任何命令）+ 命令分级器（red 直接拒 / 只读白名单 /
+            // 逃逸形态与写操作降级为逐条确认）。
+            commands::ai_policy::ai_policy_categories,
+            commands::ai_policy::ai_policy_get,
+            commands::ai_policy::ai_policy_set,
+            commands::ai_policy::ai_policy_list,
+            commands::ai_policy::ai_policy_delete,
             // 本地终端（2026-10-20）：连接本机 shell 的会话；写/缩放/尾部/
             // 关闭复用上方同名单命令（双表回退，见 commands/local_term.rs）。
             commands::local_term::local_term_open,

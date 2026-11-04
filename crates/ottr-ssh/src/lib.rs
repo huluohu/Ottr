@@ -42,9 +42,13 @@ pub use jump::{HopSpec, JumpError};
 pub use jump_session::JumpSession;
 pub use keygen::{KeyAlgorithm, KeyMaterial, PublicKeyInfo, generate, inspect, parse_public_key};
 pub use pty::{PtyChannel, PtyEvent};
-pub use russh_impl::{ExecOutput, RusshTransport, SshSession, connect, connect_with_keepalive};
+pub use russh_impl::{
+    ExecOutcome, ExecOutput, RusshTransport, SshSession, connect, connect_with_keepalive,
+};
 // ExecOutput（SshSession::exec 的结果类型）随方法一起出根：Phase 3 Task 4（B6）
 // 批量执行在 desktop 侧消费 exec 面（并发池 + 逐主机结果事件）。
+// ExecOutcome（SshSession::exec_with_timeout 的结果类型）：带 `timed_out` 标记
+// ——超时 ≠ 命令失败退出码，调用方据此分开处置（Ask Ottr 执行模式第二步）。
 
 // KeyError 随 Error 一起导出（Error::KeyLoad 的 source 类型）。
 
@@ -73,6 +77,12 @@ pub enum Error {
         message: String,
         source: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
+    /// **消费侧硬超时**命中（2026-11-04，Ask Ottr 执行模式第二步）。
+    ///
+    /// 语义：命令被**消费侧**主动中止（不是远端回了个失败退出码）——通道
+    /// 已被显式关闭（远端不留悬挂 shell）。故它与「远端返回非零退出码」是
+    /// **两件事**：调用方必须能分开处置（本变体即分开处置的面）。
+    Timeout { message: String },
     /// 网络 I/O 错误。
     Io(std::io::Error),
     /// 系统 ssh-agent 侧错误（连接失败 / agent 未运行 / 无可用身份 / 签名被拒）。
@@ -96,6 +106,7 @@ impl fmt::Display for Error {
                 write!(f, "failed to load private key {path}: {source}")
             }
             Error::Protocol { message, .. } => write!(f, "ssh protocol error: {message}"),
+            Error::Timeout { message } => write!(f, "ssh operation timed out: {message}"),
             Error::Io(e) => write!(f, "network error: {e}"),
         }
     }

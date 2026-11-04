@@ -397,6 +397,29 @@
 .ai-provider-row > .ui-switch {
   flex: none;
 }
+/* 自动档授权面（2026-11-04 第三步）：逐主机的写类别勾选组。
+   勾选框用原生 checkbox——设置页的类别是多选控件（段控是单选，不适用）；
+   样式与本仓既有 checkbox 一致（见 06-import-dialog.css 同款）。 */
+.ai-auto-categories {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  flex: 1 1 100%;
+}
+.ai-auto-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.ai-auto-category input[type="checkbox"] {
+  accent-color: var(--color-accent);
+}
+.ai-provider-row[data-enabled="false"] .ai-auto-categories {
+  opacity: 0.55;
+}
 .ai-provider-row[data-disabled="true"] .ai-provider-name,
 .ai-provider-row[data-disabled="true"] .ai-provider-meta {
   opacity: 0.55;
@@ -906,4 +929,87 @@
   font-size: var(--text-2xs);
   color: var(--fg-muted);
   white-space: nowrap;
+}
+
+/* --- Ask Ottr 执行模式（第二步：Manual 档）待确认卡 --------------------------
+   为什么这么写：manual 档把「计划清单」升级成**闸门卡**——命令原文、危险
+   徽章、状态点之外，必须有「执行 / 拒绝」两个按钮和一块就地展示的结果区。
+   视觉沿用线程内既有的 .ai-tool-card 语汇（强调色左边框 + 卡片底色），不另造
+   一套控件外观；状态点仍由 .ai-plan-dot 承担（语义色随状态走，不与危险徽章
+   混用）。样式纪律：圆角/字号/间距/颜色一律走 token（css-discipline 守卫），
+   不写字面值。 */
+
+/* 状态点五态：待执行（琥珀）/ 执行中（强调色）/ 已完成（成功）/ 失败（危险）
+   / 已拒绝（弱化灰）。执行中用强调色而不是琥珀——琥珀在本应用语义 = 待办。 */
+.ai-plan-dot[data-status="executing"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.ai-plan-dot[data-status="done"] {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+.ai-plan-dot[data-status="failed"] {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.ai-plan-dot[data-status="rejected"] {
+  background: var(--fg-muted);
+  border-color: var(--fg-muted);
+}
+/* 动作行：执行（主钮）/ 拒绝（次钮）。按钮不缩——窄面板里两钮并排仍放得下，
+   缩成图标会丢掉「执行」这个动词（安全闸门上的文字不能省）。 */
+.ai-plan-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  flex: none;
+}
+.ai-plan-actions button {
+  font-size: var(--text-xs);
+  padding: 0 var(--space-2);
+}
+/* 执行结果（就地展示）：退出码 + 截断输出。放在步骤行内部、独占一行
+   （flex-wrap 让长命令换行后结果仍贴着自己的步骤）。 */
+.ai-plan-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex-basis: 100%;
+  min-width: 0;
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+.ai-plan-exit {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ai-plan-error {
+  font-size: var(--text-2xs);
+  color: var(--color-danger);
+  word-break: break-word;
+}
+/* 超时提示（2026-11-04 真机取证发现「超时」与「没有退出码」不可分辨）：
+   与错误文案同色不同类——它是「被中止」，不是「命令失败」。 */
+.ai-plan-timeout {
+  font-size: var(--text-2xs);
+  color: var(--color-warning);
+  word-break: break-word;
+}
+.ai-plan-output {
+  margin: 0;
+  max-height: 10em;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.ai-plan-truncated {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
 }

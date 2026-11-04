@@ -239,8 +239,10 @@ function execCommandDescription(mode: AiExecMode): string {
  *   （工具打不到任何主机，给了只是让模型空转）；
  * * `readProbe=false`（AI 只读探查总开关关闭，2026-11-04 修补 B3）→ **读文件
  *   与列目录两个工具不进目录**（模型看不到它们；其余工具不受影响）；
- * * plan / manual / auto 三档都暴露同一组工具——**闸门在执行分派**（plan 只
- *   记计划；auto 本步由后端拒），工具清单不随模式抖动，模型的行为因此稳定。
+ * * plan / manual / auto 三档都暴露同一组工具——**闸门在执行分派**：plan 只
+ *   记计划、manual 登记后等用户点「执行」、auto 由**后端**按主机授权 + 命令
+ *   分级当场判定（放行则直接执行、非白名单降级为逐条确认、red 级直接拒），
+ *   工具清单不随模式抖动，模型的行为因此稳定。
  */
 export function hostToolSnapshot(opts: {
   enabled: boolean;

@@ -501,7 +501,7 @@
       "diagnose": "汝是資深運維工程師。用戶在 SSH 終端行了一條敗令，給出：**原因**（1-3 句，基於輸出）、**修復令**（每條用 ```bash 圍欄代碼塊，逐條獨立可行）、**備註**（可選，1 句）。使用介面語言回答；輸出裏的 [REDACTED_*] 是脫敏佔位符，原樣保留，不要猜測其文。",
       "explain": "汝是終端助手。解釋用戶選中的終端文（報錯/誌/文本）：含義、可能原因、（如適用）下一步建議令（```bash 圍欄代碼塊）。簡明扼要，使用介面語言。[REDACTED_*] 是脫敏佔位符，原樣保留。",
       "tools": "汝可呼叫上列之工具以取資訊或行事。**工具之呼叫須待用戶確認方行**；若用戶拒絕某工具，請改據已有之資作答。",
-      "hostTools": "汝亦可呼叫主機工具（ottr_ 前綴）：唯讀類（讀輸出尾 / 讀檔 / 列錄）即行其實，果還於汝；執行類（ottr_exec_command）從其工具說明之今式而行——籌劃式下只登記入計劃，弗真行。據此以決其可否呼之。"
+      "hostTools": "汝亦可调用主機工具（ottr_ 前綴）：唯讀類（讀輸出尾 / 讀檔案 / 列目錄）徑自執行而以果還汝；執行類（ottr_exec_command）依其工具說明中之當前模式而行——規劃模式下僅登記於計畫，不會真行；手動模式下登記為待確認之步驟，待汝點「執行」方真行；自動模式下唯讀命令徑行，其餘降為待汝確認，危險命令徑自拒絕。請據此斟酌是否调用。"
     },
     "msg": {
       "exitCode": "退出碼",
@@ -533,7 +533,8 @@
       "plan": "籌劃",
       "auto": "自運",
       "manual": "手行",
-      "autoNotEnabled": "自運之式尚未開"
+      "autoNotAuthorized": "該主機未授權自動執行（設定 → AI → 許自動執行之主機）",
+      "autoLocalDenied": "本地終端會話不與 AI 執行權（唯予唯讀上下文）"
     },
     "plan": {
       "title": "計劃步驟",
@@ -541,7 +542,25 @@
       "executed": "已行",
       "rejected": "未行（被拒）",
       "rejectedWithError": "未行（後端拒之：{{error}}）",
-      "statusPlanned": "待行"
+      "statusPlanned": "待行",
+      "statusExecuting": "行中",
+      "statusDone": "已成",
+      "statusFailed": "敗",
+      "statusRejected": "已拒",
+      "run": "行",
+      "reject": "拒",
+      "running": "行中…",
+      "runResult": "執行結果：{{summary}}\n退出碼：{{exitCode}}\n常出：\n{{stdout}}\n誤出：\n{{stderr}}",
+      "runFailed": "命令行之敗：{{error}}",
+      "timedOut": "逾時：命令被中止，通道已關閉。",
+      "rearmFailed": "未能以「手行式」重登此命令（未行）：{{error}}",
+      "rejectedByUser": "用戶拒行此命令。",
+      "exitCode": "退出碼 {{code}}",
+      "result": "行之果",
+      "confirmTitle": "待確認之命令",
+      "confirmHint": "命令尚未行：點「行」乃真行；點「拒」則略此命令。",
+      "switchToManual": "有待確認之命令——須切「手行式」乃可行。",
+      "stepResult": "命令「{{command}}」已行，其果如下：\n{{result}}"
     },
     "hostTool": {
       "readOutput": "讀今終端之輸出尾",
@@ -552,8 +571,8 @@
       "commandArg": "將行之單行命令",
       "purposeArg": "此命令之由（將書入計劃）",
       "execCommandPlan": "行命令（今為籌劃式：只登記入計劃，弗真行）",
-      "execCommandManual": "行命令（今為手行式：命令將入待確認之列）",
-      "execCommandAuto": "行命令（今為自運式：主機授權尚未開，命令將被拒）",
+      "execCommandManual": "行命令（今為手行式：命令將登為待確認之步驟，待汝點「行」乃真行）",
+      "execCommandAuto": "執行命令（目前為自動模式：唯讀命令徑自執行；寫操作與不安全形態降為待你確認；危險命令徑自拒絕）",
       "needPath": "缺路徑之參，未行。",
       "needCommand": "缺命令之參，未行。",
       "noScope": "今無可用之目標域，不能訪主機。",
@@ -624,9 +643,26 @@
       "errRuleInvalid": "正則未能編譯",
       "errRemoteHttp": "非本機端點須用 https://（明文 http 露 API key 於鏈路，且應用唯放行本機 http）",
       "defaultExecMode": "新對話之預設執行式",
-      "defaultExecModeHint": "新起對話時之預設執行式。籌劃式只出計劃、不行任何命令；自運式尚未開（須逐主機授權）。",
+      "defaultExecModeHint": "新建對話時之預設執行模式。規劃模式只產計畫、不執行任何命令；手動模式下每條命令待汝點「執行」方真行；自動模式需逐主機授權，授權後唯讀命令徑行，其餘降為待汝確認，危險命令徑自拒絕。",
       "readProbe": "AI 只讀探查（讀主機之檔與錄）",
-      "readProbeHint": "閉之後，AI 工具之目錄不復有「讀主機之檔」與「列錄」，AI 唯可讀今終端之輸出尾。其餘工具無涉。本機生效，不跨器同步。"
+      "readProbeHint": "閉之後，AI 工具之目錄不復有「讀主機之檔」與「列錄」，AI 唯可讀今終端之輸出尾。其餘工具無涉。本機生效，不跨器同步。",
+      "execTimeout": "單條命令逾時（秒）",
+      "execTimeoutHint": "單條命令可跑幾時，逾時即中止並關通道。缺省 30 秒。",
+      "autoMaxSteps": "單輪命令步數上限",
+      "autoMaxStepsHint": "一輪之中 AI 至多自動跑幾條命令。缺省 10 條。",
+      "autoMaxDuration": "單輪總時長上限（秒）",
+      "autoMaxDurationHint": "一輪至多跑幾時，到點即止。缺省 300 秒。",
+      "autoHosts": "許自動執行之主機",
+      "autoHostsHint": "缺省任何主機皆不許自動執行：模型所提之命令待你逐條確認，紅檔命令徑自拒絕。唯讀命令方自動執行；寫操作須於下方勾選類別方自動執行。",
+      "autoHostsEmpty": "尚無主機",
+      "autoHostToggleLabel": "許 {{name}} 自動執行",
+      "autoRevoke": "回收授權",
+      "autoCategory": {
+        "package": "包管理",
+        "service": "服務重啟",
+        "file": "檔案編輯",
+        "git": "版本控制寫操作"
+      }
     },
     "followupPlaceholder": "追問…（Enter 呈上，Shift+Enter 換行）",
     "askEntry": "問 Ottr",
@@ -638,7 +674,11 @@
     "returnToOriginal": "返原終端機",
     "conversationReadonlyNotice": "連已復開：以下對話屬舊連，僅供觀覽。復問則啟新對話。",
     "newConversation": "新對話",
-    "headerDisconnected": "已斷"
+    "headerDisconnected": "已斷",
+    "auto": {
+      "stepLimitReached": "已至單輪命令之限（{{count}} 條），本輪不再執行更多命令。",
+      "durationLimitReached": "已至單輪時長之限（{{seconds}} 秒），本輪不再執行更多命令。"
+    }
   },
   "tabs": {
     "duplicate": "謄頁籤",

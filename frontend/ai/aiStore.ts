@@ -786,7 +786,24 @@ export async function runHostTool(
             // 没有结果载荷（后端说执行了但没给结果——不该发生）→ 回落本地化
             // 文案，**不把后端英文原文直接甩给模型**。
             if (!res) return { content: i18n.t("ai.plan.executed") };
-            return { content: formatAutoExecResult(res) };
+            // ★ 自动跑过的命令**要进清单**（状态=已完成）：用户必须看得到
+            // AI 在自己主机上自动跑了什么、结果如何——这是自动档的信任面
+            // （设计 §5.1 的「执行日志」由同一张步骤卡承载，不另起一块）。
+            return {
+              content: formatAutoExecResult(res),
+              planStep: {
+                ...local,
+                id: outcome.stepId || local.id,
+                status: "done",
+                result: {
+                  exitCode: res.exitCode ?? null,
+                  stdout: truncateForDisplay(res.stdout ?? ""),
+                  stderr: truncateForDisplay(res.stderr ?? ""),
+                  truncated: res.truncated === true,
+                  timedOut: res.timedOut === true,
+                },
+              },
+            };
           }
           // **已记入计划、暂不执行**：进计划清单（这才是「待执行」的步骤）。
           if (outcome.planned) {

@@ -251,8 +251,13 @@ describe("auto 档：白名单命令直接执行", () => {
     // ★ 结果**必须**带真实输出与退出码——只回「已执行」等于让模型瞎猜。
     expect(toolTurn.content).toContain("total 8");
     expect(toolTurn.content).toContain("exit code: 0");
-    // 已经跑过的命令不是「待执行」步骤 → 不进计划清单
-    expect(slice()?.plan ?? []).toHaveLength(0);
+    // ★ 自动跑过的命令要**进清单**（状态=已完成）——用户必须看得到 AI 在
+    // 自己主机上自动跑了什么、结果如何（自动档的信任面）。
+    const step = slice()?.plan?.[0];
+    expect(step?.status).toBe("done");
+    expect(step?.command).toBe("ls -la");
+    expect(step?.result?.exitCode).toBe(0);
+    expect(step?.result?.stdout).toContain("total 8");
     // 模型续跑（拿到结果后继续）
     expect(requests.length).toBeGreaterThanOrEqual(2);
   });

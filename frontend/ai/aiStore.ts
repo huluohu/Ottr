@@ -794,7 +794,9 @@ export async function runHostTool(
               planStep: {
                 ...local,
                 id: outcome.stepId || local.id,
-                status: "done",
+                // 非零退出码 / 超时 = **失败**（与手动档同口径：清单里的
+                // 「已完成」只给真跑成功的命令）。
+                status: res.exitCode === 0 && !res.timedOut ? "done" : "failed",
                 result: {
                   exitCode: res.exitCode ?? null,
                   stdout: truncateForDisplay(res.stdout ?? ""),

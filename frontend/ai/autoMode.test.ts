@@ -262,6 +262,35 @@ describe("auto 档：白名单命令直接执行", () => {
     expect(requests.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("非零退出码 → 清单里标「失败」（「已完成」只给真跑成功的）", async () => {
+    execResult = {
+      outcome: {
+        executed: true,
+        planned: false,
+        stepId: "step-1",
+        message: "auto mode executed the command",
+        result: {
+          executed: true,
+          stepId: "step-1",
+          exitCode: 2,
+          stdout: "",
+          stderr: "no such file",
+          truncated: false,
+          timedOut: false,
+          message: "command failed (exit code 2)",
+        },
+      },
+    };
+    script = execScript("ls /nope");
+    useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "auto");
+    await useAiStore.getState().run("pane-a", "跑一下");
+    await vi.waitFor(() => expect(slice()?.status).toBe("done"));
+
+    expect(slice()?.plan?.[0].status).toBe("failed");
+    expect(slice()?.plan?.[0].result?.exitCode).toBe(2);
+  });
+
   it("超时结果也如实回灌（带超时标记，不是「跑完了没退出码」）", async () => {
     execResult = {
       outcome: {

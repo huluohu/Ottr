@@ -298,6 +298,7 @@ pub fn run() {
             // 逐主机自动执行授权 CRUD（默认全拒——无授权行 = 该主机不允许
             // AI 自动执行任何命令）+ 命令分级器（red 直接拒 / 只读白名单 /
             // 逃逸形态与写操作降级为逐条确认）。
+            commands::ai_policy::ai_policy_categories,
             commands::ai_policy::ai_policy_get,
             commands::ai_policy::ai_policy_set,
             commands::ai_policy::ai_policy_list,

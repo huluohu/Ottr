@@ -18,11 +18,17 @@ export type { AiExecMode };
  * 只登记计划步骤并回 planned=true + stepId）。注意：**「用户已确认」这一环
  * 是 UI 事实，后端无从核验**（设计取舍，见设计文档 §3.6 的「不可承诺的边界」）。
  *
+ * 2026-11-04 第三步（Auto 模式）扩写：`ai_scope_exec` 在 auto 档走后端的
+ * 放行判定链——主机授权（默认全拒）+ 命令分级（red 直接拒 / 只读白名单与
+ * 已授权写类别当场执行 / 其余降级为逐条确认并**按 manual 档登记**）。
+ * 「已执行」的那条回包带 `result`（退出码 / 输出 / 超时标记）。
+ *
  * 2026-11-04 第二步（Manual 模式）扩写：新增 `ai_scope_run_step`——真正执行
  * 一条**已登记**的计划步骤。前端只传 **scopeId + stepId + actionId**（不传命令
- * 原文）：执行对象 = 登记簿里那条命令原文（前端改写命令的能力留给第三步），
- * actionId 必须与登记时那条一致（防串改），scope 决定目标（切到别的终端后，
- * 原对话的待确认卡仍指向原终端——后端按 scope 校验）。
+ * 原文）：执行对象 = 登记簿里那条命令原文（前端**改写命令的能力至今未开放**
+ * ——命令文本的来源只有第一次登记那一条），actionId 必须与登记时那条一致
+ * （防串改），scope 决定目标（切到别的终端后，原对话的待确认卡仍指向原终端
+ * ——后端按 scope 校验）。
  *
  * 2026-11-04 修补 I-1：新增 `ai_scope_upgrade_step`——把一条 plan 档登记的
  * 步骤升到 manual 档。**命令原文只从后端登记簿里取**（本命令**没有命令
@@ -67,10 +73,12 @@ export interface AiScopeFile {
 
 /**
  * 执行类动作回包（按模式分派）：
- * * plan / manual → `{executed:false, planned:true, stepId}`（**零执行**）；
- * * **auto**（第三步）→ 白名单命令**当场执行**（`executed:true`，结果在
- *   `result` 里）；非白名单命令**降级**为逐条确认（`executed:false` +
- *   `downgradeReason` 说明原因）；red 级命令后端**直接拒**（抛错）。
+ * * plan / manual → `{executed:false, planned:true, stepId}`（**零执行**；
+ *   manual 档的那条等用户在待确认卡上点「执行」）；
+ * * **auto** → 放行则**当场执行**（`executed:true`，结果在 `result` 里）；
+ *   非白名单命令**降级**为逐条确认（`executed:false` + `planned:true` +
+ *   `downgradeReason` 说明原因，且**已按 manual 档登记**——用户点「执行」
+ *   直接跑）；red 级命令后端**直接拒**（抛错，零执行、零登记）。
  */
 export interface AiScopeExecOutcome {
   executed: boolean;
@@ -183,11 +191,24 @@ export const aiSessionApi = {
   /** 回收某主机的自动执行权（删行 = 回到默认拒）。 */
   policyDelete: (hostId: number): Promise<void> => invoke<void>("ai_policy_delete", { hostId }),
   /**
-   * 执行一条**已登记**的计划步骤（第二步 Manual 模式）。
+   * 执行一条**已登记**的计划步骤。
    *
-   * 只在 manual 档允许（plan/auto 后端一律拒）；只能执行本 scope 登记簿里的
-   * 步骤（前端传不来任意命令）；actionId 必须与登记时那条一致（防串改）；
-   * 目标由 scope 决定（**不是**当前焦点终端——切到别的终端后原卡仍打原目标）。
+   * **判据是「登记时落账的档位」，不是会话当前档位**：
+   * * **manual 档登记的步骤 → 放行**。手动档登记的、以及**自动档降级**下来
+   *   的步骤都是这一类（降级时后端就是按 manual 档登记的——用户点「执行」
+   *   直接跑，不再升档）；
+   * * **plan 档登记的步骤 → 拒**（「plan mode does not execute」）——要跑得
+   *   先由后端升档，见 {@link upgradeStep}；
+   * * **auto 档登记、且登记时后端已放行**的那条 → 放行（自动档当场执行走
+   *   的就是后端内部同一条执行路径）。
+   *
+   * 另外：只能执行本 scope 登记簿里的步骤（前端传不来任意命令）；actionId
+   * 必须与登记时那条一致（防串改）；目标由 scope 决定（**不是**当前焦点终端
+   * ——切到别的终端后原卡仍打原目标）。
+   *
+   * 口径提醒：「用户已确认」是 **UI 事实**，后端无从核验（设计取舍，见设计
+   * 文档 §3.6 的「不可承诺的边界」）——后端只保证执行面**按登记时落账的档位
+   * 判定**。
    */
   runStep: (scopeId: string, stepId: string, actionId: string): Promise<AiScopeRunResult> =>
     invoke<AiScopeRunResult>("ai_scope_run_step", { scopeId, stepId, actionId }),

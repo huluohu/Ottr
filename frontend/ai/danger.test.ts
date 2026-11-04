@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import zhCN from "../i18n/zh-CN.json";
 import enUS from "../i18n/en-US.json";
 import { DANGER_RULES, InputDangerWatch, assessPaste, classify, isMultiline, scanDanger } from "./danger";
+// 跨语言共享用例表：前端断言 jsLevel、Rust 断言 rustClass（同一批命令两边
+// 必须同结论）——两侧语义漂了就是安全洞（前端标红、后端当只读 → 自动档会
+// 直接执行前端标红的命令）。
+import dangerCases from "./dangerCases.json";
 
 describe("isMultiline", () => {
   it("LF / CRLF / CR 均算多行", () => {
@@ -220,5 +224,23 @@ describe("InputDangerWatch（B11 输入侧提醒：red/yellow 触发 + 同类 30
     const watch = new InputDangerWatch(30_000);
     expect(watch.observe("rm -rf build", 0)).not.toBeNull();
     expect(watch.observe("rm -fr build2", 10_000)).toBeNull();
+  });
+});
+
+
+describe("跨语言共享用例表（前端侧）", () => {
+  it("每条用例的前端分级与用例表一致（Rust 侧断言同一张表的 rustClass）", () => {
+    expect(dangerCases.cases.length).toBeGreaterThan(0);
+    for (const c of dangerCases.cases) {
+      expect(classify(c.cmd).level, `命令 ${c.cmd} 的前端分级`).toBe(c.jsLevel);
+    }
+  });
+
+  it("表里的「前端判红」用例必须都真的判红（防止用例表自身失效）", () => {
+    const reds = dangerCases.cases.filter((c) => c.jsLevel === "red");
+    expect(reds.length).toBeGreaterThan(0);
+    for (const c of reds) {
+      expect(classify(c.cmd).level, `命令 ${c.cmd} 应判红`).toBe("red");
+    }
   });
 });

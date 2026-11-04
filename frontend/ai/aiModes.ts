@@ -7,7 +7,7 @@
 // 裁定（对齐 2026-11-04 第一步契约）：
 // * 模式三档 plan / auto / manual，**默认 plan**（最安全：只产计划、绝不执行）；
 // * 模式是**会话级**的：随对话保持，新对话复位到默认档；
-// * auto 本步尚未开放（主机授权表是第三步）——可选，但后端一律拒；
+// * auto = **自动档**（已落地，见下方「第三步」补记）；
 // * 计划步骤按命令去重累积（同一对话多次提问 → 步骤清单合并，不重复列同一条）。
 //
 // 第二步（Manual 档）补记——**步骤带登记时的档位**（`PlanStep.registeredMode`）：
@@ -15,6 +15,16 @@
 // 的意义是「我来确认执行」，故用户在点「执行」的那一刻先让**后端**把同一条
 // 命令以 manual 档**升档重登记**（新的 actionId；命令原文只从登记簿里取），
 // 再执行升级后那条（见 aiStore）。
+//
+// 第三步（Auto 档）补记——自动档**已落地**，放行判定全在后端：
+// * 主机被授权（授权表默认全拒）+ 命令在白名单/授权类别内 → **当场执行**
+//   （后端登记一条 auto 档步骤并跑掉，回包 `executed:true` + 结果）；
+// * 非白名单命令（逃逸形态 / 未知命令 / 未授权的写类别）→ **降级为逐条确认**
+//   （后端按 **manual 档**登记，等用户点「执行」——降级不是失败，命令没跑）；
+// * red 级命令 → 后端**直接拒**（零执行、零登记）；未授权的主机一律拒。
+//
+// **「用户已确认」是 UI 事实，后端无从核验**（设计取舍，见设计文档 §3.6 的
+// 「不可承诺的边界」）：后端只保证「执行面按登记时落账的档位判定」。
 import type { TrafficLight } from "./danger";
 
 /** 会话级执行模式。 */
@@ -39,10 +49,10 @@ export function normalizeAiExecMode(v: unknown): AiExecMode {
 /**
  * 计划步骤状态。
  *
- * * `planned` —— 已登记、尚未执行（plan 档：永远停在这一态；manual 档：
- *   待用户点「执行」/「拒绝」）；
+ * * `planned` —— 已登记、尚未执行（plan 档：永远停在这一态；manual 档与
+ *   **自动档降级**下来的步骤：待用户点「执行」/「拒绝」）；
  * * `executing` —— 用户点了「执行」，命令真跑着（钮置灰）；
- * * `done` —— 命令跑完且退出码为 0；
+ * * `done` —— 命令跑完且退出码为 0（**含自动档当场执行**的那条）；
  * * `failed` —— 命令跑完但退出码非 0，或后端拒绝/执行异常；
  * * `rejected` —— 用户点了「拒绝」（命令没跑）。
  */
@@ -76,8 +86,25 @@ export interface PlanStepResult {
 }
 
 export interface PlanStep {
-  /** 步骤 id（后端登记的 stepId；后端不可用时前端本地生成）。 */
+  /**
+   * 步骤 id（**清单里的行标识**：同一目标下同一条命令在清单里只占一行，
+   * 合并时沿用首次登记的那条）。
+   *
+   * 它**不是**后端登记簿里那条的 stepId 本身——那条记在
+   * {@link PlanStep.backendStepId}（两者只在**合并**之后分家：行标识保持
+   * 稳定，登记事实跟着当前那次登记走）。
+   */
   id: string;
+  /**
+   * **后端登记簿里那条的 stepId**（执行面按它取命令原文）。
+   *
+   * 缺省 = 用 {@link PlanStep.id}（没分家时两者同值）。分家只发生在**合并**
+   * 上：同一目标同一条命令被重新登记时（跨轮次：上一轮规划登记 → 这一轮
+   * 自动档当场执行 / 降级），清单里的**行**仍是一行，但登记事实必须换成
+   * 新的（新的才是当前 scope 与当前登记事实）——而后端的 stepId 与
+   * actionId 是**成对**的（stepId 由 actionId 派生），这一对必须同源。
+   */
+  backendStepId?: string;
   /** 命令原文（单行）。 */
   command: string;
   /** 目的说明（模型可在工具参数里给；缺省不展示）。 */
@@ -109,6 +136,13 @@ export interface PlanStep {
    * execute」——手动档的意义就是「我来确认执行」，若不升级，用户在手动档点
    * 「执行」永远执行不了（荒谬的 UX 断裂）。
    *
+   * 三档的实际口径：
+   * * `plan` —— 只登记、绝不执行（后端在执行面直接拒）；
+   * * `manual` —— **放行**（手动档登记的、以及**自动档降级**下来的步骤都是
+   *   这一类——降级时后端就是按 manual 档登记的，用户点「执行」直接跑）；
+   * * `auto` —— 登记时**后端已放行**（授权主机 + 白名单/授权类别）的那条
+   *   才放行；后端当场执行走的是同一条执行路径。
+   *
    * 缺省（字段未设）= **plan**（fail-safe：宁可多一次升档，也不越权执行）。
    */
   registeredMode?: AiExecMode;
@@ -123,6 +157,9 @@ export interface PlanStep {
  * 之前，必须先由**后端**升档（`ai_scope_upgrade_step`：命令原文只从登记簿里
  * 取，前端不传命令；新 actionId 一次性），再执行升级后那条；manual 档登记
  * 的步骤直接执行（直路，不多一次调用）。
+ *
+ * 自动档两种登记都**不走**这条路：后端当场执行的那条已经是终态（done /
+ * failed）；**降级**下来的那条后端就是按 **manual** 档登记的 → 直路。
  */
 export function needsModeUpgrade(step: PlanStep): boolean {
   return (step.registeredMode ?? "plan") !== "manual";
@@ -194,7 +231,7 @@ export function mergeToolCallIds(
 }
 
 /**
- * 步骤并入清单（第二步 Manual 模式口径）。
+ * 步骤并入清单（第二步 Manual 模式口径 + 第三步自动档的语义分流）。
  *
  * 与 {@link mergePlanSteps} 的差别：
  * * 去重**只对仍待处置的步骤生效**（status === "planned"）——已执行/已拒绝
@@ -202,6 +239,23 @@ export function mergeToolCallIds(
  *   会挂在一个已结清的步骤上，那次 tool call 永远没人答）；
  * * 去重命中时**并入待答的 tool call id**（同一命令被多次调用 → 处置时一次
  *   答全，别漏答）。
+ *
+ * **自动档的分流**（2026-11-04 修补）：同一对话里可能**先在规划档登记过**
+ * 一条命令、**后来在自动档又跑了 / 又降级了同一条**——两个条目会撞在同一个
+ * 去重键（目标 + 命令）上。合并必须**按语义分流**，否则：
+ * * 「已经跑过」的事实会被旧的「待执行」盖住（面板说待执行，命令其实早就
+ *   跑过了）；
+ * * 降级下来的步骤会沿用旧条目的登记档位（规划档）→ 自动档下**不给执行
+ *   入口** → 降级成了死路。
+ *
+ * 三条分流规则：
+ * 1. 新的条目**已跑完**（done / failed，自动档当场执行）→ **替换**旧的待
+ *    执行条目（用新条目的 id / 状态 / 结果 / 登记事实）；
+ * 2. 两边都是**待执行** → **合并成一行**（同一目标同一条命令不在清单里出现
+ *    两行），登记事实（scopeId / actionId / registeredMode）取**新的**——
+ *    新的才是当前 scope 与当前登记事实（旧的 scope 可能已被撤销）；
+ * 3. 旧的条目**已定事实**（done / failed / rejected / executing）→ **不动
+ *    它**，后到的条目另起一行（历史不覆盖）。
  */
 export function upsertPlanStep(existing: PlanStep[] | undefined, step: PlanStep): PlanStep[] {
   const list = existing ?? [];
@@ -209,15 +263,40 @@ export function upsertPlanStep(existing: PlanStep[] | undefined, step: PlanStep)
   const idx = list.findIndex((s) => planStepKey(s) === key && s.status === "planned");
   if (idx < 0) return [...list, step];
   const prev = list[idx];
-  const merged: PlanStep = {
-    ...prev,
-    toolCallIds: mergeToolCallIds(prev.toolCallIds, step.toolCallIds),
-    scopeId: prev.scopeId ?? step.scopeId,
-    actionId: prev.actionId ?? step.actionId,
-    runId: prev.runId ?? step.runId,
-  };
   const out = [...list];
-  out[idx] = merged;
+  // 新条目在**后端登记簿里**的那条（缺省 = 它自己的 id——两者同值）。
+  const registeredId = step.backendStepId ?? step.id;
+  // ① 新的条目**已跑完**（自动档当场执行）→ 替换旧的待执行条目：面板上要
+  //    显示「已自动执行」与结果，不是旧的「待执行」。
+  if (step.status === "done" || step.status === "failed") {
+    out[idx] = {
+      ...step,
+      backendStepId: registeredId,
+      toolCallIds: mergeToolCallIds(prev.toolCallIds, step.toolCallIds),
+    };
+    return out;
+  }
+  // ② 两边都是待执行 → **合并成一行**（同一目标同一条命令不在清单里出现
+  //    两行）：行标识沿用旧的，**登记事实取新的**（新的才是当前 scope 与
+  //    当前登记事实——旧的 scope 可能已被撤销）。
+  //
+  //    注意 `backendStepId` 与 `actionId` 必须**同源**：后端的 stepId 是由
+  //    actionId 派生的，两者成对——拿旧的 stepId 配新的 actionId，后端会拒
+  //    「step … is not registered in this scope」/「actionId does not match
+  //    the registered step」，那条降级步骤就又成了点不动的死路。
+  out[idx] = {
+    ...prev,
+    ...step,
+    // 行标识：沿用首次登记的那条（清单里这一行不换身份）。
+    id: prev.id,
+    // 登记事实：新的那条（scopeId / actionId / registeredMode 一起换）。
+    backendStepId: registeredId,
+    // 待答的 tool call id 取并集（两次登记都要答——provider 协议缺一条就 400）。
+    toolCallIds: mergeToolCallIds(prev.toolCallIds, step.toolCallIds),
+    // run id 取新的：登记时那条 run 才是这条步骤当下的归属（旧的 run 已被
+    // 取代，带着它会让执行面的运行身份复验把这条步骤判成「不属于当前 run」）。
+    runId: step.runId,
+  };
   return out;
 }
 

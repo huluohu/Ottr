@@ -67,48 +67,83 @@ impl AiCommandVerdict {
 // red 规则表（与 frontend/ai/danger.ts 的 red 档**逐条对应**）
 // ---------------------------------------------------------------------------
 
-/// red 规则：(规则名, 正则源)。正则源与 danger.ts **逐字相同**——跨语言
-/// 钉死测试会比对字符串，改了一边没改另一边 → 测试变红。
+/// red 规则：(规则名, 正则源, JS 标志位)。
 ///
-/// 移植注意：JS 的 `s` 标志（`.` 匹配换行）在 Rust 写成 `(?s)` 前缀；JS 的
-/// `\b` / `\s` 语义与 Rust regex crate 一致。
+/// ★ **词边界必须显式写成 ASCII**（`(?:^|[^A-Za-z0-9_])` / `(?:[^A-Za-z0-9_]|$)`），
+/// 不能直接用 `\b` / `\w`：
+/// JS 的 `\b`/`\w` 在**无 u 标志**时恒为 ASCII（`[A-Za-z0-9_]`），而 Rust 的
+/// regex crate 默认 **Unicode 词字符**。两边语义不同会出**危险方向**的错位：
+/// `cat ürm -rf /` 前端判**红**（`ü` 之后有 ASCII 词边界）、后端判**只读**
+/// → 自动档会**直接执行**前端标红的命令（2026-11-04 独立审查实测）。
+///
+/// 标志位沿用 JS 原义：`i` = 忽略大小写、`s` = `.` 匹配换行（Rust 写成 `(?s)`）。
+///
+/// **两侧的等价性由行为钉死**（`dangerCases.json` 共享用例表：前端断言 JS
+/// 判定、Rust 断言 Rust 判定），不再比对源码文本 —— 语义差异是文本比对
+/// 测不出来的。
 const RED_RULES: &[(&str, &str, &str)] = &[
-    ("delete-root", r"\brm\s+[^|;\n]*\s+\/(\s|$|\*)", "i"),
+    (
+        "delete-root",
+        r"(?:^|[^A-Za-z0-9_])rm\s+[^|;\n]*\s+\/(\s|$|\*)",
+        "i",
+    ),
     (
         "disk-write",
-        r"\b(dd\s+[^\n]*of=\/dev\/|mkfs(\.\w+)?\s)",
+        r"(?:^|[^A-Za-z0-9_])(dd\s+[^\n]*of=\/dev\/|mkfs(\.[A-Za-z0-9_]+)?\s)",
         "i",
     ),
     ("fork-bomb", r":\(\)\{.*\};\s*:", "s"),
     (
         "kill9-init",
-        r"\bkill\s+(-9|--sigkill|-s\s+sigkill)\s+(-1|1)\b",
+        r"(?:^|[^A-Za-z0-9_])kill\s+(-9|--sigkill|-s\s+sigkill)\s+(-1|1)(?:[^A-Za-z0-9_]|$)",
         "i",
     ),
     (
         "perm-open-recursive-root",
-        r"\bchmod\s+-R\s+777\s+\/(\s|$)",
+        r"(?:^|[^A-Za-z0-9_])chmod\s+-R\s+777\s+\/(\s|$)",
         "i",
     ),
     (
         "owner-change-root",
-        r"\bchown\s+(-R\s+)?[\w.-]+\s+\/(\s|$)",
+        r"(?:^|[^A-Za-z0-9_])chown\s+(-R\s+)?[A-Za-z0-9_.-]+\s+\/(\s|$)",
         "i",
     ),
     (
         "force-push",
-        r"\bgit\s+push\s+(-f|--force|--force-with-lease)(\s|$)",
+        r"(?:^|[^A-Za-z0-9_])git\s+push\s+(-f|--force|--force-with-lease)(\s|$)",
         "i",
     ),
-    ("hard-reset", r"\bgit\s+reset\s+--hard\b", "i"),
-    ("sql-drop", r"\bdrop\s+(table|database|schema)\b", "i"),
+    (
+        "hard-reset",
+        r"(?:^|[^A-Za-z0-9_])git\s+reset\s+--hard(?:[^A-Za-z0-9_]|$)",
+        "i",
+    ),
+    (
+        "sql-drop",
+        r"(?:^|[^A-Za-z0-9_])drop\s+(table|database|schema)(?:[^A-Za-z0-9_]|$)",
+        "i",
+    ),
     (
         "device-redirect",
         r">>?\s*\/dev\/(?:sd|hd|nvme|vd|disk|mapper)",
         "i",
     ),
-    ("disk-erase", r"\b(shred|wipefs|blkdiscard)\b", "i"),
+    (
+        "disk-erase",
+        r"(?:^|[^A-Za-z0-9_])(shred|wipefs|blkdiscard)(?:[^A-Za-z0-9_]|$)",
+        "i",
+    ),
 ];
+
+/// 短旗标 token（`-rf` 这种）：**纯 ASCII 字母**才算（与 danger.ts 的
+/// `/^-[a-zA-Z]+$/` 同义）。`rm -rf2 x` 因此**不算**递归强删——两侧一致。
+fn is_short_flag_token(tok: &str) -> bool {
+    let Some(letters) = tok.strip_prefix('-') else {
+        return false;
+    };
+    // **单个字母也算**（`-r` / `-f`）——与 danger.ts 的 `/^-[a-zA-Z]+$/` 同义。
+    !letters.is_empty() && letters.chars().all(|c| c.is_ascii_alphabetic())
+}
 
 /// rm 的「递归 + 强制」判定（danger.ts `matchRmRecursiveForce` 的 Rust 移植：
 /// 正则表达不了「旗标分散在多个 token」，只能按 token 扫）。
@@ -135,7 +170,9 @@ fn match_rm_recursive_force(cmd: &str) -> Option<String> {
                 if long == "force" {
                     force = true;
                 }
-            } else if tok.len() > 1 && tok.starts_with('-') && !tok.starts_with("--") {
+            } else if is_short_flag_token(tok) {
+                // 与 danger.ts 的 /^-[a-zA-Z]+$/ **完全一致**（纯 ASCII 字母）：
+                // `rm -rf2 x` 在 JS 侧不算递归强删 → 两侧必须同样不算。
                 let letters = &tok[1..];
                 if letters.chars().any(|c| c == 'r' || c == 'R') {
                     recursive = true;
@@ -250,7 +287,6 @@ const READ_ONLY_COMMANDS: &[&str] = &[
     "whoami",
     "uname",
     "which",
-    "printenv",
     "journalctl",
     "date",
     "hostname",
@@ -279,7 +315,6 @@ const READ_ONLY_COMMANDS: &[&str] = &[
     "join",
     "expr",
     "seq",
-    "yes",
     "tty",
     "stty",
     "locale",
@@ -332,8 +367,8 @@ fn command_spec(base: &str) -> Option<CommandSpec> {
                 "rev-parse",
                 "cat-file",
                 "reflog",
-                "whatchanged",
-                "config",
+                // ★ **不含 config**：`git config` 是**写命令**（写 ~/.gitconfig，
+                //   或 `--file <路径>` 写任意文件）——当只读 = 自动档绕过写类别门。
             ]),
             write_category: Some(AiWriteCategory::Git),
         },
@@ -360,52 +395,73 @@ fn command_spec(base: &str) -> Option<CommandSpec> {
     Some(spec)
 }
 
-/// 只读白名单里**带例外**的命令：命中例外参数就不是只读。
-fn read_only_exception(base: &str, args: &[&str]) -> Option<String> {
+/// 只读白名单里**带例外**的命令：命中「会写盘 / 改系统状态」的参数或形态
+/// 就**不是只读**（降级为写类别，走主机授权门）。
+///
+/// ★ 判据是**能写**不是「看起来无害」：命令本身只读、但参数能写盘/改状态的
+/// 形态必须逐个覆盖（2026-11-04 独立审查实测：`git config --file X a b`、
+/// `git diff --output=X`、`sort -oX`、`find … -fprint0 X`、`find … -fls X`、
+/// `date -s @…`、`hostname 新名` 全都真会写/改——之前都被当成只读 → 自动档
+/// 直接执行，绕过 write_categories 门）。
+///
+/// 附着写法（`-oFILE`）与长选项（`--output=FILE`）都要覆盖。
+fn read_only_exception(base: &str, args: &[&str]) -> Option<(AiWriteCategory, String)> {
     match base {
-        "find" => {
-            for a in args {
-                if matches!(
-                    *a,
-                    "-delete" | "-exec" | "-execdir" | "-ok" | "-okdir" | "-fprint" | "-fprintf"
-                ) {
-                    return Some(format!("find {a} writes"));
-                }
-            }
-            None
-        }
-        "journalctl" => {
-            for a in args {
-                if a.starts_with("--vacuum") || *a == "--rotate" {
-                    return Some(format!("journalctl {a} deletes logs"));
-                }
-            }
-            None
-        }
-        "grep" => {
-            for a in args {
-                if *a == "-f" {
-                    // grep -f <文件> 只是读文件——仍然只读 ✅
-                }
-            }
-            None
-        }
-        "sort" | "uniq" => {
-            for a in args {
-                if *a == "-o" {
-                    return Some(format!("{base} -o writes a file"));
-                }
-            }
-            None
-        }
-        "du" => {
-            for a in args {
-                if *a == "--exclude" {
-                    break;
-                }
-            }
-            None
-        }
+        // find：-delete/-exec 会删/跑；-fprint*/-fls 会写文件。
+        "find" => args
+            .iter()
+            .find(|a| {
+                matches!(
+                    **a,
+                    "-delete"
+                        | "-exec"
+                        | "-execdir"
+                        | "-ok"
+                        | "-okdir"
+                        | "-fprint"
+                        | "-fprint0"
+                        | "-fprintf"
+                        | "-fls"
+                )
+            })
+            .map(|a| (AiWriteCategory::File, format!("find {a} writes"))),
+        // sort / uniq：-o 与 --output 都写文件（-oFILE 是附着写法）。
+        "sort" | "uniq" => args
+            .iter()
+            .find(|a| a.starts_with("--output") || (a.starts_with("-o") && a.len() > 2))
+            .map(|a| (AiWriteCategory::File, format!("{base} {a} writes a file"))),
+        // git：--output=<file> 把输出写进文件。
+        "git" => args
+            .iter()
+            .find(|a| a.starts_with("--output"))
+            .map(|a| (AiWriteCategory::File, format!("git {a} writes a file"))),
+        // journalctl：--vacuum* / --rotate 会删日志。
+        "journalctl" => args
+            .iter()
+            .find(|a| a.starts_with("--vacuum") || **a == "--rotate")
+            .map(|a| {
+                (
+                    AiWriteCategory::File,
+                    format!("journalctl {a} deletes logs"),
+                )
+            }),
+        // date：-s / --set 改系统时钟。
+        "date" => args
+            .iter()
+            .find(|a| **a == "-s" || a.starts_with("--set"))
+            .map(|a| {
+                (
+                    AiWriteCategory::Service,
+                    format!("date {a} changes the system clock"),
+                )
+            }),
+        // hostname：带位置参数 = 改主机名（无参只读）。
+        "hostname" => args.iter().find(|a| !a.starts_with('-')).map(|a| {
+            (
+                AiWriteCategory::Service,
+                format!("hostname {a} changes the system hostname"),
+            )
+        }),
         _ => None,
     }
 }
@@ -438,7 +494,13 @@ pub fn classify_command(cmd: &str) -> AiCommandVerdict {
     if let Some(spec) = command_spec(base) {
         if let Some(sub_ro) = spec.read_only_subcommands {
             let sub = args.first().copied().unwrap_or("");
-            if sub_ro.contains(&sub) && read_only_exception(base, &args).is_none() {
+            // 「只读子命令 + 不会写盘的参数」→ 只读；否则按写操作处置。
+            // 例外命中的按**例外自己的类别**算（`git diff --output=X` 是写文件，
+            // 不是写 git 仓库）。
+            if let Some((cat, reason)) = read_only_exception(base, &args) {
+                return AiCommandVerdict::new(AiCommandClass::Write(cat), reason);
+            }
+            if sub_ro.contains(&sub) {
                 return AiCommandVerdict::new(
                     AiCommandClass::ReadOnly,
                     format!("read-only subcommand {base} {sub}"),
@@ -456,8 +518,8 @@ pub fn classify_command(cmd: &str) -> AiCommandVerdict {
                 ),
             };
         }
-        if let Some(reason) = read_only_exception(base, &args) {
-            return AiCommandVerdict::new(AiCommandClass::Write(AiWriteCategory::File), reason);
+        if let Some((cat, reason)) = read_only_exception(base, &args) {
+            return AiCommandVerdict::new(AiCommandClass::Write(cat), reason);
         }
         return match spec.write_category {
             Some(cat) => AiCommandVerdict::new(
@@ -471,8 +533,8 @@ pub fn classify_command(cmd: &str) -> AiCommandVerdict {
         };
     }
     if READ_ONLY_COMMANDS.contains(&base) {
-        if let Some(reason) = read_only_exception(base, &args) {
-            return AiCommandVerdict::new(AiCommandClass::Write(AiWriteCategory::File), reason);
+        if let Some((cat, reason)) = read_only_exception(base, &args) {
+            return AiCommandVerdict::new(AiCommandClass::Write(cat), reason);
         }
         return AiCommandVerdict::new(
             AiCommandClass::ReadOnly,
@@ -519,7 +581,7 @@ pub(crate) fn ai_policy_get(
     host_id: i64,
 ) -> CmdResult<Option<AiHostPolicyView>> {
     ensure_unlocked(&state.0)?;
-    let row = AiHostPolicies::get_for_host(&state.0, host_id).map_err(|e| e.to_string())?;
+    let row = AiHostPolicies::get_for_host(&state.0, host_id).map_err(|e| policy_error(&e))?;
     Ok(row.as_ref().map(to_view))
 }
 
@@ -549,8 +611,18 @@ pub(crate) fn ai_policy_set(
             write_categories: cats,
         },
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| policy_error(&e))?;
     Ok(to_view(&row))
+}
+
+/// 可自动执行的**写操作类别清单**（前端据此渲染勾选项——后端是唯一真源，
+/// 前端不再手写一份：后端加一类、前端漏一类 = 那个类别永远勾不上 ✅）。
+#[tauri::command]
+pub(crate) fn ai_policy_categories() -> Vec<String> {
+    AiWriteCategory::ALL
+        .iter()
+        .map(|c| c.as_str().to_string())
+        .collect()
 }
 
 /// 全部已授权主机（设置页列表）。
@@ -565,7 +637,19 @@ pub(crate) fn ai_policy_list(state: State<'_, VaultState>) -> CmdResult<Vec<AiHo
 #[tauri::command]
 pub(crate) fn ai_policy_delete(state: State<'_, VaultState>, host_id: i64) -> CmdResult<()> {
     ensure_unlocked(&state.0)?;
-    AiHostPolicies::delete(&state.0, host_id).map_err(|e| e.to_string())
+    AiHostPolicies::delete(&state.0, host_id).map_err(|e| policy_error(&e))
+}
+
+/// 授权面错误 → **人话**（不把 SQLite 原文甩给用户）。
+///
+/// 悬空 host 的 FK 违例是最常见的一种（主机刚被删）——原文是
+/// 「FOREIGN KEY constraint failed」，用户看不懂也不知道该做什么。
+fn policy_error(e: &ottr_vault::VaultError) -> String {
+    let text = e.to_string();
+    if text.contains("FOREIGN KEY") {
+        return "该主机不存在（可能已被删除）——请刷新主机列表后重试".to_string();
+    }
+    text
 }
 
 #[cfg(test)]
@@ -718,24 +802,56 @@ mod tests {
         assert_eq!(classify_command("/bin/rm -rf /").class, AiCommandClass::Red);
     }
 
-    /// **跨语言钉死**：Rust 侧 red 规则表必须与 `frontend/ai/danger.ts` 的
-    /// red 档逐条对应——正则源逐字比对、规则名双向覆盖。
+    /// **跨语言钉死（行为面）**：共享用例表 `frontend/ai/dangerCases.json`
+    /// ——前端用 `danger.ts` 的 `classify()` 断言 jsLevel、Rust 用
+    /// `classify_command` 断言 rustClass，**同一批命令两边必须同结论**。
     ///
-    /// 两份表漂了的后果是安全事故：前端把命令显示成「绿色」，后端却当成
-    /// 「红色」或反之。
+    /// 为什么不用「比对源码文本」：文本比对测不出**正则引擎的语义差异**
+    /// （JS 的 `\b`/`\w` 恒为 ASCII，Rust 的 regex crate 默认 Unicode）——
+    /// 正是那种差异让 `cat ürm -rf /` 前端判红、后端判只读 → 自动档会直接
+    /// 执行前端标红的命令（2026-11-04 独立审查实测）。
+    #[test]
+    fn shared_danger_cases_match_frontend_classification() {
+        let raw = include_str!("../../../frontend/ai/dangerCases.json");
+        let doc: serde_json::Value = serde_json::from_str(raw).expect("用例表是合法 JSON");
+        let cases = doc["cases"].as_array().expect("cases 是数组");
+        assert!(!cases.is_empty(), "用例表不能为空");
+        for c in cases {
+            let cmd = c["cmd"].as_str().expect("cmd 是字符串");
+            let want = c["rustClass"].as_str().expect("rustClass 是字符串");
+            let js_level = c["jsLevel"].as_str().expect("jsLevel 是字符串");
+            let got = classify_command(cmd);
+            let got_class = match &got.class {
+                AiCommandClass::ReadOnly => "readonly".to_string(),
+                AiCommandClass::Escape => "escape".to_string(),
+                AiCommandClass::Red => "red".to_string(),
+                AiCommandClass::Unknown => "unknown".to_string(),
+                AiCommandClass::Write(cat) => format!("write:{}", cat.as_str()),
+            };
+            assert_eq!(
+                got_class, want,
+                "命令 {cmd:?} 的 Rust 判定与用例表不符（前端判 {js_level}）"
+            );
+            // **危险方向的红**：前端判红 → 后端必须也判红（否则自动档会执行
+            // 前端标红的命令）。
+            if js_level == "red" {
+                assert_eq!(
+                    got.class,
+                    AiCommandClass::Red,
+                    "命令 {cmd:?} 前端判红、后端没判红 —— 两侧语义必须一致"
+                );
+            }
+        }
+    }
+
+    /// red 规则表与前端 danger.ts 的**规则名**双向覆盖（新增规则漏一边会红）。
     #[test]
     fn red_rules_match_frontend_table() {
         let ts = include_str!("../../../frontend/ai/danger.ts");
-        for (kind, pattern, flags) in RED_RULES {
+        for (kind, _pattern, _flags) in RED_RULES {
             assert!(
                 ts.contains(&format!("kind: \"{kind}\"")),
                 "前端 danger.ts 缺少 red 规则 {kind}（Rust 侧有）"
-            );
-            // ★ 连**标志位**一起比对：`/i`（忽略大小写）漏了就是「DROP TABLE」
-            // 漏判——大小写不敏感是安全项，不是风格项。
-            assert!(
-                ts.contains(&format!("re: /{pattern}/{flags}")),
-                "前端 danger.ts 的 {kind} 正则字面量与 Rust 侧不一致：/{pattern}/{flags}"
             );
         }
         // 反向：前端 red 档的每个 kind 都得在 Rust 侧有对应条目。

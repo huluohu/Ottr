@@ -31,7 +31,8 @@
 //!   * plan 档（默认）执行类动作**只登记计划步骤**——绝不打开 exec 通道、
 //!     绝不碰写端（零执行、零副作用），返回 `planned = true` + 步骤 id；
 //!   * manual 档本步同样**只登记不执行**（真执行是第二步的 pending 确认流）；
-//!   * auto 档本步**直接拒**（主机授权表在第三步）——绝不"先跑起来"；
+//!   * auto 档：**主机已授权 + 命令在白名单/授权类别内** → 当场执行；
+//!     其余降级为逐条确认；red 级命令**直接拒**——绝不"先跑起来"；
 //!   * 本地会话（kind=local）**一律不给执行权**（设计裁定：本地是用户自己的
 //!     机器与交互 shell，误操作代价最高且无法与用户输入隔离）——只给只读
 //!     上下文（终端输出尾）；
@@ -39,7 +40,7 @@
 //!     [`LOCAL_READ_DENIED`]）：本地只读根曾被实现自选为「Ottr 进程用户的
 //!     整个 HOME」，等于把 `~/.ssh`、`~/.aws`、`~/.kube`、`~/.gnupg` 默认
 //!     交给外部模型，而脱敏层覆盖不到那些形态。远端家目录之外的放开（按主机
-//!     授权表）是第三步的事；
+//!     授权表）逐主机开启；
 //!   * 执行面的 actionId 是**一次性**的（登记计划之前即消费）：同一 actionId
 //!     第二次调用即拒「already consumed」。
 //!
@@ -54,7 +55,8 @@
 //!     命令**（执行对象 = 登记簿里的命令原文）；
 //!   * **档位判定在后端**：档位随登记落账（登记簿记 `mode`），执行面按
 //!     **登记时的档位**复核——plan 档登记的步骤即拒（「plan 模式不执行」），
-//!     manual 档登记的步骤才放行；auto 档登记时已被拒（第三步才启用）；
+//!     manual 档登记的步骤才放行；auto 档登记的步骤由**后端判定结论**
+//!     （主机授权 + 命令分级）决定，执行前还会复核；
 //!     **边界如实说**：档位本身是前端登记时落账的值，后端按落账值判定执行权；
 //!     「用户已确认」这一环是 UI 事实，后端无从核验（设计文档 §3.6）；
 //!   * **档位升级面**（[`ai_scope_upgrade_step`]，2026-11-04 修补 I-1）：
@@ -76,7 +78,10 @@ use std::time::{Duration, Instant};
 
 use ottr_vault::settings::Settings;
 use ottr_vault::{
-    AI_EXEC_TIMEOUT_MAX, AI_EXEC_TIMEOUT_MIN, AiHostPolicies, SETTING_AI_EXEC_TIMEOUT, Vault,
+    AI_AUTO_MAX_DURATION_MAX, AI_AUTO_MAX_DURATION_MIN, AI_AUTO_MAX_STEPS_MAX,
+    AI_AUTO_MAX_STEPS_MIN, AI_EXEC_TIMEOUT_MAX, AI_EXEC_TIMEOUT_MIN, AiHostPolicies,
+    AiWriteCategory, SETTING_AI_AUTO_MAX_DURATION, SETTING_AI_AUTO_MAX_STEPS,
+    SETTING_AI_EXEC_TIMEOUT, Vault,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -157,7 +162,8 @@ pub struct AiScopeContext {
 ///
 /// * `plan`（默认）：执行类动作**只产计划、不执行**（零 exec 通道、零写端
 ///   副作用），返回 `planned = true` + 步骤 id 供前端渲染计划清单。
-/// * `auto`：**未启用**（主机授权表是第三步）——一律拒，绝不"先跑起来"。
+/// * `auto`：**主机已授权且命令在白名单/授权类别内**才放行；其余降级为逐条
+///   确认；red 级直接拒。
 /// * `manual`：**只登记不执行**（登记后由用户在待确认卡上点「执行」，前端
 ///   才调 [`ai_scope_run_step`]）——登记即零副作用。
 ///
@@ -299,6 +305,14 @@ pub(crate) struct AiScopeRegistryEntry {
     actions: Mutex<HashSet<String>>,
     /// 计划步骤登记簿（**只登记不执行**；同一 actionId 幂等返同一步 id）。
     plans: Mutex<Vec<AiPlanStep>>,
+    /// **自动档护栏计数**（2026-11-04 第三步）：
+    /// * `auto_execs` —— 本作用域内已自动执行的次数（步数上限）；
+    /// * `auto_started_at` —— 本作用域**首次**自动执行的时刻（总时长上限）。
+    ///
+    /// 这两个上限**在后端**也收口：前端那份只是提前止损（省一次往返），
+    /// 后端才是最后一道闸——护栏写成「前端数一下」等于没有护栏。
+    auto_execs: AtomicU64,
+    auto_started_at: Mutex<Option<Instant>>,
 }
 
 /// 计划步骤登记项（作用域内；登记即**零副作用**——登记面绝不执行）。
@@ -335,9 +349,31 @@ struct AiPlanStep {
     /// false + mode=auto → 执行面拒（「auto mode requires a backend-approved
     /// command」）。
     auto_approved: bool,
+    /// **自动档的判定结论**（登记时后端算的）：`None` = 不是自动档产出的步骤
+    /// （规划档 / 手动档登记的）→ 执行面不按自动档规则复核。
+    ///
+    /// `Some` = 这条步骤来自自动档（要么**当场自动执行**，要么**降级为逐条
+    /// 确认**）→ 执行前**复核**：
+    /// ① 主机仍然被授权自动执行（登记后用户可能撤销了授权）；
+    /// ② 命令的分类结论没变（重新分级，red 一律拒）；
+    /// ③ 写类别仍在该主机的授权类别里（用户可能改过勾选）。
+    ///
+    /// 复核的必要性：登记时的结论是**快照**——授权与分级都可能在其后变化
+    /// （撤销授权、收紧类别），拿旧快照直接执行 = 执行了一条**现在已不被
+    /// 允许**的命令。
+    auto_verdict: Option<AutoVerdict>,
     /// **一次性消费标记**（执行面的 claim 面）：true = 该步骤已被执行过
     /// （或已被领走），二次调用即拒「already consumed」。
     consumed: bool,
+}
+
+/// 自动档的判定结论（登记时的快照；执行前复核）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AutoVerdict {
+    /// 登记时的分级（red 不会走到这里——red 在登记前就被拒了 ✅）。
+    class: super::ai_policy::AiCommandClass,
+    /// 登记时命中的写类别（只读命令为 `None` ✅）。
+    category: Option<AiWriteCategory>,
 }
 
 /// 有界内存作用域注册表（AppState 持有）：key = Rust 生成的 scopeId。
@@ -544,6 +580,8 @@ fn open_scope(
                 sftp: tokio::sync::Mutex::new(None),
                 actions: Mutex::new(HashSet::new()),
                 plans: Mutex::new(Vec::new()),
+                auto_execs: AtomicU64::new(0),
+                auto_started_at: Mutex::new(None),
             })?;
             Ok(AiScope {
                 target,
@@ -583,6 +621,8 @@ fn open_scope(
                 sftp: tokio::sync::Mutex::new(None),
                 actions: Mutex::new(HashSet::new()),
                 plans: Mutex::new(Vec::new()),
+                auto_execs: AtomicU64::new(0),
+                auto_started_at: Mutex::new(None),
             })?;
             Ok(AiScope {
                 target,
@@ -1181,6 +1221,7 @@ fn register_plan_step(
     command: &str,
     mode: AiExecMode,
     auto_approved: bool,
+    auto_verdict: Option<AutoVerdict>,
 ) -> Result<String, String> {
     let mut plans = entry.plans.lock().unwrap();
     if let Some(existing) = plans.iter().find(|p| p.action_id == action_id) {
@@ -1198,6 +1239,7 @@ fn register_plan_step(
         command: command.to_string(),
         mode,
         auto_approved,
+        auto_verdict,
         consumed: false,
     });
     Ok(step_id)
@@ -1257,7 +1299,8 @@ fn claim_step_execution(
 /// * `plan`（默认）：**只登记计划步骤**——绝不打开 exec 通道、绝不碰任何写端
 ///   （零执行、零副作用）；返回 `planned = true` + 步骤 id。
 /// * `manual`：本步同样**只登记不执行**（真正执行是第二步的前端确认流）。
-/// * `auto`：本步**直接拒**（主机授权表是第三步）——绝不"先跑起来"。
+/// * `auto`：**主机已授权 + 命令分级放行**才执行（见 [`auto_exec_scope`]）；
+///   其余降级为逐条确认；red 级直接拒。
 ///
 /// 闸门顺序（2026-11-04 修补 A2/A3）：
 /// 1. 静态校验（坏命令不登记计划、不消耗任何预算）；
@@ -1318,7 +1361,7 @@ async fn exec_scope(
     // 纪律：claim 是 await 前的同步动作，重放并发也只放行一次）。
     state.ai_scopes.claim_action(&entry, action_id)?;
     // 只登记计划步骤：不开 exec 通道、不碰写端。档位随登记落账（执行面复核用）。
-    let step_id = register_plan_step(&entry, action_id, command, mode, false)?;
+    let step_id = register_plan_step(&entry, action_id, command, mode, false, None)?;
     Ok(AiScopeExecOutcome {
         executed: false,
         planned: true,
@@ -1391,11 +1434,23 @@ async fn auto_exec_scope(
         AiCommandClass::Write(cat) => policy.write_categories.contains(&cat),
         AiCommandClass::Escape | AiCommandClass::Unknown => false,
     };
+    // 判定结论（登记时的快照；执行前会**复核**——授权/分级都可能在此后变化）。
+    let auto_verdict = AutoVerdict {
+        class: verdict.class.clone(),
+        category: match verdict.class {
+            AiCommandClass::Write(cat) => Some(cat),
+            _ => None,
+        },
+    };
     // 一次性消费 actionId（登记之前 claim——同款纪律）。
     state.ai_scopes.claim_action(entry, action_id)?;
     if !auto_approved {
         // 降级：登记成 **manual 档**步骤（用户点「执行」才真跑）。
-        let step_id = register_plan_step(entry, action_id, command, AiExecMode::Manual, false)?;
+        // **不落**自动档的判定结论：降级后走的是**手动档语义**——用户点
+        // 「执行」本身就是授权 ✅，不该再要求「主机授权了该写类别」（否则
+        // 用户点了也跑不了 = 降级成了死路）。
+        let step_id =
+            register_plan_step(entry, action_id, command, AiExecMode::Manual, false, None)?;
         let reason = if matches!(verdict.class, AiCommandClass::Write(_)) {
             format!(
                 "{}: write category not authorized for this host — downgraded to confirmation",
@@ -1416,8 +1471,26 @@ async fn auto_exec_scope(
             downgrade_reason: Some(reason),
         });
     }
-    // 5. 放行：登记成 auto 档（后端已放行）→ 走同一条执行路径。
-    let step_id = register_plan_step(entry, action_id, command, AiExecMode::Auto, true)?;
+    // 5. **后端护栏**（步数 / 单轮总时长）：护栏写在「前端数一下」等于没有
+    //    护栏——前端那份只是提前止损，后端才是最后一道闸。
+    check_auto_guardrails(entry, vault)?;
+    // 6. 放行：登记成 auto 档（后端已放行）→ 走同一条执行路径。
+    let step_id = register_plan_step(
+        entry,
+        action_id,
+        command,
+        AiExecMode::Auto,
+        true,
+        Some(auto_verdict),
+    )?;
+    // 计数（作用域内自动执行次数 / 首次执行的时刻）。
+    entry.auto_execs.fetch_add(1, Ordering::SeqCst);
+    {
+        let mut started = entry.auto_started_at.lock().unwrap();
+        if started.is_none() {
+            *started = Some(Instant::now());
+        }
+    }
     let result = run_step_scope(
         state,
         vault,
@@ -1554,6 +1627,10 @@ async fn upgrade_step_scope(
         &source.command,
         AiExecMode::Manual,
         false,
+        // 升档是**手动档**的入口（用户切到手动档并点「执行」）——不落自动档
+        // 的判定结论：自动档的复核规则（主机授权/写类别）不适用于手动档 ✅
+        // （手动档的授权语义是「用户逐条确认」，不是主机授权表）。
+        None,
     )?;
     Ok(AiScopeUpgradeOutcome {
         step_id,
@@ -1572,7 +1649,8 @@ async fn upgrade_step_scope(
 /// 2. **库锁定** → 拒；
 /// 3. **作用域在册 + 未过期**（`scope.valid`）→ 拒；
 /// 4. **档位判定**（按登记时落账的档位）：manual 才继续；plan 档登记的步骤
-///    即拒（「plan 模式不执行」）；auto 档拒（未启用）；
+///    即拒（「plan 模式不执行」）；auto 档仅放行**后端已判定**的那条
+///    （`auto_approved`），其余拒；
 /// 5. **本地会话** → 拒（无执行权）；
 /// 6. **运行时身份复核**（连接被替换/移除 → 拒，此时零副作用）；
 /// 7. **一次性 claim**（await 前的同步动作：步骤未被领走 + actionId 一致）；
@@ -1633,6 +1711,11 @@ async fn run_step_scope(
             "AI run rejected: local terminal sessions never grant AI execution rights".into(),
         );
     }
+    // 5b. **自动档产出的步骤：执行前复核**（登记时的判定是**快照**——
+    // 登记之后用户可能撤销了主机授权、收紧了写类别勾选）。
+    if let Some(verdict) = &step.auto_verdict {
+        reverify_auto_verdict(vault, &entry, &step.command, verdict)?;
+    }
     // 命令静态校验（登记簿里的原文——与 insert 面同口径）。
     validate_single_line_text(&step.command, "run")?;
     // 6. 运行时身份复核（连接被替换/移除 → 拒；此时零副作用）。
@@ -1675,6 +1758,88 @@ async fn run_step_scope(
         timed_out: outcome.timed_out,
         message,
     })
+}
+
+/// **自动档护栏（后端收口）**：单轮步数上限 + 单轮总时长上限。
+///
+/// 上限值取设置项 `ai.auto.max_steps`（缺省 10）与 `ai.auto.max_duration_secs`
+/// （缺省 300 秒）；读不到就用缺省。计数落在**作用域**上（一个作用域 = 一轮
+/// 对话的 run ✅ ——作用域是按 run 开立的）。
+///
+/// 到顶 → **拒**（零副作用，不执行）：护栏到顶后继续跑 = 没有护栏。
+fn check_auto_guardrails(entry: &AiScopeRegistryEntry, vault: &Vault) -> Result<(), String> {
+    let max_steps = ottr_vault::settings::Settings::get_u64(vault, SETTING_AI_AUTO_MAX_STEPS)
+        .ok()
+        .flatten()
+        .unwrap_or(10)
+        .clamp(AI_AUTO_MAX_STEPS_MIN, AI_AUTO_MAX_STEPS_MAX);
+    let done = entry.auto_execs.load(Ordering::SeqCst);
+    if done >= max_steps {
+        return Err(format!(
+            "AI exec rejected: auto mode reached the per-round command limit ({max_steps})"
+        ));
+    }
+    let max_duration = ottr_vault::settings::Settings::get_u64(vault, SETTING_AI_AUTO_MAX_DURATION)
+        .ok()
+        .flatten()
+        .unwrap_or(300)
+        .clamp(AI_AUTO_MAX_DURATION_MIN, AI_AUTO_MAX_DURATION_MAX);
+    if let Some(started) = *entry.auto_started_at.lock().unwrap() {
+        let elapsed = started.elapsed().as_secs();
+        if elapsed >= max_duration {
+            return Err(format!(
+                "AI exec rejected: auto mode reached the per-round time limit ({max_duration}s)"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// **自动档判定结论的执行前复核**（2026-11-04 第三步）。
+///
+/// 登记时的结论是**快照**。执行前必须重新确认三件事：
+/// ① 主机**仍然**被授权自动执行（用户可能刚撤销）；
+/// ② 命令的**分级结论没变**（重新分级；red 一律拒）；
+/// ③ 写类别**仍在**该主机授权的类别里（用户可能改过勾选）。
+///
+/// 任何一条不成立 → 拒（零副作用）。理由：拿旧快照执行 = 执行了一条
+/// **现在已不被允许**的命令。
+fn reverify_auto_verdict(
+    vault: &Vault,
+    entry: &AiScopeRegistryEntry,
+    command: &str,
+    verdict: &AutoVerdict,
+) -> Result<(), String> {
+    let host_id = entry
+        .target
+        .host_id
+        .ok_or_else(|| "AI run rejected: auto mode needs a host-bound scope".to_string())?;
+    let policy = AiHostPolicies::get_for_host(vault, host_id)
+        .map_err(|e| format!("AI run rejected: cannot read the host policy: {e}"))?;
+    let policy = match policy {
+        Some(p) if p.auto_enabled => p,
+        _ => {
+            return Err(format!(
+                "AI run rejected: auto mode is no longer authorized for host {host_id}"
+            ));
+        }
+    };
+    let now = classify_command(command);
+    if now.class != verdict.class {
+        return Err(format!(
+            "AI run rejected: the command's classification changed since it was registered \
+             (was {:?}, now {:?})",
+            verdict.class, now.class
+        ));
+    }
+    if let Some(cat) = verdict.category
+        && !policy.write_categories.contains(&cat)
+    {
+        return Err(format!(
+            "AI run rejected: the write category {cat:?} is no longer authorized for host {host_id}"
+        ));
+    }
+    Ok(())
 }
 
 /// exec 输出截断（字节上限，超限即截）：返回 (截断后文本, 是否截断)。
@@ -1797,7 +1962,7 @@ pub(crate) async fn ai_scope_read_file(
 ///   打开 exec 通道、绝不写任何写端。
 /// * `manual`：同样**只登记**（零副作用）——用户在待确认卡点「执行」后前端
 ///   才调 [`ai_scope_run_step`]。
-/// * `auto`：直接拒（"auto 尚未启用"，主机授权表在第三步）。
+/// * `auto`：主机已授权 + 命令分级放行时才执行（第三步已实现）。
 ///
 /// 本地会话（kind=local）一律拒——本地不给 AI 执行权。
 #[tauri::command]
@@ -1836,7 +2001,10 @@ pub(crate) async fn ai_scope_run_step(
         &scope_id,
         &step_id,
         &action_id,
-        AI_SCOPE_EXEC_TIMEOUT,
+        // ★ 超时取**设置值**（`ai.exec.timeout_secs`，缺省 30）——设置页写的是
+        //   「单条命令最多跑多久」，它必须对手动档与自动档**都**生效（此前
+        //   只有自动档直执行路径读设置，手动档写死 30 秒 → 设置形同虚设）。
+        exec_timeout(&vault.0),
     )
     .await
 }
@@ -2710,7 +2878,7 @@ mod tests {
         assert!(ssh.bytes.lock().unwrap().is_empty());
     }
 
-    /// auto 档本步直接拒（"auto 尚未启用"——主机授权表在第三步）。
+    /// auto 档：**主机已授权 + 命令分级放行**才执行（第三步已实现）。
     #[tokio::test]
     async fn auto_mode_is_rejected_before_anything_runs() {
         let f = Fixture::new();
@@ -3193,6 +3361,56 @@ mod tests {
             .unwrap();
         assert!(result.executed);
         assert_eq!(*ssh.execs.lock().unwrap(), vec!["rm /tmp/x".to_string()]);
+    }
+
+    /// **执行前复核**：自动档放行后、用户**撤销了该主机的自动授权** →
+    /// 执行必须被拒（拿旧快照执行 = 执行了现在已不被允许的命令）。
+    #[tokio::test]
+    async fn auto_mode_reverifies_the_host_authorization_before_executing() {
+        let f = Fixture::new();
+        let host_id = authorized_host(&f, vec![]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+        // 登记 + 立即执行前，撤销授权：把「登记」与「执行」拆开做。
+        let registered = f
+            .exec(&scope, "action-1", "ls -la", AiExecMode::Auto)
+            .await
+            .unwrap();
+        assert!(registered.executed, "授权有效时应自动执行");
+        // 撤销授权后，同一作用域再来一条 → 必须被拒。
+        AiHostPolicies::delete(&f.vault, host_id).unwrap();
+        let err = f
+            .exec(&scope, "action-2", "ls -la", AiExecMode::Auto)
+            .await
+            .unwrap_err();
+        assert!(err.contains("not authorized"), "{err}");
+        assert_eq!(
+            ssh.execs.lock().unwrap().len(),
+            1,
+            "撤销授权后不得再执行（零副作用）"
+        );
+    }
+
+    /// **后端护栏**：单轮自动执行次数到上限 → 拒（护栏不能只在前端数）。
+    #[tokio::test]
+    async fn auto_mode_enforces_the_step_budget_on_the_backend() {
+        let f = Fixture::new();
+        let host_id = authorized_host(&f, vec![]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+        // 护栏上限设为 1（设置项写入侧范围 1..=100 ✅）。
+        ottr_vault::settings::Settings::set_u64(&f.vault, SETTING_AI_AUTO_MAX_STEPS, 1).unwrap();
+        let first = f
+            .exec(&scope, "action-1", "ls -la", AiExecMode::Auto)
+            .await
+            .unwrap();
+        assert!(first.executed, "第一条应放行");
+        let err = f
+            .exec(&scope, "action-2", "ls -la", AiExecMode::Auto)
+            .await
+            .unwrap_err();
+        assert!(err.contains("per-round command limit"), "{err}");
+        assert_eq!(ssh.execs.lock().unwrap().len(), 1, "到护栏上限后不得再执行");
     }
 
     // -----------------------------------------------------------------------

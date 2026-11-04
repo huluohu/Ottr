@@ -244,7 +244,8 @@ export interface SessionAiState {
   /** 重连换代后旧对话只读（历史可见 + 提示；续问须走新对话）。 */
   conversationReadonly: boolean;
   /** 会话级执行模式（2026-11-04 第一步；**可选字段**——缺省视为 plan）。
-   *  plan = 只产计划、绝不执行；auto = 自动（第三步才开放）；manual = 逐条确认。
+   *  plan = 只产计划、绝不执行；auto = 自动档（授权主机上的白名单命令当场
+   *  执行，其余降级为逐条确认，red 级直接拒）；manual = 逐条确认。
    *  随对话保持；新对话复位到默认档。 */
   mode?: AiExecMode;
   /** 计划步骤清单（plan 模式下登记的执行类动作；可选字段，缺省视为空）。 */
@@ -698,12 +699,13 @@ export interface HostToolOutcome {
  * 回灌文案按后端回包分三种（2026-11-04 修补 B1：`executed` 与 `planned`
  * **分别**读，不再只看 `planned`——第二步 manual 真执行时不会再向模型谎报
  * 「已记入计划，暂不执行」）：
- * * `executed = true` → 「已执行」（不进待执行清单）；
+ * * `executed = true` → 「已执行」（**进清单**，状态 = done / failed——自动档
+ *   在用户主机上跑过的命令，用户必须看得见，见下面 exec 分支）；
  * * `planned = true && executed = false` → 「已记入计划，暂不执行」（进清单）；
  * * 两者皆假 / 调用被拒 → 「未执行（被拒绝）」（不进清单）。
  */
 /**
- * 自动档已执行的结果 → 回灌给模型的文本（第三步）。
+ * 自动档已执行的结果 → 回灌给模型的文本。
  *
  * **要带真实输出与退出码**：模型据此判断「命令跑成了没有、下一步做什么」；
  * 只回一句「已执行」等于让模型瞎猜。
@@ -778,9 +780,12 @@ export async function runHostTool(
         };
         try {
           const outcome = await aiSessionApi.exec(scope.scopeId, ctx.actionId, command, ctx.mode);
-          // **已执行**（第三步 auto 档才会出现）：结果**如实回灌**给模型
-          // （输出与退出码），**不进**「待执行」计划清单（它已经跑过了——
-          // 清单是待执行步骤，不是执行日志）。
+          // 后端登记簿里那条的 stepId（执行面按它取命令原文；缺省 = 本地 id）。
+          const registeredStepId = outcome.stepId || local.id;
+          // **已执行**（自动档当场执行时才会出现）：结果**如实回灌**给模型
+          // （输出与退出码），并**进清单**——但状态是 done / failed，不是
+          // 「待执行」（它已经跑过了；清单这一行承载的是「AI 在我主机上跑过
+          // 什么、结果如何」，见下面）。
           if (outcome.executed) {
             const res = outcome.result;
             // 没有结果载荷（后端说执行了但没给结果——不该发生）→ 回落本地化
@@ -793,7 +798,8 @@ export async function runHostTool(
               content: formatAutoExecResult(res),
               planStep: {
                 ...local,
-                id: outcome.stepId || local.id,
+                id: registeredStepId,
+                backendStepId: registeredStepId,
                 // 非零退出码 / 超时 = **失败**（与手动档同口径：清单里的
                 // 「已完成」只给真跑成功的命令）。
                 status: res.exitCode === 0 && !res.timedOut ? "done" : "failed",
@@ -809,8 +815,12 @@ export async function runHostTool(
           }
           // **已记入计划、暂不执行**：进计划清单（这才是「待执行」的步骤）。
           if (outcome.planned) {
-            const step: PlanStep = { ...local, id: outcome.stepId || local.id };
-            // **自动档降级**（第三步）：后端把命令降级为逐条确认，并已按
+            const step: PlanStep = {
+              ...local,
+              id: registeredStepId,
+              backendStepId: registeredStepId,
+            };
+            // **自动档降级**：后端把命令降级为逐条确认，并已按
             // **手动档**登记（命令原文在登记簿里、档位=manual）→ 本地步骤也
             // 标成 manual，用户点「执行」直接跑，**不需要**再升档。
             const downgraded = outcome.downgradeReason != null;
@@ -910,7 +920,10 @@ async function rearmPlanStep(
   runId: string | null,
 ): Promise<{ scopeId: string; stepId: string; actionId: string }> {
   const actionId = newRearmActionId(runId, step.id);
-  const outcome = await aiSessionApi.upgradeStep(scopeId, step.id, actionId);
+  // 登记簿里那条的 stepId（合并过的步骤：行标识与登记事实可能分家——执行面
+  // 只认登记簿里那条）。
+  const registeredStepId = step.backendStepId ?? step.id;
+  const outcome = await aiSessionApi.upgradeStep(scopeId, registeredStepId, actionId);
   // 后端契约：升级只升级、不执行 → 回一个**新的** stepId（+ 新的 actionId）。
   // 任何一条不成立 = 没升级成功（不能拿旧步骤去执行）。
   if (!outcome?.stepId) {
@@ -2108,7 +2121,9 @@ export const useAiStore = create<AiStore>((set, get) => {
         // 命令；新 actionId：已消费的 id 后端会拒「already consumed」），再执行
         // 升级后那条；manual 档登记的步骤走直路（不多一次调用）。
         let scopeId = step.scopeId as string;
-        let execStepId = step.id;
+        // 执行面认的是**登记簿里那条**（合并过的步骤：行标识与登记事实可能
+        // 分家——行标识保持稳定，登记事实跟着当前那次登记走）。
+        let execStepId = step.backendStepId ?? step.id;
         let execActionId = step.actionId as string;
         /** 升档失败的原因（非空 = 升级没做成，命令**没跑**）。 */
         let rearmError: string | null = null;
@@ -2122,6 +2137,7 @@ export const useAiStore = create<AiStore>((set, get) => {
             // 清单里那一条改指新步骤（重复点不再用旧 id）。
             patchPlanStep(sessionId, stepId, {
               id: rearmed.stepId,
+              backendStepId: rearmed.stepId,
               actionId: rearmed.actionId,
               registeredMode: "manual",
             });

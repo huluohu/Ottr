@@ -159,10 +159,13 @@ export function DiagnosePanel({
     (s) => s.status === "planned" && needsModeUpgrade(s),
   );
   const manualMode = mode === "manual";
-  /** 自动档降级待确认的步骤（登记为手动档）——它们要按「待确认卡」呈现。 */
-  const hasDowngradedStep = planSteps.some(
-    (s) => (s.registeredMode ?? "plan") === "manual" && s.status === "planned",
-  );
+  /** 自动档降级待确认的步骤（登记为手动档）——它们要按「待确认卡」呈现。
+   *  **只在自动档下算**：切回规划档后这些步骤不可执行（规划档不提供执行
+   *  入口，后端也会拒）——那时它们回到「清单」形态，别挂着执行钮让人
+   *  点了个寂寞。 */
+  const hasDowngradedStep =
+    mode === "auto" &&
+    planSteps.some((s) => (s.registeredMode ?? "plan") === "manual" && s.status === "planned");
   /** 步骤状态文案（五态：待执行 / 执行中 / 已完成 / 失败 / 已拒绝）。 */
   const planStatusText = (status: PlanStepStatus): string => {
     if (status === "executing") return t("ai.plan.statusExecuting");
@@ -586,7 +589,7 @@ export function DiagnosePanel({
                 // 降级成「等你确认」，那一步就登记为手动档——不给钮 = 降级
                 // 成了死路（用户永远点不动）。
                 const stepNeedsConfirm =
-                  manualMode || (s.registeredMode ?? "plan") === "manual";
+                  manualMode || (mode === "auto" && (s.registeredMode ?? "plan") === "manual");
                 const showActions = stepNeedsConfirm && (s.status === "planned" || busy);
                 return (
                   <li

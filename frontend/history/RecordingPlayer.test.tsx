@@ -196,7 +196,11 @@ describe("RecordingPlayer", () => {
     expect(events[0].data).toBe("root@web:~$ ");
     // 时间轴保真
     expect(events.map((e) => e.time)).toEqual([0, 0.5, 1.5, 2.4]);
-    expect(screen.getByTestId("player-export-msg").textContent).toBe("/tmp/out.cast");
+    // 导出提示是 invoke 完成后 setState 渲染的——直接断言会偶发赶不上
+    // （Linux CI 上撞过：getByTestId 找不到 player-export-msg）。等它出现。
+    await waitFor(() => {
+      expect(screen.getByTestId("player-export-msg").textContent).toBe("/tmp/out.cast");
+    });
 
     // 原文：第一次点击 = 确认态，不导出
     fireEvent.click(screen.getByTestId("player-export-raw"));

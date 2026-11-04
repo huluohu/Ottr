@@ -2,6 +2,7 @@
 // 显示立即锁定 + 自动锁定配置）、升级向导三步（校验 → 进度事件 → 完成计数）、
 // 安全配置改动写 settings（Rust 拒绝时回落）。
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -17,6 +18,20 @@ type ProgressHandler = (e: { payload: { done: number; total: number } }) => void
 let progressHandler: ProgressHandler | null = null;
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+// 版本号取自 Tauri runtime（getVersion）——侧栏品牌卡与「关于」分区同源
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: () => Promise.resolve("9.9.9") }));
+// vault API 面：McpSettings 的 effect 会调 relayPath()（Tauri 环境外无实现 →
+// .then 报错污染渲染树）。本文件只关心设置分区本身，故给个空实现。
+vi.mock("../vault/api", async () => {
+  const actual = await vi.importActual<typeof import("../vault/api")>("../vault/api");
+  return {
+    ...actual,
+    vaultApi: {
+      ...actual.vaultApi,
+      mcp: { ...actual.vaultApi.mcp, relayPath: () => Promise.resolve("") },
+    },
+  };
+});
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn((_event: string, handler: ProgressHandler) => {
     progressHandler = handler;
@@ -84,6 +99,25 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+describe("侧栏品牌卡的版本号（2026-11-03 用户实机发现：这里曾写死 v1.5.19，与关于页对不上）", () => {
+  it("与「关于」分区同源：都取 getVersion 的真实版本，不写死字面量", async () => {
+    render(
+      <ThemeProvider>
+        <SecuritySettings open onClose={() => {}} />
+      </ThemeProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("brand-version").textContent).toContain("v9.9.9");
+    });
+    // 源码里不得再有写死的版本号字面量
+    const src = readFileSync(
+      `${process.cwd()}/frontend/security/SecuritySettings.tsx`,
+      "utf8",
+    );
+    expect(src).not.toMatch(/v1\.\d+\.\d+ · 稳定版/);
+  });
 });
 
 describe("SecuritySettings", () => {

@@ -582,9 +582,13 @@ export function SecuritySettings({
                 </div>
                 <div className="brand-info">
                   <span className="brand-name">Ottr</span>
-                  <span className="brand-version">
+                  <span className="brand-version" data-testid="brand-version">
                     <span className="brand-status-dot" aria-hidden="true" />
-                    v1.5.19 · 稳定版
+                    {/* 版本号取真实运行版本（与「关于」分区同一来源 getVersion）
+                        ——此前这里写死字面量「v1.5.19」，从 v1.6.0 起一直
+                        显示旧版本，与关于页对不上（2026-11-03 用户实机发现）。
+                        取不到版本时只留状态语义，不编版本号。 */}
+                    {appVersion !== null ? `v${appVersion}` : ""} · 稳定版
                   </span>
                 </div>
               </div>

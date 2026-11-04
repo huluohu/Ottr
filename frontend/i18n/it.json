@@ -502,7 +502,7 @@
       "diagnose": "Sei un senior ops engineer. L'utente ha eseguito un comando fallito in un terminale SSH. Fornisci: **Causa** (1-3 frasi basate sull'output), **Comandi correttivi** (ognuno in un blocco delimitato da ```bash, eseguibile in modo indipendente), **Note** (facoltative, 1 frase). Rispondi nella lingua dell'interfaccia. [REDACTED_*] sono segnaposto di offuscamento: tienili così come sono, non indovinarne il contenuto.",
       "explain": "Sei un assistente del terminale. Spiega il contenuto selezionato nel terminale (errore/log/testo): cosa significa, le cause probabili e (se applicabile) i prossimi comandi suggeriti in blocchi delimitati da ```bash. Sii conciso, rispondi nella lingua dell'interfaccia. [REDACTED_*] sono segnaposto di offuscamento: tienili così come sono.",
       "tools": "Puoi richiamare gli strumenti elencati sopra per raccogliere informazioni o agire sul sistema. **Le chiamate agli strumenti vengono eseguite solo dopo l'approvazione dell'utente**; se l'utente ne rifiuta uno, rispondi con le informazioni già disponibili.",
-      "hostTools": "Puoi anche chiamare gli strumenti dell'host (prefisso ottr_): quelli di sola lettura (lettura della coda dell'output, lettura di un file, elenco di una directory) vengono eseguiti subito e il risultato ti viene restituito; quello di esecuzione (ottr_exec_command) segue la modalità indicata nella sua descrizione: in modalità pianifica viene solo registrato nel piano e non viene mai eseguito; in modalità manuale resta in attesa di conferma e viene eseguito solo dopo aver premuto Esegui. Decidi di conseguenza."
+      "hostTools": "Puoi anche chiamare gli strumenti dell'host (prefisso ottr_): quelli di sola lettura (leggi coda output / leggi file / elenca directory) si eseguono direttamente e i loro risultati ti vengono restituiti; quello di esecuzione (ottr_exec_command) segue la modalità corrente indicata nella sua descrizione: in modalità plan viene solo registrato nel piano e non viene mai eseguito, in modalità manuale resta in attesa come passo da confermare ed esegue solo dopo che clicchi Esegui, e in modalità automatico i comandi di sola lettura si eseguono direttamente mentre gli altri passano alla tua conferma e i comandi pericolosi vengono rifiutati. Pianifica di conseguenza le tue chiamate."
     },
     "msg": {
       "exitCode": "Codice di uscita",
@@ -573,7 +573,7 @@
       "purposeArg": "Scopo di questo comando (verrà annotato nel piano)",
       "execCommandPlan": "Esegui comando (modalità corrente: pianifica; viene solo registrato nel piano, non viene eseguito)",
       "execCommandManual": "Esegui comando (modalità corrente: manuale; il comando viene registrato come passo in attesa di conferma e viene eseguito solo dopo aver premuto Esegui)",
-      "execCommandAuto": "Esegui comando (modalità corrente: automatico; l'autorizzazione dell'host non è ancora disponibile, quindi verrà rifiutato)",
+      "execCommandAuto": "Esegui un comando (modalità corrente: automatico; i comandi di sola lettura si eseguono direttamente, le operazioni di scrittura e le forme non sicure passano alla tua conferma, i comandi pericolosi vengono rifiutati)",
       "needPath": "Manca l'argomento percorso; nulla è stato eseguito.",
       "needCommand": "Manca l'argomento comando; nulla è stato eseguito.",
       "noScope": "Non è disponibile alcun ambito di destinazione per raggiungere l'host.",

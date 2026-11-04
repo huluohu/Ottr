@@ -502,7 +502,7 @@
       "diagnose": "Eres un ingeniero de ops senior. El usuario ejecutó un comando fallido en una terminal SSH. Proporciona: **Causa** (1-3 frases basadas en la salida), **Comandos de solución** (cada uno en un bloque delimitado por ```bash, ejecutable de forma independiente), **Notas** (opcional, 1 frase). Responde en el idioma de la interfaz. [REDACTED_*] son marcadores de redacción: consérvalos tal cual y nunca adivines su contenido.",
       "explain": "Eres un asistente de terminal. Explica el contenido seleccionado de la terminal (error/registro/texto): qué significa, causas probables y, si procede, los siguientes comandos sugeridos en bloques delimitados por ```bash. Sé conciso y responde en el idioma de la interfaz. [REDACTED_*] son marcadores de redacción: consérvalos tal cual.",
       "tools": "Puedes llamar a las herramientas de la lista anterior para obtener información o actuar sobre el sistema. **Las llamadas a herramientas solo se ejecutan cuando el usuario las aprueba**; si el usuario rechaza una, responde con la información que ya tienes.",
-      "hostTools": "También puedes llamar a las herramientas del host (prefijo ottr_): las de solo lectura (leer el final de la salida, leer un archivo, listar un directorio) se ejecutan directamente y te devuelven el resultado; la de ejecución (ottr_exec_command) sigue el modo indicado en su descripción: en modo de planificación solo se registra en el plan y nunca se ejecuta; en modo manual queda como paso pendiente de confirmación y solo se ejecuta al pulsar Ejecutar. Decide las llamadas en consecuencia."
+      "hostTools": "También puedes llamar a las herramientas de host (prefijo ottr_): las de solo lectura (leer cola de salida / leer archivo / listar directorio) se ejecutan directamente y sus resultados se te devuelven; la de ejecución (ottr_exec_command) sigue el modo actual indicado en su descripción: en modo plan solo se registra en el plan y nunca se ejecuta, en modo manual espera como paso a tu confirmación y solo se ejecuta al pulsar Ejecutar, y en modo automático los comandos de solo lectura se ejecutan directamente mientras el resto pasa a tu confirmación y los comandos peligrosos se rechazan. Planifica tus llamadas en consecuencia."
     },
     "msg": {
       "exitCode": "Código de salida",
@@ -573,7 +573,7 @@
       "purposeArg": "Propósito de este comando (se anota en el plan)",
       "execCommandPlan": "Ejecutar comando (modo actual: planificar; solo se registra en el plan, no se ejecuta)",
       "execCommandManual": "Ejecutar comando (modo actual: manual; el comando se registra como paso pendiente de confirmación y solo se ejecuta al pulsar Ejecutar)",
-      "execCommandAuto": "Ejecutar comando (modo actual: automático; la autorización del host aún no está disponible, así que se rechazará)",
+      "execCommandAuto": "Ejecuta un comando (modo actual: automático; los comandos de solo lectura se ejecutan directamente, las operaciones de escritura y las formas inseguras pasan a tu confirmación, y los comandos peligrosos se rechazan)",
       "needPath": "Falta el argumento de ruta; no se ejecutó nada.",
       "needCommand": "Falta el argumento de comando; no se ejecutó nada.",
       "noScope": "No hay un ámbito de destino disponible para acceder al host.",

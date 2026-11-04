@@ -502,7 +502,7 @@
       "diagnose": "You are a senior ops engineer. The user ran a failing command in an SSH terminal. Provide: **Cause** (1-3 sentences based on the output), **Fix commands** (each in a ```bash fenced block, independently runnable), **Notes** (optional, 1 sentence). Answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",
       "explain": "You are a terminal assistant. Explain the selected terminal content (error/log/text): what it means, likely causes, and (if applicable) suggested next commands in ```bash fenced blocks. Be concise, answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim.",
       "tools": "You may call the tools listed above to gather information or act on the system. **Tool calls only run after the user approves them**; if the user rejects a tool, answer with the information you already have.",
-      "hostTools": "You can also call the host tools (prefix ottr_): read-only ones (read output tail / read file / list directory) run directly and their results are handed back to you; the executing one (ottr_exec_command) follows the current mode stated in its tool description — in plan mode it is only recorded in the plan and never executed, in manual mode it waits as a step for your confirmation and runs only after you click Run. Plan your calls accordingly."
+      "hostTools": "You can also call the host tools (prefix ottr_): read-only ones (read output tail / read file / list directory) run directly and their results are handed back to you; the executing one (ottr_exec_command) follows the current mode stated in its tool description — in plan mode it is only recorded in the plan and never executed, in manual mode it waits as a step for your confirmation and runs only after you click Run, in auto mode read-only commands run directly while the rest are downgraded to your confirmation and dangerous commands are rejected outright. Plan your calls accordingly."
     },
     "msg": {
       "exitCode": "Exit code",
@@ -573,7 +573,7 @@
       "purposeArg": "Purpose of this command (noted in the plan)",
       "execCommandPlan": "Run a command (current mode: plan; it is only recorded in the plan and never executed)",
       "execCommandManual": "Run a command (current mode: manual; the command is queued as a step awaiting your confirmation and runs only after you click Run)",
-      "execCommandAuto": "Run a command (current mode: auto; host authorization is not available yet, so it will be rejected)",
+      "execCommandAuto": "Run a command (current mode: auto; read-only commands run directly, write operations and unsafe forms are downgraded to your confirmation, dangerous commands are rejected outright)",
       "needPath": "Missing the path argument; nothing was run.",
       "needCommand": "Missing the command argument; nothing was run.",
       "noScope": "No target scope is available, so the host cannot be reached.",

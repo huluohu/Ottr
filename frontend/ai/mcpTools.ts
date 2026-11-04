@@ -14,6 +14,8 @@
 //   不该让整个 AI 功能变哑）；
 // * 清单读不到（vault 锁定等）→ 返回空表（降级为普通对话，不报错）。
 import { vaultApi, type McpServerInfo, type McpToolInfo } from "../vault/api";
+import i18n from "../i18n";
+import type { AiExecMode } from "./aiModes";
 import type { ChatTool } from "./provider";
 
 /** provider 中立工具名的前缀（模型看到的就是 `mcp__…`）。 */
@@ -172,4 +174,138 @@ export async function loadMcpTools(): Promise<ChatTool[]> {
   const snapshot = await loadMcpToolSnapshot();
   catalog = new Map(snapshot.bindings);
   return snapshot.tools;
+}
+
+/* ---------------------------------------------------------------------------
+ * 内建主机工具（2026-11-04 第一步：Ask Ottr 执行模式）
+ *
+ * 工具目录 = 外部 MCP 工具 + **内建主机工具**（仅当会话有活目标时加入）。
+ * 内建工具的绑定**随请求快照走**（与外部工具同一机制）——不读模块级
+ * 「最近一次」注册表：两次 run 之间目标可能已换代，用旧绑定还原会把调用
+ * 打去错误的对象。
+ *
+ * 命名：统一 `ottr_` 前缀（与外部工具的 `mcp__` 天然隔离，不会重名）。
+ * ------------------------------------------------------------------------- */
+
+/** 内建主机工具名前缀。 */
+export const HOST_TOOL_PREFIX = "ottr_";
+
+/** 内建主机工具名（与 Rust 侧动作口径一一对应）。 */
+export type HostToolName =
+  | "ottr_read_output"
+  | "ottr_read_file"
+  | "ottr_list_dir"
+  | "ottr_exec_command";
+
+/** 内建工具与它的绑定（调用面据此还原成具体动作）。 */
+export interface HostToolBinding {
+  /** provider 中立工具名。 */
+  name: HostToolName;
+  /** 展示用的工具名（与 name 同值——留出后续别名空间）。 */
+  tool: HostToolName;
+  /** 工具描述（给模型看；随界面语言）。 */
+  description: string;
+  /** 入参 JSON Schema（对象）。 */
+  parameters: unknown;
+}
+
+/** 一次 AI run 的内建工具快照（工具清单 + 本请求自己的绑定表）。 */
+export interface HostToolSnapshot {
+  tools: ChatTool[];
+  bindings: ReadonlyMap<string, HostToolBinding>;
+}
+
+/** 是否内建主机工具名。 */
+export function isHostToolName(name: string): name is HostToolName {
+  return (
+    name === "ottr_read_output" ||
+    name === "ottr_read_file" ||
+    name === "ottr_list_dir" ||
+    name === "ottr_exec_command"
+  );
+}
+
+/** 执行类工具的描述随模式变（模型必须知道自己这一轮会不会真跑）。 */
+function execCommandDescription(mode: AiExecMode): string {
+  if (mode === "plan") return i18n.t("ai.hostTool.execCommandPlan");
+  if (mode === "manual") return i18n.t("ai.hostTool.execCommandManual");
+  return i18n.t("ai.hostTool.execCommandAuto");
+}
+
+/**
+ * 内建主机工具快照（**每次 run 现取**，与外部工具同一纪律）。
+ *
+ * * `enabled=false`（会话没有活目标）→ 返回空表：**没有活目标就不给内建工具**
+ *   （工具打不到任何主机，给了只是让模型空转）；
+ * * `readProbe=false`（AI 只读探查总开关关闭，2026-11-04 修补 B3）→ **读文件
+ *   与列目录两个工具不进目录**（模型看不到它们；其余工具不受影响）；
+ * * plan / manual / auto 三档都暴露同一组工具——**闸门在执行分派**（plan 只
+ *   记计划；auto 本步由后端拒），工具清单不随模式抖动，模型的行为因此稳定。
+ */
+export function hostToolSnapshot(opts: {
+  enabled: boolean;
+  mode: AiExecMode;
+  /** AI 只读探查总开关（默认开 = 读文件/列目录进目录）。 */
+  readProbe: boolean;
+}): HostToolSnapshot {
+  if (!opts.enabled) return { tools: [], bindings: new Map() };
+  const all: HostToolBinding[] = [
+    {
+      name: "ottr_read_output",
+      tool: "ottr_read_output",
+      description: i18n.t("ai.hostTool.readOutput"),
+      parameters: {
+        type: "object",
+        properties: {
+          bytes: { type: "number", description: i18n.t("ai.hostTool.readOutputBytes") },
+        },
+      },
+    },
+    {
+      name: "ottr_read_file",
+      tool: "ottr_read_file",
+      description: i18n.t("ai.hostTool.readFile"),
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string", description: i18n.t("ai.hostTool.pathArg") } },
+        required: ["path"],
+      },
+    },
+    {
+      name: "ottr_list_dir",
+      tool: "ottr_list_dir",
+      description: i18n.t("ai.hostTool.listDir"),
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string", description: i18n.t("ai.hostTool.pathArg") } },
+        required: ["path"],
+      },
+    },
+    {
+      name: "ottr_exec_command",
+      tool: "ottr_exec_command",
+      description: execCommandDescription(opts.mode),
+      parameters: {
+        type: "object",
+        properties: {
+          command: { type: "string", description: i18n.t("ai.hostTool.commandArg") },
+          purpose: { type: "string", description: i18n.t("ai.hostTool.purposeArg") },
+        },
+        required: ["command"],
+      },
+    },
+  ];
+  // 只读探查关闭 → 摘掉「读文件 / 列目录」两个工具（其余照旧）。
+  const list = opts.readProbe
+    ? all
+    : all.filter((b) => b.name !== "ottr_read_file" && b.name !== "ottr_list_dir");
+  const map = new Map(list.map((b) => [b.name, b]));
+  return {
+    tools: list.map((b) => ({
+      name: b.name,
+      description: b.description,
+      parameters: b.parameters,
+    })),
+    bindings: map,
+  };
 }

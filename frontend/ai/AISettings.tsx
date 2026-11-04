@@ -26,6 +26,14 @@ import {
   type RedactionConfig,
 } from "./settings";
 import { InfoHint } from "../ui/InfoHint";
+import { SegmentedControl } from "../ui/SegmentedControl";
+import {
+  AI_EXEC_MODES,
+  readDefaultAiExecMode,
+  writeDefaultAiExecMode,
+  type AiExecMode,
+} from "./aiModes";
+import { readAiReadProbeEnabled, writeAiReadProbeEnabled } from "./aiReadProbe";
 
 export interface AISettingsProps {
   open: boolean;
@@ -105,6 +113,14 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
   const [enabled, setEnabled] = useState(true);
   const [summaryEnabled, setSummaryEnabled] = useState(true);
   const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_TOKENS);
+  /** 新对话默认执行模式（2026-11-04 第一步）：本机偏好（localStorage）——
+   *  默认档是安全档（plan = 只产计划、不执行），随设备走会把一台机器的宽松
+   *  选择带到另一台机器上，故不进 vault（不同步）。 */
+  const [defaultMode, setDefaultMode] = useState<AiExecMode>(readDefaultAiExecMode);
+  /** AI 只读探查总开关（2026-11-04 修补 B3）：**本机偏好 → localStorage**
+   *  （不进 vault/不同步——「关掉」是本机的隐私选择，不该传播到别的机器）。
+   *  默认开；关掉后「读文件 / 列目录」两个内建工具不进 AI 工具目录。 */
+  const [readProbe, setReadProbe] = useState<boolean>(readAiReadProbeEnabled);
   const [draft, setDraft] = useState<ProviderDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   // 关闭交互统一（2026-10-30 栈式收口）：独立弹窗形态（!embedded）走
@@ -326,6 +342,43 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
                 const n = Math.min(MAX_TOKENS_LIMIT, Math.max(16, Number(e.currentTarget.value) || DEFAULT_MAX_TOKENS));
                 setMaxTokens(n);
                 void saveAiMaxTokens(n).catch((err) => setFormError(String(err)));
+              }}
+            />
+          </label>
+          {/* 新对话默认执行模式（2026-11-04 第一步）：用现成 SegmentedControl
+              （禁裸 checkbox——全仓守卫 ui-no-native-controls.test.ts）。
+              行容器用 div 而非 label：段控内是按钮，套在 label 里会误触发
+              点击关联（label 的隐式提交/聚焦行为）。 */}
+          <div className="settings-row">
+            <span className="settings-label">{t("ai.settings.defaultExecMode")}</span>
+            <InfoHint text={t("ai.settings.defaultExecModeHint")} />
+            <SegmentedControl
+              value={defaultMode}
+              options={AI_EXEC_MODES.map((m) => ({
+                value: m,
+                label: t(`ai.mode.${m}`),
+              }))}
+              onChange={(v) => {
+                setDefaultMode(v);
+                writeDefaultAiExecMode(v);
+              }}
+              ariaLabel={t("ai.settings.defaultExecMode")}
+              testid="ai-default-exec-mode"
+            />
+          </div>
+          {/* AI 只读探查总开关（2026-11-04 修补 B3）：关掉后「读文件 / 列
+              目录」两个内建工具**不进 AI 工具目录**（模型看不到它们），其余
+              工具（读输出尾 / 执行类 / 外部 MCP）不受影响。本机偏好。 */}
+          <label className="settings-row">
+            <span className="settings-label">{t("ai.settings.readProbe")}</span>
+            <InfoHint text={t("ai.settings.readProbeHint")} />
+            <Switch
+              testid="ai-read-probe"
+              checked={readProbe}
+              onChange={(e) => {
+                const v = e.currentTarget.checked;
+                setReadProbe(v);
+                writeAiReadProbeEnabled(v);
               }}
             />
           </label>

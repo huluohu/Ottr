@@ -33,7 +33,7 @@ ANSWERS = [
     "```bash\njournalctl --disk-usage\n```\n",
 ]
 
-state = {"n": 0}
+state = {"n": 0, "tool": None}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -82,6 +82,49 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"%x\r\n" % len(data) + data + b"\r\n")
             self.wfile.flush()
 
+        # 工具调用轮（2026-11-04 真机取证用）：--tool-call 指定时，**第一轮**
+        # 只发 tool_calls（不吐字），让客户端看到「模型要动手」；之后轮次照常。
+        if state["tool"] and idx == 0:
+            name, args = state["tool"]
+            emit(
+                "data: "
+                + json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {
+                                    "tool_calls": [
+                                        {
+                                            "index": 0,
+                                            "id": "call_mock_1",
+                                            "type": "function",
+                                            "function": {
+                                                "name": name,
+                                                "arguments": json.dumps(args, ensure_ascii=False),
+                                            },
+                                        }
+                                    ]
+                                },
+                                "finish_reason": None,
+                            }
+                        ]
+                    }
+                )
+                + "\n\n"
+            )
+            emit(
+                "data: "
+                + json.dumps(
+                    {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+                )
+                + "\n\n"
+            )
+            emit("data: [DONE]\n\n")
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+            return
+
         # 逐段吐字（模拟流式，顺便验证前端增量渲染）
         step = max(1, len(answer) // 6)
         for i in range(0, len(answer), step):
@@ -113,7 +156,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=18081)
     ap.add_argument("--log", default="/tmp/mock-ai.log")
+    ap.add_argument(
+        "--tool-call",
+        default=None,
+        help="首轮发一次工具调用：'名称:参数JSON'（如 ottr_exec_command:{\"command\":\"df -h /\"}）",
+    )
     args = ap.parse_args()
+
+    if args.tool_call:
+        name, _, raw_args = args.tool_call.partition(":")
+        try:
+            parsed = json.loads(raw_args) if raw_args.strip() else {}
+        except Exception as e:
+            raise SystemExit(f"--tool-call 参数不是合法 JSON: {e}")
+        state["tool"] = (name.strip(), parsed)
 
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     srv.log_path = args.log

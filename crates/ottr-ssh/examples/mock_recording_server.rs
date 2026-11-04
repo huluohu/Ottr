@@ -47,6 +47,21 @@ impl ByteLog {
         }
     }
 
+    /// 记一条**事件**（如「开了一条通道」）——与字节记录分开，便于断言
+    /// "服务端被开了几条通道"这类结构事实。
+    fn record_event(&self, conn: &str, event: &str) {
+        let line = format!("[{}[{}] event={}\n", self.label, conn, event);
+        let path = self.path.lock().unwrap().clone();
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            use std::io::Write;
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+
     /// 记一条「连接收到字节」。
     fn record(&self, conn: &str, bytes: &[u8]) {
         let line = format!(
@@ -74,6 +89,8 @@ impl ByteLog {
 struct MockAuth {
     passwords: Arc<HashMap<&'static str, &'static str>>,
     log: ByteLog,
+    /// 本连接标识（用于日志关联）。
+    conn: Arc<String>,
 }
 
 impl Handler for MockAuth {
@@ -116,12 +133,14 @@ impl Handler for MockAuth {
     ) -> Result<(), Self::Error> {
         reply.accept().await;
         let (mut read, write) = channel.split();
-        let conn = format!(
-            "#{}.{}",
-            self.log.label,
-            CONN_SEQ.fetch_add(1, Ordering::SeqCst)
-        );
+        let conn = self.conn.clone();
         let log = self.log.clone();
+        // ★ 通道计数（2026-11-04 真机取证）：**每开一条 session 通道就记一行**
+        // ——"plan 档零执行"的观测面是「服务端被开了几条通道」：连接时那条
+        // 交互 PTY 通道是 1 条；若 AI 执行了命令会**再多一条**（exec 通道）。
+        // 只看字节不够（exec 的输出不经过 PTY，但字节也没进 PTY → 两者都是 0，
+        // 分不出"没执行"与"执行了但输出没回显"）。故通道数是更硬的证据。
+        log.record_event(&conn, "channel-open");
         tokio::spawn(async move {
             if write.data_bytes(SHELL_BANNER.to_vec()).await.is_err() {
                 return;
@@ -157,6 +176,36 @@ impl Handler for MockAuth {
         _modes: &[(russh::Pty, u32)],
         session: &mut russh::server::Session,
     ) -> Result<(), Self::Error> {
+        self.log.record_event(&self.conn, "pty-request");
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    /// exec 请求（`channel_exec`）——**"plan 档零执行"最直接的观测面**：
+    /// 真机取证断言"服务端从未收到 exec-request"。
+    async fn exec_request(
+        &mut self,
+        channel: russh::ChannelId,
+        data: &[u8],
+        session: &mut russh::server::Session,
+    ) -> Result<(), Self::Error> {
+        self.log.record_event(
+            &self.conn,
+            &format!("exec-request:{:?}", String::from_utf8_lossy(data)),
+        );
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    /// 子系统请求（SFTP 等）。
+    async fn subsystem_request(
+        &mut self,
+        channel: russh::ChannelId,
+        name: &str,
+        session: &mut russh::server::Session,
+    ) -> Result<(), Self::Error> {
+        self.log
+            .record_event(&self.conn, &format!("subsystem-request:{name}"));
         session.channel_success(channel)?;
         Ok(())
     }
@@ -192,7 +241,13 @@ impl russh::server::Server for MockSshd {
     type Handler = MockAuth;
 
     fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
-        self.auth.clone()
+        let mut auth = self.auth.clone();
+        auth.conn = Arc::new(format!(
+            "#{}.{}",
+            auth.log.label,
+            CONN_SEQ.fetch_add(1, Ordering::SeqCst)
+        ));
+        auth
     }
 }
 
@@ -217,6 +272,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let auth = MockAuth {
         passwords: Arc::new(HashMap::from([(MOCK_USER, MOCK_PASSWORD)])),
         log: ByteLog::new(&log_path, &label),
+        // 连接标识在 new_client 里按连接生成（此处为占位）。
+        conn: Arc::new(format!("#{}.0", label)),
     };
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;

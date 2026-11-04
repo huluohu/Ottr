@@ -82,4 +82,52 @@ describe("aiSessionApi", () => {
       text: "whoami",
     });
   });
+
+  // 2026-11-04 第一步：只读两类 + 执行类一类的调用面。
+  it("lists a directory by scope (read-only face)", async () => {
+    invoke.mockResolvedValue({ path: "/etc", entries: [{ name: "hosts", isDir: false, size: 12 }] });
+    await expect(aiSessionApi.listDir("scope-a", "/etc")).resolves.toEqual({
+      path: "/etc",
+      entries: [{ name: "hosts", isDir: false, size: 12 }],
+    });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("ai_scope_list_dir", {
+      scopeId: "scope-a",
+      path: "/etc",
+    });
+  });
+
+  it("reads a file by scope (read-only face)", async () => {
+    invoke.mockResolvedValue({ path: "/etc/hosts", size: 12, content: "127.0.0.1", truncated: false });
+    await expect(aiSessionApi.readFile("scope-a", "/etc/hosts")).resolves.toEqual({
+      path: "/etc/hosts",
+      size: 12,
+      content: "127.0.0.1",
+      truncated: false,
+    });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("ai_scope_read_file", {
+      scopeId: "scope-a",
+      path: "/etc/hosts",
+    });
+  });
+
+  it("executes by mode: the mode travels with the call (backend is the gate)", async () => {
+    invoke.mockResolvedValue({
+      executed: false,
+      planned: true,
+      stepId: "step-1",
+      message: "recorded in the plan; not executed (plan mode)",
+    });
+    await expect(aiSessionApi.exec("scope-a", "run-1:exec:call_1", "df -h", "plan")).resolves.toEqual({
+      executed: false,
+      planned: true,
+      stepId: "step-1",
+      message: "recorded in the plan; not executed (plan mode)",
+    });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("ai_scope_exec", {
+      scopeId: "scope-a",
+      actionId: "run-1:exec:call_1",
+      command: "df -h",
+      mode: "plan",
+    });
+  });
 });

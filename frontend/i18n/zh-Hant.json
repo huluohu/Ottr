@@ -500,7 +500,8 @@
     "prompt": {
       "diagnose": "你是資深運維工程師。用戶在 SSH 終端執行了一條失敗命令，給出：**原因**（1-3 句，基於輸出）、**修復命令**（每條用 ```bash 圍欄代碼塊，逐條獨立可執行）、**備註**（可選，1 句）。使用介面語言回答；輸出裏的 [REDACTED_*] 是脫敏佔位符，原樣保留，不要猜測其內容。",
       "explain": "你是終端助手。解釋用戶選中的終端內容（報錯/日誌/文本）：含義、可能原因、（如適用）下一步建議命令（```bash 圍欄代碼塊）。簡明扼要，使用介面語言。[REDACTED_*] 是脫敏佔位符，原樣保留。",
-      "tools": "你可以呼叫上面列出的工具來取得資訊或執行操作。**工具呼叫需要使用者確認後才會執行**；若使用者拒絕了某個工具，請改用既有資訊作答。"
+      "tools": "你可以呼叫上面列出的工具來取得資訊或執行操作。**工具呼叫需要使用者確認後才會執行**；若使用者拒絕了某個工具，請改用既有資訊作答。",
+      "hostTools": "你還可以呼叫主機工具（ottr_ 前綴）：唯讀類（讀輸出尾端 / 讀檔案 / 列出目錄）會直接執行並把結果交給你；執行類（ottr_exec_command）依其工具說明裡的目前模式處理——規劃模式下只登記到計劃，不會真正執行。請據此決定是否呼叫。"
     },
     "msg": {
       "exitCode": "退出碼",
@@ -524,7 +525,39 @@
       "failed": "工具執行失敗：{{error}}",
       "unknownTool": "工具已不可用（對應的 MCP 服務已被移除或改名）",
       "limitReached": "工具呼叫輪次已達上限（{{count}} 輪），不再執行更多工具。請依現有資訊作答。",
-      "truncated": "…（已截斷）"
+      "truncated": "…（已截斷）",
+      "hostCallLabel": "呼叫主機工具 {{tool}}"
+    },
+    "mode": {
+      "label": "執行模式",
+      "plan": "規劃",
+      "auto": "自動",
+      "manual": "手動",
+      "autoNotEnabled": "自動模式尚未啟用"
+    },
+    "plan": {
+      "title": "計劃步驟",
+      "planned": "已記入計劃，暫不執行",
+      "executed": "已執行",
+      "rejected": "未執行（被拒絕）",
+      "rejectedWithError": "未執行（後端拒絕：{{error}}）",
+      "statusPlanned": "待執行"
+    },
+    "hostTool": {
+      "readOutput": "讀取目前終端的輸出尾端",
+      "readOutputBytes": "讀取的位元組數（預設 8KB）",
+      "readFile": "讀取主機上的檔案（絕對路徑）",
+      "listDir": "列出主機上某個目錄的內容",
+      "pathArg": "絕對路徑",
+      "commandArg": "要執行的單行命令",
+      "purposeArg": "這條命令的目的（會寫進計劃清單）",
+      "execCommandPlan": "執行命令（目前為規劃模式：只登記到計劃，不會真正執行）",
+      "execCommandManual": "執行命令（目前為手動模式：命令會進入待確認佇列）",
+      "execCommandAuto": "執行命令（目前為自動模式：主機授權尚未開放，命令會被拒絕）",
+      "needPath": "缺少路徑參數，未執行。",
+      "needCommand": "缺少命令參數，未執行。",
+      "noScope": "目前沒有可用的目標作用域，無法存取主機。",
+      "localReadRejected": "本地終端會話不開放主機檔案讀取（可改讀目前終端的輸出尾端）"
     },
     "nl2cmd": {
       "title": "AI 生成命令",
@@ -589,7 +622,11 @@
       "rulePattern": "正則（如 OTTR-\\d{6}）",
       "errRuleIncomplete": "規則名與正則都要填",
       "errRuleInvalid": "正則無法編譯",
-      "errRemoteHttp": "非本機端點必須使用 https://（明文 http 會把 API key 裸傳在鏈路上，且應用只放行本機 http 端點）"
+      "errRemoteHttp": "非本機端點必須使用 https://（明文 http 會把 API key 裸傳在鏈路上，且應用只放行本機 http 端點）",
+      "defaultExecMode": "新對話預設執行模式",
+      "defaultExecModeHint": "新建對話時的預設執行模式。規劃模式只產出計劃、不執行任何命令；自動模式尚未開放（需逐主機授權）。",
+      "readProbe": "AI 只讀探查（讀取主機檔案與目錄）",
+      "readProbeHint": "關閉後，AI 工具目錄不再有「讀取主機檔案」與「列出目錄」，AI 只能讀目前終端的輸出尾端。其餘工具不受影響。本機生效，不跨裝置同步。"
     },
     "followupPlaceholder": "追問…（Enter 送出，Shift+Enter 換行）",
     "askEntry": "問 Ottr",

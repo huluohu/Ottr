@@ -821,3 +821,89 @@
   max-height: 16em;
   overflow-y: auto;
 }
+
+/* --- Ask Ottr 执行模式（2026-11-04 第一步）：状态行模式切换 + 计划清单 ---
+   为什么放本文件：AI 域的样式都在 18-ai-panel.css，新开分节还要动
+   index.css 清单，没必要。样式纪律：动效/圆角/字号/颜色一律走 token
+   （css-discipline.test.ts 守卫），新增块顶部写清「为什么这么写」。 */
+
+/* 模式段控（状态行）：.ui-segmented 默认段间距是 --space-4，三档标签在
+   280px 最小宽的面板里会把「停止」按钮挤出可视区——这里只收紧间距与字号，
+   不改控件自身的视觉语言（段控是全仓统一控件，面板不得自造一套）。 */
+.ai-status-row .ui-segmented {
+  gap: var(--space-2);
+  flex: none;
+}
+.ai-status-row .ui-segmented button {
+  font-size: var(--text-xs);
+  /* 紧凑内距：全局默认是 4px/2px/8px（.ui-segmented button）。这里改用
+     间距令牌收紧竖向占位（--space-1 = 4px）——原 2px/2px/6px 在令牌面上
+     没有对应值（令牌最小档是 4px），故取最接近的 --space-1；字号已降到
+     --text-xs，段控件整体高度随之收紧。 */
+  padding: var(--space-1) var(--space-1);
+}
+/* auto 档的「尚未启用」提示：弱化小字 + 省略号截断（窄面板不换行撑高）。 */
+.ai-mode-hint {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* 计划清单（thread 内的一块，仿 .ai-tool-pending 的插法）：左边框用强调色
+   而不是 danger 红——「有计划」不是危险操作本身，危险由每步的徽章表达。 */
+.ai-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--color-accent-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+}
+.ai-plan-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.ai-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.ai-plan-step {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+/* 状态点：本步只有「已记入计划」一态——琥珀色 = 待执行（不是危险色，
+   危险等级由 .ai-level 徽章承担，两个语义不混用）。 */
+.ai-plan-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+  background: var(--color-warning);
+  border: 1px solid var(--color-warning);
+}
+.ai-plan-cmd {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-fg);
+  word-break: break-all;
+}
+.ai-plan-status {
+  font-size: var(--text-2xs);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}

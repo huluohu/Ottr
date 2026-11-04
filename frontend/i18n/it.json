@@ -501,7 +501,8 @@
     "prompt": {
       "diagnose": "Sei un senior ops engineer. L'utente ha eseguito un comando fallito in un terminale SSH. Fornisci: **Causa** (1-3 frasi basate sull'output), **Comandi correttivi** (ognuno in un blocco delimitato da ```bash, eseguibile in modo indipendente), **Note** (facoltative, 1 frase). Rispondi nella lingua dell'interfaccia. [REDACTED_*] sono segnaposto di offuscamento: tienili così come sono, non indovinarne il contenuto.",
       "explain": "Sei un assistente del terminale. Spiega il contenuto selezionato nel terminale (errore/log/testo): cosa significa, le cause probabili e (se applicabile) i prossimi comandi suggeriti in blocchi delimitati da ```bash. Sii conciso, rispondi nella lingua dell'interfaccia. [REDACTED_*] sono segnaposto di offuscamento: tienili così come sono.",
-      "tools": "Puoi richiamare gli strumenti elencati sopra per raccogliere informazioni o agire sul sistema. **Le chiamate agli strumenti vengono eseguite solo dopo l'approvazione dell'utente**; se l'utente ne rifiuta uno, rispondi con le informazioni già disponibili."
+      "tools": "Puoi richiamare gli strumenti elencati sopra per raccogliere informazioni o agire sul sistema. **Le chiamate agli strumenti vengono eseguite solo dopo l'approvazione dell'utente**; se l'utente ne rifiuta uno, rispondi con le informazioni già disponibili.",
+      "hostTools": "Puoi anche chiamare gli strumenti dell'host (prefisso ottr_): quelli di sola lettura (lettura della coda dell'output, lettura di un file, elenco di una directory) vengono eseguiti subito e il risultato ti viene restituito; quello di esecuzione (ottr_exec_command) segue la modalità indicata nella sua descrizione: in modalità pianifica viene solo registrato nel piano e non viene mai eseguito. Decidi di conseguenza."
     },
     "msg": {
       "exitCode": "Codice di uscita",
@@ -525,7 +526,39 @@
       "failed": "Esecuzione dello strumento non riuscita: {{error}}",
       "unknownTool": "Questo strumento non è più disponibile (il server MCP corrispondente è stato rimosso o rinominato).",
       "limitReached": "Raggiunto il limite di giri delle chiamate agli strumenti ({{count}}); non verranno eseguiti altri strumenti. Rispondi con le informazioni già disponibili.",
-      "truncated": "… (troncato)"
+      "truncated": "… (troncato)",
+      "hostCallLabel": "Chiamata allo strumento host {{tool}}"
+    },
+    "mode": {
+      "label": "Modalità di esecuzione",
+      "plan": "Pianifica",
+      "auto": "Automatico",
+      "manual": "Manuale",
+      "autoNotEnabled": "La modalità automatica non è ancora abilitata"
+    },
+    "plan": {
+      "title": "Passaggi del piano",
+      "planned": "Registrato nel piano, non eseguito per ora",
+      "executed": "Eseguito",
+      "rejected": "Non eseguito (rifiutato)",
+      "rejectedWithError": "Non eseguito (rifiutato dal backend: {{error}})",
+      "statusPlanned": "In attesa di esecuzione"
+    },
+    "hostTool": {
+      "readOutput": "Leggi la fine dell'output del terminale corrente",
+      "readOutputBytes": "Byte da leggere (8 KB per impostazione predefinita)",
+      "readFile": "Leggi un file sull'host (percorso assoluto)",
+      "listDir": "Elenca il contenuto di una directory sull'host",
+      "pathArg": "Percorso assoluto",
+      "commandArg": "Comando a una sola riga da eseguire",
+      "purposeArg": "Scopo di questo comando (verrà annotato nel piano)",
+      "execCommandPlan": "Esegui comando (modalità corrente: pianifica; viene solo registrato nel piano, non viene eseguito)",
+      "execCommandManual": "Esegui comando (modalità corrente: manuale; il comando resta in attesa di conferma)",
+      "execCommandAuto": "Esegui comando (modalità corrente: automatico; l'autorizzazione dell'host non è ancora disponibile, quindi verrà rifiutato)",
+      "needPath": "Manca l'argomento percorso; nulla è stato eseguito.",
+      "needCommand": "Manca l'argomento comando; nulla è stato eseguito.",
+      "noScope": "Non è disponibile alcun ambito di destinazione per raggiungere l'host.",
+      "localReadRejected": "Le sessioni di terminale locali non espongono la lettura dei file dell'host (leggi invece la coda dell'output del terminale corrente)"
     },
     "nl2cmd": {
       "title": "Comando AI",
@@ -590,7 +623,11 @@
       "rulePattern": "Regex (es. OTTR-\\d{6})",
       "errRuleIncomplete": "Sono obbligatori sia il nome della regola sia la regex",
       "errRuleInvalid": "La regex non viene compilata",
-      "errRemoteHttp": "G endpoint remoti devono usare https:// (http in chiaro invierebbe la API key in chiaro e l'app consente solo http locale)"
+      "errRemoteHttp": "G endpoint remoti devono usare https:// (http in chiaro invierebbe la API key in chiaro e l'app consente solo http locale)",
+      "defaultExecMode": "Modalità di esecuzione predefinita per le nuove conversazioni",
+      "defaultExecModeHint": "La modalità di esecuzione con cui iniziano le nuove conversazioni. La modalità di pianificazione produce solo un piano ed esegue nessun comando; la modalità automatica non è ancora abilitata (richiede l'autorizzazione per host).",
+      "readProbe": "Esplorazione in sola lettura dell'IA (lettura di file e directory dell'host)",
+      "readProbeHint": "Se disattivato, il catalogo degli strumenti IA non offre più la lettura dei file dell'host né l'elenco delle directory; l'IA può leggere solo la coda dell'output del terminale corrente. Gli altri strumenti non ne risentono. Solo su questo dispositivo; non viene sincronizzato."
     },
     "followupPlaceholder": "Fai una domanda di follow-up… (Invio per inviare, Shift+Invio per andare a capo)",
     "askEntry": "Chiedi a Ottr",

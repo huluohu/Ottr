@@ -500,7 +500,8 @@
     "prompt": {
       "diagnose": "你是资深运维工程师。用户在 SSH 终端执行了一条失败命令，给出：**原因**（1-3 句，基于输出）、**修复命令**（每条用 ```bash 围栏代码块，逐条独立可执行）、**备注**（可选，1 句）。使用界面语言回答；输出里的 [REDACTED_*] 是脱敏占位符，原样保留，不要猜测其内容。",
       "explain": "你是终端助手。解释用户选中的终端内容（报错/日志/文本）：含义、可能原因、（如适用）下一步建议命令（```bash 围栏代码块）。简明扼要，使用界面语言。[REDACTED_*] 是脱敏占位符，原样保留。",
-      "tools": "你可以调用上面列出的工具来获取信息或执行操作。**工具调用需要用户确认后才会执行**；如果用户拒绝了某个工具，请改用已有信息作答。"
+      "tools": "你可以调用上面列出的工具来获取信息或执行操作。**工具调用需要用户确认后才会执行**；如果用户拒绝了某个工具，请改用已有信息作答。",
+      "hostTools": "你还可以调用主机工具（ottr_ 前缀）：只读类（读输出尾 / 读文件 / 列目录）会直接执行并把结果交给你；执行类（ottr_exec_command）按其工具说明里的当前模式处理——规划模式下只登记到计划，不会真正执行。请据此决定是否调用。"
     },
     "msg": {
       "exitCode": "退出码",
@@ -524,7 +525,39 @@
       "failed": "工具执行失败：{{error}}",
       "unknownTool": "工具已不可用（对应的 MCP 服务已被移除或改名）",
       "limitReached": "工具调用轮次已达上限（{{count}} 轮），不再执行更多工具。请基于已有信息作答。",
-      "truncated": "…（已截断）"
+      "truncated": "…（已截断）",
+      "hostCallLabel": "调用主机工具 {{tool}}"
+    },
+    "mode": {
+      "label": "执行模式",
+      "plan": "规划",
+      "auto": "自动",
+      "manual": "手动",
+      "autoNotEnabled": "自动模式尚未启用"
+    },
+    "plan": {
+      "title": "计划步骤",
+      "planned": "已记入计划，暂不执行",
+      "executed": "已执行",
+      "rejected": "未执行（被拒绝）",
+      "rejectedWithError": "未执行（后端拒绝：{{error}}）",
+      "statusPlanned": "待执行"
+    },
+    "hostTool": {
+      "readOutput": "读取当前终端的输出尾部",
+      "readOutputBytes": "读取的字节数（默认 8KB）",
+      "readFile": "读取主机上的文件（绝对路径）",
+      "listDir": "列出主机上某个目录的内容",
+      "pathArg": "绝对路径",
+      "commandArg": "要执行的单行命令",
+      "purposeArg": "这条命令的目的（会写进计划清单）",
+      "execCommandPlan": "执行命令（当前为规划模式：只登记到计划，不会真正执行）",
+      "execCommandManual": "执行命令（当前为手动模式：命令会进入待确认队列）",
+      "execCommandAuto": "执行命令（当前为自动模式：主机授权尚未开放，命令会被拒绝）",
+      "needPath": "缺少路径参数，未执行。",
+      "needCommand": "缺少命令参数，未执行。",
+      "noScope": "当前没有可用的目标作用域，无法访问主机。",
+      "localReadRejected": "本地终端会话不开放主机文件读取（可改读当前终端的输出尾部）"
     },
     "nl2cmd": {
       "title": "AI 生成命令",
@@ -589,7 +622,11 @@
       "rulePattern": "正则（如 OTTR-\\d{6}）",
       "errRuleIncomplete": "规则名与正则都要填",
       "errRuleInvalid": "正则无法编译",
-      "errRemoteHttp": "非本机端点必须使用 https://（明文 http 会把 API key 裸传在链路上，且应用只放行本机 http 端点）"
+      "errRemoteHttp": "非本机端点必须使用 https://（明文 http 会把 API key 裸传在链路上，且应用只放行本机 http 端点）",
+      "defaultExecMode": "新对话默认执行模式",
+      "defaultExecModeHint": "新建对话时的默认执行模式。规划模式只产出计划、不执行任何命令；自动模式尚未开放（需逐主机授权）。",
+      "readProbe": "AI 只读探查（读取主机文件与目录）",
+      "readProbeHint": "关闭后，AI 工具目录里不再有「读取主机文件」与「列出目录」，AI 只能读当前终端的输出尾部。其余工具不受影响。本机生效，不跨设备同步。"
     },
     "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）",
     "askEntry": "问 Ottr",

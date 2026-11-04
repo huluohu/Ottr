@@ -534,7 +534,8 @@
       "plan": "계획",
       "auto": "자동",
       "manual": "수동",
-      "autoNotEnabled": "자동 모드는 아직 사용할 수 없습니다"
+      "autoNotAuthorized": "이 호스트는 자동 실행이 허용되지 않았습니다(설정 → AI → 자동 실행을 허용할 호스트)",
+      "autoLocalDenied": "로컬 터미널 세션은 AI에게 실행 권한을 부여하지 않습니다(읽기 전용 컨텍스트만)"
     },
     "plan": {
       "title": "계획 단계",
@@ -645,7 +646,24 @@
       "defaultExecMode": "새 대화의 기본 실행 모드",
       "defaultExecModeHint": "새 대화를 시작할 때의 기본 실행 모드입니다. 계획 모드는 계획만 만들고 어떤 명령도 실행하지 않습니다. 수동 모드에서는 각 명령이 「실행」을 눌러야 실행됩니다. 자동 모드는 아직 사용할 수 없습니다(호스트별 승인 필요).",
       "readProbe": "AI 읽기 전용 탐색(호스트 파일 및 디렉터리 읽기)",
-      "readProbeHint": "끄면 AI 도구 목록에서 '호스트 파일 읽기'와 '디렉터리 나열'이 빠지고 AI는 현재 터미널 출력의 끝부분만 읽을 수 있습니다. 다른 도구에는 영향이 없습니다. 이 기기에서만 적용되며 동기화되지 않습니다."
+      "readProbeHint": "끄면 AI 도구 목록에서 '호스트 파일 읽기'와 '디렉터리 나열'이 빠지고 AI는 현재 터미널 출력의 끝부분만 읽을 수 있습니다. 다른 도구에는 영향이 없습니다. 이 기기에서만 적용되며 동기화되지 않습니다.",
+      "execTimeout": "명령별 시간 초과(초)",
+      "execTimeoutHint": "단일 명령이 실행될 수 있는 시간입니다(초과하면 중단하고 채널을 닫습니다). 기본값 30초.",
+      "autoMaxSteps": "라운드당 명령 수",
+      "autoMaxStepsHint": "한 라운드에서 AI가 자동으로 실행할 수 있는 명령 수입니다. 기본값 10개.",
+      "autoMaxDuration": "라운드 총 시간 한도(초)",
+      "autoMaxDurationHint": "한 라운드가 총 얼마나 실행될 수 있는지입니다(도달하면 정지). 기본값 300초.",
+      "autoHosts": "자동 실행을 허용할 호스트",
+      "autoHostsHint": "기본적으로 어떤 호스트도 자동으로 명령을 실행할 수 없습니다. AI가 제안한 명령은 확인을 기다리며, 위험 등급 명령은 즉시 거부됩니다. 읽기 전용 명령만 자동으로 실행되고, 쓰기 명령은 아래에서 범주를 체크한 경우에만 실행됩니다.",
+      "autoHostsEmpty": "아직 호스트가 없습니다",
+      "autoHostToggleLabel": "{{name}} 자동 실행 허용",
+      "autoRevoke": "권한 취소",
+      "autoCategory": {
+        "package": "패키지 관리",
+        "service": "서비스 재시작",
+        "file": "파일 편집",
+        "git": "버전 관리 쓰기"
+      }
     },
     "followupPlaceholder": "추가 질문… (Enter로 전송, Shift+Enter로 줄바꿈)",
     "askEntry": "Ottr에게 묻기",
@@ -657,7 +675,11 @@
     "returnToOriginal": "원래 터미널로 돌아가기",
     "conversationReadonlyNotice": "연결이 다시 수립되었습니다: 아래 대화는 이전 연결에 속하며 읽기 전용입니다. 다시 묻으면 새 대화가 시작됩니다.",
     "newConversation": "새 대화",
-    "headerDisconnected": "연결 끊김"
+    "headerDisconnected": "연결 끊김",
+    "auto": {
+      "stepLimitReached": "한 라운드의 명령 한도({{count}}개)에 도달하여 이번 라운드에서는 추가 명령을 실행하지 않습니다.",
+      "durationLimitReached": "한 라운드의 시간 한도({{seconds}}초)에 도달하여 이번 라운드에서는 추가 명령을 실행하지 않습니다."
+    }
   },
   "tabs": {
     "duplicate": "탭 복제",

@@ -397,6 +397,29 @@
 .ai-provider-row > .ui-switch {
   flex: none;
 }
+/* 自动档授权面（2026-11-04 第三步）：逐主机的写类别勾选组。
+   勾选框用原生 checkbox——设置页的类别是多选控件（段控是单选，不适用）；
+   样式与本仓既有 checkbox 一致（见 06-import-dialog.css 同款）。 */
+.ai-auto-categories {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  flex: 1 1 100%;
+}
+.ai-auto-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.ai-auto-category input[type="checkbox"] {
+  accent-color: var(--color-accent);
+}
+.ai-provider-row[data-enabled="false"] .ai-auto-categories {
+  opacity: 0.55;
+}
 .ai-provider-row[data-disabled="true"] .ai-provider-name,
 .ai-provider-row[data-disabled="true"] .ai-provider-meta {
   opacity: 0.55;

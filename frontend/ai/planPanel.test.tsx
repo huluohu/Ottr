@@ -3,7 +3,7 @@
 //     tabindex——**不裸写 checkbox**，全仓守卫 ui-no-native-controls.test.ts）；
 //   * auto 档的「尚未启用」提示（本步不假装能用）；
 //   * 计划清单渲染：命令 + 危险徽章 + 状态点。
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -92,10 +92,13 @@ describe("状态行的模式切换", () => {
     expect(setModeSpy).toHaveBeenCalledWith("pane-a", "manual");
   });
 
-  it("auto 档显示「尚未启用」提示（不假装能用）", () => {
+  it("auto 档且该主机未授权 → 提示未授权（不假装能自动跑）", async () => {
+    // 第三步：自动档的前提是主机被授权（授权表默认全拒）——未授权时要说清。
     seed({ mode: "auto" });
     render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
-    expect(screen.getByTestId("ai-mode-auto-hint").textContent).toContain("尚未启用");
+    await waitFor(() =>
+      expect(screen.getByTestId("ai-mode-auto-hint").textContent).toContain("未授权"),
+    );
   });
 
   it("plan / manual 档不显示该提示", () => {

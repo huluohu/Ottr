@@ -7,6 +7,10 @@
 //!   security.rs / ssh_config.rs 模块——不再二次搬家（见 task-0 报告选型论证）；
 //! * Global Constraint「lib.rs 只减不增」：Phase 2 新命令一律进本目录对应域。
 pub mod ai_session;
+// 自动档策略命令域（Ask Ottr 执行模式第三步）：**命令分级器**（red 直接拒 /
+// 只读白名单 / 逃逸降级 / 写类别）+ 逐主机自动执行授权 CRUD。分级规则表与
+// frontend/ai/danger.ts 逐条对应（跨语言钉死测试）。
+pub mod ai_policy;
 pub mod encoding;
 // 端口转发命令域（Phase 2 Task 1，B7 上半）：ForwardManager + pf_* 命令 +
 // 会话断线/重连挂钩（Phase 2 新域，Global Constraint：新命令进本目录对应域）。

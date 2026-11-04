@@ -74,11 +74,15 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use ottr_vault::Vault;
+use ottr_vault::settings::Settings;
+use ottr_vault::{
+    AI_EXEC_TIMEOUT_MAX, AI_EXEC_TIMEOUT_MIN, AiHostPolicies, SETTING_AI_EXEC_TIMEOUT, Vault,
+};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::io::AsyncWriteExt;
 
+use super::ai_policy::{AiCommandClass, classify_command};
 use super::state::AppState;
 use crate::vault::VaultState;
 
@@ -105,7 +109,9 @@ const AI_SCOPE_MAX_PLAN_STEPS: usize = 128;
 /// 执行面单条命令的**消费侧硬超时**（秒）：超时 → 显式关闭 exec 通道
 /// （不留悬挂远端 shell）→ 结果按「超时」文案回灌模型。
 ///
-/// 与设计 §3.5 护栏表同值（单条命令超时 30s）。
+/// 与设计 §3.5 护栏表同值（单条命令超时 30s）。**可配**：设置项
+/// `ai.exec.timeout_secs`（写入侧范围校验 5..=300 秒，缺省 30）——用户
+/// 在设置页调小调大都生效；读不到（vault 锁 / 键缺）时用这个缺省值。
 const AI_SCOPE_EXEC_TIMEOUT: Duration = Duration::from_secs(30);
 /// 执行面单条输出的**上限**（字节，stdout / stderr 各自）：超限截断 +
 /// `truncated` 标记（与设计 §3.5 护栏表同值 64 KiB）。
@@ -193,8 +199,14 @@ pub struct AiScopeFile {
     pub truncated: bool,
 }
 
-/// 执行面：按模式分派的结果（plan / manual **均不执行**：`executed`
-/// 恒为 false，`planned` 恒为 true；`step_id` 是计划清单里的步骤 id）。
+/// 执行面：按模式分派的结果。
+///
+/// * plan / manual：**均不执行**（`executed` = false，`planned` = true；
+///   `step_id` 是计划清单里的步骤 id）；
+/// * **auto**（2026-11-04 第三步）：白名单命令**当场执行**（`executed` =
+///   true，结果在 `result` 里）；非白名单命令**降级**为逐条确认
+///   （`executed` = false，`downgrade_reason` 说明降级原因）；red 级命令
+///   **直接拒绝**（整个命令抛错，不产生本结构）。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct AiScopeExecOutcome {
@@ -202,6 +214,14 @@ pub struct AiScopeExecOutcome {
     pub planned: bool,
     pub step_id: String,
     pub message: String,
+    /// **自动档已执行时的结果**（退出码 / 输出 / 超时标记）：`None` = 未执行
+    /// （登记成待确认步骤）。
+    pub result: Option<AiScopeRunResult>,
+    /// **降级原因**（自动档把命令降级为逐条确认时给出）：`None` = 未降级。
+    ///
+    /// 降级不是失败——命令**没跑**，等用户点「执行」；原因要说清是
+    /// 「逃逸形态」「写类别未授权」还是「未识别的命令」。
+    pub downgrade_reason: Option<String>,
 }
 
 /// 档位升级的结果（[`ai_scope_upgrade_step`] 回包，2026-11-04 修补 I-1）。
@@ -306,6 +326,15 @@ struct AiPlanStep {
     /// `(scopeId, stepId, actionId)`——**没有 mode 参数**（前端在执行时传什么
     /// 档位都没用），故执行权只能由登记时落账的档位决定。
     mode: AiExecMode,
+    /// **自动档的后端放行结论**（2026-11-04 第三步）：true = 登记时后端已
+    /// 判定「该主机已授权 + 该命令在只读白名单或授权的写类别内」→ 允许
+    /// **不经用户确认**直接执行。
+    ///
+    /// 这个结论**只由后端写**（[`classify_command`] + 主机授权表的判定），
+    /// 前端无从伪造：自动档的放行判断是最后一道闸，不能交给调用方。
+    /// false + mode=auto → 执行面拒（「auto mode requires a backend-approved
+    /// command」）。
+    auto_approved: bool,
     /// **一次性消费标记**（执行面的 claim 面）：true = 该步骤已被执行过
     /// （或已被领走），二次调用即拒「already consumed」。
     consumed: bool,
@@ -1151,6 +1180,7 @@ fn register_plan_step(
     action_id: &str,
     command: &str,
     mode: AiExecMode,
+    auto_approved: bool,
 ) -> Result<String, String> {
     let mut plans = entry.plans.lock().unwrap();
     if let Some(existing) = plans.iter().find(|p| p.action_id == action_id) {
@@ -1167,6 +1197,7 @@ fn register_plan_step(
         action_id: action_id.to_string(),
         command: command.to_string(),
         mode,
+        auto_approved,
         consumed: false,
     });
     Ok(step_id)
@@ -1257,17 +1288,22 @@ async fn exec_scope(
     }
     // 作用域有效性**先于**模式判定（错误面一致：作用域无效就说作用域无效）。
     let entry = state.ai_scopes.valid(scope_id)?;
-    // 模式闸门在后端（档位由前端在登记时传上来、后端**原样落账**）：auto 未
-    // 启用 → 直接拒。
+    // 模式闸门在后端（档位由前端在登记时传上来、后端**原样落账**）。
     //
     // plan / manual **一律只登记**（零副作用：不开通道、不执行）——manual
     // 档登记后由用户在待确认卡点「执行」，前端再调 [`ai_scope_run_step`]。
+    //
+    // **auto 档**（2026-11-04 第三步）走独立的放行判定链：
+    // 主机授权 → 命令分级（red 直接拒 / 只读白名单 / 写类别 / 逃逸降级）→
+    // 放行则**立即执行**、否则降级为逐条确认。
     let message = match mode {
         AiExecMode::Plan => "recorded in the plan; not executed (plan mode)",
         AiExecMode::Manual => {
             "recorded for confirmation; not executed yet — run it after you confirm (manual mode)"
         }
-        AiExecMode::Auto => return Err("AI exec rejected: auto mode is not enabled yet".into()),
+        AiExecMode::Auto => {
+            return auto_exec_scope(state, vault, &entry, scope_id, action_id, command).await;
+        }
     };
     // 本地会话无执行权：只给只读上下文。
     if entry.target.kind == AiSessionKind::Local {
@@ -1282,13 +1318,134 @@ async fn exec_scope(
     // 纪律：claim 是 await 前的同步动作，重放并发也只放行一次）。
     state.ai_scopes.claim_action(&entry, action_id)?;
     // 只登记计划步骤：不开 exec 通道、不碰写端。档位随登记落账（执行面复核用）。
-    let step_id = register_plan_step(&entry, action_id, command, mode)?;
+    let step_id = register_plan_step(&entry, action_id, command, mode, false)?;
     Ok(AiScopeExecOutcome {
         executed: false,
         planned: true,
         step_id,
         message: message.to_string(),
+        result: None,
+        downgrade_reason: None,
     })
+}
+
+/// **自动档的放行判定链**（后端唯一真源，2026-11-04 第三步）。
+///
+/// 顺序（顺序不可换）：
+/// 1. 本地会话 → 拒（本地不给 AI 执行权）；
+/// 2. 运行时身份复核 → 拒（连接被替换/移除）；
+/// 3. **主机授权**（`ai_host_policies.auto_enabled`）：未授权 → 拒
+///    （默认全拒——没有授权行 = 该主机不允许 AI 自动执行任何命令）；
+/// 4. **命令分级**（[`classify_command`]）：
+///    * red → **直接拒绝**（不登记、不降级）；
+///    * 只读白名单 → **放行**（立即执行）；
+///    * 写操作且该主机授权了对应类别 → **放行**；
+///    * 逃逸形态 / 未知命令 / 未授权的写类别 → **降级为逐条确认**
+///      （登记成 manual 档步骤，等用户点「执行」）；
+/// 5. 放行路径：登记一条 **auto 档且后端已放行**的步骤，再走**与手动档
+///    同一条**执行路径（同一套九道闸门 + 消费侧硬超时 + 64 KiB 截断）。
+async fn auto_exec_scope(
+    state: &AppState,
+    vault: &Vault,
+    entry: &Arc<AiScopeRegistryEntry>,
+    scope_id: &str,
+    action_id: &str,
+    command: &str,
+) -> Result<AiScopeExecOutcome, String> {
+    // 1. 本地会话无执行权。
+    if entry.target.kind == AiSessionKind::Local {
+        return Err(
+            "AI exec rejected: local terminal sessions never grant AI execution rights".into(),
+        );
+    }
+    // 2. 运行时身份复核。
+    verify_runtime(state, entry, "exec")?;
+    // 3. 主机授权（默认全拒）。
+    let host_id = entry
+        .target
+        .host_id
+        .ok_or_else(|| "AI exec rejected: auto mode needs a host-bound scope".to_string())?;
+    let policy = AiHostPolicies::get_for_host(vault, host_id)
+        .map_err(|e| format!("AI exec rejected: cannot read the host policy: {e}"))?;
+    let policy = match policy {
+        Some(p) if p.auto_enabled => p,
+        _ => {
+            return Err(format!(
+                "AI exec rejected: auto mode is not authorized for host {host_id} \
+                 (enable it in Settings → AI → Hosts allowed to run automatically)"
+            ));
+        }
+    };
+    // 4. 命令分级（red 直接拒；只读/授权类别放行；其余降级）。
+    let verdict = classify_command(command);
+    let auto_approved = match verdict.class {
+        AiCommandClass::Red => {
+            // ★ red：直接拒绝——**不登记、不降级**（降级成「等你确认」等于
+            // 把灾难级命令交给用户随手一点，设计裁定是直接拒）。
+            return Err(format!(
+                "AI exec rejected: blocked by the auto-mode safety rules ({})",
+                verdict.reason
+            ));
+        }
+        AiCommandClass::ReadOnly => true,
+        AiCommandClass::Write(cat) => policy.write_categories.contains(&cat),
+        AiCommandClass::Escape | AiCommandClass::Unknown => false,
+    };
+    // 一次性消费 actionId（登记之前 claim——同款纪律）。
+    state.ai_scopes.claim_action(entry, action_id)?;
+    if !auto_approved {
+        // 降级：登记成 **manual 档**步骤（用户点「执行」才真跑）。
+        let step_id = register_plan_step(entry, action_id, command, AiExecMode::Manual, false)?;
+        let reason = if matches!(verdict.class, AiCommandClass::Write(_)) {
+            format!(
+                "{}: write category not authorized for this host — downgraded to confirmation",
+                verdict.reason
+            )
+        } else {
+            format!("{}: downgraded to confirmation", verdict.reason)
+        };
+        return Ok(AiScopeExecOutcome {
+            executed: false,
+            planned: true,
+            step_id,
+            message: format!(
+                "auto mode downgraded this command to manual confirmation ({reason}) — \
+                 it has NOT been executed"
+            ),
+            result: None,
+            downgrade_reason: Some(reason),
+        });
+    }
+    // 5. 放行：登记成 auto 档（后端已放行）→ 走同一条执行路径。
+    let step_id = register_plan_step(entry, action_id, command, AiExecMode::Auto, true)?;
+    let result = run_step_scope(
+        state,
+        vault,
+        scope_id,
+        &step_id,
+        action_id,
+        exec_timeout(vault),
+    )
+    .await?;
+    Ok(AiScopeExecOutcome {
+        executed: true,
+        planned: false,
+        step_id,
+        message: format!("auto mode executed the command ({})", verdict.reason),
+        result: Some(result),
+        downgrade_reason: None,
+    })
+}
+
+/// 执行面单条命令超时（秒）：读设置 `ai.exec.timeout_secs`（缺省 30）。
+/// 读不到（vault 锁 / 键缺 / 值非法）→ 用缺省值——**不让配置问题变成执行
+/// 面故障**。
+fn exec_timeout(vault: &Vault) -> Duration {
+    let secs = Settings::get_u64(vault, SETTING_AI_EXEC_TIMEOUT)
+        .ok()
+        .flatten()
+        .unwrap_or(AI_SCOPE_EXEC_TIMEOUT.as_secs());
+    Duration::from_secs(secs.clamp(AI_EXEC_TIMEOUT_MIN, AI_EXEC_TIMEOUT_MAX))
 }
 
 /// 档位升级面：把一条 **plan 档登记**的步骤升级为 **manual 档**（2026-11-04
@@ -1385,7 +1542,13 @@ async fn upgrade_step_scope(
     // 10. 一次性消费新 actionId（await 前的同步动作）→ 再登记新步骤。
     //     「同一个 actionId 第二次升级即拒」（作用域动作账本）。
     state.ai_scopes.claim_action(&entry, action_id)?;
-    let step_id = register_plan_step(&entry, action_id, &source.command, AiExecMode::Manual)?;
+    let step_id = register_plan_step(
+        &entry,
+        action_id,
+        &source.command,
+        AiExecMode::Manual,
+        false,
+    )?;
     Ok(AiScopeUpgradeOutcome {
         step_id,
         action_id: action_id.to_string(),
@@ -1439,7 +1602,9 @@ async fn run_step_scope(
     })?;
     // 4. 档位判定（按**登记时落账的档位**——不是会话当前档位；档位本身由
     //    前端登记时落账，「用户已确认」这一环后端无从核验，见设计文档 §3.6）：
-    //    manual 才继续。
+    //    manual 才继续；auto 档**仅限后端已判定放行的那条**
+    //    （`auto_approved` = 登记时后端按「主机已授权 + 命令在白名单/授权
+    //    类别内」判定的结论——自动档的放行判断只在后端做）。
     match step.mode {
         AiExecMode::Manual => {}
         AiExecMode::Plan => {
@@ -1449,7 +1614,11 @@ async fn run_step_scope(
             );
         }
         AiExecMode::Auto => {
-            return Err("AI run rejected: auto mode is not enabled yet".into());
+            if !step.auto_approved {
+                return Err(
+                    "AI run rejected: auto mode requires a backend-approved command".into(),
+                );
+            }
         }
     }
     // 5. 本地会话无执行权（本地是用户自己的机器与交互 shell）。
@@ -1700,7 +1869,9 @@ mod tests {
 
     use ottr_ssh::AuthMethod;
     use ottr_term::encoding::{Encoding, StreamDecoder};
-    use ottr_vault::{HostInput, HostProtocol, Hosts, master_key::InMemoryStorage};
+    use ottr_vault::{
+        AiWriteCategory, HostInput, HostProtocol, Hosts, master_key::InMemoryStorage,
+    };
     use portable_pty::{NativePtySystem, PtySize, PtySystem};
     use tauri::ipc::{Channel, InvokeResponseBody};
 
@@ -2577,13 +2748,13 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.contains("AI scope not found"), "{err}");
-        // 有效 scope + auto → 报 auto 未启用
+        // 有效 scope + auto → 报「该主机未授权自动执行」（授权表默认全拒）
         let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(42)));
         let err = f
             .exec(&scope, "action-3", "whoami", AiExecMode::Auto)
             .await
             .unwrap_err();
-        assert!(err.contains("auto mode is not enabled yet"), "{err}");
+        assert!(err.contains("not authorized"), "{err}");
     }
 
     /// 未知 mode 在反序列化面即被拒（后端不接受"未知 mode"）。
@@ -2817,12 +2988,205 @@ mod tests {
             planned: true,
             step_id: "ai-step-x".into(),
             message: "m".into(),
+            result: None,
+            downgrade_reason: None,
         };
         let json = serde_json::to_value(&outcome).unwrap();
         assert_eq!(json["executed"], false);
         assert_eq!(json["planned"], true);
         assert_eq!(json["stepId"], "ai-step-x");
         assert_eq!(json["message"], "m");
+    }
+
+    // -----------------------------------------------------------------------
+    // Ask Ottr 执行模式 · 第三步（Auto 档）：授权 + 分级 + 自动执行/降级/拒
+    // -----------------------------------------------------------------------
+
+    /// 建一台主机并写入自动执行授权（`auto_enabled` + 允许的写类别）。
+    fn authorized_host(f: &Fixture, categories: Vec<AiWriteCategory>) -> i64 {
+        let host = Hosts::create(&f.vault, host_input("auto fixture")).unwrap();
+        AiHostPolicies::upsert(
+            &f.vault,
+            &ottr_vault::AiHostPolicyInput {
+                host_id: host.id,
+                auto_enabled: true,
+                write_categories: categories,
+            },
+        )
+        .unwrap();
+        host.id
+    }
+
+    /// **默认全拒**：没授权的主机 → 自动档**直接拒**（零执行）。
+    #[tokio::test]
+    async fn auto_mode_rejects_hosts_without_authorization() {
+        let f = Fixture::new();
+        let host = Hosts::create(&f.vault, host_input("no policy")).unwrap();
+        let ssh = f.ssh(Some(host.id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host.id)));
+        let err = f
+            .exec(&scope, "action-1", "ls -la", AiExecMode::Auto)
+            .await
+            .unwrap_err();
+        assert!(err.contains("not authorized"), "{err}");
+        assert_eq!(
+            ssh.execs.lock().unwrap().len(),
+            0,
+            "未授权主机零执行（授权表默认全拒）"
+        );
+    }
+
+    /// **只读白名单 → 自动执行**：mock sshd 的 exec-request **恰好 +1**、
+    /// 命令原文一致、结果回传。
+    #[tokio::test]
+    async fn auto_mode_executes_read_only_commands_without_confirmation() {
+        let f = Fixture::new();
+        let host_id = authorized_host(&f, vec![]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+        let outcome = f
+            .exec(&scope, "action-1", "ls -la", AiExecMode::Auto)
+            .await
+            .unwrap();
+        assert!(outcome.executed, "只读命令在自动档应直接执行");
+        assert!(!outcome.planned);
+        assert!(outcome.result.is_some(), "自动执行必须回传结果");
+        assert_eq!(
+            *ssh.execs.lock().unwrap(),
+            vec!["ls -la".to_string()],
+            "命令原文必须逐字一致"
+        );
+        assert_eq!(outcome.result.as_ref().unwrap().exit_code, Some(0));
+    }
+
+    /// **red 级 → 直接拒绝**（不登记、不降级、不执行）。
+    #[tokio::test]
+    async fn auto_mode_rejects_red_commands_outright() {
+        let f = Fixture::new();
+        let host_id = authorized_host(&f, vec![AiWriteCategory::File]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+        let err = f
+            .exec(&scope, "action-1", "rm -rf /", AiExecMode::Auto)
+            .await
+            .unwrap_err();
+        assert!(err.contains("safety rules"), "{err}");
+        assert_eq!(
+            ssh.execs.lock().unwrap().len(),
+            0,
+            "red 命令零执行（直接拒，不降级成「等你确认」）"
+        );
+    }
+
+    /// **逃逸形态 → 降级为逐条确认**（不执行；登记成 manual 档步骤）。
+    #[tokio::test]
+    async fn auto_mode_downgrades_escape_forms_to_confirmation() {
+        let f = Fixture::new();
+        let host_id = authorized_host(&f, vec![]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+        let outcome = f
+            .exec(
+                &scope,
+                "action-1",
+                "cat /etc/passwd > /tmp/x",
+                AiExecMode::Auto,
+            )
+            .await
+            .unwrap();
+        assert!(!outcome.executed, "逃逸形态不得自动执行");
+        assert!(outcome.planned);
+        assert!(
+            outcome.downgrade_reason.is_some(),
+            "降级必须说明原因: {:?}",
+            outcome.downgrade_reason
+        );
+        assert_eq!(ssh.execs.lock().unwrap().len(), 0, "降级路径零执行");
+    }
+
+    /// **写操作**：类别**未授权** → 降级；类别**已授权** → 自动执行。
+    #[tokio::test]
+    async fn auto_mode_write_commands_depend_on_the_authorized_category() {
+        let f = Fixture::new();
+        // 只授权「服务重启」这一类。
+        let host_id = authorized_host(&f, vec![AiWriteCategory::Service]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+
+        // 包管理（未授权类别）→ 降级。
+        let downgraded = f
+            .exec(&scope, "action-1", "apt install nginx", AiExecMode::Auto)
+            .await
+            .unwrap();
+        assert!(!downgraded.executed, "未授权的写类别必须降级");
+        assert_eq!(ssh.execs.lock().unwrap().len(), 0);
+
+        // 服务重启（已授权类别）→ 自动执行。
+        let executed = f
+            .exec(
+                &scope,
+                "action-2",
+                "systemctl restart nginx",
+                AiExecMode::Auto,
+            )
+            .await
+            .unwrap();
+        assert!(executed.executed, "已授权的写类别应自动执行");
+        assert_eq!(
+            *ssh.execs.lock().unwrap(),
+            vec!["systemctl restart nginx".to_string()]
+        );
+    }
+
+    /// **未识别的命令 → 降级**（不认识 = 不放行）。
+    #[tokio::test]
+    async fn auto_mode_downgrades_unknown_commands() {
+        let f = Fixture::new();
+        let host_id = authorized_host(&f, vec![AiWriteCategory::File]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+        let outcome = f
+            .exec(&scope, "action-1", "frobnicate --all", AiExecMode::Auto)
+            .await
+            .unwrap();
+        assert!(!outcome.executed);
+        assert!(outcome.downgrade_reason.is_some());
+        assert_eq!(ssh.execs.lock().unwrap().len(), 0);
+    }
+
+    /// **本地会话 → 拒绝**（本地不给 AI 执行权；自动档也不例外）。
+    #[tokio::test]
+    async fn auto_mode_rejects_local_sessions() {
+        let f = Fixture::new();
+        let local = f.local("local-1");
+        let scope = f.open(f.target("local-1", AiSessionKind::Local, None));
+        let err = f
+            .exec(&scope, "action-1", "ls", AiExecMode::Auto)
+            .await
+            .unwrap_err();
+        assert!(err.contains("local terminal"), "{err}");
+        assert!(local.lock().unwrap().is_empty());
+    }
+
+    /// **降级路径产出的步骤可以在手动档执行**（降级不是死路：用户点「执行」
+    /// 就真跑——那正是「降级为逐条确认」的定义）。
+    #[tokio::test]
+    async fn auto_mode_downgraded_step_runs_after_user_confirmation() {
+        let f = Fixture::new();
+        let host_id = authorized_host(&f, vec![]);
+        let ssh = f.ssh(Some(host_id), "user").await;
+        let scope = f.open(f.target(&ssh.id, AiSessionKind::Ssh, Some(host_id)));
+        let outcome = f
+            .exec(&scope, "action-1", "rm /tmp/x", AiExecMode::Auto)
+            .await
+            .unwrap();
+        assert!(!outcome.executed);
+        let result = f
+            .run_step(&scope, &outcome.step_id, "action-1", Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert!(result.executed);
+        assert_eq!(*ssh.execs.lock().unwrap(), vec!["rm /tmp/x".to_string()]);
     }
 
     // -----------------------------------------------------------------------

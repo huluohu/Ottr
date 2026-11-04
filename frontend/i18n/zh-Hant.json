@@ -533,7 +533,8 @@
       "plan": "規劃",
       "auto": "自動",
       "manual": "手動",
-      "autoNotEnabled": "自動模式尚未啟用"
+      "autoNotAuthorized": "該主機未授權自動執行（設定 → AI → 允許自動執行的主機）",
+      "autoLocalDenied": "本地終端會話不給 AI 執行權（只給唯讀上下文）"
     },
     "plan": {
       "title": "計劃步驟",
@@ -644,7 +645,24 @@
       "defaultExecMode": "新對話預設執行模式",
       "defaultExecModeHint": "新建對話時的預設執行模式。規劃模式只產出計劃、不執行任何命令；手動模式下每條命令都要你點「執行」才會真正執行；自動模式尚未開放（需逐主機授權）。",
       "readProbe": "AI 只讀探查（讀取主機檔案與目錄）",
-      "readProbeHint": "關閉後，AI 工具目錄不再有「讀取主機檔案」與「列出目錄」，AI 只能讀目前終端的輸出尾端。其餘工具不受影響。本機生效，不跨裝置同步。"
+      "readProbeHint": "關閉後，AI 工具目錄不再有「讀取主機檔案」與「列出目錄」，AI 只能讀目前終端的輸出尾端。其餘工具不受影響。本機生效，不跨裝置同步。",
+      "execTimeout": "單條命令逾時（秒）",
+      "execTimeoutHint": "單條命令最多跑多久，逾時就中止並關閉通道。預設 30 秒。",
+      "autoMaxSteps": "單輪命令步數上限",
+      "autoMaxStepsHint": "一輪裡 AI 最多自動跑幾條命令。預設 10 條。",
+      "autoMaxDuration": "單輪總時長上限（秒）",
+      "autoMaxDurationHint": "一輪最多跑多久，到點即停。預設 300 秒。",
+      "autoHosts": "允許自動執行的主機",
+      "autoHostsHint": "預設任何主機都不允許自動執行：模型提出的命令要你逐條確認，紅檔命令直接拒絕。只有唯讀命令會自動執行，寫操作需在下面勾選類別才自動執行。",
+      "autoHostsEmpty": "還沒有主機",
+      "autoHostToggleLabel": "允許 {{name}} 自動執行",
+      "autoRevoke": "回收授權",
+      "autoCategory": {
+        "package": "包管理",
+        "service": "服務重啟",
+        "file": "檔案編輯",
+        "git": "版本控制寫操作"
+      }
     },
     "followupPlaceholder": "追問…（Enter 送出，Shift+Enter 換行）",
     "askEntry": "問 Ottr",
@@ -656,7 +674,11 @@
     "returnToOriginal": "回到原終端機",
     "conversationReadonlyNotice": "連線已重開：以下對話屬於舊連線，僅供查看。再次提問將開始新對話。",
     "newConversation": "新對話",
-    "headerDisconnected": "已斷線"
+    "headerDisconnected": "已斷線",
+    "auto": {
+      "stepLimitReached": "已到單輪命令上限（{{count}} 條），本輪不再執行更多命令。",
+      "durationLimitReached": "已到單輪時長上限（{{seconds}} 秒），本輪不再執行更多命令。"
+    }
   },
   "tabs": {
     "duplicate": "複製頁籤",

@@ -534,7 +534,8 @@
       "plan": "Pianifica",
       "auto": "Automatico",
       "manual": "Manuale",
-      "autoNotEnabled": "La modalità automatica non è ancora abilitata"
+      "autoNotAuthorized": "Questo host non è autorizzato all'esecuzione automatica (Impostazioni → AI → Host autorizzati all'esecuzione automatica)",
+      "autoLocalDenied": "Le sessioni terminale locali non concedono mai diritti di esecuzione all'IA (solo contesto di lettura)"
     },
     "plan": {
       "title": "Passaggi del piano",
@@ -645,7 +646,24 @@
       "defaultExecMode": "Modalità di esecuzione predefinita per le nuove conversazioni",
       "defaultExecModeHint": "La modalità di esecuzione con cui iniziano le nuove conversazioni. La modalità di pianificazione produce solo un piano ed esegue nessun comando; in modalità manuale ogni comando viene eseguito solo dopo aver premuto Esegui; la modalità automatica non è ancora abilitata (richiede l'autorizzazione per host).",
       "readProbe": "Esplorazione in sola lettura dell'IA (lettura di file e directory dell'host)",
-      "readProbeHint": "Se disattivato, il catalogo degli strumenti IA non offre più la lettura dei file dell'host né l'elenco delle directory; l'IA può leggere solo la coda dell'output del terminale corrente. Gli altri strumenti non ne risentono. Solo su questo dispositivo; non viene sincronizzato."
+      "readProbeHint": "Se disattivato, il catalogo degli strumenti IA non offre più la lettura dei file dell'host né l'elenco delle directory; l'IA può leggere solo la coda dell'output del terminale corrente. Gli altri strumenti non ne risentono. Solo su questo dispositivo; non viene sincronizzato.",
+      "execTimeout": "Timeout per comando (secondi)",
+      "execTimeoutHint": "Per quanto può girare un singolo comando prima di essere interrotto e con il canale chiuso. 30 secondi per impostazione predefinita.",
+      "autoMaxSteps": "Comandi per turno",
+      "autoMaxStepsHint": "Quanti comandi l'IA può eseguire da sola in un turno. 10 per impostazione predefinita.",
+      "autoMaxDuration": "Durata totale per turno (secondi)",
+      "autoMaxDurationHint": "Per quanto può durare un turno in totale prima di fermarsi. 300 secondi per impostazione predefinita.",
+      "autoHosts": "Host autorizzati all'esecuzione automatica",
+      "autoHostsHint": "Per impostazione predefinita nessun host può eseguire comandi automaticamente: i comandi proposti dall'IA attendono la tua conferma e quelli di livello rosso vengono rifiutati. Solo i comandi di sola lettura si eseguono automaticamente; quelli che scrivono, solo per le categorie che spunti qui sotto.",
+      "autoHostsEmpty": "Ancora nessun host",
+      "autoHostToggleLabel": "Consenti l'esecuzione automatica su {{name}}",
+      "autoRevoke": "Revoca",
+      "autoCategory": {
+        "package": "Gestione pacchetti",
+        "service": "Riavvio servizi",
+        "file": "Modifica file",
+        "git": "Scritture di controllo versione"
+      }
     },
     "followupPlaceholder": "Fai una domanda di follow-up… (Invio per inviare, Shift+Invio per andare a capo)",
     "askEntry": "Chiedi a Ottr",
@@ -657,7 +675,11 @@
     "returnToOriginal": "Torna al terminale originale",
     "conversationReadonlyNotice": "La connessione è stata ristabilita: la conversazione seguente appartiene alla vecchia connessione ed è di sola lettura. Chiedere di nuovo avvia una nuova conversazione.",
     "newConversation": "Nuova conversazione",
-    "headerDisconnected": "Disconnesso"
+    "headerDisconnected": "Disconnesso",
+    "auto": {
+      "stepLimitReached": "Raggiunto il limite di comandi per turno ({{count}}); in questo turno non sono stati eseguiti altri comandi.",
+      "durationLimitReached": "Raggiunto il limite di tempo per turno ({{seconds}} s); in questo turno non sono stati eseguiti altri comandi."
+    }
   },
   "tabs": {
     "duplicate": "Duplica scheda",

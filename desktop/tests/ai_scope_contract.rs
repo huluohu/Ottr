@@ -82,6 +82,25 @@ fn ask_ottr_execution_mode_commands_are_registered() {
     }
 }
 
+/// 第三步（自动档）的**主机授权面**命令必须在册：
+/// 前端设置页与面板都靠它们读写授权（`ai_policy_get/set/list/delete`）。
+/// 漏注册 = 设置页写不进去、面板判不出「未授权」。
+#[test]
+fn auto_mode_policy_commands_are_registered() {
+    let registered = registered_commands();
+    for command in [
+        "ai_policy_get",
+        "ai_policy_set",
+        "ai_policy_list",
+        "ai_policy_delete",
+    ] {
+        assert!(
+            registered.iter().any(|c| c == command),
+            "unregistered command: {command}"
+        );
+    }
+}
+
 /// 既有四个作用域命令不得被本步改名/摘除（回归锚点）。
 #[test]
 fn existing_ai_scope_commands_stay_registered() {

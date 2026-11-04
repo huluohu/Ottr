@@ -15,6 +15,9 @@ import { useEscClose } from "../ui/useEscClose";
 import { createProvider, type ProviderMeta } from "./provider";
 import type { RedactRule } from "./redact";
 import {
+  DEFAULT_AUTO_MAX_DURATION_SECS,
+  DEFAULT_AUTO_MAX_STEPS,
+  DEFAULT_EXEC_TIMEOUT_SECS,
   DEFAULT_MAX_TOKENS,
   apiKeySecretKey,
   loadAiSettings,
@@ -34,6 +37,9 @@ import {
   type AiExecMode,
 } from "./aiModes";
 import { readAiReadProbeEnabled, writeAiReadProbeEnabled } from "./aiReadProbe";
+import type { AiWriteCategory } from "./sessionApi";
+import { useAiPolicyStore } from "./aiPolicyStore";
+import type { Host } from "../vault/api";
 
 export interface AISettingsProps {
   open: boolean;
@@ -46,6 +52,14 @@ export interface AISettingsProps {
 }
 
 const MAX_TOKENS_LIMIT = 8192; // Rust AI_MAX_TOKENS_LIMIT 同口径（写入侧校验）
+
+/** 可自动执行的写操作类别（与 Rust 侧 `AiWriteCategory` 同口径）。 */
+const AI_WRITE_CATEGORIES: { value: AiWriteCategory; label: string }[] = [
+  { value: "package", label: "package" },
+  { value: "service", label: "service" },
+  { value: "file", label: "file" },
+  { value: "git", label: "git" },
+];
 
 interface ProviderDraft {
   id: string;
@@ -121,6 +135,14 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
    *  （不进 vault/不同步——「关掉」是本机的隐私选择，不该传播到别的机器）。
    *  默认开；关掉后「读文件 / 列目录」两个内建工具不进 AI 工具目录。 */
   const [readProbe, setReadProbe] = useState<boolean>(readAiReadProbeEnabled);
+  /** 自动档授权面（2026-11-04 第三步）：主机列表 + 每主机的授权行
+   *  （授权行取自共享 store —— 设置页与面板读同一份）。 */
+  const [hosts, setHosts] = useState<Host[]>([]);
+  const policies = useAiPolicyStore((s) => s.policies);
+  /** 执行护栏（第三步）：单条超时 / 单轮步数 / 单轮总时长。 */
+  const [execTimeoutSecs, setExecTimeoutSecs] = useState(DEFAULT_EXEC_TIMEOUT_SECS);
+  const [autoMaxSteps, setAutoMaxSteps] = useState(DEFAULT_AUTO_MAX_STEPS);
+  const [autoMaxDurationSecs, setAutoMaxDurationSecs] = useState(DEFAULT_AUTO_MAX_DURATION_SECS);
   const [draft, setDraft] = useState<ProviderDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   // 关闭交互统一（2026-10-30 栈式收口）：独立弹窗形态（!embedded）走
@@ -149,13 +171,51 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
         setEnabled(s.enabled);
         setSummaryEnabled(s.summaryEnabled);
         setMaxTokens(s.maxTokens);
+        setExecTimeoutSecs(s.execTimeoutSecs);
+        setAutoMaxSteps(s.autoMaxSteps);
+        setAutoMaxDurationSecs(s.autoMaxDurationSecs);
       } catch {
         // 非 Tauri 环境 / 后端不可达：保持默认值（改动时报错）
+      }
+      // 自动档授权面（第三步）：主机清单 + 已授权主机（缺失 = 未授权 = 默认拒）。
+      try {
+        const hostList = await vaultApi.hosts.list();
+        // 后端回的不是数组（老版本后端 / 测试桩）→ 当空列表处理，**不崩**。
+        setHosts(Array.isArray(hostList) ? hostList : []);
+      } catch {
+        // 后端不可达：主机清单保持空
+      }
+      try {
+        await useAiPolicyStore.getState().refresh();
+      } catch {
+        // 后端不可达：授权面保持空（= 没有主机被授权）
       }
     })();
   }, [open]);
 
   if (!open) return null;
+
+  /** 改某主机的自动执行授权（开关 / 写类别）——落库后更新共享态。 */
+  async function persistPolicy(
+    hostId: number,
+    autoEnabled: boolean,
+    writeCategories: AiWriteCategory[],
+  ) {
+    try {
+      await useAiPolicyStore.getState().save(hostId, autoEnabled, writeCategories);
+    } catch (e) {
+      setFormError(String(e));
+    }
+  }
+
+  /** 回收某主机的自动执行权（回到默认拒）。 */
+  async function revokePolicy(hostId: number) {
+    try {
+      await useAiPolicyStore.getState().revoke(hostId);
+    } catch (e) {
+      setFormError(String(e));
+    }
+  }
 
   async function persistProviders(next: ProviderMeta[]) {
     setProviders(next);
@@ -369,6 +429,63 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
           {/* AI 只读探查总开关（2026-11-04 修补 B3）：关掉后「读文件 / 列
               目录」两个内建工具**不进 AI 工具目录**（模型看不到它们），其余
               工具（读输出尾 / 执行类 / 外部 MCP）不受影响。本机偏好。 */}
+          {/* 执行护栏（2026-11-04 第三步）：三个数值都是「本机执行面」的
+              上限，落 vault settings（跟着同步走——护栏是安全上限，不是
+              个性偏好；跨设备一致更安全）。写入侧范围校验在 Rust。 */}
+          <label className="settings-row">
+            <span className="settings-label">{t("ai.settings.execTimeout")}</span>
+            <InfoHint text={t("ai.settings.execTimeoutHint")} />
+            <input
+              type="number"
+              min={5}
+              max={300}
+              data-testid="ai-exec-timeout"
+              value={execTimeoutSecs}
+              onChange={(e) => {
+                const n = Math.min(300, Math.max(5, Number(e.currentTarget.value) || DEFAULT_EXEC_TIMEOUT_SECS));
+                setExecTimeoutSecs(n);
+                void vaultApi.settings
+                  .set("ai.exec.timeout_secs", n)
+                  .catch((err) => setFormError(String(err)));
+              }}
+            />
+          </label>
+          <label className="settings-row">
+            <span className="settings-label">{t("ai.settings.autoMaxSteps")}</span>
+            <InfoHint text={t("ai.settings.autoMaxStepsHint")} />
+            <input
+              type="number"
+              min={1}
+              max={100}
+              data-testid="ai-auto-max-steps"
+              value={autoMaxSteps}
+              onChange={(e) => {
+                const n = Math.min(100, Math.max(1, Number(e.currentTarget.value) || DEFAULT_AUTO_MAX_STEPS));
+                setAutoMaxSteps(n);
+                void vaultApi.settings
+                  .set("ai.auto.max_steps", n)
+                  .catch((err) => setFormError(String(err)));
+              }}
+            />
+          </label>
+          <label className="settings-row">
+            <span className="settings-label">{t("ai.settings.autoMaxDuration")}</span>
+            <InfoHint text={t("ai.settings.autoMaxDurationHint")} />
+            <input
+              type="number"
+              min={30}
+              max={3600}
+              data-testid="ai-auto-max-duration"
+              value={autoMaxDurationSecs}
+              onChange={(e) => {
+                const n = Math.min(3600, Math.max(30, Number(e.currentTarget.value) || DEFAULT_AUTO_MAX_DURATION_SECS));
+                setAutoMaxDurationSecs(n);
+                void vaultApi.settings
+                  .set("ai.auto.max_duration_secs", n)
+                  .catch((err) => setFormError(String(err)));
+              }}
+            />
+          </label>
           <label className="settings-row">
             <span className="settings-label">{t("ai.settings.readProbe")}</span>
             <InfoHint text={t("ai.settings.readProbeHint")} />
@@ -382,6 +499,85 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
               }}
             />
           </label>
+        </section>
+
+        {/* --- 自动档授权面（2026-11-04 第三步） ---
+            逐主机：开「自动」+ 勾选允许直接执行的写操作类别。
+            **默认全拒**：没在这里开的主机，AI 的自动档不可用（模型提出的
+            命令会降级成逐条确认，红档命令直接拒）。写类别全不勾 = 只有只读
+            命令能自动跑。 */}
+        <section
+          aria-label={t("ai.settings.autoHosts")}
+          data-testid="ai-auto-hosts-section"
+        >
+          <h3 className="ai-providers-head">
+            <span>{t("ai.settings.autoHosts")}</span>
+            <InfoHint text={t("ai.settings.autoHostsHint")} />
+          </h3>
+          {hosts.length === 0 && (
+            <p className="settings-hint" data-testid="ai-auto-hosts-empty">
+              {t("ai.settings.autoHostsEmpty")}
+            </p>
+          )}
+          <ul className="ai-provider-list">
+            {hosts.map((h) => {
+              const policy = policies.find((p) => p.hostId === h.id);
+              const enabled = policy?.autoEnabled === true;
+              const cats = policy?.writeCategories ?? [];
+              return (
+                <li
+                  key={h.id}
+                  className="ai-provider-row"
+                  data-testid={`ai-auto-host-${h.id}`}
+                  data-enabled={enabled ? "true" : "false"}
+                >
+                  <Switch
+                    testid={`ai-auto-host-toggle-${h.id}`}
+                    checked={enabled}
+                    label={t("ai.settings.autoHostToggleLabel", { name: h.name })}
+                    onChange={(e) =>
+                      void persistPolicy(h.id, e.currentTarget.checked, cats)
+                    }
+                  />
+                  <span className="ai-provider-name">{h.name}</span>
+                  <span className="ai-provider-meta">
+                    {h.username ? `${h.username}@` : ""}
+                    {h.address}:{h.port}
+                  </span>
+                  <span className="ai-auto-categories" data-testid={`ai-auto-cats-${h.id}`}>
+                    {AI_WRITE_CATEGORIES.map((c) => (
+                      <label key={c.value} className="ai-auto-category">
+                        <input
+                          type="checkbox"
+                          data-testid={`ai-auto-cat-${c.value}-${h.id}`}
+                          checked={cats.includes(c.value)}
+                          disabled={!enabled}
+                          onChange={(e) => {
+                            const next = e.currentTarget.checked
+                              ? [...cats, c.value]
+                              : cats.filter((x) => x !== c.value);
+                            void persistPolicy(h.id, enabled, next);
+                          }}
+                        />
+                        <span>{t(`ai.settings.autoCategory.${c.value}`)}</span>
+                      </label>
+                    ))}
+                  </span>
+                  {policy && (
+                    <span className="ai-provider-actions">
+                      <button
+                        className="btn-ghost btn-compact"
+                        data-testid={`ai-auto-revoke-${h.id}`}
+                        onClick={() => void revokePolicy(h.id)}
+                      >
+                        {t("ai.settings.autoRevoke")}
+                      </button>
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </section>
 
         {/* --- Provider 列表 --- */}

@@ -78,7 +78,7 @@ import {
   loadAiSettings,
   type AiSettings,
 } from "./settings";
-import { aiSessionApi, type AiScope } from "./sessionApi";
+import { aiSessionApi, type AiScope, type AiScopeRunResult } from "./sessionApi";
 import {
   captureAiTarget,
   isAiTargetLive,
@@ -702,6 +702,21 @@ export interface HostToolOutcome {
  * * `planned = true && executed = false` → 「已记入计划，暂不执行」（进清单）；
  * * 两者皆假 / 调用被拒 → 「未执行（被拒绝）」（不进清单）。
  */
+/**
+ * 自动档已执行的结果 → 回灌给模型的文本（第三步）。
+ *
+ * **要带真实输出与退出码**：模型据此判断「命令跑成了没有、下一步做什么」；
+ * 只回一句「已执行」等于让模型瞎猜。
+ */
+function formatAutoExecResult(res: AiScopeRunResult): string {
+  const parts: string[] = [];
+  parts.push(res.timedOut ? i18n.t("ai.plan.timedOut") : `exit code: ${res.exitCode ?? "-"}`);
+  if (res.stdout) parts.push(`stdout:\n${res.stdout}`);
+  if (res.stderr) parts.push(`stderr:\n${res.stderr}`);
+  if (res.truncated) parts.push(i18n.t("ai.tool.truncated"));
+  return parts.join("\n");
+}
+
 export async function runHostTool(
   scope: AiScope,
   tool: HostToolName,
@@ -763,19 +778,32 @@ export async function runHostTool(
         };
         try {
           const outcome = await aiSessionApi.exec(scope.scopeId, ctx.actionId, command, ctx.mode);
-          // **已执行**（第三步 auto 档才会出现）：如实回灌，**不进**「待执行」
-          // 计划清单（它已经跑过了——清单是待执行步骤，不是执行日志）。
+          // **已执行**（第三步 auto 档才会出现）：结果**如实回灌**给模型
+          // （输出与退出码），**不进**「待执行」计划清单（它已经跑过了——
+          // 清单是待执行步骤，不是执行日志）。
           if (outcome.executed) {
-            return { content: i18n.t("ai.plan.executed") };
+            const res = outcome.result;
+            // 没有结果载荷（后端说执行了但没给结果——不该发生）→ 回落本地化
+            // 文案，**不把后端英文原文直接甩给模型**。
+            if (!res) return { content: i18n.t("ai.plan.executed") };
+            return { content: formatAutoExecResult(res) };
           }
           // **已记入计划、暂不执行**：进计划清单（这才是「待执行」的步骤）。
           if (outcome.planned) {
             const step: PlanStep = { ...local, id: outcome.stepId || local.id };
-            if (ctx.mode === "manual") {
-              // Manual 档：**登记即挂起**——命令一个字节都没跑，等用户点
-              // 「执行」才真跑（后端 run_step）。这次 tool call 先不答（见
-              // HostToolOutcome.deferred 的说明），处置时再回灌。
-              return { content: "", planStep: step, deferred: true };
+            // **自动档降级**（第三步）：后端把命令降级为逐条确认，并已按
+            // **手动档**登记（命令原文在登记簿里、档位=manual）→ 本地步骤也
+            // 标成 manual，用户点「执行」直接跑，**不需要**再升档。
+            const downgraded = outcome.downgradeReason != null;
+            if (ctx.mode === "manual" || downgraded) {
+              // Manual 档（含自动档降级）：**登记即挂起**——命令一个字节都
+              // 没跑，等用户点「执行」才真跑（后端 run_step）。这次 tool
+              // call 先不答（见 HostToolOutcome.deferred 的说明），处置时再回灌。
+              return {
+                content: "",
+                planStep: downgraded ? { ...step, registeredMode: "manual" } : step,
+                deferred: true,
+              };
             }
             return { content: i18n.t("ai.plan.planned"), planStep: step };
           }
@@ -976,6 +1004,9 @@ export const useAiStore = create<AiStore>((set, get) => {
       hostBindings: ReadonlyMap<string, HostToolBinding>;
       /** 已消耗的工具轮次（上限判定）。 */
       toolRounds: number;
+      /** **执行护栏**（第三步自动档）：单轮命令步数上限与单轮总时长上限。
+       *  超限即**不再执行**本轮后续命令，并把「已到上限」回灌给模型。 */
+      guardrails: { maxSteps: number; maxDurationMs: number };
       redactOpts: RedactOptions;
       /** 完成落通知用（null = 本轮不发）。 */
       notify: { req: AiRequest; body: string } | null;
@@ -1084,6 +1115,8 @@ export const useAiStore = create<AiStore>((set, get) => {
           const toolTurns: ChatTurn[] = [];
           /** Manual 档挂起的执行类调用数（>0 = 本轮就此暂停，等用户处置）。 */
           let deferredCalls = 0;
+          /** 本轮**已发起**的执行类调用数（自动档护栏计数用）。 */
+          let execCalls = 0;
           for (const tc of hostCalls) {
             if (!alive()) {
               rescueStrandedRun(sessionId, ac, runId);
@@ -1101,6 +1134,30 @@ export const useAiStore = create<AiStore>((set, get) => {
               continue;
             }
             const mode = ctx.mode;
+            // **执行护栏**（第三步自动档）：自动档下本轮的执行类调用**可能
+            // 直接跑在主机上** → 步数与总时长到顶即**不再发起**（后端都不
+            // 调，零副作用），并把「已到上限」如实回灌给模型。
+            // 手动档不在此计数：那里的命令要等用户点「执行」才跑，不在
+            // 本轮内发生。
+            if (binding.tool === "ottr_exec_command" && mode === "auto") {
+              execCalls += 1;
+              const roundElapsedMs = Math.round(performance.now() - startedAt);
+              const overSteps = execCalls > ctx.guardrails.maxSteps;
+              const overTime = roundElapsedMs >= ctx.guardrails.maxDurationMs;
+              if (overSteps || overTime) {
+                toolTurns.push({
+                  role: "tool",
+                  content: overTime
+                    ? i18n.t("ai.auto.durationLimitReached", {
+                        seconds: Math.round(ctx.guardrails.maxDurationMs / 1000),
+                      })
+                    : i18n.t("ai.auto.stepLimitReached", { count: ctx.guardrails.maxSteps }),
+                  toolCallId: tc.id,
+                  toolName: binding.tool,
+                });
+                continue;
+              }
+            }
             const out = await runHostTool(
               scope,
               binding.tool,
@@ -1324,6 +1381,12 @@ export const useAiStore = create<AiStore>((set, get) => {
       runId,
       scope,
       mode,
+      // 执行护栏（第三步）：从设置读（缺省 10 步 / 300 秒），工具轮里按它
+      // 收口——超限不再发起执行类调用。
+      guardrails: {
+        maxSteps: settings.autoMaxSteps,
+        maxDurationMs: settings.autoMaxDurationSecs * 1000,
+      },
       messages: toProviderMessages(capped, redactOpts),
       baseTurns: capped,
       system: systemPrompt(
@@ -1830,6 +1893,11 @@ export const useAiStore = create<AiStore>((set, get) => {
         runId,
         scope,
         mode,
+        // 执行护栏（第三步）：设置读到的缺省值同样在这里生效。
+        guardrails: {
+          maxSteps: settings.autoMaxSteps,
+          maxDurationMs: settings.autoMaxDurationSecs * 1000,
+        },
         messages,
         baseTurns: turnsSoFar,
         system: systemPrompt(
@@ -1972,10 +2040,17 @@ export const useAiStore = create<AiStore>((set, get) => {
     resolvePlanStep: async (sessionId, stepId, approve) => {
       const st = slice(sessionId);
       if (st.request == null) return; // 面板已关：无对话可处置
-      // plan 档**不提供执行入口**（后端也会拒）——前端不暴露。
-      if ((st.mode ?? DEFAULT_AI_EXEC_MODE) !== "manual") return;
+      // **规划档不提供执行入口**（后端也会拒）——前端不暴露。
+      // 自动档**开放**执行入口：降级下来的步骤登记为**手动档**（等用户确认），
+      // 不能因为会话档位是「自动」就把这条路堵死（否则降级 = 死路）。
+      const sessionMode = st.mode ?? DEFAULT_AI_EXEC_MODE;
+      if (sessionMode !== "manual" && sessionMode !== "auto") return;
       const step = (st.plan ?? []).find((s) => s.id === stepId);
       if (!step) return;
+      // 自动档：**只**执行自动档降级下来的那类步骤（登记为手动档）。规划档
+      // 登记的步骤在自动档**不**给执行入口——自动档的放行判断只走后端的
+      // 白名单判定（走「升档」会绕开那道判定）。
+      if (sessionMode === "auto" && (step.registeredMode ?? "plan") !== "manual") return;
       // 只处置「待执行」的步骤：执行中 / 已执行 / 已拒绝一律不再动
       // （重复点击的第一道闸）。
       if (step.status !== "planned") return;

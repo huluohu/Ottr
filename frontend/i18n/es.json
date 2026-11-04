@@ -534,7 +534,8 @@
       "plan": "Planificar",
       "auto": "Automático",
       "manual": "Manual",
-      "autoNotEnabled": "El modo automático aún no está habilitado"
+      "autoNotAuthorized": "Este host no está autorizado para ejecutar automáticamente (Ajustes → AI → Hosts que pueden ejecutar automáticamente)",
+      "autoLocalDenied": "Las terminales locales nunca dan derechos de ejecución a la IA (solo contexto de lectura)"
     },
     "plan": {
       "title": "Pasos del plan",
@@ -645,7 +646,24 @@
       "defaultExecMode": "Modo de ejecución predeterminado de las conversaciones nuevas",
       "defaultExecModeHint": "El modo de ejecución con el que empiezan las conversaciones nuevas. El modo de planificación solo genera un plan y no ejecuta ningún comando; en el modo manual cada comando se ejecuta solo después de que pulses Ejecutar; el modo automático aún no está habilitado (requiere autorización por host).",
       "readProbe": "Exploración de solo lectura de la IA (leer archivos y directorios del host)",
-      "readProbeHint": "Cuando está desactivado, el catálogo de herramientas de la IA deja de ofrecer la lectura de archivos del host y el listado de directorios; la IA solo puede leer la cola de salida de la terminal actual. Las demás herramientas no se ven afectadas. Solo en este equipo; no se sincroniza."
+      "readProbeHint": "Cuando está desactivado, el catálogo de herramientas de la IA deja de ofrecer la lectura de archivos del host y el listado de directorios; la IA solo puede leer la cola de salida de la terminal actual. Las demás herramientas no se ven afectadas. Solo en este equipo; no se sincroniza.",
+      "execTimeout": "Tiempo de espera por comando (segundos)",
+      "execTimeoutHint": "Cuánto puede ejecutarse un comando antes de abortarse y cerrarse el canal. 30 segundos por defecto.",
+      "autoMaxSteps": "Comandos por ronda",
+      "autoMaxStepsHint": "Cuántos comandos puede ejecutar la IA por sí sola en una ronda. 10 por defecto.",
+      "autoMaxDuration": "Tiempo total por ronda (segundos)",
+      "autoMaxDurationHint": "Cuánto puede durar una ronda en total antes de detenerse. 300 segundos por defecto.",
+      "autoHosts": "Hosts que pueden ejecutar automáticamente",
+      "autoHostsHint": "Por defecto ningún host puede ejecutar comandos automáticamente: los comandos propuestos por la IA esperan tu confirmación y los comandos de nivel rojo se rechazan. Solo los comandos de solo lectura se ejecutan automáticamente; los que escriben, solo en las categorías que marques abajo.",
+      "autoHostsEmpty": "Aún no hay hosts",
+      "autoHostToggleLabel": "Permitir que {{name}} ejecute automáticamente",
+      "autoRevoke": "Revocar",
+      "autoCategory": {
+        "package": "Gestión de paquetes",
+        "service": "Reinicio de servicios",
+        "file": "Edición de archivos",
+        "git": "Escrituras de control de versiones"
+      }
     },
     "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar, Shift+Enter para salto de línea)",
     "askEntry": "Preguntar a Ottr",
@@ -657,7 +675,11 @@
     "returnToOriginal": "Volver al terminal original",
     "conversationReadonlyNotice": "La conexión se restableció: la conversación siguiente pertenece a la conexión anterior y es de solo lectura. Preguntar de nuevo inicia una conversación nueva.",
     "newConversation": "Conversación nueva",
-    "headerDisconnected": "Desconectado"
+    "headerDisconnected": "Desconectado",
+    "auto": {
+      "stepLimitReached": "Se alcanzó el límite de comandos por ronda ({{count}}); en esta ronda no se ejecutaron más comandos.",
+      "durationLimitReached": "Se alcanzó el límite de tiempo por ronda ({{seconds}} s); en esta ronda no se ejecutaron más comandos."
+    }
   },
   "tabs": {
     "duplicate": "Duplicar pestaña",

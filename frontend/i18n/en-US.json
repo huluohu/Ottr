@@ -534,7 +534,8 @@
       "plan": "Plan",
       "auto": "Auto",
       "manual": "Manual",
-      "autoNotEnabled": "Auto mode is not enabled yet"
+      "autoNotAuthorized": "This host is not authorized to run automatically (Settings → AI → Hosts allowed to run automatically)",
+      "autoLocalDenied": "Local terminal sessions never grant AI execution rights (read-only context only)"
     },
     "plan": {
       "title": "Plan steps",
@@ -645,7 +646,24 @@
       "defaultExecMode": "Default execution mode for new conversations",
       "defaultExecModeHint": "The execution mode a new conversation starts in. Plan mode only produces a plan and never runs a command; manual mode runs each command only after you click Run; auto mode is not enabled yet (it needs per-host authorization).",
       "readProbe": "AI read-only probing (read host files and directories)",
-      "readProbeHint": "When off, the AI tool catalog no longer offers reading host files or listing directories; the AI can only read the tail of the current terminal output. Other tools are unaffected. Local to this device; not synced."
+      "readProbeHint": "When off, the AI tool catalog no longer offers reading host files or listing directories; the AI can only read the tail of the current terminal output. Other tools are unaffected. Local to this device; not synced.",
+      "execTimeout": "Per-command timeout (seconds)",
+      "execTimeoutHint": "How long a single command may run before it is aborted and the channel is closed. Default 30 seconds.",
+      "autoMaxSteps": "Commands per round",
+      "autoMaxStepsHint": "How many commands AI may run on its own in one round. Default 10.",
+      "autoMaxDuration": "Total time per round (seconds)",
+      "autoMaxDurationHint": "How long one round may run in total before it stops. Default 300 seconds.",
+      "autoHosts": "Hosts allowed to run automatically",
+      "autoHostsHint": "By default no host may run commands automatically: the AI's proposed commands wait for your confirmation, and red-level commands are rejected outright. Only read-only commands run automatically; write operations do so only for the categories you tick below.",
+      "autoHostsEmpty": "No hosts yet",
+      "autoHostToggleLabel": "Allow {{name}} to run automatically",
+      "autoRevoke": "Revoke",
+      "autoCategory": {
+        "package": "Package management",
+        "service": "Service restart",
+        "file": "File editing",
+        "git": "Version control writes"
+      }
     },
     "followupPlaceholder": "Ask a follow-up… (Enter to send, Shift+Enter for a new line)",
     "askEntry": "Ask Ottr",
@@ -657,7 +675,11 @@
     "returnToOriginal": "Return to original terminal",
     "conversationReadonlyNotice": "The connection was re-established: the conversation below belongs to the old connection and is read-only. Asking again starts a new conversation.",
     "newConversation": "New conversation",
-    "headerDisconnected": "Disconnected"
+    "headerDisconnected": "Disconnected",
+    "auto": {
+      "stepLimitReached": "Reached the per-round command limit ({{count}}); no further commands were run this round.",
+      "durationLimitReached": "Reached the per-round time limit ({{seconds}}s); no further commands were run this round."
+    }
   },
   "tabs": {
     "duplicate": "Duplicate Tab",

@@ -39,6 +39,7 @@ import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 // Ask Ottr 悬浮球开关（ask-ottr-orb Task 4）：settings 类导入后同点对齐
 // （内部吞错，vault 为真源重读——App 就绪链同款调用）。
 import { syncOrbFromVault } from "../ai/orbStore";
+import { useAiPolicyStore } from "../ai/aiPolicyStore";
 
 /** 吞错型通道的防御性包装：失败仅告警，不阻断其余刷新通道。 */
 async function swallows(step: () => Promise<void>, label: string): Promise<void> {
@@ -66,4 +67,7 @@ export async function refreshEntitiesAfterImport(): Promise<void> {
   await swallows(() => syncThemeFromVault(), "theme");
   await swallows(() => useTerminalThemeStore.getState().syncFromVault(), "terminal-theme");
   await swallows(() => syncOrbFromVault(), "ask-ottr-orb");
+  // 自动档授权面（2026-11-04 第三步）：授权随同步过来 → 导入后重读，
+  // 否则设置页与面板还拿着导入前的授权缓存。
+  await swallows(() => useAiPolicyStore.getState().refresh(), "ai-host-policies");
 }

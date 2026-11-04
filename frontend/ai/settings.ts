@@ -7,6 +7,9 @@
 //   ai.max_tokens — 单请求上限（默认 1024，Rust 写入侧 ≤8192 校验）
 //   ai.summary.enabled — 会话纪要独立开关（BL-510④ 清偿，默认 true）；
 //     ai.enabled 语义 = 「命令失败自动诊断」，不管纪要链（summary.ts 同口径）
+//   ai.exec.timeout_secs / ai.auto.max_steps / ai.auto.max_duration_secs
+//     — 执行护栏三键（2026-11-04 第三步：自动档）。写入侧范围校验在 Rust
+//     （settings.rs），前端只读 + 展示；缺省值与 Rust 侧常量同值。
 import { vaultApi } from "../vault/api";
 import type { ProviderMeta } from "./openai";
 import type { RedactRule } from "./redact";
@@ -16,6 +19,12 @@ export const TAIL_BYTES = 8 * 1024;
 
 /** 单请求 token 上限缺省（Rust AI_MAX_TOKENS_LIMIT=8192 为写入上限）。 */
 export const DEFAULT_MAX_TOKENS = 1024;
+
+/** 执行护栏缺省值（与 Rust 侧 settings.rs 的缺省同值）。
+ *  写入侧范围：超时 5..=300s、步数 1..=100、总时长 30..=3600s。 */
+export const DEFAULT_EXEC_TIMEOUT_SECS = 30;
+export const DEFAULT_AUTO_MAX_STEPS = 10;
+export const DEFAULT_AUTO_MAX_DURATION_SECS = 300;
 
 export interface RedactionConfig {
   /** 主机名规则开关（默认开；其余默认规则恒开——IP/密码/邮箱无争议面）。 */
@@ -33,6 +42,12 @@ export interface AiSettings {
   maxTokens: number;
   providers: ProviderMeta[];
   redaction: RedactionConfig;
+  /** 单条命令消费侧硬超时（秒；缺省 30）。**后端执行面**按它收口。 */
+  execTimeoutSecs: number;
+  /** 自动档单轮命令步数上限（缺省 10）。 */
+  autoMaxSteps: number;
+  /** 自动档单轮总时长上限（秒；缺省 300）。 */
+  autoMaxDurationSecs: number;
 }
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -41,6 +56,9 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   maxTokens: DEFAULT_MAX_TOKENS,
   providers: [],
   redaction: DEFAULT_REDACTION,
+  execTimeoutSecs: DEFAULT_EXEC_TIMEOUT_SECS,
+  autoMaxSteps: DEFAULT_AUTO_MAX_STEPS,
+  autoMaxDurationSecs: DEFAULT_AUTO_MAX_DURATION_SECS,
 };
 
 /** 单项读取失败不互相拖累：每个键独立 try/catch，坏值回落默认（与
@@ -52,16 +70,21 @@ export async function loadAiSettings(): Promise<AiSettings> {
     vaultApi.settings.get<boolean>("ai.enabled"),
     vaultApi.settings.get<number>("ai.max_tokens"),
     vaultApi.settings.get<boolean>("ai.summary.enabled"),
+    vaultApi.settings.get<number>("ai.exec.timeout_secs"),
+    vaultApi.settings.get<number>("ai.auto.max_steps"),
+    vaultApi.settings.get<number>("ai.auto.max_duration_secs"),
   ]);
-  const [providers, redaction, enabled, maxTokens, summaryEnabled] = results.map((r) =>
-    r.status === "fulfilled" ? r.value : undefined,
-  ) as [
-    ProviderMeta[] | undefined,
-    RedactionConfig | undefined,
-    boolean | undefined,
-    number | undefined,
-    boolean | undefined,
-  ];
+  const [providers, redaction, enabled, maxTokens, summaryEnabled, execTimeout, autoSteps, autoDuration] =
+    results.map((r) => (r.status === "fulfilled" ? r.value : undefined)) as [
+      ProviderMeta[] | undefined,
+      RedactionConfig | undefined,
+      boolean | undefined,
+      number | undefined,
+      boolean | undefined,
+      number | undefined,
+      number | undefined,
+      number | undefined,
+    ];
   return {
     enabled: typeof enabled === "boolean" ? enabled : DEFAULT_AI_SETTINGS.enabled,
     summaryEnabled:
@@ -80,7 +103,20 @@ export async function loadAiSettings(): Promise<AiSettings> {
             custom: Array.isArray(redaction.custom) ? redaction.custom : [],
           }
         : { ...DEFAULT_REDACTION },
+    // 护栏三键：坏值/越界一律回落缺省（**不放宽**——越界的高步数等于放开
+    // 无限循环，越界的短超时等于每条命令都超时）。
+    execTimeoutSecs: clampGuardrail(execTimeout, 5, 300, DEFAULT_EXEC_TIMEOUT_SECS),
+    autoMaxSteps: clampGuardrail(autoSteps, 1, 100, DEFAULT_AUTO_MAX_STEPS),
+    autoMaxDurationSecs: clampGuardrail(autoDuration, 30, 3600, DEFAULT_AUTO_MAX_DURATION_SECS),
   };
+}
+
+/** 护栏取值收敛到合法区间（与 Rust 写入侧范围一致）；非法值回落缺省。 */
+function clampGuardrail(value: number | undefined, min: number, max: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  const n = Math.floor(value);
+  if (n < min || n > max) return fallback;
+  return n;
 }
 
 /** 保存 provider 列表（全量替换）。列表首个 = 默认 provider（「设为默认」=

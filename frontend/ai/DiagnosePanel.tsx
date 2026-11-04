@@ -13,7 +13,7 @@
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）；
 // * 头部身份（Task 3）：主机 + provider/model + 后端捕获的账号@端点（scope）+
 //   PROD 徽标 + 连接失效标记；重连换代 → 旧对话只读横幅（历史可见）。
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useAiStore, useSessionAi } from "./aiStore";
@@ -33,6 +33,7 @@ import {
   type PlanStepStatus,
 } from "./aiModes";
 import { HOST_TOOL_PREFIX } from "./mcpTools";
+import { useAiPolicyStore } from "./aiPolicyStore";
 
 /** 工具返回文本在面板里的显示上限（**发给模型的完整文本不截断**——
  *  截断只发生在渲染面；MCP 侧本身有 1 MiB 上限）。 */
@@ -158,6 +159,10 @@ export function DiagnosePanel({
     (s) => s.status === "planned" && needsModeUpgrade(s),
   );
   const manualMode = mode === "manual";
+  /** 自动档降级待确认的步骤（登记为手动档）——它们要按「待确认卡」呈现。 */
+  const hasDowngradedStep = planSteps.some(
+    (s) => (s.registeredMode ?? "plan") === "manual" && s.status === "planned",
+  );
   /** 步骤状态文案（五态：待执行 / 执行中 / 已完成 / 失败 / 已拒绝）。 */
   const planStatusText = (status: PlanStepStatus): string => {
     if (status === "executing") return t("ai.plan.statusExecuting");
@@ -214,6 +219,37 @@ export function DiagnosePanel({
   const resolveToolCall = useAiStore((s) => s.resolveToolCall);
   const resolvePlanStep = useAiStore((s) => s.resolvePlanStep);
   const setMode = useAiStore((s) => s.setMode);
+  /** 自动档授权（第三步）：当前目标主机是否被授权自动执行。
+   *  null = 未知/不适用（本地会话、还没查）。 */
+  const [autoAuthorized, setAutoAuthorized] = useState<boolean | null>(null);
+  const hostId = target?.hostId ?? null;
+  const isLocal = target?.kind === "local";
+  useEffect(() => {
+    // 只在「当前档位是自动」时查——省一次 IPC，且不影响其它档位。
+    if (mode !== "auto") {
+      setAutoAuthorized(null);
+      return;
+    }
+    if (isLocal || hostId == null) {
+      setAutoAuthorized(false);
+      return;
+    }
+    let alive = true;
+    // 授权真源在后端（vault 表）；前端读共享 store 的缓存，缓存空/过期时
+    // 重新拉一次（面板每次切到自动档都会问一遍）。
+    void useAiPolicyStore
+      .getState()
+      .refresh()
+      .then(() => {
+        if (alive) setAutoAuthorized(useAiPolicyStore.getState().authorized(hostId));
+      })
+      .catch(() => {
+        if (alive) setAutoAuthorized(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [mode, hostId, isLocal]);
 
   const running = status === "running";
   // 有待处置的执行步骤时同样禁输入：那一次模型 tool call 还没被回答，
@@ -329,17 +365,24 @@ export function DiagnosePanel({
           value={mode}
           options={[
             { value: "plan", label: t("ai.mode.plan") },
-            { value: "auto", label: t("ai.mode.auto") },
+            {
+              value: "auto",
+              label: t("ai.mode.auto"),
+              // 自动档的**前提**是主机被授权（授权表默认全拒）——未授权时
+              // 该档不可选：模型提的命令会降级成逐条确认，用户会以为它在
+              // 自动跑。不给可用选项，直接说清出路。
+              disabled: autoAuthorized === false,
+            },
             { value: "manual", label: t("ai.mode.manual") },
           ]}
           onChange={(v) => setMode(sessionId, v)}
           ariaLabel={t("ai.mode.label")}
           testid="ai-mode-switch"
         />
-        {mode === "auto" && (
-          // auto 本步尚未开放（主机授权表是第三步）——说清楚，不装作能用。
+        {mode === "auto" && autoAuthorized === false && (
+          // 未授权（或本地会话）：说清楚为什么不能自动跑 + 去哪开。
           <span className="ai-mode-hint" data-testid="ai-mode-auto-hint">
-            {t("ai.mode.autoNotEnabled")}
+            {isLocal ? t("ai.mode.autoLocalDenied") : t("ai.mode.autoNotAuthorized")}
           </span>
         )}
         {redactions.length > 0 && (
@@ -516,14 +559,14 @@ export function DiagnosePanel({
         {planSteps.length > 0 && (
           <div className="ai-plan" data-testid="ai-plan">
             <p className="ai-plan-hint" data-testid="ai-plan-title">
-              {manualMode ? t("ai.plan.confirmTitle") : t("ai.plan.title")}
+              {manualMode || hasDowngradedStep ? t("ai.plan.confirmTitle") : t("ai.plan.title")}
             </p>
-            {manualMode && (
+            {(manualMode || hasDowngradedStep) && (
               <p className="ai-plan-hint" data-testid="ai-plan-confirm-hint">
                 {t("ai.plan.confirmHint")}
               </p>
             )}
-            {!manualMode && (awaitingSteps.length > 0 || upgradableSteps.length > 0) && (
+            {!manualMode && !hasDowngradedStep && (awaitingSteps.length > 0 || upgradableSteps.length > 0) && (
               // 有待确认的命令、但当前不在 manual 档 → 说清楚怎么处置
               // （plan 档按契约不提供执行钮）。**plan 档登记的步骤也算**
               // （它在手动档点「执行」时会先由后端升档再执行）——
@@ -532,11 +575,19 @@ export function DiagnosePanel({
                 {t("ai.plan.switchToManual")}
               </p>
             )}
-            <ul className="ai-plan-list" aria-label={manualMode ? t("ai.plan.confirmTitle") : t("ai.plan.title")}>
+            <ul
+              className="ai-plan-list"
+              aria-label={manualMode || hasDowngradedStep ? t("ai.plan.confirmTitle") : t("ai.plan.title")}
+            >
               {planSteps.map((s) => {
                 // 执行中：钮置灰 + 状态 executing（重复点击的第一道闸）。
                 const busy = s.status === "executing";
-                const showActions = manualMode && (s.status === "planned" || busy);
+                // **自动档的降级步骤也给执行/拒绝钮**：自动档把非白名单命令
+                // 降级成「等你确认」，那一步就登记为手动档——不给钮 = 降级
+                // 成了死路（用户永远点不动）。
+                const stepNeedsConfirm =
+                  manualMode || (s.registeredMode ?? "plan") === "manual";
+                const showActions = stepNeedsConfirm && (s.status === "planned" || busy);
                 return (
                   <li
                     key={s.id}

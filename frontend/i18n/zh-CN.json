@@ -533,7 +533,8 @@
       "plan": "规划",
       "auto": "自动",
       "manual": "手动",
-      "autoNotEnabled": "自动模式尚未启用"
+      "autoNotAuthorized": "该主机未授权自动执行（设置 → AI → 允许自动执行的主机）",
+      "autoLocalDenied": "本地终端会话不给 AI 执行权（只给只读上下文）"
     },
     "plan": {
       "title": "计划步骤",
@@ -644,7 +645,24 @@
       "defaultExecMode": "新对话默认执行模式",
       "defaultExecModeHint": "新建对话时的默认执行模式。规划模式只产出计划、不执行任何命令；手动模式下每条命令都要你点「执行」才会真正运行；自动模式尚未开放（需逐主机授权）。",
       "readProbe": "AI 只读探查（读取主机文件与目录）",
-      "readProbeHint": "关闭后，AI 工具目录里不再有「读取主机文件」与「列出目录」，AI 只能读当前终端的输出尾部。其余工具不受影响。本机生效，不跨设备同步。"
+      "readProbeHint": "关闭后，AI 工具目录里不再有「读取主机文件」与「列出目录」，AI 只能读当前终端的输出尾部。其余工具不受影响。本机生效，不跨设备同步。",
+      "execTimeout": "单条命令超时（秒）",
+      "execTimeoutHint": "单条命令最多跑多久，超时就中止并关闭通道。默认 30 秒。",
+      "autoMaxSteps": "单轮命令步数上限",
+      "autoMaxStepsHint": "一轮里 AI 最多自动跑多少条命令。默认 10 条。",
+      "autoMaxDuration": "单轮总时长上限（秒）",
+      "autoMaxDurationHint": "一轮最多跑多久，到点即停。默认 300 秒。",
+      "autoHosts": "允许自动执行的主机",
+      "autoHostsHint": "默认任何主机都不允许自动执行：模型提出的命令要你逐条确认，红档命令直接拒绝。只有只读命令会自动执行，写操作需在下面勾选类别才自动执行。",
+      "autoHostsEmpty": "还没有主机",
+      "autoHostToggleLabel": "允许 {{name}} 自动执行",
+      "autoRevoke": "回收授权",
+      "autoCategory": {
+        "package": "包管理",
+        "service": "服务重启",
+        "file": "文件编辑",
+        "git": "版本控制写操作"
+      }
     },
     "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）",
     "askEntry": "问 Ottr",
@@ -656,7 +674,11 @@
     "returnToOriginal": "回到原终端",
     "conversationReadonlyNotice": "连接已重开：以下对话属于旧连接，仅供查看。再次提问将开始新对话。",
     "newConversation": "新对话",
-    "headerDisconnected": "已断开"
+    "headerDisconnected": "已断开",
+    "auto": {
+      "stepLimitReached": "已到单轮命令上限（{{count}} 条），本轮不再执行更多命令。",
+      "durationLimitReached": "已到单轮时长上限（{{seconds}} 秒），本轮不再执行更多命令。"
+    }
   },
   "tabs": {
     "duplicate": "复制页签",

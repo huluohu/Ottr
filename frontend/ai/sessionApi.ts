@@ -67,14 +67,32 @@ export interface AiScopeFile {
 
 /**
  * 执行类动作回包（按模式分派）：
- * * plan / manual（本步）→ `{executed:false, planned:true, stepId}`（**零执行**）；
- * * auto（本步未开放）→ 后端直接拒（抛错），不产生本结构。
+ * * plan / manual → `{executed:false, planned:true, stepId}`（**零执行**）；
+ * * **auto**（第三步）→ 白名单命令**当场执行**（`executed:true`，结果在
+ *   `result` 里）；非白名单命令**降级**为逐条确认（`executed:false` +
+ *   `downgradeReason` 说明原因）；red 级命令后端**直接拒**（抛错）。
  */
 export interface AiScopeExecOutcome {
   executed: boolean;
   planned: boolean;
   stepId: string;
   message: string;
+  /** 自动档已执行时的结果（`null` = 未执行）。 */
+  result?: AiScopeRunResult | null;
+  /** 自动档降级为逐条确认的原因（`null` = 未降级）。 */
+  downgradeReason?: string | null;
+}
+
+/** 可自动执行的写操作类别（与 Rust 侧 `AiWriteCategory` 一一对应）。 */
+export type AiWriteCategory = "package" | "service" | "file" | "git";
+
+/** 主机级自动执行授权（与 Rust 侧 `AiHostPolicyView` 同构）。 */
+export interface AiHostPolicy {
+  hostId: number;
+  /** 自动档总闸（false = 该主机不允许 AI 自动执行）。 */
+  autoEnabled: boolean;
+  /** 允许**直接执行**的写操作类别（空 = 只读命令可自动执行）。 */
+  writeCategories: AiWriteCategory[];
 }
 
 /**
@@ -146,6 +164,24 @@ export const aiSessionApi = {
     mode: AiExecMode,
   ): Promise<AiScopeExecOutcome> =>
     invoke<AiScopeExecOutcome>("ai_scope_exec", { scopeId, actionId, command, mode }),
+  /**
+   * 取某主机的自动执行授权（第三步自动档）。
+   *
+   * `null` = **未授权**（授权表默认全拒）→ 该主机的自动档不可用。
+   */
+  policyGet: (hostId: number): Promise<AiHostPolicy | null> =>
+    invoke<AiHostPolicy | null>("ai_policy_get", { hostId }),
+  /** 落/改某主机的自动执行授权（upsert）。 */
+  policySet: (
+    hostId: number,
+    autoEnabled: boolean,
+    writeCategories: AiWriteCategory[],
+  ): Promise<AiHostPolicy> =>
+    invoke<AiHostPolicy>("ai_policy_set", { hostId, autoEnabled, writeCategories }),
+  /** 全部已授权主机（设置页列表）。 */
+  policyList: (): Promise<AiHostPolicy[]> => invoke<AiHostPolicy[]>("ai_policy_list"),
+  /** 回收某主机的自动执行权（删行 = 回到默认拒）。 */
+  policyDelete: (hostId: number): Promise<void> => invoke<void>("ai_policy_delete", { hostId }),
   /**
    * 执行一条**已登记**的计划步骤（第二步 Manual 模式）。
    *

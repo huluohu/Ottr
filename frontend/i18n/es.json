@@ -644,7 +644,7 @@
       "errRuleInvalid": "La regex no compila",
       "errRemoteHttp": "Los endpoints remotos deben usar https:// (http sin cifrar enviaría la API key en claro y la app solo permite http local)",
       "defaultExecMode": "Modo de ejecución predeterminado de las conversaciones nuevas",
-      "defaultExecModeHint": "El modo de ejecución con el que empiezan las conversaciones nuevas. El modo de planificación solo genera un plan y no ejecuta ningún comando; en el modo manual cada comando se ejecuta solo después de que pulses Ejecutar; el modo automático aún no está habilitado (requiere autorización por host).",
+      "defaultExecModeHint": "El modo de ejecución con el que empieza una conversación nueva. El modo plan solo produce un plan y nunca ejecuta un comando; el modo manual ejecuta cada comando solo después de que pulses Ejecutar; el modo automático requiere autorización por host y, una vez autorizado un host, los comandos de solo lectura se ejecutan directamente, el resto pasa a tu confirmación y los comandos peligrosos se rechazan.",
       "readProbe": "Exploración de solo lectura de la IA (leer archivos y directorios del host)",
       "readProbeHint": "Cuando está desactivado, el catálogo de herramientas de la IA deja de ofrecer la lectura de archivos del host y el listado de directorios; la IA solo puede leer la cola de salida de la terminal actual. Las demás herramientas no se ven afectadas. Solo en este equipo; no se sincroniza.",
       "execTimeout": "Tiempo de espera por comando (segundos)",

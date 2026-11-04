@@ -644,7 +644,7 @@
       "errRuleInvalid": "La regex non viene compilata",
       "errRemoteHttp": "G endpoint remoti devono usare https:// (http in chiaro invierebbe la API key in chiaro e l'app consente solo http locale)",
       "defaultExecMode": "Modalità di esecuzione predefinita per le nuove conversazioni",
-      "defaultExecModeHint": "La modalità di esecuzione con cui iniziano le nuove conversazioni. La modalità di pianificazione produce solo un piano ed esegue nessun comando; in modalità manuale ogni comando viene eseguito solo dopo aver premuto Esegui; la modalità automatica non è ancora abilitata (richiede l'autorizzazione per host).",
+      "defaultExecModeHint": "La modalità di esecuzione con cui parte una nuova conversazione. La modalità plan produce solo un piano e non esegue mai un comando; la modalità manuale esegue ogni comando solo dopo che premi Esegui; la modalità automatico richiede l'autorizzazione per host e, una volta autorizzato un host, i comandi di sola lettura si eseguono direttamente, gli altri passano alla tua conferma e i comandi pericolosi vengono rifiutati.",
       "readProbe": "Esplorazione in sola lettura dell'IA (lettura di file e directory dell'host)",
       "readProbeHint": "Se disattivato, il catalogo degli strumenti IA non offre più la lettura dei file dell'host né l'elenco delle directory; l'IA può leggere solo la coda dell'output del terminale corrente. Gli altri strumenti non ne risentono. Solo su questo dispositivo; non viene sincronizzato.",
       "execTimeout": "Timeout per comando (secondi)",

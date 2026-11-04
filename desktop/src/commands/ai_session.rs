@@ -1526,7 +1526,13 @@ async fn upgrade_step_scope(
             );
         }
         AiExecMode::Auto => {
-            return Err("AI upgrade rejected: auto mode is not enabled yet".into());
+            // 自动档登记的步骤**要么已经当场执行了**（白名单命令），要么
+            // 压根没登记（red 直接拒 / 降级的那条登记为 manual 档）。
+            // 两种都不需要「升档」——升档面只服务 plan → manual。
+            return Err(
+                "AI upgrade rejected: step is registered in auto mode (auto mode authorizes and                  executes on its own; nothing to upgrade)"
+                    .into(),
+            );
         }
     }
     // 7. 新 actionId 必须与原 id 不同（复用原 id = 原地改档位的绕行口）。

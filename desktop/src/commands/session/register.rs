@@ -41,7 +41,7 @@ use crate::vault::VaultState;
 /// 连接 + 存会话表项（pf_start/on_session_up 起转发时取用）；无人登记时入站
 /// 默认拒绝，spike 面行为不变。
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn open_and_register(
+pub(crate) async fn open_and_register(
     sessions: SessionMap,
     close_event: Option<AppHandle>,
     host_id: Option<i64>,
@@ -94,6 +94,7 @@ pub(super) async fn open_and_register(
         chain: None,
         forward_router,
         endpoint: format!("{address}:{port}"),
+        username: username.to_owned(),
         cols,
         rows,
         on_data,
@@ -133,6 +134,7 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
         chain,
         forward_router,
         endpoint,
+        username,
         cols,
         rows,
         on_data,
@@ -173,12 +175,15 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
     // 连接关闭会连带终止另一侧的操作（传输失败报协议错，journal 可续传）。
     // 链式（Phase 2 Task 2）：JumpSession（全跳 owner）由下方转发循环任务
     // 独占持有——生命周期与循环严格同界，收尾点与直连路径同句。
+    let runtime_id = Arc::new(());
     sessions.lock().unwrap().insert(
         id.clone(),
         SessionEntry {
             session: Arc::clone(&session),
             host_id,
             endpoint,
+            username,
+            runtime_id: Arc::clone(&runtime_id),
             writer: Arc::clone(&writer),
             counters: Arc::clone(&counters),
             decoder: Arc::clone(&decoder),

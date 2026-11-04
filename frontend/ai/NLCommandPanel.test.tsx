@@ -1,7 +1,7 @@
 // NLCommandPanel 组件测试（Phase 2 B1，Task 6）：
 //   * 底部输入条渲染面：输入/生成按钮使能、流式原文、thinking、aborted；
 //   * done → 公共 InsertRow 渲染：danger 徽标 + 三档确认插终端（green 一击 /
-//     red 两击），插入目标 = 聚焦 pane 的 rustId，无连接禁用；
+//     red 两击），插入绑定 = 轮次来源（target+scope，Task 3），无绑定/跨目标禁用；
 //   * 错误面：noProvider → 去设置 / request → 重试 / empty → 说明 + 重试；
 //   * 键盘：Enter 生成、Esc 关闭。
 // 运行链（nlStore）在 nl2cmd.test.ts 已全覆盖，本文件用 store 播种驱动渲染面，
@@ -21,7 +21,7 @@ vi.mock("./provider", async (importOriginal) => {
 });
 
 import i18n from "../i18n";
-import { NLCommandPanel } from "./NLCommandPanel";
+import { NLCommandPanel, nlBegin } from "./NLCommandPanel";
 import { useNlStore } from "./nl2cmd";
 import { useSessionStore, type Session } from "../session/SessionStore";
 
@@ -31,7 +31,8 @@ const mockedInvoke = invoke as unknown as Mock;
 const realSubmit = useNlStore.getState().submit;
 
 function backendWithProvider() {
-  mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+  mockedInvoke.mockImplementation(
+    (cmd: string, args?: { key?: string; target?: Record<string, unknown> }) => {
     if (cmd === "settings_get" && args?.key === "ai_providers") {
       return Promise.resolve([
         {
@@ -44,8 +45,17 @@ function backendWithProvider() {
       ]);
     }
     if (cmd === "secret_get") return Promise.resolve("sk-test");
+    if (cmd === "ai_scope_open") {
+      return Promise.resolve({
+        ...(args?.target as Record<string, unknown>),
+        scopeId: "scope-nl",
+        endpoint: "10.1.2.3:22",
+        username: "ops",
+      });
+    }
     return Promise.resolve(null);
-  });
+    },
+  );
 }
 
 const SESSION: Session = {
@@ -111,9 +121,10 @@ describe("输入条渲染面", () => {
     expect(screen.getByTestId("nl2cmd-input")).toBeTruthy();
   });
 
-  it("有聚焦终端：不显示无终端提示", async () => {
+  it("有聚焦终端：不显示无终端提示（nlBegin 定格目标后）", async () => {
     backendWithProvider();
     useSessionStore.setState({ sessions: [SESSION], activeId: "tab-1" });
+    nlBegin(); // Task 3：提示判据 = 本轮来源绑定（target），nlBegin 捕获聚焦 pane
     renderPanel({ open: true });
     await screen.findByTestId("nl2cmd-input");
     expect(screen.queryByTestId("nl2cmd-noterminal")).toBeNull();
@@ -165,29 +176,63 @@ describe("输入条渲染面", () => {
 });
 
 describe("结果面（公共 InsertRow 三档确认）", () => {
-  it("done green：安全徽标 + 一击直插聚焦 pane（write_session 同路）", async () => {
-    useNlStore.setState({ status: "done", command: "docker ps", level: "green" });
-    const inserter = vi.fn().mockResolvedValue(undefined);
-    renderPanel({ inserter });
+  it("done green：安全徽标 + 一击直插绑定 pane（ai_scope_insert 一次性 actionId）", async () => {
+    useNlStore.setState({
+      status: "done",
+      command: "docker ps",
+      level: "green",
+      target: {
+        paneSessionId: "tab-1",
+        rootTabId: "tab-1",
+        rustId: "pty-9",
+        connectionEpoch: 0,
+        kind: "ssh",
+        hostId: 7,
+      },
+      scopeId: "scope-nl",
+      runId: "run-1",
+    });
+    renderPanel();
     expect(screen.getByTestId("ai-code-level").textContent).toBe("安全");
     fireEvent.click(screen.getByTestId("ai-insert"));
     await vi.waitFor(() => {
-      expect(inserter).toHaveBeenCalledWith("pty-9", "docker ps");
+      expect(mockedInvoke).toHaveBeenCalledWith("ai_scope_insert", {
+        scopeId: "scope-nl",
+        actionId: "run-1:0",
+        text: "docker ps",
+      });
     });
   });
 
-  it("done red：危险徽标 + 两击确认（armed → 插入）", async () => {
-    useNlStore.setState({ status: "done", command: "rm -rf /tmp/build", level: "red" });
-    const inserter = vi.fn().mockResolvedValue(undefined);
-    renderPanel({ inserter });
+  it("done red：危险徽标 + 两击确认（armed → 插入，scope 通道）", async () => {
+    useNlStore.setState({
+      status: "done",
+      command: "rm -rf /tmp/build",
+      level: "red",
+      target: {
+        paneSessionId: "tab-1",
+        rootTabId: "tab-1",
+        rustId: "pty-9",
+        connectionEpoch: 0,
+        kind: "ssh",
+        hostId: 7,
+      },
+      scopeId: "scope-nl",
+      runId: "run-2",
+    });
+    renderPanel();
     expect(screen.getByTestId("ai-code-level").textContent).toBe("危险");
     const btn = screen.getByTestId("ai-insert");
     fireEvent.click(btn);
-    expect(inserter).not.toHaveBeenCalled();
+    expect(mockedInvoke.mock.calls.some(([c]) => c === "ai_scope_insert")).toBe(false);
     expect(btn.getAttribute("data-stage")).toBe("armed");
     fireEvent.click(btn);
     await vi.waitFor(() => {
-      expect(inserter).toHaveBeenCalledWith("pty-9", "rm -rf /tmp/build");
+      expect(mockedInvoke).toHaveBeenCalledWith("ai_scope_insert", {
+        scopeId: "scope-nl",
+        actionId: "run-2:0",
+        text: "rm -rf /tmp/build",
+      });
     });
   });
 
@@ -319,33 +364,42 @@ describe("往轮回看（批次三 T2，审计 ⌘J 22「生成结果无历史�
     expect(screen.queryByTestId("nl2cmd-history")).toBeNull();
   });
 
-  it("关闭重开不丢结果：历史区回看往轮（含输入原文）且可分档插入", async () => {
+  it("关闭重开不丢结果：历史区回看往轮（含输入原文）且按来源绑定插入", async () => {
     backendWithProvider();
+    nlBegin(); // 定格聚焦 pane（SESSION）目标
     const first = renderPanel();
     fireEvent.change(screen.getByTestId("nl2cmd-input"), { target: { value: "列出运行中的容器" } });
     fireEvent.click(screen.getByTestId("nl2cmd-run"));
     await vi.waitFor(() => {
       expect(useNlStore.getState().status).toBe("done");
     });
+    // 完成轮携带来源绑定（Task 3）
+    expect(useNlStore.getState().rounds[0].target).toMatchObject({ paneSessionId: "tab-1" });
     fireEvent.keyDown(screen.getByTestId("nl2cmd-input"), { key: "Escape" }); // 关 = 清场（rounds 保留）
     first.unmount();
 
-    const inserter = vi.fn().mockResolvedValue(undefined);
-    renderPanel({ inserter }); // 重开：rounds 仍在
+    renderPanel(); // 重开：rounds 仍在
     const history = screen.getByTestId("nl2cmd-history");
     expect(history.textContent).toContain("列出运行中的容器");
     const item = screen.getByTestId("nl2cmd-history-item");
     expect(item.querySelector("[data-testid='ai-code-text']")?.textContent).toBe("docker ps");
-    // 往轮结果可插入（同一三档确认状态机）
+    // 往轮结果可插入（同一三档确认状态机；scope 通道一次性 actionId）
     fireEvent.click(screen.getByTestId("ai-insert"));
     await vi.waitFor(() => {
-      expect(inserter).toHaveBeenCalledWith("pty-9", "docker ps");
+      expect(mockedInvoke).toHaveBeenCalledWith(
+        "ai_scope_insert",
+        expect.objectContaining({
+          scopeId: "scope-nl",
+          actionId: expect.stringMatching(/:0$/),
+          text: "docker ps",
+        }),
+      );
     });
   });
 
   it("新一轮生成中，上一轮完整出现在历史区（running 态不丢往轮）", async () => {
     useNlStore.setState({
-      rounds: [{ input: "上一轮", command: "docker ps", level: "green", ts: 1 }],
+      rounds: [{ input: "上一轮", command: "docker ps", level: "green", ts: 1, target: null, scopeId: null, runId: "run-1" }],
       status: "running",
       answer: "do",
     });
@@ -359,8 +413,8 @@ it.each(["\n", "\r\n", "\r", "\t", "\x1b", "\x7f"])("NL current and history rows
   const command = `echo one${separator}echo two`;
   const inserter = vi.fn();
   useNlStore.setState({ status: "done", command, rounds: [
-    { input: "current", command, level: "green", ts: 2 },
-    { input: "previous", command, level: "green", ts: 1 },
+    { input: "current", command, level: "green", ts: 2, target: null, scopeId: null, runId: "run-2" },
+    { input: "previous", command, level: "green", ts: 1, target: null, scopeId: null, runId: "run-1" },
   ] });
   renderPanel({ inserter });
   for (const button of screen.getAllByTestId("ai-insert")) {
@@ -368,4 +422,33 @@ it.each(["\n", "\r\n", "\r", "\t", "\x1b", "\x7f"])("NL current and history rows
     fireEvent.click(button);
   }
   expect(inserter).not.toHaveBeenCalled();
+});
+
+it("I-2（fix round 1）：scope 已撤销（close 生命周期）→ 插入失败态优雅呈现", async () => {
+  // 判别 mock：ai_scope_insert 按已撤销拒绝（close 后旧轮插入的 fail-closed 面）
+  mockedInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "ai_scope_insert") return Promise.reject(new Error("AI scope revoked"));
+    return Promise.resolve(null);
+  });
+  useNlStore.setState({
+    status: "done",
+    command: "docker ps",
+    level: "green",
+    target: {
+      paneSessionId: "tab-1",
+      rootTabId: "tab-1",
+      rustId: "pty-9",
+      connectionEpoch: 0,
+      kind: "ssh",
+      hostId: 7,
+    },
+    scopeId: "scope-gone",
+    runId: "run-9",
+  });
+  renderPanel();
+  fireEvent.click(screen.getByTestId("ai-insert"));
+  await vi.waitFor(() => {
+    expect(screen.getByTestId("ai-insert").getAttribute("data-stage")).toBe("failed");
+  });
+  expect(screen.getByTestId("ai-insert").textContent).toContain("插入失败");
 });

@@ -6,6 +6,7 @@
 //! * vault/keys/security/hosts/known_hosts 命令面已在既有 vault.rs / keys.rs /
 //!   security.rs / ssh_config.rs 模块——不再二次搬家（见 task-0 报告选型论证）；
 //! * Global Constraint「lib.rs 只减不增」：Phase 2 新命令一律进本目录对应域。
+pub mod ai_session;
 pub mod encoding;
 // 端口转发命令域（Phase 2 Task 1，B7 上半）：ForwardManager + pf_* 命令 +
 // 会话断线/重连挂钩（Phase 2 新域，Global Constraint：新命令进本目录对应域）。

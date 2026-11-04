@@ -81,6 +81,7 @@ import {
 } from "./types";
 import { loadDismissedEncodingHosts } from "./encoding";
 import type { SessionClosedPayload } from "./types";
+import { currentEpoch } from "./aiTarget";
 import { useModalStore } from "../ui/modalStore";
 import i18n from "../i18n";
 
@@ -88,6 +89,45 @@ export * from "./types";
 export * from "./encoding";
 export * from "./retry";
 export * from "./terminal";
+// AI 终端目标（Ask Ottr Task 2）：纯函数域（resolve/capture/live + 类型），
+// 随本文件的聚合出口原样暴露（本文件 = session 域公共 API 路径的惯例）。
+export * from "./aiTarget";
+
+// --- AI 会话生命周期订阅（Ask Ottr Task 2） ----------------------------------
+// setSessionEndHook 同款模块级单槽钩子（App 挂载时注入，store 不反向依赖
+// ai/* —— 依赖方向：ai 消费 session）。与纪要钩子的分工：emitSessionEnded
+// 只在「会话终态」派发（closeTab / disconnect / 重连耗尽，驱动纪要生成）；
+// 本钩子覆盖 **AI 目标失效面**——分屏子 pane 关闭也算（pane 不生成纪要，但
+// AI 必须就地清理它的目标/运行），另有 shell_exit 与重连成功（连接代数变化）。
+// 消费方拿到事件后应以 captureAiTarget 重校（事件里的 session 是快照）。
+
+export type SessionLifecycleType = "closed" | "disconnected" | "reconnected";
+
+export interface SessionLifecycleEvent {
+  type: SessionLifecycleType;
+  /** 事件发生时的会话快照（closed = 从状态移除前的最后状态）。 */
+  session: Session;
+}
+
+let sessionLifecycleHook: ((e: SessionLifecycleEvent) => void) | null = null;
+
+/** 注入/摘除 AI 生命周期订阅（null = 摘除）。单槽，后注入覆盖前者。 */
+export function setSessionLifecycleHook(
+  fn: ((e: SessionLifecycleEvent) => void) | null,
+): void {
+  sessionLifecycleHook = fn;
+}
+
+/** 生命周期派发（同步返回；钩子自身负责 fire-and-forget 与静默，异常不反噬）。 */
+function emitSessionLifecycle(type: SessionLifecycleType, session: Session): void {
+  const hook = sessionLifecycleHook;
+  if (!hook) return;
+  try {
+    hook({ type, session });
+  } catch (e) {
+    console.warn("[session] lifecycle hook failed:", e);
+  }
+}
 
 // --- store ------------------------------------------------------------------
 
@@ -440,6 +480,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }
       // 会话收尾（Task 7 纪要）：关标签 = 会话结束（手动断开也生成，裁定 #1）
       emitSessionEnded(session);
+      // AI 生命周期（Ask Ottr Task 2）：根与每个 pane 各派发一次 closed——
+      // 会话已从状态移除，isAiTargetLive 查找即死；事件让 AI 即时清理运行，
+      // 不必等下一次懒校验。
+      emitSessionLifecycle("closed", session);
     }
     const doomedIds = new Set(doomed.map((s) => s.id));
     if (st0.hostKeyAsk && doomedIds.has(st0.hostKeyAsk.sessionId)) {
@@ -510,6 +554,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (session) {
       // 会话收尾（Task 7 纪要）：手动断开也是会话结束（裁定 #1）
       emitSessionEnded(session);
+      // AI 生命周期（Ask Ottr Task 2）：手动断开 = 目标失效（下方 rustId 清空
+      // 即死；事件供 AI 即时清理，不等懒校验）。
+      emitSessionLifecycle("disconnected", session);
     }
     bumpGeneration(id);
     set((st) => ({
@@ -608,12 +655,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         sessions: patchSession(st.sessions, id, {
           status: "connected",
           rustId,
+          // 连接代数 +1（Ask Ottr Task 2）：重连 = 新连接时代，旧捕获目标
+          // （rustId+epoch 失配）即死。首连 0 → 1 同理。
+          connectionEpoch:
+            currentEpoch(st.sessions.find((s) => s.id === id) ?? {}) + 1,
           attempt: 0,
           nextRetryAt: null,
           lastError: null,
           encoding: override,
         }),
       }));
+      // AI 生命周期：连接代数已变（含首连——消费方无既有目标时是 no-op）。
+      const live = get().sessions.find((s) => s.id === id);
+      if (live) emitSessionLifecycle("reconnected", live);
       if (!isLocal) {
         void invoke("set_session_encoding", { id: rustId, encoding: override }).catch(() => {});
       }
@@ -916,7 +970,31 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // 主动关闭（关标签/手动断开）+ 用户主动退出 shell（exit/logout）——不重连
     // （2026-10-16 全面评审 ssh-0：原来 shell 退出与断线共用 Closed，敲 exit
     // 会被静默重开新 shell）。
-    if (payload.reason === "cancelled" || payload.reason === "shell_exit") return;
+    if (payload.reason === "shell_exit") {
+      // shell 退出（Ask Ottr Task 2；评审 I-1 修复）：后端会话已亡——rustId
+      // **就地清空**（SSH exit/logout 与本地 shell 关闭同走此路径），让死会话
+      // 三面一起失效：resolveFocusedTerminal（rustId 空闸）、captureAiTarget
+      // （抛错）、isAiTargetLive（rustId 失配）。连接代数 +1 保留（真实：旧
+      // 连接时代终结）。标签保留、不重连、status 维持 connected（既有钉住
+      // ——终端转发通道已关，展示自会收尾）。rustId 清空的副作用核查（评审
+      // 要求）：⌘R 插入 / resizeSession / setSessionEncoding / 击键均以
+      // rustId 为闸 → 对死会话静默拒绝（原先打到死 rustId 上也只是 Rust
+      // 报错被吞，更正确）；纪要（SessionEndInfo）与重连浮层（status 驱动）
+      // 不依赖 rustId；monitor 收尾在 Rust 侧 session_down。迟到重复的
+      // session-closed 因 rustId 反查不到而忽略（顺带获得幂等）。
+      set((st) => ({
+        sessions: patchSession(st.sessions, session.id, {
+          rustId: null,
+          connectionEpoch: currentEpoch(session) + 1,
+        }),
+      }));
+      emitSessionLifecycle(
+        "closed",
+        get().sessions.find((s) => s.id === session.id) ?? session,
+      );
+      return;
+    }
+    if (payload.reason === "cancelled") return;
     if (session.status !== "connected") return; // 手动断开/已在重连——忽略迟到事件
     set((st) => ({
       sessions: patchSession(st.sessions, session.id, { rustId: null }),
@@ -1023,6 +1101,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     cancelRetryTimer(sessionId);
     cancelAttachWatchdog(sessionId);
     unregisterSink(sessionId);
+    // AI 生命周期（Ask Ottr Task 2）：子 pane 关闭**必须**通知 AI 清理目标/
+    // 运行——但刻意不走 emitSessionEnded：pane 关闭不生成会话纪要（Task 7
+    // 裁定，纪要只属标签终态），两条钩子在此分道。
+    emitSessionLifecycle("closed", session);
     if (session.rustId) {
       void invoke("drop_session", { id: session.rustId }).catch(() => {});
     }

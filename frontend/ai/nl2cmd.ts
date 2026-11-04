@@ -13,6 +13,13 @@
 //   是因为它由后台失败事件触发）。
 // * 完成轮入 rounds 账（批次三 T2，审计 ⌘J「生成结果无历史」）：面板「最近
 //   生成」区回看往轮（含重开后），close/begin 不清、容量封顶（NL_ROUNDS_CAP）。
+//
+// **目标绑定（ask-ottr-orb Task 3）**：nlBegin 捕获聚焦 pane 的不可变目标，
+// 每轮 submit 开自己的 scope（ai_scope_open；插入授权 = 一次性 actionId），
+// 完成轮随账携带来源 target/scopeId/runId——A 生成的旧轮永不改插当前聚焦
+// 终端（跨目标禁用在公共 InsertRow 生产守卫内）。scope 收权口径（I-2）：
+// supersede/abort 收**真正在途**的；settle（完成/中止/出错）只清指针不撤销
+// ——完成轮授权保持到 close（lifecycle 失效全收）/ 后端 TTL。
 import { create } from "zustand";
 import i18n from "../i18n";
 import { vaultApi } from "../vault/api";
@@ -20,6 +27,10 @@ import { createProvider, type ChatMessage, type ChatUsage } from "./provider";
 import { activeProvider, apiKeySecretKey, loadAiSettings, type AiSettings } from "./settings";
 import { classify, type TrafficLight } from "./danger";
 import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
+import { aiSessionApi, type AiScopeTarget } from "./sessionApi";
+import { isAiTargetLive } from "../session/aiTarget";
+import { useSessionStore } from "../session/SessionStore";
+import { newAiId } from "./aiStore";
 
 /** NL 生成请求的装配面（纯函数；nlStore 消费，测试直接断言）。 */
 export interface Nl2cmdPrompt {
@@ -75,13 +86,21 @@ export type NlStatus = "idle" | "running" | "done" | "aborted" | "error";
 export type NlErrorKind = "noProvider" | "noKey" | "request" | "empty";
 
 /** 一轮已完成的生成（批次三 T2，审计 ⌘J 21/22「生成结果无历史」）：输入原文
- * + sanitize 产物 + danger 分档。面板生命周期 = webview 会话级：close/begin
- * 均不清（「不随失焦/重开丢结果」的回看面），仅容量封顶防无界增长。 */
+ * + sanitize 产物 + danger 分档 + **来源绑定**（target/scopeId/runId，Task 3：
+ * 插入只认轮次自己的来源，绝不改插当前聚焦终端）。面板生命周期 = webview
+ * 会话级：close/begin 均不清（「不随失焦/重开丢结果」的回看面），仅容量封顶
+ * 防无界增长。 */
 export interface NlRound {
   input: string;
   command: string;
   level: TrafficLight;
   ts: number;
+  /** 生成该轮时的绑定目标（无连接 = null；插入面随之禁用）。 */
+  target: AiScopeTarget | null;
+  /** 该轮 run 开的 scope id（插入授权；无/已撤 = null）。 */
+  scopeId: string | null;
+  /** 该轮 run id（actionId 前缀）。 */
+  runId: string;
 }
 
 /** 保留最近 N 轮（模块级 store 无持久化需求，与限频/锁存表同款口径）。 */
@@ -104,6 +123,12 @@ interface NlStore {
   cwd: string | null;
   /** 打开面板时锚定的主机 id（本地终端 = null；用于取主机「备注」注入 AI 上下文）。 */
   hostId: number | null;
+  /** 打开面板时捕获的不可变目标（Task 3；无连接 = null——插入禁用）。 */
+  target: AiScopeTarget | null;
+  /** 本轮 run 的 scope id（完成轮随账、settle 后保留供当前结果插入；close 清空）。 */
+  scopeId: string | null;
+  /** 本轮 run id（open 的 requestId + 插入 actionId 前缀）。 */
+  runId: string | null;
   /** 本轮用量（2026-11-02 批次一 B 项）：端点回传的 token 数；不给 = null。 */
   usage: ChatUsage | null;
   /** 本轮实际使用的模型名（端点回传优先，回落 settings 快照）。 */
@@ -114,19 +139,64 @@ interface NlStore {
   rounds: NlRound[];
 
   /** 打开时重置（App 持开关；cwd 由 CwdTracker 按聚焦 pane 查询注入，
-   *  hostId 由聚焦会话解析——用于取主机备注注入 AI 上下文）。 */
-  begin: (cwd: string | null, hostId?: number | null) => void;
+   *  hostId 由聚焦会话解析，target 由聚焦 pane 定格（Task 3））。 */
+  begin: (cwd: string | null, hostId?: number | null, target?: AiScopeTarget | null) => void;
   setInput: (v: string) => void;
   /** 生成（input 空白则 no-op；在途请求被新一轮取代，同 aiStore 口径）。 */
   submit: () => Promise<void>;
-  /** 取消在途请求。 */
+  /** 取消在途请求（在途 scope 一并撤销）。 */
   abort: () => void;
-  /** 关闭面板的清场（在途请求一并 abort；rounds 保留）。 */
+  /** 关闭面板的清场（在途请求一并 abort；scope 做 lifecycle 失效——在途 +
+   *  已完成轮次全部收权；rounds 保留供回看，重开后旧轮插入按后端拒绝
+   *  fail-closed 呈现）。 */
   close: () => void;
 }
 
 /** 在途请求的取消器（模块级——非响应式资源，与 sinks/定时器同一放置惯例）。 */
 let controller: AbortController | null = null;
+/**
+ * 在途 run 的 scope id——**只**指向真正在途的 run（fix round 1 I-2）：
+ * settle（完成/中止/出错）即清、**不撤销**——完成轮的插入授权保持有效，
+ * 直到 (a) 后端 scope TTL（15 min）或 (b) 生命周期失效（close /
+ * 源目标重连——后者由后端按 rust_id 失配拒）。指针只在 supersede（新一轮
+ * submit）与 abort 时收权，绝不指到已完成轮上。
+ */
+let inflightScopeId: string | null = null;
+/** 本面板全部活 scope（close 的 lifecycle 失效面：在途 + 已完成轮次一并收）。 */
+const liveScopes = new Set<string>();
+
+/** 撤销一个 scope（尽力而为；已撤销/过期/后端不可达一律吞掉）。 */
+async function revokeScopeQuietly(scopeId: string): Promise<void> {
+  try {
+    await aiSessionApi.revoke(scopeId);
+  } catch {
+    // 撤销失败不反噬（后端 TTL 兜底）
+  }
+}
+
+/** 收回**真正在途**的 scope（supersede/abort；settle 后指针已清——
+ *  不会误伤已完成轮次的授权，I-2 的核心）。 */
+async function revokeInflight(): Promise<void> {
+  const scopeId = inflightScopeId;
+  inflightScopeId = null;
+  if (scopeId == null) return;
+  liveScopes.delete(scopeId);
+  await revokeScopeQuietly(scopeId);
+}
+
+/** close 的 lifecycle 失效：在途 + 全部已完成轮次的 scope 一并撤销。 */
+async function revokeAllNlScopes(): Promise<void> {
+  inflightScopeId = null;
+  const ids = [...liveScopes];
+  liveScopes.clear();
+  await Promise.all(ids.map(revokeScopeQuietly));
+}
+
+/** SessionStore 切片 → isAiTargetLive 入参面。 */
+function nlFocusState() {
+  const s = useSessionStore.getState();
+  return { activeId: s.activeId, activePane: s.activePane, sessions: s.sessions };
+}
 
 export const useNlStore = create<NlStore>((set, get) => ({
   input: "",
@@ -139,13 +209,16 @@ export const useNlStore = create<NlStore>((set, get) => ({
   settingsUsed: null,
   cwd: null,
   hostId: null,
+  target: null,
+  scopeId: null,
+  runId: null,
   usage: null,
   modelUsed: null,
   elapsedMs: null,
   rounds: [],
 
-  begin: (cwd, hostId = null) => {
-    get().abort();
+  begin: (cwd, hostId = null, target = null) => {
+    void get().abort();
     set({
       input: "",
       status: "idle",
@@ -157,6 +230,9 @@ export const useNlStore = create<NlStore>((set, get) => ({
       settingsUsed: null,
       cwd,
       hostId,
+      target,
+      scopeId: null,
+      runId: null,
       usage: null,
       modelUsed: null,
       elapsedMs: null,
@@ -168,11 +244,13 @@ export const useNlStore = create<NlStore>((set, get) => ({
   abort: () => {
     controller?.abort();
     controller = null;
+    void revokeInflight();
     if (get().status === "running") set({ status: "aborted" });
   },
 
   close: () => {
-    get().abort();
+    void get().abort();
+    void revokeAllNlScopes();
     set({
       input: "",
       status: "idle",
@@ -182,6 +260,11 @@ export const useNlStore = create<NlStore>((set, get) => ({
       errorKind: null,
       error: null,
       settingsUsed: null,
+      scopeId: null,
+      runId: null,
+      usage: null,
+      modelUsed: null,
+      elapsedMs: null,
       // rounds 刻意保留（批次三 T2）：面板重开可回看往轮结果
     });
   },
@@ -189,6 +272,10 @@ export const useNlStore = create<NlStore>((set, get) => ({
   submit: async () => {
     const input = get().input.trim();
     if (input === "") return;
+    // --- runId + AbortController 先于一切 await（Task 3 铁律）---
+    const runId = newAiId("run");
+    const ac = new AbortController();
+    controller = ac;
     set({
       status: "running",
       answer: "",
@@ -198,13 +285,17 @@ export const useNlStore = create<NlStore>((set, get) => ({
       usage: null,
       modelUsed: null,
       elapsedMs: null,
+      scopeId: null,
+      runId,
     });
+    void revokeInflight(); // 被本 run 取代的上一条在途 scope 收权
 
     // --- 1. 设置（坏键独立回落，同 aiStore 口径）---
     let settings: AiSettings;
     try {
       settings = await loadAiSettings();
     } catch (e) {
+      if (controller !== ac) return;
       set({
         status: "error",
         errorKind: "noProvider",
@@ -212,6 +303,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
       });
       return;
     }
+    if (controller !== ac) return;
     set({ settingsUsed: settings });
     // 首个未禁用的 provider（启用/禁用 2026-10-16）：全禁用 = 无可用 →
     // noProvider 错误面（带去设置引导）。
@@ -226,6 +318,7 @@ export const useNlStore = create<NlStore>((set, get) => ({
     try {
       apiKey = (await vaultApi.secrets.get(apiKeySecretKey(meta.id))) ?? "";
     } catch (e) {
+      if (controller !== ac) return;
       set({
         status: "error",
         errorKind: "noKey",
@@ -233,11 +326,33 @@ export const useNlStore = create<NlStore>((set, get) => ({
       });
       return;
     }
+    if (controller !== ac) return;
+
+    // --- 2.5 scope（Task 3）：目标活校验先行；插入授权随本轮走 ---
+    const target = get().target;
+    if (target && isAiTargetLive(target, nlFocusState())) {
+      try {
+        const scope = await aiSessionApi.open(target, `nl-${runId}`, runId);
+        if (controller !== ac) {
+          // 迟到的 open 结果：立即收权，不得授权被取代的 run
+          if (scope?.scopeId) void aiSessionApi.revoke(scope.scopeId).catch(() => {});
+          return;
+        }
+        if (scope?.scopeId) {
+          inflightScopeId = scope.scopeId;
+          liveScopes.add(scope.scopeId);
+          set({ scopeId: scope.scopeId });
+        }
+      } catch {
+        // scope 开失败：照常生成，插入面禁用（无授权不写终端）
+      }
+    }
 
     // --- 3. 输入与 cwd 不脱敏；生成结果不在服务端截断 ---
     // 主机备注**要脱敏**（2026-11-02 批次一 A 项）：它是持久化在 vault 的
     // 另一份数据，不是用户本次输入——与「输入原样发端点」是两条不同纪律。
     const notes = await fetchHostNotes(get().hostId);
+    if (controller !== ac) return;
     const hostCtx = buildHostContextBlock(notes, {
       hostname: settings.redaction.hostname,
       custom: settings.redaction.custom,
@@ -245,8 +360,6 @@ export const useNlStore = create<NlStore>((set, get) => ({
     const hostContext = hostCtx.text ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}` : "";
     const prompt = buildNl2cmdPrompt(input, { cwd: get().cwd, hostContext });
     const messages: ChatMessage[] = [{ role: "user", content: prompt.user }];
-    const ac = new AbortController();
-    controller = ac;
     const startedAt = performance.now();
     try {
       const provider = createProvider(meta, apiKey);
@@ -268,6 +381,9 @@ export const useNlStore = create<NlStore>((set, get) => ({
       }
       if (controller === ac) {
         controller = null;
+        // settle（完成/中止/出错）：清在途指针，**不撤销**——本轮（或未来轮）
+        // 的插入授权保持有效到 close/lifecycle 失效/TTL（I-2）。
+        inflightScopeId = null;
         const done = !ac.signal.aborted;
         set({ elapsedMs: Math.round(performance.now() - startedAt) });
         if (done) {
@@ -277,15 +393,26 @@ export const useNlStore = create<NlStore>((set, get) => ({
           } else {
             // 出口防线：生成的命令过 danger 分级（红黄绿决定确认档）
             const level = classify(command).level;
-            // 完成轮入账（最新在前，容量封顶）——面板「最近生成」回看面
+            // 完成轮入账（最新在前，容量封顶）——面板「最近生成」回看面。
+            // 来源绑定随账（Task 3）：target/scopeId/runId 落轮。
+            const boundTarget = get().target;
+            const roundScopeId = get().scopeId;
             set((st) => ({
               status: "done",
               command,
               level,
-              rounds: [{ input, command, level, ts: Date.now() }, ...st.rounds].slice(
-                0,
-                NL_ROUNDS_CAP,
-              ),
+              rounds: [
+                {
+                  input,
+                  command,
+                  level,
+                  ts: Date.now(),
+                  target: boundTarget,
+                  scopeId: roundScopeId,
+                  runId,
+                },
+                ...st.rounds,
+              ].slice(0, NL_ROUNDS_CAP),
             }));
           }
         } else {
@@ -295,6 +422,8 @@ export const useNlStore = create<NlStore>((set, get) => ({
     } catch (e) {
       if (controller !== ac) return;
       controller = null;
+      // settle（出错）：清在途指针，不撤销（同 done/中止，I-2）。
+      inflightScopeId = null;
       if (ac.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) {
         set({ status: "aborted" });
         return;

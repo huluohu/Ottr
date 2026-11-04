@@ -103,6 +103,9 @@ pub const HOSTKEY_AUDIT_INTERVAL_MAX_SECS: u64 = 7 * 24 * 3600;
 pub const SETTING_SUDO_AUTOFILL: &str = "security.sudo_autofill";
 /// MCP server 总开关（Phase 4 Task 3，C1）：默认关。
 pub const SETTING_MCP_ENABLED: &str = "mcp.enabled";
+/// 「问 Ottr」精灵球显示开关（2026-11-03 精灵球功能）：默认开（true）。
+/// 只控制悬浮入口显隐，不等于 AI 总能力开关（自动诊断另有 `ai.enabled`）。
+pub const SETTING_ASK_OTTR_ORB: &str = "ui.askOttrOrb";
 /// MCP 逐次审批超时（秒）（2026-10-13 用户目标「审批超时策略可配」）：
 /// 默认 60；写入范围 10..=600（下限防误触瞬超=变相全拒，上限防占死连接）。
 pub const SETTING_MCP_APPROVAL_TIMEOUT: &str = "mcp.approval_timeout_secs";
@@ -268,6 +271,7 @@ pub fn validate_known_setting(
             Ok(())
         }
         SETTING_MCP_ENABLED => bool_value(key, value),
+        SETTING_ASK_OTTR_ORB => bool_value(key, value),
         SETTING_MCP_APPROVAL_TIMEOUT => {
             let n = value
                 .as_u64()
@@ -382,6 +386,20 @@ pub fn validate_known_setting(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 「问 Ottr」精灵球开关（2026-11-03）：布尔放行，非布尔拒绝
+    /// （settings_set 与 sync 分类导入共享本注册表）。
+    #[test]
+    fn ask_ottr_orb_write_side_validation() {
+        let key = SETTING_ASK_OTTR_ORB;
+        assert!(validate_known_setting(key, &serde_json::json!(true)).is_ok());
+        assert!(validate_known_setting(key, &serde_json::json!(false)).is_ok());
+        assert!(
+            validate_known_setting(key, &serde_json::json!("on")).is_err(),
+            "字符串拒绝（布尔键）"
+        );
+        assert!(validate_known_setting(key, &serde_json::json!(1)).is_err());
+    }
 
     /// BL-205①（TDD 红）：history.limit 写入侧校验——范围内放行，越界/类型错
     /// 显式拒绝（settings_set 与 sync 分类导入共享本注册表，导入侧不得绕过）。

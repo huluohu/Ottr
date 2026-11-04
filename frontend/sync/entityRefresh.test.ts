@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   syncLang: vi.fn(),
   syncTheme: vi.fn(),
   syncTerm: vi.fn(),
+  syncOrb: vi.fn(),
 }));
 vi.mock("../vault/store", () => ({
   useVaultStore: { getState: () => ({ refresh: h.refreshVault }) },
@@ -34,6 +35,7 @@ vi.mock("../theme/ThemeContext", () => ({ syncThemeFromVault: h.syncTheme }));
 vi.mock("../theme/terminalThemeStore", () => ({
   useTerminalThemeStore: { getState: () => ({ syncFromVault: h.syncTerm }) },
 }));
+vi.mock("../ai/orbStore", () => ({ syncOrbFromVault: h.syncOrb }));
 
 import { refreshEntitiesAfterImport } from "./entityRefresh";
 
@@ -42,7 +44,7 @@ beforeEach(() => {
 });
 
 describe("refreshEntitiesAfterImport（BL-525 映射例程）", () => {
-  it("逐类映射的刷新通道各恰调一次（vault/cron/notify/渠道重挂/规则重载/语言/主题/终端配色）", async () => {
+  it("逐类映射的刷新通道各恰调一次（vault/cron/notify/渠道重挂/规则重载/语言/主题/终端配色/悬浮球开关）", async () => {
     await refreshEntitiesAfterImport();
     expect(h.refreshVault).toHaveBeenCalledTimes(1);
     expect(h.refreshCron).toHaveBeenCalledTimes(1);
@@ -52,6 +54,7 @@ describe("refreshEntitiesAfterImport（BL-525 映射例程）", () => {
     expect(h.syncLang).toHaveBeenCalledTimes(1);
     expect(h.syncTheme).toHaveBeenCalledTimes(1);
     expect(h.syncTerm).toHaveBeenCalledTimes(1);
+    expect(h.syncOrb).toHaveBeenCalledTimes(1); // ui.askOttrOrb 随 settings 类导入
   });
 
   it("vault 主刷新失败 → 本地化包装错误上抛（不吞；其余通道不再阻塞上报）", async () => {
@@ -61,7 +64,7 @@ describe("refreshEntitiesAfterImport（BL-525 映射例程）", () => {
     );
   });
 
-  it("吞错型通道（cron/bootstrap/重挂/重载/三设置函数）失败不阻断整体刷新", async () => {
+  it("吞错型通道（cron/bootstrap/重挂/重载/设置函数）失败不阻断整体刷新", async () => {
     h.refreshCron.mockRejectedValue(new Error("cron"));
     h.bootstrapNotify.mockRejectedValue(new Error("notify"));
     h.remount.mockRejectedValue(new Error("mount"));
@@ -69,6 +72,7 @@ describe("refreshEntitiesAfterImport（BL-525 映射例程）", () => {
     h.syncLang.mockRejectedValue(new Error("lang"));
     h.syncTheme.mockRejectedValue(new Error("theme"));
     h.syncTerm.mockRejectedValue(new Error("term"));
+    h.syncOrb.mockRejectedValue(new Error("orb"));
     await expect(refreshEntitiesAfterImport()).resolves.toBeUndefined();
     expect(h.refreshVault).toHaveBeenCalledTimes(1);
   });

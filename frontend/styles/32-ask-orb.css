@@ -1,0 +1,83 @@
+/* --- Ask Ottr 悬浮球（ask-ottr-orb Task 4）---
+ * 终端视图常驻 AI 提问入口：44px 命中面 + 32px 微缩 Otty mark（ui/otty/
+ * OttyMark）。闲置球**静态**（无漂浮/呼吸——功能控件不做环境动画）；hover/
+ * 按压走 --dur-fast 微反馈。几何常量（44/32/8/48）与 ai/AskOttrOrb.tsx 的
+ * ORB_SIZE/ORB_MARGIN/ORB_BOTTOM_RESERVE 同值，改两处同步。
+ * 品牌色板直引（brand.md 品牌资产豁免，31-otty.css 同纪律）：
+ * 底盘品牌 teal 恒色 + Otty 在场必有 Amber（问号徽标）。 */
+
+.ask-orb {
+  /* z 层裁定：--z-overlay(50) 之下 10 档 = 40。球是**功能性控件**（不是
+   * 对话框也不是 toast），必须盖过终端内容、又永压在弹窗/锁屏/初始化门
+   * （≥ --z-overlay 50 / --z-toast 150 / --z-lock 200）之下——锁屏/弹窗在
+   * 场时组件已卸载（可见性门），z 层只兜转场瞬间的时序缝。 */
+  z-index: calc(var(--z-overlay) - 10);
+  position: fixed;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none; /* 拖拽面：指针位移归球，不许页面滚动劫持 */
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.ask-orb:hover {
+  transform: scale(1.06);
+}
+
+.ask-orb:active {
+  transform: scale(0.96);
+}
+
+/* 拖拽态（AskOttrOrb 运行时加/摘 class）：抓紧光标 + 轻微放大示意「可落点」，
+ * 过渡关掉跟手。 */
+.ask-orb.dragging {
+  cursor: grabbing;
+  transform: scale(1.08);
+  transition: none;
+}
+
+.ask-orb:focus-visible {
+  /* 基座 00-base 的 button:focus-visible outline 在透明底上贴边不可见——
+   * 光圈外扩一圈，与球保持呼吸距 */
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
+/* 琥珀问号徽标（aria-hidden 纯装饰）：Otty 品牌规则的 Amber 点缀，
+ * 克制档——14px 小圆压 mark 右下角。 */
+.ask-orb-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ottr-amber-500);
+  color: var(--ottr-ink-900);
+  font-size: var(--text-2xs);
+  line-height: 14px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 弱动效偏好：球是静态控件本就无闲置动画，这里只把 hover/按压的缩放过渡
+ * 归零（00-base 全局 0.01ms 兜底之上再显式声明，防时序缝）；**按钮永不因
+ * 动效偏好隐藏**（plan Task 4：reduced-motion keeps button）。 */
+@media (prefers-reduced-motion: reduce) {
+  .ask-orb,
+  .ask-orb:hover,
+  .ask-orb:active,
+  .ask-orb.dragging {
+    transition: none;
+    transform: none;
+  }
+}

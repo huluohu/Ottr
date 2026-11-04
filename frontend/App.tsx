@@ -34,8 +34,13 @@ import { HostKeyDialog } from "./session/HostKeyDialog";
 import { PromptDialog } from "./session/PromptDialog";
 import { NLCommandPanel, nlBegin } from "./ai/NLCommandPanel";
 import { setAiSettingsOpener, useAiStore } from "./ai/aiStore";
+import { openAskForFocusedTerminal } from "./ai/aiTargets";
 import { onSessionEnded } from "./ai/summary";
-import { setSessionEndHook, useSessionStore } from "./session/SessionStore";
+import {
+  setSessionEndHook,
+  setSessionLifecycleHook,
+  useSessionStore,
+} from "./session/SessionStore";
 import { initSessionEvents } from "./session/events";
 import { initTransferEvents } from "./files/events";
 import { initNotifyEvents } from "./notify/core";
@@ -54,6 +59,10 @@ import { stripPromptPrefix } from "./history/format";
 import { UnifiedHeader } from "./titlebar/UnifiedHeader";
 import { OttyMoments } from "./ui/otty/OttyMoments";
 import { syncOttyFromVault } from "./ui/otty/ottyStore";
+// Ask Ottr 悬浮球（ask-ottr-orb Task 4）：终端视图常驻 AI 提问入口——onAsk
+// 与 ⌘K/工具钮同一动作（handleAction("ai.ask")），所有入口共享一条代码路径。
+import { AskOttrOrb } from "./ai/AskOttrOrb";
+import { syncOrbFromVault } from "./ai/orbStore";
 import { useTerminalFocus } from "./terminal/terminalFocus";
 // UI 批次一 Task 2/4：主区视图路由 + 右侧 dock 实体壳（workspaceStore 状态机）。
 // 面板实体迁移分工：overview/batch 实体 T3 迁入主区槽位；forwards/jumpchains/
@@ -298,6 +307,9 @@ function HomeLayout() {
       // Otty 情感时刻开关（2026-10-16 M3）：vault 真源 ui.ottyMoments 对齐
       // （默认开；设置页外观分区可一键关——报告红线②）。
       void syncOttyFromVault();
+      // Ask Ottr 悬浮球开关（ask-ottr-orb Task 4）：vault 真源 ui.askOttrOrb
+      // 对齐（默认开；store enabled=null 未加载态先行防闪烁，此处到达后收敛）。
+      void syncOrbFromVault();
       try {
         await useVaultStore.getState().refresh();
       } catch {
@@ -433,6 +445,16 @@ function HomeLayout() {
     return () => setSessionEndHook(null);
   }, []);
 
+  // AI 目标生命周期订阅（ask-ottr-orb Task 3）：closePane/closeTab/shell_exit
+  // （closed → dropSession 清切片）、断开/重连（scope 全撤 + 重连换代标旧对话
+  // 只读）。与纪要钩子分道（pane 关闭不生成纪要但必须通知 AI 清理）。
+  useEffect(() => {
+    setSessionLifecycleHook((info) => {
+      useAiStore.getState().handleSessionLifecycle(info);
+    });
+    return () => setSessionLifecycleHook(null);
+  }, []);
+
   // A12 动作收口：面板 / 全局快捷键 / （Task 14 后续提交）原生菜单事件、
   // 汉堡菜单——一处 action 多入口，全部汇到 handleAction。
   const handleAction = useCallback(
@@ -458,19 +480,11 @@ function HomeLayout() {
           modal.active === "history" ? modal.close("history") : modal.open("history");
           break;
         case "ai.ask": {
-          // Ask Ottr（批次四 P0）：对**聚焦 pane**的会话开「提问」态面板。
-          // 无聚焦会话 → 无事发生（不弹空面板）。
-          const st = useSessionStore.getState();
-          const focused = st.activeId != null ? (st.activePane[st.activeId] ?? st.activeId) : null;
-          const session = focused != null ? st.sessions.find((x) => x.id === focused) : undefined;
-          if (!session) break;
-          useAiStore.getState().openAsk({
-            kind: "ask",
-            sessionId: session.id,
-            rustId: session.rustId,
-            hostId: session.kind === "local" ? null : session.hostId,
-            hostName: session.hostName,
-          });
+          // Ask Ottr（批次四 P0）：对**聚焦 pane**的活终端开「提问」态面板。
+          // 三入口（悬浮球 / 工具行 / 快捷键⌘K）单一来源（Task 3）：
+          // openAskForFocusedTerminal——fail-closed（无活终端 toast 说明），
+          // 目标此刻定格。无聚焦会话 → toast，不弹空面板。
+          openAskForFocusedTerminal();
           break;
         }
         case "ai.nl2cmd":
@@ -771,6 +785,10 @@ function HomeLayout() {
       {/* Otty 情感时刻覆盖层（2026-10-16 M3）：连接/传输/解锁/更新四瞬间，
           单槽队列 + 开关可关（ui/otty）；pointer-events:none 不挡交互。 */}
       <OttyMoments />
+      {/* Ask Ottr 悬浮球（ask-ottr-orb Task 4）：终端视图 + 活目标 + 面板关 +
+          无弹窗 + 未锁定时在场（可见性门在组件内，任一门失败即卸载）；点击/
+          键盘/工具钮/快捷键同一 handleAction("ai.ask") 单一代码路径。 */}
+      <AskOttrOrb onAsk={() => handleAction("ai.ask")} />
 
       {/* 弹窗渲染门（modalStore 单实例，2026-10-14 用户裁定）：open 态 =
           owned(id)；`|| (closing && activeModal === null)` = 正常关闭播完

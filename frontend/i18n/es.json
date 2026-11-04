@@ -110,6 +110,11 @@
     "terminalFontSizePt": "{{n}} pt.",
     "ottyMoments": "Momentos Otty",
     "ottyMomentsHint": "Pequeñas animaciones cuando una conexión se establece, una transferencia termina, la bóveda se desbloquea o hay una actualización lista (activadas por defecto; desactívalas para una interfaz puramente funcional).",
+    "askOttrOrb": "Bola Ask Ottr",
+    "askOttrOrbHint": "Mantiene una bola Ask Ottr en la vista de terminal; haz clic para preguntar sobre la conexión actual (activada por defecto; se oculta mientras el panel está abierto).",
+    "orbResetPosition": "Restablecer posición de la bola",
+    "orbResetPositionHint": "Devuelve la bola a su posición predeterminada (la posición solo se guarda en este equipo y nunca se sincroniza).",
+    "askOttrOrbSaveFailed": "Se aplicó el ajuste, pero no se pudo guardar",
     "langHant": "Chino tradicional (繁體中文)"
   },
   "hostForm": {
@@ -441,6 +446,7 @@
     "promptTimeout": "Se agotó el tiempo de espera de la autenticación; sin conexión (responde cuando aparezca el aviso)"
   },
   "ai": {
+    "orbLabel": "Preguntar a Ottr",
     "title": "Asistente AI",
     "inputPlaceholder": "Describe lo que quieres hacer…",
     "send": "Enviar",
@@ -506,6 +512,7 @@
     },
     "tool": {
       "awaiting": "Esperando aprobación de la herramienta",
+      "targetHint": "Las herramientas se ejecutan en el lado del servidor MCP, más allá de la terminal vinculada a este panel; cada ejecución requiere tu confirmación.",
       "server": "Servidor",
       "tool": "Herramienta",
       "args": "Argumentos",
@@ -588,7 +595,14 @@
     "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar, Shift+Enter para salto de línea)",
     "askEntry": "Preguntar a Ottr",
     "askPlaceholder": "Pregunta lo que quieras… (Enter para enviar)",
-    "panelAsk": "Preguntar a Ottr"
+    "panelAsk": "Preguntar a Ottr",
+    "askNoTarget": "No hay terminal para preguntar: conecta primero un panel de terminal.",
+    "insertWrongTarget": "Del terminal original",
+    "insertWrongTargetHint": "Inserción desactivada: este comando está vinculado a la terminal donde se generó; vuelve a esa terminal para insertarlo.",
+    "returnToOriginal": "Volver al terminal original",
+    "conversationReadonlyNotice": "La conexión se restableció: la conversación siguiente pertenece a la conexión anterior y es de solo lectura. Preguntar de nuevo inicia una conversación nueva.",
+    "newConversation": "Conversación nueva",
+    "headerDisconnected": "Desconectado"
   },
   "tabs": {
     "duplicate": "Duplicar pestaña",

@@ -1,6 +1,6 @@
 // AI 诊断 store（Task 13，核心卖点链路；2026-10-19 方案 A 会话作用域化）：
 //   exit_code≠0（xterm OSC133 监听，CommandWatch）→ openDiagnose → run：
-//   读 settings → session_tail(rustId, 8KB) → 脱敏（redact）→ provider.chat
+//   读 settings → 会话输出尾（8KB）→ 脱敏（redact）→ provider.chat
 //   流式渲染 → 完成落通知（notify kind="ai"，T12 管线预留位）。
 // 选中解释（右键「解释」）→ openExplain → 同一 run 链（单轮，无 tail）。
 //
@@ -11,6 +11,19 @@
 // 「插入终端」错写他台 PTY 的危险面）随作用域化一并消除。并发流允许（每会话
 // 独立 AbortController，A 会话流式中 B 失败互不干扰）。
 //
+// **目标绑定与运行身份（ask-ottr-orb Task 3）**：
+// * 每个会话一份**对话**（conversationId + messages + draft），绑定捕获时的
+//   不可变目标（AiScopeTarget）。面板 close = 摘「open」旗标（request=null），
+//   历史/草稿保留——重开同活目标续对话；显式 newConversation / 目标换代才清。
+// * runId + AbortController 在**首个 await 之前**创建；每个 await 返回后复核
+//   身份（控制器 + runId + request 旗标 + 目标仍活 + vault 未锁），被取代的
+//   迟到准备一律丢弃（R3），不得复活/覆盖新切片。
+// * 每轮 run（含追问轮）开自己的 scope（aiSessionApi.open，TTL 15 min——
+//   每 run 现开比跨 run 缓存便宜且诚实）；上下文走 ai_scope_context（同作用域
+//   的尾 + 备注）；abort/取消/被取代/close/lifecycle 失效 → revoke。
+// * 插入绑定随轮落库（turn.scopeId/runId）：生成于哪个终端就只能插回哪个
+//   终端（CodeBlockRow 生产守卫禁跨目标，绝不静默改插当前终端）。
+//
 // 裁定与护栏：
 // * BYOK 直连：provider 明文 key 只经 vault secrets 单点出库 → createProvider
 //   闭包/请求头，不落任何 store/state；
@@ -20,8 +33,8 @@
 // * 未配置 provider / key：status="error" + noProvider/noKey 标记，面板引导
 //   去设置页（不静默失败）；
 // * 通知失败绝不反噬诊断链路（与 notify/core 纪律一致）。
-// * 会话收尾清理：App 把 dropSession 搭在既有 setSessionEndHook 钩子上
-//   （store 纯状态机、不反向依赖 AI 链路的既有惯例不变）。
+// * 会话收尾清理：App 把 dropSession 搭在 setSessionLifecycleHook 的 closed
+//   事件上（store 纯状态机、不反向依赖 AI 链路的既有惯例不变）。
 import { create } from "zustand";
 import i18n from "../i18n";
 import { notify } from "../notify/core";
@@ -36,7 +49,7 @@ import {
 } from "./provider";
 import { redact, type RedactFinding, type RedactOptions } from "./redact";
 import { buildHostContextBlock, fetchHostNotes } from "./hostContext";
-import { loadMcpTools, resolveMcpTool } from "./mcpTools";
+import { loadMcpToolSnapshot, type McpToolBinding } from "./mcpTools";
 import {
   TAIL_BYTES,
   activeProvider,
@@ -44,6 +57,21 @@ import {
   loadAiSettings,
   type AiSettings,
 } from "./settings";
+import { aiSessionApi, type AiScope } from "./sessionApi";
+import {
+  captureAiTarget,
+  isAiTargetLive,
+  type AiFocusState,
+  type AiScopeTarget,
+} from "../session/aiTarget";
+import { useSessionStore } from "../session/SessionStore";
+import { useVaultLockStore } from "../security/VaultLockStore";
+
+/** SessionStore 全量切片 → isAiTargetLive 的入参面（纯函数不拖多余字段）。 */
+function sessionFocusState(): AiFocusState {
+  const s = useSessionStore.getState();
+  return { activeId: s.activeId, activePane: s.activePane, sessions: s.sessions };
+}
 
 /** 诊断请求（exit_code≠0 自动触发 / 手动重试同面）。 */
 export interface DiagnoseRequest {
@@ -82,6 +110,9 @@ export interface AskRequest {
   rustId: string | null;
   hostId: number | null;
   hostName: string;
+  /** 入口捕获的不可变终端目标（Task 3）：openAskForFocusedTerminal 定格；
+   *  null/缺省 = 无绑定（旧入口/测试面——插入面禁用，上下文走 legacy 通道）。 */
+  target?: AiScopeTarget | null;
 }
 
 export type AiRequest = DiagnoseRequest | ExplainRequest | AskRequest;
@@ -118,6 +149,11 @@ export interface ChatTurn {
   toolName?: string;
   /** tool 轮：展示用的 server 名。 */
   serverName?: string;
+  /** assistant 轮：产出本轮的 run 打开的 scope id（插入绑定面——
+   *  生成于哪个终端/哪次授权，就只能插回哪里；Task 3）。 */
+  scopeId?: string | null;
+  /** assistant 轮：产出本轮的 run id（插入 actionId 前缀 + 身份面）。 */
+  runId?: string | null;
 }
 
 /**
@@ -138,12 +174,14 @@ export interface PendingToolCall {
   tool: string;
   /** 参数 JSON 文本（**原样展示**——用户看到的即将被执行的参数）。 */
   args: string;
+  /** 发起该调用的 run id（执行前复验运行身份——被取代的链不得再执行）。 */
+  runId?: string | null;
 }
 
 /** 工具循环轮次上限（防模型无限调工具烧 token；BYOK 用户自掏腰包）。 */
 export const MAX_TOOL_ROUNDS = 5;
 
-/** 单会话的 AI 面板状态切片（诊断/解释共用同一份）。 */
+/** 单会话的 AI 面板状态切片（诊断/解释/提问共用同一份）。 */
 export interface SessionAiState {
   request: AiRequest | null;
   status: AiStatus;
@@ -163,7 +201,7 @@ export interface SessionAiState {
   /** 本轮耗时（毫秒；发请求 → 流结束）。 */
   elapsedMs: number | null;
   /** 对话历史（多轮追问会话，2026-11-02 批次二 C 项；脱敏后存储）。
-   * 首轮的 user 轮 = 装配后的诊断/解释上下文（含命令 + 输出尾 + 主机备注）。 */
+   *  首轮的 user 轮 = 装配后的诊断/解释上下文（含命令 + 输出尾 + 主机备注）。 */
   messages: ChatTurn[];
   /** 待确认的工具调用（批次五 P2；**模型发起、用户点执行**才真跑）。 */
   pendingToolCalls?: PendingToolCall[];
@@ -171,6 +209,19 @@ export interface SessionAiState {
   toolRounds?: number;
   /** 正在执行的工具调用 id（非空 = 执行中，按钮置灰）。 */
   runningToolCallId?: string | null;
+  /** 对话 id（per paneSessionId；close 隐藏不清，新对话/换代才换新）。 */
+  conversationId: string;
+  /** 对话绑定的不可变终端目标（null = 未捕获到活终端——插入面禁用）。 */
+  target: AiScopeTarget | null;
+  /** 最近一次 run 打开的 scope（后端捕获的身份面：endpoint/username 展示 +
+   *  scopeId 插入授权；run 结束保留到 close/lifecycle/TTL）。 */
+  scope: AiScope | null;
+  /** 当前/最近一次 run 的 id（supersede 判定 + 插入 actionId 前缀）。 */
+  runId: string | null;
+  /** 输入草稿（面板关闭保留；新对话/换代清空；追问提交即清）。 */
+  draft: string;
+  /** 重连换代后旧对话只读（历史可见 + 提示；续问须走新对话）。 */
+  conversationReadonly: boolean;
 }
 
 const EMPTY_SLICE: SessionAiState = {
@@ -189,6 +240,12 @@ const EMPTY_SLICE: SessionAiState = {
   pendingToolCalls: [],
   toolRounds: 0,
   runningToolCallId: null,
+  conversationId: "",
+  target: null,
+  scope: null,
+  runId: null,
+  draft: "",
+  conversationReadonly: false,
 };
 
 interface AiStore {
@@ -198,25 +255,37 @@ interface AiStore {
   /** exit_code≠0 入口（ai.enabled=false 时静默丢弃——总开关只管自动触发；
    * 手动「解释」不受限）。开关现读 settings（失败按开处理——诊断是能力面，
    * 配置读不出不该变哑）。只写 req.sessionId 自己的切片（同会话新失败取代
-   * 旧面板；**他会话面板不受影响**——方案 A 与旧全局单槽的本质分野）。 */
+   * 旧面板；**他会话面板不受影响**——方案 A 与旧全局单槽的本质分野）。
+   * 新失败 = 新对话（绑定该会话此刻的目标快照）。 */
   onCommandFailed: (req: DiagnoseRequest) => void;
   /** 右键「解释」入口（不受 ai.enabled 管——用户显式动作）。 */
   openExplain: (req: ExplainRequest) => void;
   /** Ask Ottr 入口（批次四 P0）：为会话开「提问」态面板（用户显式动作，
-   *  不受 ai.enabled 管——那是「命令失败自动诊断」的开关）。 */
+   *  不受 ai.enabled 管——那是「命令失败自动诊断」的开关）。
+   *  同一活目标重开 = **续对话**（历史/草稿/对话 id 保留）；目标已换代或
+   *  旧对话只读 = 自动开新对话（旧消息绝不换绑到新连接）。 */
   openAsk: (req: AskRequest) => void;
-  /** 关闭某会话的面板（在途请求一并 abort；不影响他会话）。 */
+  /** 关闭某会话的面板（在途请求一并 abort + scope 撤销；**历史/草稿保留**，
+   *  只摘 request 旗标；不影响他会话）。 */
   close: (sessionId: string) => void;
   /** 取消某会话的在途流（面板停止按钮）：面板保留、status 落 aborted
    * （用户主动取消不是故障）；非运行态调用是 no-op。 */
   abort: (sessionId: string) => void;
   /** 标记面板已被看过（清除页签「待看」徽标；DiagnosePanel 挂载时调用）。 */
   markSeen: (sessionId: string) => void;
-  /** 会话收尾清理（App 搭 setSessionEndHook 钩子；abort + 摘除切片）。 */
+  /** 会话收尾清理（App 搭 setSessionLifecycleHook closed 事件；abort + 撤 scope + 摘切片）。 */
   dropSession: (sessionId: string) => void;
-  /** 执行/重试当前会话的请求。 */
+  /** 显式开新对话（面板「新对话」动作）：清历史/草稿/只读标记，request 保留。 */
+  newConversation: (sessionId: string) => void;
+  /** 草稿写入（面板输入框；面板关闭时拒收——不留幽灵切片）。 */
+  patchDraft: (sessionId: string, text: string) => void;
+  /** AI 会话生命周期订阅消费面（App 搭 setSessionLifecycleHook 注入）：
+   *  closed → dropSession；disconnected/reconnected → scope 全撤；重连后
+   *  旧对话（目标已死）标只读。 */
+  handleSessionLifecycle: (e: { type: "closed" | "disconnected" | "reconnected"; session: { id: string } }) => void;
   /** 执行/重试当前会话的请求；`followupText` 非空 = 追问轮（只带对话历史，
-   *  不重取输出尾 / 不重注入主机备注）。 */
+   *  不重取输出尾 / 不重注入主机备注）。重试（无追问文本）= 替换末轮
+   *  用户上下文重发（不追加重复问题）。 */
   run: (sessionId: string, followupText?: string) => Promise<void>;
   /** 处置一个待确认的工具调用（批次五 P2）：
    *  approve=true → 调 MCP server，结果作为 tool 消息入历史并**续跑一轮**；
@@ -227,6 +296,104 @@ interface AiStore {
 
 /** 各会话在途请求的取消器（模块级——非响应式资源，与 sinks/定时器同一放置惯例）。 */
 const controllers = new Map<string, AbortController>();
+
+/** 各会话「正在流式」run 的 scope（supersede/abort 即撤销的写授权面）。 */
+const inflightScopes = new Map<string, { runId: string; scopeId: string }>();
+/** 各会话所有活 scope（close/lifecycle 失效全撤；完成 run 的 scope 保留到
+ *  close/lifecycle/TTL——已完成回答的插入授权在面板存续期内有效）。 */
+const sessionScopes = new Map<string, Set<string>>();
+
+/** id 生成（crypto.randomUUID 优先，计数器兜底；Task 3 简报口径）。 */
+export function newAiId(prefix: string): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? `${prefix}-${crypto.randomUUID()}`
+    : `${prefix}-${Date.now().toString(36)}-${Date.now() % 100000}`;
+}
+
+/** 撤销一个 scope（尽力而为：已撤销/过期/后端不可达一律吞掉）。 */
+async function revokeScopeQuietly(scopeId: string): Promise<void> {
+  try {
+    await aiSessionApi.revoke(scopeId);
+  } catch {
+    // 撤销失败不反噬（后端 TTL 15 min 兜底）
+  }
+}
+
+/** 登记 run 的 scope（inflight + 会话集合）。 */
+function registerScope(sessionId: string, scopeId: string, runId: string): void {
+  let set = sessionScopes.get(sessionId);
+  if (!set) {
+    set = new Set();
+    sessionScopes.set(sessionId, set);
+  }
+  set.add(scopeId);
+  inflightScopes.set(sessionId, { runId, scopeId });
+}
+
+/** 收权「正在流式」的 scope（supersede/abort 路径）。 */
+async function revokeInflightScope(sessionId: string): Promise<void> {
+  const entry = inflightScopes.get(sessionId);
+  if (!entry) return;
+  inflightScopes.delete(sessionId);
+  sessionScopes.get(sessionId)?.delete(entry.scopeId);
+  await revokeScopeQuietly(entry.scopeId);
+}
+
+/** 收权指定 run 的 scope（run 自身守卫失败路径；非该 run 的不碰）。 */
+async function abandonRunScope(sessionId: string, runId: string): Promise<void> {
+  const entry = inflightScopes.get(sessionId);
+  if (!entry || entry.runId !== runId) return;
+  inflightScopes.delete(sessionId);
+  sessionScopes.get(sessionId)?.delete(entry.scopeId);
+  await revokeScopeQuietly(entry.scopeId);
+}
+
+/** 收权会话全部 scope（close/lifecycle 失效/新对话）。 */
+async function revokeAllScopes(sessionId: string): Promise<void> {
+  inflightScopes.delete(sessionId);
+  const set = sessionScopes.get(sessionId);
+  if (!set) return;
+  sessionScopes.delete(sessionId);
+  await Promise.all([...set].map(revokeScopeQuietly));
+}
+
+/** run 收尾的 scope 结算：keep=true（正常完成/审批挂起）保留授权；
+ *  keep=false（取消/出错/被取代）立即撤销。 */
+function settleRunScope(sessionId: string, runId: string, keep: boolean): void {
+  const entry = inflightScopes.get(sessionId);
+  if (!entry || entry.runId !== runId) return;
+  inflightScopes.delete(sessionId);
+  if (!keep) {
+    sessionScopes.get(sessionId)?.delete(entry.scopeId);
+    void revokeScopeQuietly(entry.scopeId);
+  }
+}
+
+/** 守卫失败后的「搁浅救援」（fix round 1 M-1）：仍属本 run（控制器/runId
+ *  相符）且面板还挂在 running 态 → 归位 idle——目标半路死亡 / vault 锁定
+ *  这类守卫失败不能把面板留成永久转圈。**被取代的 run 不写**（控制器/
+ *  runId 失配即 return——新切片的状态归取代者管，R3 铁律）。 */
+function rescueStrandedRun(sessionId: string, ac: AbortController, runId: string): void {
+  if (controllers.get(sessionId) !== ac) return;
+  const st = useAiStore.getState().sessions[sessionId];
+  if (!st || st.request == null || st.runId !== runId || st.status !== "running") return;
+  useAiStore.setState((s0) => {
+    const cur = s0.sessions[sessionId];
+    if (!cur || cur.request == null || cur.runId !== runId || cur.status !== "running") return s0;
+    return { sessions: { ...s0.sessions, [sessionId]: { ...cur, status: "idle" } } };
+  });
+}
+
+/** 从 SessionStore 捕获会话此刻的目标快照（无连接/纯文件会话 → null）。 */
+function captureTargetOfSession(sessionId: string): AiScopeTarget | null {
+  const s = useSessionStore.getState().sessions.find((x) => x.id === sessionId);
+  if (!s || s.rustId == null) return null;
+  try {
+    return captureAiTarget(s);
+  } catch {
+    return null;
+  }
+}
 
 /** 面板打开时路由到设置页的钩子（App 挂载时注入，避免 store 反向依赖组件）。 */
 let openSettingsHook: (() => void) | null = null;
@@ -373,13 +540,20 @@ export function systemPrompt(req: AiRequest, hasTools: boolean): string {
 }
 
 /**
- * 工具调用 → 待确认项（还原 serverId 与**原始**工具名）。
+ * 工具调用 → 待确认项（用**本请求自己的绑定快照**还原 serverId 与**原始**
+ * 工具名——Task 3：还原不允许读模块级「最近一次」注册表，两次 run 之间
+ * server 被删/改名时旧注册表会把调用打去错误的对象）。
  *
- * 还原不出来的（server 已被删/改名，注册表里没有该名字）→ serverId 留空，
- * 执行面据此回一条「工具不可用」的说明给模型，而不是拿错 server 去调。
+ * 快照里还原不出来的（本 run 没见过这个名字）→ serverId 留空，执行面据此
+ * 回一条「工具不可用」的说明给模型，而不是拿错 server 去调（意外工具名
+ * 不派发，与计划「Reject unexpected model tools without dispatch」一致）。
  */
-export function toPendingToolCall(tc: ToolCall): PendingToolCall {
-  const binding = resolveMcpTool(tc.name);
+export function toPendingToolCall(
+  tc: ToolCall,
+  bindings?: ReadonlyMap<string, McpToolBinding>,
+  runId?: string | null,
+): PendingToolCall {
+  const binding = bindings ? (bindings.get(tc.name) ?? null) : null;
   const args = tc.arguments ?? "";
   return {
     id: tc.id,
@@ -387,6 +561,7 @@ export function toPendingToolCall(tc: ToolCall): PendingToolCall {
     serverName: binding?.serverName ?? "",
     tool: binding?.tool ?? tc.name,
     args: args.trim() === "" ? "{}" : args,
+    runId: runId ?? null,
   };
 }
 
@@ -416,6 +591,43 @@ export const useAiStore = create<AiStore>((set, get) => {
   const slice = (sessionId: string): SessionAiState =>
     get().sessions[sessionId] ?? EMPTY_SLICE;
 
+  /** 取代某会话的在途 run（abort + 在途 scope 收权）。 */
+  const supersede = (sessionId: string): void => {
+    controllers.get(sessionId)?.abort();
+    controllers.delete(sessionId);
+    void revokeInflightScope(sessionId);
+  };
+
+  /**
+   * 为本轮 run 开 scope（目标活校验先行；open 后复核身份，被取代则撤销）。
+   * 成功即落 slice.scope（面板头部身份面）并登记（supersede/close 可撤）。
+   */
+  const openRunScope = async (
+    sessionId: string,
+    runId: string,
+    guard: () => boolean,
+  ): Promise<AiScope | null> => {
+    const st = get().sessions[sessionId];
+    const target = st?.target;
+    if (!target || !isAiTargetLive(target, sessionFocusState())) return null;
+    let scope: AiScope | null = null;
+    try {
+      const opened = await aiSessionApi.open(target, st.conversationId, runId);
+      scope = opened && typeof opened.scopeId === "string" && opened.scopeId !== "" ? opened : null;
+    } catch {
+      scope = null; // 后端拒（目标刚死/上限满）：按无 scope 降级（上下文走 legacy/为空）
+    }
+    if (!guard()) {
+      if (scope) await revokeScopeQuietly(scope.scopeId); // 迟到的 open 结果立即收权
+      return null;
+    }
+    if (scope) {
+      registerScope(sessionId, scope.scopeId, runId);
+      patch(sessionId, { scope });
+    }
+    return scope;
+  };
+
   /**
    * 一轮流式对话（**普通轮与工具续跑轮共用**）。
    *
@@ -424,10 +636,17 @@ export const useAiStore = create<AiStore>((set, get) => {
    *   （status=awaiting_tool_approval），等用户点执行/拒绝——模型不得自动触发
    *   工具（与既有「AI 只给建议、用户执行」的安全模型一致）；
    * * **无工具调用** → 正常收尾（空回答判失败 / done / 落通知）。
+   *
+   * 取消器与 runId 由调用方（run/continueChain）在**首个 await 之前**创建并
+   * 经 ctx 传入——本函数不再自建（Task 3：运行身份先于一切 await）。
    */
   const streamTurn = async (
     sessionId: string,
     ctx: {
+      ac: AbortController;
+      runId: string;
+      /** 本 run 的 scope（null = 无绑定/开失败——插入面禁用）。 */
+      scope: AiScope | null;
       /** 本轮发出的消息（已装配）。 */
       messages: ChatMessage[];
       /** 历史基准（落库时拼在本轮之前）。 */
@@ -438,6 +657,8 @@ export const useAiStore = create<AiStore>((set, get) => {
       meta: ProviderMeta;
       /** 可用工具（空 = 本轮不带 tools）。 */
       tools: ChatTool[];
+      /** 本请求自己的工具绑定快照（还原模型工具调用用）。 */
+      bindings: ReadonlyMap<string, McpToolBinding>;
       /** 已消耗的工具轮次（上限判定）。 */
       toolRounds: number;
       redactOpts: RedactOptions;
@@ -445,10 +666,22 @@ export const useAiStore = create<AiStore>((set, get) => {
       notify: { req: AiRequest; body: string } | null;
     },
   ): Promise<void> => {
-    const ac = new AbortController();
+    const { ac, runId } = ctx;
     controllers.set(sessionId, ac);
+    // 运行身份守卫：控制器/切片/runId/旗标/目标存活/锁定 任一失配即弃权
+    const alive = (): boolean => {
+      if (controllers.get(sessionId) !== ac) return false;
+      const st = get().sessions[sessionId];
+      if (!st || st.request == null) return false;
+      if (st.runId !== runId) return false;
+      if (useVaultLockStore.getState().phase === "locked") return false;
+      if (st.target && !isAiTargetLive(st.target, sessionFocusState())) return false;
+      return true;
+    };
     const startedAt = performance.now();
     const assistantTurn: ChatTurn = { role: "assistant", content: "" };
+    // scope 是否随正常收尾保留（完成/审批挂起保留授权；取消/出错撤销）
+    let keepScope = false;
     patch(sessionId, {
       status: "running",
       answer: "",
@@ -467,7 +700,10 @@ export const useAiStore = create<AiStore>((set, get) => {
         signal: ac.signal,
         ...(ctx.tools.length > 0 ? { tools: ctx.tools } : {}),
       })) {
-        if (controllers.get(sessionId) !== ac) return; // 已被本会话新一轮取代/关闭
+        if (!alive()) {
+          rescueStrandedRun(sessionId, ac, runId); // 被取代不写；目标死亡/锁定归位 idle
+          return;
+        }
         if (ac.signal.aborted) break;
         assistantTurn.content += delta.text;
         if (delta.toolCalls?.length) toolCalls = mergeToolCalls(toolCalls, delta.toolCalls);
@@ -480,7 +716,10 @@ export const useAiStore = create<AiStore>((set, get) => {
           modelUsed: delta.model ?? slice(sessionId).modelUsed,
         });
       }
-      if (controllers.get(sessionId) !== ac) return;
+      if (!alive()) {
+        rescueStrandedRun(sessionId, ac, runId);
+        return;
+      }
       // 注意：**这里不删 controller**——删了会让下面收尾段抛出的异常被 catch
       // 块的「已被本会话新一轮取代」早退吞掉（面板卡在 running 永不定稿）。
       // 删除交给 finally（只在还是同一个 controller 时删）。
@@ -493,12 +732,15 @@ export const useAiStore = create<AiStore>((set, get) => {
           role: "assistant",
           content: redact(assistantTurn.content, ctx.redactOpts).text,
           toolCalls,
+          scopeId: ctx.scope?.scopeId ?? null,
+          runId,
         };
         const base = [...ctx.baseTurns, turn];
         // 轮次上限（MAX_TOOL_ROUNDS）：超限就不再执行工具——把「已到上限」作为
         // tool 结果回给模型，续跑**不带工具**的一轮，让它据现有信息作答
         // （防模型无限调工具烧 token；BYOK 用户自掏腰包）。
         if (ctx.toolRounds >= MAX_TOOL_ROUNDS) {
+          keepScope = true;
           const limitText = i18n.t("ai.tool.limitReached", { count: MAX_TOOL_ROUNDS });
           const toolTurns: ChatTurn[] = toolCalls.map((tc) => ({
             role: "tool",
@@ -516,9 +758,10 @@ export const useAiStore = create<AiStore>((set, get) => {
           });
           return;
         }
+        keepScope = true;
         patch(sessionId, {
           messages: base,
-          pendingToolCalls: toolCalls.map(toPendingToolCall),
+          pendingToolCalls: toolCalls.map((tc) => toPendingToolCall(tc, ctx.bindings, runId)),
           toolRounds: ctx.toolRounds + 1,
           status: "awaiting_tool_approval",
           elapsedMs: elapsed,
@@ -529,11 +772,17 @@ export const useAiStore = create<AiStore>((set, get) => {
       // --- 普通收尾 ---
       // assistant 轮落库前脱敏：模型回显的敏感值不留明文在历史里
       // （存储面与出网面都守住「内容一律脱敏后存」的契约）。
+      // 插入绑定随轮落库（scopeId/runId）——生成于哪个终端就只能插回哪里。
       if (assistantTurn.content !== "") {
         patch(sessionId, {
           messages: [
             ...ctx.baseTurns,
-            { role: "assistant", content: redact(assistantTurn.content, ctx.redactOpts).text },
+            {
+              role: "assistant",
+              content: redact(assistantTurn.content, ctx.redactOpts).text,
+              scopeId: ctx.scope?.scopeId ?? null,
+              runId,
+            },
           ],
         });
       }
@@ -550,6 +799,7 @@ export const useAiStore = create<AiStore>((set, get) => {
         });
         return;
       }
+      if (done) keepScope = true;
       patch(sessionId, {
         status: done ? "done" : "aborted",
         elapsedMs: elapsed,
@@ -587,6 +837,7 @@ export const useAiStore = create<AiStore>((set, get) => {
       });
     } finally {
       if (controllers.get(sessionId) === ac) controllers.delete(sessionId);
+      settleRunScope(sessionId, runId, keepScope);
     }
   };
 
@@ -594,15 +845,31 @@ export const useAiStore = create<AiStore>((set, get) => {
    * 工具链续跑：把**完整历史**（含助手工具调用轮 + tool 结果轮）再发给模型，
    * 让模型据工具返回给出最终回答。
    *
-   * 设置与 key 重新取（用户确认可能隔了很久，配置可能已变）；工具清单**现取**。
+   * 运行身份（runId+controller）在首个 await 前重建；设置与 key 重新取
+   * （用户确认可能隔了很久，配置可能已变）；工具清单**现取**（请求内快照）；
+   * scope 为本轮新开（插入授权随轮走）。
    */
   const continueChain = async (sessionId: string, messages: ChatTurn[]): Promise<void> => {
     const req = slice(sessionId).request;
     if (!req) return;
+    if (slice(sessionId).conversationReadonly) return;
+    const runId = newAiId("run");
+    const ac = new AbortController();
+    controllers.set(sessionId, ac);
+    patch(sessionId, { runId, pendingToolCalls: [], runningToolCallId: null });
+    const guard = (): boolean => {
+      if (controllers.get(sessionId) !== ac) return false;
+      const st = get().sessions[sessionId];
+      if (!st || st.request == null || st.runId !== runId) return false;
+      if (useVaultLockStore.getState().phase === "locked") return false;
+      if (st.target && !isAiTargetLive(st.target, sessionFocusState())) return false;
+      return true;
+    };
     let settings: AiSettings;
     try {
       settings = await loadAiSettings();
     } catch (e) {
+      if (!guard()) return;
       patch(sessionId, {
         status: "error",
         errorKind: "noProvider",
@@ -610,6 +877,7 @@ export const useAiStore = create<AiStore>((set, get) => {
       });
       return;
     }
+    if (!guard()) return;
     const meta = activeProvider(settings.providers);
     if (!meta) {
       patch(sessionId, { status: "error", errorKind: "noProvider", error: null });
@@ -619,6 +887,7 @@ export const useAiStore = create<AiStore>((set, get) => {
     try {
       apiKey = (await vaultApi.secrets.get(apiKeySecretKey(meta.id))) ?? "";
     } catch (e) {
+      if (!guard()) return;
       patch(sessionId, {
         status: "error",
         errorKind: "noKey",
@@ -626,11 +895,18 @@ export const useAiStore = create<AiStore>((set, get) => {
       });
       return;
     }
+    if (!guard()) return;
     const redactOpts: RedactOptions = {
       hostname: settings.redaction.hostname,
       custom: settings.redaction.custom,
     };
-    const tools = await loadMcpTools();
+    const scope = await openRunScope(sessionId, runId, guard);
+    if (!guard()) return;
+    const snapshot = await loadMcpToolSnapshot();
+    if (!guard()) {
+      await abandonRunScope(sessionId, runId);
+      return;
+    }
     // 工具链的历史**只按轮数封顶**：按字符封顶会把工具返回（模型续跑的唯一
     // 依据）从历史里裁掉——模型拿不到结果就答不了。
     const capped = pruneOrphanToolTurns(capHistory(messages, Number.POSITIVE_INFINITY));
@@ -642,13 +918,17 @@ export const useAiStore = create<AiStore>((set, get) => {
           ? req.text
           : (lastUser?.content ?? "");
     await streamTurn(sessionId, {
+      ac,
+      runId,
+      scope,
       messages: toProviderMessages(capped, redactOpts),
       baseTurns: capped,
-      system: systemPrompt(req, tools.length > 0),
+      system: systemPrompt(req, snapshot.tools.length > 0),
       maxTokens: settings.maxTokens,
       apiKey,
       meta,
-      tools,
+      tools: snapshot.tools,
+      bindings: snapshot.bindings,
       toolRounds: slice(sessionId).toolRounds ?? 0,
       redactOpts,
       notify: { req, body: commandExcerpt(redact(rawSubject, redactOpts).text) },
@@ -661,24 +941,57 @@ export const useAiStore = create<AiStore>((set, get) => {
     /**
    * Ask Ottr 入口（批次四 P0）：为聚焦会话开一个「提问」态的 AI 面板。
    *
-   * 面板此时还没有回答——用户直接在面板底部的输入条里敲问题，提交后
-   * run() 走**首轮**路径（取输出尾 + 主机备注作上下文），之后可继续追问。
+   * 同一活目标重开 = **续对话**：历史/草稿/对话 id 保留（close 只是摘掉
+   * 「open」旗标，面板重开回到原对话）；目标已换代（重连）或旧对话只读 =
+   * 自动开新对话——旧消息绝不换绑到新连接。
    */
-  openAsk: (req: AskRequest) => {
-    controllers.get(req.sessionId)?.abort();
-    controllers.delete(req.sessionId);
+  openAsk: (req) => {
+    supersede(req.sessionId);
+    const cur = slice(req.sessionId);
+    const st = useSessionStore.getState();
+    const resumable =
+      cur.conversationId !== "" &&
+      cur.target != null &&
+      !cur.conversationReadonly &&
+      isAiTargetLive(cur.target, {
+        activeId: st.activeId,
+        activePane: st.activePane,
+        sessions: st.sessions,
+      });
+    if (resumable) {
+      patch(req.sessionId, {
+        request: { ...req, target: cur.target },
+        // 在途运行已被 supersede——除非链停在审批挂起（无控制器、可续处置），
+        // 否则回到 idle 态让用户直接发问。
+        status: cur.status === "awaiting_tool_approval" ? cur.status : "idle",
+        errorKind: null,
+        error: null,
+        seen: false,
+        runId: null,
+        scope: null,
+      });
+      return;
+    }
     patch(req.sessionId, {
-      request: req,
+      request: { ...req, target: req.target ?? null },
       status: "idle",
       answer: "",
       errorKind: null,
       error: null,
-      seen: false,
+      redactions: [],
+      usage: null,
+      modelUsed: null,
+      elapsedMs: null,
       messages: [],
-      // 新问题 = 新链：待确认的工具调用与轮次计数一并清零。
       pendingToolCalls: [],
       toolRounds: 0,
       runningToolCallId: null,
+      conversationId: newAiId("conv"),
+      target: req.target ?? null,
+      scope: null,
+      runId: null,
+      draft: "",
+      conversationReadonly: false,
     });
   },
 
@@ -690,60 +1003,95 @@ export const useAiStore = create<AiStore>((set, get) => {
         } catch {
           // settings 读不到：按开处理（能力面不因配置故障变哑）
         }
-        controllers.get(req.sessionId)?.abort();
-        controllers.delete(req.sessionId);
+        supersede(req.sessionId);
         patch(req.sessionId, {
           request: req,
           status: "idle",
           answer: "",
           errorKind: null,
           error: null,
-          seen: false,
-          // **新问题 = 新会话**：不清历史的话，run() 会把上一轮对话当上下文
+          redactions: [],
+          usage: null,
+          modelUsed: null,
+          elapsedMs: null,
+          // **新问题 = 新对话**：不清历史的话，run() 会把上一轮对话当上下文
           // 带上（同一会话连着两次诊断，模型看到的是两个不相关的问题 + 前一轮
-          // 的答案 → 答非所问，且 token 白花一倍）。
+          // 的答案 → 答非所问，且 token 白花一倍）。目标按此刻快照捕获。
           messages: [],
           pendingToolCalls: [],
           toolRounds: 0,
           runningToolCallId: null,
+          conversationId: newAiId("conv"),
+          target: captureTargetOfSession(req.sessionId),
+          scope: null,
+          runId: null,
+          draft: "",
+          conversationReadonly: false,
         });
         await get().run(req.sessionId);
       })();
     },
 
     openExplain: (req) => {
-      controllers.get(req.sessionId)?.abort();
-      controllers.delete(req.sessionId);
+      supersede(req.sessionId);
       patch(req.sessionId, {
         request: req,
         status: "idle",
         answer: "",
         errorKind: null,
         error: null,
-        seen: false,
-        // 新问题 = 新会话（同 onCommandFailed：历史不重置就会串上下文）。
+        redactions: [],
+        usage: null,
+        modelUsed: null,
+        elapsedMs: null,
+        // 新问题 = 新对话（同 onCommandFailed：历史不重置就会串上下文）。
         messages: [],
         pendingToolCalls: [],
         toolRounds: 0,
         runningToolCallId: null,
+        conversationId: newAiId("conv"),
+        target: captureTargetOfSession(req.sessionId),
+        scope: null,
+        runId: null,
+        draft: "",
+        conversationReadonly: false,
       });
       void get().run(req.sessionId);
     },
 
     close: (sessionId) => {
-      controllers.get(sessionId)?.abort();
-      controllers.delete(sessionId);
+      supersede(sessionId);
+      void revokeAllScopes(sessionId);
       set((st) => {
-        if (!(sessionId in st.sessions)) return st;
-        const next = { ...st.sessions };
-        delete next[sessionId];
-        return { sessions: next };
+        const cur = st.sessions[sessionId];
+        if (!cur) return st;
+        return {
+          sessions: {
+            ...st.sessions,
+            [sessionId]: {
+              ...cur,
+              // close = 隐藏：摘「open」旗标（orb 可见性读 request == null），
+              // 历史/草稿/对话 id/pending 保留——同活目标重开即续对话。
+              request: null,
+              status: "idle",
+              answer: "",
+              errorKind: null,
+              error: null,
+              usage: null,
+              modelUsed: null,
+              elapsedMs: null,
+              runId: null,
+              scope: null,
+            },
+          },
+        };
       });
     },
 
     abort: (sessionId) => {
       controllers.get(sessionId)?.abort();
       controllers.delete(sessionId);
+      void revokeInflightScope(sessionId);
       if (slice(sessionId).status === "running") {
         patch(sessionId, { status: "aborted" });
       }
@@ -755,13 +1103,67 @@ export const useAiStore = create<AiStore>((set, get) => {
 
     dropSession: (sessionId) => {
       get().close(sessionId);
+      set((st) => {
+        if (!(sessionId in st.sessions)) return st;
+        const next = { ...st.sessions };
+        delete next[sessionId];
+        return { sessions: next };
+      });
+    },
+
+    newConversation: (sessionId) => {
+      supersede(sessionId);
+      void revokeAllScopes(sessionId);
+      if (slice(sessionId).request == null) return; // 无打开面板：无对话可换
+      patch(sessionId, {
+        status: "idle",
+        answer: "",
+        errorKind: null,
+        error: null,
+        redactions: [],
+        usage: null,
+        modelUsed: null,
+        elapsedMs: null,
+        messages: [],
+        pendingToolCalls: [],
+        toolRounds: 0,
+        runningToolCallId: null,
+        conversationId: newAiId("conv"),
+        runId: null,
+        scope: null,
+        draft: "",
+        conversationReadonly: false,
+      });
+    },
+
+    patchDraft: (sessionId, text) => {
+      if (slice(sessionId).request == null) return; // 面板关闭拒收（无幽灵切片）
+      patch(sessionId, { draft: text });
+    },
+
+    handleSessionLifecycle: ({ type, session }) => {
+      if (type === "closed") {
+        get().dropSession(session.id);
+        return;
+      }
+      // 断开/重连：绑定目标失活 → 写授权（scope）全撤。
+      void revokeAllScopes(session.id);
+      if (type === "reconnected") {
+        const cur = get().sessions[session.id];
+        if (cur && cur.target && !isAiTargetLive(cur.target, sessionFocusState())) {
+          patch(session.id, { conversationReadonly: true }); // 历史可见，续问须新对话
+        }
+      }
     },
 
     run: async (sessionId, followupText) => {
-      const req = slice(sessionId).request;
+      const cur0 = slice(sessionId);
+      const req = cur0.request;
       if (!req) return;
       // 有待确认的工具调用 → 不开新链（会把用户还没处置的工具调用丢掉）。
-      if ((slice(sessionId).pendingToolCalls ?? []).length > 0) return;
+      if ((cur0.pendingToolCalls ?? []).length > 0) return;
+      // 只读对话（重连换代）：续问须走新对话（openAsk 对新代数目标自动开）。
+      if (cur0.conversationReadonly) return;
       // 追问轮（followupText 非空）：**不重取输出尾、不重注入主机备注**——
       // 首轮已经把这些发给模型了，追问只带对话历史（省 token、不重复出网）。
       // 「追问轮」的判据 = **带追问文本 且 已有对话历史**。
@@ -771,8 +1173,14 @@ export const useAiStore = create<AiStore>((set, get) => {
       const isFollowup =
         typeof followupText === "string" &&
         followupText.trim() !== "" &&
-        slice(sessionId).messages.length > 0;
+        cur0.messages.length > 0;
+
+      // --- runId + AbortController 先于一切 await（Task 3 铁律）---
+      const runId = newAiId("run");
+      const ac = new AbortController();
+      controllers.set(sessionId, ac);
       patch(sessionId, {
+        runId,
         status: "running",
         answer: "",
         errorKind: null,
@@ -785,18 +1193,36 @@ export const useAiStore = create<AiStore>((set, get) => {
         pendingToolCalls: [],
         toolRounds: 0,
         runningToolCallId: null,
+        ...(isFollowup ? { draft: "" } : {}),
       });
+      // 被 本 run 取代的上一条在途链：其 scope 立即收权
+      void revokeInflightScope(sessionId);
+
+      // 身份守卫：一切 await 返回后复核（控制器/runId/旗标/目标活/未锁）。
+      const guard = (): boolean => {
+        if (controllers.get(sessionId) !== ac) return false;
+        const st = get().sessions[sessionId];
+        if (!st || st.request == null || st.runId !== runId) return false;
+        if (useVaultLockStore.getState().phase === "locked") return false;
+        if (st.target && !isAiTargetLive(st.target, sessionFocusState())) return false;
+        return true;
+      };
 
       // --- 1. 设置（坏键独立回落）---
       let settings: AiSettings;
       try {
         settings = await loadAiSettings();
       } catch (e) {
+        if (!guard()) return;
         patch(sessionId, {
           status: "error",
           errorKind: "noProvider",
           error: e instanceof Error ? e.message : String(e),
         });
+        return;
+      }
+      if (!guard()) {
+        rescueStrandedRun(sessionId, ac, runId);
         return;
       }
       patch(sessionId, { settingsUsed: settings });
@@ -817,11 +1243,23 @@ export const useAiStore = create<AiStore>((set, get) => {
       try {
         apiKey = (await vaultApi.secrets.get(apiKeySecretKey(meta.id))) ?? "";
       } catch (e) {
+        if (!guard()) return;
         patch(sessionId, {
           status: "error",
           errorKind: "noKey",
           error: e instanceof Error ? e.message : String(e),
         });
+        return;
+      }
+      if (!guard()) {
+        rescueStrandedRun(sessionId, ac, runId);
+        return;
+      }
+
+      // --- 2.5 scope（每 run 一开；TTL 15 min，跨 run 缓存无益）---
+      const scope = await openRunScope(sessionId, runId, guard);
+      if (!guard()) {
+        rescueStrandedRun(sessionId, ac, runId);
         return;
       }
 
@@ -842,33 +1280,56 @@ export const useAiStore = create<AiStore>((set, get) => {
           );
       let outputTail = "";
       let outputRedactions: RedactFinding[] = [];
-      // diagnose 与 ask 都带输出尾（ask 的语境就是「刚发生了什么」）；
-      // explain 面向选区，不带。
-      if (!isFollowup && (req.kind === "diagnose" || req.kind === "ask") && req.rustId) {
-        try {
-          const tail = await vaultApi.sessionTail(req.rustId, TAIL_BYTES);
-          const red = redact(tail, redactOpts);
-          outputTail = red.text;
-          outputRedactions = red.findings;
-        } catch {
-          // 会话已关/迟到：空输出照发诊断（命令本身通常已足够定位）
-        }
-      }
-      // 主机备注注入（2026-11-02 批次一 A 项）：持久化在 vault 的上下文
-      // （系统版本、服务管理方式、日志路径…），脱敏后随**首轮**发出。
-      // 取数失败一律回落「无备忘段」——增强项不是前置条件。
-      // 追问轮不重复注入（首轮已发过）。
       let hostContext = "";
       let hostCtxFindings: RedactFinding[] = [];
       if (!isFollowup) {
-        const notes = await fetchHostNotes(req.hostId);
-        const hostCtx = buildHostContextBlock(notes, redactOpts);
-        hostCtxFindings = hostCtx.findings;
-        hostContext = hostCtx.text ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}` : "";
+        // scope 通道（绑定目标且活着）：上下文经 ai_scope_context——同作用域的
+        // 输出尾 + 归属主机备注一并返回，绝不按 hostId 重找运行时。
+        if (scope && (req.kind === "diagnose" || req.kind === "ask")) {
+          try {
+            const ctxv = await aiSessionApi.context(scope.scopeId, TAIL_BYTES);
+            if (!guard()) {
+              await abandonRunScope(sessionId, runId);
+              return;
+            }
+            const red = redact(ctxv.tail ?? "", redactOpts);
+            outputTail = red.text;
+            outputRedactions = red.findings;
+            const hostCtx = buildHostContextBlock(ctxv.notes ?? null, redactOpts);
+            hostCtxFindings = hostCtx.findings;
+            hostContext = hostCtx.text ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}` : "";
+          } catch {
+            // 上下文取数失败（会话刚死/锁定）：空输出照发（命令本身通常已足够）
+          }
+        } else {
+          // legacy 通道（无绑定目标）：session_tail + fetchHostNotes（原路径）
+          if ((req.kind === "diagnose" || req.kind === "ask") && req.rustId) {
+            try {
+              const tail = await vaultApi.sessionTail(req.rustId, TAIL_BYTES);
+              const red = redact(tail, redactOpts);
+              outputTail = red.text;
+              outputRedactions = red.findings;
+            } catch {
+              // 会话已关/迟到：空输出照发诊断（命令本身通常已足够定位）
+            }
+          }
+          // 主机备注注入（2026-11-02 批次一 A 项）：持久化在 vault 的上下文
+          // （系统版本、服务管理方式、日志路径…），脱敏后随**首轮**发出。
+          // 取数失败一律回落「无备忘段」——增强项不是前置条件。
+          const notes = await fetchHostNotes(req.hostId);
+          const hostCtx = buildHostContextBlock(notes, redactOpts);
+          hostCtxFindings = hostCtx.findings;
+          hostContext = hostCtx.text ? `${i18n.t("ai.msg.hostContext")}:\n${hostCtx.text}` : "";
+        }
       }
       patch(sessionId, {
         redactions: [...subject.findings, ...outputRedactions, ...hostCtxFindings],
       });
+      if (!guard()) {
+        rescueStrandedRun(sessionId, ac, runId);
+        await abandonRunScope(sessionId, runId);
+        return;
+      }
 
       // 空内容不诊断（2026-10-21 用户裁定，AI 层的第二道防线）：命令与输出
       // 尾都为空 = 无从诊断（模型只能回复「内容为空」，纯烧 token）——摘除
@@ -881,6 +1342,7 @@ export const useAiStore = create<AiStore>((set, get) => {
         subject.text.trim() === "" &&
         outputTail.trim() === ""
       ) {
+        await revokeAllScopes(sessionId);
         controllers.delete(sessionId);
         useAiStore.setState((s0) => {
           const next = { ...s0.sessions };
@@ -907,26 +1369,43 @@ export const useAiStore = create<AiStore>((set, get) => {
       const userContent = isFollowup
         ? subject.text
         : buildUserMessage(req, subject.text, outputTail, hostContext);
+      // 重试 = **替换**末轮用户上下文（不追加重复问题）：首轮失败后历史以
+      // 用户轮收尾，重发应重新装配那一轮（输出尾/备注可能已更新），而非
+      // 再追加一份相同问题。
+      const baseTurns =
+        !isFollowup && history.length > 0 && history[history.length - 1].role === "user"
+          ? history.slice(0, -1)
+          : history;
       const messages: ChatMessage[] = [
-        ...toProviderMessages(history, { enabled: false }),
+        ...toProviderMessages(baseTurns, { enabled: false }),
         { role: "user", content: userContent },
       ];
       // 存储面也封顶：否则 store 里的 messages 无限增长（每轮追问又把全部
       // 历史重发）——封顶在「组装请求」与「落库」两处都做。
       const turnsSoFar: ChatTurn[] = pruneOrphanToolTurns(
-        capHistory([...history, { role: "user", content: userContent }]),
+        capHistory([...baseTurns, { role: "user", content: userContent }]),
       );
       // 工具清单（批次五 P2）：**每次 run 现取**（server 的工具目录会变，不缓存）；
       // 取不到就当没有工具——增强项不是前置条件（AI 照常聊天）。
-      const tools = await loadMcpTools();
+      // Task 3：绑定表随请求走（还原模型工具调用用请求自己的快照）。
+      const snapshot = await loadMcpToolSnapshot();
+      if (!guard()) {
+        rescueStrandedRun(sessionId, ac, runId);
+        await abandonRunScope(sessionId, runId);
+        return;
+      }
       await streamTurn(sessionId, {
+        ac,
+        runId,
+        scope,
         messages,
         baseTurns: turnsSoFar,
-        system: systemPrompt(req, tools.length > 0),
+        system: systemPrompt(req, snapshot.tools.length > 0),
         maxTokens: settings.maxTokens,
         apiKey,
         meta,
-        tools,
+        tools: snapshot.tools,
+        bindings: snapshot.bindings,
         toolRounds: 0,
         redactOpts,
         notify: { req, body: commandExcerpt(subject.text) },
@@ -941,14 +1420,25 @@ export const useAiStore = create<AiStore>((set, get) => {
      * * **拒绝**（approve=false）→ 追加一条「用户拒绝执行」的 tool 消息，同样
      *   续跑一轮（模型据此换一种说法作答）。
      *
-     * 同一时刻只允许一个工具在执行（重复点击不二次执行）；全部待确认项处置
-     * 完毕后自动续跑。
+     * 同一时刻只允许一个工具在执行（挂起标记先于一切 await——双击第二击在
+     * 同步检查被挡下）；执行前/后都复验运行身份（被取代的链不得执行/写回）。
      */
     resolveToolCall: async (sessionId, callId, approve) => {
       const st = slice(sessionId);
-      if (st.runningToolCallId) return; // 已有工具在执行（防重复点击）
+      if (st.runningToolCallId) return; // 已有工具在执行（防重复点击，同步挡下）
       const pending = (st.pendingToolCalls ?? []).find((p) => p.id === callId);
       if (!pending) return;
+      // 运行身份复验：待确认项必须仍属于当前 run（被取代的链不得执行）。
+      if (pending.runId != null && st.runId != null && pending.runId !== st.runId) return;
+      // 挂起标记先于一切 await（R4：双击第二击在此同步挡下）。
+      patch(sessionId, { runningToolCallId: callId });
+      const capturedRunId = st.runId ?? null;
+      // 丢弃路径收尾（fix round 1 I-1）：必须清挂起标记——close=hide 保留
+      // 切片，不清会让审批按钮永久置灰（安全面变砖）。**pendingToolCalls
+      // 刻意不清**：调用仍待处置，竞态平息（回到活目标/解锁）后可再批。
+      const discard = (): void => {
+        if (get().sessions[sessionId]) patch(sessionId, { runningToolCallId: null });
+      };
       // 脱敏配置（工具返回也要脱敏后存——与「内容一律脱敏后存」纪律一致）。
       let redactOpts: RedactOptions = { hostname: true, custom: [] };
       try {
@@ -960,12 +1450,21 @@ export const useAiStore = create<AiStore>((set, get) => {
       } catch {
         // 读不到就用默认规则（脱敏引擎的默认规则恒开）
       }
-      patch(sessionId, { runningToolCallId: callId });
+      // 执行前复验（批准点击与执行之间可能已被取代/关闭/锁定）。
+      const before = slice(sessionId);
+      if (before.request == null || before.runId !== capturedRunId) {
+        discard();
+        return;
+      }
+      if (useVaultLockStore.getState().phase === "locked") {
+        discard();
+        return;
+      }
       let content: string;
       if (approve) {
         try {
           if (pending.serverId === "") {
-            // 工具已不在注册表里（server 被删/改名）→ 如实告诉模型，别猜。
+            // 工具已不在本请求的快照里（server 被删/改名）→ 如实告诉模型，别猜。
             throw new Error(i18n.t("ai.tool.unknownTool"));
           }
           const result = await vaultApi.mcpClients.call(
@@ -988,8 +1487,13 @@ export const useAiStore = create<AiStore>((set, get) => {
       } else {
         content = i18n.t("ai.tool.rejected");
       }
+      // 写回前复验：面板已关（不留幽灵写入）或已被新一轮取代 → 丢弃
+      // （清挂起标记，pending 保留待再批）。
       const cur = slice(sessionId);
-      if (!cur.request) return; // 面板已关闭（会话结束）——不留幽灵切片
+      if (!cur.request || cur.runId !== capturedRunId) {
+        discard();
+        return;
+      }
       const toolTurn: ChatTurn = {
         role: "tool",
         content: redact(content, redactOpts).text,

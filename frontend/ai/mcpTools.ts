@@ -97,6 +97,18 @@ export function parseToolSchema(inputSchema: string | undefined | null): unknown
 }
 
 /**
+ * 一次 AI run 的工具快照：工具清单 + **本请求自己的绑定表**。
+ *
+ * Task 3（ask-ottr-orb）：模型回工具名时的还原必须用**发起请求的那份快照**，
+ * 不允许读模块级「最近一次」注册表——两次 run 之间 server 被删/改名时，用旧
+ * 注册表还原会把调用打去错误的对象。绑定对象浅冻结（调用面只读）。
+ */
+export interface McpToolSnapshot {
+  tools: ChatTool[];
+  bindings: ReadonlyMap<string, McpToolBinding>;
+}
+
+/**
  * 取当前可用的 MCP 工具（**每次 run 现取**）。
  *
  * * 只收 `enabled` 的 server（禁用的 server 连不上，`connect` 直接拒）；
@@ -104,15 +116,14 @@ export function parseToolSchema(inputSchema: string | undefined | null): unknown
  * * 名字撞车（同一 server 内两个工具规范化后同名）→ **后者不暴露**（模型只
  *   看得见无歧义的那个）。
  */
-export async function loadMcpTools(): Promise<ChatTool[]> {
+export async function loadMcpToolSnapshot(): Promise<McpToolSnapshot> {
   let servers: McpServerInfo[];
   try {
     const list = await vaultApi.mcpClients.list();
     servers = Array.isArray(list) ? list : [];
   } catch {
     // 清单读不到（vault 锁定/后端不可达）→ 无工具（降级为普通对话）。
-    catalog = new Map();
-    return [];
+    return { tools: [], bindings: new Map() };
   }
   const bindings: McpToolBinding[] = [];
   const seen = new Set<string>();
@@ -129,20 +140,36 @@ export async function loadMcpTools(): Promise<ChatTool[]> {
       const name = mcpToolName(server.id, tool.name);
       if (seen.has(name)) continue; // 撞名 → 只留第一个（无歧义优先）
       seen.add(name);
-      bindings.push({
-        name,
-        description: tool.description ?? "",
-        parameters: parseToolSchema(tool.inputSchema),
-        serverId: server.id,
-        serverName: server.name,
-        tool: tool.name,
-      });
+      bindings.push(
+        Object.freeze({
+          name,
+          description: tool.description ?? "",
+          parameters: parseToolSchema(tool.inputSchema),
+          serverId: server.id,
+          serverName: server.name,
+          tool: tool.name,
+        }),
+      );
     }
   }
-  catalog = new Map(bindings.map((b) => [b.name, b]));
-  return bindings.map((b) => ({
-    name: b.name,
-    description: b.description,
-    parameters: b.parameters,
-  }));
+  const map = new Map(bindings.map((b) => [b.name, b]));
+  return {
+    tools: bindings.map((b) => ({
+      name: b.name,
+      description: b.description,
+      parameters: b.parameters,
+    })),
+    bindings: map,
+  };
+}
+
+/**
+ * 兼容面：只取工具清单。**运行链禁用本入口**（还原绑定必须走
+ * loadMcpToolSnapshot 的请求内快照）；本函数仅为既有消费面/测试保留，
+ * 并维持旧的全局注册表语义（resolveMcpTool）。
+ */
+export async function loadMcpTools(): Promise<ChatTool[]> {
+  const snapshot = await loadMcpToolSnapshot();
+  catalog = new Map(snapshot.bindings);
+  return snapshot.tools;
 }

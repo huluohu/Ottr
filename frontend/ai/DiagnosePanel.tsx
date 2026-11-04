@@ -2,21 +2,26 @@
 // * 诊断（exit_code≠0 自动开）与选中解释（右键）共用本面板；
 // * 流式渲染：普通文本 + ``` 代码块两种块——代码块带「插入终端」按钮 =
 //   danger 分级标注（classify）+ 分档确认（green 直插 / yellow 确认 /
-//   red 二次确认红字），插入 = write_session 直写 PTY（不含换行，回车由用户）。
-//   代码块行组件已抽为公共 InsertRow（Phase 2 B1：⌘J NL 命令条共用同一
-//   危险确认状态机——安全面单一来源）；
+//   red 二次确认红字），插入 = scope 通道 ai_scope_insert（一次性 actionId；
+//   Task 3 插入隔离）——生成于哪个终端就只能插回哪个终端，跨目标禁用并给
+//   「回到原终端」affordance。代码块行组件已抽为公共 InsertRow（Phase 2 B1：
+//   ⌘J NL 命令条共用同一危险确认状态机——安全面单一来源）；
 // * 脱敏口径（fix 1/5 M-1 定案）：面板命令区显示**原文**（本地行为，明文不出
 //   本机）；发送给模型的请求体**按规则脱敏，可能漏报**（aiStore.run 内 redact 后才装配
 //   messages——见 aiStore 步骤 3），面板以「已脱敏 N 处」标注外发侧命中；
 // * 错误面：noProvider/noKey → 「去设置」按钮（App 注入 openSettings）；
-//   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）。
-import { Fragment, useEffect, useState } from "react";
+//   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）；
+// * 头部身份（Task 3）：主机 + provider/model + 后端捕获的账号@端点（scope）+
+//   PROD 徽标 + 连接失效标记；重连换代 → 旧对话只读横幅（历史可见）。
+import { Fragment, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useAiStore, useSessionAi } from "./aiStore";
 import { activeProvider } from "./settings";
-import { CodeBlockRow, defaultInserter, type TerminalInserter } from "./InsertRow";
+import { CodeBlockRow, defaultInserter, type InsertTarget, type TerminalInserter } from "./InsertRow";
 import { MarkdownText } from "./Markdown";
+import { isAiTargetLive } from "../session/aiTarget";
+import { useSessionStore } from "../session/SessionStore";
 import { useTerminalFocus } from "../terminal/terminalFocus";
 
 /** 工具返回文本在面板里的显示上限（**发给模型的完整文本不截断**——
@@ -45,16 +50,21 @@ export function extractCodeBlocks(answer: string): AnswerCodeBlock[] {
   return blocks;
 }
 
-/** 回复渲染：按围栏代码块切分（流式过程中未闭合的尾部代码块也即时呈现）。 */
+/** 回复渲染：按围栏代码块切分（流式过程中未闭合的尾部代码块也即时呈现）。
+ *  binding 在位 = scope 通道（每个代码块按序号领一次性 actionId）；缺省 =
+ *  legacy rustId 直写通道。 */
 export function AnswerView({
   answer,
   rustId,
+  binding = null,
   inserter,
   disabled = false,
   onInserted,
 }: {
   answer: string;
   rustId: string | null;
+  /** 本轮 run 的插入绑定（target + scopeId + runId）；null = legacy 通道。 */
+  binding?: { target: InsertTarget["target"]; scopeId: string; runId: string } | null;
   inserter: TerminalInserter;
   disabled?: boolean;
   /** 插入成功回调（焦点交还 xterm；本面板仅在终端视图挂载，无需切视图）。 */
@@ -71,15 +81,27 @@ export function AnswerView({
   }
   if (last < answer.length) parts.push({ kind: "text", content: answer.slice(last) });
 
+  let codeIndex = -1;
   return (
     <div className="ai-answer" data-testid="ai-answer">
-      {parts.map((p, i) =>
-        p.kind === "text" ? (
-          <MarkdownText key={i} content={p.content} />
-        ) : (
-          <CodeBlockRow key={i} code={p.content} rustId={rustId} inserter={inserter} disabled={disabled} onInserted={onInserted} />
-        ),
-      )}
+      {parts.map((p, i) => {
+        if (p.kind === "text") return <MarkdownText key={i} content={p.content} />;
+        codeIndex += 1;
+        const insertTarget: InsertTarget | null = binding
+          ? { ...binding, blockIndex: codeIndex }
+          : null;
+        return (
+          <CodeBlockRow
+            key={i}
+            code={p.content}
+            rustId={rustId}
+            insertTarget={insertTarget}
+            inserter={inserter}
+            disabled={disabled}
+            onInserted={onInserted}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -94,26 +116,46 @@ export function DiagnosePanel({
   onOpenSettings: () => void;
   inserter?: TerminalInserter;
 }) {
-
-  // 插入成功：焦点交还 xterm——2026-10-16 用户反馈「插完还得再点一下才能执行」
-  const onInserted = () => useTerminalFocus.getState().request();
   const { t } = useTranslation();
-  const request = useSessionAi(sessionId).request;
-  const status = useSessionAi(sessionId).status;
-  const answer = useSessionAi(sessionId).answer;
-  const errorKind = useSessionAi(sessionId).errorKind;
-  const error = useSessionAi(sessionId).error;
-  const redactions = useSessionAi(sessionId).redactions;
-  const settingsUsed = useSessionAi(sessionId).settingsUsed;
-  const usage = useSessionAi(sessionId).usage;
-  const modelUsed = useSessionAi(sessionId).modelUsed;
-  const elapsedMs = useSessionAi(sessionId).elapsedMs;
-  const messages = useSessionAi(sessionId).messages;
+  const slice = useSessionAi(sessionId);
+  const {
+    request,
+    status,
+    answer,
+    errorKind,
+    error,
+    redactions,
+    settingsUsed,
+    usage,
+    modelUsed,
+    elapsedMs,
+    messages,
+    target,
+    scope,
+    draft,
+    conversationReadonly,
+  } = slice;
   // 待确认的工具调用（批次五 P2）：模型发起、**用户点执行才真跑**。
-  const pendingToolCalls = useSessionAi(sessionId).pendingToolCalls ?? [];
-  const runningToolCallId = useSessionAi(sessionId).runningToolCallId ?? null;
-  // 追问输入（本地态——输入框内容是瞬时 UI 状态，不进领域 store）。
-  const [followup, setFollowup] = useState("");
+  const pendingToolCalls = slice.pendingToolCalls ?? [];
+  const runningToolCallId = slice.runningToolCallId ?? null;
+  // 会话面（PROD 徽标；目标存活态随会话表变化重渲染）
+  const session = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId));
+  const sessions = useSessionStore((s) => s.sessions);
+  // 目标失活（断开/shell_exit/重连换代）→ 头部标记 + 插入面全禁（scope 已撤）
+  const targetDead = target != null && !isAiTargetLive(target, {
+    activeId: null,
+    activePane: {},
+    sessions,
+  });
+  // 追问草稿在 store（面板关闭保留；Task 3 对话语义）
+  const setDraft = useAiStore((s) => s.patchDraft);
+  const newConversation = useAiStore((s) => s.newConversation);
+
+  // 插入成功：焦点交还 xterm——2026-10-16 用户反馈「插完还得再点一下才能执行」。
+  // 定向请求（Task 2 terminalFocus）：指名绑定 pane 的终端响应，用户若已切走
+  // 则不抢焦点。
+  const onInserted = () => useTerminalFocus.getState().request(sessionId);
+
   // 展示用轮次：正常走 messages；**兜底**——messages 为空但 answer 非空时，
   // 把 answer 当作单条 assistant 轮（会话状态可能来自旧路径/恢复）。
   const threadTurns =
@@ -143,6 +185,14 @@ export function DiagnosePanel({
   // 头部展示「实际生效」的 provider（首个未禁用，2026-10-16）——禁用的
   // 默认项不再冒名出现在头部；主机名居首（多会话方案 A 的归属标注）。
   const active = settingsUsed ? activeProvider(settingsUsed.providers) : null;
+  // 插入绑定随轮（scopeId/runId 落在 assistant 轮上）；无 scope 的轮回落
+  // legacy 通道（诊断 = 请求的 rustId；绑定目标在场却无 scope → 不回退直写，
+  // 避免 Bypass 一次性动作账本）。
+  const turnBinding = (m: (typeof messages)[number]) =>
+    target && m.scopeId && m.runId
+      ? { target, scopeId: m.scopeId, runId: m.runId }
+      : null;
+  const legacyRustId = target == null && request.kind === "diagnose" ? request.rustId : null;
 
   return (
     <aside className="ai-panel" data-testid="ai-panel" aria-label={t("ai.title")}>
@@ -156,9 +206,21 @@ export function DiagnosePanel({
         </span>
         <span className="ai-panel-meta">
           {request.hostName ? `${request.hostName} · ` : ""}
+          {scope ? `${scope.username ? `${scope.username}@` : ""}${scope.endpoint} · ` : ""}
+          {session?.isProduction ? `${t("tabs.prodBadge")} · ` : ""}
+          {targetDead ? `${t("ai.headerDisconnected")} · ` : ""}
           {active?.name ?? ""}
           {active?.model ? ` · ${active.model}` : ""}
         </span>
+        <button
+          className="ai-panel-new"
+          data-testid="ai-new-conversation"
+          title={t("ai.newConversation")}
+          aria-label={t("ai.newConversation")}
+          onClick={() => newConversation(sessionId)}
+        >
+          {t("ai.newConversation")}
+        </button>
         <button
           className="ai-panel-close"
           data-testid="ai-close"
@@ -168,6 +230,14 @@ export function DiagnosePanel({
           ✕
         </button>
       </div>
+
+      {conversationReadonly && (
+        // 重连换代（Task 3）：旧对话只读——历史可见，续问须新对话（openAsk 对
+        // 新代数目标自动开新对话，或点头部「新对话」）。
+        <p className="ai-readonly-notice" data-testid="ai-readonly-notice" role="status">
+          {t("ai.conversationReadonlyNotice")}
+        </p>
+      )}
 
       {request.kind === "diagnose" && (
         <div className="ai-request" data-testid="ai-request">
@@ -274,7 +344,8 @@ export function DiagnosePanel({
               <AnswerView
                 disabled={status !== "done"}
                 answer={m.content}
-                rustId={request.kind === "diagnose" ? request.rustId : null}
+                rustId={legacyRustId}
+                binding={turnBinding(m)}
                 inserter={inserter}
                 onInserted={onInserted}
               />
@@ -284,14 +355,19 @@ export function DiagnosePanel({
 
         {/* 待确认的工具调用（批次五 P2）：**模型发起、用户点执行才真跑**
             （与既有「AI 只给建议、用户执行」的安全模型一致——没有自动执行开关）。
-            卡片：服务器名 + 工具名 + 参数（代码块）+ 执行/拒绝两钮。 */}
+            卡片：服务器名 + 工具名 + 参数（代码块）+ 执行/拒绝两钮。
+            目标限制说明（Task 3）：MCP 工具在服务器侧执行，超出本面板绑定的
+            终端——工具可用性照旧（用户逐次审批即安全模型），但限制必须说清。 */}
         {pendingToolCalls.length > 0 && (
           <div className="ai-tool-pending" data-testid="ai-tool-pending">
             <p className="ai-tool-pending-hint" data-testid="ai-tool-awaiting">
               {t("ai.tool.awaiting")}
             </p>
+            <p className="settings-hint" data-testid="ai-tool-target-hint" role="status">
+              {t("ai.tool.targetHint")}
+            </p>
             {pendingToolCalls.map((p) => {
-              const running = runningToolCallId === p.id;
+              const runningTool = runningToolCallId === p.id;
               const busy = runningToolCallId !== null;
               return (
                 <div key={p.id} className="ai-tool-card" data-testid={`ai-tool-card-${p.id}`}>
@@ -314,7 +390,7 @@ export function DiagnosePanel({
                       disabled={busy}
                       onClick={() => void resolveToolCall(sessionId, p.id, true)}
                     >
-                      {running ? t("ai.tool.running") : t("ai.tool.approve")}
+                      {runningTool ? t("ai.tool.running") : t("ai.tool.approve")}
                     </button>
                     <button
                       type="button"
@@ -359,7 +435,8 @@ export function DiagnosePanel({
 
       {/* 追问输入条（多轮追问会话，2026-11-02 批次二 C 项）：
           Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）；
-          **有待确认的工具调用时同样禁用**（用户得先处置工具调用）。 */}
+          **有待确认的工具调用时同样禁用**（用户得先处置工具调用）；
+          旧对话只读（重连换代）→ 输入禁用，提示另开新对话。 */}
       <div className="ai-followup-row">
         <textarea
           className="ai-followup-input"
@@ -375,9 +452,14 @@ export function DiagnosePanel({
               ? t("ai.askPlaceholder")
               : t("ai.followupPlaceholder")
           }
-          value={followup}
-          disabled={running || pendingToolCalls.length > 0 || runningToolCallId !== null}
-          onChange={(e) => setFollowup(e.target.value)}
+          value={draft}
+          disabled={
+            running ||
+            conversationReadonly ||
+            pendingToolCalls.length > 0 ||
+            runningToolCallId !== null
+          }
+          onChange={(e) => setDraft(sessionId, e.target.value)}
           onKeyDown={(e) => {
             // Enter 发送 / Shift+Enter 换行。textarea 的 Enter 默认是换行，
             // 这里在「无 Shift」时拦下并提交；Shift+Enter 保留原生换行。
@@ -385,9 +467,8 @@ export function DiagnosePanel({
             if (e.key !== "Enter" || e.shiftKey) return;
             if (e.nativeEvent.isComposing) return;
             e.preventDefault();
-            const text = followup.trim();
+            const text = draft.trim();
             if (text === "") return;
-            setFollowup("");
             void run(sessionId, text);
           }}
         />
@@ -399,11 +480,10 @@ export function DiagnosePanel({
           <button
             className="btn-accent"
             data-testid="ai-followup-send"
-            disabled={followup.trim() === ""}
+            disabled={draft.trim() === ""}
             onClick={() => {
-              const text = followup.trim();
+              const text = draft.trim();
               if (text === "") return;
-              setFollowup("");
               void run(sessionId, text);
             }}
           >

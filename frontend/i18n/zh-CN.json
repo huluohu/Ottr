@@ -110,6 +110,11 @@
     "terminalFontSizePt": "{{n}} pt",
     "ottyMoments": "Otty 情感时刻",
     "ottyMomentsHint": "连接成功、传输完成、解锁、更新就绪时的小动画（默认开；关掉即回归纯工具界面）。",
+    "askOttrOrb": "Ask Ottr 悬浮球",
+    "askOttrOrbHint": "在终端页常驻一颗可拖动的悬浮球，点击即向当前连接提问（默认开；面板打开时自动收起）。",
+    "orbResetPosition": "重置悬浮球位置",
+    "orbResetPositionHint": "把悬浮球放回默认位置（位置只保存在本机，不随同步走）。",
+    "askOttrOrbSaveFailed": "设置已生效，但保存失败",
     "langHant": "繁體中文"
   },
   "hostForm": {
@@ -440,6 +445,7 @@
     "promptTimeout": "等待身份验证超时，未连接（请在弹窗出现时作答）"
   },
   "ai": {
+    "orbLabel": "向 Ottr 提问",
     "title": "AI 助手",
     "inputPlaceholder": "向 AI 描述你要做的事…",
     "send": "发送",
@@ -505,6 +511,7 @@
     },
     "tool": {
       "awaiting": "等待确认工具调用",
+      "targetHint": "工具在 MCP 服务器侧执行，超出本面板绑定的终端范围；每次执行都需要你确认。",
       "server": "服务器",
       "tool": "工具",
       "args": "参数",
@@ -587,7 +594,14 @@
     "followupPlaceholder": "追问…（Enter 发送，Shift+Enter 换行）",
     "askEntry": "问 Ottr",
     "askPlaceholder": "问点什么…（Enter 发送）",
-    "panelAsk": "问 Ottr"
+    "panelAsk": "问 Ottr",
+    "askNoTarget": "没有可提问的终端——请先连接一个终端面板。",
+    "insertWrongTarget": "此结果来自原终端",
+    "insertWrongTargetHint": "插入已停用：这条命令绑定生成它的终端，回到那个终端后才能插入。",
+    "returnToOriginal": "回到原终端",
+    "conversationReadonlyNotice": "连接已重开：以下对话属于旧连接，仅供查看。再次提问将开始新对话。",
+    "newConversation": "新对话",
+    "headerDisconnected": "已断开"
   },
   "tabs": {
     "duplicate": "复制页签",

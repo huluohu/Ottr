@@ -110,6 +110,11 @@
     "terminalFontSizePt": "{{n}} pt",
     "ottyMoments": "Otty moments",
     "ottyMomentsHint": "Small animations when a connection succeeds, a transfer finishes, the vault unlocks, or an update is ready (on by default; turn off for a purely utilitarian interface).",
+    "askOttrOrb": "Ask Ottr orb",
+    "askOttrOrbHint": "Keeps an Ask Ottr orb in the terminal view; click it to ask about the current connection (on by default; it tucks away while the panel is open).",
+    "orbResetPosition": "Reset orb position",
+    "orbResetPositionHint": "Returns the orb to its default spot (the position is stored on this device only and never syncs).",
+    "askOttrOrbSaveFailed": "Applied, but saving failed",
     "langHant": "繁體中文"
   },
   "hostForm": {
@@ -441,6 +446,7 @@
     "promptTimeout": "Timed out waiting for authentication; not connected (answer when the prompt appears)"
   },
   "ai": {
+    "orbLabel": "Ask Ottr",
     "title": "AI Assistant",
     "inputPlaceholder": "Describe what you want to do…",
     "send": "Send",
@@ -506,6 +512,7 @@
     },
     "tool": {
       "awaiting": "Waiting for tool approval",
+      "targetHint": "Tools run on the MCP server side, beyond the terminal bound to this panel; every execution requires your confirmation.",
       "server": "Server",
       "tool": "Tool",
       "args": "Arguments",
@@ -588,7 +595,14 @@
     "followupPlaceholder": "Ask a follow-up… (Enter to send, Shift+Enter for a new line)",
     "askEntry": "Ask Ottr",
     "askPlaceholder": "Ask anything… (Enter to send)",
-    "panelAsk": "Ask Ottr"
+    "panelAsk": "Ask Ottr",
+    "askNoTarget": "No terminal to ask — connect a terminal pane first.",
+    "insertWrongTarget": "From the original terminal",
+    "insertWrongTargetHint": "Insertion disabled: this command is bound to the terminal it was generated for. Return to that terminal to insert.",
+    "returnToOriginal": "Return to original terminal",
+    "conversationReadonlyNotice": "The connection was re-established: the conversation below belongs to the old connection and is read-only. Asking again starts a new conversation.",
+    "newConversation": "New conversation",
+    "headerDisconnected": "Disconnected"
   },
   "tabs": {
     "duplicate": "Duplicate Tab",

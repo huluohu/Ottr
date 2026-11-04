@@ -110,6 +110,11 @@
     "terminalFontSizePt": "{{n}} ポイント",
     "ottyMoments": "Otty モーメント",
     "ottyMomentsHint": "接続に成功した、転送が終わった、保管庫のロックが外れた、更新の準備ができたときなどの小さなアニメーション（デフォルトで有効。実用重視のインターフェースにする場合はオフにしてください）。",
+    "askOttrOrb": "Ask Ottr オーブ",
+    "askOttrOrbHint": "ターミナル画面に Ask Ottr オーブを常駐させます。クリックすると現在の接続について質問できます（デフォルトで有効。パネルを開いている間は自動的に隠れます）。",
+    "orbResetPosition": "オーブの位置をリセット",
+    "orbResetPositionHint": "オーブを既定の位置に戻します（位置はこの端末にのみ保存され、同期されません）。",
+    "askOttrOrbSaveFailed": "設定は反映されましたが、保存に失敗しました",
     "langHant": "繁体字中国語"
   },
   "hostForm": {
@@ -441,6 +446,7 @@
     "promptTimeout": "認証の待ちがタイムアウトしました。接続していません（プロンプトが出たら回答してください）"
   },
   "ai": {
+    "orbLabel": "Ottr に質問",
     "title": "AI アシスタント",
     "inputPlaceholder": "やりたいことを記述…",
     "send": "送信",
@@ -506,6 +512,7 @@
     },
     "tool": {
       "awaiting": "ツール実行の確認待ち",
+      "targetHint": "ツールは MCP サーバー側で実行され、このパネルに紐づくターミナルの範囲外で動きます。実行のたびに確認が必要です。",
       "server": "サーバー",
       "tool": "ツール",
       "args": "引数",
@@ -588,7 +595,14 @@
     "followupPlaceholder": "追加質問…（Enter で送信、Shift+Enter で改行）",
     "askEntry": "Ottr に聞く",
     "askPlaceholder": "何でも聞いてください…（Enter で送信）",
-    "panelAsk": "Ottr に聞く"
+    "panelAsk": "Ottr に聞く",
+    "askNoTarget": "質問できるターミナルがありません — まずターミナルペインを接続してください。",
+    "insertWrongTarget": "元のターミナルの結果です",
+    "insertWrongTargetHint": "挿入は無効です：このコマンドは生成されたターミナルに紐づいています。そのターミナルに戻ると挿入できます。",
+    "returnToOriginal": "元のターミナルへ戻る",
+    "conversationReadonlyNotice": "接続が確立し直されました：以下の会話は旧い接続に属するため閲覧のみ可能です。再度質問すると新しい会話が始まります。",
+    "newConversation": "新しい会話",
+    "headerDisconnected": "切断されました"
   },
   "tabs": {
     "duplicate": "タブを複製",

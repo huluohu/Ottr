@@ -388,6 +388,9 @@ describe("rounds（生成结果保留，批次三 T2 审计 ⌘J 22）", () => {
         command: `echo ${9 - i}`,
         level: "green" as const,
         ts: i,
+        target: null,
+        scopeId: null,
+        runId: `run-seed-${i}`,
       })),
     });
     useNlStore.getState().begin(null);

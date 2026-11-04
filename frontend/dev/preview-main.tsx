@@ -395,7 +395,8 @@ async function renderShot(): Promise<void> {
     shotMode === "terminal" ||
     shotMode === "ai-panel" ||
     shotMode === "ai-ask" ||
-    shotMode === "prompt-dialog";
+    shotMode === "prompt-dialog" ||
+    shotMode === "ask-orb";
   useSessionStore.setState({
     sessions: withSession
       ? [
@@ -473,6 +474,29 @@ async function renderShot(): Promise<void> {
     useModalStore.setState({ active: "promptAsk" });
   }
 
+  // Ask Ottr 悬浮球验证场景（2026-11-03 Ask Ottr Task 5 无头量测载体）：
+  // 开关直置「已加载·开」（真源是 vault；预览页 settings_get 回 null，
+  // syncOrbFromVault 也会收敛为默认开——这里直置让「null 未加载防闪」态
+  // 不参与几何验证）+ 初始化门/锁屏门置就绪（预览无后端启动链，默认
+  // initializing/boot 会把球按住）。__orbGates__ 暴露弹窗槽翻转给无头脚本
+  // 驱动隐藏门（hidden-gates smoke：弹窗在场 → 球卸载）。
+  if (shotMode === "ask-orb") {
+    const { useOrbStore } = await import("./../ai/orbStore");
+    useOrbStore.setState({ enabled: true, position: null });
+    const { useVaultInitGate } = await import("./../security/VaultInitGate");
+    useVaultInitGate.setState({ phase: "ready", error: null });
+    const { useVaultLockStore } = await import("./../security/VaultLockStore");
+    useVaultLockStore.setState({ phase: "unlocked", mode: "password" } as never);
+    const { useModalStore } = await import("./../ui/modalStore");
+    (window as unknown as {
+      __orbGates__?: { setModal: (id: string | null) => void };
+    }).__orbGates__ = {
+      setModal: (id: string | null) => {
+        useModalStore.setState({ active: (id ?? null) as never });
+      },
+    };
+  }
+
   // 设置页「软件更新」区（2026-11-03 用户实锤「按钮都变形了」）：错误态 +
   // 长错误文案——量测「检查更新」按钮会不会被长文案挤到文字竖排两行。
   if (shotMode === "settings-update") {
@@ -543,6 +567,12 @@ async function renderShot(): Promise<void> {
           modelUsed: null,
           elapsedMs: null,
           messages: [],
+          conversationId: "conv-shot",
+          target: null,
+          scope: null,
+          runId: null,
+          draft: "",
+          conversationReadonly: false,
         },
       },
     });
@@ -571,6 +601,12 @@ async function renderShot(): Promise<void> {
           usage: { inputTokens: 321, outputTokens: 87 },
           modelUsed: "ottr-verify-model",
           elapsedMs: 117,
+          conversationId: "conv-shot",
+          target: null,
+          scope: null,
+          runId: null,
+          draft: "",
+          conversationReadonly: false,
           messages: [
             {
               role: "user",
@@ -615,6 +651,7 @@ async function renderShot(): Promise<void> {
   const { CommandPalette } = await import("./../palette/CommandPalette");
   const { CredentialsDialog } = await import("./../credentials/CredentialsDialog");
   const { TitleBar } = await import("./../titlebar/TitleBar");
+  const { AskOttrOrb } = await import("./../ai/AskOttrOrb");
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
@@ -673,6 +710,16 @@ async function renderShot(): Promise<void> {
         {/* 交互式认证提问弹窗（真组件）——预览树里也要挂，否则 ?shot=prompt-dialog
             看不到弹窗（App.tsx 里的挂载在预览树之外）。 */}
         <PromptDialog />
+        {/* Ask Ottr 悬浮球验证场景（2026-11-03 Task 5）：真实组件挂预览树——
+            App 的挂载点在预览树之外（上一条注释同口径）；onAsk 落 __calls，
+            供无头脚本断言「拖拽抬起吞点击 / 位移 <6px 视为点击」。 */}
+        {shotMode === "ask-orb" && (
+          <AskOttrOrb
+            onAsk={() => {
+              calls.push(["orb-ask", null]);
+            }}
+          />
+        )}
       </ThemeProvider>
     </React.StrictMode>,
   );

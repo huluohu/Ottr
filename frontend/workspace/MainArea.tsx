@@ -113,6 +113,7 @@ export function MainArea({
   const openTab = useSessionStore((s) => s.openTab);
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
+  const activePaneMap = useSessionStore((s) => s.activePane);
   const hosts = useVaultStore((s) => s.hosts);
   // 空态快捷卡（ui-batch2 T3）：夹具端点命中才出的条件入口 + 平台键位提示
   const fixtureHost = findFixtureHost(hosts);
@@ -124,6 +125,15 @@ export function MainArea({
     sessions.find((s) => s.id === activeId) ??
     sessions.find((s) => s.paneOf === activeId) ??
     null;
+  // 聚焦 pane 会话（Task 3 R1）：AI 面板的归属面——分屏时 openAsk 落在聚焦
+  // 子 pane 的切片，面板必须按同一会话取（此前按根 activeSession 取 → 子
+  // pane 提问后面板不出现/错挂根会话）。与 aiTarget.resolveFocusedTerminal
+  // 的定位口径一致（activePane[activeId] ?? activeId），但不做可用性过滤
+  // （断连后历史可见）。
+  const focusedPaneId =
+    activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
+  const focusedPaneSession =
+    focusedPaneId != null ? (sessions.find((s) => s.id === focusedPaneId) ?? null) : null;
   const rootSession = activeSession
     ? (sessions.find((s) => s.id === (activeSession.paneOf ?? activeSession.id)) ?? null)
     : null;
@@ -212,10 +222,12 @@ export function MainArea({
   // 放在后面会导致渲染路径切换时 Hooks 数量变化 → React 报
   // 「Rendered more hooks than during the previous render」）。
   // 也不能写进 `&&` 短路（activeSession 为 null 时跳过调用）。
+  // R1（Task 3）：读数与挂载都按**聚焦 pane** 会话——分屏子 pane 的提问面板
+  // 不再错挂根会话。
   const aiRequest = useAiStore((s) =>
-    activeSession != null ? s.sessions[activeSession.id]?.request : undefined,
+    focusedPaneSession != null ? s.sessions[focusedPaneSession.id]?.request : undefined,
   );
-  const aiHasContent = activeSession != null && aiRequest != null;
+  const aiHasContent = focusedPaneSession != null && aiRequest != null;
 
   // 零会话空态内容（错误横幅 / 已选中占位 / 欢迎页）——总览标签在场时挂在
   // 标签条下方（mainView 被切回 terminal 的零会话形态，如启动落地后用户
@@ -297,11 +309,11 @@ export function MainArea({
   // 工具行被强制成 max-content + 横向滚动 → 长语言（西/意）下右侧按钮被切
   // 掉（能滚到，但看着像坏了）。这个类只应在**面板真的占位**时才加。
   const aiPanelVisible =
-    slotView === null && termViewActive && activeSession != null && aiHasContent;
+    slotView === null && termViewActive && focusedPaneSession != null && aiHasContent;
   const aiPanelOut = aiPanelVisible ? (
     <DiagnosePanel
-      key={activeSession.id}
-      sessionId={activeSession.id}
+      key={focusedPaneSession.id}
+      sessionId={focusedPaneSession.id}
       onOpenSettings={onOpenAiSettings}
     />
   ) : null;

@@ -47,6 +47,7 @@ pub(crate) type LocalTermMap = Arc<Mutex<HashMap<String, LocalSessionEntry>>>;
 /// 一一对应：writer/counters/decoder/text_tail/resize 供同名单命令双表回退；
 /// SSH 专有字段——session/endpoint/sftp/forward_router——本地一概没有）。
 pub(crate) struct LocalSessionEntry {
+    pub(crate) runtime_id: Arc<()>,
     /// PTY 写端（击键直写；`write_session` 消费）。
     pub(crate) writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,
     /// 子进程终止器（`drop_session`：先置 cancel 再 kill，读线程即 EOF）。
@@ -358,9 +359,11 @@ pub(crate) fn local_term_open_with(
     let text_tail = Arc::new(TextTail::new());
     let cancel = Arc::new(AtomicBool::new(false));
     let recorder_slot: crate::commands::recording::RecorderSlot = Arc::new(Mutex::new(None));
+    let runtime_id = Arc::new(());
     local_sessions.lock().unwrap().insert(
         id.clone(),
         LocalSessionEntry {
+            runtime_id: Arc::clone(&runtime_id),
             writer: Arc::clone(&writer),
             killer: Arc::new(Mutex::new(killer)),
             master: Arc::clone(&master),
@@ -429,6 +432,11 @@ pub(crate) fn local_term_open_with(
             app.state::<crate::commands::state::AppState>()
                 .monitors
                 .session_down(&loop_id);
+            // AI 目标作用域随会话消亡（feat/ask-ottr-orb Task 1；shell 敲 exit
+            // 的自清路径——drop_session 之外的第二条本地收尾）。
+            app.state::<crate::commands::state::AppState>()
+                .ai_scopes
+                .revoke_runtime(crate::commands::ai_session::AiSessionKind::Local, &loop_id);
             let _ = app.emit(
                 "ottr://session-closed",
                 SessionClosedEvent {

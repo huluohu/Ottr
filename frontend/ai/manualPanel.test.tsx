@@ -188,6 +188,62 @@ describe("manual 档：待确认卡", () => {
   });
 });
 
+describe("auto 档：降级下来的步骤按待确认卡呈现（第三步）", () => {
+  /** 自动档把非白名单命令降级成逐条确认——登记为**手动档**步骤。 */
+  const DOWNGRADED_STEP = {
+    ...PENDING_STEP,
+    id: "step-9",
+    command: "rm /tmp/x",
+    danger: "green" as const,
+    registeredMode: "manual" as const,
+  };
+
+  it("自动档下：降级步骤**有**执行/拒绝钮（不给钮 = 降级成了死路）", () => {
+    seed({ mode: "auto", plan: [DOWNGRADED_STEP] });
+    render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
+    expect(screen.getByTestId("ai-plan-run-step-9")).toBeTruthy();
+    expect(screen.getByTestId("ai-plan-reject-step-9")).toBeTruthy();
+    // 标题按「待确认的命令」呈现（不是「计划步骤」）
+    expect(screen.getByTestId("ai-plan-title").textContent).toContain("待确认");
+  });
+
+  it("切回规划档：降级步骤不挂执行钮（规划档不提供执行入口）", () => {
+    seed({ mode: "plan", plan: [DOWNGRADED_STEP] });
+    render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
+    expect(screen.queryByTestId("ai-plan-run-step-9")).toBeNull();
+    expect(screen.queryByTestId("ai-plan-reject-step-9")).toBeNull();
+  });
+
+  it("自动档下：规划档登记的步骤**不**给执行钮（自动档的放行只走后端判定）", () => {
+    seed({
+      mode: "auto",
+      plan: [{ ...PENDING_STEP, registeredMode: "plan" as const }],
+    });
+    render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
+    expect(screen.queryByTestId("ai-plan-run-step-1")).toBeNull();
+  });
+
+  it("已自动执行的步骤在清单里标「已完成」并展示退出码与输出", () => {
+    seed({
+      mode: "auto",
+      plan: [
+        {
+          ...PENDING_STEP,
+          status: "done" as const,
+          registeredMode: "manual" as const,
+          result: { exitCode: 0, stdout: "total 8", stderr: "", truncated: false },
+        },
+      ],
+    });
+    render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
+    expect(screen.getByTestId("ai-plan-status-step-1").textContent).toContain("已完成");
+    expect(screen.getByTestId("ai-plan-result-step-1").textContent).toContain("退出码 0");
+    expect(screen.getByTestId("ai-plan-output-step-1").textContent).toContain("total 8");
+    // 已跑过的步骤不再给执行入口
+    expect(screen.queryByTestId("ai-plan-run-step-1")).toBeNull();
+  });
+});
+
 describe("plan 档：不提供执行入口", () => {
   it("plan 档：步骤仍是清单，没有执行/拒绝钮", () => {
     seed({ mode: "plan", plan: [PENDING_STEP] });

@@ -1,7 +1,7 @@
 // DiagnosePanel 组件测试（T13；2026-10-19 方案 A 会话作用域）：流式渲染、
 // 代码块插终端三档确认状态机、错误面（noProvider/noKey → 去设置）。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import i18n from "../i18n";
 import { useAiStore, type DiagnoseRequest, type SessionAiState } from "./aiStore";
 import { DiagnosePanel, extractCodeBlocks } from "./DiagnosePanel";
@@ -130,6 +130,40 @@ describe("面板渲染", () => {
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(screen.getByTestId("ai-error-message").textContent).toContain("HTTP 401");
     expect(screen.getByTestId("ai-retry")).toBeTruthy();
+  });
+});
+
+describe("输入框自动聚焦（2026-11-03 真机验收抓到的缺陷）", () => {
+  it("面板打开后焦点落进追问输入条（否则第一句话会打进终端并被执行）", async () => {
+    reset(REQ, { status: "idle" });
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const input = screen.getByTestId("ai-followup-input");
+    // rAF 连帧重试 → 推进几帧让 focus 生效
+    for (let i = 0; i < 12; i++) {
+      await act(async () => {
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      });
+      if (document.activeElement === input) break;
+    }
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("有工具调用待确认时输入禁用 → 不抢焦点（抢走会打断处置流程）", async () => {
+    reset(REQ, {
+      status: "idle",
+      pendingToolCalls: [
+        { id: "c1", serverId: "s1", serverName: "s", tool: "t", args: "{}", runId: "r1" },
+      ],
+    });
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const input = screen.getByTestId("ai-followup-input") as HTMLTextAreaElement;
+    expect(input.disabled).toBe(true);
+    for (let i = 0; i < 12; i++) {
+      await act(async () => {
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      });
+    }
+    expect(document.activeElement).not.toBe(input);
   });
 });
 

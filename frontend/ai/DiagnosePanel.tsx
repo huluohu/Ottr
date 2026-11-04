@@ -13,7 +13,7 @@
 //   request → 端点错误原文 + 重试；abort → 停止按钮（AbortController）；
 // * 头部身份（Task 3）：主机 + provider/model + 后端捕获的账号@端点（scope）+
 //   PROD 徽标 + 连接失效标记；重连换代 → 旧对话只读横幅（历史可见）。
-import { Fragment, useEffect } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useAiStore, useSessionAi } from "./aiStore";
@@ -170,6 +170,8 @@ export function DiagnosePanel({
   // 依赖必须含 request：本组件在终端视图无条件挂载（内部才判 null）——
   // 同会话首失败时 request 从无到有，依赖不变则 effect 不重跑，徽标常驻
   // （真机验收 2026-10-19 抓到的漏标记时序）。
+  /** 追问输入条：面板打开时自动聚焦（真机 2026-11-03 验收发现焦点留在终端）。 */
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const markSeen = useAiStore((s) => s.markSeen);
   useEffect(() => {
     if (sessionId && request) markSeen(sessionId);
@@ -180,8 +182,40 @@ export function DiagnosePanel({
   const close = useAiStore((s) => s.close);
   const resolveToolCall = useAiStore((s) => s.resolveToolCall);
 
-  if (!sessionId || !request) return null;
   const running = status === "running";
+  const inputDisabled =
+    running || conversationReadonly || pendingToolCalls.length > 0 || runningToolCallId !== null;
+
+  // **输入框自动聚焦**（2026-11-03 真机验收抓到的缺陷）：面板打开后焦点仍
+  // 留在终端的 xterm textarea —— 用户以为在面板里问，第一句话却被**打进
+  // 终端并执行**（真机截图实证）。面板一开就该把焦点交给输入框。
+  //
+  // 实现按 WebKitGTK 的老规矩来：一次性 focus() 会被吞 → rAF 连帧重试，
+  // 命中 activeElement 即停（至多 10 帧）。禁用态不抢焦点（用户正在处置
+  // 工具调用时抢走输入焦点会打断处置流程）。
+  //
+  // ★ 本 effect 必须在 `if (!sessionId || !request) return null` **之前**：
+  // 早退之后再挂 hook 会让「先渲染 null、后出现 request」这条路径的 hook
+  // 数量前后不一致 → React 报 "Rendered more hooks than during the
+  // previous render"（2026-11-03 修这个缺陷时踩到）。
+  useEffect(() => {
+    if (inputDisabled) return;
+    let raf = 0;
+    let tries = 0;
+    const tick = () => {
+      const el = inputRef.current;
+      if (!el) return;
+      if (document.activeElement === el) return;
+      el.focus();
+      if (document.activeElement !== el && ++tries < 10) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [sessionId, inputDisabled, request]);
+
+  if (!sessionId || !request) return null;
   // 头部展示「实际生效」的 provider（首个未禁用，2026-10-16）——禁用的
   // 默认项不再冒名出现在头部；主机名居首（多会话方案 A 的归属标注）。
   const active = settingsUsed ? activeProvider(settingsUsed.providers) : null;
@@ -441,6 +475,7 @@ export function DiagnosePanel({
         <textarea
           className="ai-followup-input"
           data-testid="ai-followup-input"
+          ref={inputRef}
           rows={2}
           aria-label={
             request.kind === "ask" && messages.length === 0
@@ -453,12 +488,7 @@ export function DiagnosePanel({
               : t("ai.followupPlaceholder")
           }
           value={draft}
-          disabled={
-            running ||
-            conversationReadonly ||
-            pendingToolCalls.length > 0 ||
-            runningToolCallId !== null
-          }
+          disabled={inputDisabled}
           onChange={(e) => setDraft(sessionId, e.target.value)}
           onKeyDown={(e) => {
             // Enter 发送 / Shift+Enter 换行。textarea 的 Enter 默认是换行，

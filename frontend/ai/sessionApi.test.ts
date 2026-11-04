@@ -130,4 +130,74 @@ describe("aiSessionApi", () => {
       mode: "plan",
     });
   });
+
+  // 2026-11-04 第二步：执行一条已登记的步骤（Manual 档）。
+  it("runs a registered step by scope + step + action only (no command text)", async () => {
+    invoke.mockResolvedValue({
+      executed: true,
+      stepId: "step-1",
+      exitCode: 0,
+      stdout: "ok",
+      stderr: "",
+      truncated: false,
+      message: "executed (manual mode)",
+    });
+    await expect(aiSessionApi.runStep("scope-a", "step-1", "run-1:exec:call_1")).resolves.toEqual({
+      executed: true,
+      stepId: "step-1",
+      exitCode: 0,
+      stdout: "ok",
+      stderr: "",
+      truncated: false,
+      message: "executed (manual mode)",
+    });
+    // 参数名逐字对齐契约 §2.2；**不传命令原文**（执行对象 = 登记簿那条）。
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("ai_scope_run_step", {
+      scopeId: "scope-a",
+      stepId: "step-1",
+      actionId: "run-1:exec:call_1",
+    });
+  });
+
+  it("propagates a backend rejection of run_step (no silent fallback)", async () => {
+    invoke.mockRejectedValue("AI run_step rejected: plan mode does not execute");
+    await expect(aiSessionApi.runStep("scope-a", "step-1", "run-1:exec:call_1")).rejects.toBe(
+      "AI run_step rejected: plan mode does not execute",
+    );
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  // 2026-11-04 修补 I-1：档位升级——**命令原文不上送**（后端从登记簿里取）。
+  it("upgrades a step without sending any command text", async () => {
+    invoke.mockResolvedValue({
+      stepId: "step-2",
+      actionId: "run-1:rearm:step-1:1",
+      mode: "manual",
+      message: "upgraded to manual mode (recorded from the plan registry; not executed yet)",
+    });
+    await expect(
+      aiSessionApi.upgradeStep("scope-a", "step-1", "run-1:rearm:step-1:1"),
+    ).resolves.toEqual({
+      stepId: "step-2",
+      actionId: "run-1:rearm:step-1:1",
+      mode: "manual",
+      message: "upgraded to manual mode (recorded from the plan registry; not executed yet)",
+    });
+    // 参数名逐字对齐后端命令签名；**载荷里没有 command**。
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("ai_scope_upgrade_step", {
+      scopeId: "scope-a",
+      stepId: "step-1",
+      actionId: "run-1:rearm:step-1:1",
+    });
+    const payload = invoke.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("command");
+  });
+
+  it("propagates a backend rejection of the upgrade (no silent fallback)", async () => {
+    invoke.mockRejectedValue("AI upgrade rejected: vault locked");
+    await expect(
+      aiSessionApi.upgradeStep("scope-a", "step-1", "run-1:rearm:step-1:1"),
+    ).rejects.toBe("AI upgrade rejected: vault locked");
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
 });

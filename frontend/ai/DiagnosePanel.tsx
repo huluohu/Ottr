@@ -24,7 +24,14 @@ import { isAiTargetLive } from "../session/aiTarget";
 import { useSessionStore } from "../session/SessionStore";
 import { useTerminalFocus } from "../terminal/terminalFocus";
 import { SegmentedControl } from "../ui/SegmentedControl";
-import { DEFAULT_AI_EXEC_MODE, planStepsOf, type AiExecMode } from "./aiModes";
+import {
+  DEFAULT_AI_EXEC_MODE,
+  awaitingPlanSteps,
+  needsModeUpgrade,
+  planStepsOf,
+  type AiExecMode,
+  type PlanStepStatus,
+} from "./aiModes";
 import { HOST_TOOL_PREFIX } from "./mcpTools";
 
 /** 工具返回文本在面板里的显示上限（**发给模型的完整文本不截断**——
@@ -142,6 +149,23 @@ export function DiagnosePanel({
   const mode: AiExecMode = slice.mode ?? DEFAULT_AI_EXEC_MODE;
   // 计划步骤清单（plan 模式下登记的执行类动作；跨 run 累积、按命令去重）。
   const planSteps = planStepsOf(slice);
+  // Manual 档（第二步）：待确认的执行步骤（登记后既没执行也没拒绝）。
+  const awaitingSteps = awaitingPlanSteps(slice);
+  // plan 档登记的步骤（后端按**登记时的档位**判定执行权 → plan 档登记的执行
+  // 不了；手动档点「执行」时先由后端升档）。plan 档下没有
+  // 执行钮——但要说清楚出路（切到「手动」档）。
+  const upgradableSteps = planSteps.filter(
+    (s) => s.status === "planned" && needsModeUpgrade(s),
+  );
+  const manualMode = mode === "manual";
+  /** 步骤状态文案（五态：待执行 / 执行中 / 已完成 / 失败 / 已拒绝）。 */
+  const planStatusText = (status: PlanStepStatus): string => {
+    if (status === "executing") return t("ai.plan.statusExecuting");
+    if (status === "done") return t("ai.plan.statusDone");
+    if (status === "failed") return t("ai.plan.statusFailed");
+    if (status === "rejected") return t("ai.plan.statusRejected");
+    return t("ai.plan.statusPlanned");
+  };
   // 待确认的工具调用（批次五 P2）：模型发起、**用户点执行才真跑**。
   const pendingToolCalls = slice.pendingToolCalls ?? [];
   const runningToolCallId = slice.runningToolCallId ?? null;
@@ -188,11 +212,18 @@ export function DiagnosePanel({
   const run = useAiStore((s) => s.run);
   const close = useAiStore((s) => s.close);
   const resolveToolCall = useAiStore((s) => s.resolveToolCall);
+  const resolvePlanStep = useAiStore((s) => s.resolvePlanStep);
   const setMode = useAiStore((s) => s.setMode);
 
   const running = status === "running";
+  // 有待处置的执行步骤时同样禁输入：那一次模型 tool call 还没被回答，
+  // 插新的一轮会让 provider 协议缺 tool 消息（400）。
   const inputDisabled =
-    running || conversationReadonly || pendingToolCalls.length > 0 || runningToolCallId !== null;
+    running ||
+    conversationReadonly ||
+    pendingToolCalls.length > 0 ||
+    runningToolCallId !== null ||
+    awaitingSteps.length > 0;
 
   // **输入框自动聚焦**（2026-11-03 真机验收抓到的缺陷）：面板打开后焦点仍
   // 留在终端的 xterm textarea —— 用户以为在面板里问，第一句话却被**打进
@@ -474,51 +505,150 @@ export function DiagnosePanel({
           </div>
         )}
 
-        {/* 计划清单（2026-11-04 第一步）：plan 模式下模型提出的执行类动作
-            **只登记、不执行**——这里把步骤摊开给用户看：命令原文 + 危险徽章
-            （复用 danger.ts 的分档）+ 状态点。仿 .ai-tool-pending 的插法：
-            作为 thread 内的一块，不另起浮层。
-            本步不实现「执行计划」按钮（第二步接 Manual）。 */}
+        {/* 计划清单（2026-11-04 第一步）/ 待确认卡（第二步 Manual 模式）：
+            plan 档：模型提出的执行类动作**只登记、不执行**——摊开给用户看：
+            命令原文 + 危险徽章（复用 danger.ts 的分档）+ 状态点。
+            manual 档：同一条清单升级成**待确认卡**（仿 .ai-tool-pending 的
+            插法，作为 thread 内的一块，不另起浮层）——执行/拒绝两钮 + 执行
+            结果就地展示。**plan 档不提供执行钮**（后端也会拒，前端不暴露
+            入口）。模式切换时步骤不丢：清单 ↔ 待确认卡只是同一批数据的两种
+            呈现。 */}
         {planSteps.length > 0 && (
           <div className="ai-plan" data-testid="ai-plan">
             <p className="ai-plan-hint" data-testid="ai-plan-title">
-              {t("ai.plan.title")}
+              {manualMode ? t("ai.plan.confirmTitle") : t("ai.plan.title")}
             </p>
-            <ul className="ai-plan-list">
-              {planSteps.map((s) => (
-                <li
-                  key={s.id}
-                  className="ai-plan-step"
-                  data-testid={`ai-plan-step-${s.id}`}
-                  data-danger={s.danger}
-                  data-status={s.status}
-                >
-                  <span
-                    className="ai-plan-dot"
-                    data-testid={`ai-plan-dot-${s.id}`}
+            {manualMode && (
+              <p className="ai-plan-hint" data-testid="ai-plan-confirm-hint">
+                {t("ai.plan.confirmHint")}
+              </p>
+            )}
+            {!manualMode && (awaitingSteps.length > 0 || upgradableSteps.length > 0) && (
+              // 有待确认的命令、但当前不在 manual 档 → 说清楚怎么处置
+              // （plan 档按契约不提供执行钮）。**plan 档登记的步骤也算**
+              // （它在手动档点「执行」时会先由后端升档再执行）——
+              // 否则用户看不到「切到手动档就能跑」这条出路。
+              <p className="ai-plan-hint" data-testid="ai-plan-mode-hint" role="status">
+                {t("ai.plan.switchToManual")}
+              </p>
+            )}
+            <ul className="ai-plan-list" aria-label={manualMode ? t("ai.plan.confirmTitle") : t("ai.plan.title")}>
+              {planSteps.map((s) => {
+                // 执行中：钮置灰 + 状态 executing（重复点击的第一道闸）。
+                const busy = s.status === "executing";
+                const showActions = manualMode && (s.status === "planned" || busy);
+                return (
+                  <li
+                    key={s.id}
+                    className="ai-plan-step"
+                    data-testid={`ai-plan-step-${s.id}`}
+                    data-danger={s.danger}
                     data-status={s.status}
-                    aria-hidden="true"
-                  />
-                  <span className="ai-plan-cmd" data-testid={`ai-plan-cmd-${s.id}`}>
-                    {s.command}
-                  </span>
-                  <span
-                    className={`ai-level ai-level-${s.danger}`}
-                    data-testid={`ai-plan-level-${s.id}`}
                   >
-                    {t(
-                      s.danger === "red"
-                        ? "ai.levelRed"
-                        : s.danger === "yellow"
-                          ? "ai.levelYellow"
-                          : "ai.levelGreen",
+                    <span
+                      className="ai-plan-dot"
+                      data-testid={`ai-plan-dot-${s.id}`}
+                      data-status={s.status}
+                      aria-hidden="true"
+                    />
+                    <span className="ai-plan-cmd" data-testid={`ai-plan-cmd-${s.id}`}>
+                      {s.command}
+                    </span>
+                    <span
+                      className={`ai-level ai-level-${s.danger}`}
+                      data-testid={`ai-plan-level-${s.id}`}
+                    >
+                      {t(
+                        s.danger === "red"
+                          ? "ai.levelRed"
+                          : s.danger === "yellow"
+                            ? "ai.levelYellow"
+                            : "ai.levelGreen",
+                      )}
+                    </span>
+                    <span className="ai-plan-status" data-testid={`ai-plan-status-${s.id}`}>
+                      {planStatusText(s.status)}
+                    </span>
+                    {showActions && (
+                      <span className="ai-plan-actions">
+                        <button
+                          type="button"
+                          className="btn-accent"
+                          data-testid={`ai-plan-run-${s.id}`}
+                          disabled={busy}
+                          // 无障碍：按钮的可读名带上命令原文——一屏多张卡时，
+                          // 读屏用户能听出「执行」的是哪一条。
+                          aria-label={`${busy ? t("ai.plan.running") : t("ai.plan.run")}: ${s.command}`}
+                          onClick={() => void resolvePlanStep(sessionId, s.id, true)}
+                        >
+                          {busy ? t("ai.plan.running") : t("ai.plan.run")}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`ai-plan-reject-${s.id}`}
+                          disabled={busy}
+                          aria-label={`${t("ai.plan.reject")}: ${s.command}`}
+                          onClick={() => void resolvePlanStep(sessionId, s.id, false)}
+                        >
+                          {t("ai.plan.reject")}
+                        </button>
+                      </span>
                     )}
-                  </span>
-                  <span className="ai-plan-status" data-testid={`ai-plan-status-${s.id}`}>
-                    {t("ai.plan.statusPlanned")}
-                  </span>
-                </li>
-              ))}
+                    {s.result && (
+                      // 执行结果就地展示（退出码 + 截断输出）；role=status 让
+                      // 读屏在结果出现时播报一句。
+                      <div
+                        className="ai-plan-result"
+                        data-testid={`ai-plan-result-${s.id}`}
+                        role="status"
+                      >
+                        <span className="ai-plan-exit" data-testid={`ai-plan-exit-${s.id}`}>
+                          {t("ai.plan.exitCode", { code: s.result.exitCode ?? "-" })}
+                        </span>
+                        {s.result.timedOut && (
+                          // 超时要**单独说**：退出码「-」既可能是超时被中止，
+                          // 也可能只是服务端没回退出码——两者的处置完全不同。
+                          <span
+                            className="ai-plan-timeout"
+                            data-testid={`ai-plan-timeout-${s.id}`}
+                          >
+                            {t("ai.plan.timedOut")}
+                          </span>
+                        )}
+                        {s.result.error && (
+                          <span className="ai-plan-error" data-testid={`ai-plan-error-${s.id}`}>
+                            {s.result.error}
+                          </span>
+                        )}
+                        {s.result.stdout && (
+                          <pre
+                            className="ai-plan-output"
+                            data-testid={`ai-plan-output-${s.id}`}
+                          >
+                            {s.result.stdout}
+                          </pre>
+                        )}
+                        {s.result.stderr && (
+                          <pre
+                            className="ai-plan-output"
+                            data-testid={`ai-plan-stderr-${s.id}`}
+                          >
+                            {s.result.stderr}
+                          </pre>
+                        )}
+                        {s.result.truncated && (
+                          <span
+                            className="ai-plan-truncated"
+                            data-testid={`ai-plan-truncated-${s.id}`}
+                          >
+                            {t("ai.tool.truncated")}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -551,7 +681,7 @@ export function DiagnosePanel({
 
       {/* 追问输入条（多轮追问会话，2026-11-02 批次二 C 项）：
           Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）；
-          **有待确认的工具调用时同样禁用**（用户得先处置工具调用）；
+          **有待确认的工具调用 / 待确认的执行步骤时同样禁用**（用户得先处置）；
           旧对话只读（重连换代）→ 输入禁用，提示另开新对话。 */}
       <div className="ai-followup-row">
         <textarea

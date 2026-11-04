@@ -502,7 +502,7 @@
       "diagnose": "You are a senior ops engineer. The user ran a failing command in an SSH terminal. Provide: **Cause** (1-3 sentences based on the output), **Fix commands** (each in a ```bash fenced block, independently runnable), **Notes** (optional, 1 sentence). Answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim, never guess their content.",
       "explain": "You are a terminal assistant. Explain the selected terminal content (error/log/text): what it means, likely causes, and (if applicable) suggested next commands in ```bash fenced blocks. Be concise, answer in the UI language. [REDACTED_*] are redaction placeholders — keep them verbatim.",
       "tools": "You may call the tools listed above to gather information or act on the system. **Tool calls only run after the user approves them**; if the user rejects a tool, answer with the information you already have.",
-      "hostTools": "You can also call the host tools (prefix ottr_): read-only ones (read output tail / read file / list directory) run directly and their results are handed back to you; the executing one (ottr_exec_command) follows the current mode stated in its tool description — in plan mode it is only recorded in the plan and never executed. Plan your calls accordingly."
+      "hostTools": "You can also call the host tools (prefix ottr_): read-only ones (read output tail / read file / list directory) run directly and their results are handed back to you; the executing one (ottr_exec_command) follows the current mode stated in its tool description — in plan mode it is only recorded in the plan and never executed, in manual mode it waits as a step for your confirmation and runs only after you click Run. Plan your calls accordingly."
     },
     "msg": {
       "exitCode": "Exit code",
@@ -542,7 +542,25 @@
       "executed": "Executed",
       "rejected": "Not executed (rejected)",
       "rejectedWithError": "Not executed (rejected by the backend: {{error}})",
-      "statusPlanned": "Pending"
+      "statusPlanned": "Pending",
+      "statusExecuting": "Executing",
+      "statusDone": "Done",
+      "statusFailed": "Failed",
+      "statusRejected": "Rejected",
+      "run": "Run",
+      "reject": "Reject",
+      "running": "Running…",
+      "runResult": "Execution result: {{summary}}\nExit code: {{exitCode}}\nstdout:\n{{stdout}}\nstderr:\n{{stderr}}",
+      "runFailed": "Command execution failed: {{error}}",
+      "timedOut": "Timed out: the command was aborted and the channel was closed.",
+      "rearmFailed": "Could not re-register this command in Manual mode (not executed): {{error}}",
+      "rejectedByUser": "The user rejected running this command.",
+      "exitCode": "Exit code {{code}}",
+      "result": "Result",
+      "confirmTitle": "Commands awaiting confirmation",
+      "confirmHint": "These commands have not run yet: click Run to execute them, or Reject to skip them.",
+      "switchToManual": "There are commands awaiting confirmation — switch to Manual mode to run them.",
+      "stepResult": "The command \"{{command}}\" was executed. Result:\n{{result}}"
     },
     "hostTool": {
       "readOutput": "Read the tail of the current terminal output",
@@ -553,7 +571,7 @@
       "commandArg": "Single-line command to run",
       "purposeArg": "Purpose of this command (noted in the plan)",
       "execCommandPlan": "Run a command (current mode: plan; it is only recorded in the plan and never executed)",
-      "execCommandManual": "Run a command (current mode: manual; the command waits for your confirmation)",
+      "execCommandManual": "Run a command (current mode: manual; the command is queued as a step awaiting your confirmation and runs only after you click Run)",
       "execCommandAuto": "Run a command (current mode: auto; host authorization is not available yet, so it will be rejected)",
       "needPath": "Missing the path argument; nothing was run.",
       "needCommand": "Missing the command argument; nothing was run.",
@@ -625,7 +643,7 @@
       "errRuleInvalid": "Regex does not compile",
       "errRemoteHttp": "Remote endpoints must use https:// (plain http would send the API key unencrypted, and the app only allows plain http to localhost)",
       "defaultExecMode": "Default execution mode for new conversations",
-      "defaultExecModeHint": "The execution mode a new conversation starts in. Plan mode only produces a plan and never runs a command; auto mode is not enabled yet (it needs per-host authorization).",
+      "defaultExecModeHint": "The execution mode a new conversation starts in. Plan mode only produces a plan and never runs a command; manual mode runs each command only after you click Run; auto mode is not enabled yet (it needs per-host authorization).",
       "readProbe": "AI read-only probing (read host files and directories)",
       "readProbeHint": "When off, the AI tool catalog no longer offers reading host files or listing directories; the AI can only read the tail of the current terminal output. Other tools are unaffected. Local to this device; not synced."
     },

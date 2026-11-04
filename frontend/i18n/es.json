@@ -502,7 +502,7 @@
       "diagnose": "Eres un ingeniero de ops senior. El usuario ejecutó un comando fallido en una terminal SSH. Proporciona: **Causa** (1-3 frases basadas en la salida), **Comandos de solución** (cada uno en un bloque delimitado por ```bash, ejecutable de forma independiente), **Notas** (opcional, 1 frase). Responde en el idioma de la interfaz. [REDACTED_*] son marcadores de redacción: consérvalos tal cual y nunca adivines su contenido.",
       "explain": "Eres un asistente de terminal. Explica el contenido seleccionado de la terminal (error/registro/texto): qué significa, causas probables y, si procede, los siguientes comandos sugeridos en bloques delimitados por ```bash. Sé conciso y responde en el idioma de la interfaz. [REDACTED_*] son marcadores de redacción: consérvalos tal cual.",
       "tools": "Puedes llamar a las herramientas de la lista anterior para obtener información o actuar sobre el sistema. **Las llamadas a herramientas solo se ejecutan cuando el usuario las aprueba**; si el usuario rechaza una, responde con la información que ya tienes.",
-      "hostTools": "También puedes llamar a las herramientas del host (prefijo ottr_): las de solo lectura (leer el final de la salida, leer un archivo, listar un directorio) se ejecutan directamente y te devuelven el resultado; la de ejecución (ottr_exec_command) sigue el modo indicado en su descripción: en modo de planificación solo se registra en el plan y nunca se ejecuta. Decide las llamadas en consecuencia."
+      "hostTools": "También puedes llamar a las herramientas del host (prefijo ottr_): las de solo lectura (leer el final de la salida, leer un archivo, listar un directorio) se ejecutan directamente y te devuelven el resultado; la de ejecución (ottr_exec_command) sigue el modo indicado en su descripción: en modo de planificación solo se registra en el plan y nunca se ejecuta; en modo manual queda como paso pendiente de confirmación y solo se ejecuta al pulsar Ejecutar. Decide las llamadas en consecuencia."
     },
     "msg": {
       "exitCode": "Código de salida",
@@ -542,7 +542,25 @@
       "executed": "Ejecutado",
       "rejected": "No ejecutado (rechazado)",
       "rejectedWithError": "No ejecutado (rechazado por el backend: {{error}})",
-      "statusPlanned": "Pendiente de ejecución"
+      "statusPlanned": "Pendiente de ejecución",
+      "statusExecuting": "En ejecución",
+      "statusDone": "Hecho",
+      "statusFailed": "Falló",
+      "statusRejected": "Rechazado",
+      "run": "Ejecutar",
+      "reject": "Rechazar",
+      "running": "Ejecutando…",
+      "runResult": "Resultado de la ejecución: {{summary}}\nCódigo de salida: {{exitCode}}\nstdout:\n{{stdout}}\nstderr:\n{{stderr}}",
+      "runFailed": "Error al ejecutar el comando: {{error}}",
+      "timedOut": "Se agotó el tiempo: el comando se abortó y el canal se cerró.",
+      "rearmFailed": "No se pudo volver a registrar este comando en modo manual (sin ejecutar): {{error}}",
+      "rejectedByUser": "El usuario rechazó ejecutar este comando.",
+      "exitCode": "Código de salida {{code}}",
+      "result": "Resultado",
+      "confirmTitle": "Comandos pendientes de confirmación",
+      "confirmHint": "Estos comandos aún no se han ejecutado: pulsa Ejecutar para ejecutarlos o Rechazar para omitirlos.",
+      "switchToManual": "Hay comandos pendientes de confirmación: cambia al modo manual para ejecutarlos.",
+      "stepResult": "El comando «{{command}}» se ha ejecutado. Resultado:\n{{result}}"
     },
     "hostTool": {
       "readOutput": "Leer el final de la salida de la terminal actual",
@@ -553,7 +571,7 @@
       "commandArg": "Comando de una sola línea que se ejecutará",
       "purposeArg": "Propósito de este comando (se anota en el plan)",
       "execCommandPlan": "Ejecutar comando (modo actual: planificar; solo se registra en el plan, no se ejecuta)",
-      "execCommandManual": "Ejecutar comando (modo actual: manual; el comando queda pendiente de confirmación)",
+      "execCommandManual": "Ejecutar comando (modo actual: manual; el comando se registra como paso pendiente de confirmación y solo se ejecuta al pulsar Ejecutar)",
       "execCommandAuto": "Ejecutar comando (modo actual: automático; la autorización del host aún no está disponible, así que se rechazará)",
       "needPath": "Falta el argumento de ruta; no se ejecutó nada.",
       "needCommand": "Falta el argumento de comando; no se ejecutó nada.",
@@ -625,7 +643,7 @@
       "errRuleInvalid": "La regex no compila",
       "errRemoteHttp": "Los endpoints remotos deben usar https:// (http sin cifrar enviaría la API key en claro y la app solo permite http local)",
       "defaultExecMode": "Modo de ejecución predeterminado de las conversaciones nuevas",
-      "defaultExecModeHint": "El modo de ejecución con el que empiezan las conversaciones nuevas. El modo de planificación solo genera un plan y no ejecuta ningún comando; el modo automático aún no está habilitado (requiere autorización por host).",
+      "defaultExecModeHint": "El modo de ejecución con el que empiezan las conversaciones nuevas. El modo de planificación solo genera un plan y no ejecuta ningún comando; en el modo manual cada comando se ejecuta solo después de que pulses Ejecutar; el modo automático aún no está habilitado (requiere autorización por host).",
       "readProbe": "Exploración de solo lectura de la IA (leer archivos y directorios del host)",
       "readProbeHint": "Cuando está desactivado, el catálogo de herramientas de la IA deja de ofrecer la lectura de archivos del host y el listado de directorios; la IA solo puede leer la cola de salida de la terminal actual. Las demás herramientas no se ven afectadas. Solo en este equipo; no se sincroniza."
     },

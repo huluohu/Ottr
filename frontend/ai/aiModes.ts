@@ -9,6 +9,12 @@
 // * 模式是**会话级**的：随对话保持，新对话复位到默认档；
 // * auto 本步尚未开放（主机授权表是第三步）——可选，但后端一律拒；
 // * 计划步骤按命令去重累积（同一对话多次提问 → 步骤清单合并，不重复列同一条）。
+//
+// 第二步（Manual 档）补记——**步骤带登记时的档位**（`PlanStep.registeredMode`）：
+// 后端按登记簿里那条的档位判定执行权，plan 档登记的步骤调执行必被拒；手动档
+// 的意义是「我来确认执行」，故用户在点「执行」的那一刻先让**后端**把同一条
+// 命令以 manual 档**升档重登记**（新的 actionId；命令原文只从登记簿里取），
+// 再执行升级后那条（见 aiStore）。
 import type { TrafficLight } from "./danger";
 
 /** 会话级执行模式。 */
@@ -31,10 +37,43 @@ export function normalizeAiExecMode(v: unknown): AiExecMode {
 }
 
 /**
- * 计划步骤（第一步只有「已记入计划」一种状态；第二步接 Manual 时扩
- * pending/running/done/failed/rejected）。
+ * 计划步骤状态。
+ *
+ * * `planned` —— 已登记、尚未执行（plan 档：永远停在这一态；manual 档：
+ *   待用户点「执行」/「拒绝」）；
+ * * `executing` —— 用户点了「执行」，命令真跑着（钮置灰）；
+ * * `done` —— 命令跑完且退出码为 0；
+ * * `failed` —— 命令跑完但退出码非 0，或后端拒绝/执行异常；
+ * * `rejected` —— 用户点了「拒绝」（命令没跑）。
  */
-export type PlanStepStatus = "planned";
+export type PlanStepStatus = "planned" | "executing" | "done" | "failed" | "rejected";
+
+/**
+ * 计划步骤的执行结果（第二步 Manual 模式：执行/失败后回填，面板就地展示）。
+ *
+ * `stdout` / `stderr` 是**面板展示用**的截断文本（完整文本走 tool 轮回灌给
+ * 模型，不受这里的截断影响）；`truncated` 标记后端 64 KiB 上限的截断。
+ */
+export interface PlanStepResult {
+  /** 退出码（null = 无退出码：被信号杀掉 / 超时等）。 */
+  exitCode: number | null;
+  /** 标准输出（展示用，已截断）。 */
+  stdout: string;
+  /** 错误输出（展示用，已截断）。 */
+  stderr: string;
+  /** 输出是否被后端截断。 */
+  truncated: boolean;
+  /**
+   * **消费侧硬超时命中**（命令被中止、通道已显式关闭）。
+   *
+   * 单独一个布尔位：`exitCode === null` 单独看分不出「超时被中止」与
+   * 「服务端没回退出码」——前者要给用户与模型**明确的超时提示**，后者
+   * 只是「没有退出码」。故由后端直接给结论，前端不猜。
+   */
+  timedOut?: boolean;
+  /** 后端拒绝/异常时的错误文案（失败原因；执行成功时为空）。 */
+  error?: string;
+}
 
 export interface PlanStep {
   /** 步骤 id（后端登记的 stepId；后端不可用时前端本地生成）。 */
@@ -50,6 +89,43 @@ export interface PlanStep {
   /** 绑定目标键（去重键的一半）：这条命令是给哪个目标开的——见
    *  {@link planTargetKey}。缺省 = 无目标（旧的/手工构造的步骤）。 */
   target?: string;
+  /** **登记该步骤的 scope id**（第二步 Manual 模式）：执行时用它调
+   *  `ai_scope_run_step`——目标是登记时那台机器，不是当前焦点终端。 */
+  scopeId?: string;
+  /** **登记该步骤的一次性 action id**：执行时原样回传（后端按它防串改）。 */
+  actionId?: string;
+  /** 发起该步骤的模型 tool call id 集合（Manual 档登记时并入）。
+   *  处置后按它回灌 tool 轮——同一命令被模型多次调用时，每个调用都要答上
+   *  （provider 协议缺 tool 轮会 400）。plan 档登记的步骤没有这一项
+   *  （那次调用当场就答过了）。 */
+  toolCallIds?: string[];
+  /** 登记该步骤的 run id（运行身份复核：被取代的链不得执行）。 */
+  runId?: string;
+  /**
+   * **登记该步骤时的执行档位**（2026-11-04 修补：档位升级的前置事实）。
+   *
+   * 后端按**登记时落账的档位**判定执行权（`ai_scope_run_step` 复核登记簿里
+   * 那一条的档位）：plan 档登记的步骤调执行必被拒「plan mode does not
+   * execute」——手动档的意义就是「我来确认执行」，若不升级，用户在手动档点
+   * 「执行」永远执行不了（荒谬的 UX 断裂）。
+   *
+   * 缺省（字段未设）= **plan**（fail-safe：宁可多一次升档，也不越权执行）。
+   */
+  registeredMode?: AiExecMode;
+  /** 执行结果（Manual 档执行/失败后回填；面板就地展示）。 */
+  result?: PlanStepResult;
+}
+
+/**
+ * 步骤是否**需要档位升级**才能执行（= 登记时不是 manual 档）。
+ *
+ * 判据只看**登记时的档位**（缺省 = plan）：plan 档登记的步骤在用户点「执行」
+ * 之前，必须先由**后端**升档（`ai_scope_upgrade_step`：命令原文只从登记簿里
+ * 取，前端不传命令；新 actionId 一次性），再执行升级后那条；manual 档登记
+ * 的步骤直接执行（直路，不多一次调用）。
+ */
+export function needsModeUpgrade(step: PlanStep): boolean {
+  return (step.registeredMode ?? "plan") !== "manual";
 }
 
 /** 命令归一（去空白 + 折叠内部空白）——去重比较用。 */
@@ -97,6 +173,70 @@ export function mergePlanSteps(existing: PlanStep[] | undefined, step: PlanStep)
 /** 计划清单读取（缺省空表——字段可选，组件侧免 undefined 分支）。 */
 export function planStepsOf(state: { plan?: PlanStep[] } | null | undefined): PlanStep[] {
   return state?.plan ?? [];
+}
+
+/**
+ * 待答的 tool call id 合并（第二步 Manual 模式）。
+ *
+ * 同一条命令被模型多次调用时，去重后只剩一个步骤，但**每次调用都要答上**
+ * （provider 协议：assistant 的每个 tool_call 必须有对应 tool 消息，缺一个
+ * 就 400）。这里做并集且保序去重。
+ */
+export function mergeToolCallIds(
+  existing: string[] | undefined,
+  incoming: string[] | undefined,
+): string[] {
+  const out: string[] = [];
+  for (const id of [...(existing ?? []), ...(incoming ?? [])]) {
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/**
+ * 步骤并入清单（第二步 Manual 模式口径）。
+ *
+ * 与 {@link mergePlanSteps} 的差别：
+ * * 去重**只对仍待处置的步骤生效**（status === "planned"）——已执行/已拒绝
+ *   的步骤是历史，同一条命令再被提一次 = **新的一步**（否则模型新发起的调用
+ *   会挂在一个已结清的步骤上，那次 tool call 永远没人答）；
+ * * 去重命中时**并入待答的 tool call id**（同一命令被多次调用 → 处置时一次
+ *   答全，别漏答）。
+ */
+export function upsertPlanStep(existing: PlanStep[] | undefined, step: PlanStep): PlanStep[] {
+  const list = existing ?? [];
+  const key = planStepKey(step);
+  const idx = list.findIndex((s) => planStepKey(s) === key && s.status === "planned");
+  if (idx < 0) return [...list, step];
+  const prev = list[idx];
+  const merged: PlanStep = {
+    ...prev,
+    toolCallIds: mergeToolCallIds(prev.toolCallIds, step.toolCallIds),
+    scopeId: prev.scopeId ?? step.scopeId,
+    actionId: prev.actionId ?? step.actionId,
+    runId: prev.runId ?? step.runId,
+  };
+  const out = [...list];
+  out[idx] = merged;
+  return out;
+}
+
+/**
+ * 步骤是否**待用户处置**（Manual 档登记、尚未执行也未拒绝）。
+ *
+ * 判据 = 状态仍是 planned **且** 挂着未答的 tool call（toolCallIds 非空）——
+ * plan 档登记的步骤没有 toolCallIds（那次调用当场答过），因此**不会**被误判
+ * 成待处置（否则 plan 档会把追问输入永久禁掉）。
+ */
+export function isAwaitingConfirmation(step: PlanStep): boolean {
+  return step.status === "planned" && (step.toolCallIds?.length ?? 0) > 0;
+}
+
+/** 待处置的步骤（会话切片里；plan 档恒为空）。 */
+export function awaitingPlanSteps(
+  state: { plan?: PlanStep[] } | null | undefined,
+): PlanStep[] {
+  return planStepsOf(state).filter(isAwaitingConfirmation);
 }
 
 /** 步骤 id 生成（crypto.randomUUID 优先，计数器兜底）。 */

@@ -8,13 +8,18 @@ import {
   AI_DEFAULT_MODE_STORAGE_KEY,
   AI_EXEC_MODES,
   DEFAULT_AI_EXEC_MODE,
+  awaitingPlanSteps,
   isAiExecMode,
+  isAwaitingConfirmation,
   mergePlanSteps,
+  mergeToolCallIds,
+  needsModeUpgrade,
   normalizeAiExecMode,
   planStepKey,
   planStepsOf,
   planTargetKey,
   readDefaultAiExecMode,
+  upsertPlanStep,
   writeDefaultAiExecMode,
   type PlanStep,
 } from "./aiModes";
@@ -105,6 +110,82 @@ describe("计划步骤清单", () => {
     expect(planStepsOf(null)).toEqual([]);
     expect(planStepsOf({})).toEqual([]);
     expect(planStepsOf({ plan: [step("s1", "ls")] })).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 第二步（Manual 档）：步骤状态机 + 待答 tool call 合并 + 待处置判定
+// ---------------------------------------------------------------------------
+
+describe("Manual 档：步骤状态与合并", () => {
+  it("状态集 = planned / executing / done / failed / rejected", () => {
+    const s = step("s1", "df -h");
+    expect(s.status).toBe("planned");
+    // 状态是普通字符串联合——面板与 store 各自按值分派。
+    const states: PlanStep["status"][] = ["planned", "executing", "done", "failed", "rejected"];
+    expect(states).toHaveLength(5);
+  });
+
+  it("mergeToolCallIds：并集且保序去重", () => {
+    expect(mergeToolCallIds(["c1"], ["c2"])).toEqual(["c1", "c2"]);
+    expect(mergeToolCallIds(["c1", "c2"], ["c2"])).toEqual(["c1", "c2"]);
+    expect(mergeToolCallIds(undefined, ["c1"])).toEqual(["c1"]);
+    expect(mergeToolCallIds(undefined, undefined)).toEqual([]);
+  });
+
+  it("upsertPlanStep：同命令同目标且仍待处置 → 合并待答 call id", () => {
+    const first = upsertPlanStep([], { ...step("s1", "df -h", "ssh:pty-a"), toolCallIds: ["c1"] });
+    const second = upsertPlanStep(first, { ...step("s2", "df -h", "ssh:pty-a"), toolCallIds: ["c2"] });
+    expect(second).toHaveLength(1);
+    expect(second[0].id).toBe("s1");
+    expect(second[0].toolCallIds).toEqual(["c1", "c2"]);
+  });
+
+  it("upsertPlanStep：已结清的步骤不再吞新调用（新的一步）", () => {
+    const done = [{ ...step("s1", "df -h", "ssh:pty-a"), status: "done" as const }];
+    const next = upsertPlanStep(done, { ...step("s2", "df -h", "ssh:pty-a"), toolCallIds: ["c2"] });
+    expect(next).toHaveLength(2);
+    expect(next[1].toolCallIds).toEqual(["c2"]);
+  });
+
+  it("isAwaitingConfirmation：只有挂着未答 tool call 的 planned 步骤算待处置", () => {
+    expect(isAwaitingConfirmation({ ...step("s1", "df -h"), toolCallIds: ["c1"] })).toBe(true);
+    // plan 档登记的步骤（没有待答 call id）不算待处置
+    expect(isAwaitingConfirmation(step("s2", "df -h"))).toBe(false);
+    // 已执行 / 已拒绝也不算
+    expect(
+      isAwaitingConfirmation({ ...step("s3", "df -h"), status: "done", toolCallIds: ["c1"] }),
+    ).toBe(false);
+  });
+
+  it("awaitingPlanSteps：只挑出待处置的步骤", () => {
+    const state = {
+      plan: [
+        { ...step("s1", "df -h"), toolCallIds: ["c1"] },
+        step("s2", "free -m"),
+        { ...step("s3", "uptime"), status: "rejected" as const, toolCallIds: ["c3"] },
+      ],
+    };
+    expect(awaitingPlanSteps(state).map((s) => s.id)).toEqual(["s1"]);
+    expect(awaitingPlanSteps(null)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 档位升级（plan 档登记 → manual 档）：判据只看**登记时的档位**
+// ---------------------------------------------------------------------------
+
+describe("档位升级判定", () => {
+  it("manual 档登记的步骤 → 直路（不需升级）", () => {
+    expect(needsModeUpgrade({ ...step("s1", "df -h"), registeredMode: "manual" })).toBe(false);
+  });
+
+  it("plan 档登记的步骤 → 需升级（先由后端升档再执行）", () => {
+    expect(needsModeUpgrade({ ...step("s1", "df -h"), registeredMode: "plan" })).toBe(true);
+  });
+
+  it("缺省（字段未设）= plan → 需升级（fail-safe：宁可多一次登记）", () => {
+    expect(needsModeUpgrade(step("s1", "df -h"))).toBe(true);
   });
 });
 

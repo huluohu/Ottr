@@ -36,6 +36,9 @@ import { engine } from "../notify/rules";
 import { syncLangFromVault } from "../i18n";
 import { syncThemeFromVault } from "../theme/ThemeContext";
 import { useTerminalThemeStore } from "../theme/terminalThemeStore";
+// Ask Ottr 悬浮球开关（ask-ottr-orb Task 4）：settings 类导入后同点对齐
+// （内部吞错，vault 为真源重读——App 就绪链同款调用）。
+import { syncOrbFromVault } from "../ai/orbStore";
 
 /** 吞错型通道的防御性包装：失败仅告警，不阻断其余刷新通道。 */
 async function swallows(step: () => Promise<void>, label: string): Promise<void> {
@@ -62,4 +65,5 @@ export async function refreshEntitiesAfterImport(): Promise<void> {
   await swallows(() => syncLangFromVault(), "language");
   await swallows(() => syncThemeFromVault(), "theme");
   await swallows(() => useTerminalThemeStore.getState().syncFromVault(), "terminal-theme");
+  await swallows(() => syncOrbFromVault(), "ask-ottr-orb");
 }

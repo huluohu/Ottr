@@ -119,6 +119,12 @@ function seedSlice(id: string, over: Partial<SessionAiState>): void {
         modelUsed: null,
         elapsedMs: null,
         messages: [],
+        conversationId: "",
+        target: null,
+        scope: null,
+        runId: null,
+        draft: "",
+        conversationReadonly: false,
         ...over,
       },
     },
@@ -378,7 +384,7 @@ describe("方案 A 会话作用域（2026-10-19）", () => {
     expect(aiState("tab-2")!.request?.hostName).toBe("db-01");
   });
 
-  it("待看徽标口径：失败 → seen=false，markSeen → true，close → 切片摘除", async () => {
+  it("待看徽标口径：失败 → seen=false，markSeen → true，close → 只隐藏（Task 3）", async () => {
     mockBackend();
     useAiStore.getState().onCommandFailed(REQ);
     await vi.waitFor(() => {
@@ -387,8 +393,12 @@ describe("方案 A 会话作用域（2026-10-19）", () => {
     expect(aiState()?.seen).toBe(false);
     useAiStore.getState().markSeen(REQ.sessionId);
     expect(aiState()?.seen).toBe(true);
-    // close 后切片不存在（页签徽标随之消失）
+    // close = 隐藏（ask-ottr-orb Task 3）：摘「open」旗标（request=null，页签
+    // 徽标随之消失、orb 可见性恢复），历史/对话保留——dropSession 才摘切片。
     useAiStore.getState().close(REQ.sessionId);
+    expect(aiState()?.request).toBeNull();
+    expect(aiState()?.messages.length).toBeGreaterThan(0);
+    useAiStore.getState().dropSession(REQ.sessionId);
     expect(aiState()).toBeUndefined();
   });
 
@@ -397,11 +407,11 @@ describe("方案 A 会话作用域（2026-10-19）", () => {
     expect(useAiStore.getState().sessions["ghost-tab"]).toBeUndefined();
   });
 
-  it("close 单会话不影响他会话切片", () => {
+  it("close 单会话不影响他会话切片（close = 隐藏，Task 3）", () => {
     seedSlice("tab-1", { request: REQ });
     seedSlice("tab-2", { request: { ...REQ, sessionId: "tab-2" } });
     useAiStore.getState().close("tab-1");
-    expect(aiState("tab-1")).toBeUndefined();
+    expect(aiState("tab-1")?.request).toBeNull(); // 隐藏而非摘除
     expect(aiState("tab-2")).toBeDefined();
   });
 

@@ -27,9 +27,25 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import "../i18n";
+import { useOrbStore } from "../ai/orbStore";
 import { ThemeProvider } from "../theme/ThemeContext";
 import { SecuritySettings , THEME_CHOICES } from "./SecuritySettings";
 import { resetVaultLockStoreForTest, useVaultLockStore } from "./VaultLockStore";
+
+// Ask Ottr 悬浮球（ask-ottr-orb Task 4）：mock orbStore（真实 zustand 壳 +
+// spy 动作）——断言面 = 开关读写走 store、重置钮调 resetPosition，不真连
+// vault（本文件既有 invoke mock 未列 settings_set 时的行为各测自定）。
+vi.mock("../ai/orbStore", async () => {
+  const { create } = await import("zustand");
+  const useOrbStore = create(() => ({
+    enabled: null as boolean | null,
+    position: null as unknown,
+    setEnabled: (v: boolean) => useOrbStore.setState({ enabled: v }),
+    setPosition: () => {},
+    resetPosition: vi.fn(),
+  }));
+  return { useOrbStore };
+});
 
 const mockedInvoke = invoke as unknown as Mock;
 
@@ -49,6 +65,9 @@ beforeEach(() => {
   mockedInvoke.mockReset();
   progressHandler = null;
   resetVaultLockStoreForTest();
+  // Ask Ottr 悬浮球 mock 面复位（重置钮 spy + 未加载态）
+  (useOrbStore.getState().resetPosition as unknown as Mock).mockClear();
+  useOrbStore.setState({ enabled: null, position: null });
   localStorage.clear();
   // jsdom 无 matchMedia（ThemeProvider 的 system 主题探测需要）
   vi.stubGlobal(
@@ -756,5 +775,35 @@ describe("SecuritySettings Snapzy 风格侧边栏（品牌徽标卡片与搜索�
 
     expect(screen.getByTestId("settings-nav-appearance").style.display).not.toBe("none");
     expect(screen.getByTestId("settings-nav-security").style.display).toBe("none");
+  });
+});
+
+describe("SecuritySettings：Ask Ottr 悬浮球行（ask-ottr-orb Task 4）", () => {
+  it("开关镜像 store：enabled=true 显示开，切换即调 setEnabled（乐观镜像翻转）", () => {
+    seedMode("keyring");
+    useOrbStore.setState({ enabled: true, position: null });
+    renderDialog();
+    const toggle = screen.getByTestId("ask-ottr-orb-toggle");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    // mock 面的 setEnabled = setState 镜像：翻转即「setEnabled 已被行触发」
+    expect(useOrbStore.getState().enabled).toBe(false);
+  });
+
+  it("enabled 未加载（null）：显示按默认开（checked），交互暂禁（disabled）", () => {
+    seedMode("keyring");
+    useOrbStore.setState({ enabled: null });
+    renderDialog();
+    const toggle = screen.getByTestId("ask-ottr-orb-toggle") as HTMLInputElement;
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(toggle.disabled).toBe(true);
+  });
+
+  it("重置位置按钮：点击恰调一次 resetPosition", () => {
+    seedMode("keyring");
+    useOrbStore.setState({ enabled: true });
+    renderDialog();
+    fireEvent.click(screen.getByTestId("orb-reset-position"));
+    expect(useOrbStore.getState().resetPosition as unknown as Mock).toHaveBeenCalledTimes(1);
   });
 });

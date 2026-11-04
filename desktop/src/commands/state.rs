@@ -116,6 +116,8 @@ pub(crate) struct SessionEntry {
     /// host 端点（`address:port`，Fix round 1 C-1）：下载 journal 的 scope 身份——
     /// 同路径同大小的远端文件在不同主机各用各的 journal，绝不跨主机续传。
     pub(crate) endpoint: String,
+    pub(crate) username: String,
+    pub(crate) runtime_id: Arc<()>,
     /// PTY 写端（russh `make_writer()`，与读循环共享同一通道）。
     pub(crate) writer: Arc<tokio::sync::Mutex<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>>,
     pub(crate) counters: Arc<SessionCounters>,
@@ -308,6 +310,7 @@ pub(crate) struct RegisterArgs {
     pub(crate) chain: Option<Arc<ottr_ssh::JumpSession>>,
     pub(crate) forward_router: ottr_ssh::RemoteForwardRouter,
     pub(crate) endpoint: String,
+    pub(crate) username: String,
     pub(crate) cols: u32,
     pub(crate) rows: u32,
     pub(crate) on_data: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
@@ -344,6 +347,7 @@ pub(crate) type TransferMap = Arc<Mutex<HashMap<String, TransferEntry>>>;
 
 #[derive(Default)]
 pub(crate) struct AppState {
+    pub(crate) ai_scopes: Arc<super::ai_session::AiScopeRegistry>,
     pub(crate) sessions: SessionMap,
     /// FTP/FTPS 文件会话表（Phase 2 Task 5，commands/ftp.rs 注册）。
     pub(crate) ftp_sessions: FtpSessionMap,

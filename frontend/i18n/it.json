@@ -110,6 +110,11 @@
     "terminalFontSizePt": "{{n}} pt",
     "ottyMoments": "Momenti Otty",
     "ottyMomentsHint": "Piccole animazioni quando una connessione riesce, un trasferimento termina, il vault si sblocca o un aggiornamento è pronto (attive per impostazione predefinita; disattivale per un'interfaccia solo funzionale).",
+    "askOttrOrb": "Sfera Ask Ottr",
+    "askOttrOrbHint": "Mantiene una sfera Ask Ottr nella vista terminale; cliccala per chiedere informazioni sulla connessione corrente (attiva per impostazione predefinita; si nasconde mentre il pannello è aperto).",
+    "orbResetPosition": "Ripristina posizione sfera",
+    "orbResetPositionHint": "Riporta la sfera alla posizione predefinita (la posizione viene salvata solo su questo dispositivo e non viene mai sincronizzata).",
+    "askOttrOrbSaveFailed": "Impostazione applicata, ma salvataggio non riuscito",
     "langHant": "Cinese tradizionale"
   },
   "hostForm": {
@@ -441,6 +446,7 @@
     "promptTimeout": "Timeout in attesa dell'autenticazione; connessione non effettuata (rispondi quando compare il prompt)"
   },
   "ai": {
+    "orbLabel": "Chiedi a Ottr",
     "title": "Assistente AI",
     "inputPlaceholder": "Descrivi cosa vuoi fare…",
     "send": "Invia",
@@ -506,6 +512,7 @@
     },
     "tool": {
       "awaiting": "In attesa di approvazione dello strumento",
+      "targetHint": "Gli strumenti vengono eseguiti lato server MCP, oltre il terminale vincolato a questo pannello; ogni esecuzione richiede la tua conferma.",
       "server": "Server",
       "tool": "Strumento",
       "args": "Argomenti",
@@ -588,7 +595,14 @@
     "followupPlaceholder": "Fai una domanda di follow-up… (Invio per inviare, Shift+Invio per andare a capo)",
     "askEntry": "Chiedi a Ottr",
     "askPlaceholder": "Chiedi quello che vuoi… (Invio per inviare)",
-    "panelAsk": "Chiedi a Ottr"
+    "panelAsk": "Chiedi a Ottr",
+    "askNoTarget": "Nessun terminale a cui chiedere: collega prima un pannello terminale.",
+    "insertWrongTarget": "Dal terminale originale",
+    "insertWrongTargetHint": "Inserzione disabilitata: questo comando è vincolato al terminale in cui è stato generato; torna a quel terminale per inserirlo.",
+    "returnToOriginal": "Torna al terminale originale",
+    "conversationReadonlyNotice": "La connessione è stata ristabilita: la conversazione seguente appartiene alla vecchia connessione ed è di sola lettura. Chiedere di nuovo avvia una nuova conversazione.",
+    "newConversation": "Nuova conversazione",
+    "headerDisconnected": "Disconnesso"
   },
   "tabs": {
     "duplicate": "Duplica scheda",

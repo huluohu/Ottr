@@ -25,12 +25,20 @@ import {
   registerSink,
   resizeSession,
   setSessionEndHook,
+  setSessionLifecycleHook,
   toBytes,
   unregisterSink,
   useSessionStore,
   type Session,
   type SessionEndInfo,
+  type SessionLifecycleEvent,
 } from "./SessionStore";
+import {
+  captureAiTarget,
+  currentEpoch,
+  isAiTargetLive,
+  resolveFocusedTerminal,
+} from "./aiTarget";
 import { leaves, MAX_PANES } from "../terminal/split";
 import { useToastStore } from "../ui/toastStore";
 import type { Host } from "../vault/api";
@@ -1009,6 +1017,8 @@ describe("SessionStore 本地终端", () => {
     expect(session).toBeTruthy(); // 标签保留
     expect(session?.attempt).toBe(0); // 没有安排重连
     expect(session?.status).toBe("connected");
+    // 评审 I-1：rustId 就地清空——死会话击键/⌘R/捕获全闸死（ SSH shell_exit 同路径）
+    expect(session?.rustId).toBeNull();
   });
 
   // 2026-10-20 用户实测：本地标签分屏报「连接失败：host id=-1 not found」——
@@ -1089,5 +1099,277 @@ describe("分屏上限与最小尺寸", () => {
     expect(leafCount(tab)).toBe(2);
     expect(useSessionStore.getState().sessions.length).toBe(before + 1);
     showSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AI 会话生命周期与连接代数（Ask Ottr，Task 2）：连接代数在 attach 成功时 +1、
+// shell_exit 时 +1（rustId 保留的既有裁定不动，靠代数作废旧目标）；生命周期
+// 钩子覆盖 关标签（根+每 pane）/ 关子 pane（必须通知但不生成纪要）/ 手动断开 /
+// shell_exit / 重连成功。store 不反向依赖 ai/*：钩子由消费方注入（App.tsx 惯例）。
+// ---------------------------------------------------------------------------
+describe("AI 生命周期与连接代数（Ask Ottr Task 2）", () => {
+  afterEach(() => {
+    setSessionLifecycleHook(null);
+    setSessionEndHook(null);
+  });
+
+  it("connect 成功：connectionEpoch 落 1；重连成功 +1 → 旧捕获目标失效 + reconnected 事件", async () => {
+    let rustSeq = 0;
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session"
+        ? Promise.resolve(`pty-r${++rustSeq}`)
+        : cmd === "set_session_encoding"
+          ? Promise.resolve("")
+          : Promise.resolve(undefined),
+    );
+    const seen: SessionLifecycleEvent[] = [];
+    setSessionLifecycleHook((e) => seen.push(e));
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    const s1 = useSessionStore.getState().sessions[0];
+    expect(s1.status).toBe("connected");
+    expect(s1.rustId).toBe("pty-r1");
+    expect(currentEpoch(s1)).toBe(1);
+    const t1 = captureAiTarget(s1);
+    expect(isAiTargetLive(t1, useSessionStore.getState())).toBe(true);
+
+    // 断线 → 自动重连成功（新 rustId）
+    useSessionStore.getState().onSessionClosed({ id: "pty-r1", reason: "closed" });
+    await vi.advanceTimersByTimeAsync(reconnectDelayMs(1));
+    const s2 = useSessionStore.getState().sessions[0];
+    expect(s2.rustId).toBe("pty-r2");
+    expect(currentEpoch(s2)).toBe(2);
+    // 旧目标必死（rustId + epoch 双失配）；新捕获即活
+    expect(isAiTargetLive(t1, useSessionStore.getState())).toBe(false);
+    expect(isAiTargetLive(captureAiTarget(s2), useSessionStore.getState())).toBe(true);
+    // 首连与重连成功各派发一次 reconnected（代数变化即通知；首连时消费方
+    // 无既有目标，是 no-op）
+    expect(seen.map((e) => e.type)).toEqual(["reconnected", "reconnected"]);
+    expect(seen[1].session.id).toBe(id);
+    expect(seen[1].session.rustId).toBe("pty-r2");
+  });
+
+  it("shell_exit：rustId 清空 + epoch +1（评审 I-1）、closed 事件、不重连（SSH 路径）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session"
+        ? Promise.resolve("pty-shell")
+        : cmd === "set_session_encoding"
+          ? Promise.resolve("")
+          : Promise.resolve(undefined),
+    );
+    const seen: SessionLifecycleEvent[] = [];
+    setSessionLifecycleHook((e) => seen.push(e));
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    const t1 = captureAiTarget(useSessionStore.getState().sessions[0]);
+    expect(isAiTargetLive(t1, useSessionStore.getState())).toBe(true);
+    seen.length = 0;
+
+    useSessionStore.getState().onSessionClosed({ id: "pty-shell", reason: "shell_exit" });
+    const s = useSessionStore.getState().sessions[0];
+    expect(s.status).toBe("connected"); // 既有钉住行为：标签/状态保留、不重连
+    expect(s.rustId).toBeNull(); // 评审 I-1：rustId 就地清空——死会话三面（解析/捕获/存活）一起失效
+    expect(currentEpoch(s)).toBe(2); // 代数 +1 保留：旧连接时代确实终结
+    const stAfter = useSessionStore.getState();
+    expect(isAiTargetLive(t1, stAfter)).toBe(false);
+    // 评审 I-1 正面：聚焦解析排除死会话、捕获拒绝（不得再产出「看似活」的目标）
+    expect(resolveFocusedTerminal(stAfter)).toBeNull();
+    expect(() => captureAiTarget(s)).toThrow();
+    expect(seen).toEqual([{ type: "closed", session: expect.objectContaining({ id }) }]);
+    // 零效应侧：没有安排重连（attach 只有过首连一次）、attempt 仍 0
+    expect(s.attempt).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(attachCalls()).toHaveLength(1);
+  });
+
+  it("shell_exit（分屏子 pane）：该 pane 三面即死、聚焦解析排除（不回退根）；兄弟零效应", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session"
+        ? Promise.resolve(`pty-${Math.random()}`)
+        : Promise.resolve(undefined),
+    );
+    const lifecycle: SessionLifecycleEvent[] = [];
+    setSessionLifecycleHook((e) => lifecycle.push(e));
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().splitPane(tab, "row");
+    await vi.advanceTimersByTimeAsync(0);
+    const st0 = useSessionStore.getState();
+    const paneId = st0.activePane[tab]; // splitPane 聚焦新 pane
+    const pane = st0.sessions.find((s) => s.id === paneId)!;
+    const root = st0.sessions.find((s) => s.id === tab)!;
+    const rootTarget = captureAiTarget(root);
+    const paneTarget = captureAiTarget(pane);
+    lifecycle.length = 0;
+
+    useSessionStore.getState().onSessionClosed({ id: pane.rustId!, reason: "shell_exit" });
+    const st1 = useSessionStore.getState();
+    const paneAfter = st1.sessions.find((s) => s.id === paneId)!;
+    expect(paneAfter.rustId).toBeNull();
+    // 聚焦 pane 即死 pane：解析 null（绝不回退根）；捕获拒绝；旧目标死
+    expect(resolveFocusedTerminal(st1)).toBeNull();
+    expect(() => captureAiTarget(paneAfter)).toThrow();
+    expect(isAiTargetLive(paneTarget, st1)).toBe(false);
+    expect(lifecycle.map((e) => `${e.type}:${e.session.id}`)).toEqual([
+      `closed:${paneId}`,
+    ]);
+    // 兄弟（根）零效应：目标仍 live、rustId 原样；聚焦移交后照常解析
+    expect(isAiTargetLive(rootTarget, st1)).toBe(true);
+    expect(st1.sessions.find((s) => s.id === tab)?.rustId).toBe(root.rustId);
+    useSessionStore.getState().setActivePane(tab, tab);
+    expect(resolveFocusedTerminal(useSessionStore.getState())?.id).toBe(tab);
+  });
+
+  it("shell_exit 迟到重复事件：rustId 已清 → 按「未知会话」忽略（不重复 bump / 不重复派发）", async () => {
+    mockedInvoke.mockResolvedValue("pty-dup");
+    const seen: SessionLifecycleEvent[] = [];
+    setSessionLifecycleHook((e) => seen.push(e));
+    useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    seen.length = 0; // 首连的 reconnected 不在本次断言面
+    useSessionStore.getState().onSessionClosed({ id: "pty-dup", reason: "shell_exit" });
+    expect(useSessionStore.getState().sessions[0].rustId).toBeNull();
+    expect(currentEpoch(useSessionStore.getState().sessions[0])).toBe(2);
+    expect(seen).toHaveLength(1);
+    // 迟到重复通知：rustId 反查不到 → 静默
+    useSessionStore.getState().onSessionClosed({ id: "pty-dup", reason: "shell_exit" });
+    expect(currentEpoch(useSessionStore.getState().sessions[0])).toBe(2);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("closeTab：根 + 每 pane 各派发一个 closed；纪要钩子行为不回归", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session"
+        ? Promise.resolve(`pty-${Math.random()}`)
+        : cmd === "set_session_encoding"
+          ? Promise.resolve("")
+          : Promise.resolve(undefined),
+    );
+    const lifecycle: SessionLifecycleEvent[] = [];
+    const ended: SessionEndInfo[] = [];
+    setSessionLifecycleHook((e) => lifecycle.push(e));
+    setSessionEndHook((info) => ended.push(info));
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().splitPane(tab, "row");
+    await vi.advanceTimersByTimeAsync(0);
+    const liveIds = useSessionStore.getState().sessions.map((s) => s.id).sort();
+    expect(liveIds).toHaveLength(2);
+    lifecycle.length = 0;
+    ended.length = 0;
+
+    useSessionStore.getState().closeTab(tab);
+    expect(lifecycle.map((e) => e.type)).toEqual(["closed", "closed"]);
+    expect(lifecycle.map((e) => e.session.id).sort()).toEqual(liveIds);
+    // 纪要路径不回归：closeTab 仍逐会话派发（Task 7 裁定）
+    expect(ended.map((s) => s.id).sort()).toEqual(liveIds);
+  });
+
+  it("closePane（子 pane）：closed 生命周期必须通知；不触发纪要（emitSessionEnded）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session"
+        ? Promise.resolve(`pty-${Math.random()}`)
+        : cmd === "set_session_encoding"
+          ? Promise.resolve("")
+          : Promise.resolve(undefined),
+    );
+    const lifecycle: SessionLifecycleEvent[] = [];
+    const ended: SessionEndInfo[] = [];
+    setSessionLifecycleHook((e) => lifecycle.push(e));
+    setSessionEndHook((info) => ended.push(info));
+    const tab = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    useSessionStore.getState().splitPane(tab, "row");
+    await vi.advanceTimersByTimeAsync(0);
+    const paneId = useSessionStore.getState().activePane[tab];
+    expect(paneId).not.toBe(tab);
+    lifecycle.length = 0;
+    ended.length = 0;
+
+    useSessionStore.getState().closePane(paneId);
+    expect(lifecycle).toEqual([
+      { type: "closed", session: expect.objectContaining({ id: paneId }) },
+    ]);
+    // 关键零效应侧：pane 关闭不生成纪要（既有裁定），只通知 AI 清理
+    expect(ended).toEqual([]);
+
+    // 随后关标签：根会话照常双路径（纪要 + 生命周期）；lifecycle 里此时是
+    // [pane, root] 两条 closed，纪要只有根一条
+    useSessionStore.getState().closeTab(tab);
+    expect(lifecycle.map((e) => e.session.id)).toEqual([paneId, tab]);
+    expect(ended.map((s) => s.id)).toEqual([tab]);
+  });
+
+  it("disconnect：disconnected 事件 + rustId 清空即目标死", async () => {
+    mockedInvoke.mockResolvedValue("pty-d");
+    const seen: SessionLifecycleEvent[] = [];
+    setSessionLifecycleHook((e) => seen.push(e));
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    const t1 = captureAiTarget(useSessionStore.getState().sessions[0]);
+    seen.length = 0;
+
+    useSessionStore.getState().disconnect(id);
+    expect(seen).toEqual([
+      { type: "disconnected", session: expect.objectContaining({ id }) },
+    ]);
+    expect(useSessionStore.getState().sessions[0].rustId).toBeNull();
+    expect(isAiTargetLive(t1, useSessionStore.getState())).toBe(false);
+    // 零效应侧：只此一个事件（不与纪要路径耦合、无重复派发）
+    expect(seen).toHaveLength(1);
+  });
+
+  it("forceNew 同主机双标签：两个目标各自存活、互不串扰；聚焦解析随 activeId", async () => {
+    mockedInvoke.mockImplementation((cmd: string) =>
+      cmd === "attach_host_session" ? Promise.resolve(`pty-${Math.random()}`) : Promise.resolve(undefined),
+    );
+    const t1 = useSessionStore.getState().openTab(hostA, { forceNew: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const t2 = useSessionStore.getState().openTab(hostA, { forceNew: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(t1).not.toBe(t2);
+    const st = useSessionStore.getState();
+    const s1 = st.sessions.find((s) => s.id === t1)!;
+    const s2 = st.sessions.find((s) => s.id === t2)!;
+    expect(s1.hostId).toBe(s2.hostId); // 同主机
+    const target1 = captureAiTarget(s1);
+    const target2 = captureAiTarget(s2);
+    expect(target1.paneSessionId).toBe(t1);
+    expect(target2.paneSessionId).toBe(t2);
+    // 双活：B 聚焦时 A 的目标依然 live（存活 ≠ 聚焦）
+    expect(isAiTargetLive(target1, useSessionStore.getState())).toBe(true);
+    expect(isAiTargetLive(target2, useSessionStore.getState())).toBe(true);
+    expect(resolveFocusedTerminal(useSessionStore.getState())?.id).toBe(t2);
+    // 切回 A：解析跟随 activeId，绝不漂到 B
+    useSessionStore.getState().setActive(t1);
+    expect(resolveFocusedTerminal(useSessionStore.getState())?.id).toBe(t1);
+    // A 断开只杀 A 的目标，B 不连坐
+    useSessionStore.getState().disconnect(t1);
+    expect(isAiTargetLive(target1, useSessionStore.getState())).toBe(false);
+    expect(isAiTargetLive(target2, useSessionStore.getState())).toBe(true);
+  });
+
+  it("未注入钩子（null）：全路径静默 no-op", async () => {
+    mockedInvoke.mockResolvedValue("pty-q");
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(() => {
+      useSessionStore.getState().onSessionClosed({ id: "pty-q", reason: "shell_exit" });
+      useSessionStore.getState().disconnect(id);
+      useSessionStore.getState().closeTab(id);
+    }).not.toThrow();
+  });
+
+  it("钩子异常不反噬状态机（closeTab 照常收尾）", async () => {
+    mockedInvoke.mockResolvedValue("pty-boom");
+    setSessionLifecycleHook(() => {
+      throw new Error("lifecycle boom");
+    });
+    const id = useSessionStore.getState().openTab(hostA);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(() => useSessionStore.getState().closeTab(id)).not.toThrow();
+    expect(useSessionStore.getState().sessions).toHaveLength(0);
+    expect(mockedInvoke).toHaveBeenCalledWith("drop_session", { id: "pty-boom" });
   });
 });

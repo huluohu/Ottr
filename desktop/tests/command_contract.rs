@@ -249,6 +249,22 @@ fn every_frontend_invoke_targets_a_registered_command() {
     );
 }
 
+#[test]
+fn ai_scope_commands_are_registered() {
+    let registered = registered_commands();
+    for command in [
+        "ai_scope_open",
+        "ai_scope_context",
+        "ai_scope_insert",
+        "ai_scope_revoke",
+    ] {
+        assert!(
+            registered.contains(command),
+            "unregistered command: {command}"
+        );
+    }
+}
+
 /// 注册名集合快照（防误删）：仅锚定抽样代表，全量对比交给前端 api.test.ts。
 #[test]
 fn registration_snapshot_keeps_domain_anchors() {

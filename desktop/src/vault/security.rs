@@ -1,7 +1,7 @@
 //! 安全状态机（T11，A7）：解锁/锁定/升降级向导/重置应用 + OTTR_DEV_UNLOCK
 //! 旁路判定。纯搬家拆分（原 vault.rs 单文件）——锁定语义零改动。
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::master_key::KeyStorage as _;
 use ottr_vault::{KeyMode, Vault, VaultError};
@@ -99,7 +99,12 @@ pub fn vault_lock(state: State<'_, VaultState>, app: AppHandle) -> CmdResult<()>
         return Ok(());
     }
     if state.0.mode() == KeyMode::Password {
-        state.0.lock();
+        // AI 目标作用域随锁撤销（feat/ask-ottr-orb Task 1）：先撤后落锁，
+        // 锁定窗口内不存在「作用域仍可用」的间隙（解锁后不复活）。
+        crate::commands::ai_session::lock_vault(
+            &state.0,
+            &app.state::<crate::commands::state::AppState>().ai_scopes,
+        );
         let _ = app.emit("ottr://vault-locked", ());
     }
     Ok(())

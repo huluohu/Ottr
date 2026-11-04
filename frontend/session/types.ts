@@ -150,4 +150,9 @@ export interface Session {
    * 同主机，多份采样是纯浪费；面板消费面在 MonitorSidebar）。可选 = 存量测试
    * 夹具/旧构造点不必逐个补字段，消费面统一 `=== true`（缺省关，安全侧）。 */
   monitorEnabled?: boolean;
+  /** AI 目标定位的连接代数（Ask Ottr Task 2）：attach 成功 +1（重连 = 新连接
+   * 时代）；shell_exit 再 +1 且 **rustId 同步清空**（连接已死，代数失配即作废
+   * 旧目标）。可选 + 缺省 0 = 存量夹具/旧构造点兼容，取值统一走 aiTarget 的
+   * currentEpoch（勿直接读字段）。 */
+  connectionEpoch?: number;
 }

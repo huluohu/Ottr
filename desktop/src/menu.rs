@@ -1768,6 +1768,8 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
                 let state = app.state::<AppState>();
                 let n = crate::disconnect_all_inner(&state.sessions)
                     + crate::disconnect_all_local(&state.local_sessions);
+                // 全部会话断开 = 全部 AI 目标作用域失效（feat/ask-ottr-orb Task 1）。
+                state.ai_scopes.revoke_all();
                 eprintln!("[tray] disconnect all: {n} session(s)");
             }
             Some(Dispatch::Quit) => app.exit(0),

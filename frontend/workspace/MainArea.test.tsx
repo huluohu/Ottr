@@ -21,7 +21,11 @@ vi.mock("../files/FilePanel", () => ({ FilePanel: () => <div data-testid="file-p
 vi.mock("../monitor/ProcessBrowser", () => ({
   ProcessBrowser: () => <div data-testid="process-browser" />,
 }));
-vi.mock("../ai/DiagnosePanel", () => ({ DiagnosePanel: () => <div data-testid="diagnose-panel" /> }));
+vi.mock("../ai/DiagnosePanel", () => ({
+  DiagnosePanel: (props: { sessionId?: string }) => (
+    <div data-testid="diagnose-panel" data-session={props.sessionId ?? ""} />
+  ),
+}));
 vi.mock("../monitor/MonitorSidebar", () => ({
   MonitorSidebar: () => <div data-testid="monitor-sidebar" />,
 }));
@@ -132,6 +136,12 @@ describe("MainArea：terminal 视图（默认）", () => {
           modelUsed: null,
           elapsedMs: null,
           messages: [],
+          conversationId: "",
+          target: null,
+          scope: null,
+          runId: null,
+          draft: "",
+          conversationReadonly: false,
         },
       },
     });
@@ -156,6 +166,53 @@ describe("MainArea：terminal 视图（默认）", () => {
     expect(
       screen.getByTestId("main-area").className.includes("has-ai-panel"),
     ).toBe(false);
+  });
+
+  // R1（ask-ottr-orb Task 3）：面板必须挂**聚焦 pane**（activePane[activeId] ??
+  // activeId）——分屏时 openAsk 写进子 pane 的切片，此前 MainArea 按根
+  // activeSession 取面板 → 子 pane 提问后右栏一片空白（面板错挂根会话）。
+  it("R1：分屏子 pane 聚焦时 AI 面板跟随子 pane（不再错挂根会话）", () => {
+    const root = fakeSession({ id: "root-1" });
+    const child = fakeSession({ id: "child-1", paneOf: "root-1", rustId: "pty-child" });
+    seedSessions([root, child]);
+    useSessionStore.setState({ activeId: "root-1", activePane: { "root-1": "child-1" } });
+    const askSlice = {
+      request: {
+        kind: "ask" as const,
+        sessionId: "child-1",
+        rustId: "pty-child",
+        hostId: 1,
+        hostName: "web-01",
+        target: null,
+      },
+      status: "idle" as const,
+      answer: "",
+      errorKind: null,
+      error: null,
+      redactions: [],
+      settingsUsed: null,
+      seen: true,
+      usage: null,
+      modelUsed: null,
+      elapsedMs: null,
+      messages: [],
+      conversationId: "conv-child",
+      target: null,
+      scope: null,
+      runId: null,
+      draft: "",
+      conversationReadonly: false,
+    };
+    // 提问落在聚焦子 pane：面板应挂 child-1
+    useAiStore.setState({ sessions: { "child-1": askSlice } });
+    const view = render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(screen.getByTestId("diagnose-panel").getAttribute("data-session")).toBe("child-1");
+    view.unmount();
+    // 根会话的旧面板不得顶替子 pane 的位置（面板跟着聚焦 pane 走）
+    useAiStore.setState({ sessions: { "root-1": { ...askSlice, request: { ...askSlice.request, sessionId: "root-1" } } } });
+    render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    expect(screen.queryByTestId("diagnose-panel")).toBeNull();
+    expect(screen.getByTestId("main-area").className.includes("has-ai-panel")).toBe(false);
   });
 
   it("零会话：占位面（选中主机 / 错误横幅）", () => {

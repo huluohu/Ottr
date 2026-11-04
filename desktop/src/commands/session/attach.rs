@@ -279,6 +279,7 @@ pub(crate) async fn attach_host_session(
         chain: Some(Arc::new(jump_session)),
         forward_router,
         endpoint: format!("{}:{} (chain '{}')", host.address, port, chain_row.name),
+        username,
         cols,
         rows,
         on_data,
@@ -299,6 +300,11 @@ pub(crate) async fn drop_session(state: State<'_, AppState>, id: String) -> Resu
     // SSH 会话优先（含 PTY/转发循环收尾）；FTP 文件会话（Phase 2 Task 5）=
     // 移除表项 + 优雅 QUIT（best-effort，无转发循环可拆）。
     if let Some(entry) = state.sessions.lock().unwrap().remove(&id) {
+        // AI 目标作用域随会话消亡（feat/ask-ottr-orb Task 1）：即时撤销该
+        // 运行时的作用域（runtime_id 复核是第二道门，这里抢早失效）。
+        state
+            .ai_scopes
+            .revoke_runtime(crate::commands::ai_session::AiSessionKind::Ssh, &id);
         entry.cancel.notify_one();
         return Ok(());
     }
@@ -311,6 +317,10 @@ pub(crate) async fn drop_session(state: State<'_, AppState>, id: String) -> Resu
     // 本地终端（2026-10-20）：置取消标志 + 杀子进程——读线程 EOF、批量线程
     // 按 cancel 分派 Cancelled 并清表发 session-closed（前端不重连）。
     if let Some(entry) = state.local_sessions.lock().unwrap().remove(&id) {
+        // AI 目标作用域随会话消亡（同上，本地表分支）。
+        state
+            .ai_scopes
+            .revoke_runtime(crate::commands::ai_session::AiSessionKind::Local, &id);
         entry
             .cancel
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -486,5 +496,8 @@ pub(crate) fn session_disconnect_all(state: State<'_, AppState>) -> Result<usize
             entry.client.quit().await;
         });
     }
+    // 全部终端会话已断 = 全部 AI 目标作用域失效（feat/ask-ottr-orb Task 1；
+    // FTP 无终端作用域，一并撤销无碍）。
+    state.ai_scopes.revoke_all();
     Ok(n)
 }

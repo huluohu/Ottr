@@ -110,6 +110,11 @@
     "terminalFontSizePt": "{{n}} pt",
     "ottyMoments": "Otty 情感時刻",
     "ottyMomentsHint": "連成、傳輸畢、解鎖、更新就緒時的小動畫（預設開；關掉即迴歸純工具介面）。",
+    "askOttrOrb": "Ask Ottr 浮珠",
+    "askOttrOrbHint": "終端之頁常懸浮珠一顆，可曳可移，按之即問於當前所連之機（預設開；面板既啟則自隱）。",
+    "orbResetPosition": "浮珠復位",
+    "orbResetPositionHint": "使浮珠復歸故位（其位惟誌於本機，不與同步相涉）。",
+    "askOttrOrbSaveFailed": "命已行，惟存錄未成",
     "langHant": "繁體中文"
   },
   "hostForm": {
@@ -440,6 +445,7 @@
     "promptTimeout": "待驗身分逾時，未連（請彈窗現時作答）"
   },
   "ai": {
+    "orbLabel": "問於 Ottr",
     "title": "智",
     "inputPlaceholder": "向 AI 描述汝要做的事…",
     "send": "發送",
@@ -505,6 +511,7 @@
     },
     "tool": {
       "awaiting": "俟工具確認",
+      "targetHint": "工具行於 MCP 伺之側，逾此面所繫終端機之域；每行必待汝確認。",
       "server": "伺",
       "tool": "工具",
       "args": "參數",
@@ -587,7 +594,14 @@
     "followupPlaceholder": "追問…（Enter 呈上，Shift+Enter 換行）",
     "askEntry": "問 Ottr",
     "askPlaceholder": "問何事…（Enter 呈上）",
-    "panelAsk": "問 Ottr"
+    "panelAsk": "問 Ottr",
+    "askNoTarget": "無可問之終端機——請先連一終端機之面。",
+    "insertWrongTarget": "此果出自原終端機",
+    "insertWrongTargetHint": "插入已停：此令繫於產生它的終端機，返彼終端機方可插入。",
+    "returnToOriginal": "返原終端機",
+    "conversationReadonlyNotice": "連已復開：以下對話屬舊連，僅供觀覽。復問則啟新對話。",
+    "newConversation": "新對話",
+    "headerDisconnected": "已斷"
   },
   "tabs": {
     "duplicate": "謄頁籤",

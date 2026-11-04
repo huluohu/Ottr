@@ -31,6 +31,8 @@ pub(crate) use hostkey::{host_key_decision, tofu_host_key_policy};
 pub(crate) use kbdint::{
     KbdContext, credential_totp_code, kbd_interactive_answer, keyboard_interactive_responder,
 };
+#[cfg(test)]
+pub(crate) use register::open_and_register;
 pub use relay::{SessionCloseReason, forward_pty_loop};
 pub(crate) use relay::{resize_session, session_stats, session_tail, write_session};
 pub use shell_integration::{ShellIntegrationOutcome, inject_shell_integration};

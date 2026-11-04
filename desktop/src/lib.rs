@@ -272,6 +272,13 @@ pub fn run() {
             commands::session::kbd_interactive_answer,
             commands::session::credential_totp_code,
             commands::session::write_session,
+            // AI 目标作用域（feat/ask-ottr-orb Task 1；commands/ai_session.rs）：
+            // 作用域开立/上下文/一次性插入/撤销——写面钉死捕获的运行时身份，
+            // 绝不按 hostId 兜底；普通击键 write_session 不经此路径。
+            commands::ai_session::ai_scope_open,
+            commands::ai_session::ai_scope_context,
+            commands::ai_session::ai_scope_insert,
+            commands::ai_session::ai_scope_revoke,
             // 本地终端（2026-10-20）：连接本机 shell 的会话；写/缩放/尾部/
             // 关闭复用上方同名单命令（双表回退，见 commands/local_term.rs）。
             commands::local_term::local_term_open,

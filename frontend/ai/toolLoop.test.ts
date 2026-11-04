@@ -280,4 +280,28 @@ describe("工具调用循环（状态机）", () => {
     expect(lastReq.tools).toBeUndefined();
     expect(final.answer).toContain("已达上限");
   });
+
+  // R4（ask-ottr-orb Task 3）：同一待确认调用的**双击**——挂起标记必须先于
+  // 一切 await 落位，第二击在同步检查就被挡下 → mcp_server_call 恰好一次。
+  it("R4：双击执行同一待确认调用 → mcp_server_call 恰好一次", async () => {
+    mockBackend();
+    script = (turn) =>
+      turn === 0
+        ? [{ text: "我需要读文件", toolCalls: [toolCall("call_1")] }]
+        : [{ text: "读完了" }];
+    await runUntilPending();
+
+    // 模拟连击：两次调用同步发出（不 await 第一个完成）
+    void useAiStore.getState().resolveToolCall("tab-1", "call_1", true);
+    void useAiStore.getState().resolveToolCall("tab-1", "call_1", true);
+    await vi.waitFor(() => {
+      expect(useAiStore.getState().sessions["tab-1"]?.status).toBe("done");
+    });
+
+    const calls = mockedInvoke.mock.calls.filter(([c]) => c === "mcp_server_call");
+    expect(calls).toHaveLength(1);
+    // 只入账一条 tool 轮（不重复）
+    const st = useAiStore.getState().sessions["tab-1"]!;
+    expect(st.messages.filter((m) => m.role === "tool")).toHaveLength(1);
+  });
 });

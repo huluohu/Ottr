@@ -37,6 +37,12 @@ function reset(req: DiagnoseRequest | null, patch: Partial<SessionAiState> = {})
     usage: null,
     modelUsed: null,
     elapsedMs: null,
+        conversationId: "",
+    target: null,
+    scope: null,
+    runId: null,
+    draft: "",
+    conversationReadonly: false,
     messages: [],
     ...patch,
   };

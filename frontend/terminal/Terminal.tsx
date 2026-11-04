@@ -53,6 +53,7 @@ import {
 import type { ITheme } from "@xterm/xterm";
 import { assessPaste, InputDangerWatch, type DangerFinding } from "../ai/danger";
 import { shouldAutoDiagnose, useAiStore } from "../ai/aiStore";
+import { openAskForFocusedTerminal } from "../ai/aiTargets";
 import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
 import { copyText } from "../ui/clipboard";
@@ -210,13 +211,23 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
   // 终端聚焦请求（2026-10-16 用户反馈：AI 命令插入后焦点没回终端）：总线
   // nonce 变化 → 仅「当前聚焦 pane」把焦点交给自己的 xterm（多实例各自
   // 判定，非聚焦 pane 不抢焦点）；派生口径与父层 focusedPane 一致。
+  // 定向请求（Ask Ottr Task 2/3）：targetSessionId 非空 = 只有该 pane 响应，
+  // 且须仍挂载、仍是当前聚焦 pane——用户已切走则不抢焦点（focus 只回原
+  // 终端，绝不追新 pane）；泛型请求（targetSessionId 空）保持既有语义。
   const focusNonce = useTerminalFocus((s) => s.nonce);
+  const focusTargetId = useTerminalFocus((s) => s.targetSessionId);
   useEffect(() => {
     if (focusNonce === 0) return;
     const st = useSessionStore.getState();
     const focused = st.activeId != null ? (st.activePane[st.activeId] ?? st.activeId) : null;
+    if (focusTargetId != null) {
+      if (focusTargetId !== sessionId) return;
+      const stillMounted = st.sessions.some((x) => x.id === sessionId);
+      if (stillMounted && focused === sessionId) termRef.current?.focus();
+      return;
+    }
     if (focused === sessionId) termRef.current?.focus();
-  }, [focusNonce, sessionId]);
+  }, [focusNonce, focusTargetId, sessionId]);
 
   // 设置页字体/字号变更（外观分节广播 ottr://terminal-settings）→ 活动终端
   // 实时应用 + 重排版（新终端创建时同样读取）。null = 恢复默认值——
@@ -1099,24 +1110,16 @@ export function TerminalToolbar({
         </button>
       )}
       {/* Ask Ottr（批次四 P0）：对当前会话自由提问的入口——面板在右栏打开，
-          输入条即提问框（首轮带输出尾 + 主机备注作上下文）。 */}
+          输入条即提问框（首轮带输出尾 + 主机备注作上下文）。Task 3：与悬浮球/
+          快捷键同一 openAskForFocusedTerminal 单一来源（目标定格 + fail-closed，
+          断连/shell_exit 点击 → toast 说明，绝不静默无反应）。 */}
       {terminalControls && focusedPane != null && (
         <button
           data-testid="ask-ottr"
           title={t("ai.askEntry")}
           aria-label={t("ai.askEntry")}
           onClick={() => {
-            const session = useSessionStore
-              .getState()
-              .sessions.find((x) => x.id === focusedPane);
-            if (!session) return;
-            useAiStore.getState().openAsk({
-              kind: "ask",
-              sessionId: session.id,
-              rustId: session.rustId,
-              hostId: session.kind === "local" ? null : session.hostId,
-              hostName: session.hostName,
-            });
+            openAskForFocusedTerminal();
           }}
         >
           {t("ai.askEntry")}

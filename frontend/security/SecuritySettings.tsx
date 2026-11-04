@@ -22,6 +22,10 @@ import { useTerminalThemeStore } from "../theme/terminalThemeStore";
 import { useLanguage, type Lang , LANGS, LANG_LABEL_KEY } from "../i18n";
 import { Switch } from "../ui/Switch";
 import { setOttyEnabled, useOttyStore } from "../ui/otty/ottyStore";
+// Ask Ottr 悬浮球开关/重置（ask-ottr-orb Task 4）：镜像面 = ai/orbStore，
+// vault 真源由 store.setEnabled 异步落库（同 ottyStore 口径：失败不回滚镜像
+// 但 toast 可见）。
+import { useOrbStore } from "../ai/orbStore";
 import { loadTerminalSettings, saveTerminalSettings } from "../terminal/ContextMenu";
 import { useEscClose } from "../ui/useEscClose";
 import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
@@ -272,6 +276,9 @@ export function SecuritySettings({
   // 可一键关」）：null = 读取中；镜像面 = ui/otty ottyStore（syncOttyFromVault
   // 启动对齐），此处三态直读 store——设置页与运行面永不分叉。
   const ottyEnabled = useOttyStore((s) => s.enabled);
+  // Ask Ottr 悬浮球开关（ask-ottr-orb Task 4）：null = 尚未从 vault 加载——
+  // 显示按默认开、交互暂禁（防「读取中先显示关」误导）；镜像面 = ai/orbStore。
+  const orbEnabled = useOrbStore((s) => s.enabled);
   const [sudoConfirm, setSudoConfirm] = useState(false);
   const sudoConfirmRef = useRef<HTMLDivElement | null>(null);
   // 确认框可见性（2026-10-15 用户反馈「点击无反应」事故）：开关在长滚动页
@@ -1086,6 +1093,37 @@ export function SecuritySettings({
               checked={ottyEnabled}
               onChange={(e) => setOttyEnabled(e.currentTarget.checked)}
             />
+          </div>
+          {/* Ask Ottr 悬浮球开关（ask-ottr-orb Task 4）：与 otty 时刻行同款
+              div 包行 + Switch label 可访问名 + InfoHint。enabled=null =
+              vault 读取中——显示按默认开（checked ?? true）、交互暂禁
+              （disabled），防「读取中先显示关」误导；镜像面 = ai/orbStore，
+              vault 真源由 store.setEnabled 异步落库（失败不回滚镜像但 toast
+              可见——「已生效但保存失败」）。独立于 otty 时刻与 ai.enabled。 */}
+          <div className="settings-row" data-testid="ask-ottr-orb-row">
+            <span className="settings-label">{t("settings.askOttrOrb")}</span>
+            <InfoHint text={t("settings.askOttrOrbHint")} />
+            <Switch
+              testid="ask-ottr-orb-toggle"
+              label={t("settings.askOttrOrb")}
+              checked={orbEnabled ?? true}
+              disabled={orbEnabled === null}
+              onChange={(e) => useOrbStore.getState().setEnabled(e.currentTarget.checked)}
+            />
+          </div>
+          {/* 重置悬浮球位置（ask-ottr-orb Task 4）：位置只存本机
+              （localStorage），清除即回默认右缘居中；行内小按钮沿 hostkey
+              巡检「立即巡检」同款裸 button 样式。 */}
+          <div className="settings-row" data-testid="orb-reset-row">
+            <span className="settings-label">{t("settings.orbResetPosition")}</span>
+            <InfoHint text={t("settings.orbResetPositionHint")} />
+            <button
+              type="button"
+              data-testid="orb-reset-position"
+              onClick={() => useOrbStore.getState().resetPosition()}
+            >
+              {t("settings.orbResetPosition")}
+            </button>
           </div>
           {/* --- 终端配色（B2 主题生态，Phase 2 Task 9）：auto 跟随界面 /
               内置画廊 / 自定义（iTerm2 .itermcolors 与 Windows Terminal .json

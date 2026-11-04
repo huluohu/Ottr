@@ -187,7 +187,11 @@ impl AutoLockState {
             if auto_lock_should_fire(generation, gen_current, focused, is_locked)
                 && let Some(vault) = app.try_state::<VaultState>()
             {
-                vault.0.lock();
+                // AI 目标作用域随锁撤销（手动锁定 vault_lock 同语义）。
+                crate::commands::ai_session::lock_vault(
+                    &vault.0,
+                    &app.state::<crate::commands::state::AppState>().ai_scopes,
+                );
                 let _ = app.emit("ottr://vault-locked", ());
                 eprintln!("[security] auto-locked after {minutes} min unfocused");
             }

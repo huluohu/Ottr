@@ -281,7 +281,8 @@ pub fn run() {
             commands::ai_session::ai_scope_revoke,
             // Ask Ottr 执行模式 第一步（Plan 档；commands/ai_session.rs）：
             // 只读面（列目录/读文件，路径规则沿用 read_file 口径）+ 执行面
-            // （按模式分派：plan/manual 只登记计划步骤、绝不执行；auto 本步拒）。
+            // （按模式分派：plan/manual 只登记计划步骤、绝不执行；auto 走
+            // 后端放行判定链——授权 + 分级，见 commands/ai_policy.rs）。
             commands::ai_session::ai_scope_list_dir,
             commands::ai_session::ai_scope_read_file,
             commands::ai_session::ai_scope_exec,

@@ -640,14 +640,17 @@ pub(crate) fn ai_policy_delete(state: State<'_, VaultState>, host_id: i64) -> Cm
     AiHostPolicies::delete(&state.0, host_id).map_err(|e| policy_error(&e))
 }
 
-/// 授权面错误 → **人话**（不把 SQLite 原文甩给用户）。
+/// 授权面错误 → **可读**（不把 SQLite 原文甩给用户）。
 ///
 /// 悬空 host 的 FK 违例是最常见的一种（主机刚被删）——原文是
 /// 「FOREIGN KEY constraint failed」，用户看不懂也不知道该做什么。
+/// ★ 文案用**英文**：后端错误面统一英文（它们会原文进模型上下文；本地化
+/// 由前端 i18n 层做——硬编码中文会把非中文用户绕过本地化面）。
 fn policy_error(e: &ottr_vault::VaultError) -> String {
     let text = e.to_string();
     if text.contains("FOREIGN KEY") {
-        return "该主机不存在（可能已被删除）——请刷新主机列表后重试".to_string();
+        return "host not found (it may have been deleted) - refresh the host list and retry"
+            .to_string();
     }
     text
 }

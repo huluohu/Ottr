@@ -384,7 +384,9 @@ export function DiagnosePanel({
         />
         {mode === "auto" && autoAuthorized === false && (
           // 未授权（或本地会话）：说清楚为什么不能自动跑 + 去哪开。
-          <span className="ai-mode-hint" data-testid="ai-mode-auto-hint">
+          // role=status：出现时读屏播报一句（用户切到自动档却没反应时，
+          // 这条是唯一的解释）。
+          <span className="ai-mode-hint" data-testid="ai-mode-auto-hint" role="status">
             {isLocal ? t("ai.mode.autoLocalDenied") : t("ai.mode.autoNotAuthorized")}
           </span>
         )}

@@ -175,6 +175,19 @@
   padding-left: 0;
   padding-right: 0;
 }
+/* 执行模式行（2026-11-05 用户反馈）：贴着输入框正上方——首问与每轮追问
+   都能随手切档；与输入条同用一条顶部细分隔线，视觉上是一个「输入区」。 */
+.ai-input-mode-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.ai-input-mode-row .ai-mode-hint {
+  flex: 1;
+  min-width: 0;
+}
 /* 追问输入条：贴在面板底部（面板已是整高右栏，输入条随面板走）。 */
 .ai-followup-row {
   display: flex;
@@ -850,10 +863,11 @@
    index.css 清单，没必要。样式纪律：动效/圆角/字号/颜色一律走 token
    （css-discipline.test.ts 守卫），新增块顶部写清「为什么这么写」。 */
 
-/* 模式段控（状态行）：.ui-segmented 默认段间距是 --space-4，三档标签在
-   280px 最小宽的面板里会把「停止」按钮挤出可视区——这里只收紧间距与字号，
-   不改控件自身的视觉语言（段控是全仓统一控件，面板不得自造一套）。 */
-.ai-status-row .ui-segmented {
+/* 模式段控（输入区模式行，2026-11-05 从状态行迁来）：.ui-segmented 默认
+   段间距是 --space-4，三档标签加未授权提示在 280px 最小宽的面板里会溢出
+   ——这里只收紧间距，不改控件自身的视觉语言（段控是全仓统一控件，面板
+   不得自造一套）。 */
+.ai-input-mode-row .ui-segmented {
   gap: var(--space-2);
   flex: none;
 }

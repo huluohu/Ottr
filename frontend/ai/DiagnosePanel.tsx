@@ -360,48 +360,24 @@ export function DiagnosePanel({
         </div>
       )}
 
-      <div className="ai-status-row">
-        {/* 执行模式（2026-11-04 第一步）：**放状态行**——头部 .ai-panel-meta 已
-            是 flex:1 + ellipsis（面板最小宽 280px），塞不下第三组控件。
-            用现成 SegmentedControl（禁裸 checkbox：全仓守卫 ui-no-native-controls）。 */}
-        <SegmentedControl
-          value={mode}
-          options={[
-            { value: "plan", label: t("ai.mode.plan") },
-            {
-              value: "auto",
-              label: t("ai.mode.auto"),
-              // 自动档的**前提**是主机被授权（授权表默认全拒）——未授权时
-              // 该档不可选：模型提的命令会降级成逐条确认，用户会以为它在
-              // 自动跑。不给可用选项，直接说清出路。
-              disabled: autoAuthorized === false,
-            },
-            { value: "manual", label: t("ai.mode.manual") },
-          ]}
-          onChange={(v) => setMode(sessionId, v)}
-          ariaLabel={t("ai.mode.label")}
-          testid="ai-mode-switch"
-        />
-        {mode === "auto" && autoAuthorized === false && (
-          // 未授权（或本地会话）：说清楚为什么不能自动跑 + 去哪开。
-          // role=status：出现时读屏播报一句（用户切到自动档却没反应时，
-          // 这条是唯一的解释）。
-          <span className="ai-mode-hint" data-testid="ai-mode-auto-hint" role="status">
-            {isLocal ? t("ai.mode.autoLocalDenied") : t("ai.mode.autoNotAuthorized")}
-          </span>
-        )}
-        {redactions.length > 0 && (
-          <span className="ai-redactions" data-testid="ai-redactions">
-            {t("ai.redacted", { count: redactions.reduce((n, r) => n + r.count, 0) })}
-          </span>
-        )}
-        {running && (
-          <button className="ai-stop" data-testid="ai-stop" onClick={() => abort(sessionId)}>
-            {t("ai.stop")}
-          </button>
-        )}
-        {status === "aborted" && <span className="ai-aborted">{t("ai.aborted")}</span>}
-      </div>
+      {(redactions.length > 0 || running || status === "aborted") && (
+        // 状态行：脱敏计数 / 停止 / 已中止。执行模式**不在这里**——
+        // 2026-11-05 用户反馈：模式切换要贴着输入框（对话进行到哪儿都能
+        // 随手切），放顶栏会跟输入脱节、看起来像三个隔离的 tab。
+        <div className="ai-status-row">
+          {redactions.length > 0 && (
+            <span className="ai-redactions" data-testid="ai-redactions">
+              {t("ai.redacted", { count: redactions.reduce((n, r) => n + r.count, 0) })}
+            </span>
+          )}
+          {running && (
+            <button className="ai-stop" data-testid="ai-stop" onClick={() => abort(sessionId)}>
+              {t("ai.stop")}
+            </button>
+          )}
+          {status === "aborted" && <span className="ai-aborted">{t("ai.aborted")}</span>}
+        </div>
+      )}
 
       {status === "error" && (
         <div className="ai-error" data-testid="ai-error" role="alert">
@@ -734,6 +710,40 @@ export function DiagnosePanel({
           )}
         </div>
       )}
+
+      {/* 执行模式（2026-11-05 按用户反馈改位）：**贴着输入框正上方**——
+          首问与每一轮追问都能随手切档（「随时切换」），不再放顶栏跟输入
+          脱节。运行中保持可用：切档只影响下一轮（每轮链起时取一次档，
+          工具描述与实际档位同源，审查 M-5 纪律不变）。
+          用现成 SegmentedControl（禁裸 checkbox：全仓守卫 ui-no-native-controls）。 */}
+      <div className="ai-input-mode-row" data-testid="ai-input-mode-row">
+        <SegmentedControl
+          value={mode}
+          options={[
+            { value: "plan", label: t("ai.mode.plan") },
+            {
+              value: "auto",
+              label: t("ai.mode.auto"),
+              // 自动档的**前提**是主机被授权（授权表默认全拒）——未授权时
+              // 该档不可选：模型提的命令会降级成逐条确认，用户会以为它在
+              // 自动跑。不给可用选项，直接说清出路。
+              disabled: autoAuthorized === false,
+            },
+            { value: "manual", label: t("ai.mode.manual") },
+          ]}
+          onChange={(v) => setMode(sessionId, v)}
+          ariaLabel={t("ai.mode.label")}
+          testid="ai-mode-switch"
+        />
+        {mode === "auto" && autoAuthorized === false && (
+          // 未授权（或本地会话）：说清楚为什么不能自动跑 + 去哪开。
+          // role=status：出现时读屏播报一句（用户切到自动档却没反应时，
+          // 这条是唯一的解释）。
+          <span className="ai-mode-hint" data-testid="ai-mode-auto-hint" role="status">
+            {isLocal ? t("ai.mode.autoLocalDenied") : t("ai.mode.autoNotAuthorized")}
+          </span>
+        )}
+      </div>
 
       {/* 追问输入条（多轮追问会话，2026-11-02 批次二 C 项）：
           Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）；

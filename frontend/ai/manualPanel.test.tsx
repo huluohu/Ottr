@@ -244,6 +244,35 @@ describe("auto 档：降级下来的步骤按待确认卡呈现（第三步）",
   });
 });
 
+describe("模式切换的位置（2026-11-05 用户反馈）", () => {
+  it("模式选择器贴在输入框正上方（首问与每轮追问都随手可切，不在面板顶栏）", () => {
+    seed({});
+    render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
+    const switchEl = screen.getByTestId("ai-mode-switch");
+    const input = screen.getByTestId("ai-followup-input");
+    // 选择器在 DOM 序上先于输入框（即「输入框正上方」）。
+    expect(
+      switchEl.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 不在状态行里（旧摆法：跟输入脱节，对话一长就像三个隔离的 tab）。
+    expect(switchEl.closest(".ai-status-row")).toBeNull();
+    expect(switchEl.closest(".ai-input-mode-row")).not.toBeNull();
+  });
+
+  it("运行中模式选择器保持可用（随时切换；切档只影响下一轮）", () => {
+    seed({ status: "running" });
+    render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
+    const buttons = Array.from(
+      screen.getByTestId("ai-mode-switch").querySelectorAll("button"),
+    );
+    expect(buttons.every((b) => !b.disabled)).toBe(true);
+    // 输入框此时禁用（并发轮约束），但模式选择不受牵连。
+    expect((screen.getByTestId("ai-followup-input") as HTMLTextAreaElement).disabled).toBe(
+      true,
+    );
+  });
+});
+
 describe("plan 档：不提供执行入口", () => {
   it("plan 档：步骤仍是清单，没有执行/拒绝钮", () => {
     seed({ mode: "plan", plan: [PENDING_STEP] });

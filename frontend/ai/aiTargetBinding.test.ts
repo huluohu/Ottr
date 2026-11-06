@@ -392,7 +392,7 @@ describe("scope 用法（每 run 一开；上下文与撤销）", () => {
 });
 
 describe("R3：run 准备期被取代（迟到准备不得复活/覆盖新切片）", () => {
-  it("close+openAsk 后，停在 settings 的首轮准备被丢弃", async () => {
+  it("close+openAsk 后，迟到准备不出网、不复活请求，但已提交问题保留一次", async () => {
     mockBackend({ held: ["settings_get:ai_providers"] });
     seedLivePane();
     useAiStore.getState().openAsk(ASK_REQ);
@@ -408,7 +408,11 @@ describe("R3：run 准备期被取代（迟到准备不得复活/覆盖新切片
     expect(st.runId).toBeNull(); // 迟到 run 不得复占 runId
     expect(st.status).toBe("idle"); // 未被迟到准备改写
     expect(st.answer).toBe("");
-    expect(st.messages).toEqual([]);
+    // 2026-11-07 打断插话契约：close 只保留安全用户轮（脱敏后一次），绝不
+    // 复活 request/status/出网——旧断言「messages 清空」会丢用户已提交的问题。
+    expect(st.messages).toHaveLength(1);
+    expect(st.messages[0].role).toBe("user");
+    expect(st.messages[0].content).toContain("第一问");
     expect(chatFactory).not.toHaveBeenCalled(); // 迟到准备未出网
   });
 

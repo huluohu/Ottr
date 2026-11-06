@@ -527,7 +527,9 @@
       "unknownTool": "Questo strumento non è più disponibile (il server MCP corrispondente è stato rimosso o rinominato).",
       "limitReached": "Raggiunto il limite di giri delle chiamate agli strumenti ({{count}}); non verranno eseguiti altri strumenti. Rispondi con le informazioni già disponibili.",
       "truncated": "… (troncato)",
-      "hostCallLabel": "Chiamata allo strumento host {{tool}}"
+      "hostCallLabel": "Chiamata allo strumento host {{tool}}",
+      "stoppedBeforeDispatch": "La risposta è stata interrotta prima dell'invio di questa chiamata allo strumento.",
+      "stoppedInFlight": "La risposta è stata interrotta dopo l'invio di questa chiamata allo strumento. L'azione remota potrebbe essere ancora in corso e il risultato è sconosciuto; interrompere la risposta non la annulla."
     },
     "mode": {
       "label": "Modalità di esecuzione",
@@ -679,7 +681,9 @@
     "auto": {
       "stepLimitReached": "Raggiunto il limite di comandi per turno ({{count}}); in questo turno non sono stati eseguiti altri comandi.",
       "durationLimitReached": "Raggiunto il limite di tempo per turno ({{seconds}} s); in questo turno non sono stati eseguiti altri comandi."
-    }
+    },
+    "interruptAndSend": "Interrompi e invia",
+    "interruptPlaceholder": "In risposta: scrivi e invia per interrompere con il tuo messaggio"
   },
   "tabs": {
     "duplicate": "Duplica scheda",

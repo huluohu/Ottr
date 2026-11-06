@@ -527,7 +527,9 @@
       "unknownTool": "Esta herramienta ya no está disponible (su servidor MCP se eliminó o se renombró).",
       "limitReached": "Se alcanzó el límite de rondas de herramientas ({{count}}); no se ejecutarán más herramientas. Responde con la información que ya tienes.",
       "truncated": "… (truncado)",
-      "hostCallLabel": "Llamada a la herramienta del host {{tool}}"
+      "hostCallLabel": "Llamada a la herramienta del host {{tool}}",
+      "stoppedBeforeDispatch": "La respuesta se detuvo antes de enviar esta llamada a la herramienta.",
+      "stoppedInFlight": "La respuesta se detuvo después de enviar esta llamada a la herramienta. La acción remota podría seguir en curso y su resultado es desconocido; detener la respuesta no la deshace."
     },
     "mode": {
       "label": "Modo de ejecución",
@@ -679,7 +681,9 @@
     "auto": {
       "stepLimitReached": "Se alcanzó el límite de comandos por ronda ({{count}}); en esta ronda no se ejecutaron más comandos.",
       "durationLimitReached": "Se alcanzó el límite de tiempo por ronda ({{seconds}} s); en esta ronda no se ejecutaron más comandos."
-    }
+    },
+    "interruptAndSend": "Interrumpir y enviar",
+    "interruptPlaceholder": "Respondiendo: escribe y envía para interrumpir con tu mensaje"
   },
   "tabs": {
     "duplicate": "Duplicar pestaña",

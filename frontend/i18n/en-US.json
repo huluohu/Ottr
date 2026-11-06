@@ -527,7 +527,9 @@
       "unknownTool": "This tool is no longer available (its MCP server was removed or renamed).",
       "limitReached": "Tool-call round limit reached ({{count}} rounds); no further tools will run. Answer with the information you already have.",
       "truncated": "… (truncated)",
-      "hostCallLabel": "Host tool {{tool}}"
+      "hostCallLabel": "Host tool {{tool}}",
+      "stoppedBeforeDispatch": "The reply was stopped before this tool call was dispatched.",
+      "stoppedInFlight": "This host-tool request was sent before the reply stopped. It may have completed, still be running, or have an unknown result; stopping the reply does not cancel or undo a request already sent."
     },
     "mode": {
       "label": "Execution mode",
@@ -679,7 +681,9 @@
     "auto": {
       "stepLimitReached": "Reached the per-round command limit ({{count}}); no further commands were run this round.",
       "durationLimitReached": "Reached the per-round time limit ({{seconds}}s); no further commands were run this round."
-    }
+    },
+    "interruptAndSend": "Interrupt & send",
+    "interruptPlaceholder": "Answering – type and send to interrupt with your message"
   },
   "tabs": {
     "duplicate": "Duplicate Tab",

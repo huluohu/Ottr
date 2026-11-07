@@ -143,6 +143,10 @@ pub fn run() {
                     let _ = win.set_size(tauri::LogicalSize::new(w, h));
                     let _ = win.center();
                 }
+                // 窗口状态记忆（2026-11-07 用户需求）：记住上次的窗口尺寸/
+                // 位置/最大化，启动恢复（remember off = 保持 tauri.conf 默认；
+                // 记忆值覆盖上面的配置收缩——它来自用户真实的上次会话）。
+                commands::window_state::apply_on_launch(&win);
             }
             // Task 5：vault 打开并托管（app_data_dir + 钥匙链 Master Key）。
             // T16 判别实验（task-16-report.md §3，Exp10/14 阳性）：setup 主线程
@@ -197,6 +201,9 @@ pub fn run() {
                         // A12（Task 14）关窗到托盘：开关开（默认）→ 拦截关闭 +
                         // 隐藏主窗（会话保活）；托盘菜单/左键可恢复。
                         tauri::WindowEvent::CloseRequested { api, .. } => {
+                            // 窗口状态记忆：关窗（含关到托盘的隐藏路径）时几何
+                            // 还在，先落盘再交给托盘语义。
+                            commands::window_state::persist(&watcher);
                             menu::on_close_requested(watcher.app_handle(), api);
                         }
                         _ => {}
@@ -565,6 +572,10 @@ pub fn run() {
             commands::view::view_zoom,
             // Win11 贴靠（2026-10-13 用户目标）：自绘标题栏布局选择器的落地面。
             commands::view::window_snap,
+            // 窗口状态记忆（2026-11-07 用户需求：记住上次的窗口尺寸/最大化；
+            // 机器本地文件，不进 vault——几何随设备同步是错的，见模块文档）。
+            commands::window_state::window_state_get,
+            commands::window_state::window_state_set_remember,
             // MCP 深化（2026-10-13 用户目标）：审批超时可配（改配重启 listener）。
             commands::mcp::mcp_set_approval_timeout,
             commands::session::resize_session
@@ -588,6 +599,17 @@ pub fn run() {
                 // App 退出清理（Phase 2 Task 3）：编辑临时目录随进程收尾。
                 // RunEvent::Exit 对 quit_app / 菜单退出 / 正常退出路径统一触发；
                 // 异常死亡的漏网残留由 24h 惰性清扫兜底（remote_edit 模块文档）。
+                // 窗口状态记忆：托盘「退出」对隐藏窗口不发 per-window
+                // CloseRequested——在 ExitRequested（退出已定、窗口仍可查）时
+                // 落一次盘；remember off 时 persist 内部 no-op。
+                tauri::RunEvent::ExitRequested { .. } => {
+                    eprintln!("[window-state] ExitRequested fired");
+                    if let Some(win) = app.get_webview_window("main") {
+                        commands::window_state::persist(&win);
+                    } else {
+                        eprintln!("[window-state] ExitRequested: main window gone");
+                    }
+                }
                 tauri::RunEvent::Exit => {
                     commands::remote_edit::close_all_edits(&app.state::<AppState>().edits);
                 }

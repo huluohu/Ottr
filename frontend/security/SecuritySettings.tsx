@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { vaultApi, type HostKeyAuditStatus, type ReencryptProgress } from "../vault/api";
 import { useTheme, THEME_IDS, type ThemeMode } from "../theme/ThemeContext";
@@ -218,6 +219,10 @@ export function SecuritySettings({
   const [clipboard, setClipboard] = useState<number | null>(null);
   // A12（Task 14）：关窗到托盘开关（Rust 侧 CloseRequested 读同一键）。
   const [closeToTray, setCloseToTray] = useState<boolean | null>(null);
+  // 窗口状态记忆（2026-11-07 用户需求）：记住上次的窗口尺寸/位置/最大化。
+  // 机器本地文件（data_root/window-state.json），不进 vault——几何属机器属性，
+  // 随 vault 同步会把 A 屏几何带到 B 屏；启动恢复在 Rust setup（早于 vault）。
+  const [rememberWindowSize, setRememberWindowSize] = useState<boolean | null>(null);
   // Task 15 fix 1/5：shell 集成自动注入开关（⌘R 历史入库/报错即诊的数据源）。
   const [shellIntegration, setShellIntegration] = useState<boolean | null>(null);
   // 录制默认保存目录（空串 = 未设置走兜底；2026-10-12 用户需求）。
@@ -363,7 +368,7 @@ export function SecuritySettings({
     let unlisten: (() => void) | undefined;
     void (async () => {
       try {
-        const [a, c, tray, shell, audit, auditInterval, sudo] = await Promise.all([
+        const [a, c, tray, shell, audit, auditInterval, sudo, windowState] = await Promise.all([
           vaultApi.settings.get<number>("security.autolock_minutes"),
           vaultApi.settings.get<number>("security.clipboard_clear_secs"),
           vaultApi.settings.get<number>("ui.close_to_tray"),
@@ -371,6 +376,8 @@ export function SecuritySettings({
           vaultApi.settings.get<boolean>(SETTING_HOSTKEY_AUDIT),
           vaultApi.settings.get<number>(SETTING_HOSTKEY_AUDIT_INTERVAL),
           vaultApi.settings.get<boolean>("security.sudo_autofill"),
+          // 窗口状态记忆：机器本地文件（非 vault），Rust 命令直读。
+          invoke<{ rememberSize: boolean }>("window_state_get").catch(() => null),
         ]);
         if (!disposed) {
           setAutolock(a ?? 10);
@@ -383,6 +390,7 @@ export function SecuritySettings({
           setHostkeyAudit(audit === true); // B9：默认关
           setHostkeyAuditInterval(auditInterval ?? 86_400);
           setSudoAutofill(sudo === true); // B9：默认关
+          setRememberWindowSize(windowState?.rememberSize ?? true); // 缺省开（Rust 同口径）
         }
       } catch {
         // 非 Tauri 环境 / 后端不可达：控件回落默认值，改动时再报错。
@@ -394,6 +402,7 @@ export function SecuritySettings({
           setHostkeyAudit(false);
           setHostkeyAuditInterval(86_400);
           setSudoAutofill(false);
+          setRememberWindowSize(true);
         }
       }
       try {
@@ -419,6 +428,32 @@ export function SecuritySettings({
   //   hooks than during the previous render"（2026-11-07 侧栏键盘导航时踩到，
   //   同 2026-11-03 DiagnosePanel 的教训）。
   const navButtonRefs = useRef<Partial<Record<SettingsPane, HTMLButtonElement | null>>>({});
+  // 打开设置即落焦侧栏导航（2026-11-07 用户反馈：键盘上下键需要焦点先在，
+  // 否则每次都要鼠标点一下）。落焦目标 = 当前分区的导航项（roving tabindex
+  // 的停靠点）；一次性 focus() 在 WKWebView 会被吞 → rAF 连帧重试，命中即停
+  // （至多 10 帧，同 Ask 面板输入框的既有手法）。键盘切档时 activeElement
+  // 已是目标项，重跑为 no-op 不抢焦。
+  useEffect(() => {
+    if (!mount.shouldRender) return;
+    let raf = 0;
+    let tries = 0;
+    const tick = () => {
+      const el = navButtonRefs.current[pane];
+      if (!el) return;
+      if (document.activeElement === el) return;
+      el.focus();
+      if (document.activeElement !== el && ++tries < 10) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // 只依赖「打开」转变：打开 = 无条件把焦点交给侧栏（真机实证：WKWebView
+    // 打开对话框时会自动聚焦「关闭」钮，任何「焦点已被持有就让位」的守卫
+    // 都会让落焦失效——用户报的就是这个）。后续的焦点移动全部由键盘导航
+    // 处理器与用户点击接管，本 effect 不再重跑，无抢焦窗口。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mount.shouldRender]);
   if (!mount.shouldRender) return null;
 
   function validate(): string | null {
@@ -1350,6 +1385,25 @@ export function SecuritySettings({
                     const on = e.currentTarget.checked;
                     setShellIntegration(on);
                     void saveSetting("shell.integration", on);
+                  }}
+                />
+              </div>
+              {/* 窗口状态记忆（2026-11-07 用户需求）：下次启动恢复上次的窗口
+                  尺寸/位置/最大化。机器本地文件（不进 vault、不随设备同步），
+                  启动恢复在 Rust setup（早于 vault 解锁，故不依赖 vault）。 */}
+              <div className="settings-row" data-testid="window-remember-row">
+                <span className="settings-label">{t("settings.rememberWindowSize")}</span>
+                <InfoHint text={t("settings.rememberWindowSizeHint")} />
+                <Switch
+                  testid="window-remember-toggle"
+                  label={t("settings.rememberWindowSize")}
+                  checked={rememberWindowSize ?? true}
+                  onChange={(e) => {
+                    const on = e.currentTarget.checked;
+                    setRememberWindowSize(on);
+                    void invoke("window_state_set_remember", { enabled: on }).catch(() =>
+                      setRememberWindowSize(!on),
+                    );
                   }}
                 />
               </div>

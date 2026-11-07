@@ -73,6 +73,8 @@
     "sectionSecurity": "보안",
     "closeToTray": "닫을 때 트레이로 이동",
     "closeToTrayHint": "닫아도 Ottr는 시스템 트레이에 남습니다. 트레이에서 종료하세요.",
+    "rememberWindowSize": "마지막 창 크기 기억",
+    "rememberWindowSizeHint": "Ottr를 열 때 마지막 창 크기와 위치(최대화 포함)를 복원합니다. 이 기기에만 저장됩니다.",
     "shellIntegration": "자동 셸 통합",
     "shellIntegrationHint": "연결할 때 원격 셸을 감지해 OSC 133/OSC 7 마커를 주입하며, 이를 기반으로 기록 검색과 오류 진단이 가능합니다. 이미 통합이 적용된 원격은 건너뜁니다.",
     "recordingSaveDir": "녹화 저장 폴더",

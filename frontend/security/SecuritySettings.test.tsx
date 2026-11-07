@@ -121,6 +121,17 @@ describe("侧栏品牌卡的版本号（2026-11-03 用户实机发现：这里�
 });
 
 describe("侧栏导航键盘上下键（2026-11-07 用户反馈）", () => {
+  it("打开设置即自动落焦到侧栏当前项（↑/↓ 立即可用，不需鼠标点一下）", async () => {
+    seedMode("keyring");
+    renderDialog();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("settings-nav-general")),
+    );
+    // 落焦后 ↑/↓ 直接生效。
+    fireEvent.keyDown(screen.getByTestId("settings-nav-general"), { key: "ArrowDown" });
+    expect(screen.getByTestId("settings-nav-security").getAttribute("aria-selected")).toBe("true");
+  });
+
   it("ArrowDown 移到下一项并立即切档、焦点跟随（选择跟随焦点）", () => {
     seedMode("keyring");
     renderDialog();
@@ -190,6 +201,26 @@ describe("侧栏导航键盘上下键（2026-11-07 用户反馈）", () => {
 });
 
 describe("SecuritySettings", () => {
+  it("窗口状态记忆：开关回读真实值；切换写 window_state_set_remember", async () => {
+    seedMode("keyring");
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "window_state_get") {
+        return Promise.resolve({ rememberSize: false, maximized: false, x: null, y: null, width: null, height: null });
+      }
+      if (cmd === "settings_get") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    renderDialog();
+    const toggle = await screen.findByTestId("window-remember-toggle") as HTMLInputElement;
+    await waitFor(() => expect(toggle.checked).toBe(false));
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mockedInvoke.mock.calls.some(([cmd, args]) =>
+        cmd === "window_state_set_remember" && (args as { enabled: boolean }).enabled === true,
+      )).toBe(true),
+    );
+  });
+
   it("keyring 模式：钥匙链徽标 + 升级入口；无「立即锁定」、无自动锁定配置", async () => {
     seedMode("keyring");
     renderDialog();
@@ -565,6 +596,11 @@ describe("SecuritySettings", () => {
       return Promise.reject(new Error(cmd));
     });
     renderDialog();
+    // 自动落焦（2026-11-07）的 rAF 首帧在 jsdom 里晚于测试动作——等它落定，
+    // 循环在首次成功后自停，之后打开的确认框不会再被抢焦。
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("settings-nav-general")),
+    );
     const toggle = (await waitFor(() =>
       screen.getByTestId("sudo-autofill-toggle"),
     )) as HTMLInputElement;

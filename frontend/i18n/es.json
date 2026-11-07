@@ -73,6 +73,8 @@
     "sectionSecurity": "Seguridad",
     "closeToTray": "Ocultar en la bandeja al cerrar",
     "closeToTrayHint": "Ottr permanece en la bandeja del sistema tras cerrar; sal desde la bandeja.",
+    "rememberWindowSize": "Recordar el tamaño de la ventana",
+    "rememberWindowSizeHint": "Restaura el tamaño y la posición de la última ventana (incluido maximizada) al abrir Ottr. Se guarda solo en esta máquina.",
     "shellIntegration": "Integración automática con el shell",
     "shellIntegrationHint": "Detecta el shell remoto al conectar e inyecta marcadores OSC 133/OSC 7 que impulsan la búsqueda en el historial y el diagnóstico de fallos; los remotos que ya traen integración se omiten.",
     "recordingSaveDir": "Carpeta de guardado de grabaciones",

@@ -73,6 +73,8 @@
     "sectionSecurity": "Security",
     "closeToTray": "Hide to tray on close",
     "closeToTrayHint": "Ottr stays in the system tray after closing; quit from the tray.",
+    "rememberWindowSize": "Remember last window size",
+    "rememberWindowSizeHint": "Restore the last window size and position (including maximized) when Ottr opens. Saved on this machine only.",
     "shellIntegration": "Auto shell integration",
     "shellIntegrationHint": "Detects the remote shell on connect and injects OSC 133/OSC 7 markers that power history search and failure diagnosis; remotes with existing integration are skipped.",
     "recordingSaveDir": "Recording save folder",

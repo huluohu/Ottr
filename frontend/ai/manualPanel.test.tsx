@@ -259,13 +259,11 @@ describe("模式切换的位置（2026-11-05 用户反馈）", () => {
     expect(switchEl.closest(".ai-input-mode-row")).not.toBeNull();
   });
 
-  it("运行中模式选择器保持可用（随时切换；切档只影响下一轮）", () => {
+  it("运行中执行方式下拉保持可用（随时切换；切换只影响下一轮）", () => {
     seed({ status: "running" });
     render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
-    const buttons = Array.from(
-      screen.getByTestId("ai-mode-switch").querySelectorAll("button"),
-    );
-    expect(buttons.every((b) => !b.disabled)).toBe(true);
+    const select = screen.getByTestId("ai-mode-switch") as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
     // 输入框此时也可用（打断插话，2026-11-06 A 方案）。
     expect((screen.getByTestId("ai-followup-input") as HTMLTextAreaElement).disabled).toBe(
       false,

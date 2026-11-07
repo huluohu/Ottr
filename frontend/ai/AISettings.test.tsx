@@ -327,16 +327,18 @@ describe("通用", () => {
 
   // 2026-11-04 第一步：新对话默认执行模式（**本机偏好 → localStorage**，
   // 不进 vault/不同步——默认档是安全档，随设备走会传播宽松选择）。
-  it("新对话默认执行模式：默认 plan，点「手动」写本机偏好（localStorage）", async () => {
+  // 2026-11-07 用户反馈：新对话默认执行模式随面板同款两档（逐条确认默认 /
+  // 自动执行）；「规划」档从 UI 移除。本机偏好 → localStorage（不进 vault）。
+  it("新对话默认执行模式：下拉两档、默认逐条确认，改选「自动执行」写本机偏好", async () => {
     localStorage.clear();
     render(<AISettings open onClose={() => {}} />);
-    const group = await screen.findByTestId("ai-default-exec-mode");
-    const buttons = Array.from(group.querySelectorAll("button"));
-    expect(buttons.map((b) => b.textContent)).toEqual(["规划", "自动", "手动"]);
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(buttons[2]);
-    expect(localStorage.getItem("ottr.ai.defaultMode")).toBe("manual");
-    expect(buttons[2].getAttribute("aria-pressed")).toBe("true");
+    const select = (await screen.findByTestId("ai-default-exec-mode")) as HTMLSelectElement;
+    const options = Array.from(select.querySelectorAll("option"));
+    expect(options.map((o) => o.value)).toEqual(["manual", "auto"]);
+    expect(select.value).toBe("manual");
+    fireEvent.change(select, { target: { value: "auto" } });
+    expect(localStorage.getItem("ottr.ai.defaultMode")).toBe("auto");
+    expect(select.value).toBe("auto");
   });
 
   it("关闭（open=false）不渲染", () => {

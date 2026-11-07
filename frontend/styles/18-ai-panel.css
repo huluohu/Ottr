@@ -188,6 +188,16 @@
   flex: 1;
   min-width: 0;
 }
+/* 执行方式下拉（2026-11-07 用户反馈：档位 tabs 改为一个选择框，
+   不让用户「切模式才能操作」——默认逐条确认，选了才变）。 */
+.ai-mode-select {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
 /* 追问输入条：贴在面板底部（面板已是整高右栏，输入条随面板走）。 */
 .ai-followup-row {
   display: flex;
@@ -863,22 +873,6 @@
    index.css 清单，没必要。样式纪律：动效/圆角/字号/颜色一律走 token
    （css-discipline.test.ts 守卫），新增块顶部写清「为什么这么写」。 */
 
-/* 模式段控（输入区模式行，2026-11-05 从状态行迁来）：.ui-segmented 默认
-   段间距是 --space-4，三档标签加未授权提示在 280px 最小宽的面板里会溢出
-   ——这里只收紧间距，不改控件自身的视觉语言（段控是全仓统一控件，面板
-   不得自造一套）。 */
-.ai-input-mode-row .ui-segmented {
-  gap: var(--space-2);
-  flex: none;
-}
-.ai-status-row .ui-segmented button {
-  font-size: var(--text-xs);
-  /* 紧凑内距：全局默认是 4px/2px/8px（.ui-segmented button）。这里改用
-     间距令牌收紧竖向占位（--space-1 = 4px）——原 2px/2px/6px 在令牌面上
-     没有对应值（令牌最小档是 4px），故取最接近的 --space-1；字号已降到
-     --text-xs，段控件整体高度随之收紧。 */
-  padding: var(--space-1) var(--space-1);
-}
 /* auto 档的「尚未启用」提示：弱化小字 + 省略号截断（窄面板不换行撑高）。 */
 .ai-mode-hint {
   font-size: var(--text-2xs);

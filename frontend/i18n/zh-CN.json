@@ -531,9 +531,10 @@
       "stoppedInFlight": "这条主机工具请求已在回复停止前发出。它可能已完成、仍在运行或结果未知；停止回复不会取消或撤销已经发出的请求。"
     },
     "mode": {
-      "label": "执行模式",
+      "label": "执行方式",
       "plan": "规划",
-      "auto": "自动",
+      "auto": "自动执行",
+      "confirm": "逐条确认",
       "manual": "手动",
       "autoNotAuthorized": "该主机未授权自动执行（设置 → AI → 允许自动执行的主机）",
       "autoLocalDenied": "本地终端会话不给 AI 执行权（只给只读上下文）"
@@ -573,7 +574,7 @@
       "commandArg": "要执行的单行命令",
       "purposeArg": "这条命令的目的（会写进计划清单）",
       "execCommandPlan": "执行命令（当前为规划模式：只登记到计划，不会真正执行）",
-      "execCommandManual": "执行命令（当前为手动模式：命令会登记为待确认步骤，你点「执行」后才会真正运行）",
+      "execCommandManual": "执行命令（当前为逐条确认：命令会以待确认卡片出现，你在卡片上点「执行」后才会真正运行）",
       "execCommandAuto": "执行命令（当前为自动模式：只读命令会直接执行；写操作与不安全形态会降级为待你确认；危险命令会被直接拒绝）",
       "needPath": "缺少路径参数，未执行。",
       "needCommand": "缺少命令参数，未执行。",
@@ -681,7 +682,6 @@
       "stepLimitReached": "已到单轮命令上限（{{count}} 条），本轮不再执行更多命令。",
       "durationLimitReached": "已到单轮时长上限（{{seconds}} 秒），本轮不再执行更多命令。"
     },
-    "interruptAndSend": "打断并插入",
     "interruptPlaceholder": "正在回答——输入内容点发送即打断并插话"
   },
   "tabs": {

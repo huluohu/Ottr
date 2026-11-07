@@ -507,7 +507,8 @@ describe("plan 档：不提供执行入口", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
-    // 默认档 = plan
+    // 本测试专测「plan 档」语义：显式切到 plan（面板下拉已不提供，内部保留）
+    useAiStore.getState().setMode("pane-a", "plan");
     expect(slice()?.mode).toBe("plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
@@ -526,6 +527,7 @@ describe("plan 档：不提供执行入口", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -568,6 +570,7 @@ describe("模式切换：步骤不丢", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
     expect(slice()?.plan).toHaveLength(1);
@@ -590,6 +593,8 @@ describe("模式切换：步骤不丢", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -625,7 +630,9 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
-    // plan 档（默认）提问 → 清单里一条
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
+    // plan 档提问 → 清单里一条
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -681,6 +688,8 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -738,6 +747,8 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     seedLivePanes();
     script = execScript2();
     useAiStore.getState().openAsk(ASK_A);
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
     expect(slice()?.plan).toHaveLength(2);
@@ -766,6 +777,8 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
     useAiStore.getState().setMode("pane-a", "manual");
@@ -786,6 +799,8 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -809,6 +824,8 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     runResult = { error: "AI run rejected: scope revoked" };
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -827,6 +844,8 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     seedLivePanes();
     script = execScript();
     useAiStore.getState().openAsk(ASK_A);
+    // 本组测「plan 档登记 → 升档执行」链路：显式置 plan（默认已改逐条确认）
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 

@@ -33,9 +33,9 @@ beforeEach(() => {
 });
 
 describe("模式档位", () => {
-  it("三档 plan / auto / manual，默认 plan", () => {
+  it("内部保留三档 plan / auto / manual；默认 manual（逐条确认，2026-11-07 用户反馈：不让用户切模式才能操作）", () => {
     expect([...AI_EXEC_MODES]).toEqual(["plan", "auto", "manual"]);
-    expect(DEFAULT_AI_EXEC_MODE).toBe("plan");
+    expect(DEFAULT_AI_EXEC_MODE).toBe("manual");
   });
 
   it("isAiExecMode：只认三档", () => {
@@ -46,11 +46,12 @@ describe("模式档位", () => {
     expect(isAiExecMode(null)).toBe(false);
   });
 
-  it("normalizeAiExecMode：非法值回落 plan（不落到更宽松的档）", () => {
+  it("normalizeAiExecMode：非法值回落 manual（逐条确认 = 每条都要用户授权，仍是 fail-safe）", () => {
+    expect(normalizeAiExecMode("plan")).toBe("plan");
     expect(normalizeAiExecMode("manual")).toBe("manual");
-    expect(normalizeAiExecMode("bogus")).toBe("plan");
-    expect(normalizeAiExecMode(undefined)).toBe("plan");
-    expect(normalizeAiExecMode(42)).toBe("plan");
+    expect(normalizeAiExecMode("bogus")).toBe("manual");
+    expect(normalizeAiExecMode(undefined)).toBe("manual");
+    expect(normalizeAiExecMode(42)).toBe("manual");
   });
 });
 
@@ -190,15 +191,15 @@ describe("档位升级判定", () => {
 });
 
 describe("新对话默认执行模式（本机偏好）", () => {
-  it("无存档 → plan；写入后可读回", () => {
-    expect(readDefaultAiExecMode()).toBe("plan");
+  it("无存档 → manual；写入后可读回", () => {
+    expect(readDefaultAiExecMode()).toBe("manual");
     writeDefaultAiExecMode("manual");
     expect(localStorage.getItem(AI_DEFAULT_MODE_STORAGE_KEY)).toBe("manual");
     expect(readDefaultAiExecMode()).toBe("manual");
   });
 
-  it("存档被手改成非法值 → 回落 plan", () => {
+  it("存档被手改成非法值 → 回落 manual（逐条确认）", () => {
     localStorage.setItem(AI_DEFAULT_MODE_STORAGE_KEY, "yolo");
-    expect(readDefaultAiExecMode()).toBe("plan");
+    expect(readDefaultAiExecMode()).toBe("manual");
   });
 });

@@ -526,7 +526,9 @@
       "unknownTool": "工具已弗可用（對應之 MCP 伺已被除去或易名）",
       "limitReached": "工具呼叫輪次已達上限（{{count}} 輪），弗再行更多工具。請據已有之資作答。",
       "truncated": "…（已截斷）",
-      "hostCallLabel": "呼叫主機工具 {{tool}}"
+      "hostCallLabel": "呼叫主機工具 {{tool}}",
+      "stoppedBeforeDispatch": "此回已止；此工具調用未曾發出。",
+      "stoppedInFlight": "此回已止。此工具已發出，遠端之事或仍在行，結果未明；止回弗能撤之。"
     },
     "mode": {
       "label": "執行之式",
@@ -678,7 +680,9 @@
     "auto": {
       "stepLimitReached": "已至單輪命令之限（{{count}} 條），本輪不再執行更多命令。",
       "durationLimitReached": "已至單輪時長之限（{{seconds}} 秒），本輪不再執行更多命令。"
-    }
+    },
+    "interruptAndSend": "截斷而進言",
+    "interruptPlaceholder": "方答——入言而進，則截之"
   },
   "tabs": {
     "duplicate": "謄頁籤",

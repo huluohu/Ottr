@@ -527,7 +527,9 @@
       "unknownTool": "このツールは利用できません（対応する MCP サーバーが削除または改名されました）。",
       "limitReached": "ツール呼び出しの上限（{{count}} 回）に達しました。これ以上ツールは実行しません。すでに得られた情報に基づいて回答してください。",
       "truncated": "…（省略）",
-      "hostCallLabel": "ホストツール {{tool}} を呼び出し"
+      "hostCallLabel": "ホストツール {{tool}} を呼び出し",
+      "stoppedBeforeDispatch": "このツール呼び出しを送信する前に、返信を停止しました。",
+      "stoppedInFlight": "このツール呼び出しを送信した後に返信を停止しました。リモート操作はまだ実行中の可能性があり、結果は不明です。返信の停止で操作が取り消されることはありません。"
     },
     "mode": {
       "label": "実行モード",
@@ -679,7 +681,9 @@
     "auto": {
       "stepLimitReached": "1 ラウンドのコマンド上限（{{count}} 件）に達したため、このラウンドでは追加のコマンドを実行しません。",
       "durationLimitReached": "1 ラウンドの時間上限（{{seconds}} 秒）に達したため、このラウンドでは追加のコマンドを実行しません。"
-    }
+    },
+    "interruptAndSend": "割り込んで送信",
+    "interruptPlaceholder": "回答中です。入力して送信すると割り込みます"
   },
   "tabs": {
     "duplicate": "タブを複製",

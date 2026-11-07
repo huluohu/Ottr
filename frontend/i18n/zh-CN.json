@@ -526,7 +526,9 @@
       "unknownTool": "工具已不可用（对应的 MCP 服务已被移除或改名）",
       "limitReached": "工具调用轮次已达上限（{{count}} 轮），不再执行更多工具。请基于已有信息作答。",
       "truncated": "…（已截断）",
-      "hostCallLabel": "调用主机工具 {{tool}}"
+      "hostCallLabel": "调用主机工具 {{tool}}",
+      "stoppedBeforeDispatch": "回复已停止；此工具调用尚未发送。",
+      "stoppedInFlight": "这条主机工具请求已在回复停止前发出。它可能已完成、仍在运行或结果未知；停止回复不会取消或撤销已经发出的请求。"
     },
     "mode": {
       "label": "执行模式",
@@ -678,7 +680,9 @@
     "auto": {
       "stepLimitReached": "已到单轮命令上限（{{count}} 条），本轮不再执行更多命令。",
       "durationLimitReached": "已到单轮时长上限（{{seconds}} 秒），本轮不再执行更多命令。"
-    }
+    },
+    "interruptAndSend": "打断并插入",
+    "interruptPlaceholder": "正在回答——输入内容点发送即打断并插话"
   },
   "tabs": {
     "duplicate": "复制页签",

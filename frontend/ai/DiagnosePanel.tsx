@@ -221,6 +221,7 @@ export function DiagnosePanel({
   const close = useAiStore((s) => s.close);
   const resolveToolCall = useAiStore((s) => s.resolveToolCall);
   const resolvePlanStep = useAiStore((s) => s.resolvePlanStep);
+  const interrupt = useAiStore((s) => s.interrupt);
   const setMode = useAiStore((s) => s.setMode);
   /** 自动档授权（第三步）：当前目标主机是否被授权自动执行。
    *  null = 未知/不适用（本地会话、还没查）。 */
@@ -255,14 +256,20 @@ export function DiagnosePanel({
   }, [mode, hostId, isLocal]);
 
   const running = status === "running";
-  // 有待处置的执行步骤时同样禁输入：那一次模型 tool call 还没被回答，
-  // 插新的一轮会让 provider 协议缺 tool 消息（400）。
+  const canInterrupt = running && slice.streamStartedRunId === slice.runId && slice.runId != null;
+  // 输入禁用面（2026-11-06 A 方案「打断插话」）：**运行中不再禁输入**——
+  // 用户随时可以打字，点发送 = 自动停止当前回复 + 插话继续（interrupt）。
+  // 其余禁用面不变：
+  // * 外部 MCP 工具挂起 / 执行步骤待处置 → 禁（那次模型 tool call 还没被
+  //   回答，插新的一轮会让 provider 协议缺 tool 消息，400）；
+  // * 旧对话只读 → 禁（续问须新对话）。
   const inputDisabled =
-    running ||
     conversationReadonly ||
     pendingToolCalls.length > 0 ||
     runningToolCallId !== null ||
-    awaitingSteps.length > 0;
+    slice.runningHostToolCallId != null ||
+    awaitingSteps.length > 0 ||
+    planSteps.some((step) => step.status === "executing");
 
   // **输入框自动聚焦**（2026-11-03 真机验收抓到的缺陷）：面板打开后焦点仍
   // 留在终端的 xterm textarea —— 用户以为在面板里问，第一句话却被**打进
@@ -761,9 +768,11 @@ export function DiagnosePanel({
               : t("ai.followupPlaceholder")
           }
           placeholder={
-            request.kind === "ask" && messages.length === 0
-              ? t("ai.askPlaceholder")
-              : t("ai.followupPlaceholder")
+            running
+              ? t("ai.interruptPlaceholder")
+              : request.kind === "ask" && messages.length === 0
+                ? t("ai.askPlaceholder")
+                : t("ai.followupPlaceholder")
           }
           value={draft}
           disabled={inputDisabled}
@@ -777,12 +786,30 @@ export function DiagnosePanel({
             e.preventDefault();
             const text = draft.trim();
             if (text === "") return;
-            void run(sessionId, text);
+            // 运行中 Enter = 打断插话（与按钮同语义）；空闲 = 普通发送。
+            if (canInterrupt) {
+              void interrupt(sessionId, text, slice.runId);
+            } else if (!running) {
+              void run(sessionId, text);
+            } else {
+              return;
+            }
           }}
         />
         {running ? (
-          <button className="ai-stop" data-testid="ai-followup-stop" onClick={() => abort(sessionId)}>
-            {t("ai.stop")}
+          // 流式回答开始后，草稿非空时可「打断并插入」；纯停止仍由状态行按钮完成。
+          <button
+            className="btn-accent"
+            data-testid="ai-followup-interrupt"
+            disabled={inputDisabled || !canInterrupt || draft.trim() === ""}
+            aria-label={`${t("ai.interruptAndSend")}: ${draft.trim()}`}
+            onClick={() => {
+              const text = draft.trim();
+              if (text === "" || !canInterrupt) return;
+              void interrupt(sessionId, text, slice.runId);
+            }}
+          >
+            {t("ai.interruptAndSend")}
           </button>
         ) : (
           <button

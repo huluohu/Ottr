@@ -266,9 +266,9 @@ describe("模式切换的位置（2026-11-05 用户反馈）", () => {
       screen.getByTestId("ai-mode-switch").querySelectorAll("button"),
     );
     expect(buttons.every((b) => !b.disabled)).toBe(true);
-    // 输入框此时禁用（并发轮约束），但模式选择不受牵连。
+    // 输入框此时也可用（打断插话，2026-11-06 A 方案）。
     expect((screen.getByTestId("ai-followup-input") as HTMLTextAreaElement).disabled).toBe(
-      true,
+      false,
     );
   });
 });

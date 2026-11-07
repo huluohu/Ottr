@@ -73,6 +73,8 @@
     "sectionSecurity": "Sicurezza",
     "closeToTray": "Nascondi nell'area di notifica alla chiusura",
     "closeToTrayHint": "Ottr resta nell'area di notifica dopo la chiusura; per uscire, usa il menu di Ottr nella barra dei menu.",
+    "rememberWindowSize": "Ricorda le dimensioni della finestra",
+    "rememberWindowSizeHint": "Ripristina le dimensioni e la posizione dell'ultima finestra (incluso il massimo) all'apertura di Ottr. Salvato solo su questa macchina.",
     "shellIntegration": "Integrazione automatica della shell",
     "shellIntegrationHint": "Rileva la shell remota alla connessione e inserisce marcatori OSC 133/OSC 7 che alimentano la ricerca nella cronologia e la diagnosi degli errori; le shell remote con integrazione già presente vengono ignorate.",
     "recordingSaveDir": "Cartella di salvataggio delle registrazioni",

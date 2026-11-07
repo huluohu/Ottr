@@ -73,6 +73,8 @@
     "sectionSecurity": "セキュリティ",
     "closeToTray": "閉じるとトレイに隠す",
     "closeToTrayHint": "閉じても Ottr はシステムトレイに残ります。トレイから終了してください。",
+    "rememberWindowSize": "前回のウィンドウサイズを記憶",
+    "rememberWindowSizeHint": "次回起動時に前回のウィンドウサイズと位置（最大化を含む）を復元します。この端末にのみ保存されます。",
     "shellIntegration": "シェル統合の自動検出",
     "shellIntegrationHint": "接続時にリモートシェルを検出し、履歴検索と障害の診断を支える OSC 133/OSC 7 マーカーを挿入します。既に統合済みのリモートはスキップされます。",
     "recordingSaveDir": "録画の保存先フォルダ",

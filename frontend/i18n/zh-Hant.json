@@ -73,6 +73,8 @@
     "sectionSecurity": "安全",
     "closeToTray": "關閉窗口時隱藏到托盤",
     "closeToTrayHint": "關閉後 Ottr 常駐系統托盤，可從托盤退出。",
+    "rememberWindowSize": "記住上次的窗口尺寸",
+    "rememberWindowSizeHint": "下次打開 Ottr 時恢復上次的窗口大小與位置（含最大化）。僅保存在本機。",
     "shellIntegration": "Shell 集成自動注入",
     "shellIntegrationHint": "連接時自動探測遠端 shell 並注入 OSC 133/OSC 7 片段，驅動歷史搜尋與報錯即診；已自帶集成的遠端自動跳過。",
     "recordingSaveDir": "錄製保存目錄",

@@ -120,6 +120,75 @@ describe("侧栏品牌卡的版本号（2026-11-03 用户实机发现：这里�
   });
 });
 
+describe("侧栏导航键盘上下键（2026-11-07 用户反馈）", () => {
+  it("ArrowDown 移到下一项并立即切档、焦点跟随（选择跟随焦点）", () => {
+    seedMode("keyring");
+    renderDialog();
+    fireEvent.keyDown(screen.getByTestId("settings-nav-general"), { key: "ArrowDown" });
+    expect(screen.getByTestId("settings-nav-security").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByTestId("settings-nav-security"));
+    expect((screen.getByTestId("security-section") as HTMLElement).hidden).toBe(false);
+    expect((screen.getByTestId("general-section") as HTMLElement).hidden).toBe(true);
+  });
+
+  it("ArrowUp 从首项回绕到末项；ArrowDown 从末项回绕到首项；Home/End 跳首尾", () => {
+    seedMode("keyring");
+    renderDialog();
+    fireEvent.keyDown(screen.getByTestId("settings-nav-general"), { key: "ArrowUp" });
+    expect(screen.getByTestId("settings-nav-about").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByTestId("settings-nav-about"));
+    fireEvent.keyDown(screen.getByTestId("settings-nav-about"), { key: "ArrowDown" });
+    expect(screen.getByTestId("settings-nav-general").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByTestId("settings-nav-general"), { key: "End" });
+    expect(screen.getByTestId("settings-nav-about").getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(screen.getByTestId("settings-nav-about"), { key: "Home" });
+    expect(screen.getByTestId("settings-nav-general").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("roving tabindex：选中项 0 可 Tab 进入，其余 -1 不进 Tab 序", () => {
+    seedMode("keyring");
+    renderDialog();
+    expect(screen.getByTestId("settings-nav-general").tabIndex).toBe(0);
+    expect(screen.getByTestId("settings-nav-security").tabIndex).toBe(-1);
+    fireEvent.click(screen.getByTestId("settings-nav-about"));
+    expect(screen.getByTestId("settings-nav-about").tabIndex).toBe(0);
+    expect(screen.getByTestId("settings-nav-general").tabIndex).toBe(-1);
+  });
+
+  it("搜索隐藏的项被跳过：只剩「安全」可见时 ArrowDown 不落到隐藏的相邻项", () => {
+    seedMode("keyring");
+    renderDialog();
+    fireEvent.change(screen.getByTestId("settings-search-input"), {
+      target: { value: "安全" },
+    });
+    expect(screen.getByTestId("settings-nav-security").style.display).not.toBe("none");
+    expect(screen.getByTestId("settings-nav-general").style.display).toBe("none");
+    fireEvent.keyDown(screen.getByTestId("settings-nav-security"), { key: "ArrowDown" });
+    expect(screen.getByTestId("settings-nav-security").getAttribute("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(screen.getByTestId("settings-nav-security"));
+  });
+
+  it("选中项被搜索隐藏时，第一个可见项接棒成为 Tab 停靠点", () => {
+    seedMode("keyring");
+    renderDialog();
+    fireEvent.click(screen.getByTestId("settings-nav-about"));
+    fireEvent.change(screen.getByTestId("settings-search-input"), {
+      target: { value: "安全" },
+    });
+    expect(screen.getByTestId("settings-nav-security").tabIndex).toBe(0);
+    expect(screen.getByTestId("settings-nav-about").tabIndex).toBe(-1);
+  });
+
+  it("搜索框里的上下键保持原生光标行为，不切分区", () => {
+    seedMode("keyring");
+    renderDialog();
+    const input = screen.getByTestId("settings-search-input");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(screen.getByTestId("settings-nav-general").getAttribute("aria-selected")).toBe("true");
+    expect((screen.getByTestId("general-section") as HTMLElement).hidden).toBe(false);
+  });
+});
+
 describe("SecuritySettings", () => {
   it("keyring 模式：钥匙链徽标 + 升级入口；无「立即锁定」、无自动锁定配置", async () => {
     seedMode("keyring");

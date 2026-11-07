@@ -6,7 +6,7 @@
 // * 手动锁定按钮（password 模式；Task 14 快捷键接 vault_lock 同一命令）；
 // * 外观（主题网格）/语言两项沿用 T2 词典键——persist 已迁 vault settings
 //   （ThemeContext / i18n index 负责读写，本页只触发 setMode/setLang）。
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
@@ -414,6 +414,11 @@ export function SecuritySettings({
 
   // 退场动画窗（评审 P1-8）：open=false 后保留挂载播镜像动画，再真卸载。
   const mount = useDelayedUnmount(open);
+  // ★ 必须在 `if (!mount.shouldRender) return null` 早退**之前**：hooks 数量
+  //   在「未挂载 → 挂载」两次渲染间必须一致，否则 React 报 "Rendered more
+  //   hooks than during the previous render"（2026-11-07 侧栏键盘导航时踩到，
+  //   同 2026-11-03 DiagnosePanel 的教训）。
+  const navButtonRefs = useRef<Partial<Record<SettingsPane, HTMLButtonElement | null>>>({});
   if (!mount.shouldRender) return null;
 
   function validate(): string | null {
@@ -518,6 +523,51 @@ export function SecuritySettings({
 
   const isPasswordMode = lockMode === "password";
 
+  // --- 侧栏导航键盘上下键（2026-11-07 用户反馈）---
+  // WAI-ARIA tabs 纵向键盘模式 + 桌面惯例（macOS 系统设置）：**焦点即选中**
+  // ——上下键移动到相邻可见项并立即切档（这是我定的交互裁定；若你想要
+  // 「只移动高亮、Enter 才切档」告诉我即可改）。搜索隐藏的项跳过，列表
+  // 首尾回绕；Home/End 跳首尾。搜索框内方向键保持原生光标行为（监听只挂
+  // 在分区按钮上）。
+  // 可见项判定与渲染共用同一套搜索过滤——键盘导航看到的项和显示的项必须一致。
+  const visiblePaneIds = PANE_TABS.filter(
+    (p) =>
+      !searchQuery.trim() ||
+      t(p.labelKey).toLowerCase().includes(searchQuery.trim().toLowerCase()),
+  ).map((p) => p.id);
+  // roving tabindex：Tab 键在列表只停一次（落在当前分区）；当前分区被搜索
+  // 隐藏时由第一个可见项接棒，保证列表里始终有可达的 Tab 停靠点。
+  const tabbablePaneId = visiblePaneIds.includes(pane) ? pane : visiblePaneIds[0];
+  const focusNavPane = (dir: "next" | "prev" | "first" | "last"): void => {
+    if (visiblePaneIds.length === 0) return;
+    const at = visiblePaneIds.indexOf(pane);
+    const target =
+      dir === "first"
+        ? visiblePaneIds[0]
+        : dir === "last"
+          ? visiblePaneIds[visiblePaneIds.length - 1]
+          : at === -1
+            ? visiblePaneIds[dir === "next" ? 0 : visiblePaneIds.length - 1]
+            : visiblePaneIds[(at + (dir === "next" ? 1 : -1) + visiblePaneIds.length) % visiblePaneIds.length];
+    setPane(target);
+    navButtonRefs.current[target]?.focus();
+  };
+  const onNavKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      focusNavPane("next");
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      focusNavPane("prev");
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      focusNavPane("first");
+    } else if (e.key === "End") {
+      e.preventDefault();
+      focusNavPane("last");
+    }
+  };
+
   return (
     <div
       className={`overlay${mount.closing ? " closing" : ""}`}
@@ -536,6 +586,7 @@ export function SecuritySettings({
           <nav
             className="settings-nav"
             role="tablist"
+            aria-orientation="vertical"
             aria-label={t("settings.title")}
             data-testid="settings-nav"
           >
@@ -594,19 +645,21 @@ export function SecuritySettings({
               </div>
             </div>
             {PANE_TABS.map((p) => {
-              const matchesSearch =
-                !searchQuery.trim() ||
-                t(p.labelKey).toLowerCase().includes(searchQuery.trim().toLowerCase());
               return (
                 <button
                   key={p.id}
+                  ref={(el) => {
+                    navButtonRefs.current[p.id] = el;
+                  }}
                   type="button"
                   role="tab"
                   aria-selected={pane === p.id}
+                  tabIndex={p.id === tabbablePaneId ? 0 : -1}
                   data-testid={`settings-nav-${p.id}`}
                   className="settings-nav-item"
-                  style={matchesSearch ? undefined : { display: "none" }}
+                  style={visiblePaneIds.includes(p.id) ? undefined : { display: "none" }}
                   onClick={() => setPane(p.id)}
+                  onKeyDown={onNavKeyDown}
                 >
                   <span className={`nav-icon-badge badge-${p.id}`} aria-hidden="true">
                     {PANE_ICONS[p.id]}

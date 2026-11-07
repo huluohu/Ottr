@@ -91,10 +91,15 @@ describe("执行方式下拉（2026-11-07 用户反馈：tabs 改选择框，不
     );
   });
 
-  it("逐条确认档不显示该提示", () => {
+  it("未授权主机上逐条确认档也提示（下拉里「自动执行」置灰，原因必须常显）", async () => {
+    // 2026-11-07 档位改下拉：自动执行选项常驻可见，未授权时置灰——原因不能
+    // 只在选中后才出现（旧段控懒查询的坑）。授权查询失败/拒绝 → 视为未授权。
     seed({ mode: "manual" });
     render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
-    expect(screen.queryByTestId("ai-mode-auto-hint")).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId("ai-mode-auto-hint").textContent).toContain("未授权"),
+    );
+    expect((screen.getByTestId("ai-mode-switch") as HTMLSelectElement).value).toBe("manual");
   });
 });
 

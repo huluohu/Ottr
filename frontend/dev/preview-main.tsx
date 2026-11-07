@@ -758,6 +758,83 @@ async function render() {
     );
     return;
   }
+  // 「问 Ottr」面板目检/浏览器级交互验证（2026-11-07 用户反馈三项：档位下拉、
+  // 按钮恒「发送」、默认可授权执行）：?ai=1 —— 种子一条「流式回答中」的 AI
+  // 会话（streamStartedRunId 已置，半截回答在历史里），面板可真实交互：
+  // 改下拉/打字/点发送（interrupt 链真实生效——浏览器里 provider 端点不通，
+  // 链尾落 noProvider 错误态属预期）。window.__ai 暴露面板切片给断言面。
+  if (new URLSearchParams(location.search).get("ai") === "1") {
+    const { DiagnosePanel } = await import("./../ai/DiagnosePanel");
+    const { useAiStore } = await import("./../ai/aiStore");
+    const { useSessionStore } = await import("./../session/SessionStore");
+    const { useVaultLockStore } = await import("./../security/VaultLockStore");
+    useVaultLockStore.setState({ phase: "unlocked", mode: "password" } as never);
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: "pane-a", hostId: 7, hostName: "web-01", address: "10.0.0.1", port: 22,
+          username: "deploy", protocol: "ssh", jumpChainId: null, status: "connected",
+          rustId: "pty-a", attempt: 0, lastError: null, nextRetryAt: null, paneOf: null,
+          encoding: "utf-8", encodingOverride: "utf-8", encodingHint: null,
+          isProduction: false, connectionEpoch: 1,
+        },
+      ],
+      activeId: "pane-a",
+      activePane: {},
+    } as never);
+    const target = {
+      paneSessionId: "pane-a", rootTabId: "pane-a", rustId: "pty-a",
+      connectionEpoch: 1, kind: "ssh" as const, hostId: 7,
+    };
+    useAiStore.setState({
+      sessions: {
+        "pane-a": {
+          request: {
+            kind: "ask", sessionId: "pane-a", rustId: "pty-a", hostId: 7,
+            hostName: "web-01", target,
+          },
+          status: "running",
+          answer: "REMOTE_PARTIAL",
+          errorKind: null,
+          error: null,
+          redactions: [],
+          settingsUsed: null,
+          seen: true,
+          usage: null,
+          modelUsed: null,
+          elapsedMs: null,
+          messages: [
+            { role: "user", content: "Check memory usage" },
+            { role: "assistant", content: "REMOTE_PARTIAL", scopeId: "scope-x", runId: "run-live" },
+          ],
+          pendingToolCalls: [],
+          toolRounds: 0,
+          runningToolCallId: null,
+          runningHostToolCallId: null,
+          runningHostToolRunId: null,
+          streamStartedRunId: "run-live",
+          conversationId: "conv-1",
+          target,
+          scope: null,
+          runId: "run-live",
+          draft: "",
+          conversationReadonly: false,
+          mode: "manual",
+          plan: [],
+        },
+      },
+    } as never);
+    (window as unknown as Record<string, unknown>).__ai = () =>
+      (useAiStore.getState() as { sessions: Record<string, unknown> }).sessions["pane-a"];
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider>
+          <DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    return;
+  }
   if (updateMode) {
     const { IconRail } = await import("./../app/IconRail");
     const { useUpdateStore } = await import("./../update/updateStore");

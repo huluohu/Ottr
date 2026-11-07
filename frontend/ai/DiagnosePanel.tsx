@@ -228,18 +228,17 @@ export function DiagnosePanel({
   const hostId = target?.hostId ?? null;
   const isLocal = target?.kind === "local";
   useEffect(() => {
-    // 只在「当前档位是自动」时查——省一次 IPC，且不影响其它档位。
-    if (mode !== "auto") {
-      setAutoAuthorized(null);
-      return;
-    }
+    // 2026-11-07 档位改下拉：自动执行选项**常驻可见**，未授权时要置灰并说明
+    // 原因——授权态必须在挂载时就查（旧段控只在切到自动时才查，懒查询让
+    // 「可点但降级」的坑藏进下拉里）。面板挂载/目标变化时查一次，缓存空/
+    // 过期由 policy store 的 refresh 兜底。
     if (isLocal || hostId == null) {
       setAutoAuthorized(false);
       return;
     }
     let alive = true;
     // 授权真源在后端（vault 表）；前端读共享 store 的缓存，缓存空/过期时
-    // 重新拉一次（面板每次切到自动档都会问一遍）。
+    // 重新拉一次。
     void useAiPolicyStore
       .getState()
       .refresh()
@@ -252,7 +251,7 @@ export function DiagnosePanel({
     return () => {
       alive = false;
     };
-  }, [mode, hostId, isLocal]);
+  }, [hostId, isLocal]);
 
   const running = status === "running";
   const canInterrupt = running && slice.streamStartedRunId === slice.runId && slice.runId != null;
@@ -738,10 +737,9 @@ export function DiagnosePanel({
             {t("ai.mode.auto")}
           </option>
         </select>
-        {mode === "auto" && autoAuthorized === false && (
-          // 未授权（或本地会话）：说清楚为什么不能自动跑 + 去哪开。
-          // role=status：出现时读屏播报一句（用户切到自动档却没反应时，
-          // 这条是唯一的解释）。
+        {autoAuthorized === false && (
+          // 未授权（或本地会话）：说清楚为什么「自动执行」置灰 + 去哪开。
+          // 下拉里该选项常驻可见，禁用原因必须常显（role=status 读屏播报）。
           <span className="ai-mode-hint" data-testid="ai-mode-auto-hint" role="status">
             {isLocal ? t("ai.mode.autoLocalDenied") : t("ai.mode.autoNotAuthorized")}
           </span>

@@ -534,7 +534,8 @@
     "mode": {
       "label": "Modalità di esecuzione",
       "plan": "Pianifica",
-      "auto": "Automatico",
+      "auto": "Esecuzione automatica",
+      "confirm": "Conferma uno a uno",
       "manual": "Manuale",
       "autoNotAuthorized": "Questo host non è autorizzato all'esecuzione automatica (Impostazioni → AI → Host autorizzati all'esecuzione automatica)",
       "autoLocalDenied": "Le sessioni terminale locali non concedono mai diritti di esecuzione all'IA (solo contesto di lettura)"
@@ -574,7 +575,7 @@
       "commandArg": "Comando a una sola riga da eseguire",
       "purposeArg": "Scopo di questo comando (verrà annotato nel piano)",
       "execCommandPlan": "Esegui comando (modalità corrente: pianifica; viene solo registrato nel piano, non viene eseguito)",
-      "execCommandManual": "Esegui comando (modalità corrente: manuale; il comando viene registrato come passo in attesa di conferma e viene eseguito solo dopo aver premuto Esegui)",
+      "execCommandManual": "Esegui comando (modalità corrente: conferma uno a uno; il comando appare come scheda in attesa di conferma e viene eseguito solo dopo aver premuto Esegui)",
       "execCommandAuto": "Esegui un comando (modalità corrente: automatico; i comandi di sola lettura si eseguono direttamente, le operazioni di scrittura e le forme non sicure passano alla tua conferma, i comandi pericolosi vengono rifiutati)",
       "needPath": "Manca l'argomento percorso; nulla è stato eseguito.",
       "needCommand": "Manca l'argomento comando; nulla è stato eseguito.",
@@ -682,7 +683,6 @@
       "stepLimitReached": "Raggiunto il limite di comandi per turno ({{count}}); in questo turno non sono stati eseguiti altri comandi.",
       "durationLimitReached": "Raggiunto il limite di tempo per turno ({{seconds}} s); in questo turno non sono stati eseguiti altri comandi."
     },
-    "interruptAndSend": "Interrompi e invia",
     "interruptPlaceholder": "In risposta: scrivi e invia per interrompere con il tuo messaggio"
   },
   "tabs": {

@@ -59,37 +59,27 @@ afterEach(() => {
   useAiStore.setState({ sessions: {} });
 });
 
-describe("状态行的模式切换", () => {
-  it("渲染三档（plan / auto / manual），当前档 aria-pressed", () => {
-    seed({ mode: "plan" });
+describe("执行方式下拉（2026-11-07 用户反馈：tabs 改选择框，不让用户切模式才能操作）", () => {
+  it("下拉两档（逐条确认 / 自动执行），当前值即会话档位", () => {
+    seed({ mode: "manual" });
     render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
-    const group = screen.getByTestId("ai-mode-switch");
-    expect(group.getAttribute("role")).toBe("group");
-    const buttons = Array.from(group.querySelectorAll("button"));
-    expect(buttons.map((b) => b.textContent)).toEqual(["规划", "自动", "手动"]);
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
-    expect(buttons[1].getAttribute("aria-pressed")).toBe("false");
+    const select = screen.getByTestId("ai-mode-switch") as HTMLSelectElement;
+    expect(select.tagName).toBe("SELECT");
+    const options = Array.from(select.querySelectorAll("option"));
+    expect(options.map((o) => o.value)).toEqual(["manual", "auto"]);
+    expect(options.map((o) => o.textContent)).toEqual(["逐条确认", "自动执行"]);
+    expect(select.value).toBe("manual");
+    // 「规划」档不再出现在面板（确认卡本身就是计划）。
+    expect(options.some((o) => o.value === "plan")).toBe(false);
   });
 
-  it("缺省（字段未设）按 plan 显示", () => {
-    seed();
-    render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
-    const buttons = Array.from(
-      screen.getByTestId("ai-mode-switch").querySelectorAll("button"),
-    );
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("点「手动」→ setMode(sessionId, manual)", () => {
+  it("切到「自动执行」→ setMode(sessionId, auto)", () => {
     const setModeSpy = vi.fn();
     useAiStore.setState({ setMode: setModeSpy });
-    seed({ mode: "plan" });
+    seed({ mode: "manual" });
     render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
-    const buttons = Array.from(
-      screen.getByTestId("ai-mode-switch").querySelectorAll("button"),
-    );
-    fireEvent.click(buttons[2]);
-    expect(setModeSpy).toHaveBeenCalledWith("pane-a", "manual");
+    fireEvent.change(screen.getByTestId("ai-mode-switch"), { target: { value: "auto" } });
+    expect(setModeSpy).toHaveBeenCalledWith("pane-a", "auto");
   });
 
   it("auto 档且该主机未授权 → 提示未授权（不假装能自动跑）", async () => {
@@ -101,7 +91,7 @@ describe("状态行的模式切换", () => {
     );
   });
 
-  it("plan / manual 档不显示该提示", () => {
+  it("逐条确认档不显示该提示", () => {
     seed({ mode: "manual" });
     render(<DiagnosePanel sessionId="pane-a" onOpenSettings={() => {}} />);
     expect(screen.queryByTestId("ai-mode-auto-hint")).toBeNull();

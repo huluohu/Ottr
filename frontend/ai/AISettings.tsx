@@ -29,9 +29,8 @@ import {
   type RedactionConfig,
 } from "./settings";
 import { InfoHint } from "../ui/InfoHint";
-import { SegmentedControl } from "../ui/SegmentedControl";
 import {
-  AI_EXEC_MODES,
+  normalizeAiExecMode,
   readDefaultAiExecMode,
   writeDefaultAiExecMode,
   type AiExecMode,
@@ -405,26 +404,26 @@ export function AISettings({ open, onClose, embedded = false }: AISettingsProps)
               }}
             />
           </label>
-          {/* 新对话默认执行模式（2026-11-04 第一步）：用现成 SegmentedControl
-              （禁裸 checkbox——全仓守卫 ui-no-native-controls.test.ts）。
-              行容器用 div 而非 label：段控内是按钮，套在 label 里会误触发
-              点击关联（label 的隐式提交/聚焦行为）。 */}
+          {/* 新对话默认执行模式（2026-11-07 用户反馈：与面板下拉同款两档——
+              逐条确认（默认）/ 自动执行；「规划」档已从 UI 移除。原生 select
+              与设置页其余下拉一致（守卫只禁裸 checkbox）。行容器用 div 而非
+              label：套在 label 里会误触发点击关联。 */}
           <div className="settings-row">
             <span className="settings-label">{t("ai.settings.defaultExecMode")}</span>
             <InfoHint text={t("ai.settings.defaultExecModeHint")} />
-            <SegmentedControl
+            <select
+              data-testid="ai-default-exec-mode"
+              aria-label={t("ai.settings.defaultExecMode")}
               value={defaultMode}
-              options={AI_EXEC_MODES.map((m) => ({
-                value: m,
-                label: t(`ai.mode.${m}`),
-              }))}
-              onChange={(v) => {
+              onChange={(e) => {
+                const v = normalizeAiExecMode(e.currentTarget.value);
                 setDefaultMode(v);
                 writeDefaultAiExecMode(v);
               }}
-              ariaLabel={t("ai.settings.defaultExecMode")}
-              testid="ai-default-exec-mode"
-            />
+            >
+              <option value="manual">{t("ai.mode.confirm")}</option>
+              <option value="auto">{t("ai.mode.auto")}</option>
+            </select>
           </div>
           {/* AI 只读探查总开关（2026-11-04 修补 B3）：关掉后「读文件 / 列
               目录」两个内建工具**不进 AI 工具目录**（模型看不到它们），其余

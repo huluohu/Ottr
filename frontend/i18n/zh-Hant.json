@@ -531,9 +531,10 @@
       "stoppedInFlight": "回覆已停止。此工具呼叫已送出，遠端動作可能仍在進行，結果未知；停止回覆不會撤銷它。"
     },
     "mode": {
-      "label": "執行模式",
+      "label": "執行方式",
       "plan": "規劃",
-      "auto": "自動",
+      "auto": "自動執行",
+      "confirm": "逐條確認",
       "manual": "手動",
       "autoNotAuthorized": "該主機未授權自動執行（設定 → AI → 允許自動執行的主機）",
       "autoLocalDenied": "本地終端會話不給 AI 執行權（只給唯讀上下文）"
@@ -573,7 +574,7 @@
       "commandArg": "要執行的單行命令",
       "purposeArg": "這條命令的目的（會寫進計劃清單）",
       "execCommandPlan": "執行命令（目前為規劃模式：只登記到計劃，不會真正執行）",
-      "execCommandManual": "執行命令（目前為手動模式：命令會登記為待確認步驟，你點「執行」後才會真正執行）",
+      "execCommandManual": "執行命令（目前為逐條確認：命令會以待確認卡片出現，你在卡片上點「執行」後才會真正執行）",
       "execCommandAuto": "執行命令（目前為自動模式：唯讀命令會直接執行；寫操作與不安全形態會降級為待你確認；危險命令會被直接拒絕）",
       "needPath": "缺少路徑參數，未執行。",
       "needCommand": "缺少命令參數，未執行。",
@@ -681,7 +682,6 @@
       "stepLimitReached": "已到單輪命令上限（{{count}} 條），本輪不再執行更多命令。",
       "durationLimitReached": "已到單輪時長上限（{{seconds}} 秒），本輪不再執行更多命令。"
     },
-    "interruptAndSend": "打斷並插入",
     "interruptPlaceholder": "正在回答——輸入內容點發送即打斷並插話"
   },
   "tabs": {

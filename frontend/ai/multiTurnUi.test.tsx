@@ -131,7 +131,7 @@ describe("诊断面板多轮 UI", () => {
     expect(runSpy).toHaveBeenCalledWith("tab-1", "不对，请用 truncate");
   });
 
-  it("首个流式片段到达前允许输入，但不接受打断发送", () => {
+  it("首个流式片段到达前允许输入，但不接受打断发送（发送钮短暂禁用）", () => {
     seed({
       status: "running",
       runId: "run-preparing",
@@ -142,7 +142,7 @@ describe("诊断面板多轮 UI", () => {
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     const input = screen.getByTestId("ai-followup-input") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect((screen.getByTestId("ai-followup-interrupt") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("ai-followup-send") as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(interruptSpy).not.toHaveBeenCalled();
     expect(input.value).toBe("补充问题");
@@ -158,7 +158,7 @@ describe("诊断面板多轮 UI", () => {
     expect(interruptSpy).toHaveBeenCalledWith("tab-1", "先别删", "run-current");
   });
 
-  it("运行中点击打断按钮也携带渲染快照的 runId", () => {
+  it("运行中点「发送」即打断并插话（按钮文案恒为发送，2026-11-07 用户反馈）", () => {
     seed({
       status: "running",
       runId: "run-current",
@@ -167,7 +167,9 @@ describe("诊断面板多轮 UI", () => {
     });
     const interruptSpy = vi.spyOn(useAiStore.getState(), "interrupt").mockResolvedValue(undefined);
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
-    fireEvent.click(screen.getByTestId("ai-followup-interrupt"));
+    const send = screen.getByTestId("ai-followup-send") as HTMLButtonElement;
+    expect(send.textContent).toBe("发送");
+    fireEvent.click(send);
     expect(interruptSpy).toHaveBeenCalledWith("tab-1", "先别删", "run-current");
   });
 
@@ -209,17 +211,23 @@ describe("诊断面板多轮 UI", () => {
     expect(runSpy).not.toHaveBeenCalled();
   });
 
-  it("运行中：输入可用、显示「打断并插入」钮（2026-11-06 A 方案）", () => {
-    // 旧交互 = 运行中禁输入、只有「停止」；用户裁定改为打断插话：
-    // 输入框可打字，草稿非空时按钮变「打断并插入」（发送 = 自动停止 + 插话）。
-    seed({ status: "running", streamStartedRunId: "run-live", runId: "run-live" });
+  it("运行中：输入可用、按钮恒为「发送」（2026-11-07 用户反馈：不再变「打断并插入」）", () => {
+    seed({
+      status: "running",
+      streamStartedRunId: "run-live",
+      runId: "run-live",
+      draft: "先看看",
+    });
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect((screen.getByTestId("ai-followup-input") as HTMLTextAreaElement).disabled).toBe(false);
     expect(screen.queryByTestId("ai-followup-stop")).toBeNull();
-    expect(screen.getByTestId("ai-followup-interrupt")).toBeTruthy();
+    expect(screen.queryByTestId("ai-followup-interrupt")).toBeNull();
+    const send = screen.getByTestId("ai-followup-send") as HTMLButtonElement;
+    expect(send.textContent).toBe("发送");
+    expect(send.disabled).toBe(false);
   });
 
-  it("运行中草稿为空 → 打断钮禁用（按钮恒在，有内容才能点）", () => {
+  it("运行中草稿为空 → 发送钮禁用（有内容才能点）", () => {
     seed({
       status: "running",
       runId: "run-current",
@@ -227,7 +235,7 @@ describe("诊断面板多轮 UI", () => {
       draft: "",
     });
     const { unmount } = render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
-    const btn = screen.getByTestId("ai-followup-interrupt") as HTMLButtonElement;
+    const btn = screen.getByTestId("ai-followup-send") as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
     // 有草稿即可点。
     unmount();
@@ -239,7 +247,7 @@ describe("诊断面板多轮 UI", () => {
     });
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     expect(
-      (screen.getByTestId("ai-followup-interrupt") as HTMLButtonElement).disabled,
+      (screen.getByTestId("ai-followup-send") as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 

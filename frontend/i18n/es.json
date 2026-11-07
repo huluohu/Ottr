@@ -534,7 +534,8 @@
     "mode": {
       "label": "Modo de ejecución",
       "plan": "Planificar",
-      "auto": "Automático",
+      "auto": "Ejecución automática",
+      "confirm": "Confirmar uno a uno",
       "manual": "Manual",
       "autoNotAuthorized": "Este host no está autorizado para ejecutar automáticamente (Ajustes → AI → Hosts que pueden ejecutar automáticamente)",
       "autoLocalDenied": "Las terminales locales nunca dan derechos de ejecución a la IA (solo contexto de lectura)"
@@ -574,7 +575,7 @@
       "commandArg": "Comando de una sola línea que se ejecutará",
       "purposeArg": "Propósito de este comando (se anota en el plan)",
       "execCommandPlan": "Ejecutar comando (modo actual: planificar; solo se registra en el plan, no se ejecuta)",
-      "execCommandManual": "Ejecutar comando (modo actual: manual; el comando se registra como paso pendiente de confirmación y solo se ejecuta al pulsar Ejecutar)",
+      "execCommandManual": "Ejecutar comando (modo actual: confirmar uno a uno; el comando aparece como tarjeta pendiente de confirmación y solo se ejecuta al pulsar Ejecutar)",
       "execCommandAuto": "Ejecuta un comando (modo actual: automático; los comandos de solo lectura se ejecutan directamente, las operaciones de escritura y las formas inseguras pasan a tu confirmación, y los comandos peligrosos se rechazan)",
       "needPath": "Falta el argumento de ruta; no se ejecutó nada.",
       "needCommand": "Falta el argumento de comando; no se ejecutó nada.",
@@ -682,7 +683,6 @@
       "stepLimitReached": "Se alcanzó el límite de comandos por ronda ({{count}}); en esta ronda no se ejecutaron más comandos.",
       "durationLimitReached": "Se alcanzó el límite de tiempo por ronda ({{seconds}} s); en esta ronda no se ejecutaron más comandos."
     },
-    "interruptAndSend": "Interrumpir y enviar",
     "interruptPlaceholder": "Respondiendo: escribe y envía para interrumpir con tu mensaje"
   },
   "tabs": {

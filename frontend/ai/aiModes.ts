@@ -33,8 +33,10 @@ export type AiExecMode = "plan" | "auto" | "manual";
 /** 全部模式档位（顺序 = 选择器展示顺序）。 */
 export const AI_EXEC_MODES: readonly AiExecMode[] = ["plan", "auto", "manual"];
 
-/** 默认档：规划（只产计划、不执行任何命令）。 */
-export const DEFAULT_AI_EXEC_MODE: AiExecMode = "plan";
+/** 默认档：逐条确认（2026-11-07 用户反馈：不许让用户切模式才能操作——
+ *  AI 提出命令就以确认卡出现，点「执行」= 授权这一条；原「规划」默认档
+ *  让用户必须先切档才能动，太机械，已从面板移除）。 */
+export const DEFAULT_AI_EXEC_MODE: AiExecMode = "manual";
 
 /** 是否是合法模式档位（外部读档/localStorage 校验用）。 */
 export function isAiExecMode(v: unknown): v is AiExecMode {

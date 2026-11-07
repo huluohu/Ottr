@@ -534,6 +534,7 @@
       "label": "執行之式",
       "plan": "籌劃",
       "auto": "自運",
+      "confirm": "逐確認",
       "manual": "手行",
       "autoNotAuthorized": "該主機未授權自動執行（設定 → AI → 許自動執行之主機）",
       "autoLocalDenied": "本地終端會話不與 AI 執行權（唯予唯讀上下文）"
@@ -573,7 +574,7 @@
       "commandArg": "將行之單行命令",
       "purposeArg": "此命令之由（將書入計劃）",
       "execCommandPlan": "行命令（今為籌劃式：只登記入計劃，弗真行）",
-      "execCommandManual": "行命令（今為手行式：命令將登為待確認之步驟，待汝點「行」乃真行）",
+      "execCommandManual": "行命令（今為逐確認：命令將現為待確認之卡，待汝點「行」乃真行）",
       "execCommandAuto": "執行命令（目前為自動模式：唯讀命令徑自執行；寫操作與不安全形態降為待你確認；危險命令徑自拒絕）",
       "needPath": "缺路徑之參，未行。",
       "needCommand": "缺命令之參，未行。",
@@ -681,7 +682,6 @@
       "stepLimitReached": "已至單輪命令之限（{{count}} 條），本輪不再執行更多命令。",
       "durationLimitReached": "已至單輪時長之限（{{seconds}} 秒），本輪不再執行更多命令。"
     },
-    "interruptAndSend": "截斷而進言",
     "interruptPlaceholder": "方答——入言而進，則截之"
   },
   "tabs": {

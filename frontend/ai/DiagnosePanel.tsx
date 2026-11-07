@@ -23,7 +23,6 @@ import { MarkdownText } from "./Markdown";
 import { isAiTargetLive } from "../session/aiTarget";
 import { useSessionStore } from "../session/SessionStore";
 import { useTerminalFocus } from "../terminal/terminalFocus";
-import { SegmentedControl } from "../ui/SegmentedControl";
 import {
   DEFAULT_AI_EXEC_MODE,
   awaitingPlanSteps,
@@ -718,30 +717,27 @@ export function DiagnosePanel({
         </div>
       )}
 
-      {/* 执行模式（2026-11-05 按用户反馈改位）：**贴着输入框正上方**——
-          首问与每一轮追问都能随手切档（「随时切换」），不再放顶栏跟输入
-          脱节。运行中保持可用：切档只影响下一轮（每轮链起时取一次档，
-          工具描述与实际档位同源，审查 M-5 纪律不变）。
-          用现成 SegmentedControl（禁裸 checkbox：全仓守卫 ui-no-native-controls）。 */}
+      {/* 执行方式（2026-11-07 用户反馈第三条：不许让用户切模式才能操作）：
+          下拉框两档——**逐条确认（默认）**：AI 提出的命令以待确认卡出现，
+          点「执行」= 授权这一条；**自动执行**：仅当主机已在设置授权时可选。
+          原「规划」档从面板移除——确认卡本身就是看得见的计划（裁定可改）。
+          贴输入框正上方不变（2026-11-05 反馈）；运行中保持可用：切换只影响
+          下一轮（每轮链起时取一次档，工具描述与实际档位同源，M-5 纪律不变）。 */}
       <div className="ai-input-mode-row" data-testid="ai-input-mode-row">
-        <SegmentedControl
+        <select
+          className="ai-mode-select"
+          data-testid="ai-mode-switch"
+          aria-label={t("ai.mode.label")}
           value={mode}
-          options={[
-            { value: "plan", label: t("ai.mode.plan") },
-            {
-              value: "auto",
-              label: t("ai.mode.auto"),
-              // 自动档的**前提**是主机被授权（授权表默认全拒）——未授权时
-              // 该档不可选：模型提的命令会降级成逐条确认，用户会以为它在
-              // 自动跑。不给可用选项，直接说清出路。
-              disabled: autoAuthorized === false,
-            },
-            { value: "manual", label: t("ai.mode.manual") },
-          ]}
-          onChange={(v) => setMode(sessionId, v)}
-          ariaLabel={t("ai.mode.label")}
-          testid="ai-mode-switch"
-        />
+          onChange={(e) => setMode(sessionId, e.target.value as AiExecMode)}
+        >
+          <option value="manual">{t("ai.mode.confirm")}</option>
+          {/* 自动档的前提是主机被授权（授权表默认全拒）——未授权时该选项
+              禁用：模型提的命令会降级成逐条确认，用户会以为它在自动跑。 */}
+          <option value="auto" disabled={autoAuthorized === false}>
+            {t("ai.mode.auto")}
+          </option>
+        </select>
         {mode === "auto" && autoAuthorized === false && (
           // 未授权（或本地会话）：说清楚为什么不能自动跑 + 去哪开。
           // role=status：出现时读屏播报一句（用户切到自动档却没反应时，
@@ -796,35 +792,31 @@ export function DiagnosePanel({
             }
           }}
         />
-        {running ? (
-          // 流式回答开始后，草稿非空时可「打断并插入」；纯停止仍由状态行按钮完成。
-          <button
-            className="btn-accent"
-            data-testid="ai-followup-interrupt"
-            disabled={inputDisabled || !canInterrupt || draft.trim() === ""}
-            aria-label={`${t("ai.interruptAndSend")}: ${draft.trim()}`}
-            onClick={() => {
-              const text = draft.trim();
-              if (text === "" || !canInterrupt) return;
+        {/* 按钮恒为「发送」（2026-11-07 用户反馈第二条：文案不再随状态变）。
+            回答中草稿非空点击 = 打断并插入（同 Enter 语义）；纯停止仍由状态
+            行的「停止」钮完成。准备阶段（流未开始）不可打断——首轮提问不能
+            被替换，钮短暂禁用。 */}
+        <button
+          className="btn-accent"
+          data-testid="ai-followup-send"
+          disabled={
+            inputDisabled ||
+            draft.trim() === "" ||
+            (running && !canInterrupt)
+          }
+          onClick={() => {
+            const text = draft.trim();
+            if (text === "") return;
+            if (running) {
+              if (!canInterrupt) return;
               void interrupt(sessionId, text, slice.runId);
-            }}
-          >
-            {t("ai.interruptAndSend")}
-          </button>
-        ) : (
-          <button
-            className="btn-accent"
-            data-testid="ai-followup-send"
-            disabled={draft.trim() === ""}
-            onClick={() => {
-              const text = draft.trim();
-              if (text === "") return;
+            } else {
               void run(sessionId, text);
-            }}
-          >
-            {t("ai.send")}
-          </button>
-        )}
+            }
+          }}
+        >
+          {t("ai.send")}
+        </button>
       </div>
     </aside>
   );

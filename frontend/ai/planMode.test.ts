@@ -245,11 +245,11 @@ beforeEach(async () => {
 });
 
 describe("执行模式（会话级）", () => {
-  it("默认 mode = plan；面板切片里 mode 缺省也按 plan 读", async () => {
+  it("默认 mode = manual（逐条确认）；openAsk 后即为可授权执行态", async () => {
     mockBackend();
     seedLivePanes();
     useAiStore.getState().openAsk(ASK_A);
-    expect(slice()?.mode).toBe("plan");
+    expect(slice()?.mode).toBe("manual");
     expect(slice()?.plan).toEqual([]);
   });
 
@@ -258,6 +258,7 @@ describe("执行模式（会话级）", () => {
     seedLivePanes();
     script = () => [{ text: "回答" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     useAiStore.getState().setMode("pane-a", "manual");
     expect(slice()?.mode).toBe("manual");
     await useAiStore.getState().run("pane-a", "第一问");
@@ -266,17 +267,18 @@ describe("执行模式（会话级）", () => {
     await useAiStore.getState().run("pane-a", "追问");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
     expect(slice()?.mode).toBe("manual");
-    // 新对话 → 复位到默认档（plan）
+    // 新对话 → 复位到默认档（manual = 逐条确认，2026-11-07 用户反馈）
     useAiStore.getState().newConversation("pane-a");
-    expect(slice()?.mode).toBe("plan");
+    expect(slice()?.mode).toBe("manual");
     expect(slice()?.plan).toEqual([]);
   });
 
-  it("setMode 非法值归一到 plan（绝不落到更宽松的档）", () => {
+  it("setMode 非法值归一到默认档（逐条确认；绝不落到更宽松的档）", () => {
     seedLivePanes();
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     useAiStore.getState().setMode("pane-a", "bogus" as never);
-    expect(slice()?.mode).toBe("plan");
+    expect(slice()?.mode).toBe("manual");
   });
 });
 
@@ -296,6 +298,7 @@ describe("plan 模式：执行类动作只产计划", () => {
           ]
         : [{ text: "计划如下" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "清理构建目录");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -333,6 +336,7 @@ describe("plan 模式：执行类动作只产计划", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "第一问");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
     await useAiStore.getState().run("pane-a", "第二问");
@@ -353,6 +357,7 @@ describe("plan 模式：执行类动作只产计划", () => {
           ]
         : [{ text: "读到了" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "看看用户表");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -383,6 +388,7 @@ describe("plan 模式：执行类动作只产计划", () => {
           ]
         : [{ text: "看到了" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "列一下 /etc");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -415,6 +421,7 @@ describe("plan 模式：执行类动作只产计划", () => {
     seedLivePanes();
     script = () => [{ text: "回答" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "问题");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
     const toolNames = (requests[0].tools ?? []).map((t) => t.name);
@@ -445,12 +452,14 @@ describe("跨目标隔离", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "第一问");
     await vi.waitFor(() => expect(slice("pane-a")?.status).toBe("done"));
     expect(slice("pane-a")?.plan).toHaveLength(1);
 
     // 切到另一个终端（另一个 pane 会话）开新对话
     useAiStore.getState().openAsk(ASK_B);
+    useAiStore.getState().setMode("pane-b", "plan");
     expect(slice("pane-b")?.plan ?? []).toHaveLength(0);
     expect(slice("pane-b")?.target).toEqual(TARGET_B);
     // 原对话的步骤与目标绑定不变（没有换绑到新终端）
@@ -488,6 +497,7 @@ describe("修补批次（2026-11-04）", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "跑一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -511,6 +521,7 @@ describe("修补批次（2026-11-04）", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "规划一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -535,6 +546,7 @@ describe("修补批次（2026-11-04）", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "自动跑");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -566,6 +578,7 @@ describe("修补批次（2026-11-04）", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "跑一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -588,6 +601,7 @@ describe("修补批次（2026-11-04）", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "跑一下");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -607,6 +621,7 @@ describe("修补批次（2026-11-04）", () => {
     seedLivePanes();
     script = () => [{ text: "回答" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "问题");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -623,6 +638,7 @@ describe("修补批次（2026-11-04）", () => {
     seedLivePanes();
     script = () => [{ text: "回答" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "问题");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
 
@@ -664,6 +680,7 @@ describe("修补批次（2026-11-04）", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_LOCAL);
+    useAiStore.getState().setMode("pane-local", "plan");
     await useAiStore.getState().run("pane-local", "读一下文件");
     await vi.waitFor(() => expect(slice("pane-local")?.status).toBe("done"));
 
@@ -691,6 +708,7 @@ describe("修补批次（2026-11-04）", () => {
           ]
         : [{ text: "好" }];
     useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "plan");
     await useAiStore.getState().run("pane-a", "第一问");
     await vi.waitFor(() => expect(slice()?.status).toBe("done"));
     expect(slice()?.plan).toHaveLength(1);

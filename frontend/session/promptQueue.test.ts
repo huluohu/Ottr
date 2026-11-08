@@ -130,3 +130,34 @@ describe("交互式认证并发问询", () => {
     expect(first).not.toBe(second);
   });
 });
+
+// 2026-11-08 审计 C3 回归：关掉「正在显示问询」的标签/pane 后，队列头接棒。
+describe("关标签/pane 后队列头接棒（2026-11-08 审计 C3）", () => {
+  it("closeTab：显示中的问询随标签回空答案，幸存会话的队头顶上并开模态", () => {
+    useSessionStore.getState().onPromptAsk(askPayload("1:1")); // tab-a 显示中
+    useSessionStore.getState().onPromptAsk(askPayload("1:2")); // tab-b 排队
+    const queuedFor = useSessionStore.getState().promptAskQueue[0]?.sessionId;
+
+    useSessionStore.getState().closeTab("tab-a");
+
+    // 1:1 已回空答案（不白挂 180s）
+    expect(
+      mockedInvoke.mock.calls.some(
+        ([cmd, args]) =>
+          cmd === "kbd_interactive_answer" && (args as { askId: string }).askId === "1:1",
+      ),
+    ).toBe(true);
+    // 队头（1:2，属 tab-b）顶上：单槽有主、模态重开、队列清空
+    expect(useSessionStore.getState().promptAsk?.ask_id).toBe("1:2");
+    expect(useSessionStore.getState().promptAsk?.sessionId).toBe(queuedFor);
+    expect(useModalStore.getState().active).toBe("promptAsk");
+    expect(useSessionStore.getState().promptAskQueue).toHaveLength(0);
+  });
+
+  it("closeTab：队列空时显示中问询正常清空、不误开模态", () => {
+    useSessionStore.getState().onPromptAsk(askPayload("1:1"));
+    useSessionStore.getState().closeTab("tab-a");
+    expect(useSessionStore.getState().promptAsk).toBeNull();
+    expect(useModalStore.getState().active).toBeNull();
+  });
+});

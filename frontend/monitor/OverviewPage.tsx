@@ -25,12 +25,12 @@
 //   第一位的置顶标签（TabBar），点会话标签回终端、关总览标签 ✕ 收场；
 // * 主题/i18n 纪律：色板走 App.css 令牌，文案全走 t()（零新增键）。
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import { useSessionStore } from "../session/SessionStore";
 import { useVaultStore } from "../vault/store";
 import type { Host, HostInput } from "../vault/api";
 import { useMonitorStore, pickDiskPercent, type MonitorWindow } from "./monitorStore";
+import { syncMonitorSampling } from "./monitorSync";
 
 export interface OverviewPageProps {
   /** 点击卡片：跳转该主机终端标签。 */
@@ -130,6 +130,9 @@ export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewP
     setEnableError(null);
     try {
       await updateHost(host.id, hostInputFrom(host, { monitor_enabled: true }));
+      // 活会话立即起采样（2026-11-08 审计 C2）：此前只落库，已连接主机要等
+      // 重连才起采样，卡片还会误显「未连接」。
+      syncMonitorSampling(host.id, true);
     } catch (e) {
       setEnableError(
         t("overview.enableFailed", {
@@ -150,10 +153,7 @@ export function OverviewPage({ onOpen, onOpenProcesses, onOpenLocal }: OverviewP
     setEnablingId(host.id);
     setEnableError(null);
     try {
-      const rustId = rootRustIdByHost(sessions).get(host.id);
-      if (rustId) {
-        await invoke("monitor_stop", { id: rustId }).catch(() => undefined);
-      }
+      syncMonitorSampling(host.id, false);
       await updateHost(host.id, hostInputFrom(host, { monitor_enabled: false }));
     } catch (e) {
       setEnableError(

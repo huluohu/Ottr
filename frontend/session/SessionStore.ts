@@ -512,6 +512,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         answers: [],
       }).catch(() => {});
     }
+    // 显示中的问询随标签消亡 → 队列头接棒（2026-11-08 审计 C3）：幸存会话
+    // 的问询此前会滞留队列无人展示（PromptDialog 只渲染 promptAsk 单槽），
+    // 各卡空等 Rust 侧 180s 问询超时。answerPrompt 同款：队头顶上 + 开模态。
+    const askDoomed = st0.promptAsk != null && doomedIds.has(st0.promptAsk.sessionId);
+    const survivingQueue = st0.promptAskQueue.filter((a) => !doomedIds.has(a.sessionId));
+    const promoted = askDoomed && survivingQueue.length > 0 ? survivingQueue[0] : null;
     set((st) => {
       const sessions = st.sessions.filter((s) => !doomedIds.has(s.id));
       persistOpenTabs(sessions);
@@ -530,15 +536,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         activePane,
         hostKeyAsk:
           st.hostKeyAsk && doomedIds.has(st.hostKeyAsk.sessionId) ? null : st.hostKeyAsk,
-        promptAsk:
-          st.promptAsk && doomedIds.has(st.promptAsk.sessionId) ? null : st.promptAsk,
-        promptAskQueue: st.promptAskQueue.filter((a) => !doomedIds.has(a.sessionId)),
+        promptAsk: askDoomed ? promoted : st.promptAsk,
+        promptAskQueue: promoted ? survivingQueue.slice(1) : survivingQueue,
         searchSessionId:
           st.searchSessionId != null && doomedIds.has(st.searchSessionId)
             ? null
             : st.searchSessionId,
       };
     });
+    if (promoted) useModalStore.getState().open("promptAsk");
   },
 
   setActive: (id) => set({ activeId: id }),
@@ -1113,6 +1119,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (q.sessionId !== sessionId) continue;
       void invoke("kbd_interactive_answer", { askId: q.ask_id, answers: [] }).catch(() => {});
     }
+    // 队头接棒（2026-11-08 审计 C3，同 closeTab）：显示中的问询随 pane 消亡
+    // 时，幸存会话的排队问询顶上，不空等 Rust 侧 180s 问询超时。
+    const survivingQueue = st.promptAskQueue.filter((a) => a.sessionId !== sessionId);
+    const promoted =
+      st.promptAsk?.sessionId === sessionId && survivingQueue.length > 0
+        ? survivingQueue[0]
+        : null;
     if (st.promptAsk?.sessionId === sessionId) {
       void invoke("kbd_interactive_answer", {
         askId: st.promptAsk.ask_id,
@@ -1131,7 +1144,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set((s0) => ({
       sessions: s0.sessions.filter((s) => s.id !== sessionId),
       searchSessionId: s0.searchSessionId === sessionId ? null : s0.searchSessionId,
+      promptAsk: st.promptAsk?.sessionId === sessionId ? promoted : s0.promptAsk,
+      promptAskQueue: promoted ? survivingQueue.slice(1) : survivingQueue,
     }));
+    if (promoted) useModalStore.getState().open("promptAsk");
     if (next === null) {
       // 树空了（关掉最后一个 pane）→ 标签一并消亡；closeTab 幂等收尾剩余状态
       get().closeTab(tabId);

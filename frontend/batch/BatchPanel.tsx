@@ -331,6 +331,7 @@ export function BatchPanel({ onClose }: BatchPanelProps) {
                           <td key={v}>
                             <input
                               data-testid={`batch-var-${h.id}-${v}`}
+                              aria-label={t("batch.varInputAria", { host: h.name, variable: v })}
                               value={varValues[h.id]?.[v] ?? ""}
                               onChange={(e) => setVar(h.id, v, e.currentTarget.value)}
                             />

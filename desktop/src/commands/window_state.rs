@@ -101,8 +101,13 @@ pub fn window_state_set_remember(app: tauri::AppHandle, enabled: bool) -> Result
 }
 
 /// 从主窗采集当前几何并落盘（remember off = 不追踪，已存值原样保留）。
+///
+/// 采集守卫（2026-11-08 审计）：**最小化不采集**——Windows 把最小化窗口挪到
+/// 屏幕外 (-32000,-32000)（tao 裸读 GetWindowRect/GetClientRect），采了就会
+/// 把下次启动放屏幕外；**最大化/全屏只翻标志不采几何**——最大化外框写进
+/// x/y/width/height 会覆盖上次「正常态」几何，取消最大化后窗口回落
+/// tauri.conf 默认尺寸而不是用户上次的正常尺寸（字段自文档的既定语义）。
 pub fn persist(window: &tauri::WebviewWindow) {
-    eprintln!("[window-state] persist called");
     let Ok(path) = state_path(window.app_handle()) else {
         eprintln!("[window-state] persist: no path");
         return;
@@ -111,7 +116,14 @@ pub fn persist(window: &tauri::WebviewWindow) {
     if !st.remember_size {
         return;
     }
+    if window.is_minimized().unwrap_or(false) {
+        return; // 保留上次有效几何（最小化不更新记忆）
+    }
     st.maximized = window.is_maximized().unwrap_or(false);
+    if st.maximized || window.is_fullscreen().unwrap_or(false) {
+        let _ = write_to(&path, &st);
+        return;
+    }
     match window.outer_position() {
         Ok(p) => {
             st.x = Some(p.x as f64);

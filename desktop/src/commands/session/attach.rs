@@ -354,6 +354,11 @@ pub(crate) fn quit_app(app: AppHandle) -> Result<(), String> {
 /// 非 bundle 形态（dev 裸二进制，无 Contents/MacOS 祖先）没有可 open 的
 /// .app，回退 `AppHandle::restart`（dev 场景激活问题无感）。Win/Linux 的
 /// restart 子进程拉起本就随窗口创建自激活，保持原样（跨平台审计表随修复交付）。
+/// 重启前补一次窗口状态落盘（2026-11-08 审计）：`AppHandle::restart()` 在
+/// Win/Linux（及 macOS dev 裸二进制）走 cleanup_before_exit + 进程退出，
+/// **不经 run loop**——RunEvent::ExitRequested 的 persist 不会触发，本次
+/// 会话自上次关窗以来的几何改动会丢。正常退出/关窗路径已由 lib.rs 的
+/// CloseRequested/ExitRequested 覆盖，此处只补 restart 这条绕行道。
 #[tauri::command]
 pub(crate) fn app_restart(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -379,15 +384,29 @@ pub(crate) fn app_restart(app: AppHandle) -> Result<(), String> {
             #[allow(unreachable_code)]
             return Ok(());
         }
+        persist_window_state_before_restart(&app); // dev 裸二进制 restart 不经 ExitRequested
         app.restart();
         #[allow(unreachable_code)]
         return Ok(());
     }
     #[cfg(not(target_os = "macos"))]
     {
+        persist_window_state_before_restart(&app);
         app.restart();
         #[allow(unreachable_code)]
         Ok(())
+    }
+}
+
+/// 重启前补一次窗口状态落盘（2026-11-08 审计）：`AppHandle::restart()` 在
+/// Win/Linux（及 macOS dev 裸二进制）走 cleanup_before_exit + 进程退出，
+/// **不经 run loop**——RunEvent::ExitRequested 的 persist 不会触发，本次
+/// 会话自上次关窗以来的几何改动会丢。正常退出/关窗路径已由 lib.rs 的
+/// CloseRequested/ExitRequested 覆盖，此处只补 restart 这条绕行道。
+fn persist_window_state_before_restart(app: &AppHandle) {
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("main") {
+        crate::commands::window_state::persist(&win);
     }
 }
 

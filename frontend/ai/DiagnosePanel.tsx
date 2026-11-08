@@ -223,30 +223,37 @@ export function DiagnosePanel({
   const interrupt = useAiStore((s) => s.interrupt);
   const setMode = useAiStore((s) => s.setMode);
   /** 自动档授权（第三步）：当前目标主机是否被授权自动执行。
-   *  null = 未知/不适用（本地会话、还没查）。 */
-  const [autoAuthorized, setAutoAuthorized] = useState<boolean | null>(null);
+   *  null = 还没查完（下拉不禁用、不给提示）；本地会话恒 false。
+   *  授权态**订阅** policy store（2026-11-08 审计 A6）：此前是挂载时一次性
+   *  快照，设置页里开/关授权后回到面板仍显示旧态，要切会话重挂才刷新。 */
   const hostId = target?.hostId ?? null;
   const isLocal = target?.kind === "local";
+  const aiPolicies = useAiPolicyStore((s) => s.policies);
+  const [authChecked, setAuthChecked] = useState(false);
+  const autoAuthorized: boolean | null = !authChecked
+    ? null
+    : hostId != null && !isLocal
+      ? aiPolicies.some((p) => p.hostId === hostId && p.autoEnabled)
+      : false;
   useEffect(() => {
     // 2026-11-07 档位改下拉：自动执行选项**常驻可见**，未授权时要置灰并说明
     // 原因——授权态必须在挂载时就查（旧段控只在切到自动时才查，懒查询让
-    // 「可点但降级」的坑藏进下拉里）。面板挂载/目标变化时查一次，缓存空/
-    // 过期由 policy store 的 refresh 兜底。
+    // 「可点但降级」的坑藏进下拉里）。挂载/目标变化时重查一次（查完前保持
+    // null 免得「未授权」提示闪现）；store 订阅保证设置页改动即时回流。
+    setAuthChecked(false);
     if (isLocal || hostId == null) {
-      setAutoAuthorized(false);
+      setAuthChecked(true);
       return;
     }
     let alive = true;
-    // 授权真源在后端（vault 表）；前端读共享 store 的缓存，缓存空/过期时
-    // 重新拉一次。
     void useAiPolicyStore
       .getState()
       .refresh()
-      .then(() => {
-        if (alive) setAutoAuthorized(useAiPolicyStore.getState().authorized(hostId));
-      })
       .catch(() => {
-        if (alive) setAutoAuthorized(false);
+        // 拉不到（非 Tauri/后端不可达）= 当作未授权（fail-closed）。
+      })
+      .finally(() => {
+        if (alive) setAuthChecked(true);
       });
     return () => {
       alive = false;
@@ -464,7 +471,11 @@ export function DiagnosePanel({
           }
           return m.role === "user" ? (
             <div key={`u${i}`} className="ai-bubble ai-bubble-user" data-testid="ai-msg-user">
-              {m.content}
+              {/* Ask 轮只显示用户的问题（2026-11-08 审计 A2）：首轮 content =
+                  问题 + 输出尾 + 主机备注（给模型的装配面，输出尾可达 8KB），
+                  整段渲染会把第一屏淹没。retryContent 挂着已脱敏的原问题
+                  （追问轮与 content 同值；旧数据缺省回落 content）。 */}
+              {request.kind === "ask" ? (m.retryContent ?? m.content) : m.content}
             </div>
           ) : (
             <div key={`a${i}`} className="ai-bubble ai-bubble-assistant" data-testid="ai-msg-assistant">
@@ -568,6 +579,11 @@ export function DiagnosePanel({
               {planSteps.map((s) => {
                 // 执行中：钮置灰 + 状态 executing（重复点击的第一道闸）。
                 const busy = s.status === "executing";
+                // 跨步骤互斥的 UI 面（2026-11-08 审计 A1）：同对话里已有步骤
+                // 在执行时，其余待确认卡片的执行/拒绝一并置灰——store 侧有
+                // 同款闸（resolvePlanStep 入口），置灰让原因可见。
+                const otherExecuting =
+                  !busy && planSteps.some((x) => x.status === "executing");
                 // **自动档的降级步骤也给执行/拒绝钮**：自动档把非白名单命令
                 // 降级成「等你确认」，那一步就登记为手动档——不给钮 = 降级
                 // 成了死路（用户永远点不动）。
@@ -612,7 +628,7 @@ export function DiagnosePanel({
                           type="button"
                           className="btn-accent"
                           data-testid={`ai-plan-run-${s.id}`}
-                          disabled={busy}
+                          disabled={busy || otherExecuting}
                           // 无障碍：按钮的可读名带上命令原文——一屏多张卡时，
                           // 读屏用户能听出「执行」的是哪一条。
                           aria-label={`${busy ? t("ai.plan.running") : t("ai.plan.run")}: ${s.command}`}
@@ -623,7 +639,7 @@ export function DiagnosePanel({
                         <button
                           type="button"
                           data-testid={`ai-plan-reject-${s.id}`}
-                          disabled={busy}
+                          disabled={busy || otherExecuting}
                           aria-label={`${t("ai.plan.reject")}: ${s.command}`}
                           onClick={() => void resolvePlanStep(sessionId, s.id, false)}
                         >

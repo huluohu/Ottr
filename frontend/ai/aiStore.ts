@@ -472,6 +472,24 @@ async function revokeAllScopes(sessionId: string): Promise<void> {
   await Promise.all([...set].map(revokeScopeQuietly));
 }
 
+/** 收权会话全部 scope、豁免 keep（2026-11-08 审计 A5）：close = 隐藏而非
+ *  销毁，历史/草稿/待确认步骤卡都保留、同活目标重开即续对话——把待处置
+ *  步骤的授权登记一并撤掉，重开点「执行」必拒「scope not found」（步骤转
+ *  failed）。保留的 id 留在 sessionScopes，后续全撤（newConversation/
+ *  生命周期失效）仍会扫到；未处置期间由后端 scope TTL 兜底。 */
+async function revokeScopesExcept(
+  sessionId: string,
+  keep: ReadonlySet<string>,
+): Promise<void> {
+  inflightScopes.delete(sessionId);
+  const set = sessionScopes.get(sessionId);
+  if (!set) return;
+  const doomed = [...set].filter((id) => !keep.has(id));
+  for (const id of doomed) set.delete(id);
+  if (set.size === 0) sessionScopes.delete(sessionId);
+  await Promise.all(doomed.map(revokeScopeQuietly));
+}
+
 /** run 收尾的 scope 结算：keep=true（正常完成/审批挂起）保留授权；
  *  keep=false（取消/出错/被取代）立即撤销。 */
 function settleRunScope(sessionId: string, runId: string, keep: boolean): void {
@@ -1311,6 +1329,8 @@ export const useAiStore = create<AiStore>((set, get) => {
               runningHostToolRunId: runId,
             });
             let out: HostToolOutcome;
+            // 对话 id 快照（await 前取）：A3 的迟到落库用它判「同对话」。
+            const convAtStart = slice(sessionId).conversationId;
             try {
               out = await runHostTool(
                 scope,
@@ -1334,10 +1354,6 @@ export const useAiStore = create<AiStore>((set, get) => {
                 });
               }
             }
-            if (!alive()) {
-              rescueStrandedRun(sessionId, ac, runId);
-              return;
-            }
             if (out.planStep) {
               const step: PlanStep = {
                 ...out.planStep,
@@ -1346,7 +1362,24 @@ export const useAiStore = create<AiStore>((set, get) => {
                 // （否则会被当成待处置，把追问输入永久禁掉）。
                 ...(out.deferred ? { toolCallIds: [tc.id], runId } : {}),
               };
-              patch(sessionId, { plan: upsertPlanStep(slice(sessionId).plan, step) });
+              if (alive()) {
+                patch(sessionId, { plan: upsertPlanStep(slice(sessionId).plan, step) });
+              } else if (!out.deferred && get().sessions[sessionId]?.conversationId === convAtStart) {
+                // 迟到落库（2026-11-08 审计 A3）：自动档当场执行的命令确实在
+                // 主机上跑过了——run 被打断/取代也要把 done/failed 记录写进
+                // 清单（「AI 在我主机上跑过什么」的信任面），否则用户看不到
+                // 刚跑的命令。仅限**已出结果**的非 deferred 记录（deferred
+                // 待确认卡依赖活 scope，写了就是点了必败的死卡）；且只写同
+                // 对话（打断插话同对话照落；newConversation 已换代清空计划，
+                // 迟到记录不得复活进新对话）。续跑不做——由取代者接管。
+                patch(sessionId, {
+                  plan: upsertPlanStep(get().sessions[sessionId]?.plan, step),
+                });
+              }
+            }
+            if (!alive()) {
+              rescueStrandedRun(sessionId, ac, runId);
+              return;
             }
             if (out.deferred) {
               deferredCalls += 1;
@@ -1715,7 +1748,17 @@ export const useAiStore = create<AiStore>((set, get) => {
 
     close: (sessionId) => {
       supersede(sessionId);
-      void revokeAllScopes(sessionId);
+      // 待确认步骤的 scope 豁免（2026-11-08 审计 A5，与 abort 同语义——
+      // abort 对待处置步骤 settleRunScope(keep=true)）：close 保留卡片，
+      // 授权登记也要保留到卡片处置完。
+      void revokeScopesExcept(
+        sessionId,
+        new Set(
+          awaitingPlanSteps(slice(sessionId))
+            .map((s) => s.scopeId)
+            .filter((x): x is string => typeof x === "string"),
+        ),
+      );
       set((st) => {
         const cur = st.sessions[sessionId];
         if (!cur) return st;
@@ -2350,6 +2393,13 @@ export const useAiStore = create<AiStore>((set, get) => {
       // 只处置「待执行」的步骤：执行中 / 已执行 / 已拒绝一律不再动
       // （重复点击的第一道闸）。
       if (step.status !== "planned") return;
+      // 跨步骤互斥（2026-11-08 审计 A1）：同一时刻只允许一个步骤在处置。
+      // 两张待确认卡并发执行：先回来那张触发「带未答 tool call 的续跑」
+      // （provider 400：assistant 的每个 tool_call 必须有对应 tool 消息）；
+      // 后回来那位 runId 已换代 → 结果被丢弃、后端已 consumed（步骤回退
+      // planned 再点恒拒 already consumed）。同款闸见 resolveToolCall 的
+      // runningToolCallId；UI 侧同口径置灰其余卡片的执行/拒绝钮。
+      if ((st.plan ?? []).some((s) => s.status === "executing")) return;
       // 运行身份复验：步骤必须仍属于当前 run（被取代的链不得执行）。
       if (step.runId != null && st.runId != null && step.runId !== st.runId) return;
       // 目标绑定缺失（老数据 / 手工构造的步骤）→ 无从执行（没有 scope/action）。

@@ -203,3 +203,14 @@ describe("新对话默认执行模式（本机偏好）", () => {
     expect(readDefaultAiExecMode()).toBe("manual");
   });
 });
+
+// 2026-11-08 审计 A4 回归
+describe("默认档升级残留（2026-11-08 审计 A4）", () => {
+  it("v1.7.0/1.7.1 残留的 \"plan\" 归一到 manual——下拉已无规划档，残留 = select 空白 + 新对话无执行入口", () => {
+    localStorage.setItem(AI_DEFAULT_MODE_STORAGE_KEY, "plan");
+    expect(readDefaultAiExecMode()).toBe("manual");
+    // 非 plan 的合法值不受影响
+    localStorage.setItem(AI_DEFAULT_MODE_STORAGE_KEY, "auto");
+    expect(readDefaultAiExecMode()).toBe("auto");
+  });
+});

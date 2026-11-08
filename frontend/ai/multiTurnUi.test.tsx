@@ -265,3 +265,58 @@ describe("诊断面板多轮 UI", () => {
     expect((screen.getByTestId("ai-followup-input") as HTMLTextAreaElement).disabled).toBe(true);
   });
 });
+
+// 2026-11-08 审计 A2 回归：Ask 首轮气泡只显示用户的问题。
+describe("Ask 轮气泡（2026-11-08 审计 A2）", () => {
+  const ASK_REQ = {
+    kind: "ask",
+    sessionId: "tab-1",
+    rustId: "pty-9",
+    hostId: 1,
+    hostName: "web-01",
+  } as const;
+
+  function seedAsk(messages: unknown[]) {
+    seed({
+      request: ASK_REQ,
+      messages,
+    } as Record<string, unknown>);
+  }
+
+  it("Ask 首轮 content = 问题 + 输出尾 + 备注（装配面），气泡只显示原问题（retryContent）", () => {
+    seedAsk([
+      {
+        role: "user",
+        // 真实装配形态：问题在前，输出尾 + 主机备注在后（给模型的 prompt）
+        content: "还剩多少内存？\n\nOutput tail:\n```\n8KB 的终端输出尾……\n```\n\n主机备注……",
+        retryContent: "还剩多少内存？",
+      },
+      { role: "assistant", content: "还有 4GB。" },
+    ]);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const bubble = screen.getAllByTestId("ai-msg-user")[0];
+    expect(bubble.textContent).toContain("还剩多少内存？");
+    // 装配面（输出尾/备注）不进气泡——正是 8KB 输出淹面板的那条路径
+    expect(bubble.textContent).not.toContain("Output tail");
+    expect(bubble.textContent).not.toContain("8KB 的终端输出尾");
+  });
+
+  it("Ask 追问轮（retryContent == content）照常显示；诊断首轮维持整体隐藏", () => {
+    // 追问轮：retryContent 与 content 同值（纯问题），显示不受影响
+    seedAsk([
+      { role: "user", content: "还剩多少内存？", retryContent: "还剩多少内存？" },
+      { role: "assistant", content: "还有 4GB。" },
+      { role: "user", content: "swap 呢？", retryContent: "swap 呢？" },
+      { role: "assistant", content: "swap 2GB。" },
+    ]);
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const users = screen.getAllByTestId("ai-msg-user");
+    expect(users).toHaveLength(2);
+    expect(users[1].textContent).toBe("swap 呢？");
+
+    // 诊断首轮（无 retryContent 概念）维持既有行为：整轮不进气泡
+    seed();
+    const { container } = render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    expect(container.textContent).not.toContain("/dev/sda1 92%");
+  });
+});

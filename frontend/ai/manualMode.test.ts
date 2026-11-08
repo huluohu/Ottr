@@ -856,3 +856,55 @@ describe("档位升级：plan 档登记的步骤在手动档可执行", () => {
     expect(slice()?.plan?.[0].status).toBe("planned");
   });
 });
+
+// 2026-11-08 审计回归（A1/A5）
+describe("manual 档：跨步骤互斥与 close 的 scope 豁免（2026-11-08 审计）", () => {
+  it("A1：一张卡执行中，另一张卡的执行/拒绝被同步闸挡下（防 provider 400 + 结果双丢）", async () => {
+    mockBackend();
+    seedLivePanes();
+    script = execScript2();
+    useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "manual");
+    await useAiStore.getState().run("pane-a", "看看两样");
+    await vi.waitFor(() => expect(slice()?.status).toBe("awaiting_tool_approval"));
+    expect(slice()?.plan).toHaveLength(2);
+
+    // 第一击不 await（挂起在 run_step 上，同步置 executing）→
+    // 另一张卡的执行与拒绝都必须被闸挡下。
+    const first = useAiStore.getState().resolvePlanStep("pane-a", "step-1", true);
+    expect(slice()?.plan?.find((s) => s.id === "step-1")?.status).toBe("executing");
+    const second = useAiStore.getState().resolvePlanStep("pane-a", "step-2", true);
+    const third = useAiStore.getState().resolvePlanStep("pane-a", "step-2", false);
+    await Promise.all([first, second, third]);
+    await vi.waitFor(() => expect(slice()?.plan?.find((s) => s.id === "step-1")?.status).toBe("done"));
+
+    // 只有 step-1 执行了一次；step-2 原样待处置（没执行也没被拒绝）
+    expect(calls("ai_scope_run_step")).toHaveLength(1);
+    expect(slice()?.plan?.find((s) => s.id === "step-2")?.status).toBe("planned");
+  });
+
+  it("A5：close 保留待确认步骤的 scope，重开点执行不再必拒", async () => {
+    mockBackend();
+    seedLivePanes();
+    script = execScript();
+    useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "manual");
+    await useAiStore.getState().run("pane-a", "看看负载");
+    await vi.waitFor(() => expect(slice()?.status).toBe("awaiting_tool_approval"));
+
+    // close = 隐藏：待处置步骤的授权登记必须豁免（此前全撤 → 重开执行必拒）
+    useAiStore.getState().close("pane-a");
+    await Promise.resolve();
+    await Promise.resolve();
+    const revoked = calls("ai_scope_revoke").map(
+      ([, a]) => (a as { scopeId?: string } | undefined)?.scopeId ?? "",
+    );
+    expect(revoked).not.toContain("scope-pane-a");
+
+    // 重开（同活目标可续对话，卡片还在）→ 执行走原 scope
+    useAiStore.getState().openAsk(ASK_A);
+    await useAiStore.getState().resolvePlanStep("pane-a", "step-1", true);
+    expect(calls("ai_scope_run_step")).toHaveLength(1);
+    expect(slice()?.plan?.[0].status).toBe("done");
+  });
+});

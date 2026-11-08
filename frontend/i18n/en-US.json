@@ -117,7 +117,9 @@
     "orbResetPosition": "Reset orb position",
     "orbResetPositionHint": "Returns the orb to its default spot (the position is stored on this device only and never syncs).",
     "askOttrOrbSaveFailed": "Applied, but saving failed",
-    "langHant": "繁體中文"
+    "langHant": "繁體中文",
+    "searchPlaceholder": "Search settings...",
+    "brandStable": "Stable"
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -535,10 +537,8 @@
     },
     "mode": {
       "label": "Execution mode",
-      "plan": "Plan",
       "auto": "Auto-run",
       "confirm": "Confirm each",
-      "manual": "Manual",
       "autoNotAuthorized": "This host is not authorized to run automatically (Settings → AI → Hosts allowed to run automatically)",
       "autoLocalDenied": "Local terminal sessions never grant AI execution rights (read-only context only)"
     },
@@ -786,7 +786,8 @@
       "size": "Size",
       "mtime": "Modified"
     },
-    "dropDownloadQueued": "Queued {{count}} file(s) for download"
+    "dropDownloadQueued": "Queued {{count}} file(s) for download",
+    "dragItems": "({{count}} items)"
   },
   "forward": {
     "title": "Port forwards",
@@ -854,7 +855,8 @@
     "deliveryFailed": "Delivery failed",
     "resend": "Resend",
     "resending": "Resending…",
-    "centerTitle": "Notification Center"
+    "centerTitle": "Notification Center",
+    "sendTimeout": "Request timed out (15s) — check network or proxy settings"
   },
   "knownHosts": {
     "title": "Known host keys",
@@ -977,7 +979,8 @@
       "errTooShort": "Master password must be at least {{min}} characters",
       "errMismatch": "Passwords do not match",
       "dropContinue": "Discard the fields above and continue",
-      "droppedTitle": "These fields could not be decrypted and were cleared — re-enter the secret for the matching credentials:"
+      "droppedTitle": "These fields could not be decrypted and were cleared — re-enter the secret for the matching credentials:",
+      "sealedField": "A legacy encrypted field cannot be unsealed with the current master key: {{detail}} — the upgrade rolled back and your data is untouched. Retry, or drop the field and continue below."
     },
     "downgrade": {
       "start": "Switch to passwordless mode…",
@@ -1221,7 +1224,8 @@
     "majorityGroup": "{{count}} hosts share identical output",
     "differsBadge": "differs from majority",
     "execFailed": "Failed to start",
-    "notConnectedHint": "{{count}} not connected (will settle as failed)"
+    "notConnectedHint": "{{count}} not connected (will settle as failed)",
+    "varInputAria": "Variable {{variable}} for host {{host}}"
   },
   "recording": {
     "startLabel": "Record",

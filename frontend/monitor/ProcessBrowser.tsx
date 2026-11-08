@@ -210,7 +210,17 @@ export function ProcessBrowser({ rustId }: { rustId: string | null }) {
       )}
 
       {killTarget && (
-        <div className="proc-confirm" data-testid="proc-kill-dialog" role="alertdialog">
+        // aria-modal（2026-11-08 审计）：全局焦点陷阱（useGlobalFocusTrap）以
+        // [aria-modal="true"] 为覆盖口径——全仓 26 处弹层唯独这里没有，Tab
+        // 能走出这个 kill 确认框；挂上后陷阱自动接管（Tab 循环在框内、打开
+        // 送焦、关闭还焦触发钮）。accessible name = 确认句（含 pid/comm）。
+        <div
+          className="proc-confirm"
+          data-testid="proc-kill-dialog"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label={t("process.killConfirm", { pid: killTarget.pid, comm: killTarget.comm })}
+        >
           <p>{t("process.killConfirm", { pid: killTarget.pid, comm: killTarget.comm })}</p>
           <div className="proc-confirm-actions">
             <button data-testid="proc-kill-cancel" onClick={() => setKillTarget(null)}>

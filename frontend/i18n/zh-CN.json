@@ -117,7 +117,9 @@
     "orbResetPosition": "重置悬浮球位置",
     "orbResetPositionHint": "把悬浮球放回默认位置（位置只保存在本机，不随同步走）。",
     "askOttrOrbSaveFailed": "设置已生效，但保存失败",
-    "langHant": "繁體中文"
+    "langHant": "繁體中文",
+    "searchPlaceholder": "搜索设置...",
+    "brandStable": "稳定版"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -534,10 +536,8 @@
     },
     "mode": {
       "label": "执行方式",
-      "plan": "规划",
       "auto": "自动执行",
       "confirm": "逐条确认",
-      "manual": "手动",
       "autoNotAuthorized": "该主机未授权自动执行（设置 → AI → 允许自动执行的主机）",
       "autoLocalDenied": "本地终端会话不给 AI 执行权（只给只读上下文）"
     },
@@ -785,7 +785,8 @@
       "size": "大小",
       "mtime": "时间"
     },
-    "dropDownloadQueued": "已加入下载队列 {{count}} 个文件"
+    "dropDownloadQueued": "已加入下载队列 {{count}} 个文件",
+    "dragItems": "（{{count}} 项）"
   },
   "forward": {
     "title": "端口转发",
@@ -853,7 +854,8 @@
     "deliveryFailed": "投递失败",
     "resend": "重发",
     "resending": "重发中…",
-    "centerTitle": "通知中心"
+    "centerTitle": "通知中心",
+    "sendTimeout": "请求超时（15 秒）——检查网络或代理设置"
   },
   "knownHosts": {
     "title": "已知主机密钥",
@@ -976,7 +978,8 @@
       "errTooShort": "主密码至少 {{min}} 位",
       "errMismatch": "两次输入不一致",
       "dropContinue": "丢弃以上字段并继续升级",
-      "droppedTitle": "以下字段无法解密、已置空——请找到对应凭据重新录入密值："
+      "droppedTitle": "以下字段无法解密、已置空——请找到对应凭据重新录入密值：",
+      "sealedField": "有历史加密字段无法用当前主密钥解密：{{detail}}——升级已整体回滚、数据原样未动。可重试，或在下方丢弃该字段并继续。"
     },
     "downgrade": {
       "start": "切换到免密模式…",
@@ -1220,7 +1223,8 @@
     "majorityGroup": "{{count}} 台主机输出一致",
     "differsBadge": "与多数派不同",
     "execFailed": "发起失败",
-    "notConnectedHint": "{{count}} 台未连接（执行时按失败结算）"
+    "notConnectedHint": "{{count}} 台未连接（执行时按失败结算）",
+    "varInputAria": "主机 {{host}} 的变量 {{variable}}"
   },
   "recording": {
     "startLabel": "录制",

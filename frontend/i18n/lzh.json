@@ -117,7 +117,9 @@
     "orbResetPosition": "浮珠復位",
     "orbResetPositionHint": "使浮珠復歸故位（其位惟誌於本機，不與同步相涉）。",
     "askOttrOrbSaveFailed": "命已行，惟存錄未成",
-    "langHant": "繁體中文"
+    "langHant": "繁體中文",
+    "searchPlaceholder": "索設定...",
+    "brandStable": "穩定版"
   },
   "hostForm": {
     "newTitle": "創機",
@@ -534,10 +536,8 @@
     },
     "mode": {
       "label": "執行之式",
-      "plan": "籌劃",
       "auto": "自運",
       "confirm": "逐確認",
-      "manual": "手行",
       "autoNotAuthorized": "該主機未授權自動執行（設定 → AI → 許自動執行之主機）",
       "autoLocalDenied": "本地終端會話不與 AI 執行權（唯予唯讀上下文）"
     },
@@ -785,7 +785,8 @@
       "size": "大小",
       "mtime": "時間"
     },
-    "dropDownloadQueued": "已加入取佇列 {{count}} 個檔"
+    "dropDownloadQueued": "已加入取佇列 {{count}} 個檔",
+    "dragItems": "（{{count}} 項）"
   },
   "forward": {
     "title": "端口轉發",
@@ -853,7 +854,8 @@
     "deliveryFailed": "投遞敗",
     "resend": "重發",
     "resending": "重發中…",
-    "centerTitle": "報館"
+    "centerTitle": "報館",
+    "sendTimeout": "請求逾時（十五秒）——察網絡或代理之設"
   },
   "knownHosts": {
     "title": "已知機密鑰",
@@ -976,7 +978,8 @@
       "errTooShort": "主密語至少 {{min}} 位",
       "errMismatch": "兩次輸入不一致",
       "dropContinue": "丟棄上字段且繼續升級",
-      "droppedTitle": "下字段未能解密、已置空——請找到對應信物再錄入密值："
+      "droppedTitle": "下字段未能解密、已置空——請找到對應信物再錄入密值：",
+      "sealedField": "有舊密欄非今主鑰所能啟：{{detail}}——升級盡返、數據如故。可再試，或棄此欄且續於下。"
     },
     "downgrade": {
       "start": "切換到免密模式…",
@@ -1220,7 +1223,8 @@
     "majorityGroup": "{{count}} 臺機輸出一致",
     "differsBadge": "與多數派不同",
     "execFailed": "發起敗",
-    "notConnectedHint": "{{count}} 臺未連（行時按敗結算）"
+    "notConnectedHint": "{{count}} 臺未連（行時按敗結算）",
+    "varInputAria": "主機 {{host}} 之變量 {{variable}}"
   },
   "recording": {
     "startLabel": "錄",

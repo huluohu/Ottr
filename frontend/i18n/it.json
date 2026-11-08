@@ -117,7 +117,9 @@
     "orbResetPosition": "Ripristina posizione sfera",
     "orbResetPositionHint": "Riporta la sfera alla posizione predefinita (la posizione viene salvata solo su questo dispositivo e non viene mai sincronizzata).",
     "askOttrOrbSaveFailed": "Impostazione applicata, ma salvataggio non riuscito",
-    "langHant": "Cinese tradizionale"
+    "langHant": "Cinese tradizionale",
+    "searchPlaceholder": "Cerca nelle impostazioni...",
+    "brandStable": "Stabile"
   },
   "hostForm": {
     "newTitle": "Nuovo host",
@@ -535,10 +537,8 @@
     },
     "mode": {
       "label": "Modalità di esecuzione",
-      "plan": "Pianifica",
       "auto": "Esecuzione automatica",
       "confirm": "Conferma uno a uno",
-      "manual": "Manuale",
       "autoNotAuthorized": "Questo host non è autorizzato all'esecuzione automatica (Impostazioni → AI → Host autorizzati all'esecuzione automatica)",
       "autoLocalDenied": "Le sessioni terminale locali non concedono mai diritti di esecuzione all'IA (solo contesto di lettura)"
     },
@@ -786,7 +786,8 @@
       "size": "Dimensione",
       "mtime": "Modificato"
     },
-    "dropDownloadQueued": "{{count}} file(s) in coda per il download"
+    "dropDownloadQueued": "{{count}} file(s) in coda per il download",
+    "dragItems": "({{count}} elementi)"
   },
   "forward": {
     "title": "Port forwarding",
@@ -854,7 +855,8 @@
     "deliveryFailed": "Consegna non riuscita",
     "resend": "Invia di nuovo",
     "resending": "Invio in corso…",
-    "centerTitle": "Centro notifiche"
+    "centerTitle": "Centro notifiche",
+    "sendTimeout": "Richiesta scaduta (15 s) — controlla rete o proxy"
   },
   "knownHosts": {
     "title": "Chiavi host note",
@@ -977,7 +979,8 @@
       "errTooShort": "La password master deve contenere almeno {{min}} caratteri",
       "errMismatch": "Le password non corrispondono",
       "dropContinue": "Scarta i campi sopra e continua",
-      "droppedTitle": "Non è stato possibile decifrare questi campi, che sono stati cancellati — reinserisci il segreto per le credenziali corrispondenti:"
+      "droppedTitle": "Non è stato possibile decifrare questi campi, che sono stati cancellati — reinserisci il segreto per le credenziali corrispondenti:",
+      "sealedField": "Impossibile decifrare un campo crittografato precedente con la chiave master attuale: {{detail}} — l'aggiornamento è stato annullato e i dati sono intatti. Riprova, oppure scarta il campo e continua qui sotto."
     },
     "downgrade": {
       "start": "Passa alla modalità senza password…",
@@ -1221,7 +1224,8 @@
     "majorityGroup": "{{count}} host hanno un output identico",
     "differsBadge": "differisce dalla maggioranza",
     "execFailed": "Avvio non riuscito",
-    "notConnectedHint": "{{count}} non connessi (verranno conteggiati come falliti)"
+    "notConnectedHint": "{{count}} non connessi (verranno conteggiati come falliti)",
+    "varInputAria": "Variabile {{variable}} per l'host {{host}}"
   },
   "recording": {
     "startLabel": "Registra",

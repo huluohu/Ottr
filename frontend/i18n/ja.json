@@ -117,7 +117,9 @@
     "orbResetPosition": "オーブの位置をリセット",
     "orbResetPositionHint": "オーブを既定の位置に戻します（位置はこの端末にのみ保存され、同期されません）。",
     "askOttrOrbSaveFailed": "設定は反映されましたが、保存に失敗しました",
-    "langHant": "繁体字中国語"
+    "langHant": "繁体字中国語",
+    "searchPlaceholder": "設定を検索...",
+    "brandStable": "安定版"
   },
   "hostForm": {
     "newTitle": "新しいホスト",
@@ -535,10 +537,8 @@
     },
     "mode": {
       "label": "実行モード",
-      "plan": "計画",
       "auto": "自動実行",
       "confirm": "逐次確認",
-      "manual": "手動",
       "autoNotAuthorized": "このホストは自動実行が許可されていません（設定 → AI → 自動実行を許可するホスト）",
       "autoLocalDenied": "ローカル端末セッションは AI に実行権限を与えません（読み取り専用のコンテキストのみ）"
     },
@@ -786,7 +786,8 @@
       "size": "サイズ",
       "mtime": "更新日時"
     },
-    "dropDownloadQueued": "{{count}} 件のファイルをダウンロード待ちに追加しました"
+    "dropDownloadQueued": "{{count}} 件のファイルをダウンロード待ちに追加しました",
+    "dragItems": "（{{count}} 件）"
   },
   "forward": {
     "title": "ポート転送",
@@ -854,7 +855,8 @@
     "deliveryFailed": "配信に失敗しました",
     "resend": "再送",
     "resending": "再送中…",
-    "centerTitle": "通知センター"
+    "centerTitle": "通知センター",
+    "sendTimeout": "リクエストがタイムアウトしました（15秒）——ネットワークまたはプロキシ設定を確認してください"
   },
   "knownHosts": {
     "title": "既知のホストキー",
@@ -977,7 +979,8 @@
       "errTooShort": "マスターパスワードは最低 {{min}} 文字必要です",
       "errMismatch": "パスワードが一致しません",
       "dropContinue": "上のフィールドを破棄して続行",
-      "droppedTitle": "以下のフィールドは復号できなかったためクリアされました — 一致する資格情報について秘密情報を再入力してください:"
+      "droppedTitle": "以下のフィールドは復号できなかったためクリアされました — 一致する資格情報について秘密情報を再入力してください:",
+      "sealedField": "旧形式の暗号化フィールドを現在のマスターキーで復号できません：{{detail}} —— アップグレードはロールバック済みでデータは無傷です。再試行するか、下でこのフィールドを破棄して続行してください。"
     },
     "downgrade": {
       "start": "パスワードなしモードへ切り替え…",
@@ -1221,7 +1224,8 @@
     "majorityGroup": "{{count}} 件のホストが同一の出力",
     "differsBadge": "多数と不一致",
     "execFailed": "開始に失敗しました",
-    "notConnectedHint": "{{count}} 件は未接続（最終的に失敗として扱われます）"
+    "notConnectedHint": "{{count}} 件は未接続（最終的に失敗として扱われます）",
+    "varInputAria": "ホスト {{host}} の変数 {{variable}}"
   },
   "recording": {
     "startLabel": "録画",

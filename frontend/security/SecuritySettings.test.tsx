@@ -72,6 +72,20 @@ function renderDialog() {
   );
 }
 
+/** 开关重演（rerender）：close → reopen（退场动画窗的 160ms 快速重开路径）。 */
+function reopenDialog(ui: ReturnType<typeof renderDialog>) {
+  ui.rerender(
+    <ThemeProvider>
+      <SecuritySettings open={false} onClose={() => {}} />
+    </ThemeProvider>,
+  );
+  ui.rerender(
+    <ThemeProvider>
+      <SecuritySettings open onClose={() => {}} />
+    </ThemeProvider>,
+  );
+}
+
 function seedMode(mode: "keyring" | "password", locked = false) {
   useVaultLockStore.setState({ phase: locked ? "locked" : "unlocked", mode, error: null });
 }
@@ -198,6 +212,30 @@ describe("侧栏导航键盘上下键（2026-11-07 用户反馈）", () => {
     expect(screen.getByTestId("settings-nav-general").getAttribute("aria-selected")).toBe("true");
     expect((screen.getByTestId("general-section") as HTMLElement).hidden).toBe(false);
   });
+
+  // 2026-11-08 审计 B4/B5 回归：关闭时清搜索词 + 退场动画期快速重开仍落焦。
+  // 此前搜索词跨开合残留——残留词把落焦目标 display:none 掉后 el.focus()
+  // 必失败，rAF 重试 10 帧静默放弃 → 重开即落焦失效、↑↓ 不可用。
+  it("关闭清空搜索词：重开后全部导航项可见且落焦恢复（B4/B5）", async () => {
+    seedMode("keyring");
+    const ui = renderDialog();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("settings-nav-general")),
+    );
+    fireEvent.change(screen.getByTestId("settings-search-input"), {
+      target: { value: "安全" },
+    });
+    expect(screen.getByTestId("settings-nav-general").style.display).toBe("none");
+
+    // 开 → 关 → 开（close 重置块会在 open=false 那次渲染清搜索词）
+    reopenDialog(ui);
+    expect((screen.getByTestId("settings-search-input") as HTMLInputElement).value).toBe("");
+    expect(screen.getByTestId("settings-nav-general").style.display).not.toBe("none");
+    // 落焦重跑（open 入依赖）：重开后焦点回到侧栏当前项
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("settings-nav-general")),
+    );
+  });
 });
 
 describe("SecuritySettings", () => {
@@ -323,7 +361,9 @@ describe("SecuritySettings", () => {
 
   // 2026-10-16 用户需求：升级遇历史坏字段（解密封失败）→ 向导给「丢弃并继续」
   // 选项——重试携 dropUnreadable=true，完成页点名被置空的字段。
-  it("解密封失败 → 丢弃并继续选项；重试携 dropUnreadable=true 且完成页点名", async () => {
+  // 2026-11-08 起后端发「UNREADABLE_SEALED_FIELD + ASCII 明细」，前端按标记
+  // 出本地化解释（此前整句中文 + 中文 includes 匹配，英文界面看中文）。
+  it("解密封失败（UNREADABLE_SEALED_FIELD 标记）→ 本地化解释 + 丢弃并继续选项；重试携 dropUnreadable=true 且完成页点名", async () => {
     let failThenSucceed = true;
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "settings_get") return Promise.resolve(null);
@@ -332,7 +372,7 @@ describe("SecuritySettings", () => {
           failThenSucceed = false;
           return Promise.reject(
             new Error(
-              "crypto error: 解密封失败：credentials.secret_enc（行 1，密文 35 字节）无法用当前主密钥开封——升级已整体回滚、数据原样未动，可重试或携本条信息反馈。",
+              "crypto error: UNREADABLE_SEALED_FIELD credentials.secret_enc row=1 sealed_bytes=35 open_err=aead::Error",
             ),
           );
         }
@@ -346,7 +386,9 @@ describe("SecuritySettings", () => {
     fireEvent.change(screen.getByTestId("wizard-confirm"), { target: { value: "correct horse" } });
     fireEvent.click(screen.getByTestId("wizard-start"));
     const err = await waitFor(() => screen.getByTestId("wizard-error"));
-    expect(err.textContent).toContain("解密封失败");
+    // 本地化解释上屏（含后端 ASCII 明细），不再是中文原句。
+    expect(err.textContent).toContain("credentials.secret_enc row=1 sealed_bytes=35");
+    expect(err.textContent).not.toContain("解密封失败：");
     expect(screen.queryByTestId("wizard-drop-continue")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("wizard-drop-continue"));

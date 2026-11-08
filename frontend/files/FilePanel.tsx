@@ -1207,7 +1207,7 @@ export function FilePanel({ session }: { session: Session }) {
             <FileIcon kind={fileIconKind({ name: rowDragView.name, is_dir: rowDragView.isDir })} />
           </span>
           {rowDragView.name}
-          {(rowDragView.count ?? 1) > 1 ? ` （${rowDragView.count} 项）` : ""}
+          {(rowDragView.count ?? 1) > 1 ? t("files.dragItems", { count: rowDragView.count }) : ""}
         </div>
       )}
       {menu && (

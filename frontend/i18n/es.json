@@ -117,7 +117,9 @@
     "orbResetPosition": "Restablecer posición de la bola",
     "orbResetPositionHint": "Devuelve la bola a su posición predeterminada (la posición solo se guarda en este equipo y nunca se sincroniza).",
     "askOttrOrbSaveFailed": "Se aplicó el ajuste, pero no se pudo guardar",
-    "langHant": "Chino tradicional (繁體中文)"
+    "langHant": "Chino tradicional (繁體中文)",
+    "searchPlaceholder": "Buscar en ajustes...",
+    "brandStable": "Estable"
   },
   "hostForm": {
     "newTitle": "Nuevo host",
@@ -535,10 +537,8 @@
     },
     "mode": {
       "label": "Modo de ejecución",
-      "plan": "Planificar",
       "auto": "Ejecución automática",
       "confirm": "Confirmar uno a uno",
-      "manual": "Manual",
       "autoNotAuthorized": "Este host no está autorizado para ejecutar automáticamente (Ajustes → AI → Hosts que pueden ejecutar automáticamente)",
       "autoLocalDenied": "Las terminales locales nunca dan derechos de ejecución a la IA (solo contexto de lectura)"
     },
@@ -786,7 +786,8 @@
       "size": "Tamaño",
       "mtime": "Modificado"
     },
-    "dropDownloadQueued": "{{count}} archivo(s) en cola para descargar"
+    "dropDownloadQueued": "{{count}} archivo(s) en cola para descargar",
+    "dragItems": "({{count}} elementos)"
   },
   "forward": {
     "title": "Redirección de puertos",
@@ -854,7 +855,8 @@
     "deliveryFailed": "Entrega fallida",
     "resend": "Reenviar",
     "resending": "Reenviando…",
-    "centerTitle": "Centro de notificaciones"
+    "centerTitle": "Centro de notificaciones",
+    "sendTimeout": "La solicitud agotó el tiempo de espera (15 s): revisa la red o el proxy"
   },
   "knownHosts": {
     "title": "Claves de host conocidas",
@@ -977,7 +979,8 @@
       "errTooShort": "La contraseña maestra debe tener al menos {{min}} caracteres",
       "errMismatch": "Las contraseñas no coinciden",
       "dropContinue": "Descarta los campos anteriores y continúa",
-      "droppedTitle": "No se pudieron descifrar estos campos y se vaciaron: vuelve a introducir el secreto de las credenciales correspondientes:"
+      "droppedTitle": "No se pudieron descifrar estos campos y se vaciaron: vuelve a introducir el secreto de las credenciales correspondientes:",
+      "sealedField": "No se pudo descifrar un campo cifrado antiguo con la clave maestra actual: {{detail}} — la mejora se revirtió y tus datos están intactos. Reintenta o descarta el campo y continúa abajo."
     },
     "downgrade": {
       "start": "Cambiar al modo sin contraseña…",
@@ -1221,7 +1224,8 @@
     "majorityGroup": "{{count}} hosts comparten la misma salida",
     "differsBadge": "difiere de la mayoría",
     "execFailed": "Error al iniciar",
-    "notConnectedHint": "{{count}} sin conexión (se marcarán como error)"
+    "notConnectedHint": "{{count}} sin conexión (se marcarán como error)",
+    "varInputAria": "Variable {{variable}} para el host {{host}}"
   },
   "recording": {
     "startLabel": "Grabar",

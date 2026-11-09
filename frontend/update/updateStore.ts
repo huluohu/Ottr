@@ -74,14 +74,19 @@ const CHECK_TIMEOUT_MS = 30_000;
 /** 自动重试前的退避（毫秒）。 */
 const AUTO_RETRY_DELAY_MS = 1_200;
 
-/** 给 Promise 加时限（超时以 `update-timeout` 报错，便于与网络类错误同源处理）。 */
+/** 给 Promise 加时限（超时以 `update-timeout` 报错，便于与网络类错误同源处理）。
+ *  结算后清掉计时器——否则每次检查都留一个 30 秒的挂起定时器（长期运行
+ *  会持续累积；检查频率最高每小时一次，属慢性泄漏）。 */
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("update-timeout")), ms),
-    ),
-  ]);
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("update-timeout")), ms);
+    }),
+  ]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }
 
 /** 新版本信息（图标轨面板展示面）：available 时自 Update 对象抽出，贯穿

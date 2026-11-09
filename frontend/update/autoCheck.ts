@@ -61,15 +61,35 @@ export function encodeSetting(setting: AutoCheckSetting): string {
 }
 
 let intervalTimer: ReturnType<typeof setInterval> | undefined;
+let readRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let started = false;
 
-/** 读配置（vault settings；非 Tauri/未就绪 = off——不查是安全侧）。 */
-async function readSetting(): Promise<AutoCheckSetting> {
-  try {
-    return parseSetting(await vaultApi.settings.get<string>(SETTING_UPDATE_CHECK_MODE));
-  } catch {
-    return { kind: "off", hours: DEFAULT_INTERVAL_HOURS };
+/** 读设置失败时的退避阶梯（毫秒）——vault 就绪后仍读不到属瞬时异常
+ *  （库锁、迁移中、磁盘抖动），不是「用户没开自动检查」。 */
+const READ_RETRY_DELAYS_MS = [1_000, 3_000, 10_000] as const;
+
+/** 前几次重读仍失败后的重读周期（毫秒）——保证「只要应用还在运行、
+ *  vault 后来可读，自动检查就会恢复」，而不是一次读失败就永久静默
+ *  （2026-11-09 用户提问时核实出的缺口：读失败当 off + started 标记
+ *  不重跑 = 自动检查永不再启动）。 */
+const READ_RETRY_CADENCE_MS = 5 * 60_000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 读配置 + 有限次退避重试；彻底读不到 → null（**不等于 off**——见调用方）。 */
+async function readSettingWithRetry(): Promise<AutoCheckSetting | null> {
+  for (let i = 0; i <= READ_RETRY_DELAYS_MS.length; i++) {
+    try {
+      return parseSetting(await vaultApi.settings.get<string>(SETTING_UPDATE_CHECK_MODE));
+    } catch {
+      const delay = READ_RETRY_DELAYS_MS[i];
+      if (delay === undefined) return null;
+      await sleep(delay);
+    }
   }
+  return null;
 }
 
 /** 便携/非 Tauri 判定（app_portable；查询失败按 false——与 updateStore 口径一致）。 */
@@ -111,7 +131,33 @@ async function applySetting(setting: AutoCheckSetting): Promise<void> {
 export async function initAutoCheck(): Promise<void> {
   if (started) return;
   started = true;
-  await applySetting(await readSetting());
+  await armFromSetting();
+}
+
+/**
+ * 读设置 → 排程；读不到 → 排一次延后重读（2026-11-09 缺口修复）。
+ *
+ * 读设置失败**不等于**用户没开自动检查：把「读不到」当成 off 会让自动
+ * 检查在整个应用生命周期内永不再启动（且无任何提示）。这里改成读到为止
+ * ——先按退避阶梯重试，仍读不到则每 5 分钟再读一次；一旦读到（哪怕设置
+ * 就是 off）就按设置正常排程。
+ */
+async function armFromSetting(): Promise<void> {
+  const setting = await readSettingWithRetry();
+  if (setting === null) {
+    scheduleReadRetry();
+    return;
+  }
+  await applySetting(setting);
+}
+
+/** 延后重读（同一时刻至多一个）。 */
+function scheduleReadRetry(): void {
+  if (readRetryTimer !== undefined) return;
+  readRetryTimer = setTimeout(() => {
+    readRetryTimer = undefined;
+    void armFromSetting();
+  }, READ_RETRY_CADENCE_MS);
 }
 
 /** 设置页变更入口：落盘后的即时生效面（无需重启应用）。 */
@@ -125,5 +171,9 @@ export function __resetForTests(): void {
   if (intervalTimer !== undefined) {
     clearInterval(intervalTimer);
     intervalTimer = undefined;
+  }
+  if (readRetryTimer !== undefined) {
+    clearTimeout(readRetryTimer);
+    readRetryTimer = undefined;
   }
 }

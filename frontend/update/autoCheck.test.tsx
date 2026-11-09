@@ -210,6 +210,69 @@ describe("autoCheck（自动检查更新）", () => {
     }
   });
 
+  it("启动时读设置失败 → 退避重试后读到 → 正常排程（不再静默放弃）", async () => {
+    vi.useFakeTimers();
+    try {
+      // 首次读失败（vault 瞬时不可读），第二次成功
+      settingsGetMock.mockRejectedValueOnce(new Error("db locked"));
+      settingsGetMock.mockResolvedValue("interval:1");
+      await act(async () => {
+        // 先启动（不 await：它内部等退避定时器），再推进时钟，最后等它收尾
+        const init = initAutoCheck();
+        await vi.advanceTimersByTimeAsync(1500);
+        await init;
+      });
+      // 读到设置后照常：启动即查一次 + 定时器已排
+      expect(checkMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 10);
+      });
+      expect(checkMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("启动时读设置持续失败 → 每 5 分钟重读；读到即恢复排程（读到为止）", async () => {
+    vi.useFakeTimers();
+    try {
+      // 一直读不到：退避阶梯（1s+3s+10s）后转周期性重读
+      settingsGetMock.mockRejectedValue(new Error("db locked"));
+      await act(async () => {
+        const init = initAutoCheck();
+        await vi.advanceTimersByTimeAsync(20_000);
+        await init;
+      });
+      expect(checkMock).not.toHaveBeenCalled(); // 读不到就不该擅自去查
+      // 5 分钟后重读：这次成功 → 正常排程（启动即查 + 定时）
+      settingsGetMock.mockResolvedValue("interval:1");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000 + 100);
+      });
+      expect(checkMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 10);
+      });
+      expect(checkMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("检查的超时计时器结算后被回收（不留挂起定时器）", async () => {
+    vi.useFakeTimers();
+    try {
+      checkMock.mockResolvedValue(null);
+      await act(async () => {
+        await useUpdateStore.getState().checkForUpdate();
+      });
+      // 30 秒超时计时器应已清掉——否则每次检查都留一个挂起定时器
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("配置键 = update.check_mode", async () => {
     settingsGetMock.mockClear();
     await act(async () => {

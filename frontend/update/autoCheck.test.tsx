@@ -179,6 +179,37 @@ describe("autoCheck（自动检查更新）", () => {
     }
   });
 
+  it("检查失败不打断后续定时轮次：到点仍会再查（2026-11-09 用户疑问钉住）", async () => {
+    vi.useFakeTimers();
+    try {
+      // 首轮检查失败（网络类）：updateStore 自动重试一次（退避 1.2s）
+      checkMock.mockRejectedValueOnce(new Error("error sending request for url"));
+      settingsGetMock.mockResolvedValue("interval:1");
+      await act(async () => {
+        await initAutoCheck();
+      });
+      expect(checkMock.mock.calls.length).toBe(1); // 启动即查一次（失败）
+      // 重试窗口内 phase 停在 checking（重试尚未触发）
+      expect(useUpdateStore.getState().phase.kind).toBe("checking");
+      // 退避到点 → 自动重试（本次成功）→ phase 离开 checking
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1300);
+      });
+      expect(checkMock.mock.calls.length).toBe(2);
+      expect(useUpdateStore.getState().phase.kind).not.toBe("checking");
+      const afterStartup = checkMock.mock.calls.length;
+      // 到点的下一轮照常发起——失败（含重试）没有把定时轮次打断：
+      // 单飞守卫只挡 checking/downloading/installed，失败态不在其中；
+      // setInterval 也独立于检查结果，不因失败被清。
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 10);
+      });
+      expect(checkMock.mock.calls.length).toBeGreaterThan(afterStartup);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("配置键 = update.check_mode", async () => {
     settingsGetMock.mockClear();
     await act(async () => {

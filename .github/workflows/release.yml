@@ -209,6 +209,49 @@ jobs:
       # 编译与签名全过、4 秒即退、Tauri 不透出脚本 stderr）。cargo/vite 缓存
       # 全命中，重试只重跑打包段，代价不到 1 分钟。重试前先卸掉上次失败
       # 残留的挂载卷——不卸的话下次 attach 必报 Resource busy，重试白费。
+      # Tauri 打包工具链（NSIS / WiX）预取 + 缓存（2026-11-09）：
+      # tauri bundler 在打包阶段现下载这两个 zip——GitHub releases 偶发 504
+      # 会让 Windows job 假失败（Rust 编译已过、挂在下载；v1.7.4 发布前门
+      # 连挂四次均如此）。这里用带重试的下载把工具链预置到 tauri 的工具集
+      # 目录（tauri 见到文件已存在就跳过自己的下载），并把该目录缓存起来
+      # ——命中缓存的 runner 完全不必联网取工具链。
+      - name: Cache Tauri bundler toolchains (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/tauri
+          key: tauri-bundler-win-v1
+
+      - name: Prefetch Tauri bundler toolchains (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:LOCALAPPDATA 'tauri'
+          $nsisDir = Join-Path $tools 'NSIS'
+          $pluginDir = Join-Path $nsisDir 'Plugins\x86-unicode\additional'
+          $wixDir = Join-Path $tools 'WixTools314'
+          $nsisExe = Join-Path $nsisDir 'NSIS.exe'
+          $nsisPlugin = Join-Path $pluginDir 'nsis_tauri_utils.dll'
+          if ((Test-Path $nsisExe) -and (Test-Path $nsisPlugin) -and (Test-Path $wixDir)) {
+            Write-Host 'Tauri bundler toolchains already present - skipping download'
+            exit 0
+          }
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+          $nsisZip = Join-Path $env:RUNNER_TEMP 'nsis.zip'
+          Invoke-WebRequest -Uri 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip' -OutFile $nsisZip -MaximumRetryCount 5 -RetryIntervalSec 5
+          Expand-Archive -Path $nsisZip -DestinationPath $tools -Force
+          $extracted = Get-ChildItem -Path $tools -Directory | Where-Object { $_.Name -like 'nsis-*' } | Select-Object -First 1
+          if ($extracted) {
+            if (Test-Path $nsisDir) { Remove-Item -Recurse -Force $nsisDir }
+            Move-Item -Path $extracted.FullName -Destination $nsisDir -Force
+          }
+          New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
+          Invoke-WebRequest -Uri 'https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll' -OutFile $nsisPlugin -MaximumRetryCount 5 -RetryIntervalSec 5
+          $wixZip = Join-Path $env:RUNNER_TEMP 'wix.zip'
+          Invoke-WebRequest -Uri 'https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip' -OutFile $wixZip -MaximumRetryCount 5 -RetryIntervalSec 5
+          New-Item -ItemType Directory -Force -Path $wixDir | Out-Null
+          Expand-Archive -Path $wixZip -DestinationPath $wixDir -Force
+
       - name: Build Tauri app
         shell: bash
         env:

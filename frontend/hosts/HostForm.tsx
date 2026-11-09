@@ -23,6 +23,7 @@ import {
 import { CredentialInlineForm } from "../credentials/CredentialInlineForm";
 import { Checkbox } from "../ui/Checkbox";
 import { useEscClose } from "../ui/useEscClose";
+import { syncMonitorSampling } from "../monitor/monitorSync";
 
 export interface HostFormProps {
   /** 非空 = 编辑模式；null = 新建。 */
@@ -173,6 +174,10 @@ export function HostForm({ host, defaultGroupId, onClose, closing }: HostFormPro
     try {
       if (host) {
         await updateHost(host.id, input);
+        // 监控开关在表单里翻转且主机有活会话 → 采样立即同步（2026-11-08
+        // 审计 C2：此前表单关掉开关后采样照跑到会话消亡）。落库成功后再
+        // 同步（失败面与 updateHost 一致）；新表单无会话，attach 路径自管。
+        if (host.monitor_enabled !== monitor) syncMonitorSampling(host.id, monitor);
       } else {
         await createHost(input);
       }

@@ -603,11 +603,8 @@ pub fn run() {
                 // CloseRequested——在 ExitRequested（退出已定、窗口仍可查）时
                 // 落一次盘；remember off 时 persist 内部 no-op。
                 tauri::RunEvent::ExitRequested { .. } => {
-                    eprintln!("[window-state] ExitRequested fired");
                     if let Some(win) = app.get_webview_window("main") {
                         commands::window_state::persist(&win);
-                    } else {
-                        eprintln!("[window-state] ExitRequested: main window gone");
                     }
                 }
                 tauri::RunEvent::Exit => {

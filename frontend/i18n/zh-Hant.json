@@ -117,7 +117,9 @@
     "orbResetPosition": "重設懸浮球位置",
     "orbResetPositionHint": "把懸浮球放回預設位置（位置只儲存在本機，不隨同步走）。",
     "askOttrOrbSaveFailed": "設定已生效，但儲存失敗",
-    "langHant": "繁體中文"
+    "langHant": "繁體中文",
+    "searchPlaceholder": "搜尋設定...",
+    "brandStable": "穩定版"
   },
   "hostForm": {
     "newTitle": "新建主機",
@@ -534,10 +536,8 @@
     },
     "mode": {
       "label": "執行方式",
-      "plan": "規劃",
       "auto": "自動執行",
       "confirm": "逐條確認",
-      "manual": "手動",
       "autoNotAuthorized": "該主機未授權自動執行（設定 → AI → 允許自動執行的主機）",
       "autoLocalDenied": "本地終端會話不給 AI 執行權（只給唯讀上下文）"
     },
@@ -785,7 +785,8 @@
       "size": "大小",
       "mtime": "時間"
     },
-    "dropDownloadQueued": "已加入下載佇列 {{count}} 個檔案"
+    "dropDownloadQueued": "已加入下載佇列 {{count}} 個檔案",
+    "dragItems": "（{{count}} 項）"
   },
   "forward": {
     "title": "端口轉發",
@@ -853,7 +854,8 @@
     "deliveryFailed": "投遞失敗",
     "resend": "重發",
     "resending": "重發中…",
-    "centerTitle": "通知中心"
+    "centerTitle": "通知中心",
+    "sendTimeout": "請求逾時（15 秒）——檢查網路或代理設定"
   },
   "knownHosts": {
     "title": "已知主機密鑰",
@@ -976,7 +978,8 @@
       "errTooShort": "主密碼至少 {{min}} 位",
       "errMismatch": "兩次輸入不一致",
       "dropContinue": "丟棄以上字段並繼續升級",
-      "droppedTitle": "以下字段無法解密、已置空——請找到對應憑證重新錄入密值："
+      "droppedTitle": "以下字段無法解密、已置空——請找到對應憑證重新錄入密值：",
+      "sealedField": "有歷史加密欄位無法用目前主金鑰解密：{{detail}}——升級已整體回滾、資料原樣未動。可重試，或在下方丟棄該欄位並繼續。"
     },
     "downgrade": {
       "start": "切換到免密模式…",
@@ -1220,7 +1223,8 @@
     "majorityGroup": "{{count}} 臺主機輸出一致",
     "differsBadge": "與多數派不同",
     "execFailed": "發起失敗",
-    "notConnectedHint": "{{count}} 臺未連接（執行時按失敗結算）"
+    "notConnectedHint": "{{count}} 臺未連接（執行時按失敗結算）",
+    "varInputAria": "主機 {{host}} 的變數 {{variable}}"
   },
   "recording": {
     "startLabel": "錄製",

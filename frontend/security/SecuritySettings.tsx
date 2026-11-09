@@ -204,8 +204,9 @@ export function SecuritySettings({
   const [wizardError, setWizardError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ReencryptProgress>({ done: 0, total: 0 });
   const [fieldsDone, setFieldsDone] = useState<number | null>(null);
-  // 主密码升级坏字段丢弃（2026-10-16 用户需求）：严格失败（诊断含「解密封
-  // 失败」）后向导给出「丢弃并继续」选项；完成页点名被置空的字段。
+  // 主密码升级坏字段丢弃（2026-10-16 用户需求）：严格失败（后端发
+  // UNREADABLE_SEALED_FIELD 标记，见下）后向导给出「丢弃并继续」选项；
+  // 完成页点名被置空的字段。
   const [droppedFields, setDroppedFields] = useState<string[]>([]);
   const [upgrading, setUpgrading] = useState(false);
 
@@ -354,6 +355,10 @@ export function SecuritySettings({
       setThemeImportedCount(null);
       setSudoConfirm(false);
       setPane("general");
+      // 搜索词一并清（2026-11-08 审计）：残留词可能把「打开即落焦」的目标
+      // 导航项 display:none 掉——el.focus() 对隐藏元素必失败，落焦静默失效、
+      // ↑↓ 导航不可用。
+      setSearchQuery("");
       const ts = loadTerminalSettings();
       setTermFont(ts.fontFamily);
       setTermFontSize(ts.fontSize ?? 13);
@@ -430,11 +435,12 @@ export function SecuritySettings({
   const navButtonRefs = useRef<Partial<Record<SettingsPane, HTMLButtonElement | null>>>({});
   // 打开设置即落焦侧栏导航（2026-11-07 用户反馈：键盘上下键需要焦点先在，
   // 否则每次都要鼠标点一下）。落焦目标 = 当前分区的导航项（roving tabindex
-  // 的停靠点）；一次性 focus() 在 WKWebView 会被吞 → rAF 连帧重试，命中即停
-  // （至多 10 帧，同 Ask 面板输入框的既有手法）。键盘切档时 activeElement
-  // 已是目标项，重跑为 no-op 不抢焦。
+  // 的停靠点；关闭时搜索词已清（见上方重置块），目标项不会处于隐藏态）；
+  // 一次性 focus() 在 WKWebView 会被吞 → rAF 连帧重试，命中即停（至多 10 帧，
+  // 同 Ask 面板输入框的既有手法）。键盘切档时 activeElement 已是目标项，
+  // 重跑为 no-op 不抢焦。
   useEffect(() => {
-    if (!mount.shouldRender) return;
+    if (!mount.shouldRender || !open) return;
     let raf = 0;
     let tries = 0;
     const tick = () => {
@@ -448,12 +454,27 @@ export function SecuritySettings({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // 只依赖「打开」转变：打开 = 无条件把焦点交给侧栏（真机实证：WKWebView
-    // 打开对话框时会自动聚焦「关闭」钮，任何「焦点已被持有就让位」的守卫
-    // 都会让落焦失效——用户报的就是这个）。后续的焦点移动全部由键盘导航
-    // 处理器与用户点击接管，本 effect 不再重跑，无抢焦窗口。
+    // 依赖「打开」转变（mount.shouldRender + open）：打开 = 无条件把焦点交给
+    // 侧栏（真机实证：WKWebView 打开对话框时会自动聚焦「关闭」钮，任何
+    // 「焦点已被持有就让位」的守卫都会让落焦失效——用户报的就是这个）。
+    // 后续的焦点移动全部由键盘导航处理器与用户点击接管——分区切换不改变
+    // 这两个依赖，effect 不重跑，无抢焦窗口。open 入依赖是退场动画窗的
+    // 160ms 快速重开路径：shouldRender 全程 true，不看 open 就不会重跑落焦
+    // （2026-11-08 审计）。关闭中（open=false）不落焦。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mount.shouldRender]);
+  }, [mount.shouldRender, open]);
+  // 解密封失败（升级遇历史坏字段）：2026-11-08 起后端发「稳定标记 + ASCII
+  // 明细」，前端按标记给本地化解释与「丢弃并继续」逃生门——此前 Rust 整句
+  // 中文报错、前端 includes("解密封失败") 中文匹配，英文界面直接看到中文。
+  // 标记用 includes 定位（VaultError 的 Display 带 "crypto error: " 前缀）。
+  const SEALED_FIELD_MARKER = "UNREADABLE_SEALED_FIELD";
+  const sealedFieldDetail =
+    wizardError !== null && wizardError.includes(SEALED_FIELD_MARKER)
+      ? wizardError
+          .slice(wizardError.indexOf(SEALED_FIELD_MARKER) + SEALED_FIELD_MARKER.length)
+          .trim()
+      : null;
+
   if (!mount.shouldRender) return null;
 
   function validate(): string | null {
@@ -630,7 +651,7 @@ export function SecuritySettings({
                 type="search"
                 className="settings-search-input"
                 data-testid="settings-search-input"
-                placeholder={t("settings.searchPlaceholder", { defaultValue: "搜索设置..." })}
+                placeholder={t("settings.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -674,7 +695,8 @@ export function SecuritySettings({
                         ——此前这里写死字面量「v1.5.19」，从 v1.6.0 起一直
                         显示旧版本，与关于页对不上（2026-11-03 用户实机发现）。
                         取不到版本时只留状态语义，不编版本号。 */}
-                    {appVersion !== null ? `v${appVersion}` : ""} · 稳定版
+                    {appVersion !== null ? `v${appVersion} · ` : ""}
+                    {t("settings.brandStable")}
                   </span>
                 </div>
               </div>
@@ -688,7 +710,9 @@ export function SecuritySettings({
                   }}
                   type="button"
                   role="tab"
+                  id={`settings-nav-${p.id}`}
                   aria-selected={pane === p.id}
+                  aria-controls={`settings-pane-${p.id}`}
                   tabIndex={p.id === tabbablePaneId ? 0 : -1}
                   data-testid={`settings-nav-${p.id}`}
                   className="settings-nav-item"
@@ -708,6 +732,8 @@ export function SecuritySettings({
             {/* --- 安全（T11 主区）--- */}
             <section
               role="tabpanel"
+              id={`settings-pane-security`}
+              aria-labelledby={`settings-nav-security`}
               aria-label={t("settings.sectionSecurity")}
               hidden={pane !== "security"}
               data-testid="security-section"
@@ -856,10 +882,12 @@ export function SecuritySettings({
               <p className="settings-hint">{t("security.wizard.intro", { min: MIN_MASTER_PASSWORD })}</p>
               {wizardError && (
                 <p className="form-error" data-testid="wizard-error">
-                  {wizardError}
+                  {sealedFieldDetail !== null
+                    ? t("security.wizard.sealedField", { detail: sealedFieldDetail })
+                    : wizardError}
                 </p>
               )}
-              {wizardError?.includes("解密封失败") && (
+              {sealedFieldDetail !== null && (
                 <div className="form-actions">
                   <button
                     type="button"
@@ -1079,6 +1107,8 @@ export function SecuritySettings({
             {/* --- 同步（Phase 5 Task 4）：通道三选一/信封口令/测试连接/立即同步 --- */}
             <div
               role="tabpanel"
+              id={`settings-pane-sync`}
+              aria-labelledby={`settings-nav-sync`}
               aria-label={t("settings.sectionSync")}
               hidden={pane !== "sync"}
               data-testid="sync-pane"
@@ -1089,6 +1119,8 @@ export function SecuritySettings({
             {/* --- 告警（B9 通知渠道 + 告警规则；自工具 dock 双入口归位设置）--- */}
             <div
               role="tabpanel"
+              id={`settings-pane-alerts`}
+              aria-labelledby={`settings-nav-alerts`}
               aria-label={t("settings.sectionAlerts")}
               hidden={pane !== "alerts"}
               data-testid="alerts-pane"
@@ -1101,6 +1133,8 @@ export function SecuritySettings({
             {/* --- 快捷键（2026-10-21 改键设置：列表/捕获/冲突校验/恢复默认）--- */}
             <div
               role="tabpanel"
+              id={`settings-pane-shortcuts`}
+              aria-labelledby={`settings-nav-shortcuts`}
               aria-label={t("settings.sectionShortcuts")}
               hidden={pane !== "shortcuts"}
               data-testid="shortcuts-pane"
@@ -1113,6 +1147,8 @@ export function SecuritySettings({
             {/* --- MCP（宿主接入配置；同上双入口）--- */}
             <div
               role="tabpanel"
+              id={`settings-pane-mcp`}
+              aria-labelledby={`settings-nav-mcp`}
               aria-label={t("settings.sectionMcp")}
               hidden={pane !== "mcp"}
               data-testid="mcp-pane"
@@ -1125,6 +1161,8 @@ export function SecuritySettings({
             {/* --- 外观（T2 键面沿用；persist 已迁 vault settings）--- */}
             <section
               role="tabpanel"
+              id={`settings-pane-appearance`}
+              aria-labelledby={`settings-nav-appearance`}
               aria-label={t("settings.sectionAppearance")}
               hidden={pane !== "appearance"}
               data-testid="appearance-section"
@@ -1332,6 +1370,8 @@ export function SecuritySettings({
             {/* --- 通用：语言 + 行为开关（关窗到托盘 / shell 集成，自外观节归位）--- */}
             <section
               role="tabpanel"
+              id={`settings-pane-general`}
+              aria-labelledby={`settings-nav-general`}
               aria-label={t("settings.sectionGeneral")}
               hidden={pane !== "general"}
               data-testid="general-section"
@@ -1444,6 +1484,8 @@ export function SecuritySettings({
                 embedded 形态无浮层壳，设置壳提供标题与滚动 --- */}
             <section
               role="tabpanel"
+              id={`settings-pane-ai`}
+              aria-labelledby={`settings-nav-ai`}
               aria-label={t("settings.sectionAi")}
               hidden={pane !== "ai"}
               data-testid="ai-pane"
@@ -1459,6 +1501,8 @@ export function SecuritySettings({
                 toast 就地更新，本面板为完整进度 UX 的手动入口）--- */}
             <section
               role="tabpanel"
+              id={`settings-pane-about`}
+              aria-labelledby={`settings-nav-about`}
               aria-label={t("settings.sectionAbout")}
               hidden={pane !== "about"}
               data-testid="about-section"

@@ -344,6 +344,10 @@ export function readDefaultAiExecMode(): AiExecMode {
   try {
     const raw = localStorage.getItem(AI_DEFAULT_MODE_STORAGE_KEY);
     if (raw === null) return DEFAULT_AI_EXEC_MODE;
+    // v1.7.0/v1.7.1 曾把 "plan" 写进默认档（当时 UI 有规划档）；v1.7.3 起
+    // 面板与设置两处下拉都删了 plan 选项——残留值会让受控 select 显示空白、
+    // 新对话落进无执行入口的规划档。归一到默认档（2026-11-08 审计 A4）。
+    if (raw === "plan") return DEFAULT_AI_EXEC_MODE;
     return normalizeAiExecMode(raw);
   } catch {
     return DEFAULT_AI_EXEC_MODE;

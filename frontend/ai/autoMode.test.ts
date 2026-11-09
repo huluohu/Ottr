@@ -427,3 +427,93 @@ describe("auto 档：执行护栏", () => {
     );
   });
 });
+
+// 2026-11-08 审计 A3 回归
+describe("auto 档：执行记录保全（2026-11-08 审计 A3）", () => {
+  it("执行中被停止：已跑完的命令记录仍进清单（信任面不丢；不复活进新对话）", async () => {
+    // ai_scope_exec（= auto 档的登记+执行一步）挂起 → abort → 放行：
+    // executed 结果的 done 记录此前被 alive() 检查丢弃，现在迟到也落库。
+    execResult = {
+      outcome: {
+        executed: true,
+        planned: false,
+        stepId: "step-1",
+        message: "auto mode executed the command (read-only command ls)",
+        result: {
+          executed: true,
+          stepId: "step-1",
+          exitCode: 0,
+          stdout: "total 8",
+          stderr: "",
+          truncated: false,
+          timedOut: false,
+          message: "ok",
+        },
+      },
+    };
+    let release!: (v: Record<string, unknown>) => void;
+    const gate = new Promise<Record<string, unknown>>((res) => {
+      release = res;
+    });
+    const base = mockedInvoke.getMockImplementation()!;
+    mockedInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "ai_scope_exec" ? gate : base(cmd, args),
+    );
+    script = execScript();
+    useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "auto");
+    const runPromise = useAiStore.getState().run("pane-a", "看看目录");
+    await vi.waitFor(() => expect(calls("ai_scope_exec")).toHaveLength(1));
+
+    useAiStore.getState().abort("pane-a");
+    release(execResult.outcome!);
+    await runPromise;
+
+    const step = slice()?.plan?.[0];
+    expect(step?.status).toBe("done");
+    expect(step?.result?.stdout).toContain("total 8");
+    // 面板回到非 running 态（不因迟到回包卡「生成中」）
+    expect(slice()?.status).not.toBe("running");
+  });
+
+  it("新对话换代：迟到的执行记录不复活进新对话的空清单", async () => {
+    execResult = {
+      outcome: {
+        executed: true,
+        planned: false,
+        stepId: "step-1",
+        message: "auto executed",
+        result: {
+          executed: true,
+          stepId: "step-1",
+          exitCode: 0,
+          stdout: "out",
+          stderr: "",
+          truncated: false,
+          timedOut: false,
+          message: "ok",
+        },
+      },
+    };
+    let release!: (v: Record<string, unknown>) => void;
+    const gate = new Promise<Record<string, unknown>>((res) => {
+      release = res;
+    });
+    const base = mockedInvoke.getMockImplementation()!;
+    mockedInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "ai_scope_exec" ? gate : base(cmd, args),
+    );
+    script = execScript();
+    useAiStore.getState().openAsk(ASK_A);
+    useAiStore.getState().setMode("pane-a", "auto");
+    const runPromise = useAiStore.getState().run("pane-a", "看看目录");
+    await vi.waitFor(() => expect(calls("ai_scope_exec")).toHaveLength(1));
+
+    // 换代：新对话（conversationId 换新、计划清空）后再放行迟到结果
+    useAiStore.getState().newConversation("pane-a");
+    release(execResult.outcome!);
+    await runPromise;
+
+    expect(slice()?.plan ?? []).toHaveLength(0);
+  });
+});

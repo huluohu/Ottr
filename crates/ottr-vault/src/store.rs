@@ -913,10 +913,16 @@ fn reseal_all_enc_columns(
                         Ok(p) => p,
                         Err(e) => {
                             if !drop_unreadable {
+                                // 错误形态（2026-11-08 审计）：稳定标记 + ASCII
+                                // 技术明细——此前整句写死中文（英文界面用户直接
+                                // 看到中文报错），且前端靠 includes("解密封失败")
+                                // 字符串匹配决定给不给「丢弃并继续」逃生门。
+                                // 现在 `UNREADABLE_SEALED_FIELD` 标记给前端判定，
+                                // 人话解释由前端 i18n 出，明细原样附在本地化句里
+                                // 供反馈携带。
                                 return Err(VaultError::Crypto(format!(
-                                    "解密封失败：{table}.{}（行 {row_id}，密文 {} 字节）\
-                                     无法用当前主密钥开封——升级已整体回滚、数据原样未动，\
-                                     可重试或携本条信息反馈。原始错误：{e}",
+                                    "UNREADABLE_SEALED_FIELD {table}.{} row={row_id} \
+                                     sealed_bytes={} open_err={e}",
                                     col.column,
                                     blob.len()
                                 )));

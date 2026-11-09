@@ -129,6 +129,10 @@ describe("ProcessBrowser kill 流", () => {
     const dlg = screen.getByTestId("proc-kill-dialog");
     expect(dlg.textContent).toContain("300");
     expect(dlg.textContent).toContain("nginx");
+    // 2026-11-08 审计 D6：全仓弹层的焦点陷阱以 [aria-modal="true"] 为覆盖
+    // 口径——kill 确认框是唯一漏网的，挂上后 Tab 循环在框内。
+    expect(dlg.getAttribute("aria-modal")).toBe("true");
+    expect(dlg.getAttribute("aria-label")).toContain("300");
 
     fireEvent.click(screen.getByTestId("proc-kill-cancel"));
     expect(screen.queryByTestId("proc-kill-dialog")).toBeNull();

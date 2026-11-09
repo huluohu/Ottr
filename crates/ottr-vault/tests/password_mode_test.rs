@@ -924,9 +924,11 @@ fn upgrade_strict_rejects_unreadable_and_drop_mode_neutralizes_it() {
         .set_master_password(GOOD_PASSWORD, &mut |_, _| {})
         .unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("解密封失败"), "{msg}");
+    // 2026-11-08 起错误形态 = 稳定标记 + ASCII 明细（人话解释由前端 i18n 出，
+    // 此前整句中文，英文界面用户直接看到中文报错）。
+    assert!(msg.contains("UNREADABLE_SEALED_FIELD"), "{msg}");
     assert!(msg.contains("credentials.secret_enc"), "{msg}");
-    assert!(msg.contains("数据原样未动"), "{msg}");
+    assert!(msg.contains("row=1"), "{msg}");
     assert_eq!(vault.mode(), KeyMode::Keyring, "严格失败 = 库原样未动");
 
     // 丢弃语义（用户显式选择）：坏字段置空、升级成功、清单点名、其余字段完好。

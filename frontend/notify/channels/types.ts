@@ -120,7 +120,8 @@ export const defaultDeps: Required<Pick<ChannelDeps, "now">> & { fetchImpl: type
       return await outboundFetch(input, { ...(init ?? {}), signal: AbortSignal.timeout(15_000) });
     } catch (e) {
       if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
-        throw new Error("请求超时（15 秒）——检查网络或代理设置");
+        // 文案走 i18n（2026-11-08 审计：此前写死中文，英文界面用户看到中文报错）。
+        throw new Error(i18n.t("notify.sendTimeout"));
       }
       throw e;
     }

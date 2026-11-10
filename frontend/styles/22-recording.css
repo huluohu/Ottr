@@ -62,11 +62,16 @@
   align-items: center;
   gap: 4px;
   opacity: 0;
+  /* 隐形按钮不可命中（2026-11-10 审计）：此前只 opacity:0 → 行内「⌸ 在
+     访达中显示 / ✕ 删除」两个按钮仍浮在行右端吃点击（用户看不见却点得
+     中：直接弹出访达、或冒出一条删除确认）。同仓 .host-actions 的写法。 */
+  pointer-events: none;
   transition: opacity var(--dur) var(--ease-out);
 }
 .recording-item-row:hover .recording-actions,
 .recording-actions:focus-within {
   opacity: 1;
+  pointer-events: auto;
 }
 .recording-confirm {
   display: flex;

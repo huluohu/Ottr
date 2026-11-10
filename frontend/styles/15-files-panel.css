@@ -85,15 +85,17 @@
 }
 /* 面板在场时终端列被压窄，工具行内容（分屏组 + 视图切换 + 录制 + 编码）可能
    宽于终端列——**绝不允许它溢出到面板底下**（那正是「顶部被遮盖」的另一种
-   表现）。改为行内横向滚动：内容一行放不下时滚动可达，永不越界压面板。
-   窄窗口（终端列 < 内容宽）才会出现滚动条，常规窗口不受影响。 */
+   表现）。此前用「行内横向滚动 + min-width:max-content」：内容一行放不下
+   时要横向拖才能看到「监控/插件」钮——用户报障的「工具行点不动/看不见」
+   同族症状（2026-11-10 审计）。改为**折行**（.term-toolbar 本身已有
+   flex-wrap:wrap）：一行放不下就换行，五个视图切换钮永远在可视区内。 */
 .main-area.has-ai-panel .term-toolbar-row {
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 .main-area.has-ai-panel .term-toolbar-row .term-toolbar {
-  min-width: max-content;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .term-area-holder[data-hidden="true"] {
   position: absolute;
@@ -178,6 +180,16 @@
   border-right: 1px solid var(--border-subtle);
 }
 /* pane 标题条（2026-10-10 双栏重设计）：显性 本地/远端 标记 + 焦点色点。 */
+/* 远端栏标题里的主机名（长 FQDN）——限宽省略（2026-11-10 审计）：
+   无样式的 span 作为 flex 子项默认 min-width:auto（= min-content），长主机名
+   不可收缩 → 直接压在左侧「本地」栏标题上。 */
+.file-pane-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .file-pane-title {
   flex: none;
   display: flex;
@@ -280,7 +292,7 @@
  * fixed 定位跟随光标，pointer-events:none 不挡 hit-test；面样式与行同族。 */
 .file-drag-badge {
   position: fixed;
-  z-index: var(--z-ctx);
+  z-index: var(--z-ctx-hit);
   display: inline-flex;
   align-items: center;
   gap: 6px;

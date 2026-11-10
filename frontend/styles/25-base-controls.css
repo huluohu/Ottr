@@ -319,6 +319,10 @@
 .info-hint-bubble {
   position: fixed;
   z-index: var(--z-toast);
+  /* 气泡不接管指针（2026-11-10 审计）：气泡宽 320px、浮在触发器右侧，
+     此前它会盖住同一行的开关/下拉且**收得到点击**（模态对话框里也一样——
+     气泡 z=150 高于模态 50）——用户明明点的是开关，却只把气泡点亮了。 */
+  pointer-events: none;
   display: block;
   width: max-content;
   max-width: 320px;

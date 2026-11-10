@@ -323,18 +323,21 @@ export function MainArea({
       className={`main-area terminal-mode${aiPanelOut ? " has-ai-panel" : ""}`}
       data-testid="main-area"
     >
+      {/* 主区左列（页签行 + 工具行 + 内容行）：AI 面板整高右栏时收缩让位。
+          面板在场与否不改变左列内部结构——只改宽度，避免「有面板/无面板」
+          两套布局各自漂移。 */}
+      <div className="main-area-body">
       {/* 库级错误横幅（2026-11-01 功能审计 P2-20）：此前 storeError 只渲染在
           「零会话」分支的空态里——有会话时（常态）删除主机/凭据失败、刷新失败
-          全部静默，用户只看到界面毫无变化。此处常驻渲染，会话态也可见。 */}
+          全部静默，用户只看到界面毫无变化。此处常驻渲染，会话态也可见。
+          **必须在 .main-area-body 内**（2026-11-10 审计）：留在外面时，AI 面板
+          在场会把主区切成 row 方向——横幅成为主区的 flex 子项，被拉成一条
+          几百像素宽的竖条（文字竖排），并把终端列压掉一整条。 */}
       {storeError && (
         <p className="main-error" data-testid="store-error">
           {t("mainArea.loadFailed", { message: storeError })}
         </p>
       )}
-      {/* 主区左列（页签行 + 工具行 + 内容行）：AI 面板整高右栏时收缩让位。
-          面板在场与否不改变左列内部结构——只改宽度，避免「有面板/无面板」
-          两套布局各自漂移。 */}
-      <div className="main-area-body">
       <div className="tabbar-row" {...dragRegion}>
         {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
             命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}

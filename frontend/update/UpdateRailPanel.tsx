@@ -74,6 +74,11 @@ export function UpdateRailPanel({ pos, onClose }: UpdateRailPanelProps) {
     <div
       className="rail-pop update-pop"
       role="dialog"
+      /* 模态语义（2026-11-10 审计）：全仓唯一缺 aria-modal 的 role=dialog——
+         全局焦点陷阱以 [aria-modal="true"] 为覆盖口径，缺了它 Tab 会走出这个
+         面板（面板里的「下载并安装 / 重启」键盘用户拿不到）。它自带全屏背板
+         （.rail-flyout-backdrop），语义上就是模态卡片。 */
+      aria-modal="true"
       aria-label={title}
       data-testid="update-pop"
       data-phase={kind}

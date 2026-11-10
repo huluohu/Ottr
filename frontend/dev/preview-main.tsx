@@ -44,6 +44,10 @@ const updateMode = new URLSearchParams(location.search).get("update");
 // 设置页目检（2026-10-26）：?settings=sync —— 设置页直落同步分区，且已保存
 // 本地目录通道让「立即同步」可点，验证同步子弹框叠在设置之上（设置不被顶掉）。
 const settingsMode = new URLSearchParams(location.search).get("settings");
+// 通用视图模式（2026-11-10 布局守卫）：?view=<MainView> —— 种一条会话并切到
+// 该视图，供 scripts/verify-views.mjs 逐视图做几何断言（半屏 / 面板压工具行 /
+// 切换钮被推出视口 / 遮挡这一族回归——jsdom 测不到，必须真浏览器量）。
+const viewMode = new URLSearchParams(location.search).get("view");
 // 断线耗尽态目检（2026-10-29 用户需求：终端内回车继续重连）：?reconnect=exhausted
 // —— 种子一条「自动重连已耗尽」的会话（disconnected + attempt=5），终端可聚焦；
 // 按回车应重走退避链（attempt 归零 → 第 1/5 次起步）。window.__session__ 暴露
@@ -385,6 +389,12 @@ async function renderShot(): Promise<void> {
     },
   ];
   invokeTable["cj_runs"] = [];
+  // 进程/转发/跳板链面板的空数据（2026-11-10 布局守卫）：mock 对未知命令返回
+  // null，三个面板把 null 当列表迭代会抛错整页崩（真 Rust 恒返回数组）——
+  // 布局守卫要跑到这三个视图的空态，必须给空数组。
+  invokeTable["monitor_ps"] = [];
+  invokeTable["pf_list"] = [];
+  invokeTable["jc_list"] = [];
   invokeTable["cj_next_fire"] = Math.floor(Date.now() / 1000) + 3600;
   invokeTable["credentials_list"] = [
     { id: 1, kind: "password", name: null, key_pub: null, created_at: 1, updated_at: 1 },
@@ -396,7 +406,8 @@ async function renderShot(): Promise<void> {
     shotMode === "ai-panel" ||
     shotMode === "ai-ask" ||
     shotMode === "prompt-dialog" ||
-    shotMode === "ask-orb";
+    shotMode === "ask-orb" ||
+    viewMode !== null;
   useSessionStore.setState({
     sessions: withSession
       ? [
@@ -428,6 +439,10 @@ async function renderShot(): Promise<void> {
   // 主区视图（定时任务 / 总览是主区视图态，不走弹窗）。
   if (shotMode === "cron") useWorkspaceStore.getState().openMainView("cron");
   if (shotMode === "overview") useWorkspaceStore.getState().openMainView("overview");
+  // 通用视图分发（?view=）：settings 走既有 ?settings= 通道，不在此列。
+  if (viewMode && viewMode !== "settings") {
+    useWorkspaceStore.getState().openMainView(viewMode as never);
+  }
 
   // AI 诊断面板夹具（2026-11-02）：面板整高右栏后，「标题/退出码徽章是否被上方
   // 视图切换器工具行压住」这类布局回归需要能量测的稳定夹具——面板必须有
@@ -742,7 +757,7 @@ async function renderShot(): Promise<void> {
 }
 
 async function render() {
-  if (shotMode) {
+  if (shotMode || viewMode !== null) {
     await renderShot();
     return;
   }
@@ -756,6 +771,9 @@ async function render() {
         </ThemeProvider>
       </React.StrictMode>,
     );
+    // 就绪信号：verify-views.mjs 对 ?settings= 同样等它（此前该路径不发信号，
+    // 守卫在设置视图上超时）。
+    (window as unknown as { __shotReady__?: boolean }).__shotReady__ = true;
     return;
   }
   // 「问 Ottr」面板目检/浏览器级交互验证（2026-11-07 用户反馈三项：档位下拉、

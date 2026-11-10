@@ -1,0 +1,298 @@
+#!/usr/bin/env node
+// 全视图布局守卫（2026-11-10 用户要求「真实有效的方案」第 1 道防线）。
+//
+// 背景：v1.7.5 之前用户实报「切文件/进程/监控都是半屏 + 面板标题压标签栏 +
+// 工具行切换钮点不动」——根因是面板被渲染在包裹容器之外，让位规则静默失效。
+// 这类几何回归 jsdom 单测测不到（无布局引擎），CI 全绿、真机看走眼（v1.7.4
+// 发版前的监控视图截图就是坏的，被当成了正常空态）。本脚本把「逐视图布局
+// 走查」机械化：真实浏览器（Playwright 无头 chromium，dev-preview 的
+// ?view=/?shot= 种子态，与 README 配图同一套基建）里逐视图断言几何关系：
+//   * 视图切换钮可见且**可点**（elementFromPoint 中心命中钮自身——遮挡/推出
+//     视口即红，直接钉死 z 层级与宽度这族）
+//   * 终端行让位必须折叠（data-yield=true → 高度≈0）
+//   * 活动面板铺满容器、不压工具行（半屏即红）
+//   * 库级视图壳铺满主区
+//   * 无横向溢出
+//   * 设置模态盖住顶栏（z 刻度错序即红）
+// 任何一条不满足 → 非零退出并列出每条失败。
+//
+// 用法：
+//   node scripts/verify-views.mjs                # 自起 vite（1420）→ 跑完即关
+//   OTTR_VIEWS_URL=http://localhost:1420 node scripts/verify-views.mjs
+//   node scripts/verify-views.mjs --out verify/views   # 截图输出目录
+//
+// 截图落在 --out（默认 verify/views，gitignore）：作为人工复核证据留存；
+// 与上一发布版的同名截图并排对比，任何肉眼可见的差异都该能被上面某条几何
+// 断言解释——解释不了的就是新问题。
+import { createRequire } from "node:module";
+import { mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { spawn } from "node:child_process";
+import path from "node:path";
+import process from "node:process";
+
+const require = createRequire(import.meta.url);
+
+/** 视图清单：kind 决定断言集。session = 会话级（工具行切换器）；library =
+ *  库级宽幅视图；modal = 模态对话框。 */
+const VIEWS = [
+  { name: "terminal", kind: "session", url: "?view=terminal" },
+  { name: "files", kind: "session", url: "?view=files" },
+  { name: "processes", kind: "session", url: "?view=processes" },
+  { name: "monitor", kind: "session", url: "?view=monitor" },
+  { name: "plugins", kind: "session", url: "?view=plugins" },
+  // AI 面板在场（右栏挤压终端列的最恶劣形态；38vw 时代切换钮被推出视口的场景）
+  { name: "ai-panel", kind: "session", url: "?shot=ai-panel" },
+  { name: "overview", kind: "library", url: "?view=overview" },
+  { name: "batch", kind: "library", url: "?view=batch" },
+  { name: "cron", kind: "library", url: "?view=cron" },
+  { name: "notifications", kind: "library", url: "?view=notifications" },
+  { name: "forwards", kind: "library", url: "?view=forwards" },
+  { name: "jumpchains", kind: "library", url: "?view=jumpchains" },
+  // 模态遮罩必须盖住顶栏（z 刻度：--z-overlay > --z-topbar）
+  { name: "settings", kind: "modal", url: "?settings=general" },
+];
+
+const BASE_URL = process.env.OTTR_VIEWS_URL ?? "";
+const OUT_DIR = path.resolve(process.cwd(), arg("out") ?? "verify/views");
+const VIEWPORT = { width: 1280, height: 896 };
+
+function arg(name) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+/** playwright 解析顺序（与 capture-screenshots 同款）：仓库依赖 →
+ *  PLAYWRIGHT_PATH → npx 缓存里的最近一份。 */
+function resolvePlaywright() {
+  const candidates = [];
+  if (process.env.PLAYWRIGHT_PATH) candidates.push(process.env.PLAYWRIGHT_PATH);
+  candidates.push(path.resolve(process.cwd(), "node_modules/playwright"));
+  const npxCache = path.join(process.env.HOME ?? "", ".npm/_npx");
+  if (existsSync(npxCache)) {
+    for (const dir of readdirSync(npxCache)) {
+      candidates.push(path.join(npxCache, dir, "node_modules/playwright"));
+    }
+  }
+  for (const c of candidates) {
+    try {
+      return require(c);
+    } catch {
+      /* 试下一个 */
+    }
+  }
+  throw new Error(
+    "playwright 未找到：请 npm i -D playwright，或用 PLAYWRIGHT_PATH=<playwright 的 node_modules 目录> 指定。",
+  );
+}
+
+/** 自起 vite（除非外部给了 OTTR_VIEWS_URL）。返回 { url, close }。 */
+async function ensureServer() {
+  if (BASE_URL) return { url: BASE_URL, close: () => {} };
+  const port = 1420;
+  const child = spawn("npx", ["vite", "--port", String(port), "--strictPort"], {
+    cwd: process.cwd(),
+    stdio: "ignore",
+    detached: false,
+  });
+  // 就绪轮询（vite 冷启动 ~1s；strictPort 冲突即失败，不静默换口）
+  const url = `http://localhost:${port}`;
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const res = await fetch(url);
+      if (res.ok) return { url, close: () => child.kill("SIGTERM") };
+    } catch {
+      /* 未就绪继续等 */
+    }
+  }
+  child.kill("SIGTERM");
+  throw new Error("vite dev server 未能启动（60×500ms 内未就绪）");
+}
+
+/** 各 kind 的几何断言（在页面里 evaluate）。返回失败清单（空 = 过）。 */
+const CHECKS = {
+  session: () => {
+    const failures = [];
+    const fmt = (r) =>
+      `(${Math.round(r.left)},${Math.round(r.top)}) ${Math.round(r.width)}×${Math.round(r.height)}`;
+    // 1) 视图切换钮：可见 + 中心点真命中钮自身（被遮挡/推出视口即红）
+    const btns = [...document.querySelectorAll('button[data-testid^="view-"]')];
+    if (btns.length === 0) failures.push("工具行没有任何视图切换钮（切换器丢失）");
+    for (const b of btns) {
+      const r = b.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) {
+        failures.push(`切换钮 ${b.dataset.testid} 尺寸为 0`);
+        continue;
+      }
+      if (r.right < 0 || r.left > window.innerWidth || r.bottom < 0 || r.top > window.innerHeight) {
+        failures.push(`切换钮 ${b.dataset.testid} 在视口外 ${fmt(r)}`);
+        continue;
+      }
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const hit = document.elementFromPoint(cx, cy);
+      if (!hit || !(hit === b || b.contains(hit))) {
+        const desc = hit
+          ? `${hit.tagName.toLowerCase()}.${String(hit.className).split(" ")[0] || "(无类)"}`
+          : "null";
+        failures.push(`切换钮 ${b.dataset.testid} 中心点被 ${desc} 挡住（点击落不到钮上）`);
+      }
+    }
+    // 2) 让位折叠：data-yield=true 的终端行必须 ≈0 高（不折叠 = 面板被均分半屏）
+    const row = document.querySelector('.term-main-row[data-yield="true"]');
+    if (row) {
+      const h = row.getBoundingClientRect().height;
+      if (h > 12) failures.push(`终端行让位未折叠（高 ${Math.round(h)}px）→ 面板被均分成半屏`);
+    }
+    // 3) 活动面板：高度对比**整个主区**（健康 ≈90%：主区减页签行/工具行；
+    //    50/50 均分的半屏态 ≈50%）。基准用主区而不是面板自己的父容器——
+    //    面板被挪出包裹层时，它在旧槽位里照样「自洽」，只有对主区的占比
+    //    才暴露半屏（2026-11-10 files 视图漏报的教训）。
+    const mainArea = document.querySelector(".main-area");
+    const toolbar = document.querySelector(".term-toolbar-row");
+    const panelSel = [".file-panel", ".proc-panel", ".workspace-view"].find((s) =>
+      document.querySelector(s),
+    );
+    if (mainArea && toolbar && panelSel) {
+      const panel = document.querySelector(panelSel);
+      const pb = panel.getBoundingClientRect();
+      const mb = mainArea.getBoundingClientRect();
+      const tb = toolbar.getBoundingClientRect();
+      if (pb.top < tb.bottom - 2) {
+        failures.push(
+          `面板顶部 ${Math.round(pb.top)} 压过工具行底部 ${Math.round(tb.bottom)}（层级错位）`,
+        );
+      }
+      const ratio = pb.height / mb.height;
+      if (ratio < 0.7) {
+        failures.push(
+          `面板高度只占主区 ${Math.round(ratio * 100)}%（应 ≈90%，下半屏被均分）`,
+        );
+      }
+      if (pb.bottom < mb.bottom - 8) {
+        failures.push(`面板距主区底部还差 ${Math.round(mb.bottom - pb.bottom)}px → 未铺满`);
+      }
+    }
+    // 4) 横向溢出
+    if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+      failures.push(
+        `横向溢出：内容宽 ${document.documentElement.scrollWidth} > 视口 ${window.innerWidth}`,
+      );
+    }
+    return failures;
+  },
+
+  library: () => {
+    const failures = [];
+    const shell =
+      document.querySelector(".workspace-view") ?? document.querySelector(".main-view");
+    const container =
+      document.querySelector(".main-area-body") ?? document.querySelector(".main-area");
+    if (!shell || !container) {
+      failures.push("视图壳或容器缺失（.workspace-view/.main-view/.main-area-body）");
+      return failures;
+    }
+    const sb = shell.getBoundingClientRect();
+    const cb = container.getBoundingClientRect();
+    const ratio = sb.height / cb.height;
+    if (ratio < 0.5) {
+      failures.push(`视图壳高度只占主区 ${Math.round(ratio * 100)}% → 半屏`);
+    }
+    if (sb.bottom < cb.bottom - 24) {
+      failures.push(`视图壳距主区底部还差 ${Math.round(cb.bottom - sb.bottom)}px → 未铺满`);
+    }
+    if (document.documentElement.scrollWidth > window.innerWidth + 1) {
+      failures.push(
+        `横向溢出：内容宽 ${document.documentElement.scrollWidth} > 视口 ${window.innerWidth}`,
+      );
+    }
+    return failures;
+  },
+
+  modal: () => {
+    const failures = [];
+    const dlg = document.querySelector(".settings-dialog");
+    if (!dlg) {
+      failures.push("设置对话框未渲染");
+      return failures;
+    }
+    const r = dlg.getBoundingClientRect();
+    if (r.left < 0 || r.right > window.innerWidth || r.top < 0 || r.bottom > window.innerHeight) {
+      failures.push(
+        `对话框超出视口 ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)}`,
+      );
+    }
+    // 遮罩必须盖住顶栏：视口顶部中心命中的最顶层元素应位于 .overlay 之内
+    const probe = document.elementFromPoint(window.innerWidth / 2, 12);
+    if (!probe || !probe.closest(".overlay")) {
+      const desc = probe
+        ? `${probe.tagName.toLowerCase()}.${String(probe.className).split(" ")[0] || "(无类)"}`
+        : "null";
+      failures.push(`模态未盖住顶栏（顶部中心命中的是 ${desc}）→ 模态开着时顶栏仍可点`);
+    }
+    return failures;
+  },
+};
+
+async function main() {
+  const { chromium } = resolvePlaywright();
+  const server = await ensureServer();
+  mkdirSync(OUT_DIR, { recursive: true });
+  const browser = await chromium.launch();
+  const context = await browser.newContext({
+    viewport: VIEWPORT,
+    deviceScaleFactor: 1,
+    locale: "zh-CN",
+  });
+  const page = await context.newPage();
+  const results = [];
+  let hadPageError = false;
+  page.on("pageerror", (e) => {
+    hadPageError = true;
+    process.stderr.write(`[pageerror] ${String(e.message)}\n`);
+  });
+
+  try {
+    for (const view of VIEWS) {
+      const url = `${server.url}/dev-preview.html${view.url}&lang=zh-CN`;
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => window.__shotReady__ === true, null, {
+        timeout: 20000,
+      });
+      await page.waitForTimeout(500); // 字体/布局落定
+      const failures = await page.evaluate(CHECKS[view.kind]);
+      // AI 面板在场的窄窗复测（2026-11-10 审计：38vw 口径在默认窗宽 1280 下
+      // 不触发，窗口收窄后视图切换钮被推出可视区）：900px 宽重跑一遍会话断言。
+      if (view.kind === "session") {
+        await page.setViewportSize({ width: 900, height: 720 });
+        await page.waitForTimeout(400);
+        const narrow = await page.evaluate(CHECKS.session);
+        failures.push(...narrow.map((f) => `窄窗(900px): ${f}`));
+        await page.setViewportSize(VIEWPORT);
+        await page.waitForTimeout(300);
+      }
+      const shot = path.join(OUT_DIR, `${view.name}.png`);
+      await page.screenshot({ path: shot });
+      results.push({ view: view.name, failures, shot });
+      const tag = failures.length === 0 ? "PASS" : "FAIL";
+      process.stdout.write(`${tag}  ${view.name}\n`);
+      for (const f of failures) process.stdout.write(`      ✗ ${f}\n`);
+    }
+  } finally {
+    await browser.close();
+    server.close();
+  }
+
+  const bad = results.filter((r) => r.failures.length > 0);
+  process.stdout.write(
+    `\n${results.length - bad.length}/${results.length} 视图通过；截图在 ${OUT_DIR}\n`,
+  );
+  if (bad.length > 0 || hadPageError) {
+    process.exitCode = 1;
+  }
+}
+
+main().catch((e) => {
+  process.stderr.write(String(e?.stack ?? e) + "\n");
+  process.exit(1);
+});

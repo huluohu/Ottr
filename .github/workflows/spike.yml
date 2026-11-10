@@ -168,6 +168,16 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # 全视图布局守卫（2026-11-10 用户实报「切视图半屏/工具行点不动」后加）：
+      # 几何回归 jsdom 测不到、真机看走眼过一次——无头浏览器逐视图断言
+      # （面板满幅/切换钮可点/让位折叠/模态盖顶栏），红在 PR 阶段不进发布。
+      - name: Layout guards (verify-views)
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          npm i -D playwright --no-save
+          npx playwright install chromium
+          node scripts/verify-views.mjs
+
       # updater 签名条件化（release.yml 同款）：无私钥 Secret 时出普通安装包，
       # 不让 spike 首跑死在打包阶段。
       - name: Resolve updater signing (overlay only when signing key secret exists)

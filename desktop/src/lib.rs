@@ -246,6 +246,10 @@ pub fn run() {
                                 // 解耦（关窗到托盘照跑；真退出即停，语义见
                                 // commands/cron.rs 模块文档）。
                                 commands::cron::spawn_cron_scheduler(handle.clone());
+                                // 孤儿录制归档兜底（F-commands-2 下半）：强杀/
+                                // 断电漏网的无行 .cast 在启动时入库归档（可见/
+                                // 可删，只归档不删除；安全窗防误伤在录文件）。
+                                commands::recording::spawn_orphan_sweep(handle.clone());
                                 // MCP stdio server（Phase 4 Task 3，C1）：开关开着
                                 // 则起 UDS listener（引擎形态与授权模型见
                                 // commands/mcp.rs 模块文档；默认关）。
@@ -608,6 +612,11 @@ pub fn run() {
                     }
                 }
                 tauri::RunEvent::Exit => {
+                    // 在途录制退出收尾（F-commands-2）：quit_app/托盘退出/⌘Q
+                    // 全部 app.exit(0) 直杀，转发循环收尾任务与录制 worker 都
+                    // 不会跑——只有这里同步遍历会话表收尾，在录 .cast 才不会
+                    // 沦为无库行的孤儿（幂等：已自行收尾的槽位 no-op）。
+                    commands::recording::finalize_all_recordings_at_exit(app);
                     commands::remote_edit::close_all_edits(&app.state::<AppState>().edits);
                 }
                 // macOS 点 Dock 图标（applicationShouldHandleReopen）：主窗被隐藏

@@ -21,11 +21,14 @@ from pyftpdlib.servers import FTPServer
 
 USER = os.environ.get("FTP_USER", "spike")
 PASSWORD = os.environ.get("FTP_PASS", "spike-pass")
-HOME = "/home/spike"
+# 容器内默认 /home/spike；宿主进程形态（scripts/spike-ftpd.sh）经 FTP_HOME
+# 指到 fixtures/ftpd/home（macOS 无 /home 可写）。
+HOME = os.environ.get("FTP_HOME", "/home/spike")
 PASV_RANGE = (51000, 51099)
 PASV_ADDRESS = os.environ.get("PASV_ADDRESS", "127.0.0.1")
-CERT = "/etc/ftpd/cert.pem"
-KEY = "/etc/ftpd/key.pem"
+# 容器内默认挂载路径；宿主进程形态经 FTP_CERT/FTP_KEY 指 fixtures 内证书。
+CERT = os.environ.get("FTP_CERT", "/etc/ftpd/cert.pem")
+KEY = os.environ.get("FTP_KEY", "/etc/ftpd/key.pem")
 
 
 def base_handler(cls) -> type:

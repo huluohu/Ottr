@@ -42,6 +42,12 @@ function refreshVaultAfterUnlock(): void {
 interface VaultLockStore {
   phase: LockPhase;
   mode: VaultMode | null;
+  /** 是否已设主密码（Rust SecurityStatus.masterPasswordSet 镜像；false =
+   * 首次解锁态——下一次解锁输入即成为主密码）。null = 未查询/查询失败：
+   * LockScreen 首解锁最小长度预检只在 === false 时生效（存量库可能有修复前
+   * 经首解锁落下的短主密码，后端常规解锁臂照常放行——预检无差别拦截会把
+   * 这批用户锁在门外，故未知/已设一律放行，权威校验在后端，BL-202）。 */
+  masterPasswordSet: boolean | null;
   /** 解锁失败消息（LockScreen 红字；成功/重试时清）。 */
   error: string | null;
   /** 解锁命令在途（按钮转圈防重复提交）。 */
@@ -65,6 +71,7 @@ let unlisteners: (() => void)[] = [];
 export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
   phase: "boot",
   mode: null,
+  masterPasswordSet: null,
   error: null,
   unlocking: false,
 
@@ -85,7 +92,7 @@ export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
           // mode 同步（2026-10-16 全面评审 frontend-state-1）：只补 mode 不动
           // phase（refreshStatus 的 fail-closed catch 会覆盖刚置的 unlocked）。
           void vaultApi.security.status().then((s) => {
-            set({ mode: s.mode as VaultMode });
+            set({ mode: s.mode as VaultMode, masterPasswordSet: s.masterPasswordSet });
           }).catch(() => { /* mode 留 null，下次 refreshStatus 补 */ });
           // T4 顺带修：解锁（含自动升级/多入口）单一收口即重拉 vault 数据。
           refreshVaultAfterUnlock();
@@ -102,6 +109,7 @@ export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
       const status = await vaultApi.security.status();
       set({
         mode: status.mode,
+        masterPasswordSet: status.masterPasswordSet,
         phase: status.locked ? "locked" : "unlocked",
         error: null,
       });
@@ -123,7 +131,7 @@ export const useVaultLockStore = create<VaultLockStore>((set, get) => ({
       // refreshStatus 的 fail-closed catch 会覆盖它）。
       try {
         const s = await vaultApi.security.status();
-        set({ mode: s.mode as VaultMode });
+        set({ mode: s.mode as VaultMode, masterPasswordSet: s.masterPasswordSet });
       } catch { /* mode 留 null，下次 refreshStatus 补 */ }
       // T4 顺带修：兜底路径同享解锁后重拉（事件照常到达时 refresh 幂等）。
       refreshVaultAfterUnlock();
@@ -160,6 +168,7 @@ export function resetVaultLockStoreForTest(): void {
   useVaultLockStore.setState({
     phase: "boot",
     mode: null,
+    masterPasswordSet: null,
     error: null,
     unlocking: false,
   });

@@ -63,9 +63,11 @@ import {
   reconnectDelayMs,
 } from "./retry";
 import {
+  HOST_KEY_TIMEOUT_MARKER,
   PROMPT_TIMEOUT_MARKER,
   emitSessionEnded,
   isHostKeyRejection,
+  isHostKeyTimeout,
   isPromptTimeout,
   sinks,
   toBytes,
@@ -74,6 +76,7 @@ import {
 import {
   type HostKeyAsk,
   type HostKeyAskPayload,
+  type HostKeyTimeoutPayload,
   type PromptAsk,
   type PromptAskPayload,
   type PromptTimeoutPayload,
@@ -140,6 +143,18 @@ interface SessionStore {
   sessions: Session[];
   activeId: string | null;
   hostKeyAsk: HostKeyAsk | null;
+  /**
+   * 等待展示的 host-key 问询队列（2026-11-11 审计，promptAskQueue 同款）。
+   *
+   * 弹窗是**模态唯一槽**（一次只能显示一个），但 TOFU 问询可能**并发**：
+   * 两个标签同时首连陌生主机 / 跳板链逐跳问询叠加。原先 `hostKeyAsk` 单槽
+   * 直接被后来的问询覆盖，第一条问询的 UI 永久消失——其会话卡在
+   * waiting_host_key 直到 Rust 侧 60s 超时按拒绝收尾；changed（指纹漂移）
+   * 形态下用户看不到确认框即被静默自动拒。
+   *
+   * 队列 + 逐个弹出：并发问询不互相顶掉，每条问询的超时都能归到自己的会话。
+   */
+  hostKeyAskQueue: HostKeyAsk[];
   /** 挂起中的 keyboard-interactive 问询（TOTP/2FA 交互登录，2026-11-02 批次二）。 */
   promptAsk: PromptAsk | null;
   /**
@@ -187,7 +202,7 @@ interface SessionStore {
   /** 用户显式要求继续重连（2026-10-29 用户需求：光标在终端内按回车）：重置
    *  自动重连计数并重走一遍退避链。 */
   reconnectNow: (id: string) => void;
-  /** ottr://host-key-ask 事件入口：置 waiting_host_key + 弹窗态。 */
+  /** ottr://host-key-ask 事件入口：置 waiting_host_key + 弹窗态（并发排队）。 */
   onHostKeyAsk: (payload: HostKeyAskPayload) => void;
   /** keyboard-interactive 问询入口（Rust 事件 → 弹窗 + 在途 connect 挂起）。 */
   onPromptAsk: (payload: PromptAskPayload) => void;
@@ -197,6 +212,8 @@ interface SessionStore {
   onPromptTimeout: (payload: PromptTimeoutPayload) => void;
   /** 确认框裁定：accept=true 放行在途 attach；false = 主动断开（Rust 侧已拒）。 */
   decideHostKey: (accept: boolean) => Promise<void>;
+  /** ottr://host-key-timeout 事件入口：确认框超时未裁定 → 关窗 + 记真因。 */
+  onHostKeyTimeout: (payload: HostKeyTimeoutPayload) => void;
   /** ottr://session-closed 事件入口：仅对 connected 会话触发重连（cancelled 忽略）。 */
   onSessionClosed: (payload: SessionClosedPayload) => void;
   /** 启动恢复：按 open_host_ids 还原标签（不自动连接——安全考虑，见文件头）。 */
@@ -309,6 +326,21 @@ function enqueuePromptAsk(ask: PromptAsk): void {
   }
   useSessionStore.setState({ promptAskQueue: [...st.promptAskQueue, ask] });
 }
+
+/**
+ * 登记一个 host-key 问询：没有正在显示的问询就直接显示；有则排队。
+ * （弹窗是模态唯一槽，并发问询靠队列逐个弹出、不互相顶掉——原实现单槽直
+ * 覆盖，被顶掉的第一条问询 UI 永久消失、其会话卡到 Rust 侧 60s 超时。）
+ */
+function enqueueHostKeyAsk(ask: HostKeyAsk): void {
+  const st = useSessionStore.getState();
+  if (st.hostKeyAsk == null) {
+    useSessionStore.setState({ hostKeyAsk: ask });
+    useModalStore.getState().open("hostKey");
+    return;
+  }
+  useSessionStore.setState({ hostKeyAskQueue: [...st.hostKeyAskQueue, ask] });
+}
 const attachWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
 function armAttachWatchdog(id: string, gen: number): void {
@@ -354,6 +386,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   activeId: null,
   hostKeyAsk: null,
+  hostKeyAskQueue: [],
   promptAsk: null,
   promptAskQueue: [],
   settings: { maxReconnectAttempts: DEFAULT_MAX_RECONNECT_ATTEMPTS },
@@ -495,6 +528,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }).catch(() => {});
       useModalStore.getState().close("hostKey");
     }
+    // 队列里的 host-key 问询同样回拒绝（并发问询时可能有别的会话在排队）。
+    for (const q of st0.hostKeyAskQueue) {
+      if (!doomedIds.has(q.sessionId)) continue;
+      void invoke("host_key_decision", {
+        hostId: q.host_id,
+        fingerprint: q.fingerprint,
+        accept: false,
+      }).catch(() => {});
+    }
     if (st0.promptAsk && doomedIds.has(st0.promptAsk.sessionId)) {
       // 同理：关掉等待交互式作答的标签 → 回空答案（= 认证失败，fail-closed），
       // 别让 Rust 侧问询白挂 180s。
@@ -518,6 +560,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const askDoomed = st0.promptAsk != null && doomedIds.has(st0.promptAsk.sessionId);
     const survivingQueue = st0.promptAskQueue.filter((a) => !doomedIds.has(a.sessionId));
     const promoted = askDoomed && survivingQueue.length > 0 ? survivingQueue[0] : null;
+    // host-key 确认框同款队头接棒（2026-11-11 审计）：显示中的确认框随标签
+    // 消亡时，幸存会话的排队问询顶上，不空等 Rust 侧 60s 问询超时。
+    const hostKeyDoomed = st0.hostKeyAsk != null && doomedIds.has(st0.hostKeyAsk.sessionId);
+    const survivingKeyQueue = st0.hostKeyAskQueue.filter((a) => !doomedIds.has(a.sessionId));
+    const keyPromoted =
+      hostKeyDoomed && survivingKeyQueue.length > 0 ? survivingKeyQueue[0] : null;
     set((st) => {
       const sessions = st.sessions.filter((s) => !doomedIds.has(s.id));
       persistOpenTabs(sessions);
@@ -534,8 +582,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         activeId,
         trees,
         activePane,
-        hostKeyAsk:
-          st.hostKeyAsk && doomedIds.has(st.hostKeyAsk.sessionId) ? null : st.hostKeyAsk,
+        hostKeyAsk: hostKeyDoomed ? keyPromoted : st.hostKeyAsk,
+        hostKeyAskQueue: keyPromoted ? survivingKeyQueue.slice(1) : survivingKeyQueue,
         promptAsk: askDoomed ? promoted : st.promptAsk,
         promptAskQueue: promoted ? survivingQueue.slice(1) : survivingQueue,
         searchSessionId:
@@ -545,6 +593,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       };
     });
     if (promoted) useModalStore.getState().open("promptAsk");
+    if (keyPromoted) useModalStore.getState().open("hostKey");
   },
 
   setActive: (id) => set({ activeId: id }),
@@ -692,9 +741,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (gen !== generations.get(id) || !get().sessions.some((s) => s.id === id)) return;
       // 交互式认证超时：Rust 问询超时回空答案 → 服务端拒 → 这里拿到的是
       // 「authentication rejected by server」（症状）。若会话上已记着「未作答」
-      // 这个真因，就别用症状盖掉它。
+      // 这个真因，就别用症状盖掉它。host-key 确认框超时同理（超时事件已把
+      // 「未裁定」真因落进 lastError，随后的 HostKeyRejected 不盖掉它）。
       const prior = get().sessions.find((s) => s.id === id)?.lastError ?? "";
-      const msg = isPromptTimeout(prior) ? prior : raw;
+      const msg = isPromptTimeout(prior) || isHostKeyTimeout(prior) ? prior : raw;
       if (isHostKeyRejection(msg)) {
         // 主机密钥被拒（用户拒绝/超时/changed 默认拒）：终态，不自动重连
         set((st) => ({
@@ -800,24 +850,30 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       // 无在途 connect 的问询（跳板链编辑器的「测试连接」/孤儿问询）：仍弹
       // 确认框——裁定的 host_key_decision 不依赖会话；不弹则 Rust 侧 60s
       // 超时按拒绝收尾。sessionId 空串 = 无关联会话（弹窗关闭只经裁定按钮）。
-      set({ hostKeyAsk: { ...payload, sessionId: "" } });
-      // 主机密钥确认框认领全局弹窗唯一槽（2026-10-14）：顶掉当前弹窗——
-      // 信任裁定是模态阻断面，不允许与其他弹窗并存。
-      useModalStore.getState().open("hostKey");
+      enqueueHostKeyAsk({ ...payload, sessionId: "" });
       return;
     }
-    set({
-      hostKeyAsk: { ...payload, sessionId: session.id },
-      sessions: patchSession(get().sessions, session.id, { status: "waiting_host_key" }),
-    });
-    useModalStore.getState().open("hostKey");
+    set((st) => ({
+      sessions: patchSession(st.sessions, session.id, { status: "waiting_host_key" }),
+    }));
+    // 并发问询（多标签同时首连 / 跳板链逐跳叠加）排队逐个展示，不顶掉显示中
+    // 的问询（2026-11-11 审计：原单槽覆盖让第一条问询 UI 永久消失，其会话卡
+    // 到 Rust 侧 60s 超时按拒绝收尾；changed 形态下即被静默自动拒）。
+    enqueueHostKeyAsk({ ...payload, sessionId: session.id });
   },
 
   decideHostKey: async (accept) => {
-    const ask = get().hostKeyAsk;
+    const st0 = get();
+    const ask = st0.hostKeyAsk;
     if (!ask) return;
-    set({ hostKeyAsk: null });
-    useModalStore.getState().close("hostKey");
+    // 裁定完当前 → 队列头接棒（并发问询不丢，answerPrompt/onPromptTimeout 同款）。
+    const next = st0.hostKeyAskQueue[0] ?? null;
+    set({
+      hostKeyAsk: next,
+      hostKeyAskQueue: next ? st0.hostKeyAskQueue.slice(1) : [],
+    });
+    if (next) useModalStore.getState().open("hostKey");
+    else useModalStore.getState().close("hostKey");
     try {
       await invoke("host_key_decision", {
         hostId: ask.host_id,
@@ -848,6 +904,47 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     }
     // accept：不改状态——在途 attach 继续走（waiting_host_key → connected）。
     // 注意 waiting → connecting 的展示由 attach 解析自然完成（无中间动作）。
+  },
+
+  /**
+   * `ottr://host-key-timeout` 事件入口：确认框等满 60s 未裁定（Rust 侧已摘槽
+   * 并按拒绝收尾，kbdint 同款）。
+   *
+   * 关掉弹窗并把**真因**（未裁定）记到会话错误面——不让用户对着一个已经不会
+   * 有人听的确认框点「信任并连接」（裁定落到已摘除的槽 → 报错被吞 → 点击零
+   * 反馈）。问询可能在显示中也可能在队列里（并发问询），两处都要能找到。
+   */
+  onHostKeyTimeout: (payload) => {
+    const st0 = get();
+    const isTimedOut = (a: HostKeyAsk) =>
+      a.host_id === payload.host_id && a.fingerprint === payload.fingerprint;
+    const displayed = st0.hostKeyAsk != null && isTimedOut(st0.hostKeyAsk) ? st0.hostKeyAsk : null;
+    const queued = st0.hostKeyAskQueue.find(isTimedOut) ?? null;
+    const ask = displayed ?? queued;
+    // 都不是 → 迟到的超时通知（已裁定 / 同键新问询已接手），忽略。
+    if (!ask) return;
+    if (displayed) {
+      // 当前显示的：关掉它，并把队列里的下一个顶上。
+      const next = st0.hostKeyAskQueue[0] ?? null;
+      set({
+        hostKeyAsk: next,
+        hostKeyAskQueue: next ? st0.hostKeyAskQueue.slice(1) : [],
+      });
+      if (next) useModalStore.getState().open("hostKey");
+      else useModalStore.getState().close("hostKey");
+    } else {
+      // 队列里的：直接从队列里摘掉（没显示过，弹窗不受影响）。
+      set({ hostKeyAskQueue: st0.hostKeyAskQueue.filter((a) => a !== queued) });
+    }
+    if (!ask.sessionId) return;
+    set((st) => ({
+      sessions: patchSession(st.sessions, ask.sessionId, {
+        status: "disconnected",
+        lastError: HOST_KEY_TIMEOUT_MARKER,
+        rustId: null,
+        nextRetryAt: null,
+      }),
+    }));
   },
 
   onPromptAsk: (payload) => {
@@ -1141,13 +1238,32 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       }).catch(() => {});
       useModalStore.getState().close("hostKey");
     }
+    // host-key 队列里属于该会话的问询：Rust 侧问询会白挂 60s，一并回拒绝。
+    for (const q of st.hostKeyAskQueue) {
+      if (q.sessionId !== sessionId) continue;
+      void invoke("host_key_decision", {
+        hostId: q.host_id,
+        fingerprint: q.fingerprint,
+        accept: false,
+      }).catch(() => {});
+    }
+    // host-key 队头接棒（2026-11-11 审计，同 closeTab）：显示中的确认框随
+    // pane 消亡时，幸存会话的排队问询顶上，不空等 Rust 侧 60s 问询超时。
+    const survivingKeyQueue = st.hostKeyAskQueue.filter((a) => a.sessionId !== sessionId);
+    const keyPromoted =
+      st.hostKeyAsk?.sessionId === sessionId && survivingKeyQueue.length > 0
+        ? survivingKeyQueue[0]
+        : null;
     set((s0) => ({
       sessions: s0.sessions.filter((s) => s.id !== sessionId),
       searchSessionId: s0.searchSessionId === sessionId ? null : s0.searchSessionId,
+      hostKeyAsk: st.hostKeyAsk?.sessionId === sessionId ? keyPromoted : s0.hostKeyAsk,
+      hostKeyAskQueue: keyPromoted ? survivingKeyQueue.slice(1) : survivingKeyQueue,
       promptAsk: st.promptAsk?.sessionId === sessionId ? promoted : s0.promptAsk,
       promptAskQueue: promoted ? survivingQueue.slice(1) : survivingQueue,
     }));
     if (promoted) useModalStore.getState().open("promptAsk");
+    if (keyPromoted) useModalStore.getState().open("hostKey");
     if (next === null) {
       // 树空了（关掉最后一个 pane）→ 标签一并消亡；closeTab 幂等收尾剩余状态
       get().closeTab(tabId);

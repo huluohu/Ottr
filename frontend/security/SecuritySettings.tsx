@@ -65,8 +65,9 @@ const REENCRYPT_EVENT = "ottr://reencrypt-progress";
  */
 export const MIN_MASTER_PASSWORD = 8;
 
-/** 主密码长度计量：Unicode 码点数（与 Rust `chars().count()` 同口径，见上）。 */
-function masterPasswordCodePoints(s: string): number {
+/** 主密码长度计量：Unicode 码点数（与 Rust `chars().count()` 同口径，见上）。
+ * 导出给 LockScreen 首解锁预检共用（BL-202 同值同语义，单一事实源）。 */
+export function masterPasswordCodePoints(s: string): number {
   return [...s].length;
 }
 

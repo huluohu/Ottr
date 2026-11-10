@@ -2,6 +2,7 @@
 //! （正式 UI 面）。纯搬家拆分（原 session.rs 单文件）。
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, State};
 
@@ -49,7 +50,9 @@ pub(super) fn pinned_host_key_policy(host: &str, port: u16) -> (HostKeyPolicy, S
 ///
 /// 裁定经 `host_key_decision` 回传：接受=true 放行（库态转 ok、信任锚接管为本次
 /// 指纹，由该命令落账，changed_at 保留），拒绝 / 60s 超时=false → 连接以
-/// HostKeyRejected 失败；行内信任锚保持旧指纹（mark_changed 不覆盖）。
+/// HostKeyRejected 失败；行内信任锚保持旧指纹（mark_changed 不覆盖）。超时另有
+/// `ottr://host-key-timeout` 通知前端关窗记真因（kbd-interactive 同款收尾，
+/// 见 [`wait_for_host_key_decision`]）。
 ///
 /// 阻塞语义：回调在 russh `connect_stream` spawn 的连接专属任务内执行，
 /// `recv_timeout(60s)` 只挂起该连接自己的握手（connect 命令挂起等前端 confirm），
@@ -81,7 +84,7 @@ pub(crate) fn tofu_host_key_policy(
         let ask = |kind: &'static str| -> bool {
             let (tx, rx) = std::sync::mpsc::channel();
             let key = format!("{host_id}:{fingerprint}");
-            register_host_key_ask(&asks, key, tx);
+            register_host_key_ask(&asks, key.clone(), tx);
             if let Err(e) = app.emit(
                 "ottr://host-key-ask",
                 HostKeyAskPayload {
@@ -99,10 +102,26 @@ pub(crate) fn tofu_host_key_policy(
             // block_in_place（评审 M-1）：recv_timeout 最长 60s 阻塞；本回调运行在
             // russh run loop 任务（russh-util spawn = tokio::spawn）里，包裹后该
             // worker 被标记 blocking、其余任务可被其余 worker 领走，不占死共享池。
-            matches!(
-                tokio::task::block_in_place(|| rx.recv_timeout(HOST_KEY_ASK_TIMEOUT)),
-                Ok(true)
-            )
+            tokio::task::block_in_place(|| {
+                wait_for_host_key_decision(rx, &asks, &key, HOST_KEY_ASK_TIMEOUT, || {
+                    // 超时是**前端可见的事实**（kbdint.rs 同款收尾）：弹窗还开着
+                    // 的话，用户会在一个已经死掉的问询上点「信任并连接」——裁定
+                    // 落到已摘除的槽 → host_key_decision 报错被前端吞掉 → 点击
+                    // 零反馈、标签停在 waiting_host_key。故摘槽 + 主动通知前端
+                    // 关窗并记真因（见 HostKeyTimeoutPayload）。
+                    if let Err(err) = app.emit(
+                        "ottr://host-key-timeout",
+                        HostKeyTimeoutPayload {
+                            host_id,
+                            host_name: host_name.clone(),
+                            fingerprint: fingerprint.to_string(),
+                            seconds: HOST_KEY_ASK_TIMEOUT.as_secs(),
+                        },
+                    ) {
+                        eprintln!("[host-key] emit timeout failed: {err}");
+                    }
+                })
+            })
         };
         // 先分类（None → "first"），再落账：
         //   * 首见 → TOFU pending 入库（入库后记录是 pending，顺序颠倒会让首连问询
@@ -129,11 +148,37 @@ pub(crate) fn tofu_host_key_policy(
 
 /// 登记挂起问询端（BL-207③ 测试 seam）：**同键单槽覆盖**——同键并发问询
 /// （双开同一主机）时顶掉旧端；旧等待方随 sender 被 drop 而 recv 立即断开，
-/// 在 [`tofu_host_key_policy`] 的 `matches!(recv, Ok(true))` 折算下判拒
+/// 在 [`wait_for_host_key_decision`] 的 `Disconnected` 分支折算下判拒
 /// （fail-closed：并发双开绝不双向放行，也绝不悬挂旧端等满 60s 超时）。
 fn register_host_key_ask(asks: &HostKeyAsks, key: String, tx: std::sync::mpsc::Sender<bool>) {
     if let Some(old) = asks.lock().unwrap().insert(key, tx) {
         drop(old);
+    }
+}
+
+/// 等待问询裁定（拆出以便单测；`block_in_place` 由调用方包裹——只有真连接
+/// 路径运行在 tokio worker 里）。三种结局，fail-closed 语义与 kbdint.rs 一致：
+/// * `Ok(decision)` → 原样回传（摘槽是 `host_key_decision` 的职责，此处不动）；
+/// * 等满时限 → **摘槽 + 通知前端**（`on_timeout`）后判拒：槽位不摘，前端在
+///   死问询上的裁定会命中一个已无接收端的槽（send 失败被吞，点击零反馈）；
+/// * 槽位被同键新问询顶掉（sender drop → `Disconnected`）→ 判拒但**不摘槽、
+///   不通知**：槽里是新问询的端（误摘会吞掉新问询的裁定），新问询正活着等
+///   裁定（误发超时事件会关掉新弹窗——前端按 host_id+fingerprint 归属）。
+fn wait_for_host_key_decision(
+    rx: std::sync::mpsc::Receiver<bool>,
+    asks: &HostKeyAsks,
+    key: &str,
+    timeout: Duration,
+    on_timeout: impl FnOnce(),
+) -> bool {
+    match rx.recv_timeout(timeout) {
+        Ok(decision) => decision,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            asks.lock().unwrap().remove(key);
+            on_timeout();
+            false
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => false,
     }
 }
 
@@ -174,6 +219,21 @@ struct HostKeyAskPayload {
     /// 发起连接的主机 id（链式 attach 时 = 被连主机；None = 直连）。
     #[serde(skip_serializing_if = "Option::is_none")]
     origin_host_id: Option<i64>,
+}
+
+/// `ottr://host-key-timeout` 事件载荷（问询等满时限未裁定；kbdint 的
+/// `PromptTimeoutPayload` 同构，serde snake_case）。
+///
+/// 前端据此**关掉弹窗**并把真因记到会话错误面——否则用户对着一个「还开着但
+/// 已经不会有人听」的确认框点「信任并连接」：裁定落到已摘除的槽 → 报错被吞
+/// → 点击零反馈、标签停在 waiting_host_key。
+#[derive(Clone, serde::Serialize)]
+struct HostKeyTimeoutPayload {
+    host_id: i64,
+    host_name: String,
+    fingerprint: String,
+    /// 等了多久（秒）——文案里说清「等了多久没人裁定」。
+    seconds: u64,
 }
 
 /// 前端确认框裁定回传：`accept=true` 先落账 `KnownHosts::verify`（state→ok、
@@ -244,6 +304,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
     fn known_host(
@@ -298,6 +359,74 @@ mod tests {
         held3.send(false).unwrap();
         assert_eq!(rx3.recv(), Ok(false), "拒绝裁定同样经槽回传");
         assert!(asks.lock().unwrap().is_empty(), "裁定后槽位清空");
+    }
+
+    /// 2026-11-11 审计（对齐 kbdint.rs:228）：问询**等满时限** → 摘槽 + 通知
+    /// 回调 → 判拒。槽位不摘的话，前端在死问询上的裁定（host_key_decision）
+    /// 会命中一个已无接收端的槽（send 失败被吞）或报「no pending」被吞——
+    /// 用户点击零反馈、标签停在 waiting_host_key。
+    #[test]
+    fn ask_wait_timeout_reclaims_slot_and_notifies() {
+        let asks: HostKeyAsks = Arc::new(Mutex::new(HashMap::new()));
+        let key = "7:SHA256:fp".to_string();
+        let (tx, rx) = std::sync::mpsc::channel::<bool>();
+        register_host_key_ask(&asks, key.clone(), tx);
+        let notified = Arc::new(AtomicBool::new(false));
+        let n = notified.clone();
+        let decision =
+            wait_for_host_key_decision(rx, &asks, &key, Duration::from_millis(30), move || {
+                n.store(true, Ordering::SeqCst)
+            });
+        assert!(!decision, "超时判拒（fail-closed，安全侧默认）");
+        assert!(notified.load(Ordering::SeqCst), "超时必须通知前端");
+        assert!(asks.lock().unwrap().is_empty(), "超时后槽位必须回收");
+    }
+
+    /// 同键新问询顶掉旧端（sender 被 drop → `Disconnected`）≠ 超时：判拒但
+    /// **不摘槽、不通知**——槽里是新问询的端（误摘会吞掉新问询的裁定），新
+    /// 问询正活着等裁定（误发超时事件会按 host_id+fingerprint 误关新弹窗）。
+    #[test]
+    fn ask_wait_displaced_leaves_slot_and_skips_notification() {
+        let asks: HostKeyAsks = Arc::new(Mutex::new(HashMap::new()));
+        let key = "7:SHA256:fp".to_string();
+        let (tx1, rx1) = std::sync::mpsc::channel::<bool>();
+        register_host_key_ask(&asks, key.clone(), tx1);
+        let (tx2, rx2) = std::sync::mpsc::channel::<bool>();
+        register_host_key_ask(&asks, key.clone(), tx2); // 顶掉 tx1 → rx1 立即断开
+        let notified = Arc::new(AtomicBool::new(false));
+        let n = notified.clone();
+        let decision =
+            wait_for_host_key_decision(rx1, &asks, &key, Duration::from_secs(1), move || {
+                n.store(true, Ordering::SeqCst)
+            });
+        assert!(!decision, "被顶掉的旧端判拒（fail-closed）");
+        assert!(
+            !notified.load(Ordering::SeqCst),
+            "顶掉不是超时：不发超时通知"
+        );
+        assert_eq!(asks.lock().unwrap().len(), 1, "新问询的槽位保留");
+        // 新问询照常可裁定。
+        asks.lock()
+            .unwrap()
+            .remove(&key)
+            .unwrap()
+            .send(true)
+            .unwrap();
+        assert_eq!(rx2.recv(), Ok(true));
+    }
+
+    /// 裁定到达（`Ok`）原样回传、不动槽位（摘槽是 host_key_decision 的职责）。
+    /// 裁定先入有缓冲通道再登记（tx 被 register 按值收进槽，槽保持发送端存活）。
+    #[test]
+    fn ask_wait_decision_passthrough_keeps_slot_intact() {
+        let asks: HostKeyAsks = Arc::new(Mutex::new(HashMap::new()));
+        let key = "7:SHA256:fp".to_string();
+        let (tx, rx) = std::sync::mpsc::channel::<bool>();
+        tx.send(true).unwrap();
+        register_host_key_ask(&asks, key.clone(), tx);
+        let decision = wait_for_host_key_decision(rx, &asks, &key, Duration::from_secs(1), || {});
+        assert!(decision, "放行裁定原样回传");
+        assert_eq!(asks.lock().unwrap().len(), 1, "裁定路径不在此摘槽");
     }
 
     #[test]

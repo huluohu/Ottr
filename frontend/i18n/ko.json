@@ -447,7 +447,8 @@
     "dangerInputTitle": "주의",
     "dangerInputHint": "이 입력은 위험 규칙에 해당합니다: {{rule}} ({{excerpt}})",
     "dangerInputDismiss": "위험 알림 닫기",
-    "promptTimeout": "인증 대기 시간이 초과되어 연결하지 않았습니다 (프롬프트가 나타나면 응답하세요)"
+    "promptTimeout": "인증 대기 시간이 초과되어 연결하지 않았습니다 (프롬프트가 나타나면 응답하세요)",
+    "hostKeyTimeout": "호스트 키 확인 대기 시간이 초과되어 연결하지 않았습니다"
   },
   "ai": {
     "orbLabel": "Ottr에게 질문",
@@ -955,6 +956,7 @@
       "hint": "이 금고를 잠금 해제하려면 마스터 비밀번호를 입력하세요.",
       "unlock": "잠금 해제",
       "errEmpty": "마스터 비밀번호를 입력하세요",
+      "errTooShort": "마스터 비밀번호는 최소 {{min}}자 이상이어야 합니다",
       "errWrongPassword": "마스터 비밀번호가 올바르지 않습니다",
       "errNoLock": "이 금고는 키체인 모드를 사용합니다 — 마스터 비밀번호가 없으며 잠금 해제할 항목도 없습니다.",
       "forgot": "비밀번호를 잊으셨나요?",

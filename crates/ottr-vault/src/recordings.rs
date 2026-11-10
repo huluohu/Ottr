@@ -215,6 +215,16 @@ impl Recordings {
         Ok(rows)
     }
 
+    /// 全部库行的 .cast 路径（桌面端启动孤儿清扫的对账面：拿库行文件名集合
+    /// 与 recordings/ 目录对账，找强杀漏网的无行文件）。显式全列查询——
+    /// 不借 `list` 的 LIMIT 参数玩「负数 = 无上限」的隐晦花样。
+    pub fn all_paths(vault: &Vault) -> Result<Vec<String>> {
+        let conn = vault.connection();
+        let mut stmt = conn.prepare("SELECT path FROM recordings")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     /// 按 id 取单条（回放/导出取 path 面；不存在 = None）。
     pub fn get(vault: &Vault, id: i64) -> Result<Option<RecordingEntry>> {
         let conn = vault.connection();

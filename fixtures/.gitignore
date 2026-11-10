@@ -7,3 +7,8 @@ known_hosts.tmp
 # ftpd 自签证书（spike-ftpd.sh 生成，勿入库）
 ftpd/cert.pem
 ftpd/key.pem
+# ftpd 宿主进程形态的运行时产物（spike-ftpd.sh 生成，勿入库）：pidfile、
+# 依赖 venv、FTP 传输根目录（测试中断时残留传输产物）
+ftpd/ftpd.pid
+ftpd/.venv/
+ftpd/home/

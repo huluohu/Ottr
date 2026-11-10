@@ -385,6 +385,9 @@ pub(crate) fn app_restart(app: AppHandle) -> Result<(), String> {
             return Ok(());
         }
         persist_window_state_before_restart(&app); // dev 裸二进制 restart 不经 ExitRequested
+        // 同款补丁点（F-commands-2）：restart() 不经 run loop，RunEvent::Exit
+        // 不触发——在途录制必须在重启前显式收尾（幂等，正常退出路径重入无害）。
+        crate::commands::recording::finalize_all_recordings_at_exit(&app);
         app.restart();
         #[allow(unreachable_code)]
         return Ok(());
@@ -392,6 +395,9 @@ pub(crate) fn app_restart(app: AppHandle) -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     {
         persist_window_state_before_restart(&app);
+        // 同款补丁点（F-commands-2）：restart() 不经 run loop，RunEvent::Exit
+        // 不触发——在途录制必须在重启前显式收尾（幂等，正常退出路径重入无害）。
+        crate::commands::recording::finalize_all_recordings_at_exit(&app);
         app.restart();
         #[allow(unreachable_code)]
         Ok(())

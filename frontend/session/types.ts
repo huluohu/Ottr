@@ -30,6 +30,19 @@ export interface HostKeyAsk extends HostKeyAskPayload {
   sessionId: string;
 }
 
+/** `ottr://host-key-timeout` 事件载荷（Rust HostKeyTimeoutPayload 同构）。
+ *
+ * TOFU 确认框等满 60s 未裁定（Rust 侧已摘槽、按拒绝收尾）→ 前端据此**关掉
+ * 弹窗**并把真因记到会话错误面——否则用户对着一个已经不会有人听的确认框点
+ * 「信任并连接」，裁定落到已摘除的槽 → 报错被吞 → 点击零反馈。 */
+export interface HostKeyTimeoutPayload {
+  host_id: number;
+  host_name: string;
+  fingerprint: string;
+  /** 等了多久（秒）。 */
+  seconds: number;
+}
+
 /** `ottr://kbd-interactive-ask` 事件载荷（Rust PromptAskPayload 同构）。
  *
  * keyboard-interactive 交互式认证（TOTP / PAM 2FA，2026-11-02 批次二）：

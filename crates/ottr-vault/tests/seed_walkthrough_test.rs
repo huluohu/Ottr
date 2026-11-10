@@ -10,9 +10,14 @@
 use ottr_vault::entities::{KnownHostState, KnownHosts};
 use ottr_vault::{Vault, host_endpoint_key, seed};
 
+/// 播种口令（首解锁即设主密码；须过最小长度权威校验 BL-202 ≥ 8 码点）。
+const SEED_PASSWORD: &str = "ottr-t7-walkthrough";
+
 fn open_seeded(dir: &std::path::Path) -> Vault {
     let vault = Vault::open_password_only(dir).expect("open seeded vault");
-    vault.unlock_with_password("ottr-t7").expect("unlock");
+    // 口令 ≥ 8（BL-202 补口后首解锁路径有最小长度权威校验，7 字符旧口令
+    // "ottr-t7" 不再能落库）。
+    vault.unlock_with_password(SEED_PASSWORD).expect("unlock");
     vault
 }
 
@@ -28,7 +33,7 @@ fn seeded_verified_known_hosts_is_visible_to_connect_time_lookup() {
     ));
     std::fs::create_dir_all(&dir).unwrap();
 
-    seed::seed_walkthrough_vault(&dir, "ottr-t7").expect("seed walkthrough vault");
+    seed::seed_walkthrough_vault(&dir, SEED_PASSWORD).expect("seed walkthrough vault");
 
     let vault = open_seeded(&dir);
     // 连接期 TOFU 策略的查找键（commands/session.rs tofu_host_key_policy 同构）。

@@ -20,6 +20,12 @@ pub struct SecurityStatus {
     /// "keyring" | "password"（KeyMode::as_str）
     pub mode: String,
     pub locked: bool,
+    /// 是否已设主密码（[`Vault::master_password_set`]；`false` = 首次解锁态，
+    /// 下一次解锁输入即成为主密码）。前端 api.ts `SecurityStatus` 手工镜像
+    /// （vault_security_status 不在 tauri-specta 绑定面）——改字段两侧同步。
+    /// 消费面：LockScreen 的首解锁最小长度预检（BL-202 前端预检面）；存量
+    /// 库（可能有修复前落下的短主密码）为 true → 预检不生效，解锁口径不变。
+    pub master_password_set: bool,
 }
 
 #[tauri::command]
@@ -27,6 +33,7 @@ pub fn vault_security_status(state: State<'_, VaultState>) -> CmdResult<Security
     Ok(SecurityStatus {
         mode: state.0.mode().as_str().to_string(),
         locked: state.0.is_locked(),
+        master_password_set: state.0.master_password_set(),
     })
 }
 
@@ -55,18 +62,29 @@ pub fn vault_security_status(state: State<'_, VaultState>) -> CmdResult<Security
 ///    不变量是：密码**不落盘、不进日志/事件/错误文案/遥测**（错误路径只回
 ///    `VaultError::Display`，如 "master password is incorrect"，绝不内插
 ///    密码本身），且**不跨命令缓存**（每次解锁重新输入）。
+///
+/// async + spawn_blocking（2026-11-11 审计 F-vault-3）：Argon2id 派生
+/// （m=19MiB,t=2）数百毫秒级 CPU 密集，同步命令会被 Tauri 内联在**主线程**
+/// 执行——解锁期间整个 UI 冻结。整段下阻塞池跑（纪律同 keys.rs
+/// key_generate「spawn_blocking…不占主线程」/ hosts.rs known_hosts_import
+/// 同款命令壳）；`Arc<Vault>` 克隆出命令作用域（State 借用进不了 'static
+/// 闭包），AppHandle 随闭包进池——成功事件在池内发（emit 线程安全）。
 #[tauri::command]
-pub fn vault_unlock(
+pub async fn vault_unlock(
     state: State<'_, VaultState>,
     app: AppHandle,
     password: String,
 ) -> CmdResult<()> {
-    state
-        .0
-        .unlock_with_password(&password)
-        .map_err(|e| e.to_string())?;
-    let _ = app.emit("ottr://vault-unlocked", ());
-    Ok(())
+    let vault = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        vault
+            .unlock_with_password(&password)
+            .map_err(|e| e.to_string())?;
+        let _ = app.emit("ottr://vault-unlocked", ());
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("join: {e}"))?
 }
 
 /// 开发/验收旁路开关（OTTR_DEV_UNLOCK 环境变量）的纯判定：仅值恰为 "1" 时真。
@@ -120,9 +138,10 @@ pub struct UpgradeOutcome {
     pub dropped: Vec<String>,
 }
 
-/// 升级到主密码模式（设置页向导本体，keyring → password）：
-/// 重加密逐字段发 `ottr://reencrypt-progress`（向导进度条），成功后删除钥匙链
-/// 旧条目（失败路径什么都不动——vault 层单事务保证，残留由下次 open 兜底）。
+/// 升级核心（**同步**；调用方负责放进 `spawn_blocking`——见下方命令壳，与
+/// [`downgrade_to_keychain`] 同款拆分）：keyring → password 的重密封本体，
+/// 库层单事务保证失败路径什么都不动（残留由下次 open 兜底）。`progress`
+/// 逐字段回调（命令壳把它接成 `ottr://reencrypt-progress` 向导进度事件）。
 /// 返回值 = 重密封字段数 + 被置空的坏字段清单。
 ///
 /// `drop_unreadable`（2026-10-16 用户需求）：严格失败（诊断错误上屏：哪个表/
@@ -132,21 +151,38 @@ pub struct UpgradeOutcome {
 /// 明文主密码的 IPC 副本边界与 [`vault_unlock`] 同一套（BL-202 成文，见彼处
 /// 四点生命周期）；本命令在库内跑的是重密封（Argon2id 派生 + 全表重加密），
 /// 副本生命周期因 Argon2 拉长到秒级，结论不变：不落盘、不进日志、不缓存。
+pub(crate) fn upgrade_to_master_password(
+    vault: &Vault,
+    password: &str,
+    drop_unreadable: bool,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<UpgradeOutcome, VaultError> {
+    let mut dropped = Vec::new();
+    let fields =
+        vault.set_master_password_ext(password, drop_unreadable, &mut dropped, progress)?;
+    Ok(UpgradeOutcome { fields, dropped })
+}
+
+/// 升级命令（设置页向导本体，keyring → password）。async + spawn_blocking
+/// （2026-11-11 审计 F-vault-3）：全表重密封是秒级 CPU/IO 密集，同步命令内联
+/// **主线程**执行 = 重密封期间整个 UI 冻结、`ottr://reencrypt-progress` 进度
+/// 事件也发不进 webview（向导进度条整程停格）。整段（含逐字段进度 emit——
+/// emit 线程安全，回调直接在阻塞池内发）下 `spawn_blocking`，命令壳在 tokio
+/// 运行时线程上只做 join。纪律同 [`vault_unlock`] / keys.rs / hosts.rs。
 #[tauri::command]
-pub fn vault_upgrade_to_master_password(
+pub async fn vault_upgrade_to_master_password(
     state: State<'_, VaultState>,
     app: AppHandle,
     password: String,
     drop_unreadable: Option<bool>,
 ) -> CmdResult<UpgradeOutcome> {
-    let mut dropped = Vec::new();
-    let emitter = app.clone();
-    let fields = state
-        .0
-        .set_master_password_ext(
+    let vault = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let emitter = app.clone();
+        let outcome = upgrade_to_master_password(
+            &vault,
             &password,
             drop_unreadable.unwrap_or(false),
-            &mut dropped,
             &mut |done, total| {
                 let _ = emitter.emit(
                     "ottr://reencrypt-progress",
@@ -155,16 +191,19 @@ pub fn vault_upgrade_to_master_password(
             },
         )
         .map_err(|e| e.to_string())?;
-    // 旧 Master Key 条目删除（升级成功的收尾）。失败不致命——残留条目在下次
-    // open（password 模式）被兜底清理，且不再参与任何解锁路径。
-    if let Err(e) =
-        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE)
-            .delete()
-    {
-        eprintln!("[vault-upgrade] stale keyring entry cleanup failed: {e}");
-    }
-    let _ = app.emit("ottr://vault-unlocked", ());
-    Ok(UpgradeOutcome { fields, dropped })
+        // 旧 Master Key 条目删除（升级成功的收尾）。失败不致命——残留条目在下次
+        // open（password 模式）被兜底清理，且不再参与任何解锁路径。
+        if let Err(e) =
+            ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE)
+                .delete()
+        {
+            eprintln!("[vault-upgrade] stale keyring entry cleanup failed: {e}");
+        }
+        let _ = app.emit("ottr://vault-unlocked", ());
+        Ok(outcome)
+    })
+    .await
+    .map_err(|e| format!("join: {e}"))?
 }
 
 /// 降级到免密钥匙链模式（password → keyring，设置页「切换到免密模式」向导）：
@@ -192,24 +231,33 @@ pub(crate) fn downgrade_to_keychain(
 /// 降级命令（设置页「切换到免密模式」向导本体，password → keyring）：
 /// 重密封逐字段发 `ottr://reencrypt-progress`（与升级向导同款进度事件），
 /// 成功发 `ottr://vault-unlocked`。返回值无载荷（降级完成态由模式/事件表达）。
+/// async + spawn_blocking（2026-11-11 审计 F-vault-3，理由同
+/// [`vault_upgrade_to_master_password`]）：整段下阻塞池——顺带把新钥落链的
+/// 钥匙链 SecItem 访问也移出主线程（Task 16.5「SecItem 访问不进主线程」同款
+/// 纪律），AppHandle 克隆进池、进度事件直接在池内 emit。
 #[tauri::command]
-pub fn vault_downgrade_to_keychain(
+pub async fn vault_downgrade_to_keychain(
     state: State<'_, VaultState>,
     app: AppHandle,
     password: String,
 ) -> CmdResult<()> {
-    let storage =
-        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
-    let emitter = app.clone();
-    downgrade_to_keychain(&state.0, &storage, &password, &mut |done, total| {
-        let _ = emitter.emit(
-            "ottr://reencrypt-progress",
-            serde_json::json!({ "done": done, "total": total }),
-        );
+    let vault = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let storage =
+            ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
+        let emitter = app.clone();
+        downgrade_to_keychain(&vault, &storage, &password, &mut |done, total| {
+            let _ = emitter.emit(
+                "ottr://reencrypt-progress",
+                serde_json::json!({ "done": done, "total": total }),
+            );
+        })
+        .map_err(|e| e.to_string())?;
+        let _ = app.emit("ottr://vault-unlocked", ());
+        Ok(())
     })
-    .map_err(|e| e.to_string())?;
-    let _ = app.emit("ottr://vault-unlocked", ());
-    Ok(())
+    .await
+    .map_err(|e| format!("join: {e}"))?
 }
 
 // --- 重置应用（BL-537 清偿：锁定屏「忘记密码？」终局出路）---------------------
@@ -522,6 +570,72 @@ mod tests {
                 .as_deref(),
             Some("downgraded-secret-γ")
         );
+    }
+
+    // --- 升级到主密码模式（2026-11-11 F-vault-3 命令壳 async 化伴随面）---------
+
+    /// 成功路径（升级核心单测——命令壳的 spawn_blocking 编排依赖 Tauri 运行时
+    /// 不可单测，核心按同步提取保测缝，拆分纪律同 [`downgrade_to_keychain`]；
+    /// storage 注入 InMemoryStorage 绝不碰真钥匙链，旧钥匙链条目删除是命令壳
+    /// 收尾职责不在本核心）：keyring 库 → 主密码，进度逐字段回调、
+    /// UpgradeOutcome（fields/dropped）如实映射、重密封后数据可解、新密码
+    /// 真实生效（落锁后可重解锁）。
+    #[test]
+    fn upgrade_helper_success_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = ottr_vault::master_key::InMemoryStorage::default();
+        // 注入 storage 开库 = keyring 模式解锁态（升级起点）。
+        let vault = Vault::open_with(dir.path(), &storage).unwrap();
+        assert_eq!(vault.mode(), TestKeyMode::Keyring);
+        let cred = Credentials::create(
+            &vault,
+            &CredentialInput {
+                name: None,
+                kind: ottr_vault::CredentialKind::Password,
+                secret: Some("upgraded-secret-γ".into()),
+                key_pub: None,
+                passphrase: None,
+                totp_secret: None,
+                totp_digits: None,
+                totp_period: None,
+            },
+        )
+        .unwrap();
+
+        let mut progress = Vec::new();
+        let outcome =
+            upgrade_to_master_password(&vault, "correct horse", false, &mut |done, total| {
+                progress.push((done, total));
+            })
+            .unwrap();
+
+        assert_eq!(
+            vault.mode(),
+            TestKeyMode::Password,
+            "升级翻转为 password 模式"
+        );
+        assert!(!vault.is_locked(), "升级后保持解锁态（向导无需再输密码）");
+        assert!(outcome.dropped.is_empty(), "无坏字段 = 无丢弃清单");
+        assert_eq!(
+            progress.last(),
+            Some(&(1, 1)),
+            "进度逐字段回调，末点 = (done=total)"
+        );
+        assert_eq!(
+            outcome.fields,
+            progress.last().unwrap().1,
+            "fields 与进度 total 同源（重密封字段数）"
+        );
+        assert_eq!(
+            Credentials::reveal(&vault, cred.id, ottr_vault::SecretField::Secret)
+                .unwrap()
+                .as_deref(),
+            Some("upgraded-secret-γ"),
+            "重密封后数据可解"
+        );
+        vault.lock();
+        vault.unlock_with_password("correct horse").unwrap();
+        assert!(!vault.is_locked(), "新主密码真实生效（落锁后可重解锁）");
     }
 
     // --- OTTR_DEV_UNLOCK 开发/验收旁路 ----------------------------------------

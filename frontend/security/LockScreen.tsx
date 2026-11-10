@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import { useVaultLockStore } from "./VaultLockStore";
 import { LockOtter } from "./LockOtter";
+import { MIN_MASTER_PASSWORD, masterPasswordCodePoints } from "./SecuritySettings";
 
 export function LockScreen({ closing }: { closing?: boolean }) {
   const { t } = useTranslation();
@@ -23,6 +24,7 @@ export function LockScreen({ closing }: { closing?: boolean }) {
   const storeError = useVaultLockStore((s) => s.error);
   const unlocking = useVaultLockStore((s) => s.unlocking);
   const lockMode = useVaultLockStore((s) => s.mode);
+  const masterPasswordSet = useVaultLockStore((s) => s.masterPasswordSet);
   const refreshStatus = useVaultLockStore((s) => s.refreshStatus);
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -75,6 +77,19 @@ export function LockScreen({ closing }: { closing?: boolean }) {
     e.preventDefault();
     if (password === "") {
       setLocalError(t("security.lockScreen.errEmpty"));
+      return;
+    }
+    // 首解锁 = 设主密码的最小长度预检（BL-202 前端预检面，与 Rust 权威校验
+    // 同值同语义 = Unicode 码点数，非 .length 的 UTF-16 码元数）：只在库尚未
+    // 设主密码时生效（masterPasswordSet === false，首装首次解锁 = 本次输入
+    // 即成为主密码）。存量库可能带着修复前经首解锁落下的短主密码——后端
+    // 常规解锁臂不查长度、照常放行，这里若无差别拦截会把那批用户锁在解锁
+    // 门外；信号未知（null）同样放行，权威校验始终在后端兜底。
+    if (
+      masterPasswordSet === false &&
+      masterPasswordCodePoints(password) < MIN_MASTER_PASSWORD
+    ) {
+      setLocalError(t("security.lockScreen.errTooShort", { min: MIN_MASTER_PASSWORD }));
       return;
     }
     setLocalError(null);

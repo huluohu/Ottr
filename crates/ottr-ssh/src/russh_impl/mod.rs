@@ -422,8 +422,20 @@ impl SshSession {
         eprintln!(
             "[exec] output truncated at {} bytes (command: {})",
             Self::EXEC_OUTPUT_CAP,
-            &command[..command.len().min(80)]
+            Self::truncated_command(command),
         );
+    }
+
+    /// 告警里的命令摘要：**按字符**取前 80 个（不是按字节位切片）。
+    ///
+    /// 为什么必须按字符：命令来自用户（batch/AI/cron 直传 `session.exec`），
+    /// `&command[..len.min(80)]` 的字节位切片在多字节字符跨第 80 字节时
+    /// panic（`byte index 80 is not a char boundary`）——release profile
+    /// `panic = "abort"`（根 Cargo.toml:21）会把整个应用 abort 掉。按字符
+    /// 截断对 ASCII 命令行为不变（1 字符 = 1 字节），多字节命令只影响这条
+    /// stderr 告警里摘要的长度。
+    fn truncated_command(command: &str) -> String {
+        command.chars().take(80).collect()
     }
 
     /// 打开 SFTP 子系统通道并返回裸双向字节流（Task 8 并行传输的构建块）。
@@ -762,5 +774,44 @@ mod tests {
             "必须按时返回超时而不是挂起（实际耗时 {elapsed:?}）"
         );
         server.abort();
+    }
+
+    /// 截断摘要**按字符**不按字节：多字节字符跨第 80 字节时不得 panic。
+    ///
+    /// 回归面：旧实现 `&command[..command.len().min(80)]` 按字节位切片，
+    /// 79 个 ASCII（79 字节）+ 1 个三字节中文字符（占第 80~82 字节）时
+    /// 第 80 字节恰落在字符中间 → `byte index 80 is not a char boundary`
+    /// panic；release `panic = "abort"`（根 Cargo.toml:21）会 abort 整个
+    /// 应用（batch/AI/cron 的用户命令都可达该告警路径）。
+    #[test]
+    fn truncated_command_cuts_by_chars_not_bytes_on_multibyte_boundary() {
+        // 构造边界命令：第 80 字节在「烧」的中间（旧实现在这里 panic）。
+        let boundary = format!("{}烧", "a".repeat(79));
+        assert_eq!(
+            boundary.len(),
+            82,
+            "构造：总长 82 字节，第 80 字节在多字节字符内"
+        );
+        let truncated = SshSession::truncated_command(&boundary);
+        assert_eq!(
+            truncated,
+            format!("{}烧", "a".repeat(79)),
+            "按字符取满 80 个"
+        );
+        assert_eq!(truncated.chars().count(), 80, "截断结果恰为 80 个字符");
+
+        // 纯多字节长命令：同样按字符数截断到 80 个。
+        let all_cjk = "烧".repeat(100);
+        assert_eq!(SshSession::truncated_command(&all_cjk), "烧".repeat(80));
+
+        // ASCII 长命令行为不变：前 80 字符（与旧实现的 80 字节一致）。
+        assert_eq!(
+            SshSession::truncated_command(&"x".repeat(200)),
+            "x".repeat(80)
+        );
+
+        // 告警调用面整链（eprintln 真实路径）对边界命令不 panic。
+        SshSession::log_truncated(&boundary);
+        SshSession::log_truncated(&all_cjk);
     }
 }

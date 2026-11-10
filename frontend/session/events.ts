@@ -2,6 +2,7 @@
 // 独立模块让 store 保持纯状态机（测试无需 mock @tauri-apps/api/event）。
 // 事件名契约（Rust 侧 lib.rs）：
 //   ottr://host-key-ask   HostKeyAskPayload — TOFU 确认框问询
+//   ottr://host-key-timeout HostKeyTimeoutPayload — TOFU 确认框超时未裁定
 //   ottr://kbd-interactive-ask PromptAskPayload — 交互式认证提问（TOTP/2FA）
 //   ottr://kbd-interactive-timeout PromptTimeoutPayload — 问询超时未作答
 //   ottr://session-closed SessionClosedPayload — 连接丢失/主动关闭通知
@@ -11,6 +12,7 @@ import {
   useSessionStore,
   type EncodingHintPayload,
   type HostKeyAskPayload,
+  type HostKeyTimeoutPayload,
   type PromptAskPayload,
   type PromptTimeoutPayload,
   type SessionClosedPayload,
@@ -28,6 +30,11 @@ export async function initSessionEvents(): Promise<void> {
   unlisteners.push(
     await listen<HostKeyAskPayload>("ottr://host-key-ask", (e) => {
       store.getState().onHostKeyAsk(e.payload);
+    }),
+  );
+  unlisteners.push(
+    await listen<HostKeyTimeoutPayload>("ottr://host-key-timeout", (e) => {
+      store.getState().onHostKeyTimeout(e.payload);
     }),
   );
   unlisteners.push(

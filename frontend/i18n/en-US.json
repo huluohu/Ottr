@@ -447,7 +447,8 @@
     "dangerInputTitle": "Careful",
     "dangerInputHint": "This input hits a danger rule: {{rule}} ({{excerpt}})",
     "dangerInputDismiss": "Dismiss danger reminder",
-    "promptTimeout": "Timed out waiting for authentication; not connected (answer when the prompt appears)"
+    "promptTimeout": "Timed out waiting for authentication; not connected (answer when the prompt appears)",
+    "hostKeyTimeout": "Timed out waiting for host key confirmation; not connected"
   },
   "ai": {
     "orbLabel": "Ask Ottr",
@@ -955,6 +956,7 @@
       "hint": "Enter your master password to unlock this vault.",
       "unlock": "Unlock",
       "errEmpty": "Enter your master password",
+      "errTooShort": "Master password must be at least {{min}} characters",
       "errWrongPassword": "Master password is incorrect",
       "errNoLock": "This vault uses keychain mode — there is no master password and nothing to unlock.",
       "forgot": "Forgot password?",

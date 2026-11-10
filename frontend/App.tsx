@@ -119,9 +119,22 @@ const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 560;
 /** 折叠胶囊恒定宽（可拖拽域之外；展开恢复记忆宽度）。 */
 const SIDEBAR_CAPSULE_WIDTH = 64;
+/** 主区最小可用宽（图标轨 48 + 分隔条 5 之外，主区至少留这么多）。 */
+const MAIN_AREA_MIN = 420;
 
-function clampSidebarWidth(w: number): number {
-  return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, w));
+/** 侧栏宽度上限 = 绝对上限与「给主区留够宽」的较小者（2026-11-10 审计）。
+ *
+ * 此前只按绝对值夹（200~560）：侧栏拖到 560 后把窗口缩到最小宽（720），
+ * 主区只剩 ~107px —— 标签栏、工具行、终端全被压没，「视图切换器」挤成竖排
+ * 单字（用户报障的「工具行点不动」同族症状）。窗口变窄时侧栏必须跟着让位。
+ */
+function clampSidebarWidth(w: number, windowWidth?: number): number {
+  const absMax = SIDEBAR_MAX;
+  const winMax =
+    windowWidth != null
+      ? Math.max(SIDEBAR_MIN, windowWidth - MAIN_AREA_MIN - 48 - 5)
+      : absMax;
+  return Math.min(absMax, winMax, Math.max(SIDEBAR_MIN, w));
 }
 
 function HomeLayout() {
@@ -210,6 +223,25 @@ function HomeLayout() {
       return false;
     }
   });
+  // 窗口变窄 → 侧栏让位（2026-11-10 审计）：侧栏宽度此前只按绝对值夹紧，
+  // 窗口缩到最小宽时主区被挤成 ~100px 的细条（标签栏/工具行/终端全没）。
+  // 现在窗口 resize 时按「主区至少 MAIN_AREA_MIN 宽」重新夹一次侧栏。
+  useEffect(() => {
+    const onResize = () => {
+      setSidebarWidth((cur) => {
+        const next = clampSidebarWidth(cur, window.innerWidth);
+        if (next === cur) return cur;
+        try {
+          localStorage.setItem(SIDEBAR_KEY, String(next));
+        } catch {
+          // 持久化失败不阻塞
+        }
+        return next;
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((cur) => {
       const next = !cur;

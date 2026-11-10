@@ -323,18 +323,21 @@ export function MainArea({
       className={`main-area terminal-mode${aiPanelOut ? " has-ai-panel" : ""}`}
       data-testid="main-area"
     >
+      {/* 主区左列（页签行 + 工具行 + 内容行）：AI 面板整高右栏时收缩让位。
+          面板在场与否不改变左列内部结构——只改宽度，避免「有面板/无面板」
+          两套布局各自漂移。 */}
+      <div className="main-area-body">
       {/* 库级错误横幅（2026-11-01 功能审计 P2-20）：此前 storeError 只渲染在
           「零会话」分支的空态里——有会话时（常态）删除主机/凭据失败、刷新失败
-          全部静默，用户只看到界面毫无变化。此处常驻渲染，会话态也可见。 */}
+          全部静默，用户只看到界面毫无变化。此处常驻渲染，会话态也可见。
+          **必须在 .main-area-body 内**（2026-11-10 审计）：留在外面时，AI 面板
+          在场会把主区切成 row 方向——横幅成为主区的 flex 子项，被拉成一条
+          几百像素宽的竖条（文字竖排），并把终端列压掉一整条。 */}
       {storeError && (
         <p className="main-error" data-testid="store-error">
           {t("mainArea.loadFailed", { message: storeError })}
         </p>
       )}
-      {/* 主区左列（页签行 + 工具行 + 内容行）：AI 面板整高右栏时收缩让位。
-          面板在场与否不改变左列内部结构——只改宽度，避免「有面板/无面板」
-          两套布局各自漂移。 */}
-      <div className="main-area-body">
       <div className="tabbar-row" {...dragRegion}>
         {/* dragRegion 透传：标签容器 flex:1 占满行内空档，属性必须落在实际
             命中元素上（空档双击缩放/起拖才生效，2026-10-16 用户反馈）。 */}
@@ -435,8 +438,7 @@ export function MainArea({
           仍 flex:1 会与平级渲染的 FilePanel/ProcessBrowser 50/50 均分主区——
           面板被压半高。overview/batch 的实体视图渲染在行内，保持 flex:1。
           （工具行已迁出本 holder——2026-10-19 热修，见上方注释。） */}
-      <div
-        className="term-main-row"
+      <div className="term-main-row"
         data-yield={filesVisible || procsVisible || monitorVisible || pluginsVisible}
       >
         <div
@@ -449,13 +451,16 @@ export function MainArea({
         </div>
         {slotView !== null ? slotPane : null}
       </div>
-      </div>
-      {/* AI 诊断面板：主区**整高右栏**（2026-11-02 用户反馈「顶部被遮盖」
-          ——此前面板挂在 term-main-row 内、被上方视图切换器工具行压住标题与
-          退出码徽章）。整高后：标题/徽章恒在主区顶部，工具行只横跨终端列。 */}
-      {aiPanelOut}
-      {/* 监控/插件（2026-10-17 批次三）：满幅视图 + 统一外壳，平级渲染同
-          文件/进程；终端 visibility 隐藏常驻（缓冲/滚动回看不丢）。 */}
+      {/* 文件/进程/监控/插件面板（2026-11-10 用户实报「切到这些视图都是半屏、
+          标题文案叠在标签栏下、工具行点不动」修复）：这四块必须与 term-main-row
+          **平级**（同一个 .main-area-body 的 flex 列）——让位规则
+          `.term-main-row[data-yield="true"] { flex: 0 0 0px }` 才能把折叠后
+          的空间让给面板。此前它们被渲染在 .main-area-body **之外**（成了
+          .main-area 的另一个 flex 子项）：.main-area-body 是 flex:1 会先吃掉
+          全部剩余空间，面板被挤到主区下半截并因 min-height:100% 溢出——上半屏
+          死空白 + 面板标题压在标签栏/工具行上 + 面板层压住工具行导致切换钮
+          点不动。根因是 2026-11-02 引入 .main-area-body（AI 面板整高右栏）
+          时只包了标签行/工具行/终端行，把这四块漏在了外面。 */}
       {monitorVisible && rootSession && (
         <WorkspaceViewShell labelKey="monitor.title" description={t("workspace.monitor.desc")}>
           <MonitorPanel
@@ -472,6 +477,11 @@ export function MainArea({
       )}
       {filesVisible && rootSession && <FilePanel session={rootSession} />}
       {procsVisible && rootSession && <ProcessBrowser rustId={rootSession.rustId} />}
+      </div>
+      {/* AI 诊断面板：主区**整高右栏**（2026-11-02 用户反馈「顶部被遮盖」
+          ——此前面板挂在 term-main-row 内、被上方视图切换器工具行压住标题与
+          退出码徽章）。整高后：标题/徽章恒在主区顶部，工具行只横跨终端列。 */}
+      {aiPanelOut}
     </main>
   );
 }

@@ -461,7 +461,7 @@
 .ctx-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--z-ctx);
+  z-index: var(--z-ctx-hit);
 }
 .ctx-menu {
   position: fixed;

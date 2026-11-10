@@ -102,7 +102,10 @@
 .rail-flyout-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 199;
+  /* 走 z 刻度（2026-11-10 审计）：此前是裸字面值 199（css-discipline 的
+     字面值黑名单只列了 99/100/101 → 漏网）。层级不变（盖住 toast、位于
+     flyout 与锁屏之下），但从此有单一事实源。 */
+  z-index: var(--z-rail-backdrop);
 }
 
 /* 更新钮（2026-10-17 用户需求：发现新版本在图标轨体现；2026-10-26 贯穿全程）
@@ -305,7 +308,12 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  /* 高度由所在 flex 列分配（2026-11-10 修复）：此前是 min-height:100%——
+   * 面板被渲染在 .main-area-body 之外时，100% 相对整个主区 → 面板比主区
+   * 还高、溢出压住工具行；移进 .main-area-body 后 100% 相对 body 自身，
+   * 同样会撑出容器（flex:1 已把剩余空间给足）。改为 0：高度只由 flex 决定，
+   * 内容超高时由自身的 overflow-y:auto 出滚动条。 */
+  min-height: 0;
   padding: var(--space-6) var(--space-7);
   gap: var(--space-4);
   overflow-y: auto;
@@ -326,6 +334,12 @@
 .wv-body {
   flex: 1;
   min-height: 0;
+  /* 必须是 flex 列容器（2026-11-10 审计）：子面板（.notify-panel 等）用
+     flex:1 想占满剩余高度并让内层列表独立滚动——父是块级容器时该规则
+     **静默失效**（flex 只在 flex 容器里生效），面板退化为内容高、列表
+     跟着整页滚。 */
+  display: flex;
+  flex-direction: column;
 }
 
 /* --- 工作区宽幅视图内容容器（2026-10-16 IA 重构批次 A2）---

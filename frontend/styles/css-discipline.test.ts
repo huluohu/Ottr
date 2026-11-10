@@ -115,9 +115,10 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
       "--radius-xl",
       "--radius-pill",
       "--toast-ttl",
-      "--z-ctx",
+      "--z-ctx-hit",
       "--z-ctx-menu",
       "--z-ctx-sub",
+      "--z-rail-backdrop",
     ]) {
       expect(tokensCss.includes(`${key}:`), `tokens.css 缺 ${key}`).toBe(true);
     }
@@ -125,6 +126,60 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
 
   it("右键菜单 z 小栈已入刻度（99/100/101 字面值清零）", () => {
     expect(allAppCss()).not.toMatch(/z-index:\s*(99|100|101);/);
+  });
+
+  // 2026-11-10 层级/尺寸纪律加固：此前守卫只断言「规则存在」，不校验值——
+  // 这类回归（面板被挪出包裹层、min-height 回到 100%、z 刻度错序）会静默
+  // 复现而 CI 全绿。这里把**值**与**相对顺序**钉死。
+  describe("层级与尺寸契约（2026-11-10 审计加固）", () => {
+    const css = allAppCss();
+    const tokens = tokensCss;
+
+    it("模态层必须盖住顶栏 / 右键菜单命中层 / 通知面板（否则模态开着时顶栏仍可点、右键菜单透明层吃掉工具行点击）", () => {
+      const z = (name: string): number => {
+        const m = tokens.match(new RegExp(`${name}:\\s*(\\d+)`));
+        expect(m, `tokens.css 缺 ${name}`).not.toBeNull();
+        return Number(m![1]);
+      };
+      const overlay = z("--z-overlay");
+      expect(overlay).toBeGreaterThan(z("--z-topbar"));
+      expect(overlay).toBeGreaterThan(z("--z-ctx-hit"));
+      expect(overlay).toBeGreaterThan(z("--z-notify"));
+      // 锁屏仍要盖住模态与 toast
+      expect(z("--z-lock")).toBeGreaterThan(overlay);
+      expect(z("--z-lock")).toBeGreaterThan(z("--z-toast"));
+    });
+
+    it("右键菜单命中层与本体必须都在模态之下（透明命中层盖住模态会让对话框点不动）", () => {
+      const cssHit = css.match(/\.ctx-overlay \{[^}]*z-index: var\(--z-ctx-hit\)/s);
+      expect(cssHit, "右键菜单透明命中层未用 --z-ctx-hit").not.toBeNull();
+    });
+
+    it("终端行让位必须折叠成 0 高（flex: 0 0 0px）——值错则面板被均分成半屏", () => {
+      expect(css).toMatch(/\.term-main-row\[data-yield="true"\]\s*\{[^}]*flex:\s*0 0 0px/s);
+    });
+
+    it("主区左列必须是 flex 列容器且 min-height:0（缺一项则终端行 flex:1 失效、内容区塌陷）", () => {
+      expect(css).toMatch(/\.main-area-body \{[^}]*display: flex[^}]*flex-direction: column/s);
+      expect(css).toMatch(/\.main-area-body \{[^}]*min-height: 0/s);
+    });
+
+    it("工作区视图外壳不得用 min-height:100%（相对错误的包含块会撑出容器、压住上方工具行）", () => {
+      expect(css).toMatch(/\.workspace-view \{[^}]*min-height: 0/s);
+      expect(css).not.toMatch(/\.workspace-view \{[^}]*min-height: 100%/s);
+    });
+
+    it("视图外壳正文必须是 flex 列容器（子面板的 flex:1 依赖它，否则静默失效）", () => {
+      expect(css).toMatch(/\.wv-body \{[^}]*display: flex[^}]*flex-direction: column/s);
+    });
+
+    it("不可见的行内按钮必须 pointer-events:none（隐形却可命中 → 误触删除/打开访达）", () => {
+      expect(css).toMatch(/\.recording-actions \{[^}]*opacity: 0[^}]*pointer-events: none/s);
+    });
+
+    it("终端行必须是定位上下文（隐藏 holder 的包含块正确 → 切视图不再给远端发假 SIGWINCH）", () => {
+      expect(css).toMatch(/\.term-main-row \{[^}]*position: relative/s);
+    });
   });
 
   it("字段标签堆叠契约（2026-10-15 用户反馈：CronPanel 脚本域 textarea 与标签内联崩坏——.grow 是零定义死类名，form-row 内靠控件 width:100% 换行假象兜底，行外裸露即崩）：三处规则必须在位", () => {
@@ -147,9 +202,11 @@ describe("CSS 纪律守卫（评审整改防复发）", () => {
   describe("低危整改批次守卫（2026-11-02）", () => {
     const css = allAppCss();
 
-    it("AI 面板宽度带 vw 上限且有保底（固定 400px 时最小窗口 720px 里终端列只剩 320px）", () => {
-      expect(css).toMatch(/\.ai-panel \{[^}]*width: min\(400px, 38vw\)/s);
-      expect(css).toMatch(/\.ai-panel \{[^}]*min-width: 280px/s);
+    it("AI 面板宽度按主区百分比（2026-11-10 审计：vw 是视口宽，视口里还站着图标轨+侧栏 → 面板把终端列压窄、视图切换钮被推出可视区）", () => {
+      expect(css).toMatch(/\.ai-panel \{[^}]*width: min\(400px, 38%\)/s);
+      expect(css).toMatch(/\.ai-panel \{[^}]*min-width: min\(280px, 38%\)/s);
+      // 不得回退到 vw 口径（那正是「工具行点不动」的成因之一）
+      expect(css).not.toMatch(/\.ai-panel \{[^}]*38vw/s);
     });
 
     it("markdown 内容层横向滚动（宽表自己滚，不撑破 400px 面板）", () => {

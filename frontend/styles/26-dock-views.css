@@ -7,7 +7,12 @@
    命名沿用 dock-entity（面板组件根类，改名将牵连样式与测试面）。 */
 .dock-entity {
   box-sizing: border-box;
-  min-height: 100%;
+  /* 不用 min-height:100%（2026-11-10 审计）：百分比要求父容器有确定高度，
+     现有挂载点（设置分区里的 <section hidden>）高度由内容决定 → 100% 按
+     auto 计算、规则静默失效；而一旦它被挪进有确定高度的 flex 容器，100%
+     会把面板撑到容器之外、压住上方标签栏/工具行（与本次报障同族）。高度
+     交给挂载环境（flex:1 / min-height:0 口径）。 */
+  min-height: 0;
   padding: 12px 14px;
 }
 .dock-entity.settings-dialog,

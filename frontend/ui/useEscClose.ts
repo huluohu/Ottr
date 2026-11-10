@@ -24,11 +24,29 @@ interface EscEntry {
 const escStack: EscEntry[] = [];
 let listenerBound = false;
 
+/**
+ * 安全遮罩在场？（锁屏 / vault 初始化门，z 刻度 --z-lock = 200）
+ *
+ * 2026-11-10 审计修正：锁屏**刻意**不注册 Esc 关闭（锁屏不该被 Esc 关掉），
+ * 但它也不清栈——于是「设置页开着 + 自动锁定」时按 Esc，栈顶是设置页 →
+ * 设置页被关掉、锁屏纹丝不动（用户以为 Esc 失灵或关错了窗）。这里在场时
+ * 直接让 Esc 什么都不做。
+ */
+function securityShieldPresent(): boolean {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('[aria-modal="true"]'),
+  ).some((el) => {
+    const z = Number.parseInt(window.getComputedStyle(el).zIndex, 10);
+    return !Number.isNaN(z) && z >= 200;
+  });
+}
+
 function ensureListener(): void {
   if (listenerBound) return;
   listenerBound = true;
   window.addEventListener("keydown", (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
+    if (securityShieldPresent()) return; // 锁屏/初始化门在场：Esc 不穿透到底层
     const top = escStack[escStack.length - 1];
     if (!top) return;
     e.stopImmediatePropagation();

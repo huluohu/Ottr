@@ -84,10 +84,35 @@ export function useFocusTrap(open: boolean, containerRef: RefObject<HTMLElement 
   }, [open, containerRef]);
 }
 
-/** 当前最上层弹窗（带 aria-modal 的最后一个 = 渲染最晚 = 层级最高）。 */
+/**
+ * 当前最上层弹窗（带 aria-modal 的元素中 z 序最高者）。
+ *
+ * 2026-11-10 审计修正：此前取「DOM 顺序最后一个」，并假设「渲染最晚 = 层级
+ * 最高」——但锁屏（--z-lock 200）在 App.tsx 里排在命令面板/历史搜索
+ * （--z-overlay 50）**之前**渲染：自动锁定瞬间若历史搜索面板还开着，焦点
+ * 陷阱会把焦点锁进那个被锁屏盖住、看不见的面板里（Tab 在暗处打转、锁屏
+ * 密码框拿不到焦点）。现按**实际 z-index**取最上层（读 computed style，
+ * 同值时 DOM 靠后者为准）。
+ */
 function topModal(): HTMLElement | null {
   const list = Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"]'));
-  return list.length ? list[list.length - 1] : null;
+  if (list.length === 0) return null;
+  const zOf = (el: HTMLElement): number => {
+    const raw = window.getComputedStyle(el).zIndex;
+    const n = Number.parseInt(raw, 10);
+    return Number.isNaN(n) ? 0 : n;
+  };
+  let best = list[0];
+  let bestZ = zOf(best);
+  for (const el of list.slice(1)) {
+    const z = zOf(el);
+    // 同 z 时取 DOM 更靠后者（后来渲染的盖在上面）
+    if (z >= bestZ) {
+      best = el;
+      bestZ = z;
+    }
+  }
+  return best;
 }
 
 /**

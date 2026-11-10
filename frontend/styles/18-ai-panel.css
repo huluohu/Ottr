@@ -18,16 +18,28 @@
   flex: 1;
   min-height: 0;
   display: flex;
+  /* 定位上下文（2026-11-10 审计）：隐藏态的 .term-area-holder 用
+     position:absolute; inset:0 让位——此前它的包含块是 .main-area
+     （隔了两级：term-main-row / main-area-body 都没 position），于是
+     让位前后 holder 的盒子高度差一整行（终端区 749px → 826px），
+     xterm 随之 refit 并向远端 shell 多发一次 SIGWINCH（跑着 top/vim 时
+     切视图会重绘、列数突变）。给终端行加 position:relative 后，隐藏态
+     holder 的盒即终端行盒（让位折叠时为 0，refit 的 clientHeight===0
+     守卫直接跳过 fit）——切视图不再惊动远端。 */
+  position: relative;
 }
 
 .ai-panel {
   flex: none;
-  /* 面板宽度带 vw 上限：固定 400px 时，最小窗口 720px（tauri.conf.json
-     minWidth）里终端列只剩 320px——终端被挤成一条缝。改 min(400px, 38vw)
-     后窄窗按比例收窄，宽窗仍是 400px；min-width 280px 保底，面板不许窄到
-     读不了字（38vw < 280px 时以保底为准，此时终端列仍余 ~440px）。 */
-  width: min(400px, 38vw);
-  min-width: 280px;
+  /* 面板宽度按**主区**算（2026-11-10 审计修正）：此前按视口百分比 —— vw 是
+     视口宽，而面板与左列是主区的两个 flex 列，视口里还站着图标轨(48) +
+     侧栏(280~560)：默认窗宽 1280 时左列只剩 ~480px，面板实占 400px
+     （含边框 425），「监控/插件」钮被推出可视区 → 用户报障的「工具行
+     点不动/看不见」同族症状。改用百分比（相对 .main-area 内容宽）后，
+     面板占比不随侧栏宽度漂移；min-width 同样按百分比给——窄窗时先让位的
+     是面板（面板可读性优先于宽度）。 */
+  width: min(400px, 38%);
+  min-width: min(280px, 38%);
   border-left: 1px solid var(--border-subtle);
   overflow-y: auto;
   padding: 10px 12px;

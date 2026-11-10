@@ -305,7 +305,12 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  /* 高度由所在 flex 列分配（2026-11-10 修复）：此前是 min-height:100%——
+   * 面板被渲染在 .main-area-body 之外时，100% 相对整个主区 → 面板比主区
+   * 还高、溢出压住工具行；移进 .main-area-body 后 100% 相对 body 自身，
+   * 同样会撑出容器（flex:1 已把剩余空间给足）。改为 0：高度只由 flex 决定，
+   * 内容超高时由自身的 overflow-y:auto 出滚动条。 */
+  min-height: 0;
   padding: var(--space-6) var(--space-7);
   gap: var(--space-4);
   overflow-y: auto;

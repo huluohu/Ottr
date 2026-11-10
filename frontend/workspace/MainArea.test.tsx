@@ -28,6 +28,9 @@ vi.mock("../ai/DiagnosePanel", () => ({
 }));
 vi.mock("../monitor/MonitorSidebar", () => ({
   MonitorSidebar: () => <div data-testid="monitor-sidebar" />,
+  // 监控面板（会话级子页签）：面板层级契约用例需要它真实渲染出
+  // WorkspaceViewShell 包裹的结构（真组件依赖采样器，测试里用占位）。
+  MonitorPanel: () => <div data-testid="monitor-panel-stub" />,
 }));
 vi.mock("../plugins/PluginSidebar", () => ({
   PluginSidebar: () => <div data-testid="plugin-sidebar" />,
@@ -416,6 +419,37 @@ describe("MainArea：面板视图行让位契约（ui2 T1，审计 48/49）", ()
       useWorkspaceStore.getState().openMainView("batch");
     });
     expect(row().getAttribute("data-yield")).toBe("false");
+  });
+
+  // 2026-11-10 用户实报「切到文件/进程/监控视图都是半屏、标题文案叠在标签栏
+  // 下、工具行点不动」：根因是这四块面板被渲染在 .main-area-body **之外**
+  // （成了 .main-area 的另一个 flex 子项）——body 是 flex:1 先吃掉全部剩余
+  // 空间，面板被挤到主区下半截并因 min-height:100% 溢出压住工具行。
+  // 契约：面板必须与 term-main-row 同在 .main-area-body 内（平级）。
+  it("视图面板与 term-main-row 同在 .main-area-body 内（平级，让位才成立）", () => {
+    seedSessions([fakeSession()]);
+    useVaultStore.setState({
+      hosts: [fakeHost({ id: 1, name: "web-01" })],
+      hostGroups: [],
+      credentials: [],
+      loading: false,
+      error: null,
+    });
+    const { container } = render(<MainArea storeError={null} selected={null} onOpenAiSettings={() => {}} />);
+    const body = container.querySelector<HTMLElement>(".main-area-body")!;
+    expect(body).toBeTruthy();
+    // 监控视图的面板（WorkspaceViewShell）
+    act(() => {
+      useWorkspaceStore.getState().openMainView("monitor");
+    });
+    const shell = container.querySelector<HTMLElement>(".workspace-view");
+    expect(shell).toBeTruthy();
+    // 面板在 body 内（与 term-main-row 平级），不是 body 的兄弟节点
+    expect(body.contains(shell!)).toBe(true);
+    expect(body.contains(container.querySelector<HTMLElement>(".term-main-row")!)).toBe(true);
+    // 视图切换器（工具行）在 body 内且不在面板里——工具行不被面板压住
+    expect(body.contains(screen.getByTestId("view-terminal"))).toBe(true);
+    expect(shell!.contains(screen.getByTestId("view-terminal"))).toBe(false);
   });
 
   it("filesOnly（FTP）：文件视图恒开，data-yield=true", () => {

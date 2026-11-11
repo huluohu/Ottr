@@ -97,9 +97,14 @@ export function LockScreen({ closing }: { closing?: boolean }) {
   }
 
   const wrongPassword = storeError?.includes("master password is incorrect") ?? false;
-  // 钥匙链模式误入锁屏、自愈生效前的窗口内提交了解锁：Rust InvalidInput 原串
+  // 钥匙串模式误入锁屏、自愈生效前的窗口内提交了解锁：Rust InvalidInput 原串
   // 不裸奔，映射成语义文案（正常路径不可达，纯兜底）。
   const noLockToRelease = storeError?.includes("vault is in keychain mode") ?? false;
+  // 主密码太短（首解锁 = 设主密码）：前端预检只在 masterPasswordSet === false
+  // 时生效（信号缺失/存量库放行给后端兜底），所以后端这条 InvalidInput 必须
+  // 也映射成本地化文案——否则英文原文直接上屏（2026-11-11 真机实测：库里
+  // 无 verifier 但信号为 null 时，预检未命中、后端报错裸奔）。
+  const tooShort = storeError?.includes("master password must be at least") ?? false;
 
   return (
     <div
@@ -131,7 +136,9 @@ export function LockScreen({ closing }: { closing?: boolean }) {
               ? t("security.lockScreen.errWrongPassword")
               : noLockToRelease
                 ? t("security.lockScreen.errNoLock")
-                : error}
+                : tooShort
+                  ? t("security.lockScreen.errTooShort", { min: MIN_MASTER_PASSWORD })
+                  : error}
           </p>
         )}
         <div className="form-actions">

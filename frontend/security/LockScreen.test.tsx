@@ -115,6 +115,27 @@ describe("LockScreen", () => {
     expect(useVaultLockStore.getState().error).toContain("master password is incorrect");
   });
 
+  // 2026-11-11 真机实测：库里无 verifier（首解锁=设主密码）但前端信号为
+  // null 时，长度预检未命中 → 后端 InvalidInput 原文裸奔成英文。必须本地化。
+  it("后端主密码过短错误：映射为本地化文案（不裸奔英文原文）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_unlock") {
+        return Promise.reject(
+          "invalid input: master password must be at least 8 characters",
+        );
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    render(<LockScreen />);
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "1" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() =>
+      expect(screen.getByTestId("lock-error").textContent).toBe("主密码至少 8 位"),
+    );
+    // 英文原文不得直接上屏
+    expect(screen.getByTestId("lock-error").textContent).not.toContain("master password");
+  });
+
   it("解锁成功：vault_unlock 携密码调用，error 清空", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "vault_unlock") return Promise.resolve(null);

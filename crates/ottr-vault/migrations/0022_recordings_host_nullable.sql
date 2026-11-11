@@ -3,9 +3,14 @@
 -- 面与主机录制同享），host_id NULL = 归属「本机」。
 --
 -- SQLite 不能 ALTER 列可空性：标准四步重建（建新表 → 拷贝 → 删旧 → 改名）。
--- recordings_fts 是 contentful 自持表（recording_id UNINDEXED、无 FK、无
--- 触发器挂在本表），重建主表不影响 FTS 行；idx_recordings_host 随旧表删除，
--- 新表按原名重建。
+-- recordings_fts 是 contentful 自持表（recording_id UNINDEXED、无 FK），重建
+-- 主表不动它的行；idx_recordings_host 随旧表删除，新表按原名重建。
+--
+-- 【勘误，2026-11-11】本迁移头注释曾断言「无触发器挂在本表」——**误判**：
+-- 0015:57 的 recordings_fts_ad（AFTER DELETE ON recordings）正挂在
+-- recordings 表上（recordings_fts 只是动作目标）。本迁移的 DROP TABLE 把它
+-- 连带删除且未重建，此后删录制/删主机 CASCADE 都在 recordings_fts 留幽灵行
+-- （已删录制的终端全文残留库文件）。由 0030 重建触发器并清理孤儿。
 CREATE TABLE recordings_new (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     host_id         INTEGER REFERENCES hosts (id) ON DELETE CASCADE,

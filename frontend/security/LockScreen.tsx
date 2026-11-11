@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import { useVaultLockStore } from "./VaultLockStore";
 import { LockOtter } from "./LockOtter";
+import { MIN_MASTER_PASSWORD, masterPasswordCodePoints } from "./SecuritySettings";
 
 export function LockScreen({ closing }: { closing?: boolean }) {
   const { t } = useTranslation();
@@ -23,6 +24,7 @@ export function LockScreen({ closing }: { closing?: boolean }) {
   const storeError = useVaultLockStore((s) => s.error);
   const unlocking = useVaultLockStore((s) => s.unlocking);
   const lockMode = useVaultLockStore((s) => s.mode);
+  const masterPasswordSet = useVaultLockStore((s) => s.masterPasswordSet);
   const refreshStatus = useVaultLockStore((s) => s.refreshStatus);
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -77,14 +79,32 @@ export function LockScreen({ closing }: { closing?: boolean }) {
       setLocalError(t("security.lockScreen.errEmpty"));
       return;
     }
+    // 首解锁 = 设主密码的最小长度预检（BL-202 前端预检面，与 Rust 权威校验
+    // 同值同语义 = Unicode 码点数，非 .length 的 UTF-16 码元数）：只在库尚未
+    // 设主密码时生效（masterPasswordSet === false，首装首次解锁 = 本次输入
+    // 即成为主密码）。存量库可能带着修复前经首解锁落下的短主密码——后端
+    // 常规解锁臂不查长度、照常放行，这里若无差别拦截会把那批用户锁在解锁
+    // 门外；信号未知（null）同样放行，权威校验始终在后端兜底。
+    if (
+      masterPasswordSet === false &&
+      masterPasswordCodePoints(password) < MIN_MASTER_PASSWORD
+    ) {
+      setLocalError(t("security.lockScreen.errTooShort", { min: MIN_MASTER_PASSWORD }));
+      return;
+    }
     setLocalError(null);
     void unlock(password);
   }
 
   const wrongPassword = storeError?.includes("master password is incorrect") ?? false;
-  // 钥匙链模式误入锁屏、自愈生效前的窗口内提交了解锁：Rust InvalidInput 原串
+  // 钥匙串模式误入锁屏、自愈生效前的窗口内提交了解锁：Rust InvalidInput 原串
   // 不裸奔，映射成语义文案（正常路径不可达，纯兜底）。
   const noLockToRelease = storeError?.includes("vault is in keychain mode") ?? false;
+  // 主密码太短（首解锁 = 设主密码）：前端预检只在 masterPasswordSet === false
+  // 时生效（信号缺失/存量库放行给后端兜底），所以后端这条 InvalidInput 必须
+  // 也映射成本地化文案——否则英文原文直接上屏（2026-11-11 真机实测：库里
+  // 无 verifier 但信号为 null 时，预检未命中、后端报错裸奔）。
+  const tooShort = storeError?.includes("master password must be at least") ?? false;
 
   return (
     <div
@@ -116,7 +136,9 @@ export function LockScreen({ closing }: { closing?: boolean }) {
               ? t("security.lockScreen.errWrongPassword")
               : noLockToRelease
                 ? t("security.lockScreen.errNoLock")
-                : error}
+                : tooShort
+                  ? t("security.lockScreen.errTooShort", { min: MIN_MASTER_PASSWORD })
+                  : error}
           </p>
         )}
         <div className="form-actions">

@@ -447,7 +447,8 @@
     "dangerInputTitle": "Cuidado",
     "dangerInputHint": "Esta entrada activa una regla de peligro: {{rule}} ({{excerpt}})",
     "dangerInputDismiss": "Descartar el aviso de peligro",
-    "promptTimeout": "Se agotó el tiempo de espera de la autenticación; sin conexión (responde cuando aparezca el aviso)"
+    "promptTimeout": "Se agotó el tiempo de espera de la autenticación; sin conexión (responde cuando aparezca el aviso)",
+    "hostKeyTimeout": "Se agotó el tiempo de espera de la confirmación de la clave de host; sin conexión"
   },
   "ai": {
     "orbLabel": "Preguntar a Ottr",
@@ -955,6 +956,7 @@
       "hint": "Introduce tu contraseña maestra para desbloquear esta bóveda.",
       "unlock": "Desbloquear",
       "errEmpty": "Introduce tu contraseña maestra",
+      "errTooShort": "La contraseña maestra debe tener al menos {{min}} caracteres",
       "errWrongPassword": "La contraseña maestra es incorrecta",
       "errNoLock": "Esta bóveda usa el modo llavero: no hay contraseña maestra ni nada que desbloquear.",
       "forgot": "¿Olvidaste la contraseña?",

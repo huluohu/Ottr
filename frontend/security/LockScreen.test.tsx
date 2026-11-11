@@ -43,6 +43,62 @@ describe("LockScreen", () => {
     expect(mockedInvoke).not.toHaveBeenCalled();
   });
 
+  // BL-202 补口（F-vault-2）前端预检面：首解锁 = 设主密码（masterPasswordSet
+  // === false）时同步最小长度口径（码点数，与 Rust chars().count() 同语义）。
+  // 存量库（true）与信号未知（null）**不拦**——存量库可能带着修复前经首解锁
+  // 落下的短主密码（后端常规解锁臂不查长度、照常放行），前端无差别拦截会把
+  // 这批用户锁在解锁门外；权威校验始终在后端。
+  it("首解锁态（未设主密码）：短密码本地拦截，不发起 invoke", async () => {
+    useVaultLockStore.setState({ phase: "locked", mode: "password", masterPasswordSet: false });
+    render(<LockScreen />);
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "1234567" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() =>
+      expect(screen.getByTestId("lock-error").textContent).toBe("主密码至少 8 位"),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalled();
+  });
+
+  it("首解锁态：码点口径——4 个 emoji（.length=8、码点=4）同样拦截", async () => {
+    useVaultLockStore.setState({ phase: "locked", mode: "password", masterPasswordSet: false });
+    render(<LockScreen />);
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "😀😀😀😀" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() =>
+      expect(screen.getByTestId("lock-error").textContent).toBe("主密码至少 8 位"),
+    );
+    expect(mockedInvoke).not.toHaveBeenCalled();
+  });
+
+  it("首解锁态：恰 8 码点放行（下边界，正常发起 vault_unlock）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_unlock") return Promise.resolve(null);
+      return Promise.reject(new Error(cmd));
+    });
+    useVaultLockStore.setState({ phase: "locked", mode: "password", masterPasswordSet: false });
+    render(<LockScreen />);
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "12345678" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() => expect(useVaultLockStore.getState().phase).toBe("unlocked"));
+    expect(mockedInvoke).toHaveBeenCalledWith("vault_unlock", { password: "12345678" });
+  });
+
+  it("存量库（已设主密码）：短输入不预拦、照常提交后端（修复前短主密码库仍可解锁）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_unlock")
+        return Promise.reject("vault is locked: master password is incorrect");
+      return Promise.reject(new Error(cmd));
+    });
+    useVaultLockStore.setState({ phase: "locked", mode: "password", masterPasswordSet: true });
+    render(<LockScreen />);
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "123" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() =>
+      expect(screen.getByTestId("lock-error").textContent).toBe("主密码不正确"),
+    );
+    expect(mockedInvoke).toHaveBeenCalledWith("vault_unlock", { password: "123" });
+  });
+
   it("密码错误：Rust 错误串映射为「主密码不正确」，phase 不翻转", async () => {
     mockedInvoke.mockImplementation((cmd: string) => {
       if (cmd === "vault_unlock") return Promise.reject("vault is locked: master password is incorrect");
@@ -57,6 +113,27 @@ describe("LockScreen", () => {
     // store 侧 error 已置位（调用方 App 的遮罩仍由 locked 事件/状态驱动）
     expect(useVaultLockStore.getState().phase).toBe("boot");
     expect(useVaultLockStore.getState().error).toContain("master password is incorrect");
+  });
+
+  // 2026-11-11 真机实测：库里无 verifier（首解锁=设主密码）但前端信号为
+  // null 时，长度预检未命中 → 后端 InvalidInput 原文裸奔成英文。必须本地化。
+  it("后端主密码过短错误：映射为本地化文案（不裸奔英文原文）", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "vault_unlock") {
+        return Promise.reject(
+          "invalid input: master password must be at least 8 characters",
+        );
+      }
+      return Promise.reject(new Error(cmd));
+    });
+    render(<LockScreen />);
+    fireEvent.change(screen.getByTestId("lock-password"), { target: { value: "1" } });
+    fireEvent.click(screen.getByTestId("lock-unlock"));
+    await waitFor(() =>
+      expect(screen.getByTestId("lock-error").textContent).toBe("主密码至少 8 位"),
+    );
+    // 英文原文不得直接上屏
+    expect(screen.getByTestId("lock-error").textContent).not.toContain("master password");
   });
 
   it("解锁成功：vault_unlock 携密码调用，error 清空", async () => {
@@ -228,6 +305,7 @@ describe("LockScreen 忘记密码引导", () => {
     const keys = [
       "security.lockScreen.forgot",
       "security.lockScreen.errNoLock",
+      "security.lockScreen.errTooShort",
       "security.lockScreen.resetTitle",
       "security.lockScreen.resetNoRecover",
       "security.lockScreen.resetExplain",

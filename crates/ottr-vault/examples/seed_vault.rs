@@ -11,19 +11,23 @@
 //! vault 目录，不触碰钥匙链与其它文件）。
 //!
 //! Run: `cargo build --release -p ottr-vault --example seed_vault`
-//!      `target/release/examples/seed_vault <vault_dir> [password=ottr-t7]`
+//!      `target/release/examples/seed_vault <vault_dir> [password=ottr-t7-walkthrough]`
 use std::path::PathBuf;
+
+/// 默认播种口令（首解锁即设主密码；BL-202 补口后首解锁路径有最小长度权威
+/// 校验——旧默认 "ottr-t7" 只有 7 码点，不再能落库）。
+const DEFAULT_PASSWORD: &str = "ottr-t7-walkthrough";
 
 fn main() {
     let mut args = std::env::args().skip(1);
     let dir = match args.next() {
         Some(d) => PathBuf::from(d),
         None => {
-            eprintln!("usage: seed_vault <vault_dir> [password=ottr-t7]");
+            eprintln!("usage: seed_vault <vault_dir> [password={DEFAULT_PASSWORD}]");
             std::process::exit(2);
         }
     };
-    let password = args.next().unwrap_or_else(|| "ottr-t7".into());
+    let password = args.next().unwrap_or_else(|| DEFAULT_PASSWORD.into());
 
     let outcome = ottr_vault::seed::seed_walkthrough_vault(&dir, &password).expect("seed vault");
     println!(

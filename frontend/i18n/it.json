@@ -447,7 +447,8 @@
     "dangerInputTitle": "Attenzione",
     "dangerInputHint": "Questo input corrisponde a una regola di pericolo: {{rule}} ({{excerpt}})",
     "dangerInputDismiss": "Chiudi l'avviso di pericolo",
-    "promptTimeout": "Timeout in attesa dell'autenticazione; connessione non effettuata (rispondi quando compare il prompt)"
+    "promptTimeout": "Timeout in attesa dell'autenticazione; connessione non effettuata (rispondi quando compare il prompt)",
+    "hostKeyTimeout": "Timeout in attesa della conferma della chiave host; connessione non effettuata"
   },
   "ai": {
     "orbLabel": "Chiedi a Ottr",
@@ -955,6 +956,7 @@
       "hint": "Inserisci la password master per sbloccare questo vault.",
       "unlock": "Sblocca",
       "errEmpty": "Inserisci la password master",
+      "errTooShort": "La password master deve contenere almeno {{min}} caratteri",
       "errWrongPassword": "Password master non corretta",
       "errNoLock": "Questo vault usa la modalità portachiavi — non esiste una password master e nulla da sbloccare.",
       "forgot": "Password dimenticata?",

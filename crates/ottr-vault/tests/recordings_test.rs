@@ -142,17 +142,36 @@ fn empty_text_recording_stays_out_of_fts() {
 
 /// 删除录制 → AFTER DELETE 触发器同步清 FTS（不留幽灵命中）；删除不存在的
 /// id → NotFound。
+///
+/// 断言纪律（2026-11-11 修复）：FTS 清理必须**直接数 recordings_fts 行**，
+/// 不能只靠 search()——检索 SQL JOIN recordings 对幽灵行不可见（幽灵行的
+/// recording_id 悬空，JOIN 不上），触发器丢失时 search 恒空、本测试恒过
+/// （0022 重建表连带删触发器后，本测试长期无感即此盲区）。行数断言才能
+/// 钉住触发器存在：触发器不在 → 删除后 FTS 残 1 行 → 这里当场红。
 #[test]
 fn delete_cleans_fts_and_missing_id_is_not_found() {
     let v = vault();
     let h = host(&v, "web-01");
     let e = Recordings::insert(&v, &input(h, "/r/x.cast", 3.0, Some("delete me marker"))).unwrap();
     assert_eq!(Recordings::search(&v, "marker", None, 50).unwrap().len(), 1);
+    let fts_rows = |v: &Vault| -> i64 {
+        v.connection()
+            .query_row("SELECT count(*) FROM recordings_fts", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap()
+    };
+    assert_eq!(fts_rows(&v), 1, "插入后 FTS 恰 1 行（断言前提）");
     Recordings::delete(&v, e.id).unwrap();
     assert!(
         Recordings::search(&v, "marker", None, 50)
             .unwrap()
             .is_empty()
+    );
+    assert_eq!(
+        fts_rows(&v),
+        0,
+        "删除后 FTS 必须空——幽灵行 = AFTER DELETE 触发器丢失（0022 事故形态，0030 修复）"
     );
     assert!(Recordings::list(&v, None, 50).unwrap().is_empty());
     assert!(matches!(
@@ -162,7 +181,8 @@ fn delete_cleans_fts_and_missing_id_is_not_found() {
 }
 
 /// 删主机 → CASCADE 删录制行且 FTS 同清（触发器在级联路径同样触发——
-/// 「删主机即删其审计痕迹」的完整语义）。
+/// 「删主机即删其审计痕迹」的完整语义）。FTS 断言同上：直接数行，不走
+/// search()（JOIN 对幽灵行不可见，钉不住触发器）。
 #[test]
 fn host_cascade_removes_rows_and_fts() {
     let v = vault();
@@ -178,6 +198,14 @@ fn host_cascade_removes_rows_and_fts() {
         Recordings::search(&v, "cascade", None, 50)
             .unwrap()
             .is_empty()
+    );
+    let fts_rows: i64 = v
+        .connection()
+        .query_row("SELECT count(*) FROM recordings_fts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        fts_rows, 0,
+        "CASCADE 路径同样必须清 FTS——FK 级联删子行也触发 AFTER DELETE 触发器（0015 选型承诺）"
     );
 }
 
@@ -214,4 +242,25 @@ fn snippet_is_case_insensitive_with_context() {
     // 窗口边界可能截断远端长词，断言相邻词不假设整词边界）
     assert!(snip.contains("status"), "前文上下文: {snip}");
     assert!(snip.contains("service"), "后文上下文: {snip}");
+}
+
+/// all_paths（桌面端启动孤儿清扫的对账面，F-commands-2）：显式全列查询——
+/// 行数超出 RECORDINGS_SEARCH_LIMIT 也一并列出（对账必须拿全集，不是 ⌘R 的
+/// 「最近 N 条」视图），host_id None（本地/未知桶）同样在列。
+#[test]
+fn all_paths_lists_every_row_regardless_of_search_limit() {
+    let v = vault();
+    let mk = |i: usize| RecordingInput {
+        host_id: None,
+        path: format!("/data/recordings/{i}.cast"),
+        duration: 0.0,
+        text: None,
+    };
+    let total = ottr_vault::RECORDINGS_SEARCH_LIMIT + 5;
+    for i in 0..total {
+        Recordings::insert(&v, &mk(i)).unwrap();
+    }
+    let paths = Recordings::all_paths(&v).unwrap();
+    assert_eq!(paths.len(), total, "全列查询不受检索 limit 截断");
+    assert!(paths.iter().any(|p| p.ends_with("/0.cast")));
 }

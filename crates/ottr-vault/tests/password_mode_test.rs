@@ -433,6 +433,48 @@ fn fallback_first_unlock_sets_master_password_and_survives_reopen() {
     );
 }
 
+/// BL-202 补口（F-vault-2）：首解锁 = 设主密码路径同样受最小长度权威校验
+/// （此前只有升级向导 set_master_password_ext 查——fallback 首装可落一位
+/// 数字主密码）。拒绝路径零副作用：不落 salt/verifier（master_password_set
+/// 仍 false、库保持锁定），同实例随后用合规密码仍可首解锁，重开后状态一致。
+#[test]
+fn fallback_first_unlock_enforces_master_password_min_len() {
+    let dir = tempfile::tempdir().unwrap();
+    let vault = Vault::open_password_only(dir.path()).unwrap();
+    assert_eq!(vault.mode(), KeyMode::Password);
+    assert!(vault.is_locked());
+    assert!(
+        !vault.master_password_set(),
+        "首装（未设主密码）= 首次解锁态"
+    );
+
+    // 空串 / 一位数字 / 差一位：一律 InvalidInput（权威拦截，绕过前端直连
+    // IPC 也拦得住），库保持锁定。
+    for weak in ["", "1", "1234567", "short"] {
+        let err = vault.unlock_with_password(weak).unwrap_err();
+        assert!(
+            matches!(err, VaultError::InvalidInput(_)),
+            "{weak:?}: 实际 {err:?}"
+        );
+        assert!(vault.is_locked(), "{weak:?}: 拒绝后必须仍锁定");
+        assert!(
+            !vault.master_password_set(),
+            "{weak:?}: 拒绝不得落主密码参数"
+        );
+    }
+
+    // 拒绝路径无副作用：同一实例随后仍走首解锁（下边界 8 码点放行）。
+    vault.unlock_with_password("12345678").unwrap();
+    assert!(!vault.is_locked());
+    assert!(vault.master_password_set(), "首解锁成功后 = 已设主密码");
+    drop(vault);
+
+    // 重开后同一密码可解（拒绝尝试没有留下半套参数/半写状态）。
+    let reopened = Vault::open_password_only(dir.path()).unwrap();
+    assert!(reopened.is_locked());
+    reopened.unlock_with_password("12345678").unwrap();
+}
+
 #[test]
 fn fallback_refuses_keyring_mode_vault_when_keychain_dead() {
     let dir = tempfile::tempdir().unwrap();

@@ -53,7 +53,7 @@ use crate::{Cipher, Result, VaultError};
 /// `SchemaTooNew { db: 28, app: 27 }` → **应用打不开库**）。
 ///
 /// 下面有断言钉住「本常量 == MIGRATIONS 末位」，改迁移忘了改常量会当场红。
-pub const LATEST_SCHEMA_VERSION: u32 = 29;
+pub const LATEST_SCHEMA_VERSION: u32 = 30;
 
 /// meta 键：主密钥模式（"keyring" | "password"；缺省 = keyring，兼容 T11 之前的库）。
 const META_KEY_MODE: &str = "master_key.mode";
@@ -75,10 +75,24 @@ const KDF_SALT_LEN: usize = 16;
 /// 上限不设（密码短语欢迎）。
 ///
 /// **双端口径（BL-202）**：本侧是权威校验，计量 = `chars().count()`（Unicode
-/// 码点数）；前端预检（frontend/security/SecuritySettings.tsx `MIN_MASTER_PASSWORD`）
-/// 同值同语义（码点口径，非 JS `.length` 的 UTF-16 码元数——增补平面字符两边
-/// 才不会分叉）。预检只为 UX 提前拦截，绕过前端直连 IPC 仍由本侧拦截。
+/// 码点数）；前端预检（frontend/security/SecuritySettings.tsx `MIN_MASTER_PASSWORD`，
+/// LockScreen 首解锁预检消费同一常量）同值同语义（码点口径，非 JS `.length`
+/// 的 UTF-16 码元数——增补平面字符两边才不会分叉）。预检只为 UX 提前拦截，
+/// 绕过前端直连 IPC 仍由本侧拦截。
 pub const MASTER_PASSWORD_MIN_LEN: usize = 8;
+
+/// 最小长度权威校验（BL-202）：设主密码的**两条**路径共用——升级向导
+/// [`Vault::set_master_password_ext`] 与 fallback 首装首次解锁
+/// [`Vault::unlock_with_password`] 的 (None,None) 臂（后者的输入在无
+/// salt/verifier 时即成为主密码，不设此门 = 可落一位数字主密码）。
+fn ensure_master_password_min_len(password: &str) -> Result<()> {
+    if password.chars().count() < MASTER_PASSWORD_MIN_LEN {
+        return Err(VaultError::InvalidInput(format!(
+            "master password must be at least {MASTER_PASSWORD_MIN_LEN} characters"
+        )));
+    }
+    Ok(())
+}
 
 /// 主密钥来源模式（语义矩阵见模块文档与 task-11-report）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,6 +244,15 @@ const MIGRATIONS: &[(u32, &str)] = &[
     // 主机粒度的自动档授权矩阵，**默认全拒**（无行 = 该主机不允许 AI 自动
     // 执行任何命令）——范式与 mcp_grants 同款。见迁移文件头。
     (29, include_str!("../migrations/0029_ai_host_policies.sql")),
+    // 0030 recordings FTS 幽灵行修复（2026-11-11）：0022 重建 recordings 表
+    // 时 DROP TABLE 连带删了 0015 的 recordings_fts_ad 触发器且未重建——
+    // 此后删录制/删主机 CASCADE 都在 recordings_fts 留幽灵行，已删录制的
+    // 终端全文永久残留。本迁移重建触发器 + 一次性清孤儿（见迁移文件头）。
+    // 明文面，无 *_enc 列，不动 scan_registry。
+    (
+        30,
+        include_str!("../migrations/0030_recordings_fts_trigger_repair.sql"),
+    ),
 ];
 
 /// 打开的 vault：SQLite 连接 + 锁定状态（Cipher 槽位）。
@@ -482,6 +505,32 @@ impl Vault {
             .ok_or(VaultError::Locked)
     }
 
+    /// 是否已设主密码（password 模式：verifier 已落 meta）。`false` = **首次
+    /// 解锁态**：下一次 [`Self::unlock_with_password`] 的输入即成为主密码
+    /// （其 (None,None) 臂）。keyring 模式不写 verifier，天然恒 `false`；
+    /// 降级路径 [`Self::clear_master_password`] 会清参数行，同样回到 `false`。
+    ///
+    /// 供 desktop `vault_security_status` 暴露（SecurityStatus.master_password_set，
+    /// 前端 api.ts 手工镜像），喂 LockScreen 的**首解锁**最小长度预检（BL-202
+    /// 前端预检面）——预检只在首次解锁态生效：存量库可能有修复前经 (None,None)
+    /// 臂落下的短主密码（常规解锁臂不查长度、后端照常放行），前端若无差别拦截
+    /// 会把这批用户锁在解锁门外。
+    ///
+    /// **查询失败按「已设」收敛（true）**：本查询只决定前端是否提前拦截，
+    /// 权威校验始终在后端——误报「已设」= 预检静默、后端兜底（无损）；误报
+    /// 「未设」= 上文存量短密码库被前端锁死（唯一出路是重置应用、数据全失）。
+    /// 两害取其轻，宁可吞错。
+    pub fn master_password_set(&self) -> bool {
+        self.connection()
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                [META_KEY_VERIFIER],
+                |r| r.get::<_, String>(0),
+            )
+            .optional()
+            .map_or(true, |row| row.is_some())
+    }
+
     /// 解锁（password 模式）：主密码 → Argon2id(密码, meta 盐) 派生 → 开 verifier
     /// 校验 → 密钥进内存。密码错 → [`VaultError::BadMasterPassword`]（GCM 认证
     /// 失败映射，绝不区分「密码错」与「校验器坏」以防侧信道枚举）。
@@ -529,6 +578,9 @@ impl Vault {
             // 首次解锁 = 设置主密码（fallback 首装）：本次输入即成为主密码，
             // salt + verifier 与模式记录一个事务落盘。
             (None, None) => {
+                // 最小长度权威校验（BL-202 补口）：与升级向导同一道门，在写
+                // salt/verifier 之前拦——绕过前端直连 IPC 也落不下短主密码。
+                ensure_master_password_min_len(password)?;
                 let mut salt = [0u8; KDF_SALT_LEN];
                 // OS CSPRNG 直采（BL-206，见 crypto::fill_os）：KDF 盐是
                 // 密钥面随机——Argon2id 派生输入，盐可预测 = 主密码强度折扣。
@@ -598,11 +650,8 @@ impl Vault {
         dropped: &mut Vec<String>,
         progress: &mut dyn FnMut(usize, usize),
     ) -> Result<usize> {
-        if password.chars().count() < MASTER_PASSWORD_MIN_LEN {
-            return Err(VaultError::InvalidInput(format!(
-                "master password must be at least {MASTER_PASSWORD_MIN_LEN} characters"
-            )));
-        }
+        // 最小长度权威校验（BL-202）：与首解锁路径共用一道门（见函数文档）。
+        ensure_master_password_min_len(password)?;
         if self.mode() == KeyMode::Password {
             return Err(VaultError::InvalidInput(
                 "vault already uses a master password".into(),

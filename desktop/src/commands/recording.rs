@@ -16,6 +16,15 @@
 //! 锁定语义：recordings 是明文面（0007 history 同一裁定，0015 迁移文件头），
 //! 全部命令不过 ensure_unlocked 门卫——录制是会话进行中的落盘，自动锁定不能
 //! 让它半途丢账。
+//!
+//! 【退出收尾与孤儿归档（F-commands-2）】「审计痕迹不随连接死亡丢失」覆盖
+//! 三种会话消亡形态：断线/关标签（转发循环收尾任务，register.rs/local_term.rs）、
+//! **应用退出**（quit_app/托盘/⌘Q 全部 app.exit(0) 直杀，收尾任务来不及跑——
+//! [`finalize_all_recordings_at_exit`] 在 lib.rs `RunEvent::Exit` 同步遍历两张
+//! 会话表收尾；`AppHandle::restart()` 绕行道由 attach.rs 退出前显式补调）、
+//! **强杀/断电**（任何进程内路径都无能为力——[`spawn_orphan_sweep`] 在下次
+//! 启动扫 recordings/ 目录，把无库行的 .cast 流式重建元数据入库归档：
+//! [`sweep_orphan_recordings`]，只归档不删除）。
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -136,6 +145,27 @@ impl RecordingHandle {
     }
 }
 
+/// 剥离文本累计 sink（TEXT_CAP 截断）——写盘线程与孤儿扫描共用
+/// （FTS 索引面口径一致：正常收尾与灾后归档检索命中的都是剥离纯文本）。
+#[derive(Default)]
+struct TextAcc {
+    text: String,
+    capped: bool,
+}
+
+impl ottr_term::stripper::TextSink for TextAcc {
+    fn text(&mut self, s: &str) {
+        if self.capped {
+            return;
+        }
+        if self.text.len() + s.len() > TEXT_CAP {
+            self.capped = true;
+            return;
+        }
+        self.text.push_str(s);
+    }
+}
+
 /// 写盘线程：逐批编码 v2 事件行 + Stripper 副本收纯文本（TEXT_CAP 截断）。
 /// sender 断开（finalize）或首错后，把队列排空语义转为：sender 断开才退出；
 /// IO 首错置 error 后丢弃后续批次（盘满等场景不烧 CPU）。
@@ -144,30 +174,10 @@ fn worker_loop(
     mut file: std::fs::File,
     dropped: Arc<AtomicU64>,
 ) -> WorkerOutcome {
-    use ottr_term::stripper::{Stripper, TextSink};
-
-    struct TextAcc {
-        text: String,
-        capped: bool,
-    }
-    impl TextSink for TextAcc {
-        fn text(&mut self, s: &str) {
-            if self.capped {
-                return;
-            }
-            if self.text.len() + s.len() > TEXT_CAP {
-                self.capped = true;
-                return;
-            }
-            self.text.push_str(s);
-        }
-    }
+    use ottr_term::stripper::Stripper;
 
     let mut stripper = Stripper::new();
-    let mut acc = TextAcc {
-        text: String::new(),
-        capped: false,
-    };
+    let mut acc = TextAcc::default();
     let mut duration = 0.0f64;
     let mut error: Option<String> = None;
     for (t, bytes) in rx {
@@ -383,6 +393,259 @@ pub fn auto_finalize_on_exit(slot: &RecorderSlot, vault: Option<&Vault>) {
             );
         }
     }
+}
+
+/// 应用退出收尾核（F-commands-2，lib.rs `RunEvent::Exit` 挂点 + attach.rs
+/// restart 绕行道共用）：遍历 SSH 会话表与本地终端会话表的**全部**录制槽，
+/// 逐个 [`auto_finalize_on_exit`]——quit_app/托盘退出/⌘Q 全部 `app.exit(0)`
+/// 直杀，转发循环收尾任务与本地批量线程都不会再跑，进程退出时刻在录的
+/// handle 只有在这里同步收尾才不丢（兑现 [`auto_finalize_on_exit`] 处
+/// 「审计痕迹不随连接死亡丢失」的承诺对「应用退出」这一会话消亡形态同样成立）。
+///
+/// 幂等安全：槽 `take()` 的原子性保证与转发循环收尾任务/重复调用不双入库
+/// （已自行收尾的会话槽位为空，此处 no-op）。返回清点的槽位数（含空槽）。
+pub(crate) fn finalize_all_on_exit(
+    sessions: &SessionMap,
+    local_sessions: &crate::commands::local_term::LocalTermMap,
+    vault: Option<&Vault>,
+) -> usize {
+    // 先清点后收尾：finalize（join 写盘线程 + SQLite 入库）是毫秒级阻塞面，
+    // 绝不攥着会话表锁做——drop_session 等命令路径在同一把锁上。
+    let mut slots = Vec::new();
+    slots.extend(
+        sessions
+            .lock()
+            .unwrap()
+            .values()
+            .map(|e| Arc::clone(&e.recorder)),
+    );
+    slots.extend(
+        local_sessions
+            .lock()
+            .unwrap()
+            .values()
+            .map(|e| Arc::clone(&e.recorder)),
+    );
+    let count = slots.len();
+    for slot in &slots {
+        auto_finalize_on_exit(slot, vault);
+    }
+    count
+}
+
+/// Tauri 面封装：从 [`tauri::AppHandle`] 解析会话表与 vault（`try_state`——
+/// vault 初始化失败的早期退出没有 VaultState，此时按「无库」口径落文件），
+/// 转调 [`finalize_all_on_exit`]。调用点：lib.rs `RunEvent::Exit`（正常退出
+/// 统一路）与 attach.rs `app_restart` 的 `AppHandle::restart()` 直杀路径
+/// （restart 不经 run loop，Exit 不触发——2026-11-08 窗口状态记忆同款补丁点）。
+pub(crate) fn finalize_all_recordings_at_exit(app: &tauri::AppHandle) {
+    use tauri::Manager as _;
+
+    let state = app.state::<crate::commands::state::AppState>();
+    let vault = app.try_state::<VaultState>();
+    let count = finalize_all_on_exit(
+        &state.sessions,
+        &state.local_sessions,
+        vault.as_deref().map(|vs| vs.0.as_ref()),
+    );
+    if count > 0 {
+        eprintln!("[recording] exit sweep checked {count} recorder slot(s)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 启动孤儿归档兜底（F-commands-2 下半）：强杀/断电漏网的 .cast 入库归档
+// ---------------------------------------------------------------------------
+
+/// 孤儿归档安全窗：mtime 距今不足该值的 .cast 一律不碰。清扫跑在 vault 就绪
+/// 后的后台线程，与「启动即连接 + 立即开录」存在理论竞态——新录制在停录前
+/// 只有文件、没有库行，扫早了会把在录文件当孤儿重复归档。60s 窗口下竞态要求
+/// 用户在启动后 60s 内完成连接并开录（文件 mtime ≥1s 的精度也一并被覆盖）；
+/// 真孤儿来自已死进程、永不再写，晚一次启动归档即可，兜底语义允许收敛延迟。
+const ORPHAN_MIN_AGE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// 孤儿归档核（可测面：不持 Tauri 状态；`min_age` 参数化供测试钉安全窗语义）。
+/// 扫 dir 下全部 .cast，凡**无库行**且 mtime 早于 [`ORPHAN_MIN_AGE`] 的
+/// （RunEvent::Exit 收尾对 SIGKILL/断电无能为力的漏网），按文件内容流式重建
+/// 元数据入库归档——回到 UI 可见/可删/可检索的常态。返回归档条数。
+///
+/// 纪律：**只归档，不删除**。哪怕 header 都不完整的残档也入库（duration 0、
+/// 无 FTS 文本，见 [`scan_cast_file`]），此后可经 recording_delete 由用户
+/// 处置——清扫本身绝不销毁数据。已知边界：host_id 无法从文件名恢复，一律
+/// None（0022 起可空，与本地终端录制同桶）；目录不存在（全新安装/重置后）
+/// = 无孤儿可扫。
+pub(crate) fn sweep_orphan_recordings(
+    dir: &Path,
+    vault: &Vault,
+    min_age: std::time::Duration,
+) -> usize {
+    // 库行文件名集合（file_name 而非全路径对账——数据目录迁移后老行的路径
+    // 前缀失配也不再误归档；rec-{ms}-{seq} 文件名进程内唯一，无歧义）。
+    let known: std::collections::HashSet<String> = match Recordings::all_paths(vault) {
+        Ok(paths) => paths
+            .iter()
+            .filter_map(|p| {
+                Path::new(p)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+            })
+            .collect(),
+        Err(e) => {
+            eprintln!("[recording] orphan sweep skipped (list db paths failed): {e}");
+            return 0;
+        }
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0; // 目录不存在 = 无孤儿可扫（非错误）
+    };
+    let now = SystemTime::now();
+    let mut archived = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("cast") || !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        if known.contains(&name) {
+            continue;
+        }
+        // mtime 在未来（时钟回拨）按 0 龄处理 → 落进安全窗被跳过，安全侧。
+        let age = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .map(|t| now.duration_since(t).unwrap_or_default());
+        let Ok(age) = age else {
+            eprintln!(
+                "[recording] orphan sweep: stat {} failed — skipped this run",
+                path.display()
+            );
+            continue;
+        };
+        if age < min_age {
+            continue; // 安全窗内：可能本进程在录，绝不碰
+        }
+        let (duration, text) = scan_cast_file(&path);
+        let row = Recordings::insert(
+            vault,
+            &RecordingInput {
+                host_id: None,
+                path: path.to_string_lossy().into_owned(),
+                duration,
+                text,
+            },
+        );
+        match row {
+            Ok(row) => {
+                archived += 1;
+                restrict_permissions(&path); // finalize 同款复紧 0600（防外部改动过权限）
+                eprintln!(
+                    "[recording] orphan archived on startup: {} (id={}, {:.3}s)",
+                    row.path, row.id, row.duration
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "[recording] orphan archive insert failed ({}): {e}",
+                    path.display()
+                );
+            }
+        }
+    }
+    archived
+}
+
+/// 流式扫一个 .cast 重建（duration, FTS 文本）：首行须为合法 v2 header；
+/// 逐行取输出事件的时间与文本副本（Stripper 剥 ANSI、TEXT_CAP 截断）。
+/// **不整档入内存**——孤儿录制可能很大（录制文件本体无上限，read 回放才有
+/// READ_CAP），行级流式把内存钉在单行 + 文本上限。坏行（写入中途被杀的
+/// 残行等）跳过、能救多少救多少——与 ottr-term parse 的「末行截断容忍」
+/// 同语义。header 都不完整 → (0.0, None)（调用方仍归档：可见可删，不臆造
+/// 元数据）。
+fn scan_cast_file(path: &Path) -> (f64, Option<String>) {
+    use ottr_term::stripper::Stripper;
+    use std::io::{BufRead as _, BufReader};
+
+    let Ok(file) = std::fs::File::open(path) else {
+        eprintln!(
+            "[recording] orphan scan open failed ({}) — archiving metadata only",
+            path.display()
+        );
+        return (0.0, None);
+    };
+    let mut reader = BufReader::new(file);
+    let mut header_line = String::new();
+    match reader.read_line(&mut header_line) {
+        Ok(0) | Err(_) => return (0.0, None), // 空文件/读失败：无从重建
+        Ok(_) => {}
+    }
+    let header = serde_json::from_str::<CastHeader>(header_line.trim()).ok();
+    match header {
+        Some(h) if h.version == 2 => {}
+        _ => return (0.0, None), // 非法 header（残档/他格式）：不臆造元数据
+    }
+    let mut stripper = Stripper::new();
+    let mut acc = TextAcc::default();
+    let mut duration = 0.0f64;
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) | Err(_) => break, // EOF / 读失败：就此收档
+            Ok(_) => {}
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // 行级宽松：`[time,"o",data]` 之外（残行/中间损坏/非输出 kind）跳过。
+        let ev = serde_json::from_str::<serde_json::Value>(trimmed).ok();
+        let Some(arr) = ev.as_ref().and_then(|v| v.as_array()) else {
+            continue;
+        };
+        let (Some(time), Some("o"), Some(data)) = (
+            arr.first().and_then(|t| t.as_f64()),
+            arr.get(1).and_then(|k| k.as_str()),
+            arr.get(2).and_then(|d| d.as_str()),
+        ) else {
+            continue;
+        };
+        // 与 worker_loop 同口径（{:.6} 微秒量化）——归档行 duration 与回放
+        // 解析 duration 一致。
+        duration = (time * 1.0e6).round() / 1.0e6;
+        stripper.feed(data.as_bytes(), &mut acc);
+    }
+    stripper.finish(&mut acc);
+    let text = (!acc.text.is_empty()).then(|| std::mem::take(&mut acc.text));
+    (duration, text)
+}
+
+/// 孤儿清扫挂点（lib.rs vault 就绪成功分支调用）：独立后台线程跑
+/// [`sweep_orphan_recordings`]（best-effort——列目录/解析/入库失败只留日志，
+/// 绝不影响启动链路）。vault 未就绪/初始化失败时本函数不被调，孤儿留待
+/// 下次成功启动归档——兜底语义允许延迟收敛。
+pub(crate) fn spawn_orphan_sweep(app: tauri::AppHandle) {
+    use tauri::Manager as _;
+
+    std::thread::Builder::new()
+        .name("recording-orphan-sweep".into())
+        .spawn(move || {
+            let dir = crate::paths::data_root(&app).map(|d| d.join("recordings"));
+            let Ok(dir) = dir else {
+                eprintln!("[recording] orphan sweep skipped (no data root)");
+                return;
+            };
+            let Some(vault_state) = app.try_state::<VaultState>() else {
+                eprintln!("[recording] orphan sweep skipped (vault not managed)");
+                return;
+            };
+            let archived = sweep_orphan_recordings(&dir, &vault_state.0, ORPHAN_MIN_AGE);
+            if archived > 0 {
+                eprintln!("[recording] orphan sweep archived {archived} recording(s)");
+            }
+        })
+        .expect("spawn recording-orphan-sweep thread");
 }
 
 // ---------------------------------------------------------------------------
@@ -820,5 +1083,172 @@ mod tests {
         assert_eq!(parsed.header.width, 120, "header 来自原档");
         assert_eq!(parsed.events.len(), 2);
         assert_eq!(parsed.events[0].data, "password=[REDACTED_PASSWORD_1]");
+    }
+
+    // --- F-commands-2：应用退出收尾 + 启动孤儿归档 ---------------------------
+
+    /// 退出收尾核（RunEvent::Exit 挂点共用）：本地会话在途录制被收尾入库、
+    /// 槽位清空、重复调用幂等（与转发循环收尾任务的竞态面不双入库）。
+    /// SSH 表单测无法构造（SessionEntry 持真连接句柄），但核的两表分支是
+    /// 同一行 Arc clone——用真 PTY 本地会话（`cat` 假身，local_term 单测
+    /// 同款）驱动同一核；SSH 分支由 tests/recording_fixture.rs 真容器链覆盖。
+    #[cfg(unix)]
+    #[test]
+    fn finalize_all_on_exit_finalizes_local_session_recording() {
+        use tauri::ipc::{Channel, InvokeResponseBody};
+
+        let local: crate::commands::local_term::LocalTermMap =
+            Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let on_data = Channel::new(|_: InvokeResponseBody| Ok(()));
+        let id = crate::commands::local_term::local_term_open_with(
+            Arc::clone(&local),
+            None,
+            Some("cat"),
+            false,
+            80,
+            24,
+            on_data,
+        )
+        .expect("open local term (cat)");
+
+        let v = vault();
+        let dir = tempfile::tempdir().unwrap();
+        let sessions: SessionMap = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let path = start_recording_on(&sessions, &local, dir.path(), &v, &id, None)
+            .expect("start recording on local session");
+
+        // 退出收尾：清点 1 个槽位，录制入库（host_id None = 本地/未知桶）。
+        assert_eq!(finalize_all_on_exit(&sessions, &local, Some(&v)), 1);
+        let rows = Recordings::list(&v, None, 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].path, path.to_string_lossy());
+        assert!(rows[0].host_id.is_none());
+
+        // 幂等：槽已空，重复调用（退出竞态面）不双入库。
+        assert_eq!(finalize_all_on_exit(&sessions, &local, Some(&v)), 1);
+        assert_eq!(Recordings::list(&v, None, 10).unwrap().len(), 1);
+
+        // 收尾即空槽：recording_start 语义上不再报 already recording（直接
+        // 开一把新录制验证槽位真被清掉——本地会话仍活着）。
+        assert!(start_recording_on(&sessions, &local, dir.path(), &v, &id, None).is_ok());
+        // 两次收尾 + 一次重开 = 2 行；第二次在途录制由会话消亡路径收尾。
+        assert_eq!(finalize_all_on_exit(&sessions, &local, Some(&v)), 1);
+        assert_eq!(Recordings::list(&v, None, 10).unwrap().len(), 2);
+
+        // 清理会话（cancel + kill，与 drop_session 本地分支同款两步）——批量
+        // 线程收尾时槽位已被上面最后一次收尾清空，no-op 不双入库。
+        {
+            let m = local.lock().unwrap();
+            let e = m.get(&id).expect("entry");
+            e.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            let _ = e.killer.lock().unwrap().kill();
+        }
+    }
+
+    /// 孤儿归档核：无行 .cast 入库归档（duration/FTS 文本从文件重建）、
+    /// 已知文件跳过、安全窗内绝不碰（防误伤本进程在录文件）、残档/空文件
+    /// 也归档（只归档不删除——可见 + recording_delete 可删）、目录缺失非错。
+    #[test]
+    fn sweep_orphan_archives_only_rowless_aged_casts() {
+        let v = vault();
+        let dir = tempfile::tempdir().unwrap();
+        let str_of = |p: &Path| p.to_string_lossy().into_owned();
+
+        // ① 真孤儿：正常 start + send + finalize（不 insert）→ 有文件无库行。
+        let orphan = dir.path().join("rec-1.cast");
+        let handle = RecordingHandle::start(orphan.clone(), 80, 24, None).unwrap();
+        handle.send(b"crashed session output ");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        handle.send("部署中\x1b[31m".as_bytes());
+        handle.finalize();
+
+        // ② 残档：非法内容（header 都没有）→ 归档为 duration 0 / 无 FTS。
+        let garbage = dir.path().join("rec-2.cast");
+        std::fs::write(&garbage, b"truncated junk\n").unwrap();
+
+        // ③ 空文件：start 与 header 落盘之间被杀的极端形态 → 同样归档。
+        let empty = dir.path().join("rec-3.cast");
+        std::fs::write(&empty, b"").unwrap();
+
+        // ④ 有库行的正常文件：不在孤儿之列。
+        let known = dir.path().join("rec-4.cast");
+        let kh = RecordingHandle::start(known.clone(), 80, 24, None).unwrap();
+        kh.finalize();
+        Recordings::insert(
+            &v,
+            &RecordingInput {
+                host_id: None,
+                path: str_of(&known),
+                duration: 1.0,
+                text: Some("known".into()),
+            },
+        )
+        .unwrap();
+
+        // 安全窗内（文件都刚写）：一个都不碰。
+        assert_eq!(
+            sweep_orphan_recordings(dir.path(), &v, std::time::Duration::from_secs(60)),
+            0,
+            "安全窗内绝不归档（防误伤本进程在录文件）"
+        );
+
+        // 窗外（min_age = 0）：三个孤儿归档，已知文件跳过。
+        assert_eq!(
+            sweep_orphan_recordings(dir.path(), &v, std::time::Duration::ZERO),
+            3
+        );
+        let rows = Recordings::list(&v, None, 50).unwrap();
+        assert_eq!(rows.len(), 4);
+
+        // 真孤儿的元数据从文件重建：duration = 末事件时间、host_id None、
+        // FTS 文本可检索（含 CJK，ANSI 已剥）。
+        let orphan_path = str_of(&orphan);
+        let orphan_row = rows.iter().find(|r| r.path == orphan_path).unwrap();
+        assert!(orphan_row.duration > 0.0, "duration = 末事件时间");
+        assert!(orphan_row.host_id.is_none());
+        let hits = Recordings::search(&v, "部署", None, 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].entry.id, orphan_row.id);
+        assert!(!hits[0].snippet.contains('\x1b'), "snippet 是剥离文本");
+
+        // 残档/空文件：duration 0、不进 FTS，但库行在（可见 + 可删）。
+        let garbage_path = str_of(&garbage);
+        let empty_path = str_of(&empty);
+        for p in [garbage_path.as_str(), empty_path.as_str()] {
+            let row = rows.iter().find(|r| r.path == p).unwrap();
+            assert_eq!(row.duration, 0.0);
+        }
+        let fts_rows = Recordings::search(&v, "", None, 50).unwrap();
+        assert!(
+            fts_rows
+                .iter()
+                .all(|h| h.entry.path != garbage_path && h.entry.path != empty_path),
+            "残档/空文件只入元数据，不进 FTS"
+        );
+
+        // 目录不存在：非错误，0。
+        assert_eq!(
+            sweep_orphan_recordings(&dir.path().join("nope"), &v, std::time::Duration::ZERO),
+            0
+        );
+    }
+
+    /// 残行容忍（写入中途被杀的典型残迹）：完整事件之后跟着半行落盘
+    /// （JSON 不完整、无换行）→ 收档于最后**完整**事件，半截不计。
+    #[test]
+    fn scan_cast_file_tolerates_torn_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("torn.cast");
+        let mut content =
+            ottr_term::asciinema::CastHeader::new(80, 24, 1_760_000_000).header_line();
+        content.push('\n');
+        content.push_str(&ottr_term::asciinema::event_line(1.5, "kept"));
+        content.push('\n');
+        content.push_str("[1.9999,\"o\",\"par"); // 半行：无换行、JSON 不完整
+        std::fs::write(&path, content).unwrap();
+
+        let (duration, text) = scan_cast_file(&path);
+        assert_eq!(duration, 1.5, "残行不计，收档于最后完整事件");
+        assert_eq!(text.as_deref(), Some("kept"));
     }
 }

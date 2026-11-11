@@ -446,7 +446,8 @@
     "dangerInputTitle": "注意",
     "dangerInputHint": "當前輸入命中危險規則：{{rule}}（{{excerpt}}）",
     "dangerInputDismiss": "關閉危險提醒",
-    "promptTimeout": "等待身分驗證逾時，未連接（請在彈窗出現時作答）"
+    "promptTimeout": "等待身分驗證逾時，未連接（請在彈窗出現時作答）",
+    "hostKeyTimeout": "等待主機密鑰確認逾時，未連接"
   },
   "ai": {
     "orbLabel": "向 Ottr 提問",
@@ -954,6 +955,7 @@
       "hint": "輸入主密碼解鎖當前庫。",
       "unlock": "解鎖",
       "errEmpty": "請輸入主密碼",
+      "errTooShort": "主密碼至少 {{min}} 位",
       "errWrongPassword": "主密碼不正確",
       "errNoLock": "當前庫使用鑰匙鏈免密模式，沒有主密碼，無需解鎖。",
       "forgot": "忘記密碼？",

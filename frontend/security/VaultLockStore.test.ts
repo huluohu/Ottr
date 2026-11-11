@@ -26,9 +26,14 @@ import { useVaultStore } from "../vault/store";
 
 const mockedInvoke = invoke as unknown as Mock;
 
-function mockStatus(mode: string, locked: boolean) {
+function mockStatus(mode: string, locked: boolean, masterPasswordSet?: boolean) {
   mockedInvoke.mockImplementation((cmd: string) => {
-    if (cmd === "vault_security_status") return Promise.resolve({ mode, locked });
+    if (cmd === "vault_security_status") {
+      // 缺省（undefined）= 不带新字段的旧形态 mock，向后兼容既有用例。
+      return Promise.resolve(
+        masterPasswordSet === undefined ? { mode, locked } : { mode, locked, masterPasswordSet },
+      );
+    }
     if (cmd === "vault_unlock") return Promise.resolve(null);
     if (cmd === "vault_lock") return Promise.resolve(null);
     return Promise.reject(new Error(`unexpected command: ${cmd}`));
@@ -62,10 +67,13 @@ describe("VaultLockStore 状态机", () => {
   });
 
   it("password 模式：启动即锁定", async () => {
-    mockStatus("password", true);
+    mockStatus("password", true, false);
     await useVaultLockStore.getState().init();
     expect(useVaultLockStore.getState().phase).toBe("locked");
     expect(useVaultLockStore.getState().mode).toBe("password");
+    // 首解锁信号落地（SecurityStatus.masterPasswordSet 镜像；false = 首次
+    // 解锁态，LockScreen 最小长度预检的消费面，BL-202）。
+    expect(useVaultLockStore.getState().masterPasswordSet).toBe(false);
   });
 
   it("status 查询失败：fail-closed 按锁定收敛", async () => {

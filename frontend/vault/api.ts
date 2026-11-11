@@ -280,6 +280,11 @@ export interface SecurityStatus {
   /** "keyring"（钥匙链直取，无锁概念）| "password"（Argon2id 主密码派生）。 */
   mode: "keyring" | "password";
   locked: boolean;
+  /** 是否已设主密码（Rust `Vault::master_password_set`；false = 首次解锁态，
+   * 下一次解锁输入即成为主密码）。消费面：LockScreen 的首解锁最小长度预检
+   * （BL-202 前端预检面）——存量库（可能有修复前落下的短主密码，后端常规
+   * 解锁臂照常放行）为 true，预检不生效，解锁口径不变。 */
+  masterPasswordSet: boolean;
 }
 
 /** Rust `notifications::DeliveryFailure` 同构（BL-530 投递失败标记数组元素；

@@ -83,6 +83,21 @@ export function isPromptTimeout(err: string): boolean {
   return err.includes(PROMPT_TIMEOUT_MARKER);
 }
 
+/**
+ * host-key 确认框「未裁定」的标记串。
+ *
+ * Rust 侧问询等满时限（`ottr://host-key-timeout`，2026-11-11 审计）后按拒绝
+ * 收尾 → 连接失败只会拿到「host key rejected by policy」这种症状。前端收到
+ * 超时通知时把本标记写进 `lastError`，终端据此渲染**说人话**的文案，且后续
+ * 的连接失败不把它盖掉（真因 vs 症状，PROMPT_TIMEOUT_MARKER 同款）。
+ */
+export const HOST_KEY_TIMEOUT_MARKER = "host key ask timed out";
+
+/** 是否为「主机密钥确认未裁定」的标记。 */
+export function isHostKeyTimeout(err: string): boolean {
+  return err.includes(HOST_KEY_TIMEOUT_MARKER);
+}
+
 // --- 会话结束钩子（Phase 2 Task 7 会话纪要）----------------------------------
 // 「会话收尾」三时机（closeTab / disconnect / 自动重连耗尽转 disconnected）向
 // App 注入的钩子派发一次（消费方 = src/ai/summary.ts onSessionEnded，异步生成

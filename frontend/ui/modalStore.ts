@@ -11,8 +11,8 @@
 //     并保留「正常关闭播退场动画、被顶掉立即销毁」的口径（见 App 内
 //     `owned(id) || activeModal === null` 门）；
 //     store 的槽位认领上，且订阅外部弹窗开启即清槽（Sidebar 激活态不残留）；
-//   * SessionStore.hostKeyAsk（Rust 事件驱动）——置问询即认领 hostKey 槽；
-//   * SessionStore.promptAsk（Rust 事件驱动）——置问询即认领 promptAsk 槽；
+//   * SessionStore.hostKeyAsk / promptAsk（Rust 事件驱动）——置问询即认领对应
+//     槽（并发问询在 SessionStore 排队，逐个出队展示）；
 //   * McpApprovalDialog 审批队列、FilePanel 文件操作小对话框——事件/交互
 //     点同步认领，渲染门 = 本地态 && 槽位在手。
 //

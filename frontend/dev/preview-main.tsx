@@ -389,12 +389,127 @@ async function renderShot(): Promise<void> {
     },
   ];
   invokeTable["cj_runs"] = [];
+  // 空态开关（2026-11-12 布局守卫补强）：?empty=1 → 四个库级视图给空数组，
+  // 守卫同一套断言要同时守「空态」与「有内容态」——空态看不出列表密度下的
+  // 排版问题，有内容态看不出空态的居中/按钮悬空问题。
+  const emptyMode = new URLSearchParams(location.search).get("empty") === "1";
+
   // 进程/转发/跳板链面板的空数据（2026-11-10 布局守卫）：mock 对未知命令返回
   // null，三个面板把 null 当列表迭代会抛错整页崩（真 Rust 恒返回数组）——
   // 布局守卫要跑到这三个视图的空态，必须给空数组。
+  //
+  // 2026-11-11 补「有内容」形态：空态看不出列表/表格/表单在真实数据密度下的
+  // 排版（行高、列宽、按钮挤压、滚动区高度），守卫与目检都得覆盖有数据态。
   invokeTable["monitor_ps"] = [];
-  invokeTable["pf_list"] = [];
-  invokeTable["jc_list"] = [];
+  invokeTable["pf_list"] = [
+    {
+      id: 1,
+      host_id: 1,
+      host_name: "fixture",
+      kind: "local",
+      bind_addr: "127.0.0.1",
+      bind_port: 8080,
+      target_host: "example.internal",
+      target_port: 80,
+      enabled: true,
+      auto_reconnect: true,
+      runtime: null,
+    },
+    {
+      id: 2,
+      host_id: 1,
+      host_name: "fixture",
+      kind: "remote",
+      bind_addr: "0.0.0.0",
+      bind_port: 2222,
+      target_host: "bastion.example.com",
+      target_port: 22,
+      enabled: true,
+      auto_reconnect: false,
+      runtime: null,
+    },
+    {
+      id: 3,
+      host_id: 1,
+      host_name: "fixture",
+      kind: "dynamic",
+      bind_addr: "127.0.0.1",
+      bind_port: 0,
+      target_host: "10.0.0.5",
+      target_port: 443,
+      enabled: false,
+      auto_reconnect: false,
+      runtime: null,
+    },
+  ];
+  // hops = host_id 有序序列（Rust Vec<i64> 直通 JSON 数组，不是对象数组）
+  invokeTable["jc_list"] = [
+    { id: 1, name: "prod-gateway-chain", hops: [1, 2], created_at: 1, updated_at: 1 },
+    { id: 2, name: "short", hops: [1], created_at: 1, updated_at: 1 },
+  ];
+  invokeTable["notify_list"] = [
+    // 有内容态（2026-11-12）：8 条含长文本/长主机名/投递失败标记——列表密度
+    // 下的排版（行高、按钮挤压、长文本折行）是空态看不见的。
+    ...Array.from({ length: 6 }, (_, i) => ({
+      id: 100 + i,
+      kind: i % 3 === 0 ? "session" : "transfer",
+      severity: (["info", "success", "warning", "error"] as const)[i % 4],
+      host_id: 1,
+      title_key: "notify.kindTransfer",
+      body: `very-long-hostname-${i}-a-really-long-host-name-that-should-not-break-the-layout.internal.corp.example.com:/some/quite/long/path/to/a/file-${i}.tar.gz`,
+      payload: null,
+      read: i % 2 === 0,
+      ts: 179436190 - i * 37,
+      delivery_failures: i % 7 === 0 ? [{ channel: "webhook", at: 179436190 }] : null,
+    })),
+    {
+      id: 1,
+      kind: "transfer",
+      severity: "success",
+      host_id: 1,
+      title_key: "notify.kindTransfer",
+      body: "/tmp/large-file-archive.tar.gz",
+      payload: null,
+      read: false,
+      ts: 179436190,
+      delivery_failures: null,
+    },
+    {
+      id: 2,
+      kind: "session",
+      severity: "error",
+      host_id: 1,
+      title_key: "notify.kindSession",
+      body: "bastion.example.com: connection refused after 3 attempts",
+      payload: null,
+      read: false,
+      ts: 17943618,
+      delivery_failures: [{ channel: "webhook", at: 17943618 }],
+    },
+    {
+      id: 3,
+      kind: "transfer",
+      severity: "info",
+      host_id: null,
+      title_key: "notify.kindTransfer",
+      body: "already read entry",
+      payload: null,
+      read: true,
+      ts: 17943610,
+      delivery_failures: null,
+    },
+  ];
+  // 压力场景：多跳链（hops 是 host_id 序列）
+  invokeTable["jc_list"] = [
+    { id: 1, name: "prod-gateway-chain", hops: [1, 2, 3, 4, 5, 6, 7, 8], created_at: 1, updated_at: 1 },
+    { id: 2, name: "short", hops: [1], created_at: 1, updated_at: 1 },
+  ];
+  if (emptyMode) {
+    invokeTable["cj_list"] = [];
+    invokeTable["pf_list"] = [];
+    invokeTable["jc_list"] = [];
+    invokeTable["notify_list"] = [];
+  }
   invokeTable["cj_next_fire"] = Math.floor(Date.now() / 1000) + 3600;
   invokeTable["credentials_list"] = [
     { id: 1, kind: "password", name: null, key_pub: null, created_at: 1, updated_at: 1 },

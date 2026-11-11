@@ -206,6 +206,136 @@ const CHECKS = {
         `横向溢出：内容宽 ${document.documentElement.scrollWidth} > 视口 ${window.innerWidth}`,
       );
     }
+
+    // ── 2026-11-12 补强（用户质疑「这四个页面的布局和显示真的没问题吗」）：
+    // 库级视图（定时任务/通知中心/端口转发/跳板链）此前只断言「壳铺满」——
+    // 壳内的排版（页头压内容、按钮互相压盖、元素越界被裁、隐形按钮仍吃
+    // 点击、相邻条目粘连、长列表撑高页面而非容器内滚）全部没人管。截图目检
+    // 也看不出「两个元素重叠 2px」这类问题，故改为机器判定。
+    const rectOf = (el) => {
+      const b = el.getBoundingClientRect();
+      return {
+        x: Math.round(b.left),
+        y: Math.round(b.top),
+        w: Math.round(b.width),
+        h: Math.round(b.height),
+        right: Math.round(b.right),
+        bottom: Math.round(b.bottom),
+      };
+    };
+    const overlaps = (a, b) =>
+      a.x < b.right && b.x < a.right && a.y < b.bottom && b.y < a.bottom;
+    const clsOf = (el) => String(el.className || "").split(" ")[0] || el.tagName.toLowerCase();
+    const chainOf = (el) => {
+      const out = [];
+      let p = el.parentElement;
+      let d = 0;
+      while (p && d < 8) {
+        out.push(clsOf(p));
+        p = p.parentElement;
+        d += 1;
+      }
+      return out;
+    };
+
+    // 1) 页头与内容区不得重叠（页头压住列表/表单）
+    const head = document.querySelector(".wv-head");
+    const body = document.querySelector(".wv-body");
+    if (head && body && overlaps(rectOf(head), rectOf(body))) {
+      failures.push("页头与内容区重叠（页头压住下方内容）");
+    }
+
+    // 2) 交互元素：两两不得相交（祖先-后代包含 = 正常）；不得越出壳右缘；
+    //    opacity:0 的隐形元素不得仍可命中。
+    const controls = [];
+    for (const el of document.querySelectorAll(
+      "button, input, select, textarea, a[href], [role=checkbox], [role=button]",
+    )) {
+      const b = el.getBoundingClientRect();
+      if (b.width === 0 || b.height === 0) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none") continue;
+      const label = (
+        el.textContent ||
+        el.getAttribute("aria-label") ||
+        el.getAttribute("placeholder") ||
+        ""
+      )
+        .trim()
+        .slice(0, 24);
+      const rec = { ...rectOf(el), label, chain: chainOf(el), invisible: cs.opacity === "0" };
+      controls.push(rec);
+      if (rec.invisible) {
+        failures.push(`隐形但可命中：「${label}」(${rec.x},${rec.y},${rec.w}×${rec.h})`);
+      }
+      if (rec.right > sb.right + 1) {
+        failures.push(`交互元素越出壳右缘 ${rec.right - sb.right}px：「${label}」`);
+      }
+    }
+    for (let i = 0; i < controls.length; i++) {
+      for (let j = i + 1; j < controls.length; j++) {
+        const a = controls[i];
+        const b = controls[j];
+        if (!overlaps(a, b)) continue;
+        const aInB = b.chain.some((c) => a.chain.includes(c));
+        const bInA = a.chain.some((c) => b.chain.includes(c));
+        if (aInB || bInA) continue; // 祖先-后代包含 = 正常
+        failures.push(
+          `交互元素重叠：「${a.label}」(${a.x},${a.y},${a.w}×${a.h}) × 「${b.label}」(${b.x},${b.y},${b.w}×${b.h})`,
+        );
+      }
+    }
+
+    // 3) 相邻条目不得重叠/粘连（同一父容器内的兄弟行）
+    const groups = new Map();
+    // 去重：多个选择器可能命中同一元素（CronPanel 复用 .forward-row 类名）
+    // ——同一元素记两次会被当「相邻条目重叠」的假阳性。
+    const seenRow = new Set();
+    for (const sel of [
+      ".notify-item",
+      ".forward-row",
+      ".pf-row",
+      ".jump-row",
+      ".jump-item",
+      ".cron-row",
+      ".cron-item",
+    ]) {
+      for (const el of document.querySelectorAll(sel)) {
+        if (seenRow.has(el)) continue;
+        seenRow.add(el);
+        const b = el.getBoundingClientRect();
+        if (b.height === 0) continue;
+        const pe = el.parentElement;
+        const key = pe
+          ? `${clsOf(pe)}@${Math.round(pe.getBoundingClientRect().x)}`
+          : "-";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({ cls: sel, ...rectOf(el) });
+      }
+    }
+    for (const [key, list] of groups) {
+      const sorted = [...list].sort((a, b) => a.y - b.y);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const gap = sorted[i + 1].y - sorted[i].bottom;
+        if (gap < 0) {
+          failures.push(
+            `相邻条目重叠[${key}]：${sorted[i].cls} 底 ${sorted[i].bottom} > 下一条顶 ${sorted[i + 1].y}`,
+          );
+        } else if (gap < 2) {
+          failures.push(
+            `相邻条目视觉粘连（间距 ${gap}px）[${key}]：${sorted[i].cls} → ${sorted[i + 1].cls}`,
+          );
+        }
+      }
+    }
+
+    // 4) 长列表必须在容器内滚动，不能把整个页面撑高（页面级滚动条出现在
+    //    主区外 = 体验错位）。文档高度不得超出视口。
+    if (document.documentElement.scrollHeight > window.innerHeight + 1) {
+      failures.push(
+        `页面被内容撑高（文档 ${document.documentElement.scrollHeight} > 视口 ${window.innerHeight}）→ 列表未在容器内滚动`,
+      );
+    }
     return failures;
   },
 
@@ -254,29 +384,39 @@ async function main() {
 
   try {
     for (const view of VIEWS) {
-      const url = `${server.url}/dev-preview.html${view.url}&lang=zh-CN`;
-      await page.goto(url, { waitUntil: "domcontentloaded" });
-      await page.waitForFunction(() => window.__shotReady__ === true, null, {
-        timeout: 20000,
-      });
-      await page.waitForTimeout(500); // 字体/布局落定
-      const failures = await page.evaluate(CHECKS[view.kind]);
-      // AI 面板在场的窄窗复测（2026-11-10 审计：38vw 口径在默认窗宽 1280 下
-      // 不触发，窗口收窄后视图切换钮被推出可视区）：900px 宽重跑一遍会话断言。
-      if (view.kind === "session") {
-        await page.setViewportSize({ width: 900, height: 720 });
-        await page.waitForTimeout(400);
-        const narrow = await page.evaluate(CHECKS.session);
-        failures.push(...narrow.map((f) => `窄窗(900px): ${f}`));
-        await page.setViewportSize(VIEWPORT);
-        await page.waitForTimeout(300);
+      // 库级视图跑两轮（2026-11-12 补强）：空态（?empty=1）与有内容态。
+      // 空态看不出列表密度下的排版问题，有内容态看不出空态的按钮悬空问题。
+      const modes =
+        view.kind === "library" ? ["data", "empty"] : ["data"];
+      for (const mode of modes) {
+        const query = mode === "empty" ? "&empty=1" : "";
+        const url = `${server.url}/dev-preview.html${view.url}${query}&lang=zh-CN`;
+        await page.goto(url, { waitUntil: "domcontentloaded" });
+        await page.waitForFunction(() => window.__shotReady__ === true, null, {
+          timeout: 20000,
+        });
+        await page.waitForTimeout(500); // 字体/布局落定
+        const failures = await page.evaluate(CHECKS[view.kind]);
+        const tag0 = mode === "empty" ? "空态" : "有数据";
+        failures.push(...failures.map((f) => `${tag0}: ${f}`));
+        // AI 面板在场的窄窗复测（2026-11-10 审计：38vw 口径在默认窗宽 1280 下
+        // 不触发，窗口收窄后视图切换钮被推出可视区）：900px 宽重跑一遍会话断言。
+        // 库级视图同样窄窗复测（长文本/多列在窄窗下的挤压）。
+        if (view.kind === "session" || view.kind === "library") {
+          await page.setViewportSize({ width: 900, height: 720 });
+          await page.waitForTimeout(400);
+          const narrow = await page.evaluate(CHECKS[view.kind]);
+          failures.push(...narrow.map((f) => `窄窗(900px): ${f}`));
+          await page.setViewportSize(VIEWPORT);
+          await page.waitForTimeout(300);
+        }
+        const shot = path.join(OUT_DIR, `${view.name}${mode === "empty" ? "-empty" : ""}.png`);
+        await page.screenshot({ path: shot });
+        results.push({ view: `${view.name}/${mode}`, failures, shot });
+        const tag = failures.length === 0 ? "PASS" : "FAIL";
+        process.stdout.write(`${tag}  ${view.name}/${mode}\n`);
+        for (const f of failures) process.stdout.write(`      ✗ ${f}\n`);
       }
-      const shot = path.join(OUT_DIR, `${view.name}.png`);
-      await page.screenshot({ path: shot });
-      results.push({ view: view.name, failures, shot });
-      const tag = failures.length === 0 ? "PASS" : "FAIL";
-      process.stdout.write(`${tag}  ${view.name}\n`);
-      for (const f of failures) process.stdout.write(`      ✗ ${f}\n`);
     }
   } finally {
     await browser.close();

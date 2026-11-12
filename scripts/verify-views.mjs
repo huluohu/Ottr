@@ -336,6 +336,46 @@ const CHECKS = {
         `页面被内容撑高（文档 ${document.documentElement.scrollHeight} > 视口 ${window.innerHeight}）→ 列表未在容器内滚动`,
       );
     }
+
+    // 5) **有可见框的元素不得被无框元素压入**（2026-11-12 通知中心实证）：
+    //    投递失败行（无框 div）与「重发」按钮（另一个 button，自带底色边框、
+    //    字号比所在行大）压在条目卡片（有框 button）上——视觉上像第二张卡片
+    //    粘在条目下面，且按钮向上溢出卡片 2px。这条规则不关心「卡片在哪
+    //    一层」，只看**框与框的压盖关系**，所以任何结构调整都逃不掉。
+    const hasVisibleBox = (el) => {
+      const cs = getComputedStyle(el);
+      const bw = parseFloat(cs.borderTopWidth) || 0;
+      const bs = cs.borderTopStyle;
+      const bg = cs.backgroundColor;
+      const hasBorder = bw > 0 && bs !== "none" && bs !== "hidden";
+      const hasBg =
+        bg !== "transparent" && !/^rgba\(0,\s*0,\s*0,\s*0\)$/.test(bg);
+      return hasBorder || hasBg;
+    };
+    const boxed = [];
+    const plain = [];
+    for (const el of document.querySelectorAll(
+      ".workspace-view button, .workspace-view li, .workspace-view div, .workspace-view span",
+    )) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none") continue;
+      (hasVisibleBox(el) ? boxed : plain).push({ el, r });
+    }
+    for (const box of boxed) {
+      for (const p of plain) {
+        if (box.el.contains(p.el) || p.el.contains(box.el)) continue; // 父子包含 = 正常
+        // 只在同一「条目/卡片」语境内判定（否则外层容器与任意元素相交是常态）
+        const li = box.el.closest("li") ?? p.el.closest("li");
+        if (!li || li !== (p.el.closest("li") ?? li)) continue;
+        if (!overlaps(box.r, p.r)) continue;
+        const label = (p.el.textContent || "").trim().slice(0, 16);
+        failures.push(
+          `无框元素压进有框元素 ${Math.round(p.r.bottom - box.r.bottom)}px：「${label || p.el.tagName}」`,
+        );
+      }
+    }
     return failures;
   },
 

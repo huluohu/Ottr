@@ -59,6 +59,16 @@
   flex-direction: column;
   gap: 4px;
 }
+/* 条目卡片（2026-11-12）：卡片外观此前挂在 .notify-item（那个 button）上，
+   而投递失败行是它在 <li> 里的**兄弟节点** → 失败行落在卡片框外；「重发」
+   按钮（另一个 button，自带底色边框、字号还比所在行大）向上溢出压进卡片
+   2px，视觉上像「第二张卡片」粘在条目下面。卡片改由 <li> 承担，条目按钮
+   退成纯内容区（点击标记已读的语义不变），失败行自然落在卡片内。 */
+.notify-list > li {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background-color: var(--btn-bg);
+}
 .notify-item {
   display: flex;
   align-items: baseline;
@@ -70,6 +80,9 @@
   border-radius: var(--radius-lg);
   font-size: var(--text-base);
   font-weight: 400;
+  /* 卡片外观已由 <li> 承担（见上）——按钮本身不再画框底。 */
+  background-color: transparent;
+  border: none;
 }
 .notify-item:hover {
   background: var(--border-subtle);
@@ -157,6 +170,9 @@
   gap: 6px;
   min-width: 0;
   font-size: var(--text-xs);
+  /* 与条目正文对齐（左缩进）+ 顶部留白：失败行现在落在条目卡片**内**
+     （卡片外观已移到 <li>），不再与条目框粘连。 */
+  padding: 0 8px 8px 26px;
 }
 .notify-dlv-status {
   flex: none;
@@ -175,11 +191,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 「重发」按钮：轻量文字按钮（2026-11-12）——此前它是完整按钮外观（底色
+   +边框+圆角 10px）且字号比所在行大一号（14px vs 12px）→ 行高被撑到 26px、
+   按钮向上溢出压进条目卡片 2px。现在与所在行同字号、无底色边框，hover 才
+   显形（与仓库内 .host-actions 的幽灵按钮口径一致）。 */
 .notify-dlv-resend {
   flex: none;
-  font-size: var(--text-base);
+  font-size: var(--text-xs);
   box-shadow: none;
-  padding: 2px 8px;
+  padding: 0 6px;
+  background-color: transparent;
+  border: none;
+  color: var(--color-accent-text);
+}
+.notify-dlv-resend:hover {
+  background: var(--border-subtle);
+  border-color: var(--color-accent-border);
 }
 /* 通知类型开关（NotifyKinds，2026-10-17 迁设置→告警）：三列网格省纵向
  * 空间；.notify-mute-row 仍被 AlertSettings 渠道勾选行复用，保留。 */

@@ -152,12 +152,15 @@ describe("面板渲染", () => {
       expect(follows(stop, modeRow)).toBe(true);
     });
 
-    it("出错：错误面排在对话流之后（不再钉在面板顶部）", () => {
+    it("出错：错误面排在对话流之后（不再钉在面板顶部），且不留空状态行", () => {
       reset(REQ, { status: "error", errorKind: "request", error: "HTTP 401" });
       render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
       expect(follows(screen.getByTestId("ai-thread"), screen.getByTestId("ai-error"))).toBe(
         true,
       );
+      // review 2026-11-12 自查②：错误态下活的状态行（停止/思考中/已中止）
+      // 没有内容可放——空渲染会在错误卡下面留约 28px 死空白。
+      expect(document.querySelector(".ai-live-row")).toBeNull();
     });
 
     it("已中止：提示排在对话流之后", () => {

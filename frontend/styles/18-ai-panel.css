@@ -117,14 +117,13 @@
   margin: 0;
 }
 /* 「回到最新」按钮（2026-11-12 用户提问补的缺口）：用户往上翻看历史时出现，
-   排在对话流与活的状态带之间——一键回到底部并恢复自动跟随。 */
-.ai-jump-row {
-  flex: none;
-  display: flex;
-  justify-content: flex-end;
-  padding-top: var(--space-1);
-}
+   浮在对话区底缘右下——一键回到底部并恢复自动跟随。不占布局（review 自查①）；
+   实色底 + 细边框保证盖在正文上仍可读。 */
 .ai-jump-latest {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-2);
+  z-index: 2;
   font-size: var(--text-xs);
   padding: 2px 10px;
   border-radius: var(--radius-pill);
@@ -197,6 +196,16 @@
 }
 
 /* --- 多轮追问会话（2026-11-02 批次二 C 项）：气泡流 + 底部追问输入条 --- */
+/* 对话流容器（2026-11-12 review 自查①）：包一层相对定位——「回到最新」
+   浮在它的底缘右下，**不占布局**。此前按钮独占一行，出现/收起的瞬间把
+   对话区压矮/撑高约 30px，用户正在看的内容跟着跳（与本次报障同族的
+   「布局打架」）。 */
+.ai-thread-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
 .ai-thread {
   display: flex;
   flex-direction: column;

@@ -532,9 +532,13 @@ const CHECKS = {
         failures.push(`对话流没有贴底（距底 ${Math.round(gap)}px）——新消息可能落在折线以下`);
       }
     }
-    // 「回到最新」：模拟用户往上翻 → 按钮应出现、可点、点了真的回到底。
-    // （2026-11-12 用户提问补的缺口：往上翻了只能一路拖回来。）
+    // 「回到最新」：模拟用户往上翻 → 按钮应出现、可点、点了真的回到底，
+    // 且**出现时不得压矮对话区**（浮动按钮，不占布局——占布局的形态会被
+    // flex:1 的对话区吸收高度，用户正在看的内容跟着跳；2026-11-12 review
+    // 自查①。注意量「对话区自身高度」而不是输入区位置：占布局时输入区
+    // 纹丝不动，量它永远绿——本断言第一版就犯过这个错）。
     if (overflow > 24) {
+      const threadH0 = thread.clientHeight;
       thread.scrollTop = 0;
       thread.dispatchEvent(new Event("scroll"));
       let jump = null;
@@ -546,6 +550,12 @@ const CHECKS = {
       if (!jump) {
         failures.push("往上翻了却没有「回到最新」按钮（回不到最新消息）");
       } else {
+        const threadH1 = thread.clientHeight;
+        if (Math.abs(threadH1 - threadH0) > 2) {
+          failures.push(
+            `「回到最新」出现把对话区压矮了 ${Math.round(threadH0 - threadH1)}px（应浮动、不占布局）`,
+          );
+        }
         const jr = jump.getBoundingClientRect();
         if (jr.width === 0 || jr.height === 0) {
           failures.push("「回到最新」按钮尺寸为 0（不可见）");

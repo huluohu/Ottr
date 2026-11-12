@@ -217,15 +217,20 @@ export function DiagnosePanel({
    *  历史时不抢滚动**（贴底判定），他回到底部才恢复跟随。 */
   const threadRef = useRef<HTMLDivElement>(null);
   const stickBottom = useRef(true);
-  /** 是否显示「回到最新」按钮（用户往回翻看历史时出现）。 */
+  /** 是否显示「回到最新」按钮（用户往回翻看历史时出现）。
+   *  **浮动按钮**（见 .ai-jump-latest）：不占布局——占布局的形态在出现/
+   *  收起的瞬间把对话区压矮/撑高约 30px，用户正在看的内容会跟着跳（review
+   *  2026-11-12 自查①：与本次报障同族的「布局打架」）。 */
   const [showJump, setShowJump] = useState(false);
-  const onThreadScroll = () => {
-    const el = threadRef.current;
-    if (!el) return;
+  /** 距底 24px 内算「还在底部」；超出 = 用户主动上翻，停止跟随并亮出按钮。 */
+  const syncScrollState = (el: HTMLDivElement) => {
     const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-    // 距底部 24px 内算「还在底部」；否则视为用户主动上翻，停止跟随。
     stickBottom.current = gap < 24;
     setShowJump(gap >= 24);
+  };
+  const onThreadScroll = () => {
+    const el = threadRef.current;
+    if (el) syncScrollState(el);
   };
   /** 一键回到最新：滚到底 + 恢复自动跟随（此前往上翻了只能一路拖回来）。 */
   const jumpToLatest = () => {
@@ -237,7 +242,13 @@ export function DiagnosePanel({
   };
   useEffect(() => {
     const el = threadRef.current;
-    if (!el || !stickBottom.current) return;
+    if (!el) return;
+    // 消息骤减（新对话/清空）时内容可能矮于可视区——没有 scroll 事件可依，
+    // 显式收起按钮，避免「悬空的回到最新」（review 自查③）。
+    if (el.scrollHeight <= el.clientHeight) {
+      setShowJump(false);
+    }
+    if (!stickBottom.current) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, answer, status, pendingToolCalls.length, planSteps.length]);
   // 窗口尺寸变化 → 对话重排、内容变高 → 重新贴底（否则变窄后新消息落到
@@ -436,12 +447,26 @@ export function DiagnosePanel({
           故此处不重复渲染 answer。
           **tool 轮**（批次五 P2）= 工具调用结果：user 侧显示「调用 <server>.<tool>」，
           assistant 侧显示工具返回文本（长文本在面板里截断显示）。 */}
-      <div
-        className="ai-thread"
-        data-testid="ai-thread"
-        ref={threadRef}
-        onScroll={onThreadScroll}
-      >
+      <div className="ai-thread-wrap">
+        {/* 「回到最新」浮在对话区底缘右下（review 2026-11-12 自查①：按钮曾
+            独占一行——出现/收起的瞬间把对话区压矮/撑高约 30px，用户正在看
+            的内容跟着跳。浮动化后不占布局，出现不再推挤任何内容）。 */}
+        {showJump && (
+          <button
+            className="ai-jump-latest"
+            data-testid="ai-jump-latest"
+            aria-label={t("ai.jumpToLatest")}
+            onClick={jumpToLatest}
+          >
+            ↓ {t("ai.jumpToLatest")}
+          </button>
+        )}
+        <div
+          className="ai-thread"
+          data-testid="ai-thread"
+          ref={threadRef}
+          onScroll={onThreadScroll}
+        >
         {threadTurns.map((m, i) => {
           // **首轮诊断上下文不进气泡流**：它的内容是「退出码 + 命令 + 最长
           // 8KB 原始终端输出 + 主机备注」——正是给模型看的 prompt。直接渲染
@@ -712,30 +737,17 @@ export function DiagnosePanel({
           </div>
         )}
       </div>
-
-      {/* 「回到最新」：用户往上翻看历史时出现——一键回到底部并恢复自动跟随。
-          此前没有这个入口：往上一翻就只能一路拖回来（或等新消息把内容顶下去）。 */}
-      {showJump && (
-        <div className="ai-jump-row" data-testid="ai-jump-row">
-          <button
-            className="ai-jump-latest"
-            data-testid="ai-jump-latest"
-            aria-label={t("ai.jumpToLatest")}
-            onClick={jumpToLatest}
-          >
-            ↓ {t("ai.jumpToLatest")}
-          </button>
-        </div>
-      )}
+      </div>
 
       {/* 活的状态带（2026-11-12 用户报障「消息显示逻辑一会上面一会下面」的
           修复）：停止 / 思考中 / 已中止 / 错误一律排在**对话流之下、输入框
           之上**——一个固定位置，不随对话长短挪窝，滚动时也不会被顶走。
-          「思考中」紧贴最后一条消息，模型开始输出时它就地让位给正文，
-          不再出现「指示在顶部、正文在底部」的割裂。 */}
-      {(status === "error" ||
-        status === "aborted" ||
-        (status === "running" && (answer === "" || running))) && (
+          「思考中」紧贴最后一条消息，模型开始输出时它就地让位给正文。
+          review 2026-11-12 自查②：错误态下 .ai-live-row 此前空渲染（最小
+          高度 20px + 间距 = 约 28px 死空白），改为仅在有内容时渲染；
+          自查④：旧条件 `(answer === "" || running)` 恒真（running 就是
+          「正在运行」），简化。 */}
+      {(status === "error" || status === "aborted" || running) && (
         <div className="ai-live-band" data-testid="ai-live-band">
           {status === "error" && (
             <div className="ai-error" data-testid="ai-error" role="alert">
@@ -765,25 +777,27 @@ export function DiagnosePanel({
               )}
             </div>
           )}
-          <div className="ai-live-row">
-            {status === "running" && answer === "" && (
-              // aria-live=polite：只播状态短语，**不把流式正文塞进 live 区**——
-              // 否则读屏会随着每个 token 反复播报正文（更糟）。
-              <p className="ai-thinking" data-testid="ai-thinking" role="status" aria-live="polite">
-                {t("ai.thinking")}
-              </p>
-            )}
-            {running && (
-              <button className="ai-stop" data-testid="ai-stop" onClick={() => abort(sessionId)}>
-                {t("ai.stop")}
-              </button>
-            )}
-            {status === "aborted" && (
-              <span className="ai-aborted" data-testid="ai-aborted">
-                {t("ai.aborted")}
-              </span>
-            )}
-          </div>
+          {(running || status === "aborted") && (
+            <div className="ai-live-row">
+              {status === "running" && answer === "" && (
+                // aria-live=polite：只播状态短语，**不把流式正文塞进 live 区**——
+                // 否则读屏会随着每个 token 反复播报正文（更糟）。
+                <p className="ai-thinking" data-testid="ai-thinking" role="status" aria-live="polite">
+                  {t("ai.thinking")}
+                </p>
+              )}
+              {running && (
+                <button className="ai-stop" data-testid="ai-stop" onClick={() => abort(sessionId)}>
+                  {t("ai.stop")}
+                </button>
+              )}
+              {status === "aborted" && (
+                <span className="ai-aborted" data-testid="ai-aborted">
+                  {t("ai.aborted")}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 

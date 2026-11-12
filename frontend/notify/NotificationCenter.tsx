@@ -142,7 +142,7 @@ export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void
         </div>
 
         {items.length === 0 ? (
-          <div data-testid="notify-empty-guide">
+          <div className="notify-empty-guide" data-testid="notify-empty-guide">
             <EmptyState
               title={t("notify.empty")}
               action={{

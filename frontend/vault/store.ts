@@ -25,7 +25,7 @@ interface VaultStore {
   loading: boolean;
   error: string | null;
 
-  /** 并发拉取四张列表；失败时置 error 并向上抛出。 */
+  /** 并发拉取四张列表；失败时置 error 并向上抛出（成功的表照常落态，见实现）。 */
   refresh: () => Promise<void>;
   createHost: (input: HostInput) => Promise<Host>;
   updateHost: (id: number, input: HostInput) => Promise<Host>;
@@ -66,18 +66,55 @@ export const useVaultStore = create<VaultStore>((set, get) => {
 
   refresh: async () => {
     set({ loading: true, error: null });
-    try {
-      const [hosts, credentials, hostGroups, jumpChains] = await Promise.all([
-        vaultApi.hosts.list(),
-        vaultApi.credentials.list(),
-        vaultApi.hostGroups.list(),
-        vaultApi.jumpChains.list(),
-      ]);
-      set({ hosts, credentials, hostGroups, jumpChains, loading: false });
-    } catch (e) {
-      set({ error: e instanceof Error ? e.message : String(e), loading: false });
-      throw e;
+    // 2026-11-12 真机实证（隔离库塞进一行非 Vec<i64> 的跳板链 hops 即触发）：
+    // 四张表此前用 Promise.all 并发拉，任一张表有一行脏数据 → 整组 reject →
+    // **四张表全不落态** → 主机树/凭据/分组/跳板链同时空白，用户看到「应用被
+    // 清空」（侧栏「还没有主机」+ 顶部红横幅 sqlite error），而真正的故障点
+    // 只是其中一张表的一行。改 allSettled：成功的表照常落态，失败的表保留上
+    // 次数据，错误汇总上报。**仍然上抛**——App 就绪链与导入后刷新都以
+    // rejection 为失败信号（见 frontend/sync/entityRefresh.ts:57），失败不可
+    // 被静默吞掉；变的是「一张表坏 ≠ 整个应用空白」。
+    const [hosts, credentials, hostGroups, jumpChains] = await Promise.allSettled([
+      vaultApi.hosts.list(),
+      vaultApi.credentials.list(),
+      vaultApi.hostGroups.list(),
+      vaultApi.jumpChains.list(),
+    ]);
+    const failures: string[] = [];
+    /** 成功取新值；失败保留上次数据并记一条错误（不让一张表拖垮其余）。 */
+    const take = <T,>(r: PromiseSettledResult<T[]>, prev: T[]): T[] => {
+      if (r.status === "fulfilled") return r.value;
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      // 去重：四张表常因同一原因同时失败（如 vault locked）——横幅里同一句
+      // 报错重复四遍只会更难读。
+      if (!failures.includes(msg)) failures.push(msg);
+      return prev;
+    };
+    const nextHosts = take(hosts, get().hosts);
+    const nextCredentials = take(credentials, get().credentials);
+    const nextHostGroups = take(hostGroups, get().hostGroups);
+    const nextJumpChains = take(jumpChains, get().jumpChains);
+    if (failures.length === 0) {
+      set({
+        hosts: nextHosts,
+        credentials: nextCredentials,
+        hostGroups: nextHostGroups,
+        jumpChains: nextJumpChains,
+        loading: false,
+        error: null,
+      });
+      return;
     }
+    const message = failures.join("；");
+    set({
+      hosts: nextHosts,
+      credentials: nextCredentials,
+      hostGroups: nextHostGroups,
+      jumpChains: nextJumpChains,
+      loading: false,
+      error: message,
+    });
+    throw new Error(message);
   },
 
   createHost: async (input) =>

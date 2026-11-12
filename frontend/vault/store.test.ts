@@ -67,3 +67,56 @@ describe("vault store：变更失败落 error", () => {
     expect(useVaultStore.getState().error).toBeNull();
   });
 });
+
+// 2026-11-12 真机实证的回归：一张表里有一行脏数据（跳板链 hops 非 Vec<i64>）
+// → 此前 Promise.all 整组 reject → 四张表全不落态 → 主机树/凭据/分组/跳板链
+// 同时空白（用户看到「应用被清空」）。改 allSettled 后：其余表照常落态。
+describe("vault store：单表失败不再牵连全片（2026-11-12 真机回归）", () => {
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    useVaultStore.setState({
+      hosts: [],
+      credentials: [],
+      hostGroups: [],
+      jumpChains: [],
+      loading: false,
+      error: null,
+    });
+  });
+
+  it("跳板链列表失败：主机/凭据/分组照常落态 + 仍然上抛", async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "hosts_list") return Promise.resolve([{ id: 1, name: "prod-1" }]);
+      if (cmd === "credentials_list") return Promise.resolve([{ id: 7, name: "cred" }]);
+      if (cmd === "host_groups_list") return Promise.resolve([{ id: 3, name: "grp" }]);
+      if (cmd === "jc_list") return Promise.reject(new Error("malformed jump chain hops json"));
+      return Promise.resolve(null);
+    });
+    await expect(useVaultStore.getState().refresh()).rejects.toThrow("malformed jump chain hops json");
+    const s = useVaultStore.getState();
+    expect(s.hosts).toHaveLength(1);
+    expect(s.credentials).toHaveLength(1);
+    expect(s.hostGroups).toHaveLength(1);
+    expect(s.error).toContain("malformed jump chain hops json");
+    expect(s.loading).toBe(false);
+  });
+
+  it("跳板链列表失败：跳板链保留上次数据（不清空成空列表）", async () => {
+    useVaultStore.setState({ jumpChains: [{ id: 9, name: "chain-a", hops: [1] }] as never });
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "jc_list") return Promise.reject(new Error("db corrupt"));
+      return Promise.resolve([]);
+    });
+    await expect(useVaultStore.getState().refresh()).rejects.toThrow("db corrupt");
+    expect(useVaultStore.getState().jumpChains).toHaveLength(1);
+  });
+
+  it("四张表全失败：错误汇总且四张表都保留上次数据", async () => {
+    useVaultStore.setState({ hosts: [{ id: 1, name: "prod-1" }] as never });
+    mockedInvoke.mockImplementation(() => Promise.reject(new Error("vault locked")));
+    await expect(useVaultStore.getState().refresh()).rejects.toThrow("vault locked");
+    const s = useVaultStore.getState();
+    expect(s.hosts).toHaveLength(1);
+    expect(s.error).toContain("vault locked");
+  });
+});

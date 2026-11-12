@@ -201,6 +201,19 @@ const CHECKS = {
     if (sb.bottom < cb.bottom - 24) {
       failures.push(`视图壳距主区底部还差 ${Math.round(cb.bottom - sb.bottom)}px → 未铺满`);
     }
+    // 横向铺满（2026-11-12 补）：此前只查高度——而「卡片窄条」回归
+    // （.workspace-view 缺 flex:1 → 收缩到内容宽）是**横向**问题，高度断言
+    // 恒绿。右缘与底缘同口径查（壳是容器子项、内边距在 border-box 内）。
+    if (sb.right < cb.right - 24) {
+      failures.push(
+        `视图壳距主区右缘还差 ${Math.round(cb.right - sb.right)}px → 横向未铺满（窄条回归）`,
+      );
+    }
+    if (sb.left > cb.left + 24) {
+      failures.push(
+        `视图壳左缘比主区左缘缩进 ${Math.round(sb.left - cb.left)}px → 横向未铺满（窄条回归）`,
+      );
+    }
     if (document.documentElement.scrollWidth > window.innerWidth + 1) {
       failures.push(
         `横向溢出：内容宽 ${document.documentElement.scrollWidth} > 视口 ${window.innerWidth}`,
@@ -337,6 +350,57 @@ const CHECKS = {
       );
     }
 
+    // 4b) 空态必须在其面板内垂直居中（2026-11-12 通知中心实证：空态挂在
+    //     面板顶部，下方几百像素全空——量测偏差 219px）。偏差上限取面板
+    //     高度的 15%（面板自身 padding/页头造成的小偏移不算问题）。
+    {
+      const panel = document.querySelector(
+        ".notify-panel, .forward-list, .jump-list, .cron-list, .dock-entity",
+      );
+      if (panel) {
+        const pb = panel.getBoundingClientRect();
+        const empty = [...panel.querySelectorAll("*")]
+          .filter((el) => {
+            const t = (el.textContent || "").trim();
+            return (
+              /^(暂无|尚无|没有|还没有)/.test(t) &&
+              t.length < 30 &&
+              el.children.length <= 2
+            );
+          })
+          .pop();
+        if (empty) {
+          const eb = empty.getBoundingClientRect();
+          const off = Math.round(
+            (eb.top + eb.bottom) / 2 - (pb.top + pb.bottom) / 2,
+          );
+          const limit = Math.max(24, Math.round(pb.height * 0.15));
+          if (Math.abs(off) > limit) {
+            failures.push(
+              `空态未垂直居中（偏离面板中心 ${off}px，上限 ${limit}px）`,
+            );
+          }
+        }
+      }
+    }
+    // 4c) 死规则守卫（2026-11-12 实证）：.notify-empty-guide 的 CSS 规则一直
+    //     存在，但 JSX 上的 div 只挂了 data-testid、没挂 className → 规则
+    //     **从未生效**（空态因此一直不居中）。这类问题几何断言看不见（元素
+    //     在、只是没样式），故用「面板存在时其关键子选择器必须有元素命中」
+    //     来兜：命中不了 = 对应 CSS 规则是死规则。
+    const DEAD_RULE_PROBES = [
+      [".notify-panel", ".notify-empty-guide, .notify-list"],
+      [".forward-list", ".forward-row, .forward-empty"],
+      [".jump-list", ".jump-row, .jump-empty"],
+    ];
+    for (const [panelSel, childSel] of DEAD_RULE_PROBES) {
+      if (!document.querySelector(panelSel)) continue;
+      if (!document.querySelector(childSel)) {
+        failures.push(
+          `死规则嫌疑：${panelSel} 存在但 ${childSel} 无元素命中（对应 CSS 规则可能从未生效）`,
+        );
+      }
+    }
     // 5) **有可见框的元素不得被无框元素压入**（2026-11-12 通知中心实证）：
     //    投递失败行（无框 div）与「重发」按钮（另一个 button，自带底色边框、
     //    字号比所在行大）压在条目卡片（有框 button）上——视觉上像第二张卡片

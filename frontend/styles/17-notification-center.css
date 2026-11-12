@@ -137,11 +137,18 @@
   text-align: center;
   margin: 12px 0;
 }
-/* 空态引导（ui-batch2 T3，审计 A4）：暂无通知 + 引导语 + 查看告警规则入口 */
+/* 空态引导（ui-batch2 T3，审计 A4）：暂无通知 + 引导语 + 查看告警规则入口。
+   2026-11-12：空态此前挂在面板顶部（面板是 flex 列、空态无 flex:1）→ 下方
+   几百像素全空，观感失衡（量测：空态中心比面板中心高 219px）。同款处理见
+   30-icon-rail.css 的 .workspace-view .dock-entity:has(> .forward-empty…)：
+   空态占满页头以下的剩余空间并在其中垂直居中（操作按钮「全部已读/清空」
+   仍留在顶部）。 */
 .notify-empty-guide {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  flex: 1;
   gap: 6px;
   padding: 4px 0 10px;
 }

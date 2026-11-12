@@ -455,6 +455,7 @@
     "inputPlaceholder": "向 AI 描述汝要做的事…",
     "send": "發送",
     "stop": "止",
+    "jumpToLatest": "復歸最新",
     "thinking": "思之…",
     "copyCode": "謄代碼",
     "insertBlocked": "未能插入：文含多行或控制字符。請審閱完整原文，再手動準備單行令。",

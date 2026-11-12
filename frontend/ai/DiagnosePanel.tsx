@@ -217,11 +217,23 @@ export function DiagnosePanel({
    *  历史时不抢滚动**（贴底判定），他回到底部才恢复跟随。 */
   const threadRef = useRef<HTMLDivElement>(null);
   const stickBottom = useRef(true);
+  /** 是否显示「回到最新」按钮（用户往回翻看历史时出现）。 */
+  const [showJump, setShowJump] = useState(false);
   const onThreadScroll = () => {
     const el = threadRef.current;
     if (!el) return;
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
     // 距底部 24px 内算「还在底部」；否则视为用户主动上翻，停止跟随。
-    stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    stickBottom.current = gap < 24;
+    setShowJump(gap >= 24);
+  };
+  /** 一键回到最新：滚到底 + 恢复自动跟随（此前往上翻了只能一路拖回来）。 */
+  const jumpToLatest = () => {
+    const el = threadRef.current;
+    if (!el) return;
+    stickBottom.current = true;
+    el.scrollTop = el.scrollHeight;
+    setShowJump(false);
   };
   useEffect(() => {
     const el = threadRef.current;
@@ -700,6 +712,21 @@ export function DiagnosePanel({
           </div>
         )}
       </div>
+
+      {/* 「回到最新」：用户往上翻看历史时出现——一键回到底部并恢复自动跟随。
+          此前没有这个入口：往上一翻就只能一路拖回来（或等新消息把内容顶下去）。 */}
+      {showJump && (
+        <div className="ai-jump-row" data-testid="ai-jump-row">
+          <button
+            className="ai-jump-latest"
+            data-testid="ai-jump-latest"
+            aria-label={t("ai.jumpToLatest")}
+            onClick={jumpToLatest}
+          >
+            ↓ {t("ai.jumpToLatest")}
+          </button>
+        </div>
+      )}
 
       {/* 活的状态带（2026-11-12 用户报障「消息显示逻辑一会上面一会下面」的
           修复）：停止 / 思考中 / 已中止 / 错误一律排在**对话流之下、输入框

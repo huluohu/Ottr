@@ -456,6 +456,7 @@
     "inputPlaceholder": "Descrivi cosa vuoi fare…",
     "send": "Invia",
     "stop": "Interrompi",
+    "jumpToLatest": "Torna al più recente",
     "thinking": "Sto pensando…",
     "copyCode": "Copia codice",
     "insertBlocked": "Inserimento disabilitato: rilevato testo su più righe o caratteri di controllo. Rivedi il testo completo e prepara manualmente un comando su una sola riga.",

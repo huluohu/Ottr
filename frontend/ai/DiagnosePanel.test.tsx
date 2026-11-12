@@ -179,6 +179,49 @@ describe("面板渲染", () => {
         true,
       );
     });
+
+    // 用户提问补的缺口（2026-11-12）：往上翻看历史后没有「回到最新」的入口。
+    it("往上翻后出现「回到最新」，点它回到底部并恢复跟随", () => {
+      reset(REQ, { status: "running", answer: "" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      const thread = screen.getByTestId("ai-thread");
+      // jsdom 无布局引擎：造一个「内容比可视区高、且已上翻」的状态。
+      let scrollTopValue = 0;
+      Object.defineProperty(thread, "scrollHeight", {
+        value: 1000,
+        configurable: true,
+      });
+      Object.defineProperty(thread, "clientHeight", { value: 300, configurable: true });
+      Object.defineProperty(thread, "scrollTop", {
+        configurable: true,
+        get: () => scrollTopValue,
+        set: (v: number) => {
+          scrollTopValue = v;
+        },
+      });
+      scrollTopValue = 0; // 停在最上面 = 用户往回翻了
+      fireEvent.scroll(thread);
+      const btn = screen.getByTestId("ai-jump-latest");
+      expect(btn).toBeTruthy();
+      fireEvent.click(btn);
+      expect(scrollTopValue).toBe(1000); // 一键回到底部
+      expect(screen.queryByTestId("ai-jump-latest")).toBeNull(); // 到底后按钮收起
+    });
+
+    it("本来就在底部时不显示「回到最新」（不添多余按钮）", () => {
+      reset(REQ, { status: "running", answer: "" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      const thread = screen.getByTestId("ai-thread");
+      Object.defineProperty(thread, "scrollHeight", { value: 1000, configurable: true });
+      Object.defineProperty(thread, "clientHeight", { value: 300, configurable: true });
+      Object.defineProperty(thread, "scrollTop", {
+        configurable: true,
+        get: () => 700,
+        set: () => {},
+      });
+      fireEvent.scroll(thread);
+      expect(screen.queryByTestId("ai-jump-latest")).toBeNull();
+    });
   });
 });
 

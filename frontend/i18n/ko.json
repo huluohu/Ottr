@@ -456,6 +456,7 @@
     "inputPlaceholder": "무엇을 하고 싶은지 설명하세요…",
     "send": "보내기",
     "stop": "중지",
+    "jumpToLatest": "최신으로",
     "thinking": "생각 중…",
     "copyCode": "코드 복사",
     "insertBlocked": "삽입이 비활성화되었습니다: 여러 줄 텍스트 또는 제어 문자가 감지되었습니다. 전체 텍스트를 검토하고 한 줄 명령을 직접 준비하세요.",

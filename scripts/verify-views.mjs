@@ -474,7 +474,7 @@ const CHECKS = {
   // 一会下面」的守卫）：停止/思考中/错误必须排在**对话流下方、输入区上方**
   // ——一个固定位置；对话变长时新内容贴底可见（旧版既没有滚动跟随，也没
   // 有把活的状态固定在下方）。
-  "ai-live": () => {
+  "ai-live": async () => {
     const failures = [];
     const thread = document.querySelector(".ai-thread");
     const band = document.querySelector(".ai-live-band");
@@ -530,6 +530,37 @@ const CHECKS = {
       const gap = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
       if (gap > 4) {
         failures.push(`对话流没有贴底（距底 ${Math.round(gap)}px）——新消息可能落在折线以下`);
+      }
+    }
+    // 「回到最新」：模拟用户往上翻 → 按钮应出现、可点、点了真的回到底。
+    // （2026-11-12 用户提问补的缺口：往上翻了只能一路拖回来。）
+    if (overflow > 24) {
+      thread.scrollTop = 0;
+      thread.dispatchEvent(new Event("scroll"));
+      let jump = null;
+      for (let i = 0; i < 20; i++) {
+        jump = document.querySelector('[data-testid="ai-jump-latest"]');
+        if (jump) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (!jump) {
+        failures.push("往上翻了却没有「回到最新」按钮（回不到最新消息）");
+      } else {
+        const jr = jump.getBoundingClientRect();
+        if (jr.width === 0 || jr.height === 0) {
+          failures.push("「回到最新」按钮尺寸为 0（不可见）");
+        } else {
+          const hit = document.elementFromPoint(jr.left + jr.width / 2, jr.top + jr.height / 2);
+          if (!hit || !(hit === jump || jump.contains(hit))) {
+            failures.push("「回到最新」按钮点不到（被别的元素挡住）");
+          }
+        }
+        jump.click();
+        await new Promise((r) => setTimeout(r, 150));
+        const gap2 = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+        if (gap2 > 24) {
+          failures.push(`点了「回到最新」也没回到底（距底 ${Math.round(gap2)}px）`);
+        }
       }
     }
     return failures;

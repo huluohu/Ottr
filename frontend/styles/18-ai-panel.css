@@ -116,6 +116,27 @@
 .ai-live-row .ai-thinking {
   margin: 0;
 }
+/* 「回到最新」按钮（2026-11-12 用户提问补的缺口）：用户往上翻看历史时出现，
+   排在对话流与活的状态带之间——一键回到底部并恢复自动跟随。 */
+.ai-jump-row {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-1);
+}
+.ai-jump-latest {
+  font-size: var(--text-xs);
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  box-shadow: none;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+}
+.ai-jump-latest:hover {
+  color: var(--color-fg);
+  border-color: var(--color-accent-border);
+}
 .ai-redactions {
   font-size: var(--text-2xs);
   opacity: 0.75;

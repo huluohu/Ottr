@@ -456,6 +456,7 @@
     "inputPlaceholder": "Describe what you want to do…",
     "send": "Send",
     "stop": "Stop",
+    "jumpToLatest": "Jump to latest",
     "thinking": "Thinking…",
     "copyCode": "Copy code",
     "insertBlocked": "Insertion disabled: multiline text or control characters detected. Please review the full text and prepare a single-line command manually.",

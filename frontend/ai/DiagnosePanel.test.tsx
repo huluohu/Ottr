@@ -131,6 +131,55 @@ describe("面板渲染", () => {
     expect(screen.getByTestId("ai-error-message").textContent).toContain("HTTP 401");
     expect(screen.getByTestId("ai-retry")).toBeTruthy();
   });
+
+  // 2026-11-12 用户报障「消息显示逻辑一会上面一会下面」的回归：活的指示
+  // （停止 / 思考中 / 已中止 / 错误）此前钉在面板顶部，而对话在下面的滚动
+  // 区——模型一开始输出，指示就从顶部跳到底部。规则钉死：**对话流 <
+  // 活的状态 < 输入区**，顶部只留静态上下文（失败命令卡片、脱敏计数）。
+  describe("活的状态的位置（2026-11-12 回归）", () => {
+    const follows = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+    it("运行中：停止与思考中排在对话流之后、输入区之前", () => {
+      reset(REQ, { status: "running", answer: "" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      const thread = screen.getByTestId("ai-thread");
+      const stop = screen.getByTestId("ai-stop");
+      const thinking = screen.getByTestId("ai-thinking");
+      const modeRow = screen.getByTestId("ai-input-mode-row");
+      expect(follows(thread, stop)).toBe(true);
+      expect(follows(thread, thinking)).toBe(true);
+      expect(follows(stop, modeRow)).toBe(true);
+    });
+
+    it("出错：错误面排在对话流之后（不再钉在面板顶部）", () => {
+      reset(REQ, { status: "error", errorKind: "request", error: "HTTP 401" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      expect(follows(screen.getByTestId("ai-thread"), screen.getByTestId("ai-error"))).toBe(
+        true,
+      );
+    });
+
+    it("已中止：提示排在对话流之后", () => {
+      reset(REQ, { status: "aborted" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      expect(follows(screen.getByTestId("ai-thread"), screen.getByTestId("ai-aborted"))).toBe(
+        true,
+      );
+    });
+
+    it("脱敏计数留在顶部（它是本次请求的事实，不是「正在发生的事」）", () => {
+      reset(REQ, {
+        status: "done",
+        answer: "ok",
+        redactions: [{ name: "ipv4", count: 2 }],
+      });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      expect(follows(screen.getByTestId("ai-redactions"), screen.getByTestId("ai-thread"))).toBe(
+        true,
+      );
+    });
+  });
 });
 
 describe("输入框自动聚焦（2026-11-03 真机验收抓到的缺陷）", () => {

@@ -210,6 +210,36 @@ export function DiagnosePanel({
   // （真机验收 2026-10-19 抓到的漏标记时序）。
   /** 追问输入条：面板打开时自动聚焦（真机 2026-11-03 验收发现焦点留在终端）。 */
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  /** 对话流滚动跟随（2026-11-12 用户报障「消息显示逻辑一会上面一会下面」
+   *  的另一半）：此前完全没有滚动跟随——长对话里新回复落在折线以下，界面
+   *  上「什么都没发生」。现在：新消息/流式增长时贴到底部；**用户往上翻看
+   *  历史时不抢滚动**（贴底判定），他回到底部才恢复跟随。 */
+  const threadRef = useRef<HTMLDivElement>(null);
+  const stickBottom = useRef(true);
+  const onThreadScroll = () => {
+    const el = threadRef.current;
+    if (!el) return;
+    // 距底部 24px 内算「还在底部」；否则视为用户主动上翻，停止跟随。
+    stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el || !stickBottom.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, answer, status, pendingToolCalls.length, planSteps.length]);
+  // 窗口尺寸变化 → 对话重排、内容变高 → 重新贴底（否则变窄后新消息落到
+  // 折线以下，界面上看着「什么都没发生」；2026-11-12 守卫在 900px 窄窗
+  // 实测抓到）。用户已上翻历史时不抢滚动。
+  useEffect(() => {
+    const onResize = () => {
+      const el = threadRef.current;
+      if (!el || !stickBottom.current) return;
+      el.scrollTop = el.scrollHeight;
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const markSeen = useAiStore((s) => s.markSeen);
   useEffect(() => {
     if (sessionId && request) markSeen(sessionId);
@@ -372,60 +402,19 @@ export function DiagnosePanel({
         </div>
       )}
 
-      {(redactions.length > 0 || running || status === "aborted") && (
-        // 状态行：脱敏计数 / 停止 / 已中止。执行模式**不在这里**——
-        // 2026-11-05 用户反馈：模式切换要贴着输入框（对话进行到哪儿都能
-        // 随手切），放顶栏会跟输入脱节、看起来像三个隔离的 tab。
+      {redactions.length > 0 && (
+        // 脱敏计数留在顶部——它说明「这次外发遮掉了多少」，属于**本次请求
+        // 的事实**，跟上方的失败命令卡片同属「上下文」。
+        // **停止 / 已中止 / 思考中 / 错误不在这里**：它们是「正在发生的事」，
+        // 一律排在对话流下方（.ai-live-band）。2026-11-12 用户报障「消息显示
+        // 逻辑一会上面一会下面」：此前这些活的指示被钉在面板顶部，而真正在
+        // 发生的对话在下面的滚动区里——模型一开始输出，指示就从顶部跳到
+        // 底部；对话变长后「停止」还会被顶出可视区。
         <div className="ai-status-row">
-          {redactions.length > 0 && (
-            <span className="ai-redactions" data-testid="ai-redactions">
-              {t("ai.redacted", { count: redactions.reduce((n, r) => n + r.count, 0) })}
-            </span>
-          )}
-          {running && (
-            <button className="ai-stop" data-testid="ai-stop" onClick={() => abort(sessionId)}>
-              {t("ai.stop")}
-            </button>
-          )}
-          {status === "aborted" && <span className="ai-aborted">{t("ai.aborted")}</span>}
+          <span className="ai-redactions" data-testid="ai-redactions">
+            {t("ai.redacted", { count: redactions.reduce((n, r) => n + r.count, 0) })}
+          </span>
         </div>
-      )}
-
-      {status === "error" && (
-        <div className="ai-error" data-testid="ai-error" role="alert">
-          {errorKind === "noProvider" && (
-            <>
-              <p>{t("ai.errNoProvider")}</p>
-              <button className="btn-accent" data-testid="ai-open-settings" onClick={onOpenSettings}>
-                {t("ai.openSettings")}
-              </button>
-            </>
-          )}
-          {errorKind === "noKey" && (
-            <>
-              <p>{t("ai.errNoKey")}</p>
-              <button className="btn-accent" data-testid="ai-open-settings" onClick={onOpenSettings}>
-                {t("ai.openSettings")}
-              </button>
-            </>
-          )}
-          {errorKind === "request" && (
-            <>
-              <p data-testid="ai-error-message">{error ?? t("ai.failed")}</p>
-              <button className="btn-accent" data-testid="ai-retry" onClick={() => void run(sessionId)}>
-                {t("ai.retry")}
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {status === "running" && answer === "" && (
-        // aria-live=polite：只播状态短语，**不把流式正文塞进 live 区**——
-        // 否则读屏会随着每个 token 反复播报正文（更糟）。
-        <p className="ai-thinking" data-testid="ai-thinking" role="status" aria-live="polite">
-          {t("ai.thinking")}
-        </p>
       )}
 
       {/* 对话气泡流（多轮追问会话，2026-11-02 批次二 C 项）：
@@ -435,7 +424,12 @@ export function DiagnosePanel({
           故此处不重复渲染 answer。
           **tool 轮**（批次五 P2）= 工具调用结果：user 侧显示「调用 <server>.<tool>」，
           assistant 侧显示工具返回文本（长文本在面板里截断显示）。 */}
-      <div className="ai-thread" data-testid="ai-thread">
+      <div
+        className="ai-thread"
+        data-testid="ai-thread"
+        ref={threadRef}
+        onScroll={onThreadScroll}
+      >
         {threadTurns.map((m, i) => {
           // **首轮诊断上下文不进气泡流**：它的内容是「退出码 + 命令 + 最长
           // 8KB 原始终端输出 + 主机备注」——正是给模型看的 prompt。直接渲染
@@ -706,6 +700,65 @@ export function DiagnosePanel({
           </div>
         )}
       </div>
+
+      {/* 活的状态带（2026-11-12 用户报障「消息显示逻辑一会上面一会下面」的
+          修复）：停止 / 思考中 / 已中止 / 错误一律排在**对话流之下、输入框
+          之上**——一个固定位置，不随对话长短挪窝，滚动时也不会被顶走。
+          「思考中」紧贴最后一条消息，模型开始输出时它就地让位给正文，
+          不再出现「指示在顶部、正文在底部」的割裂。 */}
+      {(status === "error" ||
+        status === "aborted" ||
+        (status === "running" && (answer === "" || running))) && (
+        <div className="ai-live-band" data-testid="ai-live-band">
+          {status === "error" && (
+            <div className="ai-error" data-testid="ai-error" role="alert">
+              {errorKind === "noProvider" && (
+                <>
+                  <p>{t("ai.errNoProvider")}</p>
+                  <button className="btn-accent" data-testid="ai-open-settings" onClick={onOpenSettings}>
+                    {t("ai.openSettings")}
+                  </button>
+                </>
+              )}
+              {errorKind === "noKey" && (
+                <>
+                  <p>{t("ai.errNoKey")}</p>
+                  <button className="btn-accent" data-testid="ai-open-settings" onClick={onOpenSettings}>
+                    {t("ai.openSettings")}
+                  </button>
+                </>
+              )}
+              {errorKind === "request" && (
+                <>
+                  <p data-testid="ai-error-message">{error ?? t("ai.failed")}</p>
+                  <button className="btn-accent" data-testid="ai-retry" onClick={() => void run(sessionId)}>
+                    {t("ai.retry")}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          <div className="ai-live-row">
+            {status === "running" && answer === "" && (
+              // aria-live=polite：只播状态短语，**不把流式正文塞进 live 区**——
+              // 否则读屏会随着每个 token 反复播报正文（更糟）。
+              <p className="ai-thinking" data-testid="ai-thinking" role="status" aria-live="polite">
+                {t("ai.thinking")}
+              </p>
+            )}
+            {running && (
+              <button className="ai-stop" data-testid="ai-stop" onClick={() => abort(sessionId)}>
+                {t("ai.stop")}
+              </button>
+            )}
+            {status === "aborted" && (
+              <span className="ai-aborted" data-testid="ai-aborted">
+                {t("ai.aborted")}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 用量透明化（2026-11-02 批次一 B 项）：模型 · token · 耗时。
           端点不回 usage 时只显示模型与耗时（不显示 token 数）——透明化是

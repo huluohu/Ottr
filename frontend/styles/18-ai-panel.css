@@ -97,6 +97,45 @@
   align-items: center;
   gap: 8px;
 }
+/* 活的状态带（2026-11-12 用户报障「消息显示逻辑一会上面一会下面」）：
+   停止 / 思考中 / 已中止 / 错误固定在**对话流下方、输入框上方**——
+   一个位置，不随对话长短挪窝，滚动时也不会被顶出可视区。 */
+.ai-live-band {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+.ai-live-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+.ai-live-row .ai-thinking {
+  margin: 0;
+}
+/* 「回到最新」按钮（2026-11-12 用户提问补的缺口）：用户往上翻看历史时出现，
+   浮在对话区底缘右下——一键回到底部并恢复自动跟随。不占布局（review 自查①）；
+   实色底 + 细边框保证盖在正文上仍可读。 */
+.ai-jump-latest {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-2);
+  z-index: 2;
+  font-size: var(--text-xs);
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  box-shadow: none;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+}
+.ai-jump-latest:hover {
+  color: var(--color-fg);
+  border-color: var(--color-accent-border);
+}
 .ai-redactions {
   font-size: var(--text-2xs);
   opacity: 0.75;
@@ -157,6 +196,16 @@
 }
 
 /* --- 多轮追问会话（2026-11-02 批次二 C 项）：气泡流 + 底部追问输入条 --- */
+/* 对话流容器（2026-11-12 review 自查①）：包一层相对定位——「回到最新」
+   浮在它的底缘右下，**不占布局**。此前按钮独占一行，出现/收起的瞬间把
+   对话区压矮/撑高约 30px，用户正在看的内容跟着跳（与本次报障同族的
+   「布局打架」）。 */
+.ai-thread-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
 .ai-thread {
   display: flex;
   flex-direction: column;

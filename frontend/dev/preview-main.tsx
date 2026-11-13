@@ -519,6 +519,7 @@ async function renderShot(): Promise<void> {
   const withSession =
     shotMode === "terminal" ||
     shotMode === "ai-panel" ||
+    shotMode === "ai-panel-running" ||
     shotMode === "ai-ask" ||
     shotMode === "prompt-dialog" ||
     shotMode === "ask-orb" ||
@@ -707,8 +708,12 @@ async function renderShot(): Promise<void> {
       },
     });
   }
-  if (shotMode === "ai-panel") {
+  if (shotMode === "ai-panel" || shotMode === "ai-panel-running") {
     const { useAiStore } = await import("./../ai/aiStore");
+    // 「正在回答」形态（2026-11-12 用户报障的现场）：对话已有一串往返，模型
+    // 正在思考下一句——此时「思考中/停止」必须排在对话流**下方**（旧版钉在
+    // 面板顶部 → 指示在顶部、正文在底部）。
+    const aiRunning = shotMode === "ai-panel-running";
     useAiStore.setState({
       sessions: {
         "shot-tab": {
@@ -721,8 +726,10 @@ async function renderShot(): Promise<void> {
             exitCode: 127,
             command: "check disk usage",
           },
-          status: "done",
-          answer: "**原因**\n\n`/var/log/syslog` 里的日志文件属主是 root。\n\n**修复命令**\n\n推荐用 truncate 清空而不是删除。",
+          status: aiRunning ? "running" : "done",
+          answer: aiRunning
+            ? ""
+            : "**原因**\n\n`/var/log/syslog` 里的日志文件属主是 root。\n\n**修复命令**\n\n推荐用 truncate 清空而不是删除。",
           errorKind: null,
           error: null,
           redactions: [],
@@ -767,9 +774,17 @@ async function renderShot(): Promise<void> {
               content:
                 "**还有**\n\n1. 旧轮转日志：`find /var/log -name '*.gz' -mtime +30 -delete`\n" +
                 "2. 缓存目录：清包管理器缓存\n" +
-                "3. 孤儿 inode：重启持有它的进程\n\n" +
-                "```bash\nlsof +L1\n```\n",
+              "3. 孤儿 inode：重启持有它的进程\n\n" +
+              "```bash\nlsof +L1\n```\n",
             },
+            ...(aiRunning
+              ? [
+                  {
+                    role: "user" as const,
+                    content: "那就按 truncate 处理，把命令给我。",
+                  },
+                ]
+              : []),
           ],
         },
       },

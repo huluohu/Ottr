@@ -456,6 +456,7 @@
     "inputPlaceholder": "やりたいことを記述…",
     "send": "送信",
     "stop": "停止",
+    "jumpToLatest": "最新へ",
     "thinking": "思考中…",
     "copyCode": "コードをコピー",
     "insertBlocked": "挿入できません: 複数行のテキストまたは制御文字を検出しました。全文を確認し、単一行のコマンドを手動で作成してください。",

@@ -42,6 +42,9 @@ const VIEWS = [
   { name: "plugins", kind: "session", url: "?view=plugins" },
   // AI 面板在场（右栏挤压终端列的最恶劣形态；38vw 时代切换钮被推出视口的场景）
   { name: "ai-panel", kind: "session", url: "?shot=ai-panel" },
+  // AI 面板「正在回答」形态（2026-11-12 用户报障「消息显示逻辑一会上面一会
+  // 下面」）：停止/思考中必须排在对话流**下方**，且对话变长时贴底可见。
+  { name: "ai-panel-running", kind: "ai-live", url: "?shot=ai-panel-running" },
   { name: "overview", kind: "library", url: "?view=overview" },
   { name: "batch", kind: "library", url: "?view=batch" },
   { name: "cron", kind: "library", url: "?view=cron" },
@@ -466,6 +469,112 @@ const CHECKS = {
     }
     return failures;
   },
+
+  // 「正在回答」形态的 AI 面板（2026-11-12 用户报障「消息显示逻辑一会上面
+  // 一会下面」的守卫）：停止/思考中/错误必须排在**对话流下方、输入区上方**
+  // ——一个固定位置；对话变长时新内容贴底可见（旧版既没有滚动跟随，也没
+  // 有把活的状态固定在下方）。
+  "ai-live": async () => {
+    const failures = [];
+    const thread = document.querySelector(".ai-thread");
+    const band = document.querySelector(".ai-live-band");
+    const modeRow = document.querySelector(".ai-input-mode-row");
+    const stop = document.querySelector('[data-testid="ai-stop"]');
+    const thinking = document.querySelector('[data-testid="ai-thinking"]');
+    if (!thread) {
+      failures.push("对话流缺失（.ai-thread）");
+      return failures;
+    }
+    if (!band) {
+      failures.push("活的状态带缺失（.ai-live-band）——停止/思考中没落在对话下方");
+      return failures;
+    }
+    const tr = thread.getBoundingClientRect();
+    const br = band.getBoundingClientRect();
+    if (br.top < tr.bottom - 2) {
+      failures.push(
+        `活的状态带压在对话流上（对话底 ${Math.round(tr.bottom)} / 状态带顶 ${Math.round(br.top)}）`,
+      );
+    }
+    if (modeRow) {
+      const mr = modeRow.getBoundingClientRect();
+      if (br.bottom > mr.top + 2) {
+        failures.push(
+          `活的状态带压到输入区（状态带底 ${Math.round(br.bottom)} / 输入区顶 ${Math.round(mr.top)}）`,
+        );
+      }
+    }
+    if (!stop) {
+      failures.push("运行中却没有停止按钮");
+    } else {
+      const sr = stop.getBoundingClientRect();
+      if (sr.width === 0 || sr.height === 0) {
+        failures.push("停止按钮尺寸为 0（不可见）");
+      } else {
+        const hit = document.elementFromPoint(sr.left + sr.width / 2, sr.top + sr.height / 2);
+        if (!hit || !(hit === stop || stop.contains(hit))) {
+          failures.push("停止按钮点不到（被别的元素挡住）");
+        }
+      }
+      if (sr.bottom > window.innerHeight + 1) {
+        failures.push("停止按钮在视口外（对话一长就够不着）");
+      }
+    }
+    if (thinking && !band.contains(thinking)) {
+      failures.push("「思考中」不在活的状态带里（又回到面板顶部了）");
+    }
+    // 滚动跟随：对话超出可视高度时，内容应贴底（否则新回复落在折线以下，
+    // 界面上看着「什么都没发生」）。
+    const overflow = thread.scrollHeight - thread.clientHeight;
+    if (overflow > 4) {
+      const gap = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+      if (gap > 4) {
+        failures.push(`对话流没有贴底（距底 ${Math.round(gap)}px）——新消息可能落在折线以下`);
+      }
+    }
+    // 「回到最新」：模拟用户往上翻 → 按钮应出现、可点、点了真的回到底，
+    // 且**出现时不得压矮对话区**（浮动按钮，不占布局——占布局的形态会被
+    // flex:1 的对话区吸收高度，用户正在看的内容跟着跳；2026-11-12 review
+    // 自查①。注意量「对话区自身高度」而不是输入区位置：占布局时输入区
+    // 纹丝不动，量它永远绿——本断言第一版就犯过这个错）。
+    if (overflow > 24) {
+      const threadH0 = thread.clientHeight;
+      thread.scrollTop = 0;
+      thread.dispatchEvent(new Event("scroll"));
+      let jump = null;
+      for (let i = 0; i < 20; i++) {
+        jump = document.querySelector('[data-testid="ai-jump-latest"]');
+        if (jump) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (!jump) {
+        failures.push("往上翻了却没有「回到最新」按钮（回不到最新消息）");
+      } else {
+        const threadH1 = thread.clientHeight;
+        if (Math.abs(threadH1 - threadH0) > 2) {
+          failures.push(
+            `「回到最新」出现把对话区压矮了 ${Math.round(threadH0 - threadH1)}px（应浮动、不占布局）`,
+          );
+        }
+        const jr = jump.getBoundingClientRect();
+        if (jr.width === 0 || jr.height === 0) {
+          failures.push("「回到最新」按钮尺寸为 0（不可见）");
+        } else {
+          const hit = document.elementFromPoint(jr.left + jr.width / 2, jr.top + jr.height / 2);
+          if (!hit || !(hit === jump || jump.contains(hit))) {
+            failures.push("「回到最新」按钮点不到（被别的元素挡住）");
+          }
+        }
+        jump.click();
+        await new Promise((r) => setTimeout(r, 150));
+        const gap2 = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+        if (gap2 > 24) {
+          failures.push(`点了「回到最新」也没回到底（距底 ${Math.round(gap2)}px）`);
+        }
+      }
+    }
+    return failures;
+  },
 };
 
 async function main() {
@@ -506,7 +615,7 @@ async function main() {
         // AI 面板在场的窄窗复测（2026-11-10 审计：38vw 口径在默认窗宽 1280 下
         // 不触发，窗口收窄后视图切换钮被推出可视区）：900px 宽重跑一遍会话断言。
         // 库级视图同样窄窗复测（长文本/多列在窄窗下的挤压）。
-        if (view.kind === "session" || view.kind === "library") {
+        if (view.kind === "session" || view.kind === "library" || view.kind === "ai-live") {
           await page.setViewportSize({ width: 900, height: 720 });
           await page.waitForTimeout(400);
           const narrow = await page.evaluate(CHECKS[view.kind]);

@@ -131,6 +131,101 @@ describe("面板渲染", () => {
     expect(screen.getByTestId("ai-error-message").textContent).toContain("HTTP 401");
     expect(screen.getByTestId("ai-retry")).toBeTruthy();
   });
+
+  // 2026-11-12 用户报障「消息显示逻辑一会上面一会下面」的回归：活的指示
+  // （停止 / 思考中 / 已中止 / 错误）此前钉在面板顶部，而对话在下面的滚动
+  // 区——模型一开始输出，指示就从顶部跳到底部。规则钉死：**对话流 <
+  // 活的状态 < 输入区**，顶部只留静态上下文（失败命令卡片、脱敏计数）。
+  describe("活的状态的位置（2026-11-12 回归）", () => {
+    const follows = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+    it("运行中：停止与思考中排在对话流之后、输入区之前", () => {
+      reset(REQ, { status: "running", answer: "" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      const thread = screen.getByTestId("ai-thread");
+      const stop = screen.getByTestId("ai-stop");
+      const thinking = screen.getByTestId("ai-thinking");
+      const modeRow = screen.getByTestId("ai-input-mode-row");
+      expect(follows(thread, stop)).toBe(true);
+      expect(follows(thread, thinking)).toBe(true);
+      expect(follows(stop, modeRow)).toBe(true);
+    });
+
+    it("出错：错误面排在对话流之后（不再钉在面板顶部），且不留空状态行", () => {
+      reset(REQ, { status: "error", errorKind: "request", error: "HTTP 401" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      expect(follows(screen.getByTestId("ai-thread"), screen.getByTestId("ai-error"))).toBe(
+        true,
+      );
+      // review 2026-11-12 自查②：错误态下活的状态行（停止/思考中/已中止）
+      // 没有内容可放——空渲染会在错误卡下面留约 28px 死空白。
+      expect(document.querySelector(".ai-live-row")).toBeNull();
+    });
+
+    it("已中止：提示排在对话流之后", () => {
+      reset(REQ, { status: "aborted" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      expect(follows(screen.getByTestId("ai-thread"), screen.getByTestId("ai-aborted"))).toBe(
+        true,
+      );
+    });
+
+    it("脱敏计数留在顶部（它是本次请求的事实，不是「正在发生的事」）", () => {
+      reset(REQ, {
+        status: "done",
+        answer: "ok",
+        redactions: [{ name: "ipv4", count: 2 }],
+      });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      expect(follows(screen.getByTestId("ai-redactions"), screen.getByTestId("ai-thread"))).toBe(
+        true,
+      );
+    });
+
+    // 用户提问补的缺口（2026-11-12）：往上翻看历史后没有「回到最新」的入口。
+    it("往上翻后出现「回到最新」，点它回到底部并恢复跟随", () => {
+      reset(REQ, { status: "running", answer: "" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      const thread = screen.getByTestId("ai-thread");
+      // jsdom 无布局引擎：造一个「内容比可视区高、且已上翻」的状态。
+      let scrollTopValue = 0;
+      Object.defineProperty(thread, "scrollHeight", {
+        value: 1000,
+        configurable: true,
+      });
+      Object.defineProperty(thread, "clientHeight", { value: 300, configurable: true });
+      Object.defineProperty(thread, "scrollTop", {
+        configurable: true,
+        get: () => scrollTopValue,
+        set: (v: number) => {
+          scrollTopValue = v;
+        },
+      });
+      scrollTopValue = 0; // 停在最上面 = 用户往回翻了
+      fireEvent.scroll(thread);
+      const btn = screen.getByTestId("ai-jump-latest");
+      expect(btn).toBeTruthy();
+      fireEvent.click(btn);
+      expect(scrollTopValue).toBe(1000); // 一键回到底部
+      expect(screen.queryByTestId("ai-jump-latest")).toBeNull(); // 到底后按钮收起
+    });
+
+    it("本来就在底部时不显示「回到最新」（不添多余按钮）", () => {
+      reset(REQ, { status: "running", answer: "" });
+      render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+      const thread = screen.getByTestId("ai-thread");
+      Object.defineProperty(thread, "scrollHeight", { value: 1000, configurable: true });
+      Object.defineProperty(thread, "clientHeight", { value: 300, configurable: true });
+      Object.defineProperty(thread, "scrollTop", {
+        configurable: true,
+        get: () => 700,
+        set: () => {},
+      });
+      fireEvent.scroll(thread);
+      expect(screen.queryByTestId("ai-jump-latest")).toBeNull();
+    });
+  });
 });
 
 describe("输入框自动聚焦（2026-11-03 真机验收抓到的缺陷）", () => {

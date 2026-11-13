@@ -972,7 +972,26 @@ describe("诊断取消宽限（粘贴→仍要粘贴→Ctrl+C 撤销→不应弹
     await vi.advanceTimersByTimeAsync(0);
     term.write("\x1b]133;C\x07"); // 命令开始（取命令文本）
     await vi.advanceTimersByTimeAsync(0);
+    // 失败命令的输出（真实场景里失败基本都有报错行——「没有输出就没有可诊断
+    // 的内容」，那是 2026-11-13 的新判据，单独有用例钉）
+    term.write("rm: cannot remove '/nope': No such file or directory\r\n");
+    await vi.advanceTimersByTimeAsync(0);
     term.write(`\x1b]133;D;${code}\x07`); // 命令结束（失败）
+    await vi.advanceTimersByTimeAsync(0);
+  }
+
+  /** 失败但**没有任何输出**（如 grep 查无匹配）——不弹诊断。 */
+  async function replaySilentFailure(term: InstanceType<typeof XTermClass>, code: number) {
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("\x1b]133;D;0\x07");
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("\x1b]133;A\x07");
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("web01:~$ grep -a x rcs.log\r\n");
+    await vi.advanceTimersByTimeAsync(0);
+    term.write("\x1b]133;C\x07");
+    await vi.advanceTimersByTimeAsync(0);
+    term.write(`\x1b]133;D;${code}\x07`); // 失败但无输出
     await vi.advanceTimersByTimeAsync(0);
   }
 
@@ -1027,6 +1046,21 @@ describe("诊断取消宽限（粘贴→仍要粘贴→Ctrl+C 撤销→不应弹
         sessionId: "tab-dg",
         exitCode: 127,
       });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // 2026-11-13 用户反馈：grep 查无匹配这类**语义上的非零退出**也弹诊断，
+  // 纯打扰。没有输出就没有可诊断的内容 → 不弹。
+  it("失败但没有任何输出（如 grep 查无匹配）→ 不弹诊断", async () => {
+    vi.useFakeTimers();
+    try {
+      const term = setup();
+      const spy = vi.spyOn(useAiStore.getState(), "onCommandFailed").mockImplementation(() => {});
+      await replaySilentFailure(term, 1);
+      await vi.advanceTimersByTimeAsync(DEFAULT_DIAGNOSE_GRACE_MS + 10);
+      expect(spy).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

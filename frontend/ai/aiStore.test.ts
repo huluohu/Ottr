@@ -439,4 +439,16 @@ describe("纯函数", () => {
     expect(shouldAutoDiagnose(1)).toBe(true);
     expect(shouldAutoDiagnose(143)).toBe(true);
   });
+
+  it("shouldAutoDiagnose：无输出不触发（grep 查无匹配这类语义非零，2026-11-13）", () => {
+    // 没有输出就没有可诊断的内容——此前一律弹，纯打扰
+    expect(shouldAutoDiagnose(1, false)).toBe(false);
+    expect(shouldAutoDiagnose(2, false)).toBe(false);
+    expect(shouldAutoDiagnose(127, false)).toBe(false);
+    // 有输出 → 照旧触发（真错误不漏报）
+    expect(shouldAutoDiagnose(1, true)).toBe(true);
+    expect(shouldAutoDiagnose(127, true)).toBe(true);
+    // 判不出输出时（默认）按旧口径
+    expect(shouldAutoDiagnose(1)).toBe(true);
+  });
 });

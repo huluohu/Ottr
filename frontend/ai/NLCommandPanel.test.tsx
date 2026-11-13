@@ -7,7 +7,7 @@
 // 运行链（nlStore）在 nl2cmd.test.ts 已全覆盖，本文件用 store 播种驱动渲染面，
 // 另带一条 live 流（Mock provider）验证 input → submit → 结果渲染的接线。
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -241,6 +241,46 @@ describe("结果面（公共 InsertRow 三档确认）", () => {
     seedSession(false);
     renderPanel({ inserter: vi.fn().mockResolvedValue(undefined) });
     expect((screen.getByTestId("ai-insert") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // 2026-11-13 用户报障：「打开历史指令，点插入终端，没反应」——「最近生成」
+  // 里的历史轮（rounds.slice(1)）的插入按钮点了没动静。
+  it("历史轮（最近生成）的插入按钮：可点且真的插入（按该轮自己的 scope/run）", async () => {
+    const target = {
+      paneSessionId: "tab-1",
+      rootTabId: "tab-1",
+      rustId: "pty-9",
+      connectionEpoch: 0,
+      kind: "ssh" as const,
+      hostId: 7,
+    };
+    useNlStore.setState({
+      status: "done",
+      command: "ls -al",
+      level: "green",
+      target,
+      scopeId: "scope-nl",
+      runId: "run-current",
+      // rounds 语义：最新在前（rounds[0] = 当前轮，主结果区显示它；
+      // 历史区列 rounds[1..]）。
+      rounds: [
+        { input: "新指令", command: "ls -al", level: "green", ts: 2, target, scopeId: "scope-nl", runId: "run-current" },
+        { input: "旧指令", command: "grep -a x log", level: "green", ts: 1, target, scopeId: "scope-nl", runId: "run-old" },
+      ],
+    });
+    renderPanel();
+    // 历史条目里的插入钮（精确定位到条目内，别拿主结果那个）。
+    const item = screen.getAllByTestId("nl2cmd-history-item")[0];
+    const historyBtn = within(item).getByTestId("ai-insert") as HTMLButtonElement;
+    expect(historyBtn.disabled).toBe(false);
+    fireEvent.click(historyBtn);
+    await vi.waitFor(() => {
+      expect(mockedInvoke).toHaveBeenCalledWith("ai_scope_insert", {
+        scopeId: "scope-nl",
+        actionId: "run-old:0",
+        text: "grep -a x log",
+      });
+    });
   });
 });
 

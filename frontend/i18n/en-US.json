@@ -500,6 +500,8 @@
     "insertConfirm": "Insert? Click to confirm",
     "insertConfirmRed": "Dangerous — click again to confirm",
     "inserted": "Inserted",
+    "insertNoBinding": "No terminal to insert into: this command was generated without a connected terminal or a write authorization. Generate it again, or type the command into the terminal yourself.",
+    "insertFailedReason": "Insert failed: {reason}",
     "insertFailed": "Insert failed",
     "errNoProvider": "No AI provider available. Enable or add one in Settings.",
     "errNoKey": "Could not read the API key (vault locked or backend unreachable). openai-compatible connects with an empty key when none is saved (Ollama needs no auth); Anthropic requires a key.",

@@ -162,8 +162,11 @@ let controller: AbortController | null = null;
  * submit）与 abort 时收权，绝不指到已完成轮上。
  */
 let inflightScopeId: string | null = null;
-/** 本面板全部活 scope（close 的 lifecycle 失效面：在途 + 已完成轮次一并收）。 */
+/** 本面板全部活 scope（已完成轮次的授权留到后端 TTL；只在超出容量上限时
+ *  回收最老的那些，避免集合无限增长）。 */
 const liveScopes = new Set<string>();
+/** 活 scope 集合容量上限（轮次本身封顶 NL_ROUNDS_CAP=10；留一倍余量）。 */
+const NL_LIVE_SCOPE_CAP = 20;
 
 /** 撤销一个 scope（尽力而为；已撤销/过期/后端不可达一律吞掉）。 */
 async function revokeScopeQuietly(scopeId: string): Promise<void> {
@@ -184,12 +187,20 @@ async function revokeInflight(): Promise<void> {
   await revokeScopeQuietly(scopeId);
 }
 
-/** close 的 lifecycle 失效：在途 + 全部已完成轮次的 scope 一并撤销。 */
+/**
+ * close 的 lifecycle 失效：**只收回在途那一条**。
+ *
+ * 2026-11-13 用户反馈「打开历史指令，点插入终端，没反应」：此前 close 把
+ * 在途 + **全部已完成轮次**的 scope 一并撤销，而「最近生成」里每一条的插入
+ * 授权正是各轮自己那把 scope → 面板一关，回看面里的每条命令都插不进去了
+ * （后端按授权失效拒绝）。面板留着轮次给人回看，却把回看面做成死路。
+ *
+ * 现在：已完成轮次的授权**留到后端 TTL（15 分钟）或会话生命周期失效**
+ * （源终端重连/关闭由后端按 runtime 失配拒）——与本文件头部写的口径一致
+ * （"活到 TTL 或生命周期失效"）。在途那一条照旧立刻收权（supersede/abort）。
+ */
 async function revokeAllNlScopes(): Promise<void> {
-  inflightScopeId = null;
-  const ids = [...liveScopes];
-  liveScopes.clear();
-  await Promise.all(ids.map(revokeScopeQuietly));
+  await revokeInflight();
 }
 
 /** SessionStore 切片 → isAiTargetLive 入参面。 */
@@ -341,6 +352,14 @@ export const useNlStore = create<NlStore>((set, get) => ({
         if (scope?.scopeId) {
           inflightScopeId = scope.scopeId;
           liveScopes.add(scope.scopeId);
+          // 容量上限：超出就回收最老的（它们多半已过 TTL）——已完成轮次的
+          // 授权不再随面板关闭收权（见 revokeAllNlScopes），集合得自己封顶。
+          while (liveScopes.size > NL_LIVE_SCOPE_CAP) {
+            const oldest = liveScopes.values().next().value;
+            if (oldest == null) break;
+            liveScopes.delete(oldest);
+            void revokeScopeQuietly(oldest);
+          }
           set({ scopeId: scope.scopeId });
         }
       } catch {

@@ -38,6 +38,7 @@ vi.mock("./provider", async (importOriginal) => {
 });
 
 import i18n from "../i18n";
+import { useSessionStore } from "../session/SessionStore";
 import type { ChatRequest } from "./provider";
 import {
   buildNl2cmdPrompt,
@@ -377,6 +378,73 @@ describe("rounds（生成结果保留，批次三 T2 审计 ⌘J 22）", () => {
     expect(useNlStore.getState().rounds).toHaveLength(1);
     useNlStore.getState().begin("/tmp");
     expect(useNlStore.getState().rounds).toHaveLength(1);
+  });
+
+  // 2026-11-13 用户反馈「打开历史指令，点插入终端，没反应」：面板一关就把
+  // 已完成轮次的授权全撤了 → 回看面里每条命令都插不进去（面板留着轮次给人
+  // 回看，却把回看面做成死路）。现在 close 只收在途那一条，已完成轮次的
+  // 授权留到后端 TTL / 会话生命周期失效。
+  it("close 只撤销在途 scope；已完成轮次的授权保留（重开后历史仍可插入）", async () => {
+    // 造一次带 scope 的真实生成：目标要活（会话在位、rustId/epoch 对得上）
+    const target = {
+      paneSessionId: "tab-1",
+      rootTabId: "tab-1",
+      rustId: "pty-9",
+      connectionEpoch: 0,
+      kind: "ssh" as const,
+      hostId: 7,
+    };
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: "tab-1",
+          hostId: 7,
+          hostName: "web-01",
+          address: "10.1.2.3",
+          port: 22,
+          username: "ops",
+          protocol: "ssh",
+          jumpChainId: null,
+          status: "connected",
+          rustId: "pty-9",
+          attempt: 0,
+          lastError: null,
+          nextRetryAt: null,
+          paneOf: null,
+          encoding: "utf-8",
+          encodingOverride: null,
+          encodingHint: null,
+          isProduction: false,
+        },
+      ],
+      activeId: "tab-1",
+      activePane: {},
+      trees: {},
+    });
+    mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
+      if (cmd === "settings_get" && args?.key === "ai_providers") return Promise.resolve(PROVIDERS);
+      if (cmd === "settings_get" && args?.key === "ai.max_tokens") return Promise.resolve(777);
+      if (cmd === "secret_get") return Promise.resolve("sk-test");
+      if (cmd === "ai_scope_open")
+        return Promise.resolve({ ...target, scopeId: "scope-nl-1", endpoint: "10.1.2.3:22" });
+      return Promise.resolve(null);
+    });
+    useNlStore.getState().begin(null, 7, target);
+    useNlStore.getState().setInput("列出容器");
+    await useNlStore.getState().submit();
+    await vi.waitFor(() => {
+      expect(useNlStore.getState().status).toBe("done");
+    });
+    const scopeId = useNlStore.getState().scopeId;
+    expect(scopeId).toBe("scope-nl-1");
+    // 关面板：在途那条已 settle（指针空）→ 谁的授权都不撤
+    useNlStore.getState().close();
+    await new Promise((r) => setTimeout(r, 20));
+    const revoked = mockedInvoke.mock.calls.filter(([c]) => c === "ai_scope_revoke");
+    expect(revoked).toHaveLength(0);
+    // 轮次与它的授权都还在（重开后仍可插入）
+    expect(useNlStore.getState().rounds).toHaveLength(1);
+    expect(useNlStore.getState().rounds[0].scopeId).toBe("scope-nl-1");
   });
 
   it("容量封顶 10：超限丢最旧，新轮居首", async () => {

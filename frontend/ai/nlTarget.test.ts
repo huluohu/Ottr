@@ -275,7 +275,10 @@ describe("I-2（fix round 1）：scope 生命周期——settle 不撤销 / clos
     ).resolves.toBeUndefined();
   });
 
-  it("close 收回面板全部 scope（lifecycle 失效）——A 插入被拒（fail-closed）", async () => {
+  // 2026-11-13 用户要求：面板关闭**不再**收回已完成轮次的授权——面板留着轮次
+  // 给人回看（「最近生成」），却把回看面做成死路（点插入终端插不进去）。
+  // 授权改留到后端 TTL（15 分钟）/ 会话生命周期失效（源终端重连即拒）。
+  it("close 不收回已完成轮次的授权——重开后历史仍可插入", async () => {
     const { revoked } = backendWithScopeLedger();
     nlBegin();
     useNlStore.getState().setInput("A 问");
@@ -286,14 +289,16 @@ describe("I-2（fix round 1）：scope 生命周期——settle 不撤销 / clos
     await useNlStore.getState().submit();
     await vi.waitFor(() => expect(useNlStore.getState().rounds.length).toBe(2));
     useNlStore.getState().close();
-    // close = lifecycle 失效：在途 + 已完成轮次全部收权
-    await vi.waitFor(() => expect(revoked.size).toBe(2));
+    // 两轮都已完成（在途指针已空）→ close 不撤任何一把
+    await new Promise((r) => setTimeout(r, 20));
+    expect(revoked.size).toBe(0);
+    // 授权仍在 → 旧轮照常插入
     await expect(
       defaultScopeInserter(
         { target: roundA.target!, scopeId: roundA.scopeId!, runId: roundA.runId, blockIndex: 0 },
         "docker ps",
       ),
-    ).rejects.toThrow("AI scope revoked");
+    ).resolves.toBeUndefined();
   });
 
   it("A 在途时 submit B——A 的 scope 被撤销（supersede）、A 插入 fail-closed；B 照常", async () => {

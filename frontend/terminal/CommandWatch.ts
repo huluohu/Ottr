@@ -49,6 +49,10 @@ export interface MinimalTerm {
 export interface CommandDoneEvent {
   exitCode: number | null;
   command: string;
+  /** 这条命令**有没有产出输出**（2026-11-13 用户反馈：grep 无匹配这类
+   *  「语义上的非零退出」也弹诊断，纯打扰——没有输出就没有可诊断的内容）。
+   *  判不出时为 true（保守：宁可多诊断一次，不漏报真错误）。 */
+  hasOutput: boolean;
 }
 
 /** 命令完成全量事件（Task 15 历史入库面）：cwd = 提示符时点 OSC 7 上报的
@@ -116,6 +120,9 @@ export function createCommandWatch(
   let promptRow: number | null = null;
   let lastCommand = "";
   let lastCwd: string | null = null;
+  // C 时刻的命令行末行（= 本条命令输出的起始行）；null = 没有 C 边界
+  // （D-only 集成形态）→ 输出有无判不出，按「有输出」保守处理。
+  let commandEndRow: number | null = null;
   // 当前命令是否见过 C 边界（缺陷 45）：C 是命令文本可信的唯一来源标志；
   // D 时刻据此打 integrated 标，随后复位（逐命令独立判定）。
   let commandFromBoundary = false;
@@ -136,6 +143,7 @@ export function createCommandWatch(
       const commandEnd = buf.baseY + buf.cursorY;
       const from = promptRow ?? Math.max(0, commandEnd - 1);
       lastCommand = bufferRangeText(term.buffer, from, commandEnd);
+      commandEndRow = commandEnd;
       commandFromBoundary = true;
       handlers.onCommandEnd?.(lastCommand);
       return false;
@@ -173,10 +181,23 @@ export function createCommandWatch(
         // 也无从诊断，AI 只能回复「命令内容为空」）。真实敲下的命令必有
         // C 边界、文本非空；sh 系 D-only 回退提取的是提示符+命令行，非空。
       } else {
-        handlers.onCommandDone({ exitCode, command: lastCommand });
+        // 输出有无（2026-11-13 用户反馈）：`grep` 查无匹配这类**语义上的
+        // 非零退出**也弹诊断——没有输出就没有可诊断的内容（grep 无匹配、
+        // diff 无差异、test 为假都属此类），纯打扰。取命令末行到 D 时刻
+        // 光标行（含）之间的文本：有文本 = 这条命令有输出。
+        // 判不出时按「有输出」保守处理（没有 C 边界 / 命令行已滚出缓冲）。
+        const cursorRow = buf.baseY + buf.cursorY;
+        let hasOutput = true;
+        if (commandEndRow != null && commandEndRow >= buf.baseY) {
+          // 含光标行：输出末尾没有换行时（printf 之类）正文就在光标行上。
+          const out = bufferRangeText(term.buffer, commandEndRow, cursorRow + 1);
+          hasOutput = out.trim().length > 0;
+        }
+        handlers.onCommandDone({ exitCode, command: lastCommand, hasOutput });
       }
       lastCommand = "";
       promptRow = null;
+      commandEndRow = null;
       commandFromBoundary = false;
     }
     return false;

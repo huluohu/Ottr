@@ -960,8 +960,14 @@ export async function runHostTool(
 /** 自动诊断触发门槛（2026-10-19 用户反馈）：Ctrl+C（SIGINT → 130）是用户
  * 主动取消，不是需要诊断的失败——不弹面板（历史入库不受影响，onCommandFinished
  * 照记；手动「解释」也不受限）。仅 130：SIGTERM/SIGKILL 等仍照常诊断。 */
-export function shouldAutoDiagnose(exitCode: number | null): boolean {
-  return exitCode !== null && exitCode !== 130;
+export function shouldAutoDiagnose(exitCode: number | null, hasOutput = true): boolean {
+  if (exitCode === null || exitCode === 130) return false;
+  // **没有输出就没有可诊断的内容**（2026-11-13 用户反馈）：`grep` 查无匹配、
+  // `diff` 无差异、`test` 为假——这些是**语义上的非零退出**，不是错误，此前
+  // 一律弹诊断面板，纯打扰。判不出输出时（hasOutput 默认 true）按旧口径，
+  // 宁可多诊断一次也不漏报真错误。
+  if (!hasOutput) return false;
+  return true;
 }
 
 /* ---------------------------------------------------------------------------

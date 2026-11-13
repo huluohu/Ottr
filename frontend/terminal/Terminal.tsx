@@ -466,7 +466,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           ghostRef.current?.reset();
           interruptedRef.current = false;
         },
-        onCommandDone: ({ exitCode, command }) => {
+        onCommandDone: ({ exitCode, command, hasOutput }) => {
           const session = useSessionStore
             .getState()
             .sessions.find((x) => x.id === sessionId);
@@ -474,7 +474,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
           // 用户主动取消不弹自动诊断：本条命令期间发过 Ctrl+C（sudo 场景以
           // exit 1 退出、普通命令报 130，击键记账是本质信号）或退出码即 130。
           // 历史照记（onCommandFinished）、手动「解释」不受限。
-          if (interruptedRef.current || !shouldAutoDiagnose(exitCode)) return;
+          // hasOutput=false = 这条命令没有产出任何输出（如 grep 查无匹配）——
+          // 没有可诊断的内容，不弹（2026-11-13 用户反馈）。
+          if (interruptedRef.current || !shouldAutoDiagnose(exitCode, hasOutput)) return;
           // 走取消宽限门（DiagnoseGate）：失败上报比用户按键早一个网络往返，
           // 用户「Ctrl+C 撤销」若晚于上报就收不回诊断（2026-10-29 用户实测：
           // 粘贴→仍要粘贴→Ctrl+C 撤销→弹诊断）。门内 Ctrl+C → 收回；到期

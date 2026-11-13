@@ -500,6 +500,8 @@
     "insertConfirm": "삽입할까요? 클릭해 확인",
     "insertConfirmRed": "위험 — 다시 클릭해 확인",
     "inserted": "삽입됨",
+    "insertNoBinding": "삽입할 단말이 없습니다: 이 명령은 단말이 연결되지 않은 상태에서 생성되었거나 쓰기 권한이 없습니다. 다시 생성하거나 단말에 직접 입력하세요.",
+    "insertFailedReason": "삽입 실패: {reason}",
     "insertFailed": "삽입 실패",
     "errNoProvider": "사용 가능한 AI 프로바이더가 없습니다. 설정에서 활성화하거나 추가하세요.",
     "errNoKey": "API 키를 읽을 수 없습니다(금고 잠김 또는 백엔드 연결 불가). openai-compatible는 저장된 키가 없으면 빈 키로 연결합니다(Ollama는 인증 불필요); Anthropic는 키가 필요합니다.",

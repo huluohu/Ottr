@@ -44,3 +44,16 @@ it("requires fresh confirmation when the code or destination changes", () => {
   fireEvent.click(screen.getByTestId("ai-insert"));
   expect(inserter).not.toHaveBeenCalled();
 });
+
+// 2026-11-13 用户报障「点插入终端，没反应」：按钮被**静默禁用**（无绑定）时，
+// 用户看不出它坏了——点下去毫无动静。必须同时给出原因。
+it("无绑定可插（生成时未连上终端/授权没开成）：按钮禁用 + 说明原因", () => {
+  const inserter = vi.fn().mockResolvedValue(undefined);
+  render(<CodeBlockRow code="docker ps" rustId={null} inserter={inserter} />);
+  const button = screen.getByTestId("ai-insert") as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  const hint = screen.getByTestId("ai-insert-no-binding");
+  expect(hint.textContent && hint.textContent.length).toBeGreaterThan(0);
+  fireEvent.click(button);
+  expect(inserter).not.toHaveBeenCalled();
+});

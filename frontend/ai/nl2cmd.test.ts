@@ -412,7 +412,7 @@ describe("rounds（生成结果保留，批次三 T2 审计 ⌘J 22）", () => {
           nextRetryAt: null,
           paneOf: null,
           encoding: "utf-8",
-          encodingOverride: null,
+          encodingOverride: "utf-8",
           encodingHint: null,
           isProduction: false,
         },

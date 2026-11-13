@@ -51,8 +51,9 @@ export interface CommandDoneEvent {
   command: string;
   /** 这条命令**有没有产出输出**（2026-11-13 用户反馈：grep 无匹配这类
    *  「语义上的非零退出」也弹诊断，纯打扰——没有输出就没有可诊断的内容）。
-   *  判不出时为 true（保守：宁可多诊断一次，不漏报真错误）。 */
-  hasOutput: boolean;
+   *  可选：历史入库面（CommandFinishedEvent）不消费它，缺省视为「判不出」
+   *  → 保守按「有输出」处理。 */
+  hasOutput?: boolean;
 }
 
 /** 命令完成全量事件（Task 15 历史入库面）：cwd = 提示符时点 OSC 7 上报的

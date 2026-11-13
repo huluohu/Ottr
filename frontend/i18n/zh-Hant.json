@@ -499,6 +499,8 @@
     "insertConfirm": "確認插入？",
     "insertConfirmRed": "危險命令——再點一次確認",
     "inserted": "已插入終端",
+    "insertNoBinding": "沒有可插入的終端：生成這條命令時沒有連上終端，也沒有拿到寫入授權。可以重新生成，或手動把命令敲進終端。",
+    "insertFailedReason": "插入失敗：{reason}",
     "insertFailed": "插入失敗",
     "errNoProvider": "沒有可用的 AI Provider。請在設定中啓用或添加一個。",
     "errNoKey": "無法讀取 API Key（vault 鎖定或後端不可達）。openai-compatible 未存 Key 時以空 Key 直連（Ollama 免鑑權）；Anthropic 必須配置 Key。",
@@ -1564,6 +1566,7 @@
   },
   "sidebar": {
     "search": "搜尋",
+    "collapse": "折疊主機面板",
     "expand": "展開主機面板"
   },
   "tools": {

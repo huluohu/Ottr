@@ -499,6 +499,8 @@
     "insertConfirm": "諾插入？",
     "insertConfirmRed": "危險令——再點一次諾",
     "inserted": "已插入終端",
+    "insertNoBinding": "無可插入之終端：生成此令時未連終端，亦未得寫入之權。可重生成，或手自擊入終端。",
+    "insertFailedReason": "插入敗：{reason}",
     "insertFailed": "插入敗",
     "errNoProvider": "沒有可用的 AI Provider。請在設中啓用或添加一個。",
     "errNoKey": "未能讀取 API Key（vault 鎖定或後端不可達）。openai-compatible 未存 Key 時以空 Key 直連（Ollama 免鑑權）；Anthropic 必配置 Key。",
@@ -1564,6 +1566,7 @@
   },
   "sidebar": {
     "search": "尋",
+    "collapse": "摺疊主機面板",
     "expand": "展開機面板"
   },
   "tools": {

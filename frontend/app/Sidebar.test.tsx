@@ -122,3 +122,23 @@ describe("胶囊态展开入口（2026-10-20 用户反馈）", () => {
     expect(screen.queryByTestId("sidebar-expand")).toBeNull();
   });
 });
+
+// 2026-11-13 用户要求：侧栏要能折叠/展开。此前**只有胶囊态能一键展开**
+// （2026-10-20 加的「»」），展开态没有任何可点的折叠口——只能记 ⌘\ 或翻
+// 菜单，两个方向不对称。
+describe("展开态折叠入口（2026-11-13）", () => {
+  it("展开态渲染折叠钮；点击回调 onCollapse；折叠态不渲染", () => {
+    const onCollapse = vi.fn();
+    renderSidebar({ collapsed: false, onCollapse });
+    fireEvent.click(screen.getByTestId("sidebar-collapse"));
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderSidebar({ collapsed: true, onCollapse });
+    expect(screen.queryByTestId("sidebar-collapse")).toBeNull();
+  });
+
+  it("未接 onCollapse 时不渲染（不渲染一个点了没反应的钮）", () => {
+    renderSidebar({ collapsed: false });
+    expect(screen.queryByTestId("sidebar-collapse")).toBeNull();
+  });
+});

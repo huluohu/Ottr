@@ -79,10 +79,30 @@ describe("createCommandWatch", () => {
     active.cursorY = 2; // C：光标已到下一行行首
     fire(133, "C");
     expect(onCommandEnd).toHaveBeenCalledWith("web01:~ user$ ls /nonexistent");
+    active.cursorY = 3; // D 时刻光标在报错行（输出已写出）
     fire(133, "D;1");
     expect(onCommandDone).toHaveBeenCalledWith({
       exitCode: 1,
       command: "web01:~ user$ ls /nonexistent",
+      // 命令有输出（ls 的报错行）→ 有可诊断的内容
+      hasOutput: true,
+    });
+  });
+
+  // 2026-11-13 用户反馈：`grep` 查无匹配这类**语义上的非零退出**也弹诊断，
+  // 纯打扰。没有输出就没有可诊断的内容 → 事件带 hasOutput=false。
+  it("命令无输出（grep 查无匹配）→ hasOutput=false", () => {
+    const { fire, active, onCommandDone } = setup(["$ grep -a x rcs.log", ""]);
+    fire(133, "D"); // 启动状态报告（被门卫吞）
+    active.cursorY = 0; // A：提示符行
+    fire(133, "A");
+    active.cursorY = 1; // C：光标到下一行行首
+    fire(133, "C");
+    fire(133, "D;1");
+    expect(onCommandDone).toHaveBeenCalledWith({
+      exitCode: 1,
+      command: "$ grep -a x rcs.log",
+      hasOutput: false,
     });
   });
 
@@ -115,6 +135,8 @@ describe("createCommandWatch", () => {
     expect(onCommandDone).toHaveBeenCalledWith({
       exitCode: 2,
       command: "cmd1 \\\n  && cmd2",
+      // 夹具缓冲里命令之后没有输出行 → 无可诊断内容
+      hasOutput: false,
     });
   });
 
@@ -123,7 +145,11 @@ describe("createCommandWatch", () => {
     fire(133, "D"); // 首个 D = 启动状态报告（被门卫吞）
     active.cursorY = 2; // D 时光标在输出后
     fire(133, "D;127");
-    expect(onCommandDone).toHaveBeenCalledWith({ exitCode: 127, command: "$ bad-command" });
+    expect(onCommandDone).toHaveBeenCalledWith({
+      exitCode: 127,
+      command: "$ bad-command",
+      hasOutput: true,
+    });
   });
 
   it("缺陷 45：D 无 C（部分集成/探测失败会话）→ finished 事件 integrated=false", () => {
@@ -185,7 +211,12 @@ describe("createCommandWatch", () => {
     active.cursorY = 1;
     fire(133, "C"); // 提取 [10,11) = line-10
     fire(133, "D;1");
-    expect(onCommandDone).toHaveBeenCalledWith({ exitCode: 1, command: "line-10" });
+    expect(onCommandDone).toHaveBeenCalledWith({
+      exitCode: 1,
+      command: "line-10",
+      // 命令之后缓冲里还有内容（line-11）→ 有可诊断的输出
+      hasOutput: true,
+    });
   });
 
   it("同一 watch 连续多轮：上一轮状态复位", () => {
@@ -202,7 +233,11 @@ describe("createCommandWatch", () => {
     fire(133, "C");
     fire(133, "D;1");
     expect(onCommandDone).toHaveBeenCalledTimes(2);
-    expect(onCommandDone.mock.calls[1][0]).toEqual({ exitCode: 1, command: "$ b" });
+    expect(onCommandDone.mock.calls[1][0]).toEqual({
+      exitCode: 1,
+      command: "$ b",
+      hasOutput: false,
+    });
   });
 
   // --- Task 15：onCommandFinished 全量完成事件 + OSC 7 cwd -------------------
@@ -321,6 +356,8 @@ describe("parseOsc7Cwd", () => {
     expect(onCommandDone).toHaveBeenCalledWith({
       exitCode: 1,
       command: "muniu@spock:~$",
+      // 无 C 边界 → 输出有无判不出 → 保守按「有输出」（宁可多诊断一次）
+      hasOutput: true,
     });
     expect(onCommandFinished).toHaveBeenCalledTimes(1);
   });
@@ -353,7 +390,7 @@ describe("parseOsc7Cwd", () => {
     active.cursorY = 1;
     fire(133, "C");
     fire(133, "D;2"); // 正常命令失败 → 门卫已解除
-    expect(onCommandDone).toHaveBeenCalledWith({ exitCode: 2, command: "$ echo hi" });
+    expect(onCommandDone).toHaveBeenCalledWith({ exitCode: 2, hasOutput: false, command: "$ echo hi" });
     // 重连：新 shell 实例 → 周期状态清零 → 首个 D 重新受启动门卫
     watch.resetCycle();
     fire(133, "D;1");

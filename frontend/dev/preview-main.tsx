@@ -60,6 +60,9 @@ const reconnectMode = new URLSearchParams(location.search).get("reconnect");
 // scripts/capture-screenshots.mjs（Playwright 无头 Chromium，不碰真机桌面）。
 const shotMode = new URLSearchParams(location.search).get("shot");
 const shotLang = new URLSearchParams(location.search).get("lang");
+/** ?collapsed=1：主机侧栏折叠成 64px 胶囊态（2026-11-13 用户要求侧栏可折叠/
+ *  展开且整体布局要适配——自动检查据此盯住两种状态的布局）。 */
+const sidebarCollapsed = new URLSearchParams(location.search).get("collapsed") === "1";
 interface FakeEntry { name: string; is_dir: boolean; size: number; mode: number; mtime: number }
 const dir = (name: string): FakeEntry => ({ name, is_dir: true, size: 0, mode: 0o40755, mtime: 1700000000 });
 const file = (name: string, size = 42): FakeEntry => ({ name, is_dir: false, size, mode: 0o100644, mtime: 1700000000 });
@@ -821,9 +824,10 @@ async function renderShot(): Promise<void> {
               onOpenHistory={() => {}}
             />
             <Sidebar
-              style={{ width: 304 }}
-              collapsed={false}
+              style={{ width: sidebarCollapsed ? 64 : 304 }}
+              collapsed={sidebarCollapsed}
               onExpand={() => {}}
+              onCollapse={() => {}}
               titlebarInset={false}
               newGroupSignal={0}
               selectedId={null}
@@ -834,6 +838,15 @@ async function renderShot(): Promise<void> {
               onQuickConnect={() => {}}
               onNewGroup={() => {}}
             />
+            {!sidebarCollapsed && (
+              // 与 App.tsx 同款：展开态才有的拖拽分隔条（折叠时收掉）。
+              <div
+                className="sidebar-resizer"
+                role="separator"
+                aria-orientation="vertical"
+                data-testid="sidebar-resizer"
+              />
+            )}
             <MainArea
               storeError={null}
               selected={shotMode === "home" ? null : fixtureHost}

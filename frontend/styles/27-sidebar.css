@@ -206,7 +206,13 @@
 .sidebar-capsule {
   align-items: center;
   gap: var(--space-3);
-  padding: 10px 8px;
+  padding: 10px 8px 0;
+  /* 2026-11-13：胶囊**总宽**才是 64px。此前只设了内容宽（App 侧
+     SIDEBAR_CAPSULE_WIDTH=64），而本仓库没有全局 border-box → 实际渲染
+     = 64 + 左右内边距 16 + 右边框 1 = 81px（自动布局检查实测抓到），
+     「64px 恒宽」名不副实。只给胶囊加 border-box——展开态的宽度语义
+     （拖拽条按内容宽计量）不动，免得拖拽手感差一截。 */
+  box-sizing: border-box;
 }
 .capsule-search {
   flex: none;

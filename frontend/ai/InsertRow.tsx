@@ -120,11 +120,16 @@ function InsertRow({
   const verdict = useMemo(() => classify(code), [code]);
   // 确认状态机：null（未进入）→ "confirm"（yellow 一发/red 第一发）→ red 的 armed
   const [stage, setStage] = useState<"idle" | "confirm" | "armed" | "inserted" | "failed">("idle");
+  // 插入失败的原因（后端原文，如「授权已失效」）；null = 没失败过。
+  const [failReason, setFailReason] = useState<string | null>(null);
   // 聚焦 pane 订阅（原语选择器——焦点漂移即重渲染）：跨目标守卫在组件内
   // 判定，注入的插入器无法绕过。
   const focusedPane = useSessionStore(focusedPaneIdOf);
   const scopeMode = insertTarget != null;
   const wrongTarget = scopeMode && focusedPane !== insertTarget.target.paneSessionId;
+  /** 无处可插：既没有 scope 绑定、也没有 legacy rustId（生成时没连上终端 /
+   *  授权没开成）——按钮会禁用，必须同时给出原因（不能静默）。 */
+  const noBinding = !scopeMode && !rustId;
   const blocked =
     !insertable || disabled || (scopeMode ? wrongTarget : !rustId);
 
@@ -138,9 +143,13 @@ function InsertRow({
     void run
       .then(() => {
         setStage("inserted");
+        setFailReason(null);
         onInserted?.();
       })
-      .catch(() => setStage("failed"));
+      .catch((e: unknown) => {
+        setStage("failed");
+        setFailReason(e instanceof Error ? e.message : String(e));
+      });
   }
 
   function onClick() {
@@ -204,6 +213,19 @@ function InsertRow({
       {(!insertable || disabled) && (
         <p className="settings-hint" data-testid="ai-insert-blocked" role="status">
           {t(!insertable ? "ai.insertBlocked" : "ai.insertIncomplete")}
+        </p>
+      )}
+      {/* 没有绑定可插的终端（生成时未连上终端 / 授权没开成）→ **必须说清原因**：
+          2026-11-13 用户报障「点插入终端，没反应」——此前这种情形按钮被静默
+          禁用（且看不出来），点下去毫无动静，像是坏了。 */}
+      {noBinding && (
+        <p className="settings-hint" data-testid="ai-insert-no-binding" role="status">
+          {t("ai.insertNoBinding")}
+        </p>
+      )}
+      {stage === "failed" && (
+        <p className="settings-hint" data-testid="ai-insert-fail-reason" role="status">
+          {t("ai.insertFailedReason", { reason: failReason ?? "" })}
         </p>
       )}
       {wrongTarget && insertTarget && (

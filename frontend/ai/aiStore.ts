@@ -960,8 +960,14 @@ export async function runHostTool(
 /** 自动诊断触发门槛（2026-10-19 用户反馈）：Ctrl+C（SIGINT → 130）是用户
  * 主动取消，不是需要诊断的失败——不弹面板（历史入库不受影响，onCommandFinished
  * 照记；手动「解释」也不受限）。仅 130：SIGTERM/SIGKILL 等仍照常诊断。 */
-export function shouldAutoDiagnose(exitCode: number | null): boolean {
-  return exitCode !== null && exitCode !== 130;
+export function shouldAutoDiagnose(exitCode: number | null, hasOutput = true): boolean {
+  if (exitCode === null || exitCode === 130) return false;
+  // **没有输出就没有可诊断的内容**（2026-11-13 用户反馈）：`grep` 查无匹配、
+  // `diff` 无差异、`test` 为假——这些是**语义上的非零退出**，不是错误，此前
+  // 一律弹诊断面板，纯打扰。判不出输出时（hasOutput 默认 true）按旧口径，
+  // 宁可多诊断一次也不漏报真错误。
+  if (!hasOutput) return false;
+  return true;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1681,6 +1687,17 @@ export const useAiStore = create<AiStore>((set, get) => {
         try {
           const s = await loadAiSettings();
           if (!s.enabled) return;
+          // 2026-11-13 用户反馈：「没有可用的 ai provider，不要自动触发诊断」。
+          // 没有 provider（或全部被禁用）时自动弹面板，用户只会看到一句
+          // 「未配置 provider」+ 去设置按钮——他压根没用 AI，纯属打扰；而
+          // 命令失败本身在终端里已经看得见（退出码）。**只挡自动触发**：
+          // 手动「解释」「问 Ottr」是用户显式动作，不受此限（仍出引导面）。
+          //
+          // 判据只到「有没有启用中的 provider」为止：**不拿 key 存否当判据**
+          // ——openai-compatible 显式允许免 key（本地 Ollama），按 key 判会
+          // 误伤这条合法形态。「配了 provider 但没存 key」仍照旧弹面板提示
+          // 去补 key（那是真配错，值得当面说一次）。
+          if (!activeProvider(s.providers)) return;
         } catch {
           // settings 读不到：按开处理（能力面不因配置故障变哑）
         }

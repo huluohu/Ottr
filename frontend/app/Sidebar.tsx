@@ -20,6 +20,10 @@ export interface SidebarProps extends HostTreeProps {
   /** 折叠态「展开」按钮回调（2026-10-20 用户反馈：胶囊态此前无任何可点的
    *  展开入口，只能记快捷键/翻菜单）。 */
   onExpand?: () => void;
+  /** 展开态「折叠」按钮回调（2026-11-13 用户要求：菜单栏/侧栏要能折叠/
+   *  展开——此前展开态**没有任何可点的折叠入口**，只能记 ⌘\ 或翻菜单，
+   *  胶囊态却能一键展开：两个方向不对称）。 */
+  onCollapse?: () => void;
   /** macOS 融合式标题栏（2026-10-14）：顶部让出红绿灯区并铺拖拽面。
    * Win/Linux 自绘标题栏承担窗口壳，不注入。 */
   titlebarInset?: boolean;
@@ -55,6 +59,16 @@ function FolderPlusIcon() {
   );
 }
 
+/** 折叠图标（向左收拢的侧栏）：与胶囊态的「»」展开钮成对。 */
+function CollapseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2.2" y="3" width="11.6" height="10" rx="1.6" />
+      <path d="M6.4 3v10M8.6 6.4 6.9 8l1.7 1.6" />
+    </svg>
+  );
+}
+
 function BellIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -68,6 +82,7 @@ export function Sidebar({
   style,
   collapsed = false,
   onExpand,
+  onCollapse,
   titlebarInset,
   onQuickConnect,
   onNewGroup,
@@ -191,6 +206,21 @@ export function Sidebar({
         >
           <FolderPlusIcon />
         </button>
+        {onCollapse && (
+          // 折叠入口（2026-11-13 用户要求：侧栏要能折叠/展开）。此前展开态
+          // 没有任何可点的折叠口，只能记 ⌘\ 或翻菜单——而胶囊态却能一键展开，
+          // 两个方向不对称。放区段头行尾（安静图标钮，同新建/新建分组一档）。
+          <button
+            type="button"
+            className="sidebar-section-btn sidebar-collapse-btn"
+            data-testid="sidebar-collapse"
+            title={t("sidebar.collapse")}
+            aria-label={t("sidebar.collapse")}
+            onClick={onCollapse}
+          >
+            <CollapseIcon />
+          </button>
+        )}
       </div>
       <div className="sidebar-hosts">
         <HostTree {...tree} onAdd={onAdd} />

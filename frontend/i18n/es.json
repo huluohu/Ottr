@@ -500,6 +500,8 @@
     "insertConfirm": "¿Insertar? Haz clic para confirmar",
     "insertConfirmRed": "Peligroso: haz clic otra vez para confirmar",
     "inserted": "Insertado",
+    "insertNoBinding": "No hay terminal donde insertar: este comando se generó sin terminal conectado ni autorización de escritura. Vuelve a generarlo o escribe el comando tú mismo.",
+    "insertFailedReason": "Error al insertar: {reason}",
     "insertFailed": "Error al insertar",
     "errNoProvider": "No hay ningún proveedor de AI disponible. Habilita o añade uno en Ajustes.",
     "errNoKey": "No se ha podido leer la clave de API (bóveda bloqueada o backend inaccesible). openai-compatible se conecta con la clave vacía si no hay ninguna guardada (Ollama no necesita autenticación); Anthropic requiere una clave.",
@@ -1567,6 +1569,7 @@
   },
   "sidebar": {
     "search": "Buscar",
+    "collapse": "Contraer panel de hosts",
     "expand": "Expandir el panel de hosts"
   },
   "tools": {

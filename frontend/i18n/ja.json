@@ -1567,6 +1567,7 @@
   },
   "sidebar": {
     "search": "検索",
+    "collapse": "ホストパネルを折りたたむ",
     "expand": "ホストパネルを展開"
   },
   "tools": {

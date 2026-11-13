@@ -1567,6 +1567,7 @@
   },
   "sidebar": {
     "search": "Cerca",
+    "collapse": "Comprimi pannello host",
     "expand": "Espandi il pannello degli host"
   },
   "tools": {

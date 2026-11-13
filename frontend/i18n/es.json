@@ -1567,6 +1567,7 @@
   },
   "sidebar": {
     "search": "Buscar",
+    "collapse": "Contraer panel de hosts",
     "expand": "Expandir el panel de hosts"
   },
   "tools": {

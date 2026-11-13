@@ -1564,6 +1564,7 @@
   },
   "sidebar": {
     "search": "尋",
+    "collapse": "摺疊主機面板",
     "expand": "展開機面板"
   },
   "tools": {

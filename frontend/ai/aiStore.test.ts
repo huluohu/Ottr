@@ -189,7 +189,10 @@ describe("诊断链路（onCommandFailed → run）", () => {
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
-  it("未配置 provider → error/noProvider（不触发请求）", async () => {
+  it("未配置 provider → 不自动弹诊断面板（2026-11-13 用户要求）", async () => {
+    // 旧行为：弹面板 + 显示「未配置 provider」引导。用户反馈：他压根没用
+    // AI，每次命令失败都被弹窗打扰 → 没有可用 provider 时**不自动触发**
+    // （手动「解释/问 Ottr」仍照旧出引导面）。
     mockBackend();
     mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
       if (cmd === "settings_get" && args?.key === "ai_providers") return Promise.resolve([]);
@@ -197,10 +200,8 @@ describe("诊断链路（onCommandFailed → run）", () => {
       return Promise.resolve(null);
     });
     useAiStore.getState().onCommandFailed(REQ);
-    await vi.waitFor(() => {
-      expect(aiState()?.status).toBe("error");
-    });
-    expect(aiState()?.errorKind).toBe("noProvider");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(aiState()).toBeUndefined();
     expect(chatFactory).not.toHaveBeenCalled();
   });
 
@@ -229,7 +230,7 @@ describe("诊断链路（onCommandFailed → run）", () => {
     expect(chatFactory.mock.calls[0][0]).toMatchObject({ id: "p2", model: "qwen2.5:7b" });
   });
 
-  it("全部 provider 禁用 → error/noProvider（不出网）", async () => {
+  it("全部 provider 禁用 → 不自动弹诊断面板（不出网、不打扰）", async () => {
     mockedInvoke.mockImplementation((cmd: string, args?: { key?: string }) => {
       if (cmd === "settings_get" && args?.key === "ai_providers") {
         return Promise.resolve([{ ...PROVIDERS[0], enabled: false }]);
@@ -238,10 +239,8 @@ describe("诊断链路（onCommandFailed → run）", () => {
       return Promise.resolve(null);
     });
     useAiStore.getState().onCommandFailed(REQ);
-    await vi.waitFor(() => {
-      expect(aiState()?.status).toBe("error");
-    });
-    expect(aiState()?.errorKind).toBe("noProvider");
+    await new Promise((r) => setTimeout(r, 30));
+    expect(aiState()).toBeUndefined();
     expect(chatFactory).not.toHaveBeenCalled();
   });
 

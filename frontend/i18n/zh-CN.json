@@ -1564,6 +1564,7 @@
   },
   "sidebar": {
     "search": "搜索",
+    "collapse": "折叠主机面板",
     "expand": "展开主机面板"
   },
   "tools": {

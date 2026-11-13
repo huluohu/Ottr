@@ -760,6 +760,7 @@ function HomeLayout() {
           style={{ width: sidebarCollapsed ? SIDEBAR_CAPSULE_WIDTH : sidebarWidth }}
           collapsed={sidebarCollapsed}
           onExpand={toggleSidebarCollapsed}
+          onCollapse={toggleSidebarCollapsed}
           newGroupSignal={newGroupSignal}
           selectedId={selectedId}
           onSelect={(host) => setSelectedId(host.id)}

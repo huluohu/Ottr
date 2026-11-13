@@ -45,6 +45,11 @@ const VIEWS = [
   // AI 面板「正在回答」形态（2026-11-12 用户报障「消息显示逻辑一会上面一会
   // 下面」）：停止/思考中必须排在对话流**下方**，且对话变长时贴底可见。
   { name: "ai-panel-running", kind: "ai-live", url: "?shot=ai-panel-running" },
+  // 主机侧栏折叠/展开两态（2026-11-13 用户要求：侧栏要能折叠/展开，整体
+  // 布局要适配）：胶囊态 64px + 无分隔条 + 展开入口可点；展开态有分隔条、
+  // 有可见的折叠按钮，且主区紧贴侧栏（无空隙、无重叠）。
+  { name: "sidebar-expanded", kind: "shell", url: "?shot=home" },
+  { name: "sidebar-collapsed", kind: "shell", url: "?shot=home&collapsed=1" },
   { name: "overview", kind: "library", url: "?view=overview" },
   { name: "batch", kind: "library", url: "?view=batch" },
   { name: "cron", kind: "library", url: "?view=cron" },
@@ -571,6 +576,84 @@ const CHECKS = {
         if (gap2 > 24) {
           failures.push(`点了「回到最新」也没回到底（距底 ${Math.round(gap2)}px）`);
         }
+      }
+    }
+    return failures;
+  },
+
+  // 主机侧栏的折叠/展开两态（2026-11-13 用户要求：侧栏要能折叠/展开，整体
+  // 布局要适配）。断言两态各自该有的样子 + 两态之间不打架。
+  shell: () => {
+    const failures = [];
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]');
+    const main = document.querySelector(".main-area");
+    const resizer = document.querySelector(".sidebar-resizer");
+    const rail = document.querySelector(".icon-rail");
+    if (!sidebar || !main) {
+      failures.push("侧栏或主区缺失（.app-sidebar / .main-area）");
+      return failures;
+    }
+    const collapsed = sidebar.getAttribute("data-collapsed") === "true";
+    const sr = sidebar.getBoundingClientRect();
+    const mr = main.getBoundingClientRect();
+
+    if (collapsed) {
+      // 胶囊态：恒宽 64px（App 侧 SIDEBAR_CAPSULE_WIDTH）+ 无分隔条
+      if (Math.round(sr.width) !== 64) {
+        failures.push(`胶囊态宽度 ${Math.round(sr.width)}px ≠ 64px`);
+      }
+      if (resizer) {
+        failures.push("胶囊态仍留着分隔条（拖拽条应随侧栏一起收掉）");
+      }
+      const expand = document.querySelector('[data-testid="sidebar-expand"]');
+      if (!expand) {
+        failures.push("胶囊态没有「展开」入口");
+      } else {
+        const er = expand.getBoundingClientRect();
+        if (er.width === 0 || er.height === 0) {
+          failures.push("「展开」按钮尺寸为 0（不可见）");
+        } else {
+          const hit = document.elementFromPoint(er.left + er.width / 2, er.top + er.height / 2);
+          if (!hit || !(hit === expand || expand.contains(hit))) {
+            failures.push("「展开」按钮点不到（被别的元素挡住）");
+          }
+        }
+      }
+    } else {
+      // 展开态：宽度是用户设定值（非胶囊）+ 有分隔条 + **有可见的折叠按钮**
+      if (Math.round(sr.width) <= 64) {
+        failures.push(`展开态宽度 ${Math.round(sr.width)}px ≤ 胶囊宽度（折叠态没退回来）`);
+      }
+      if (!resizer) {
+        failures.push("展开态没有分隔条（拖拽条丢了）");
+      }
+      const collapse = document.querySelector('[data-testid="sidebar-collapse"]');
+      if (!collapse) {
+        failures.push("展开态没有可见的「折叠」入口（只能记快捷键/翻菜单）");
+      } else {
+        const cr = collapse.getBoundingClientRect();
+        if (cr.width === 0 || cr.height === 0) {
+          failures.push("「折叠」按钮尺寸为 0（不可见）");
+        } else {
+          const hit = document.elementFromPoint(cr.left + cr.width / 2, cr.top + cr.height / 2);
+          if (!hit || !(hit === collapse || collapse.contains(hit))) {
+            failures.push("「折叠」按钮点不到（被别的元素挡住）");
+          }
+        }
+      }
+    }
+
+    // 布局适配：主区必须紧贴侧栏右缘（无空隙），且不与图标轨重叠。
+    // 只比侧栏右缘与主区左缘——分隔条用负边距（margin: 0 -3px）骑在边界上，
+    // 把它算进「占用宽度」会把判据算歪。
+    const gap = mr.left - sr.right;
+    if (Math.abs(gap) > 4) {
+      failures.push(`侧栏与主区之间有 ${Math.round(gap)}px 空隙/重叠（布局没适配）`);
+    }
+    if (rail) {
+      const rr = rail.getBoundingClientRect();
+      if (sr.left < rr.right - 2) {
+        failures.push("侧栏压住了图标轨（两栏重叠）");
       }
     }
     return failures;

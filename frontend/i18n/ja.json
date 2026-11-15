@@ -674,6 +674,8 @@
         "git": "バージョン管理の書き込み"
       }
     },
+    "followupBlockedPending": "現在入力できません：上に確認待ちのコマンドまたはツール呼び出しがあります。",
+    "goToPending": "そこへ移動",
     "followupPlaceholder": "追加質問…（Enter で送信、Shift+Enter で改行）",
     "askEntry": "Ottr に聞く",
     "askPlaceholder": "何でも聞いてください…（Enter で送信）",

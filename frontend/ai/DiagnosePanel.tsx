@@ -329,6 +329,23 @@ export function DiagnosePanel({
     awaitingSteps.length > 0 ||
     planSteps.some((step) => step.status === "executing");
 
+  /** 有待处置的项（待确认的工具调用 / 待确认的执行步骤）——输入因此禁用。
+   *  2026-11-13 用户报障「AI 回复完以后，输入框怎么无法输入」：此前禁用
+   *  **一个字都不说**，而要处置的卡片可能已滚出可视区 → 用户只看到「灰了」。
+   *  现在：说清原因 + 给一个「带我去处置」的入口（滚到那张卡）。 */
+  const pendingBlocking =
+    pendingToolCalls.length > 0 || awaitingSteps.length > 0;
+  const scrollToPending = () => {
+    const el = threadRef.current;
+    if (!el) return;
+    const target =
+      el.querySelector('[data-testid="ai-tool-pending"]') ??
+      el.querySelector('[data-testid="ai-plan"]');
+    if (target instanceof HTMLElement) {
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  };
+
   // **输入框自动聚焦**（2026-11-03 真机验收抓到的缺陷）：面板打开后焦点仍
   // 留在终端的 xterm textarea —— 用户以为在面板里问，第一句话却被**打进
   // 终端并执行**（真机截图实证）。面板一开就该把焦点交给输入框。
@@ -481,7 +498,15 @@ export function DiagnosePanel({
             const isHostTool = (m.toolName ?? "").startsWith(HOST_TOOL_PREFIX);
             return (
               <Fragment key={`t${i}`}>
-                <div className="ai-bubble ai-bubble-user" data-testid="ai-msg-tool-call">
+                {/* 工具调用气泡**不能沿用用户气泡的样式**（2026-11-13 用户报障
+                    「这对话也区分不出来用户提问和 AI 回复」）：此前工具调用与
+                    用户提问同款填充气泡 → 读起来像「用户说了这句话」。三类
+                    角色现在各有各的样子：用户＝填充气泡、AI＝纯文本正文、
+                    工具调用＝虚线小签（系统动作，不是人说话）。 */}
+                <div
+                  className="ai-bubble ai-bubble-tool"
+                  data-testid="ai-msg-tool-call"
+                >
                   {isHostTool
                     ? t("ai.tool.hostCallLabel", { tool: m.toolName ?? "" })
                     : t("ai.tool.callLabel", {
@@ -860,6 +885,22 @@ export function DiagnosePanel({
           Enter 提交 / Shift+Enter 换行；运行中禁用输入（避免并发轮）；
           **有待确认的工具调用 / 待确认的执行步骤时同样禁用**（用户得先处置）；
           旧对话只读（重连换代）→ 输入禁用，提示另开新对话。 */}
+      {pendingBlocking && (
+        // 禁用原因必须说清（2026-11-13 用户报障「回复完输入框无法输入」：
+        // 此前只灰着不解释，用户完全无从下手）。「带我去处置」把待确认的卡
+        // 滚进可视区——它常常已被对话流顶出视野。
+        <p className="settings-hint" data-testid="ai-followup-blocked-hint" role="status">
+          {t("ai.followupBlockedPending")}
+          <button
+            type="button"
+            className="ai-return-original"
+            data-testid="ai-followup-goto-pending"
+            onClick={scrollToPending}
+          >
+            {t("ai.goToPending")}
+          </button>
+        </p>
+      )}
       <div className="ai-followup-row">
         <textarea
           className="ai-followup-input"

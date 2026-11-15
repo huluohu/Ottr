@@ -674,6 +674,8 @@
         "git": "Version control writes"
       }
     },
+    "followupBlockedPending": "Input is unavailable for now: there are commands or tool calls above waiting for your confirmation.",
+    "goToPending": "Take me there",
     "followupPlaceholder": "Ask a follow-up… (Enter to send, Shift+Enter for a new line)",
     "askEntry": "Ask Ottr",
     "askPlaceholder": "Ask anything… (Enter to send)",

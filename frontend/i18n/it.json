@@ -674,6 +674,8 @@
         "git": "Scritture di controllo versione"
       }
     },
+    "followupBlockedPending": "L'input non è disponibile: sopra ci sono comandi o chiamate a strumenti in attesa della tua conferma.",
+    "goToPending": "Portami lì",
     "followupPlaceholder": "Fai una domanda di follow-up… (Invio per inviare, Shift+Invio per andare a capo)",
     "askEntry": "Chiedi a Ottr",
     "askPlaceholder": "Chiedi quello che vuoi… (Invio per inviare)",

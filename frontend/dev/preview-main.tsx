@@ -752,6 +752,17 @@ async function renderShot(): Promise<void> {
               role: "user",
               content: "check disk usage",
             },
+            // 工具轮（2026-11-13 用户报障「区分不出来用户提问和 AI 回复」的
+            // 现场形态）：工具调用气泡此前与用户提问同款填充样式 → 读起来像
+            // 「用户说了这句话」。三种角色各有各的样子，这里把工具轮种进预览，
+            // 让自动检查能盯住「三者不重样」。
+            {
+              role: "tool",
+              content:
+                "执行结果：command completed successfully (exit code 0)\n退出码：0\n标准输出：\n44G  /\n20G  /var",
+              toolCallId: "call-1",
+              toolName: "ottr_exec_command",
+            },
             {
               role: "assistant",
               content: "**原因**\n\n磁盘已满。\n\n```bash\ndf -h /data\n```",

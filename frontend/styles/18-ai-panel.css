@@ -236,6 +236,21 @@
   padding-left: 0;
   padding-right: 0;
 }
+/* 工具调用气泡（2026-11-13 用户报障「区分不出来用户提问和 AI 回复」）：
+   此前与用户提问同款填充气泡 → 读起来像「用户说了这句话」。现在三类角色
+   各有各的样子：用户＝填充气泡、AI＝纯文本正文、工具调用＝虚线小签
+   （系统动作，不是人说话），一眼可辨。 */
+.ai-bubble-tool {
+  align-self: flex-start;
+  max-width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  white-space: pre-wrap;
+}
 /* 执行模式行（2026-11-05 用户反馈）：贴着输入框正上方——首问与每轮追问
    都能随手切档；与输入条同用一条顶部细分隔线，视觉上是一个「输入区」。 */
 .ai-input-mode-row {

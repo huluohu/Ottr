@@ -674,6 +674,8 @@
         "git": "Escrituras de control de versiones"
       }
     },
+    "followupBlockedPending": "La entrada no está disponible: arriba hay comandos o llamadas a herramientas esperando tu confirmación.",
+    "goToPending": "Llévame allí",
     "followupPlaceholder": "Haz una pregunta de seguimiento… (Enter para enviar, Shift+Enter para salto de línea)",
     "askEntry": "Preguntar a Ottr",
     "askPlaceholder": "Pregunta lo que quieras… (Enter para enviar)",

@@ -187,6 +187,18 @@ const CHECKS = {
         `横向溢出：内容宽 ${document.documentElement.scrollWidth} > 视口 ${window.innerWidth}`,
       );
     }
+    // 5) 对话流三类角色必须不重样（2026-11-13 用户报障「这对话也区分不出来
+    //    用户提问和 AI 回复」：工具调用气泡此前与用户提问同款填充样式 →
+    //    读起来像「用户说了这句话」）。有工具轮时比对用户气泡的底色/边框。
+    const toolBubble = document.querySelector('[data-testid="ai-msg-tool-call"]');
+    const userBubble = document.querySelector('[data-testid="ai-msg-user"]');
+    if (toolBubble && userBubble) {
+      const t = getComputedStyle(toolBubble);
+      const u = getComputedStyle(userBubble);
+      if (t.backgroundColor === u.backgroundColor && t.borderStyle === u.borderStyle) {
+        failures.push("工具调用气泡与用户提问同款样式（分不清谁在说话）");
+      }
+    }
     return failures;
   },
 

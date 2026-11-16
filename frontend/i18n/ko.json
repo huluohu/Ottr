@@ -674,6 +674,8 @@
         "git": "버전 관리 쓰기"
       }
     },
+    "followupBlockedPending": "지금은 입력할 수 없습니다: 위에 확인 대기 중인 명령이나 도구 호출이 있습니다.",
+    "goToPending": "그리로 이동",
     "followupPlaceholder": "추가 질문… (Enter로 전송, Shift+Enter로 줄바꿈)",
     "askEntry": "Ottr에게 묻기",
     "askPlaceholder": "무엇이든 물어보세요… (Enter로 전송)",

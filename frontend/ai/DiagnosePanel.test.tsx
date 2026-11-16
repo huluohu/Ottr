@@ -243,6 +243,30 @@ describe("输入框自动聚焦（2026-11-03 真机验收抓到的缺陷）", ()
     expect(document.activeElement).toBe(input);
   });
 
+  // 2026-11-13 用户报障「AI 回复完以后，输入框怎么无法输入」：此前禁用
+  // **一个字都不说**，而要处置的卡片可能已滚出可视区 → 用户只看到「灰了」。
+  it("有待确认项时：输入禁用 + 说清原因 + 给「带我去处置」入口", () => {
+    reset(REQ, {
+      status: "idle",
+      pendingToolCalls: [
+        { id: "c1", serverId: "s1", serverName: "s", tool: "t", args: "{}", runId: "r1" },
+      ],
+    });
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const input = screen.getByTestId("ai-followup-input") as HTMLTextAreaElement;
+    expect(input.disabled).toBe(true);
+    const hint = screen.getByTestId("ai-followup-blocked-hint");
+    expect(hint.textContent && hint.textContent.length).toBeGreaterThan(0);
+    expect(screen.getByTestId("ai-followup-goto-pending")).toBeTruthy();
+  });
+
+  it("没有待处置项时：不显示禁用原因提示（不添多余提示）", () => {
+    reset(REQ, { status: "done", answer: "好" });
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    expect((screen.getByTestId("ai-followup-input") as HTMLTextAreaElement).disabled).toBe(false);
+    expect(screen.queryByTestId("ai-followup-blocked-hint")).toBeNull();
+  });
+
   it("有工具调用待确认时输入禁用 → 不抢焦点（抢走会打断处置流程）", async () => {
     reset(REQ, {
       status: "idle",
@@ -259,6 +283,37 @@ describe("输入框自动聚焦（2026-11-03 真机验收抓到的缺陷）", ()
       });
     }
     expect(document.activeElement).not.toBe(input);
+  });
+});
+
+// 2026-11-13 用户报障「这对话也区分不出来用户提问和 AI 回复」：工具调用气泡
+// 此前与用户提问**同款填充样式** → 读起来像「用户说了这句话」。三类角色
+// 必须各有各的样子：用户＝填充气泡、AI＝纯文本正文、工具调用＝虚线小签。
+describe("对话流三类角色的可辨识性（2026-11-13）", () => {
+  it("工具调用气泡走独立样式，不与用户提问同款", () => {
+    reset(REQ, {
+      status: "done",
+      answer: "好",
+      messages: [
+        // 首轮 user 轮在 diagnose 请求里是「诊断上下文」不进气泡流（见组件注释），
+        // 所以这里让工具轮打头，用户提问放第二轮。
+        {
+          role: "tool",
+          content: "执行结果：ok",
+          toolCallId: "c1",
+          toolName: "ottr_exec_command",
+        },
+        { role: "user", content: "检查磁盘垃圾文件" },
+        { role: "assistant", content: "我先看看。" },
+      ],
+    });
+    render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
+    const tool = screen.getByTestId("ai-msg-tool-call");
+    expect(tool.className).toContain("ai-bubble-tool");
+    // 用户气泡仍是自己那套（不与工具调用混淆）
+    const user = screen.getByTestId("ai-msg-user");
+    expect(user.className).toContain("ai-bubble-user");
+    expect(user.className).not.toContain("ai-bubble-tool");
   });
 });
 

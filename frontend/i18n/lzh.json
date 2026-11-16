@@ -673,6 +673,8 @@
         "git": "版本控制寫操作"
       }
     },
+    "followupBlockedPending": "輸入暫不可用：上尚有待汝確認之命令或工具調用。",
+    "goToPending": "引我去處置",
     "followupPlaceholder": "追問…（Enter 呈上，Shift+Enter 換行）",
     "askEntry": "問 Ottr",
     "askPlaceholder": "問何事…（Enter 呈上）",

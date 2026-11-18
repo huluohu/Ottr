@@ -165,10 +165,12 @@ export function NLCommandPanel({
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (canRun) void submit();
-    }
+    // IME 组字态放行（与 DiagnosePanel 输入框同口径）：组字中的 Enter 是
+    // 「上屏候选词」，不能当提交——否则 CJK 用户把半截组字文本当问题发出。
+    if (e.key !== "Enter" || e.shiftKey) return;
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    if (canRun) void submit();
   }
 
   return (

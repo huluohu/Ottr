@@ -57,6 +57,7 @@ import { openAskForFocusedTerminal } from "../ai/aiTargets";
 import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
 import { copyText } from "../ui/clipboard";
+import { useModalStore } from "../ui/modalStore";
 import { createCommandWatch } from "./CommandWatch";
 import { DiagnoseGate } from "./DiagnoseGate";
 import { noteCwd, forgetCwd } from "./CwdTracker";
@@ -842,7 +843,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const width = 220;
     setMenu({
       x: Math.min(e.clientX, window.innerWidth - width),
-      y: Math.min(e.clientY, window.innerHeight - 320),
+      y: Math.max(0, Math.min(e.clientY, window.innerHeight - 320)),
       items: buildContextMenu(ctx, t),
     });
   }
@@ -1190,10 +1191,17 @@ export function TerminalArea() {
   const dividerList = activeTree ? dividers(activeTree, bounds) : [];
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
 
-  // ⌘F / Ctrl+F 呼出聚焦 pane 的搜索；Esc 由搜索栏自处理
+  // ⌘F / Ctrl+F 呼出聚焦 pane 的搜索；Esc 由搜索栏自处理。
+  // 语境门（2026-11 审计 P2）：模态在场（⌘K/设置/主机密钥框…）时不拦——
+  // 此前会在模态背后悄悄开搜索栏（模态关闭后突现）；焦点在输入框/textarea
+  // 内也不拦（Ctrl+F 的浏览器原语义交给调用面，AI 输入框/文件路径框不再
+  // 被吞键）。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        const el = e.target as Element | null;
+        if (useModalStore.getState().active != null) return;
+        if (el?.closest?.("input, textarea, [contenteditable='true']")) return;
         e.preventDefault();
         const store = useSessionStore.getState();
         const target =

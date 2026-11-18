@@ -189,7 +189,7 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
             decoder: Arc::clone(&decoder),
             text_tail: Arc::clone(&text_tail),
             cancel: Arc::clone(&cancel),
-            sftp: Arc::new(Mutex::new(None)),
+            sftp: Arc::new(tokio::sync::Mutex::new(None)),
             forward_router: forward_router.clone(),
             recorder: Arc::clone(&recorder),
             cols: cols.min(u16::MAX as u32) as u16,

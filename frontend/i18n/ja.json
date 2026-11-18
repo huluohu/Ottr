@@ -190,7 +190,8 @@
     "confirmDelete": "もう一度クリックして確定",
     "exportCsv": "CSV をエクスポート",
     "menuEdit": "ホストを編集",
-    "menuDelete": "ホストを削除"
+    "menuDelete": "ホストを削除",
+    "addToGroupName": "グループ「{{name}}」にホストを追加"
   },
   "importDialog": {
     "title": "ホストのインポート",
@@ -224,7 +225,8 @@
     "skippedEntries": "使用できない項目/ファイルを {{count}} 件スキップしました",
     "xshellIntro": "Xshell の .xsh セッションファイルが置かれたフォルダ（または .xsh 単体）を選択してください。ホスト/ポート/ユーザーをインポートし、アドレス+ポート+ユーザーが重複するものはスキップします。",
     "tabbyIntro": "Tabby の設定エクスポート（JSON または YAML、~/.config/tabby/config.yaml は YAML）を選択してください。SSH プロファイルをインポートし、アドレス+ポート+ユーザーが重複するものはスキップします。",
-    "csvIntro": "「ホストを CSV エクスポート」で書き出したファイルを選択してください（8 列はエクスポートと完全に一致: 名前/ユーザー/アドレス/ポート/グループ/タグ/文字コード/メモ。アドレス+ポート+ユーザーが重複するものはスキップし、存在しないグループは作成します）。"
+    "csvIntro": "「ホストを CSV エクスポート」で書き出したファイルを選択してください（11 列はエクスポートと完全に一致: 名前/ユーザー/アドレス/ポート/グループ/タグ/エンコーディング/備考/プロトコル/監視/本番。アドレス+ポート+ユーザーで重複排除し、不足グループは自動作成。旧 8 列ファイルも取り込めます）。",
+    "errCsvProtocolInvalid": "{{line}} 行目のプロトコル「{{value}}」は無効です（ssh/ftp/ftps 対応）— スキップしました"
   },
   "palette": {
     "title": "コマンドパレット",
@@ -256,7 +258,8 @@
     "tabSummaries": "要約",
     "emptySummaries": "セッション要約はまだありません — セッション（≥3 コマンド）が終了すると生成されます",
     "commands": "{{count}} 件のコマンド",
-    "tabRecordings": "録画"
+    "tabRecordings": "録画",
+    "searchAria": "コマンド履歴を検索"
   },
   "titlebar": {
     "menu": "メニュー",
@@ -1037,7 +1040,9 @@
     "errHopsRequired": "少なくとも 1 つのホップが必要です",
     "saveFailed": "保存に失敗しました: {{message}}",
     "actionFailed": "操作に失敗しました: {{message}}",
-    "loadFailed": "読み込みに失敗しました: {{message}}"
+    "loadFailed": "読み込みに失敗しました: {{message}}",
+    "editWithName": "ジャンプチェーン「{{name}}」を編集",
+    "deleteWithName": "ジャンプチェーン「{{name}}」を削除"
   },
   "monitor": {
     "title": "モニター",

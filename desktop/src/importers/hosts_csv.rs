@@ -8,12 +8,16 @@
 use std::collections::HashSet;
 
 use ottr_vault::Vault;
-use ottr_vault::entities::{HostGroups, HostInput, Hosts};
+use ottr_vault::entities::{HostGroups, HostInput, HostProtocol, Hosts};
 
 use crate::ssh_config::{ImportIssue, ImportReport};
 
 /// 导出表头（与 export.rs hosts_csv 固定表头一致；容忍 UTF-8 BOM 前缀）。
 pub const HEADER: &str = "name,username,address,port,group,tags,encoding,notes";
+/// 11 列表头（CSV 往返修复：带 protocol/monitor_enabled/is_production——
+/// 此前导出→导入把 FTP/FTPS 主机静默变回 SSH、监控/生产标记归 false）。
+pub const HEADER_V2: &str =
+    "name,username,address,port,group,tags,encoding,notes,protocol,monitor_enabled,is_production";
 
 /// 解析产物：port 已校验为 i64 的数据行 + 逐行错误（行号从 2 起计，1 为表头）。
 pub struct CsvOutcome {
@@ -30,6 +34,10 @@ pub struct CsvRow {
     pub tags: Vec<String>,
     pub encoding: Option<String>,
     pub notes: Option<String>,
+    /// 11 列表头才有；旧 8 列 CSV 缺省 Ssh（与旧导入语义一致）。
+    pub protocol: HostProtocol,
+    pub monitor_enabled: bool,
+    pub is_production: bool,
 }
 
 /// RFC4180 解析：`"` 包裹字段内 `,`/换行/双引号按 CSV 规则折叠；裸引号视为
@@ -85,15 +93,17 @@ pub fn parse(content: &str) -> CsvOutcome {
             let first = header.first().map(String::as_str).unwrap_or("");
             let normalized = first.strip_prefix('\u{feff}').unwrap_or(first);
             let expected: Vec<&str> = HEADER.split(',').collect();
+            let expected_v2: Vec<&str> = HEADER_V2.split(',').collect();
             let actual: Vec<String> = header
                 .iter()
                 .map(|h| h.trim().trim_start_matches('\u{feff}').to_string())
                 .collect();
-            if actual != expected || normalized != expected[0] {
+            let extended = actual == expected_v2;
+            if (!extended && actual != expected) || normalized != expected[0] {
                 out.errors.push(ImportIssue::with(
                     "csv.header_mismatch",
                     &[
-                        ("expected", HEADER.to_string()),
+                        ("expected", HEADER_V2.to_string()),
                         ("actual", actual.join(",")),
                     ],
                 ));
@@ -110,7 +120,10 @@ pub fn parse(content: &str) -> CsvOutcome {
         if row.iter().all(|f| f.trim().is_empty()) {
             continue; // 空行静默跳过
         }
-        if row.len() != 8 {
+        // 8 列 = 旧格式；11 列 = 带 protocol/monitor_enabled/is_production。
+        // 行级判断（与表头解耦：同一文件混排旧行也按列数走）。
+        let extended = row.len() == 11;
+        if row.len() != 8 && !extended {
             out.errors.push(ImportIssue::with(
                 "csv.row_field_count",
                 &[
@@ -143,6 +156,28 @@ pub fn parse(content: &str) -> CsvOutcome {
             ));
             continue;
         }
+        // 协议列：空 = 缺省；非法值 = 行级报错跳过（绝不静默映射成别的协议）。
+        let protocol = if extended {
+            let raw = row[8].trim();
+            if raw.is_empty() {
+                HostProtocol::default()
+            } else {
+                match raw.to_ascii_lowercase().parse::<HostProtocol>() {
+                    Ok(p) => p,
+                    Err(_) => {
+                        out.errors.push(ImportIssue::with(
+                            "csv.protocol_invalid",
+                            &[("line", line.to_string()), ("value", raw.to_string())],
+                        ));
+                        continue;
+                    }
+                }
+            }
+        } else {
+            HostProtocol::default()
+        };
+        let flag =
+            |s: &String| matches!(s.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes");
         out.rows.push(CsvRow {
             name,
             username: opt(&row[1]),
@@ -156,6 +191,9 @@ pub fn parse(content: &str) -> CsvOutcome {
                 .collect(),
             encoding: opt(&row[6]),
             notes: opt(&row[7]),
+            protocol,
+            monitor_enabled: extended && flag(&row[9]),
+            is_production: extended && flag(&row[10]),
         });
     }
     out
@@ -197,7 +235,7 @@ pub fn import_entries(vault: &Vault, outcome: CsvOutcome) -> ottr_vault::Result<
         Hosts::create(
             vault,
             HostInput {
-                protocol: Default::default(),
+                protocol: row.protocol,
                 name: row.name,
                 group_id,
                 tags: row.tags,
@@ -208,8 +246,8 @@ pub fn import_entries(vault: &Vault, outcome: CsvOutcome) -> ottr_vault::Result<
                 jump_chain_id: None,
                 encoding_override: row.encoding,
                 theme_override: None,
-                monitor_enabled: false,
-                is_production: false,
+                monitor_enabled: row.monitor_enabled,
+                is_production: row.is_production,
                 notes: row.notes,
             },
         )?;
@@ -252,6 +290,37 @@ mod tests {
         );
         assert!(out.rows.is_empty());
         assert_eq!(out.errors[0].code, "csv.port_not_number");
+    }
+
+    #[test]
+    fn parse_v2_round_trip_preserves_protocol_and_flags() {
+        // 11 列表头：protocol/monitor_enabled/is_production 往返不丢
+        // （此前导出→导入把 FTP/FTPS 主机静默变回 SSH、两个标记归 false）。
+        let out = parse(
+            "name,username,address,port,group,tags,encoding,notes,protocol,monitor_enabled,is_production\n\
+             nas,admin,10.0.0.9,21,,nas,,,ftp,true,true\n\
+             web,root,10.0.0.1,22,,web,,,ftps,false,TRUE\n\
+             old,root,10.0.0.3,22,,,,\n",
+        );
+        assert!(out.errors.is_empty(), "{:?}", out.errors);
+        assert_eq!(out.rows.len(), 3);
+        assert_eq!(out.rows[0].protocol, HostProtocol::Ftp);
+        assert!(out.rows[0].monitor_enabled);
+        assert!(out.rows[0].is_production);
+        assert_eq!(out.rows[1].protocol, HostProtocol::Ftps);
+        assert!(!out.rows[1].monitor_enabled);
+        assert!(out.rows[1].is_production, "TRUE 大小写不敏感");
+        // 混排旧行（8 列）按行级列数走旧缺省
+        assert_eq!(out.rows[2].protocol, HostProtocol::Ssh);
+        assert!(!out.rows[2].monitor_enabled);
+
+        // 非法协议值：行级报错跳过，绝不静默映射
+        let out = parse(
+            "name,username,address,port,group,tags,encoding,notes,protocol,monitor_enabled,is_production\n\
+             bad,root,10.0.0.4,22,,,,,sftp,true,false\n",
+        );
+        assert!(out.rows.is_empty());
+        assert_eq!(out.errors[0].code, "csv.protocol_invalid");
     }
 
     #[test]

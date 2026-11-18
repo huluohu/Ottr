@@ -155,15 +155,9 @@ export function FilePanel({ session }: { session: Session }) {
   const [local, setLocal] = useState<PaneState>(emptyPane(""));
   const [focus, setFocus] = useState<Side>("remote");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  // 右键菜单 Esc 关闭（2026-10-09 断点清偿：ctx-overlay 只有点外/再右键，无键盘路径）。
-  useEffect(() => {
-    if (!menu) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [menu]);
+  // 右键菜单 Esc 关闭：统一走 useEscClose 栈（见下方 menu != null 注册）——
+  // 此前这里还私挂了一份 document keydown，与栈双注册：叠层时 document 先于
+  // window 触发且不查栈顶，一个 Esc 能把菜单和上层弹框一起关掉。
   const [dialog, setDialog] = useState<DialogState | null>(null);
   // 文件操作小对话框接入全局弹窗唯一槽（2026-10-14 用户裁定）：开启即认领
   // "filesDialog" 槽；被其他弹窗顶掉 = 本框销毁；面板卸载时如仍持槽则释放。
@@ -314,10 +308,13 @@ export function FilePanel({ session }: { session: Session }) {
     try {
       const list = await localList(path);
       const entries = Array.isArray(list) ? list : [];
-      setLocal((p) => ({ ...p, entries, loading: false }));
+      // 竞态守卫：回填只在「当前路径仍是本次请求的路径」时生效——快速连点
+      // 目录时慢响应后到，若不比对会把列表回填成旧目录的内容（路径栏 = B、
+      // 列表 = A 的条目），此时按路径栏选中/删除会作用于错误目录的同名文件。
+      setLocal((p) => (p.path === path ? { ...p, entries, loading: false } : p));
       return true;
     } catch (e) {
-      setLocal((p) => ({ ...p, loading: false, error: String(e) }));
+      setLocal((p) => (p.path === path ? { ...p, loading: false, error: String(e) } : p));
       return false;
     }
   }, []);
@@ -329,10 +326,11 @@ export function FilePanel({ session }: { session: Session }) {
       try {
         const list = await sftpListFor(rustId, path);
         const entries = Array.isArray(list) ? list : [];
-        setRemote((p) => ({ ...p, entries, loading: false }));
+        // 竞态守卫（同 loadLocal）：慢响应后到不得覆盖新目录的列表。
+        setRemote((p) => (p.path === path ? { ...p, entries, loading: false } : p));
         return true;
       } catch (e) {
-        setRemote((p) => ({ ...p, loading: false, error: String(e) }));
+        setRemote((p) => (p.path === path ? { ...p, loading: false, error: String(e) } : p));
         return false;
       }
     },
@@ -941,7 +939,7 @@ export function FilePanel({ session }: { session: Session }) {
         const menuH = 360;
         setMenu({
           x: Math.min(ev.clientX, window.innerWidth - menuW),
-          y: Math.min(ev.clientY, window.innerHeight - menuH),
+          y: Math.max(0, Math.min(ev.clientY, window.innerHeight - menuH)),
         });
       }}
     >
@@ -1083,7 +1081,7 @@ export function FilePanel({ session }: { session: Session }) {
                 const menuH = 360;
                 setMenu({
                   x: Math.min(ev.clientX, window.innerWidth - menuW),
-                  y: Math.min(ev.clientY, window.innerHeight - menuH),
+                  y: Math.max(0, Math.min(ev.clientY, window.innerHeight - menuH)),
                 });
               }}
             >

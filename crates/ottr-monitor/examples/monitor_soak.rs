@@ -124,7 +124,7 @@ async fn sampling_worker(
             cancel,
             move || {
                 let s = Arc::clone(&session);
-                async move { collect(&s).await }
+                async move { collect(&s, Duration::from_secs(10)).await }
             },
             move |m| {
                 let c = Arc::clone(&c);

@@ -1123,6 +1123,19 @@ fn migrate(conn: &Connection) -> Result<()> {
     // 无论迁移成败都把开关复位（失败时库保持原状，下次 open 重新试）。
     let _ = conn.pragma_update(None, "foreign_keys", "ON");
     result?;
+    // foreign_key_check：把「真·悬空引用」记成告警（不阻断开库——阻断等于
+    // 把用户锁在门外；重建类迁移的防线在迁移期 foreign_keys=OFF + 搬数据，
+    // 这里是收尾对账面）。此前注释承诺了却未实现。
+    let dangling = conn
+        .query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap_or(0);
+    if dangling > 0 {
+        eprintln!(
+            "[vault] WARNING: foreign_key_check found {dangling} dangling reference(s) after migration"
+        );
+    }
     Ok(())
 }
 

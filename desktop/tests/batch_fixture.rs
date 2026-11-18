@@ -88,7 +88,10 @@ fn two_host_resolver(a: Arc<SshSession>, b: Arc<SshSession>) -> ExecResolver {
         };
         let cmd = t.command.clone();
         Ok(Box::pin(async move {
-            session.exec(&cmd).await.map_err(|e| e.to_string())
+            session
+                .exec_with_timeout(&cmd, std::time::Duration::from_secs(30))
+                .await
+                .map_err(|e| e.to_string())
         }))
     })
 }

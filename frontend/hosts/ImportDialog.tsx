@@ -16,6 +16,7 @@ const IMPORT_ISSUE_KEY: Record<string, string> = {
   "csv.row_field_count": "importDialog.errRowFieldCount",
   "csv.port_not_number": "importDialog.errPortNotNumber",
   "csv.missing_name_or_address": "importDialog.errMissingNameOrAddress",
+  "csv.protocol_invalid": "importDialog.errCsvProtocolInvalid",
   "sshconfig.port_not_parseable": "importDialog.errSshPortNotParseable",
   "tabby.port_not_parseable": "importDialog.errTabbyPortNotParseable",
   "xshell.port_not_parseable": "importDialog.errXshellPortNotParseable",

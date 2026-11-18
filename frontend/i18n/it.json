@@ -190,7 +190,8 @@
     "confirmDelete": "Fai clic di nuovo per confermare",
     "exportCsv": "Esporta CSV",
     "menuEdit": "Modifica host",
-    "menuDelete": "Elimina host"
+    "menuDelete": "Elimina host",
+    "addToGroupName": "Aggiungi host al gruppo \"{{name}}\""
   },
   "importDialog": {
     "title": "Importa host",
@@ -224,7 +225,8 @@
     "skippedEntries": "{{count}} voci/file non utilizzabili ignorati",
     "xshellIntro": "Scegli una cartella di file di sessione Xshell .xsh (o un singolo .xsh). Vengono importati host/porta/utente; i duplicati per indirizzo+porta+utente vengono ignorati.",
     "tabbyIntro": "Scegli un'esportazione della configurazione di Tabby (JSON o YAML — ~/.config/tabby/config.yaml è in YAML). Vengono importati i profili SSH; i duplicati per indirizzo+porta+utente vengono ignorati.",
-    "csvIntro": "Scegli un file esportato con “Esporta CSV” (8 colonne esattamente come nell'esportazione: nome/utente/indirizzo/porta/gruppo/tag/codifica/note; i duplicati per indirizzo+porta+utente vengono ignorati; i gruppi mancanti vengono creati)."
+    "csvIntro": "Scegli un file esportato con \"Esporta CSV host\" (11 colonne identiche all'esportazione: nome/utente/indirizzo/porta/gruppo/tag/codifica/note/protocollo/monitoraggio/produzione; deduplica per indirizzo+porta+utente, i gruppi mancanti vengono creati; i file a 8 colonne legacy restano importabili).",
+    "errCsvProtocolInvalid": "Riga {{line}}: protocolo \"{{value}}\" non valido (supportati ssh/ftp/ftps) — ignorata"
   },
   "palette": {
     "title": "Palette dei comandi",
@@ -256,7 +258,8 @@
     "tabSummaries": "Riepiloghi",
     "emptySummaries": "Ancora nessun riepilogo di sessione — vengono generati al termine di una sessione (≥3 comandi)",
     "commands": "{{count}} comandi",
-    "tabRecordings": "Registrazioni"
+    "tabRecordings": "Registrazioni",
+    "searchAria": "Cerca nella cronologia dei comandi"
   },
   "titlebar": {
     "menu": "Menu",
@@ -1037,7 +1040,9 @@
     "errHopsRequired": "È richiesto almeno un salto",
     "saveFailed": "Salvataggio non riuscito: {{message}}",
     "actionFailed": "Azione non riuscita: {{message}}",
-    "loadFailed": "Caricamento non riuscito: {{message}}"
+    "loadFailed": "Caricamento non riuscito: {{message}}",
+    "editWithName": "Modifica catena di salto \"{{name}}\"",
+    "deleteWithName": "Elimina catena di salto \"{{name}}\""
   },
   "monitor": {
     "title": "Monitoraggio",

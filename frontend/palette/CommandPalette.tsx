@@ -419,6 +419,14 @@ export function CommandPalette({
   // 受影响（方向键不产字符，Enter 由这里 preventDefault 防换行）。
   const navHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   navHandlerRef.current = (e: KeyboardEvent) => {
+    // 退场动画窗守卫：open=false 后（useDelayedUnmount 的 160ms 退场窗）面板
+    // 已被顶掉，监听器还挂着——残留 Enter 会执行旧面板的高亮项（⌘R 开历史
+    // 后 160ms 内连按 Enter = 双执行）。闭包随渲染刷新，open 即当前真值。
+    if (!open) return;
+    // IME 组字态放行：组字中的 Enter 是「上屏候选词」、方向键是候选词翻页，
+    // 都不能当面板操作（CJK 用户在 ⌘K 里用输入法搜索时，此前按 Enter 上屏
+    // 会直接执行当前高亮条目——高亮在主机区时就是直接发起 SSH 连接）。
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (flat.length > 0) setActiveIndex((i) => (i + 1) % flat.length);

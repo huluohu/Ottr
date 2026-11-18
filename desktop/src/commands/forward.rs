@@ -50,6 +50,9 @@ struct ForwardRun {
     cancel: CancellationToken,
     /// 共享状态（字节计数/状态机）——任务与 Manager 各持一份 Arc。
     stats: Arc<ForwardStats>,
+    /// runner 任务句柄（换绑重启时 take 出来限时 await，等旧监听器 drop
+    /// 释放端口再 bind——否则新实例可能瞬时 EADDRINUSE）。
+    join: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// 转发生命周期 owner（Tauri 全局唯一，挂在 AppState）。
@@ -77,9 +80,20 @@ impl ForwardManager {
         session: Arc<SshSession>,
         router: RemoteForwardRouter,
     ) -> ForwardStatsSnapshot {
-        // 幂等：旧实例取消（其任务随令牌自行退出；注册表项立即被替换）。
-        if let Some(old) = self.runs.lock().expect("forwards poisoned").get(&row_id) {
-            old.cancel.cancel();
+        // 幂等：旧实例取消 + **限时等它真正退出**（监听器随任务退出 drop、
+        // 端口释放）再 bind——此前不等就 bind，同端口快速换绑时新实例可能
+        // 撞上旧监听器尚未释放的窗口（瞬时 EADDRINUSE，面板闪 error）。
+        let old = self
+            .runs
+            .lock()
+            .expect("forwards poisoned")
+            .get_mut(&row_id)
+            .map(|r| (r.cancel.clone(), r.join.take()));
+        if let Some((old_cancel, old_join)) = old {
+            old_cancel.cancel();
+            if let Some(join) = old_join {
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), join).await;
+            }
         }
         self.skips
             .lock()
@@ -115,6 +129,7 @@ impl ForwardManager {
                 auto_reconnect,
                 cancel,
                 stats: Arc::clone(&stats),
+                join: outcome.ok().map(|r| r.join),
             },
         );
         self.snapshot(row_id).expect("run 刚插入必可见")
@@ -498,6 +513,7 @@ mod tests {
             session_id: session_id.into(),
             host_id: 1,
             auto_reconnect,
+            join: None,
             cancel: CancellationToken::new(),
             stats: ForwardStats::shared(),
         }

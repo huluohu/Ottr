@@ -278,8 +278,11 @@ impl TextTail {
     }
 }
 
-/// 每会话缓存的 [`SftpClient`]（懒开）。
-pub(crate) type SftpSlot = Arc<Mutex<Option<Arc<ottr_transfer::SftpClient>>>>;
+/// 每会话缓存的 [`SftpClient`]（懒开）。tokio Mutex：懒开**持锁跨 await**
+/// （sftp_for 并发懒开时第二路等锁后复用第一路的实例——std Mutex 不允许
+/// 跨 await，旧形态下并发双开各自 SFTP 子系统通道，输家整只客户端被丢、
+/// 远端 sftp-server 子进程无 CHANNEL_CLOSE 残留到会话断开）。
+pub(crate) type SftpSlot = Arc<tokio::sync::Mutex<Option<Arc<ottr_transfer::SftpClient>>>>;
 
 /// FTP/FTPS 文件会话表项（Phase 2 Task 5）：客户端句柄 + 端点身份。
 /// FTP 会话无 PTY/终端（纯文件面），与 SSH 会话表平行、按 id 前缀区分。

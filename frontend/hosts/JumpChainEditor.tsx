@@ -193,14 +193,14 @@ export function JumpChainEditor({ open }: JumpChainEditorProps) {
                   <button
                     data-testid={`jump-edit-${row.id}`}
                     onClick={() => openEdit(row)}
-                    aria-label={t("common.edit")}
+                    aria-label={t("jump.editWithName", { name: row.name })}
                   >
                     {t("common.edit")}
                   </button>
                   <button
                     data-testid={`jump-delete-${row.id}`}
                     onClick={() => void handleDelete(row)}
-                    aria-label={t("common.delete")}
+                    aria-label={t("jump.deleteWithName", { name: row.name })}
                   >
                     {t("common.delete")}
                   </button>

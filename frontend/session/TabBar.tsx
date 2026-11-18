@@ -128,7 +128,7 @@ export function TabBar({ dragRegion }: TabBarProps) {
             e.preventDefault();
             setTabMenu({
               x: Math.min(e.clientX, window.innerWidth - 170),
-              y: Math.min(e.clientY, window.innerHeight - 96),
+              y: Math.max(0, Math.min(e.clientY, window.innerHeight - 96)),
               sessionId: session.id,
             });
           }}

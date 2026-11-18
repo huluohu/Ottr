@@ -501,9 +501,9 @@ pub(crate) fn disconnect_all_local(
     n
 }
 
-/// 断开全部会话（命令面：托盘动作共用同一实现核；返回断开条数）。
-#[tauri::command]
-pub(crate) fn session_disconnect_all(state: State<'_, AppState>) -> Result<usize, String> {
+/// 「断开全部会话」实现核（命令面与托盘动作共用）：终端表 + 本地终端表 +
+/// FTP 文件表统一收尾，并撤销全部 AI 目标作用域。返回断开条数。
+pub(crate) fn disconnect_all_core(state: &AppState) -> usize {
     let mut n = disconnect_all_inner(&state.sessions);
     // 本地终端会话同语义收尾（杀 PTY 子进程）
     n += disconnect_all_local(&state.local_sessions);
@@ -524,5 +524,11 @@ pub(crate) fn session_disconnect_all(state: State<'_, AppState>) -> Result<usize
     // 全部终端会话已断 = 全部 AI 目标作用域失效（feat/ask-ottr-orb Task 1；
     // FTP 无终端作用域，一并撤销无碍）。
     state.ai_scopes.revoke_all();
-    Ok(n)
+    n
+}
+
+/// 断开全部会话（命令面；实现核与托盘动作共用）。
+#[tauri::command]
+pub(crate) fn session_disconnect_all(state: State<'_, AppState>) -> Result<usize, String> {
+    Ok(disconnect_all_core(&state))
 }

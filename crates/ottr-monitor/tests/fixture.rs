@@ -93,10 +93,13 @@ async fn collect_three_rounds_values_in_sane_ranges() {
     let mut prev: Option<ottr_monitor::RawSample> = None;
     let mut diffs: Vec<Metrics> = Vec::new();
     for round in 0..3 {
-        let sample = tokio::time::timeout(Duration::from_secs(10), collect(&session))
-            .await
-            .unwrap_or_else(|_| panic!("round {round}: collect timed out"))
-            .unwrap_or_else(|e| panic!("round {round}: collect failed: {e}"));
+        let sample = tokio::time::timeout(
+            Duration::from_secs(10),
+            collect(&session, Duration::from_secs(10)),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("round {round}: collect timed out"))
+        .unwrap_or_else(|e| panic!("round {round}: collect failed: {e}"));
         // mem 总量为正、可用 ≤ 总量（简报口径）
         assert!(
             sample.mem.total_kb > 0,

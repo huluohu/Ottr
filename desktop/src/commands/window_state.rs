@@ -151,6 +151,15 @@ pub fn apply_on_launch(window: &tauri::WebviewWindow) {
         return;
     }
     if st.maximized {
+        // 先还原「正常态」几何再最大化：取消最大化时回落到用户上次的正常
+        // 尺寸（此前只 maximize()，json 里保住的正常几何从未被还原——取消
+        // 最大化回落到 WM 自己的默认，2026-11-10 真机实报）。
+        if let (Some(w), Some(h)) = (st.width, st.height) {
+            let _ = window.set_size(tauri::PhysicalSize::new(w as u32, h as u32));
+        }
+        if let (Some(x), Some(y)) = (st.x, st.y) {
+            let _ = window.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+        }
         let _ = window.maximize();
         return;
     }

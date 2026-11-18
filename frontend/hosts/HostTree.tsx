@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type Host } from "../vault/api";
 import { useVaultStore } from "../vault/store";
+import { useEscClose } from "../ui/useEscClose";
 import { useSessionStore } from "../session/SessionStore";
 
 /** 拖拽数据 MIME 类型（dragover 判定「是不是我们的主机」的唯一依据）。 */
@@ -424,14 +425,9 @@ function HostItems({
   const { t } = useTranslation();
   // 右键菜单（2026-10-19 用户需求）：编辑 / 删除（删除走既有行内两段确认）。
   const [menu, setMenu] = useState<{ x: number; y: number; host: Host } | null>(null);
-  useEffect(() => {
-    if (!menu) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [menu]);
+  // Esc 关闭走统一栈：此前私挂 document keydown（不查栈顶、先于 window 栈
+  // 触发），叠层时一个 Esc 能把菜单和上层弹框一起关掉。
+  useEscClose(menu != null, () => setMenu(null));
   // 树内状态点（2026-10-16 视觉重设计 M3，报告 §4 P1「主机行状态」——仅页签
   // 圆点显示连接态的遗留项收口）：hostId → 档位，connected 优先、其次进行中
   // （connecting/reconnecting/waiting_host_key）；分屏 pane 不重复计。
@@ -706,8 +702,8 @@ function GroupHead({
           type="button"
           className="tree-group-add icon-btn"
           data-testid={`group-add-${name}`}
-          title={t("hostTree.addToGroup")}
-          aria-label={t("hostTree.addToGroup")}
+          title={t("hostTree.addToGroupName", { name })}
+          aria-label={t("hostTree.addToGroupName", { name })}
           onClick={(e) => {
             e.stopPropagation();
             onAdd();

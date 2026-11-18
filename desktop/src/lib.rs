@@ -42,11 +42,11 @@ use tauri::{Emitter, Manager};
 // 不增，Phase 2 新命令一律进 commands/ 对应域）。examples/驱动脚本与 menu.rs 的
 // crate 根消费面（ottr_lib::{forward_pty_loop, SessionCounters, TextTail,
 // SessionCloseReason, inject_shell_integration, ShellIntegrationOutcome} /
-// crate::{AppState, disconnect_all_inner}）经一次 small re-export 保持原路径不变。
+// crate::{AppState}）经一次 small re-export 保持原路径不变（disconnect_all_*
+pub(crate) use commands::session::disconnect_all_core;
 pub use commands::session::{
     SessionCloseReason, ShellIntegrationOutcome, forward_pty_loop, inject_shell_integration,
 };
-pub(crate) use commands::session::{disconnect_all_inner, disconnect_all_local};
 pub(crate) use commands::state::AppState;
 pub use commands::state::{SessionCounters, SessionResizeSlot, SessionStats, TextTail, snapshot};
 // Phase 3 Task 6（B9）：指纹巡检面公开给夹具集成测试（tests/hostkey_fixture.rs：
@@ -143,6 +143,13 @@ pub fn run() {
                     let _ = win.set_size(tauri::LogicalSize::new(w, h));
                     let _ = win.center();
                 }
+                // A12 前置：Win/Linux 先关原生装饰再恢复几何——装饰改客户端
+                // 区尺寸，先 apply 后去装饰会差出几 px（B8，跨平台审计表）。
+                // macOS 保留原生装饰（红绿灯 + 系统菜单栏）。
+                #[cfg(not(target_os = "macos"))]
+                if let Err(e) = win.set_decorations(false) {
+                    eprintln!("[setup] set_decorations(false) failed: {e}");
+                }
                 // 窗口状态记忆（2026-11-07 用户需求）：记住上次的窗口尺寸/
                 // 位置/最大化，启动恢复（remember off = 保持 tauri.conf 默认；
                 // 记忆值覆盖上面的配置收缩——它来自用户真实的上次会话）。
@@ -170,13 +177,7 @@ pub fn run() {
             // 由窗口 ThemeChanged 事件兜底。初始值无需推送：前端挂载时读 matchMedia。
             // T11：同一挂点接 Focused → security::AutoLockState（失焦自动锁定计时）。
             if let Some(win) = app.get_webview_window("main") {
-                // A12（Task 14）：Win/Linux 关原生装饰——前端自绘标题栏补壳
-                // （frontend/titlebar/TitleBar.tsx：汉堡/拖拽区/min-max-close）。
-                // macOS 保留原生装饰（红绿灯 + 系统菜单栏）。
-                #[cfg(not(target_os = "macos"))]
-                if let Err(e) = win.set_decorations(false) {
-                    eprintln!("[setup] set_decorations(false) failed: {e}");
-                }
+                // （A12 set_decorations 已前置到窗口几何恢复之前，见上方 B8 注）
                 // theme-suite T3：主窗毛玻璃效果**常开**（macOS vibrancy /
                 // Windows acrylic / Linux 跳过——平台分支见 vibrancy.rs）。
                 // 非 Glass 主题画满不透明背景，效果不可见；Glass 主题的半透明

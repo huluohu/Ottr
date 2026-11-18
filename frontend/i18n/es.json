@@ -190,7 +190,8 @@
     "confirmDelete": "Haz clic de nuevo para confirmar",
     "exportCsv": "Exportar CSV",
     "menuEdit": "Editar host",
-    "menuDelete": "Eliminar host"
+    "menuDelete": "Eliminar host",
+    "addToGroupName": "Añadir host al grupo \"{{name}}\""
   },
   "importDialog": {
     "title": "Importar hosts",
@@ -224,7 +225,8 @@
     "skippedEntries": "Se omitieron {{count}} entradas/archivos no utilizables",
     "xshellIntro": "Elige una carpeta con archivos de sesión .xsh de Xshell (o un único .xsh). Se importan host/puerto/usuario; los duplicados por dirección+puerto+usuario se omiten.",
     "tabbyIntro": "Elige una exportación de configuración de Tabby (JSON o YAML — ~/.config/tabby/config.yaml es YAML). Se importan los perfiles SSH; los duplicados por dirección+puerto+usuario se omiten.",
-    "csvIntro": "Elige un archivo exportado con «Exportar CSV de hosts» (8 columnas que coinciden exactamente con la exportación: nombre/usuario/dirección/puerto/grupo/etiquetas/codificación/notas; los duplicados por dirección+puerto+usuario se omiten; los grupos que falten se crean)."
+    "csvIntro": "Elige un archivo exportado con «Exportar CSV de hosts» (11 columnas idénticas a la exportación: nombre/usuario/dirección/puerto/grupo/etiquetas/codificación/notas/protocolo/monitorización/producción; deduplicado por dirección+puerto+usuario, los grupos ausentes se crean; los archivos de 8 columnas antiguos aún se importan).",
+    "errCsvProtocolInvalid": "Línea {{line}}: protocolo \"{{value}}\" no válido (se admite ssh/ftp/ftps) — omitido"
   },
   "palette": {
     "title": "Paleta de comandos",
@@ -256,7 +258,8 @@
     "tabSummaries": "Resúmenes",
     "emptySummaries": "Aún no hay resúmenes de sesión — se generan cuando termina una sesión (≥3 comandos)",
     "commands": "{{count}} comandos",
-    "tabRecordings": "Grabaciones"
+    "tabRecordings": "Grabaciones",
+    "searchAria": "Buscar en el historial de comandos"
   },
   "titlebar": {
     "menu": "Menú",
@@ -1037,7 +1040,9 @@
     "errHopsRequired": "Se requiere al menos un salto",
     "saveFailed": "Error al guardar: {{message}}",
     "actionFailed": "Error en la acción: {{message}}",
-    "loadFailed": "Error al cargar: {{message}}"
+    "loadFailed": "Error al cargar: {{message}}",
+    "editWithName": "Editar cadena de salto \"{{name}}\"",
+    "deleteWithName": "Eliminar cadena de salto \"{{name}}\""
   },
   "monitor": {
     "title": "Supervisión",

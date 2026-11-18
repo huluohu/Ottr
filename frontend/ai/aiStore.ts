@@ -1844,6 +1844,12 @@ export const useAiStore = create<AiStore>((set, get) => {
 
     dropSession: (sessionId) => {
       get().close(sessionId);
+      // 模块级 Map 收尾（2026-11 审计）：failedSubmissions（重试面）与
+      // sessionScopes 残项（close 的 revokeScopesExcept 会保留待处置步骤
+      // 授权）随会话消亡删除——此前永久滞留（授权本身有后端 TTL 兜底，
+      // 这里清的是前端账面）。
+      failedSubmissions.delete(sessionId);
+      sessionScopes.delete(sessionId);
       set((st) => {
         if (!(sessionId in st.sessions)) return st;
         const next = { ...st.sessions };

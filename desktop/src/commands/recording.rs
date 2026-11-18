@@ -741,6 +741,22 @@ pub fn export_recording(
             .unwrap_or_else(|| app_dir.to_path_buf())
             .join(format!("ottr-recording-{id}.cast")),
     };
+    // 创建即 0600（与录制本体 open_private_new 同口径）：导出档含终端回显
+    // 内容，先 write 后 chmod 会在大档写入期间留世界可读窗口。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&target)
+            .map_err(|e| format!("write {}: {e}", target.display()))?;
+        f.write_all(rec.encode().as_bytes())
+            .map_err(|e| format!("write {}: {e}", target.display()))?;
+    }
+    #[cfg(not(unix))]
     std::fs::write(&target, rec.encode())
         .map_err(|e| format!("write {}: {e}", target.display()))?;
     restrict_permissions(&target);

@@ -24,6 +24,8 @@
 //!   → 逃逸形态一律降级为确认是兜底，**不能宣称绝对安全**。
 //! * 已发出的远端命令**无法回滚**。
 
+use std::sync::LazyLock;
+
 use ottr_vault::{AiHostPolicies, AiHostPolicy, AiHostPolicyInput, AiWriteCategory};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -189,23 +191,35 @@ fn match_rm_recursive_force(cmd: &str) -> Option<String> {
     None
 }
 
+/// 预编译 red 规则表（进程内一次）。此前每次 [`scan_red`] 都重编译全部
+/// 规则——`classify_command` 是自动档每条命令的必经点（提命令 + 执行前
+/// 复核两处），热路径上的重复编译纯属浪费。
+static RED_COMPILED: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
+    RED_RULES
+        .iter()
+        .map(|(kind, pattern, flags)| {
+            // JS 标志位 → Rust 内联标志（/i = 忽略大小写、/s = dot 匹配换行）。
+            let mut prefix = String::new();
+            if flags.contains('i') {
+                prefix.push_str("(?i)");
+            }
+            if flags.contains('s') {
+                prefix.push_str("(?s)");
+            }
+            let re = Regex::new(&format!("{prefix}{pattern}"))
+                .expect("red 规则正则必须可编译（编译期常量）");
+            (*kind, re)
+        })
+        .collect()
+});
+
 /// 扫 red 规则（返回命中的规则名与片段）。
 fn scan_red(cmd: &str) -> Option<(String, String)> {
     // token 判定（rm 递归强删）在前——它不是正则。
     if let Some(excerpt) = match_rm_recursive_force(cmd) {
         return Some(("recursive-delete".to_string(), excerpt));
     }
-    for (kind, pattern, flags) in RED_RULES {
-        // JS 标志位 → Rust 内联标志（/i = 忽略大小写、/s = dot 匹配换行）。
-        let mut prefix = String::new();
-        if flags.contains('i') {
-            prefix.push_str("(?i)");
-        }
-        if flags.contains('s') {
-            prefix.push_str("(?s)");
-        }
-        let re = Regex::new(&format!("{prefix}{pattern}"))
-            .expect("red 规则正则必须可编译（编译期常量）");
+    for (kind, re) in RED_COMPILED.iter() {
         if let Some(m) = re.find(cmd) {
             return Some((
                 (*kind).to_string(),

@@ -214,7 +214,8 @@ async fn windows_accept_loop(
                         continue;
                     }
                     eprintln!("[mcp] pipe connect failed: {e}");
-                    std::thread::sleep(Duration::from_millis(200));
+                    // async 上下文禁止 std::thread::sleep（阻塞 executor 线程）
+                    tokio::time::sleep(Duration::from_millis(200)).await;
                     continue;
                 }
                 if cancel.is_cancelled() {
@@ -261,6 +262,13 @@ async fn windows_conn_loop(
             }
         };
         pending.extend_from_slice(&buf[..n]);
+        // 无换行的超长积压也要限（与 unix 侧 take 限长读同纪律）：否则对端
+        // 持续发无换行数据时 pending 无界增长。命名管道 DACL 限当前用户，
+        // 属纵深防御而非边界。
+        if pending.len() as u64 > crate::mcp::MAX_FRAME_BYTES as u64 {
+            eprintln!("[mcp] pending oversized (no newline); dropping connection");
+            return;
+        }
         while let Some(pos) = pending.iter().position(|&b| b == b'\n') {
             let line_bytes: Vec<u8> = pending.drain(..=pos).collect();
             if line_bytes.len() as u64 > crate::mcp::MAX_FRAME_BYTES as u64 {

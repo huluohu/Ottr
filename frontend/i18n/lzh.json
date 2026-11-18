@@ -18,7 +18,8 @@
     "no": "否",
     "error": "誤",
     "done": "畢",
-    "connect": "連"
+    "connect": "連",
+    "confirmDelete": "確刪乎"
   },
   "settings": {
     "title": "設",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "命已行，惟存錄未成",
     "langHant": "繁體中文",
     "searchPlaceholder": "索設定...",
-    "brandStable": "穩定版"
+    "brandStable": "穩定版",
+    "terminalScreenReader": "終端讀屏之式",
+    "terminalScreenReaderHint": "以讀屏器（NVDA/VoiceOver 之屬）誦終端之文。恆默閉：啟則輸出洪流時 CPU 之耗大增，惟用讀屏之器者啟之。"
   },
   "hostForm": {
     "newTitle": "創機",
@@ -864,7 +867,8 @@
     "resend": "重發",
     "resending": "重發中…",
     "centerTitle": "報館",
-    "sendTimeout": "請求逾時（十五秒）——察網絡或代理之設"
+    "sendTimeout": "請求逾時（十五秒）——察網絡或代理之設",
+    "clearConfirmBody": "空盡諸報乎？不可復也。"
   },
   "knownHosts": {
     "title": "已知機密鑰",
@@ -1041,7 +1045,8 @@
     "actionFailed": "操作敗：{{message}}",
     "loadFailed": "加載敗：{{message}}",
     "editWithName": "修跳板鏈「{{name}}」",
-    "deleteWithName": "刪跳板鏈「{{name}}」"
+    "deleteWithName": "刪跳板鏈「{{name}}」",
+    "deleteConfirmBody": "刪跳板鏈「{{name}}」乎？引之機皆解其縛，此不可逆。"
   },
   "monitor": {
     "title": "監控",
@@ -1201,7 +1206,8 @@
     "errNoChannelHint": "還沒有可用渠道——先在上方添加渠道，規則纔有推送去處。",
     "lastFired": "上次觸發",
     "never": "從未",
-    "errSaveFailed": "藏敗"
+    "errSaveFailed": "藏敗",
+    "deleteChannelConfirmBody": "確刪此警之渠乎？渠之符並失之。"
   },
   "batch": {
     "title": "批量行",
@@ -1298,7 +1304,8 @@
     "errScriptRequired": "請填寫 script",
     "actionFailed": "操作敗：{{message}}",
     "loadFailed": "加載敗：{{message}}",
-    "saveFailed": "藏敗：{{message}}"
+    "saveFailed": "藏敗：{{message}}",
+    "deleteConfirmBody": "確刪此定時之務乎？務即止，此不可逆。"
   },
   "mcp": {
     "title": "MCP",

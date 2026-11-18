@@ -1194,14 +1194,15 @@ export const useAiStore = create<AiStore>((set, get) => {
       });
       if (!alive()) return;
       patch(sessionId, { streamStartedRunId: runId });
-      for await (const delta of stream) {
-        if (!alive()) {
-          rescueStrandedRun(sessionId, ac, runId); // 被取代不写；目标死亡/锁定归位 idle
-          return;
-        }
-        if (ac.signal.aborted) break;
-        assistantTurn.content += delta.text;
-        if (delta.toolCalls?.length) toolCalls = mergeToolCalls(toolCalls, delta.toolCalls);
+      // 流式合帧（2026-11 性能审计 P1-2）：此前每 delta 一次 patch = 每 delta
+      // 全文 redact（规则×全文）+ 整面板重渲染 + markdown 全量重解析——O(n²)
+      // 累积，长回答流式后半段每秒烧 30–100% 单核。攒 delta 按 ~50ms 时间窗
+      // 合帧提交：中间帧数量从「delta 数」降到「帧率上限」，最终态由下方
+      // 收尾段与循环出口的收尾 flush 保证不丢。
+      let lastFlushAt = 0;
+      let latestUsage = slice(sessionId).usage;
+      let latestModel = slice(sessionId).modelUsed;
+      const flushStreamPatch = () => {
         const currentAnswer = redact(assistantTurn.content, ctx.redactOpts).text;
         patch(sessionId, {
           answer: assistantTurn.content,
@@ -1210,11 +1211,28 @@ export const useAiStore = create<AiStore>((set, get) => {
             { ...assistantTurn, content: currentAnswer },
           ],
           status: "running",
-          // 用量/模型：端点给了才更新（拿不到就是 null → UI 只显示耗时）。
-          usage: delta.usage ?? slice(sessionId).usage,
-          modelUsed: delta.model ?? slice(sessionId).modelUsed,
+          usage: latestUsage,
+          modelUsed: latestModel,
         });
+      };
+      for await (const delta of stream) {
+        if (!alive()) {
+          rescueStrandedRun(sessionId, ac, runId); // 被取代不写；目标死亡/锁定归位 idle
+          return;
+        }
+        if (ac.signal.aborted) break;
+        assistantTurn.content += delta.text;
+        if (delta.toolCalls?.length) toolCalls = mergeToolCalls(toolCalls, delta.toolCalls);
+        // 用量/模型：端点给了才更新（拿不到保持上次值 → UI 只显示耗时）。
+        if (delta.usage) latestUsage = delta.usage;
+        if (delta.model) latestModel = delta.model;
+        const now = performance.now();
+        if (now - lastFlushAt >= 50) {
+          lastFlushAt = now;
+          flushStreamPatch();
+        }
       }
+      if (alive() && !ac.signal.aborted) flushStreamPatch(); // 收尾 flush：末尾 delta 不因节流丢失
       if (!alive()) {
         rescueStrandedRun(sessionId, ac, runId);
         return;

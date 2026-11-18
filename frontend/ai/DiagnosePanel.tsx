@@ -203,6 +203,12 @@ export function DiagnosePanel({
         ? [{ role: "assistant" as const, content: answer }]
         : [];
 
+  // 最后一条助手消息的下标 = 流式进行中的那一轮（插入钮禁用只作用于它）。
+  let lastAssistantIdx = -1;
+  for (let i = 0; i < threadTurns.length; i++) {
+    if (threadTurns[i].role === "assistant") lastAssistantIdx = i;
+  }
+
   // 「待看」徽标口径：面板渲染 = 用户已看到（MainArea 只在所属会话激活时
   // 挂载本组件，key=sessionId——切走再切回会重挂并再次 markSeen，无害）。
   // 依赖必须含 request：本组件在终端视图无条件挂载（内部才判 null）——
@@ -536,7 +542,12 @@ export function DiagnosePanel({
           ) : (
             <div key={`a${i}`} className="ai-bubble ai-bubble-assistant" data-testid="ai-msg-assistant">
               <AnswerView
-                disabled={status !== "done"}
+                /* 只禁**流式中的当前轮**（列表最后一条助手消息）：会话级
+                 * status 停在 error/aborted 时，此前把包括已完成历史轮在内的
+                 * 全部插入钮一起灰死（且文案「生成完成后才能插入」对历史轮
+                 * 不成立）。历史轮按各自 scope 活性判定（scope 失效时后端
+                 * 会拒绝并给出原因）。 */
+                disabled={status === "running" && i === lastAssistantIdx}
                 answer={m.content}
                 rustId={legacyRustId}
                 binding={turnBinding(m)}

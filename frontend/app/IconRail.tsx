@@ -18,6 +18,8 @@ import { useSessionStore } from "../session/SessionStore";
 import { useUpdateStore } from "../update/updateStore";
 import { UpdateRailPanel } from "../update/UpdateRailPanel";
 import { useOttyStore } from "../ui/otty/ottyStore";
+import { useModalStore } from "../ui/modalStore";
+import { useEscClose } from "../ui/useEscClose";
 // Otty 球 mark（Ask Ottr Task 4 抽出共享）：原 OttyBall 的 useId 化版本——
 // 悬浮球与图标轨同画一份，渐变/裁剪 id 实例唯一不再撞车。
 import { OttyMark } from "../ui/otty/OttyMark";
@@ -287,6 +289,18 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
     if (!showUpdate) setUpdateOpen(false);
   }, [showUpdate]);
 
+  // 模态/锁屏在场即收起浮层（2026-11 审计 P2，AskOttrOrb 同款可见性门）：
+  // 更新面板/Otty 弹层（z=300）盖过锁屏（z=200）——锁定态下焦点陷阱把 Tab
+  // 锁进看不见的面板、锁屏密码框拿不到键盘；模态开启时呼出 ⌘K 也被背板
+  // 「吃掉一次点击」。rail 不再与任何模态并存。
+  const activeModal = useModalStore((s) => s.active);
+  useEffect(() => {
+    if (activeModal == null) return;
+    setMenu(null);
+    setSub(null);
+    setUpdateOpen(false);
+  }, [activeModal]);
+
   const openOttyMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     // 弹层贴 Otty 球右侧弹出（不盖图标轨——空间锚点光点保持可见）；
@@ -305,14 +319,8 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
     setUpdateOpen((cur) => !cur);
   };
 
-  useEffect(() => {
-    if (!updateOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setUpdateOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [updateOpen]);
+  // Esc 收编进统一栈（此前私挂 document keydown，叠层时一键穿两层）。
+  useEscClose(updateOpen, () => setUpdateOpen(false));
 
   useEffect(() => {
     if (menu === null) return;
@@ -324,19 +332,16 @@ export function IconRail({ titlebarInset, onOpenCredentials, onOpenSettings, onO
       setMenu(null);
       setSub(null);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenu(null);
-        setSub(null);
-      }
-    };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [menu]);
+  // Otty 弹层 Esc 收编进统一栈（子面板 theme/lang 随主面板同关）。
+  useEscClose(menu !== null, () => {
+    setMenu(null);
+    setSub(null);
+  });
 
   return (
     <nav className="icon-rail" aria-label={t("nav.aria")} data-testid="icon-rail">

@@ -120,6 +120,10 @@ function InsertRow({
   const verdict = useMemo(() => classify(code), [code]);
   // 确认状态机：null（未进入）→ "confirm"（yellow 一发/red 第一发）→ red 的 armed
   const [stage, setStage] = useState<"idle" | "confirm" | "armed" | "inserted" | "failed">("idle");
+  // 在途闸（2026-11 审计 P2）：invoke 返回前 stage 还没落 "inserted"，按钮
+  // 未禁用——慢链路下二击会把命令文本写两遍 PTY（legacy 直写通道无后端
+  // 一次性账本兜底，重复字节直接进 shell）。在途时按钮禁用。
+  const [submitting, setSubmitting] = useState(false);
   // 插入失败的原因（后端原文，如「授权已失效」）；null = 没失败过。
   const [failReason, setFailReason] = useState<string | null>(null);
   // 聚焦 pane 订阅（原语选择器——焦点漂移即重渲染）：跨目标守卫在组件内
@@ -134,7 +138,8 @@ function InsertRow({
     !insertable || disabled || (scopeMode ? wrongTarget : !rustId);
 
   function proceed() {
-    if (blocked || stage === "inserted") return;
+    if (blocked || stage === "inserted" || submitting) return;
+    setSubmitting(true);
     const run = scopeMode
       ? scopeInserter(insertTarget, code)
       : rustId
@@ -149,11 +154,12 @@ function InsertRow({
       .catch((e: unknown) => {
         setStage("failed");
         setFailReason(e instanceof Error ? e.message : String(e));
-      });
+      })
+      .finally(() => setSubmitting(false));
   }
 
   function onClick() {
-    if (blocked || stage === "inserted") return;
+    if (blocked || stage === "inserted" || submitting) return;
     if (verdict.level === "green") {
       proceed();
       return;
@@ -204,7 +210,7 @@ function InsertRow({
           className={`ai-insert-btn${stage === "armed" ? " armed" : ""}`}
           data-testid="ai-insert"
           data-stage={stage}
-          disabled={blocked || stage === "inserted"}
+          disabled={blocked || stage === "inserted" || submitting}
           onClick={onClick}
         >
           {label}

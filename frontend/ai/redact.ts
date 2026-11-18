@@ -107,7 +107,14 @@ export const DEFAULT_REDACT_RULES: readonly { name: string }[] = [
   { name: "hostname" },
 ];
 
+// 预编译缓存（2026-11 性能审计 P1-2）：规则表是静态常量，编译一次进程内
+// 复用——此前每次 redact 调用（流式每个 delta 一次）都 new RegExp 全部规则，
+// 长回答流式后半段累计数千次编译 + O(n²) 全文扫描的一半开销来自这里。
+let defaultsCache: CompiledRule[] | null = null;
+
 function compileDefaults(): CompiledRule[] {
+  if (defaultsCache) return defaultsCache;
+  const compiled = ((): CompiledRule[] => {
   return [
     { name: "ipv4", source: "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b", flags: "g", placeholder: "IPV4" },
     {
@@ -201,6 +208,9 @@ function compileDefaults(): CompiledRule[] {
       placeholder: "HOSTNAME",
     },
   ];
+  })();
+  defaultsCache = compiled;
+  return compiled;
 }
 
 /** 占位符前缀：规则名规格化（非字母数字 → 下划线，大写）。 */

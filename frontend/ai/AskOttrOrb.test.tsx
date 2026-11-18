@@ -66,7 +66,7 @@ beforeEach(() => {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
   ) {
-    if (this.classList.contains("app-shell")) {
+    if (this.classList.contains("app-shell") || this.classList.contains("app-body")) {
       return {
         x: shellRect.left,
         y: shellRect.top,
@@ -123,10 +123,11 @@ function seedAllGatesOpen(over?: {
 }
 
 function renderOrb(onAsk: () => void = vi.fn()) {
-  // 球的几何以 .app-shell 矩形为界——渲染进 app-shell 宿主（jsdom 无布局，
+  // 球的几何以 .app-body 矩形为界（拖拽域收窄到顶栏之下）——渲染进
+    // app-body 宿主（jsdom 无布局，
   // 矩形来自上面的打桩）
   const host = document.createElement("div");
-  host.className = "app-shell";
+  host.className = "app-body";
   document.body.appendChild(host);
   const utils = render(<AskOttrOrb onAsk={onAsk} />, { container: host });
   return { onAsk, ...utils };

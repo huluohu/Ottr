@@ -219,13 +219,16 @@ describe("NotificationCenter（铃铛 + 面板）", () => {
     ).toBe(true);
   });
 
-  it("清空：发 notify_clear 并清空列表；空表禁用", async () => {
+  it("清空：发 notify_clear 并清空列表；空表禁用（两段确认）", async () => {
     const items = [row({ id: 1 })];
     seedBackend(items, 1);
     renderPanel();
     await openPanel();
     const btn = screen.getByTestId("notify-clear") as HTMLButtonElement;
     fireEvent.click(btn);
+    // 第一击只出确认框（清空 = 删全表不可恢复，2026-11 审计改两段）
+    expect(mockedInvoke).not.toHaveBeenCalledWith("notify_clear");
+    fireEvent.click(screen.getByTestId("notify-clear-confirm-yes"));
     await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith("notify_clear"));
     expect(useNotifyStore.getState().items).toHaveLength(0);
     expect(useNotifyStore.getState().unread).toBe(0);

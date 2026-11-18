@@ -18,7 +18,8 @@
     "no": "아니오",
     "error": "오류",
     "done": "완료",
-    "connect": "연결"
+    "connect": "연결",
+    "confirmDelete": "삭제 확인"
   },
   "settings": {
     "title": "설정",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "설정은 적용되었지만 저장에 실패했습니다",
     "langHant": "중국어(번체)",
     "searchPlaceholder": "설정 검색...",
-    "brandStable": "안정 버전"
+    "brandStable": "안정 버전",
+    "terminalScreenReader": "터미널 스크린 리더 모드",
+    "terminalScreenReaderHint": "터미널 버퍼를 스크린 리더(NVDA/VoiceOver 등)가 읽을 수 있는 텍스트로 노출합니다. 기본값은 꺼짐: 출력이 많을 때 CPU 사용률이 크게 올라가므로 스크린 리더 사용 시에만 켜세요."
   },
   "hostForm": {
     "newTitle": "새 호스트",
@@ -865,7 +868,8 @@
     "resend": "다시 보내기",
     "resending": "다시 보내는 중…",
     "centerTitle": "알림 센터",
-    "sendTimeout": "요청 시간 초과(15초) — 네트워크 또는 프록시 설정을 확인하세요"
+    "sendTimeout": "요청 시간 초과(15초) — 네트워크 또는 프록시 설정을 확인하세요",
+    "clearConfirmBody": "모든 알림을 지울까요? 복구할 수 없습니다."
   },
   "knownHosts": {
     "title": "알려진 호스트 키",
@@ -1042,7 +1046,8 @@
     "actionFailed": "작업 실패: {{message}}",
     "loadFailed": "불러오기 실패: {{message}}",
     "editWithName": "점프 체인 \"{{name}}\" 편집",
-    "deleteWithName": "점프 체인 \"{{name}}\" 삭제"
+    "deleteWithName": "점프 체인 \"{{name}}\" 삭제",
+    "deleteConfirmBody": "점프 체인 \"{{name}}\"을(를) 삭제할까요? 참조하는 호스트의 연결도 해제됩니다. 되돌릴 수 없습니다."
   },
   "monitor": {
     "title": "모니터링",
@@ -1202,7 +1207,8 @@
     "errNoChannelHint": "아직 채널이 없습니다 — 규칙이 전송할 대상이 생기도록 위에서 하나 추가하세요.",
     "lastFired": "마지막 발동",
     "never": "없음",
-    "errSaveFailed": "저장 실패"
+    "errSaveFailed": "저장 실패",
+    "deleteChannelConfirmBody": "이 알림 채널을 삭제할까요? 채널 토큰도 함께 사라집니다."
   },
   "batch": {
     "title": "일괄 실행",
@@ -1299,7 +1305,8 @@
     "errScriptRequired": "스크립트를 입력하세요",
     "actionFailed": "작업 실패: {{message}}",
     "loadFailed": "불러오기 실패: {{message}}",
-    "saveFailed": "저장 실패: {{message}}"
+    "saveFailed": "저장 실패: {{message}}",
+    "deleteConfirmBody": "이 예약 작업을 삭제할까요? 작업이 즉시 중지됩니다. 되돌릴 수 없습니다."
   },
   "mcp": {
     "title": "MCP 연동",

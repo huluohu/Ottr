@@ -192,7 +192,9 @@ fn write_sidecar(
     // 清理旧 sidecar：mtime > 7 天的 .log 文件删除（不依赖 DB 查询，简单有效）。
     // 降频：每 32 次写扫一次目录（每次写后全目录扫描在多任务同分触发时是
     // N² 放大；7 天粒度的清理不需要逐写执行）。
-    if SIDECAR_SWEEP_SEQ.fetch_add(1, Ordering::Relaxed).is_multiple_of(32)
+    if SIDECAR_SWEEP_SEQ
+        .fetch_add(1, Ordering::Relaxed)
+        .is_multiple_of(32)
         && let Ok(entries) = std::fs::read_dir(&dir)
     {
         let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 24 * 3600);

@@ -106,7 +106,9 @@ export function AlertSettings({ open }: AlertSettingsProps) {
   const { t } = useTranslation();
   const hosts = useVaultStore((s) => s.hosts);
 
-  const [channels, setChannels] = useState<NotifyChannel[]>([]);
+    // 两段确认（2026-11 审计 P2）：删除渠道会连带丢失渠道令牌。
+const [channels, setChannels] = useState<NotifyChannel[]>([]);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [rules, setRules] = useState<AlertRule[]>([]);
   // T4 分区化：渠道/规则独占切换（默认渠道；规则编辑在规则分区内展开）。
   const [section, setSection] = useState<"channels" | "rules">("channels");
@@ -278,6 +280,7 @@ export function AlertSettings({ open }: AlertSettingsProps) {
   async function deleteChannel(id: number) {
     try {
       await vaultApi.notifyChannels.remove(id);
+      setConfirmDeleteId(null);
       await reloadChannels();
     } catch (e) {
       setFormError(String(e));
@@ -452,10 +455,30 @@ export function AlertSettings({ open }: AlertSettingsProps) {
                   <button data-testid={`alert-channel-edit-${c.id}`} onClick={() => void editChannel(c)}>
                     {t("common.edit")}
                   </button>
-                  <button className="danger" data-testid={`alert-channel-delete-${c.id}`} onClick={() => void deleteChannel(c.id)}>
+                  <button className="danger" data-testid={`alert-channel-delete-${c.id}`} onClick={() => setConfirmDeleteId(c.id)}>
                     {t("common.delete")}
                   </button>
                 </span>
+                {confirmDeleteId === c.id && (
+                  <div className="cred-confirm" data-testid={`alert-channel-confirm-${c.id}`}>
+                    <p data-testid={`alert-channel-confirm-text-${c.id}`}>
+                      {t("alert.deleteChannelConfirmBody")}
+                    </p>
+                    <div className="form-actions">
+                      <button type="button" onClick={() => setConfirmDeleteId(null)}>
+                        {t("common.cancel")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        data-testid={`alert-channel-confirm-delete-${c.id}`}
+                        onClick={() => void deleteChannel(c.id)}
+                      >
+                        {t("common.confirmDelete")}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {testState?.id === c.id && (
                   <p className={`settings-hint ${testState.ok ? "ai-test-ok" : "form-error"}`} data-testid={`alert-channel-result-${c.id}`}>
                     {testState.ok ? "✓ " : "✗ "}

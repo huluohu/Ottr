@@ -18,7 +18,8 @@
     "no": "いいえ",
     "error": "エラー",
     "done": "完了",
-    "connect": "接続"
+    "connect": "接続",
+    "confirmDelete": "削除を確認"
   },
   "settings": {
     "title": "設定",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "設定は反映されましたが、保存に失敗しました",
     "langHant": "繁体字中国語",
     "searchPlaceholder": "設定を検索...",
-    "brandStable": "安定版"
+    "brandStable": "安定版",
+    "terminalScreenReader": "ターミナルスクリーンリーダーモード",
+    "terminalScreenReaderHint": "ターミナルバッファを読み上げ可能なテキストとしてスクリーンリーダー（NVDA/VoiceOver 等）に公開します。既定はオフ: 出力が多いと CPU 使用率が大きく上昇するため、スクリーンリーダー使用時のみオンにしてください。"
   },
   "hostForm": {
     "newTitle": "新しいホスト",
@@ -865,7 +868,8 @@
     "resend": "再送",
     "resending": "再送中…",
     "centerTitle": "通知センター",
-    "sendTimeout": "リクエストがタイムアウトしました（15秒）——ネットワークまたはプロキシ設定を確認してください"
+    "sendTimeout": "リクエストがタイムアウトしました（15秒）——ネットワークまたはプロキシ設定を確認してください",
+    "clearConfirmBody": "すべての通知を消去しますか？復元できません。"
   },
   "knownHosts": {
     "title": "既知のホストキー",
@@ -1042,7 +1046,8 @@
     "actionFailed": "操作に失敗しました: {{message}}",
     "loadFailed": "読み込みに失敗しました: {{message}}",
     "editWithName": "ジャンプチェーン「{{name}}」を編集",
-    "deleteWithName": "ジャンプチェーン「{{name}}」を削除"
+    "deleteWithName": "ジャンプチェーン「{{name}}」を削除",
+    "deleteConfirmBody": "ジャンプチェーン「{{name}}」を削除しますか？参照するホストの紐付けも解除されます。この操作は元に戻せません。"
   },
   "monitor": {
     "title": "モニター",
@@ -1202,7 +1207,8 @@
     "errNoChannelHint": "チャネルがまだありません — 上で追加すると、ルールがプッシュ先を持てます。",
     "lastFired": "前回発火",
     "never": "なし",
-    "errSaveFailed": "保存に失敗しました"
+    "errSaveFailed": "保存に失敗しました",
+    "deleteChannelConfirmBody": "このアラートチャンネルを削除しますか？チャンネルのトークンも失われます。"
   },
   "batch": {
     "title": "一括実行",
@@ -1299,7 +1305,8 @@
     "errScriptRequired": "スクリプトを入力してください",
     "actionFailed": "操作に失敗しました: {{message}}",
     "loadFailed": "読み込みに失敗しました: {{message}}",
-    "saveFailed": "保存に失敗しました: {{message}}"
+    "saveFailed": "保存に失敗しました: {{message}}",
+    "deleteConfirmBody": "この定期タスクを削除しますか？タスクは直ちに停止します。この操作は元に戻せません。"
   },
   "mcp": {
     "title": "MCP 連携",

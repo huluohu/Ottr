@@ -18,7 +18,8 @@
     "no": "No",
     "error": "Error",
     "done": "Done",
-    "connect": "Connect"
+    "connect": "Connect",
+    "confirmDelete": "Confirm delete"
   },
   "settings": {
     "title": "Settings",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "Applied, but saving failed",
     "langHant": "繁體中文",
     "searchPlaceholder": "Search settings...",
-    "brandStable": "Stable"
+    "brandStable": "Stable",
+    "terminalScreenReader": "Terminal screen reader mode",
+    "terminalScreenReaderHint": "Expose the terminal buffer as readable text for screen readers (NVDA/VoiceOver etc.). Off by default: enabling noticeably raises CPU usage during heavy output — turn on only when using a screen reader."
   },
   "hostForm": {
     "newTitle": "New Host",
@@ -865,7 +868,8 @@
     "resend": "Resend",
     "resending": "Resending…",
     "centerTitle": "Notification Center",
-    "sendTimeout": "Request timed out (15s) — check network or proxy settings"
+    "sendTimeout": "Request timed out (15s) — check network or proxy settings",
+    "clearConfirmBody": "Clear all notifications? This cannot be recovered."
   },
   "knownHosts": {
     "title": "Known host keys",
@@ -1042,7 +1046,8 @@
     "actionFailed": "Action failed: {{message}}",
     "loadFailed": "Load failed: {{message}}",
     "editWithName": "Edit jump chain \"{{name}}\"",
-    "deleteWithName": "Delete jump chain \"{{name}}\""
+    "deleteWithName": "Delete jump chain \"{{name}}\"",
+    "deleteConfirmBody": "Delete jump chain \"{{name}}\"? Hosts referencing it will be unbound. This cannot be undone."
   },
   "monitor": {
     "title": "Monitor",
@@ -1202,7 +1207,8 @@
     "errNoChannelHint": "No channels yet — add one above so the rule has somewhere to push.",
     "lastFired": "Last fired",
     "never": "never",
-    "errSaveFailed": "Save failed"
+    "errSaveFailed": "Save failed",
+    "deleteChannelConfirmBody": "Delete this alert channel? Its token will be lost as well."
   },
   "batch": {
     "title": "Batch Execute",
@@ -1299,7 +1305,8 @@
     "errScriptRequired": "Enter a script",
     "actionFailed": "Action failed: {{message}}",
     "loadFailed": "Load failed: {{message}}",
-    "saveFailed": "Save failed: {{message}}"
+    "saveFailed": "Save failed: {{message}}",
+    "deleteConfirmBody": "Delete this scheduled job? It stops running immediately. This cannot be undone."
   },
   "mcp": {
     "title": "MCP",

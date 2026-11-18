@@ -241,6 +241,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       const s = loadTerminalSettings();
       term.options.fontFamily = s.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY;
       term.options.fontSize = s.fontSize ?? 13;
+      term.options.screenReaderMode = s.screenReaderMode;
       try {
         fitRef.current?.fit();
       } catch {
@@ -270,9 +271,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       minimumContrastRatio: 4.5,
       // 读屏支持（2026-11-01 UI 审计 P1-1）：xterm 默认把内容画进 canvas，
       // 画布对辅助技术是 aria-hidden —— 读屏用户听不到任何会话内容（命令输出、
-      // 提示符、回显全无），产品的核心表面对读屏用户等于不存在。开启后 xterm
-      // 额外把缓冲区暴露成可读的 DOM（NVDA / VoiceOver）。
-      screenReaderMode: true,
+      // 提示符、回显全无）。开启后 xterm 额外把缓冲区暴露成可读的 DOM
+      // （NVDA / VoiceOver）。**设置项默认关**（2026-11 性能审计）：此前对
+      // 所有用户无条件常开——xterm 在 print 内层循环逐码点发 a11y 事件，
+      // 输出洪流场景仅此一项可烧 0.3–1 核；读屏用户在设置页开启。
+      screenReaderMode: termSettings.screenReaderMode,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

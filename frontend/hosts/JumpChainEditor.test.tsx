@@ -188,10 +188,13 @@ describe("JumpChainEditor", () => {
     expect(updateCall?.[1]).toEqual({ id: 11, input: { name: "office-bastions", hops: [2, 1] } });
   });
 
-  it("删除：jc_delete + 列表刷新", async () => {
+  it("删除：jc_delete + 列表刷新（两段确认）", async () => {
     seedBackend([chain()]);
     render(<JumpChainEditor open />);
     fireEvent.click(await screen.findByTestId("jump-delete-11"));
+    // 第一击只出确认框
+    expect(screen.getByTestId("jump-confirm-11")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("jump-confirm-delete-11"));
     await waitFor(() => expect(screen.getByTestId("jump-empty")).toBeTruthy());
     expect(mockedInvoke.mock.calls.some(([c]) => c === "jc_delete" && (c && true))).toBe(true);
   });

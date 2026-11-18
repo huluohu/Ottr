@@ -56,9 +56,12 @@ export interface OrbRect {
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** app-shell 实测矩形（jsdom/无布局兜底 window 尺寸）。 */
+/** app-body 实测矩形（jsdom/无布局兜底 window 尺寸）。域收窄到 app-body
+ *  （2026-11 审计）：app-shell 含 40px 顶栏——此前球可拖到顶栏上方、与顶栏
+ *  按钮同层重叠（z 同为 40 后绘者在上）挡住点击；body 不含顶栏，球的活动
+ *  域天然在顶栏之下。 */
 function measureShell(): OrbRect {
-  const el = document.querySelector(".app-shell");
+  const el = document.querySelector(".app-body");
   const r = el?.getBoundingClientRect();
   if (!r || (r.width === 0 && r.height === 0)) {
     return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };

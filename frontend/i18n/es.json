@@ -18,7 +18,8 @@
     "no": "No",
     "error": "Fallo",
     "done": "Listo",
-    "connect": "Conectar"
+    "connect": "Conectar",
+    "confirmDelete": "Confirmar eliminación"
   },
   "settings": {
     "title": "Ajustes",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "Se aplicó el ajuste, pero no se pudo guardar",
     "langHant": "Chino tradicional (繁體中文)",
     "searchPlaceholder": "Buscar en ajustes...",
-    "brandStable": "Estable"
+    "brandStable": "Estable",
+    "terminalScreenReader": "Modo lector de pantalla del terminal",
+    "terminalScreenReaderHint": "Expone el búfer del terminal como texto legible para lectores de pantalla (NVDA/VoiceOver, etc.). Desactivado por defecto: al activarlo, el uso de CPU aumenta notablemente con salidas intensas — actívalo solo si usas un lector de pantalla."
   },
   "hostForm": {
     "newTitle": "Nuevo host",
@@ -865,7 +868,8 @@
     "resend": "Reenviar",
     "resending": "Reenviando…",
     "centerTitle": "Centro de notificaciones",
-    "sendTimeout": "La solicitud agotó el tiempo de espera (15 s): revisa la red o el proxy"
+    "sendTimeout": "La solicitud agotó el tiempo de espera (15 s): revisa la red o el proxy",
+    "clearConfirmBody": "¿Borrar todas las notificaciones? No se pueden recuperar."
   },
   "knownHosts": {
     "title": "Claves de host conocidas",
@@ -1042,7 +1046,8 @@
     "actionFailed": "Error en la acción: {{message}}",
     "loadFailed": "Error al cargar: {{message}}",
     "editWithName": "Editar cadena de salto \"{{name}}\"",
-    "deleteWithName": "Eliminar cadena de salto \"{{name}}\""
+    "deleteWithName": "Eliminar cadena de salto \"{{name}}\"",
+    "deleteConfirmBody": "¿Eliminar la cadena de salto \"{{name}}\"? Los hosts que la referencian se desvincularán. No se puede deshacer."
   },
   "monitor": {
     "title": "Supervisión",
@@ -1202,7 +1207,8 @@
     "errNoChannelHint": "Aún no hay canales: añade uno arriba para que la regla tenga adónde empujar la alerta.",
     "lastFired": "Última activación",
     "never": "nunca",
-    "errSaveFailed": "Error al guardar"
+    "errSaveFailed": "Error al guardar",
+    "deleteChannelConfirmBody": "¿Eliminar este canal de alertas? Su token se perderá también."
   },
   "batch": {
     "title": "Ejecución por lotes",
@@ -1299,7 +1305,8 @@
     "errScriptRequired": "Introduce un script",
     "actionFailed": "La acción falló: {{message}}",
     "loadFailed": "Error al cargar: {{message}}",
-    "saveFailed": "Error al guardar: {{message}}"
+    "saveFailed": "Error al guardar: {{message}}",
+    "deleteConfirmBody": "¿Eliminar esta tarea programada? Dejará de ejecutarse de inmediato. No se puede deshacer."
   },
   "mcp": {
     "title": "Integración MCP",

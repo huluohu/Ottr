@@ -18,7 +18,8 @@
     "no": "否",
     "error": "错误",
     "done": "完成",
-    "connect": "连接"
+    "connect": "连接",
+    "confirmDelete": "确认删除"
   },
   "settings": {
     "title": "设置",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "设置已生效，但保存失败",
     "langHant": "繁體中文",
     "searchPlaceholder": "搜索设置...",
-    "brandStable": "稳定版"
+    "brandStable": "稳定版",
+    "terminalScreenReader": "终端读屏模式",
+    "terminalScreenReaderHint": "把终端缓冲区暴露成可读文本供读屏器（NVDA/VoiceOver 等）朗读。默认关：开启后输出洪流场景 CPU 占用会明显上升，仅在使用读屏软件时开启。"
   },
   "hostForm": {
     "newTitle": "新建主机",
@@ -864,7 +867,8 @@
     "resend": "重发",
     "resending": "重发中…",
     "centerTitle": "通知中心",
-    "sendTimeout": "请求超时（15 秒）——检查网络或代理设置"
+    "sendTimeout": "请求超时（15 秒）——检查网络或代理设置",
+    "clearConfirmBody": "清空全部通知？不可恢复。"
   },
   "knownHosts": {
     "title": "已知主机密钥",
@@ -1041,7 +1045,8 @@
     "actionFailed": "操作失败：{{message}}",
     "loadFailed": "加载失败：{{message}}",
     "editWithName": "编辑跳板链「{{name}}」",
-    "deleteWithName": "删除跳板链「{{name}}」"
+    "deleteWithName": "删除跳板链「{{name}}」",
+    "deleteConfirmBody": "删除跳板链「{{name}}」？引用它的主机将解除绑定，此操作不可撤销。"
   },
   "monitor": {
     "title": "监控",
@@ -1201,7 +1206,8 @@
     "errNoChannelHint": "还没有可用渠道——先在上方添加渠道，规则才有推送去处。",
     "lastFired": "上次触发",
     "never": "从未",
-    "errSaveFailed": "保存失败"
+    "errSaveFailed": "保存失败",
+    "deleteChannelConfirmBody": "确认删除该告警渠道？渠道令牌将一并丢失。"
   },
   "batch": {
     "title": "批量执行",
@@ -1298,7 +1304,8 @@
     "errScriptRequired": "请填写脚本",
     "actionFailed": "操作失败：{{message}}",
     "loadFailed": "加载失败：{{message}}",
-    "saveFailed": "保存失败：{{message}}"
+    "saveFailed": "保存失败：{{message}}",
+    "deleteConfirmBody": "确认删除该定时任务？任务即停止执行，此操作不可撤销。"
   },
   "mcp": {
     "title": "MCP",

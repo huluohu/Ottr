@@ -239,6 +239,31 @@ describe("键盘导航", () => {
     expect(props.onAction).toHaveBeenCalledWith("hosts.new");
   });
 
+  // IME 组字守卫（2026-11-19 审计批）：组字中的 Enter 是「上屏候选词」，
+  // 方向键是候选词翻页——都不能当面板操作。真机（Linux/IBus）无法构造
+  // isComposing 事件，故在此用合成事件钉住该分支。
+  it("IME 组字中按 Enter 不执行高亮项（组字上屏 ≠ 面板操作）", () => {
+    const { props } = renderPalette({ hosts: [] });
+    const input = screen.getByTestId("palette-input");
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(props.onAction).not.toHaveBeenCalled();
+    expect(props.onConnect).not.toHaveBeenCalled();
+  });
+
+  it("IME 组字中方向键不移动高亮（候选词翻页不夺面板导航）", () => {
+    const { items, activeIndex } = renderPalette({ hosts: [] });
+    const before = activeIndex();
+    fireEvent.keyDown(screen.getByTestId("palette-input"), { key: "ArrowDown", isComposing: true });
+    expect(activeIndex()).toBe(before);
+    expect(items().length).toBeGreaterThan(0);
+  });
+
+  it("keyCode 229（组字中变体）同样放行", () => {
+    const { props } = renderPalette({ hosts: [] });
+    fireEvent.keyDown(screen.getByTestId("palette-input"), { key: "Enter", keyCode: 229 });
+    expect(props.onAction).not.toHaveBeenCalled();
+  });
+
   it("过滤后 Enter 连接命中的主机", () => {
     const { props } = renderPalette();
     const input = screen.getByTestId("palette-input");

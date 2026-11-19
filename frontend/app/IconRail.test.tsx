@@ -21,6 +21,7 @@ import { useSessionStore } from "../session/SessionStore";
 import { useVaultLockStore } from "../security/VaultLockStore";
 import { useUpdateStore } from "../update/updateStore";
 import { useOttyStore } from "../ui/otty/ottyStore";
+import { useModalStore } from "../ui/modalStore";
 
 const noop = () => {};
 
@@ -53,6 +54,7 @@ beforeEach(() => {
   useSessionStore.setState({ sessions: [] });
   useUpdateStore.setState({ phase: { kind: "idle" }, info: null, current: null, portable: null });
   useOttyStore.setState({ current: null, queue: [], enabled: true });
+  useModalStore.setState({ active: null });
   // 锁定钮渲染门（2026-10-20）：默认 password 模式（keychain 隐藏有专测）。
   useVaultLockStore.setState({ phase: "unlocked", mode: "password" });
   // ThemeProvider 的 system 主题探测需要 matchMedia（jsdom 无）
@@ -99,6 +101,19 @@ describe("IconRail（48px 图标轨）", () => {
       </ThemeProvider>,
     );
     expect(document.querySelector(".titlebar-inset")).toBeNull();
+  });
+
+  // 模态在场 → rail 浮层强制收起（2026-11-19 审计批修复项）：更新面板/Otty
+  // 弹层 z=300（flyout）盖过锁屏 z=200 与模态 z=50 —— 锁定态下焦点陷阱把
+  // Tab 锁进看不见的面板、锁屏密码框拿不到键盘；模态在场时呼出的 ⌘K 被
+  // rail 背板整面盖住（首次点击只关背板 = 「点了没反应」）。rail 不再与任何
+  // 模态并存。
+  it("模态在场：Otty 弹层强制收起（不与模态并存）", async () => {
+    renderRail();
+    openOttyMenu();
+    expect(screen.getByTestId("rail-flyout-main")).toBeTruthy();
+    useModalStore.getState().open("palette");
+    await waitFor(() => expect(screen.queryByTestId("rail-flyout-main")).toBeNull());
   });
 
   it("锁定钮：点击触发 vault.lock（立即锁定，与原生菜单同一动作）", () => {

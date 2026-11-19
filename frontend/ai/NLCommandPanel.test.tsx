@@ -156,6 +156,17 @@ describe("输入条渲染面", () => {
     expect(run.disabled).toBe(false);
   });
 
+  // IME 组字守卫（2026-11-19 审计批）：组字中的 Enter 是「上屏候选词」，
+  // 不能当提交——否则 CJK 用户把半截组字文本当问题发出去。真机（IBus）
+  // 无法构造 isComposing 事件，故在此用合成事件钉住该分支。
+  it("IME 组字中按 Enter 不提交（组字上屏 ≠ 发送）", () => {
+    renderPanel();
+    const input = screen.getByTestId("nl2cmd-input");
+    fireEvent.change(input, { target: { value: "列出容器" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(useNlStore.getState().status).not.toBe("running");
+  });
+
   it("running：流式原文等宽呈现 + 停止按钮；空答案显示思考中", () => {
     useNlStore.setState({ status: "running", answer: "" });
     const first = renderPanel();

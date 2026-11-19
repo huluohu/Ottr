@@ -1,6 +1,7 @@
 //! 安全状态机（T11，A7）：解锁/锁定/升降级向导/重置应用 + OTTR_DEV_UNLOCK
 //! 旁路判定。纯搬家拆分（原 vault.rs 单文件）——锁定语义零改动。
 
+use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use ottr_vault::master_key::KeyStorage as _;
@@ -323,40 +324,50 @@ pub(crate) fn wipe_vault_data(
 /// 重置应用命令（锁定屏「忘记密码？」确认后调用）。`confirm` 必须显式 true；
 /// 清库成功即进程重启（本命令不返回——`AppHandle::restart` diverges），前端
 /// invoke 永不 resolve 是预期形态；重启失败/清库失败错误如实回传上屏。
+/// async + spawn_blocking：清库含钥匙链 delete（securityd 交互——SecItem
+/// 访问不进主线程的自定纪律）+ 全目录逐条删（大录制目录时主线程会冻结窗口）。
 #[tauri::command]
-pub fn vault_reset(
+pub async fn vault_reset(
     state: State<'_, VaultState>,
     app: AppHandle,
     confirm: Option<bool>,
 ) -> CmdResult<()> {
     ensure_reset_confirmed(confirm)?;
     // 先落锁：password 模式把 Master Key 清出内存再动盘上数据（重启前不留
-    // 敏感材料；keyring 模式 lock 本就 no-op 语义）。
+    // 敏感材料；keyring 模式 lock 本就 no-op 语义）。内存操作，主线程即回。
     if state.0.mode() == KeyMode::Password {
         state.0.lock();
     }
-    let dir = crate::paths::data_root(&app)?;
-    // 防呆：app_data_dir 解析异常退化成根/无父目录时拒绝清（宁可不重置）。
-    if dir.parent().is_none() || dir == std::path::Path::new("/") {
-        return Err(format!(
-            "refusing to wipe suspicious data dir: {}",
-            dir.display()
-        ));
-    }
-    // 两条钥匙链条目：Master Key + 同步信封口令（重置 = 回到首启态，本应用
-    // 在正式 service 下的条目一个不留；entry 序对应错误消息 entry 0/1）。
-    let master =
-        ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
-    let sync_pass = ottr_vault::master_key::KeyringStorage::with_account(
-        crate::commands::sync_git::SYNC_SERVICE,
-        crate::commands::sync_git::SYNC_ACCOUNT,
-    );
-    wipe_vault_data(&dir, &[&master, &sync_pass])?;
+    let vault_state = state.0.clone();
+    let app_for_restart = app.clone();
+    let dir = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
+        let dir = crate::paths::data_root(&app)?;
+        // 防呆：app_data_dir 解析异常退化成根/无父目录时拒绝清（宁可不重置）。
+        if dir.parent().is_none() || dir == std::path::Path::new("/") {
+            return Err(format!(
+                "refusing to wipe suspicious data dir: {}",
+                dir.display()
+            ));
+        }
+        // 两条钥匙链条目：Master Key + 同步信封口令（重置 = 回到首启态，本应用
+        // 在正式 service 下的条目一个不留；entry 序对应错误消息 entry 0/1）。
+        let master =
+            ottr_vault::master_key::KeyringStorage::new(ottr_vault::master_key::DEFAULT_SERVICE);
+        let sync_pass = ottr_vault::master_key::KeyringStorage::with_account(
+            crate::commands::sync_git::SYNC_SERVICE,
+            crate::commands::sync_git::SYNC_ACCOUNT,
+        );
+        wipe_vault_data(&dir, &[&master, &sync_pass])?;
+        Ok(dir)
+    })
+    .await
+    .map_err(|e| format!("vault reset join: {e}"))??;
+    drop(vault_state);
     eprintln!(
         "[vault] reset confirmed: data dir wiped ({}), restarting app",
         dir.display()
     );
-    app.restart();
+    app_for_restart.restart();
 }
 
 #[cfg(test)]

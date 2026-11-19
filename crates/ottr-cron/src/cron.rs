@@ -285,11 +285,14 @@ pub struct CronJobView {
 }
 
 /// exec 结果（与 ottr-ssh ExecOutput 解耦的最小投影；mock 直造）。
-#[derive(Debug, Clone)]
+/// `timed_out` = 消费侧硬超时命中（生产 resolver 走 `exec_with_timeout`，
+/// 通道已显式关闭、远端不留悬挂 shell；此时 exit_code 恒 None）。
+#[derive(Debug, Clone, Default)]
 pub struct CronExecOutput {
     pub exit_code: Option<i64>,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+    pub timed_out: bool,
 }
 
 /// exec future（batch.rs BoxExecFuture 同款手写别名——不引 futures 依赖）。
@@ -370,6 +373,19 @@ fn settle(
     let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     match outcome {
         Err(_) => CronRunRecord {
+            cron_id,
+            status: CronRunStatus::Timeout,
+            exit_code: None,
+            output: String::new(),
+            truncated: false,
+            duration_ms,
+            ts,
+            error: None,
+        },
+        // 生产 resolver 走 exec_with_timeout：超时以内层 timed_out 标记到达
+        // （通道已关、远端无悬挂 shell）；外层 tokio timeout 退为兜底（mock
+        // 注入路径仍由它结算）。
+        Ok(Ok(out)) if out.timed_out => CronRunRecord {
             cron_id,
             status: CronRunStatus::Timeout,
             exit_code: None,
@@ -873,6 +889,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(0),
                     stdout: b"hi".to_vec(),
                     stderr: vec![],
@@ -894,6 +911,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(0),
                     stdout: vec![],
                     stderr: vec![],
@@ -936,6 +954,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(3),
                     stdout: b"boom".to_vec(),
                     stderr: b"err!".to_vec(),
@@ -981,6 +1000,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(0),
                     stdout: vec![],
                     stderr: vec![],
@@ -1052,6 +1072,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(0),
                     stdout: vec![],
                     stderr: vec![],
@@ -1083,6 +1104,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(0),
                     stdout: vec![],
                     stderr: vec![],
@@ -1105,6 +1127,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(0),
                     stdout: vec![],
                     stderr: vec![],
@@ -1131,6 +1154,7 @@ mod tests {
             .send((
                 1,
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: Some(0),
                     stdout: vec![],
                     stderr: vec![],
@@ -1173,6 +1197,7 @@ mod tests {
             100,
             &started,
             Ok(Ok(CronExecOutput {
+                timed_out: false,
                 exit_code: Some(0),
                 stdout: b"ok".to_vec(),
                 stderr: vec![],
@@ -1185,6 +1210,7 @@ mod tests {
             100,
             &started,
             Ok(Ok(CronExecOutput {
+                timed_out: false,
                 exit_code: None,
                 stdout: vec![],
                 stderr: vec![],

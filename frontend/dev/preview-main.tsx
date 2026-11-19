@@ -114,7 +114,9 @@ if (recMode) {
     }
     if (settingsMode && cmd === "settings_get") {
       if (args?.key === "sync.channel") return Promise.resolve("localdir");
-      if (args?.key === "sync.config.localdir") return Promise.resolve({ path: "/tmp/ottr-sync-preview" });
+      // 种子键名对齐真实配置形状（SyncSettings localdir: { dir }）——此前写成
+    // { path }，预览里 localdir 目录恒显示为空。
+    if (args?.key === "sync.config.localdir") return Promise.resolve({ dir: "/tmp/ottr-sync-preview" });
     }
     // 交互式认证弹窗的「换码」通道：每次调用返回**不同的**码 + 剩余秒数，
     // 这样无头浏览器脚本能证明「码过期后确实自动换了一个新码」。

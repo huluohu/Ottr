@@ -18,7 +18,8 @@
     "no": "否",
     "error": "誤",
     "done": "畢",
-    "connect": "連"
+    "connect": "連",
+    "confirmDelete": "確刪乎"
   },
   "settings": {
     "title": "設",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "命已行，惟存錄未成",
     "langHant": "繁體中文",
     "searchPlaceholder": "索設定...",
-    "brandStable": "穩定版"
+    "brandStable": "穩定版",
+    "terminalScreenReader": "終端讀屏之式",
+    "terminalScreenReaderHint": "以讀屏器（NVDA/VoiceOver 之屬）誦終端之文。恆默閉：啟則輸出洪流時 CPU 之耗大增，惟用讀屏之器者啟之。"
   },
   "hostForm": {
     "newTitle": "創機",
@@ -190,7 +193,8 @@
     "confirmDelete": "再次點擊諾削",
     "exportCsv": "匯出 CSV",
     "menuEdit": "輯機",
-    "menuDelete": "削機"
+    "menuDelete": "削機",
+    "addToGroupName": "於組「{{name}}」增新機"
   },
   "importDialog": {
     "title": "匯入機",
@@ -224,7 +228,8 @@
     "skippedEntries": "跳過 {{count}} 個不可用條目/檔",
     "xshellIntro": "擇 Xshell.xsh 席檔所在錄（或單個.xsh）。匯入機/端口/用戶；按地址+端口+用戶去重。",
     "tabbyIntro": "擇 Tabby 配置匯出檔（JSON 或 YAML，~/.config/tabby/config.yaml 即 YAML）。匯入其中 SSH 配置；按地址+端口+用戶去重。",
-    "csvIntro": "擇「匯出機 CSV」匯出的檔回導（8 列與匯出完全對錶：名/用戶/地址/端口/分組/標籤/編碼/備註；按地址+端口+用戶去重，缺失的分組自創建）。"
+    "csvIntro": "擇「匯出機 CSV」匯出之檔回導（11 列與匯出完全對錶：名/戶/址/埠/組/籤/編碼/註/協議/監/產標；按址+埠+戶去重，缺組自建；舊 8 列之檔亦可導）。",
+    "errCsvProtocolInvalid": "第 {{line}} 行之協議「{{value}}」無效（可用 ssh/ftp/ftps），已跳過"
   },
   "palette": {
     "title": "令面板",
@@ -256,7 +261,8 @@
     "tabSummaries": "紀要",
     "emptySummaries": "還沒有席紀要——席終（≥3 條令）時自生成",
     "commands": "{{count}} 條令",
-    "tabRecordings": "錄"
+    "tabRecordings": "錄",
+    "searchAria": "察史命令"
   },
   "titlebar": {
     "menu": "菜單",
@@ -861,7 +867,8 @@
     "resend": "重發",
     "resending": "重發中…",
     "centerTitle": "報館",
-    "sendTimeout": "請求逾時（十五秒）——察網絡或代理之設"
+    "sendTimeout": "請求逾時（十五秒）——察網絡或代理之設",
+    "clearConfirmBody": "空盡諸報乎？不可復也。"
   },
   "knownHosts": {
     "title": "已知機密鑰",
@@ -1036,7 +1043,10 @@
     "errHopsRequired": "至少須一跳",
     "saveFailed": "藏敗：{{message}}",
     "actionFailed": "操作敗：{{message}}",
-    "loadFailed": "加載敗：{{message}}"
+    "loadFailed": "加載敗：{{message}}",
+    "editWithName": "修跳板鏈「{{name}}」",
+    "deleteWithName": "刪跳板鏈「{{name}}」",
+    "deleteConfirmBody": "刪跳板鏈「{{name}}」乎？引之機皆解其縛，此不可逆。"
   },
   "monitor": {
     "title": "監控",
@@ -1196,7 +1206,8 @@
     "errNoChannelHint": "還沒有可用渠道——先在上方添加渠道，規則纔有推送去處。",
     "lastFired": "上次觸發",
     "never": "從未",
-    "errSaveFailed": "藏敗"
+    "errSaveFailed": "藏敗",
+    "deleteChannelConfirmBody": "確刪此警之渠乎？渠之符並失之。"
   },
   "batch": {
     "title": "批量行",
@@ -1293,7 +1304,8 @@
     "errScriptRequired": "請填寫 script",
     "actionFailed": "操作敗：{{message}}",
     "loadFailed": "加載敗：{{message}}",
-    "saveFailed": "藏敗：{{message}}"
+    "saveFailed": "藏敗：{{message}}",
+    "deleteConfirmBody": "確刪此定時之務乎？務即止，此不可逆。"
   },
   "mcp": {
     "title": "MCP",

@@ -57,6 +57,7 @@ import { openAskForFocusedTerminal } from "../ai/aiTargets";
 import { droppedPathsGrantKind } from "./dragGrant";
 import { recordCommand } from "../history/record";
 import { copyText } from "../ui/clipboard";
+import { useModalStore } from "../ui/modalStore";
 import { createCommandWatch } from "./CommandWatch";
 import { DiagnoseGate } from "./DiagnoseGate";
 import { noteCwd, forgetCwd } from "./CwdTracker";
@@ -240,6 +241,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       const s = loadTerminalSettings();
       term.options.fontFamily = s.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY;
       term.options.fontSize = s.fontSize ?? 13;
+      term.options.screenReaderMode = s.screenReaderMode;
       try {
         fitRef.current?.fit();
       } catch {
@@ -269,9 +271,11 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       minimumContrastRatio: 4.5,
       // 读屏支持（2026-11-01 UI 审计 P1-1）：xterm 默认把内容画进 canvas，
       // 画布对辅助技术是 aria-hidden —— 读屏用户听不到任何会话内容（命令输出、
-      // 提示符、回显全无），产品的核心表面对读屏用户等于不存在。开启后 xterm
-      // 额外把缓冲区暴露成可读的 DOM（NVDA / VoiceOver）。
-      screenReaderMode: true,
+      // 提示符、回显全无）。开启后 xterm 额外把缓冲区暴露成可读的 DOM
+      // （NVDA / VoiceOver）。**设置项默认关**（2026-11 性能审计）：此前对
+      // 所有用户无条件常开——xterm 在 print 内层循环逐码点发 a11y 事件，
+      // 输出洪流场景仅此一项可烧 0.3–1 核；读屏用户在设置页开启。
+      screenReaderMode: termSettings.screenReaderMode,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -842,7 +846,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     const width = 220;
     setMenu({
       x: Math.min(e.clientX, window.innerWidth - width),
-      y: Math.min(e.clientY, window.innerHeight - 320),
+      y: Math.max(0, Math.min(e.clientY, window.innerHeight - 320)),
       items: buildContextMenu(ctx, t),
     });
   }
@@ -1190,10 +1194,17 @@ export function TerminalArea() {
   const dividerList = activeTree ? dividers(activeTree, bounds) : [];
   const focusedPane = activeId != null ? (activePaneMap[activeId] ?? activeId) : null;
 
-  // ⌘F / Ctrl+F 呼出聚焦 pane 的搜索；Esc 由搜索栏自处理
+  // ⌘F / Ctrl+F 呼出聚焦 pane 的搜索；Esc 由搜索栏自处理。
+  // 语境门（2026-11 审计 P2）：模态在场（⌘K/设置/主机密钥框…）时不拦——
+  // 此前会在模态背后悄悄开搜索栏（模态关闭后突现）；焦点在输入框/textarea
+  // 内也不拦（Ctrl+F 的浏览器原语义交给调用面，AI 输入框/文件路径框不再
+  // 被吞键）。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        const el = e.target as Element | null;
+        if (useModalStore.getState().active != null) return;
+        if (el?.closest?.("input, textarea, [contenteditable='true']")) return;
         e.preventDefault();
         const store = useSessionStore.getState();
         const target =

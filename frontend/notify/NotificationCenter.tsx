@@ -107,6 +107,8 @@ export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void
   const refresh = useNotifyStore((s) => s.refresh);
   const markAllRead = useNotifyStore((s) => s.markAllRead);
   const clear = useNotifyStore((s) => s.clear);
+  // 清空两段确认（2026-11 审计 P2）：清空 = 删全表不可恢复。
+  const [clearConfirm, setClearConfirm] = useState(false);
   // 空态引导入口（ui2 T3，A4）：告警规则面板走既有 dock 单槽动作。
 
   // 挂载即对齐真源（多窗口/落库失败兜底）；未读数 → 原生菜单文案跟随。
@@ -130,14 +132,35 @@ export function NotificationCenter({ onOpenAlerts }: { onOpenAlerts?: () => void
             >
               {t("notify.markAllRead")}
             </button>
-            <button
-              type="button"
-              data-testid="notify-clear"
-              disabled={items.length === 0}
-              onClick={() => void clear()}
-            >
-              {t("notify.clear")}
-            </button>
+            {/* 清空 = 删全表不可恢复（2026-11 审计 P2）：两段确认。 */}
+            {clearConfirm ? (
+              <span className="cred-confirm notify-clear-confirm" data-testid="notify-clear-confirm">
+                <span>{t("notify.clearConfirmBody")}</span>
+                <button type="button" onClick={() => setClearConfirm(false)}>
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  data-testid="notify-clear-confirm-yes"
+                  onClick={() => {
+                    setClearConfirm(false);
+                    void clear();
+                  }}
+                >
+                  {t("common.confirmDelete")}
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                data-testid="notify-clear"
+                disabled={items.length === 0}
+                onClick={() => setClearConfirm(true)}
+              >
+                {t("notify.clear")}
+              </button>
+            )}
           </div>
         </div>
 

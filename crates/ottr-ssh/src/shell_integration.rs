@@ -272,7 +272,7 @@ pub fn zsh_hook_body() -> String {
 # the original exit code.
 __ottr_precmd() {
   local __ottr_rc="$1"
-  print -Pn "\033]133;D;$__ottr_rc\007\033]133;A\007\033]7;file://$HOST\PWD\007"
+  print -Pn "\033]133;D;$__ottr_rc\007\033]133;A\007\033]7;file://$HOST$PWD\007"
   ( exit $__ottr_rc )
 }
 __ottr_preexec() {
@@ -604,6 +604,11 @@ mod tests {
         assert!(!body.contains(r#"preexec(){ print -Pn"#));
         assert!(body.contains(r#"print -Pn "\033]133;D;$__ottr_rc\007\033]133;A\007"#));
         assert!(body.contains(r#"print -Pn "\033]133;C\007""#));
+        // OSC 7 载荷：host 后必须紧跟 `$PWD`（历史上写成 `$HOST\PWD`——\P 不是
+        // 变量引用，host 与路径之间没有 `/`，解析侧 `find('/')` 失败 → zsh 会话
+        // cwd 锚点（⌘J/历史入库/AI 目录提示）全链路静默失效。
+        assert!(body.contains(r#"file://$HOST$PWD"#));
+        assert!(!body.contains(r"\PWD"));
     }
 
     /// 钩子文件全文 = 钩子体 + 擦除回显行 + 自删；写命令仍是 noclobber +

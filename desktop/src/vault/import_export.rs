@@ -13,6 +13,24 @@ use super::{CmdResult, VaultState, cmd, ensure_unlocked};
 /// 导入 ~/.ssh/config（`path` 缺省时用 `~/.ssh/config`；前端 MVP 无文件选择器，
 /// 传 None 即默认路径——留参数位给后续文件选择对话框）。
 /// 解析与去重规则见 ssh_config 模块文档；报告（新增/跳过/错误行）由前端对话框展示。
+use std::path::Path;
+
+/// 导入文件大小闸：webview 传来的路径直接 read_to_string 是任意文件读取
+/// 原语（内容进 vault 主机清单），误选/恶意超大文件会拖死主线程。导入器
+/// 本面向人类编辑的配置/清单文件，16MB 远超任何合理输入。
+const IMPORT_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+fn read_capped(path: &Path) -> Result<String, String> {
+    let meta = std::fs::metadata(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    if meta.len() > IMPORT_MAX_BYTES {
+        return Err(format!(
+            "import file too large ({} bytes > {IMPORT_MAX_BYTES}): {}",
+            meta.len(),
+            path.display()
+        ));
+    }
+    std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))
+}
 #[specta::specta]
 #[tauri::command]
 pub fn import_ssh_config(
@@ -24,8 +42,7 @@ pub fn import_ssh_config(
         .map(PathBuf::from)
         .or_else(crate::ssh_config::default_ssh_config_path)
         .ok_or_else(|| "cannot resolve home directory".to_string())?;
-    let content =
-        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let content = read_capped(&path)?;
     let outcome = crate::ssh_config::parse_config(&content);
     cmd(crate::ssh_config::import_entries(&state.0, outcome))
 }
@@ -39,7 +56,7 @@ pub fn import_hosts_csv(
     path: String,
 ) -> CmdResult<crate::ssh_config::ImportReport> {
     ensure_unlocked(&state.0)?;
-    let content = std::fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))?;
+    let content = read_capped(Path::new(&path))?;
     let outcome = crate::importers::hosts_csv::parse(&content);
     cmd(crate::importers::hosts_csv::import_entries(
         &state.0, outcome,

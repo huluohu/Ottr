@@ -191,11 +191,20 @@ fn pin_scratch_path(raw: &str) -> Result<PathBuf, String> {
     Ok(path.to_path_buf())
 }
 
+/// 孤儿 scratch 清扫年龄线：正常收尾由 `sync_git_scratch_cleanup` 负责，
+/// 强杀/断电残留的目录在这里自愈（下次开 scratch 时顺带扫，无独立启动钩子）。
+const SCRATCH_ORPHAN_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+
 /// 新建一次性 scratch 工作目录（mkdtemp 等效：pid + 纳秒 + 重试计数，冲突
-/// 概率即重试；std 无随机源不引依赖）。
+/// 概率即重试；std 无随机源不引依赖）。unix 创建即 0700：scratch 里存有
+/// 同步信封（凭据/渠道明文的整体 AES-256-GCM 密文），/tmp 是 sticky 1777
+/// 共享目录——0644 目录 + 0644 信封文件在多用户机器上等于可被同机用户拷走
+/// 做离线爆破（信封里是密文，防线靠口令强度；0700 目录把防线抬到「根本
+/// 摸不着」，git 在目录里生成的 objects 等连带受保护）。
 #[tauri::command]
 pub fn sync_git_scratch() -> Result<String, String> {
     let root = scratch_root();
+    sweep_stale_scratches(&root);
     let pid = std::process::id();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -204,7 +213,14 @@ pub fn sync_git_scratch() -> Result<String, String> {
     for attempt in 0..64u128 {
         let dir = root.join(format!("{SCRATCH_PREFIX}{pid}-{}", nanos + attempt));
         match std::fs::create_dir(&dir) {
-            Ok(()) => return Ok(dir.to_string_lossy().into_owned()),
+            Ok(()) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+                }
+                return Ok(dir.to_string_lossy().into_owned());
+            }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(format!("sync-git scratch create: {e}")),
         }
@@ -212,14 +228,52 @@ pub fn sync_git_scratch() -> Result<String, String> {
     Err("sync-git scratch: exhausted unique-name retries".into())
 }
 
+/// 清扫孤儿 scratch（mtime 超过 [`SCRATCH_ORPHAN_MAX_AGE`] 的前缀目录）。
+/// 只动本应用命名空间（`{SCRATCH_PREFIX}*`），失败静默（尽力而为）。
+fn sweep_stale_scratches(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let cutoff = std::time::SystemTime::now() - SCRATCH_ORPHAN_MAX_AGE;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with(SCRATCH_PREFIX))
+            && std::fs::metadata(&p)
+                .and_then(|m| m.modified())
+                .map(|m| m < cutoff)
+                .unwrap_or(false)
+        {
+            let _ = std::fs::remove_dir_all(&p);
+        }
+    }
+}
+
 /// 写信封文件进 scratch（数据 = 信封 JSON 文本；父目录允许创建——git.ts
 /// filePath 校验过的子目录形态，路径整体过 `pin_scratch_path`）。
+/// unix 创建即 0600（信封 = 密文但防线分层：文件权限不让同机用户拿到副本，
+/// 见 sync_git_scratch 注释；Windows %TEMP% 本就按用户隔离）。
 #[tauri::command]
 pub fn sync_git_scratch_write(path: String, data: String) -> Result<(), String> {
     let path = pin_scratch_path(&path)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("sync-git write mkdir: {e}"))?;
     }
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)
+            .map_err(|e| format!("sync-git write: {e}"))?;
+        f.write_all(data.as_bytes())
+            .map_err(|e| format!("sync-git write: {e}"))
+    }
+    #[cfg(not(unix))]
     std::fs::write(&path, data.as_bytes()).map_err(|e| format!("sync-git write: {e}"))
 }
 

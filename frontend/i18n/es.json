@@ -18,7 +18,8 @@
     "no": "No",
     "error": "Fallo",
     "done": "Listo",
-    "connect": "Conectar"
+    "connect": "Conectar",
+    "confirmDelete": "Confirmar eliminación"
   },
   "settings": {
     "title": "Ajustes",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "Se aplicó el ajuste, pero no se pudo guardar",
     "langHant": "Chino tradicional (繁體中文)",
     "searchPlaceholder": "Buscar en ajustes...",
-    "brandStable": "Estable"
+    "brandStable": "Estable",
+    "terminalScreenReader": "Modo lector de pantalla del terminal",
+    "terminalScreenReaderHint": "Expone el búfer del terminal como texto legible para lectores de pantalla (NVDA/VoiceOver, etc.). Desactivado por defecto: al activarlo, el uso de CPU aumenta notablemente con salidas intensas — actívalo solo si usas un lector de pantalla."
   },
   "hostForm": {
     "newTitle": "Nuevo host",
@@ -190,7 +193,8 @@
     "confirmDelete": "Haz clic de nuevo para confirmar",
     "exportCsv": "Exportar CSV",
     "menuEdit": "Editar host",
-    "menuDelete": "Eliminar host"
+    "menuDelete": "Eliminar host",
+    "addToGroupName": "Añadir host al grupo \"{{name}}\""
   },
   "importDialog": {
     "title": "Importar hosts",
@@ -224,7 +228,8 @@
     "skippedEntries": "Se omitieron {{count}} entradas/archivos no utilizables",
     "xshellIntro": "Elige una carpeta con archivos de sesión .xsh de Xshell (o un único .xsh). Se importan host/puerto/usuario; los duplicados por dirección+puerto+usuario se omiten.",
     "tabbyIntro": "Elige una exportación de configuración de Tabby (JSON o YAML — ~/.config/tabby/config.yaml es YAML). Se importan los perfiles SSH; los duplicados por dirección+puerto+usuario se omiten.",
-    "csvIntro": "Elige un archivo exportado con «Exportar CSV de hosts» (8 columnas que coinciden exactamente con la exportación: nombre/usuario/dirección/puerto/grupo/etiquetas/codificación/notas; los duplicados por dirección+puerto+usuario se omiten; los grupos que falten se crean)."
+    "csvIntro": "Elige un archivo exportado con «Exportar CSV de hosts» (11 columnas idénticas a la exportación: nombre/usuario/dirección/puerto/grupo/etiquetas/codificación/notas/protocolo/monitorización/producción; deduplicado por dirección+puerto+usuario, los grupos ausentes se crean; los archivos de 8 columnas antiguos aún se importan).",
+    "errCsvProtocolInvalid": "Línea {{line}}: protocolo \"{{value}}\" no válido (se admite ssh/ftp/ftps) — omitido"
   },
   "palette": {
     "title": "Paleta de comandos",
@@ -256,7 +261,8 @@
     "tabSummaries": "Resúmenes",
     "emptySummaries": "Aún no hay resúmenes de sesión — se generan cuando termina una sesión (≥3 comandos)",
     "commands": "{{count}} comandos",
-    "tabRecordings": "Grabaciones"
+    "tabRecordings": "Grabaciones",
+    "searchAria": "Buscar en el historial de comandos"
   },
   "titlebar": {
     "menu": "Menú",
@@ -862,7 +868,8 @@
     "resend": "Reenviar",
     "resending": "Reenviando…",
     "centerTitle": "Centro de notificaciones",
-    "sendTimeout": "La solicitud agotó el tiempo de espera (15 s): revisa la red o el proxy"
+    "sendTimeout": "La solicitud agotó el tiempo de espera (15 s): revisa la red o el proxy",
+    "clearConfirmBody": "¿Borrar todas las notificaciones? No se pueden recuperar."
   },
   "knownHosts": {
     "title": "Claves de host conocidas",
@@ -1037,7 +1044,10 @@
     "errHopsRequired": "Se requiere al menos un salto",
     "saveFailed": "Error al guardar: {{message}}",
     "actionFailed": "Error en la acción: {{message}}",
-    "loadFailed": "Error al cargar: {{message}}"
+    "loadFailed": "Error al cargar: {{message}}",
+    "editWithName": "Editar cadena de salto \"{{name}}\"",
+    "deleteWithName": "Eliminar cadena de salto \"{{name}}\"",
+    "deleteConfirmBody": "¿Eliminar la cadena de salto \"{{name}}\"? Los hosts que la referencian se desvincularán. No se puede deshacer."
   },
   "monitor": {
     "title": "Supervisión",
@@ -1197,7 +1207,8 @@
     "errNoChannelHint": "Aún no hay canales: añade uno arriba para que la regla tenga adónde empujar la alerta.",
     "lastFired": "Última activación",
     "never": "nunca",
-    "errSaveFailed": "Error al guardar"
+    "errSaveFailed": "Error al guardar",
+    "deleteChannelConfirmBody": "¿Eliminar este canal de alertas? Su token se perderá también."
   },
   "batch": {
     "title": "Ejecución por lotes",
@@ -1294,7 +1305,8 @@
     "errScriptRequired": "Introduce un script",
     "actionFailed": "La acción falló: {{message}}",
     "loadFailed": "Error al cargar: {{message}}",
-    "saveFailed": "Error al guardar: {{message}}"
+    "saveFailed": "Error al guardar: {{message}}",
+    "deleteConfirmBody": "¿Eliminar esta tarea programada? Dejará de ejecutarse de inmediato. No se puede deshacer."
   },
   "mcp": {
     "title": "Integración MCP",

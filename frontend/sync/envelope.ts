@@ -2,7 +2,7 @@
 //
 // 格式（版本化，spec 计划 Task 2 裁定字段）：
 //   {"ottr-sync":1,
-//    "kdf":{"alg":"pbkdf2-sha256","salt":"<b64u>","iterations":310000},
+//    "kdf":{"alg":"pbkdf2-sha256","salt":"<b64u>","iterations":600000},
 //    "nonce":"<b64u>","ciphertext":"<b64u>"}
 //
 // 裁定实录（task-2 简报协调者裁定）：
@@ -27,10 +27,12 @@
 export const ENVELOPE_MAGIC = "ottr-sync" as const;
 export const ENVELOPE_FORMAT_VERSION = 1;
 
-/** KDF 算法标识与迭代档（裁定：PBKDF2-SHA256 310k——OWASP PBKDF2-SHA256
- * 推荐量级下沿，高熵同步口令场景够用；增量余地留 iterations 字段）。 */
+/** KDF 算法标识与迭代档。2026-11 审计裁定升到 OWASP PBKDF2-SHA256 建议的
+ * 600k（此前 310k = 推荐下沿，代码注释自辩「高熵口令够用」——口令熵不受控
+ * 时下沿偏弱；信封格式自带 iterations 字段，旧信封按其自带值照常开封，
+ * 只有**新建**信封用新档，向后兼容）。 */
 export const KDF_ALG = "pbkdf2-sha256" as const;
-export const ENVELOPE_KDF_ITERATIONS = 310_000;
+export const ENVELOPE_KDF_ITERATIONS = 600_000;
 
 const SALT_LEN = 16; // 128-bit salt
 const NONCE_LEN = 12; // GCM 96-bit

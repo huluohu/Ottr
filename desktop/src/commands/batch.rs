@@ -31,7 +31,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use ottr_ssh::ExecOutput;
+use ottr_ssh::ExecOutcome;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Semaphore;
@@ -42,7 +42,7 @@ use super::state::AppState;
 /// exec future（手写别名：desktop 不直接依赖 futures crate，`Pin<Box<dyn Future>>`
 /// 即全部所需——不必要的依赖树面不引入）。
 pub type BoxExecFuture =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<ExecOutput, String>> + Send>>;
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<ExecOutcome, String>> + Send>>;
 
 /// `ottr://batch-result` 事件载荷（serde snake_case，前端 `BatchResult` 同构）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -159,6 +159,7 @@ impl BatchManager {
 /// 会话不在表 = 未连接/已断开，同步失败（不发连接）。
 fn session_resolver(
     sessions: super::state::SessionMap,
+    timeout: Duration,
 ) -> impl Fn(&BatchTargetInput) -> Result<BoxExecFuture, String> {
     move |t: &BatchTargetInput| {
         let session = sessions
@@ -174,7 +175,12 @@ fn session_resolver(
             Some(session) => {
                 let cmd = t.command.clone();
                 Ok(Box::pin(async move {
-                    session.exec(&cmd).await.map_err(|e| e.to_string())
+                    // 超时显式关通道（exec_with_timeout）：远端不留悬挂 shell；
+                    // 外层 tokio timeout 保留作 mock 注入路径的兜底。
+                    session
+                        .exec_with_timeout(&cmd, timeout)
+                        .await
+                        .map_err(|e| e.to_string())
                 }))
             }
         }
@@ -266,6 +272,14 @@ pub async fn run_batch(
                     Some(e),
                     elapsed(&started),
                 ),
+                Ok(Ok(out)) if out.timed_out => settle(
+                    &batch_id,
+                    &target,
+                    BatchStatus::Timeout,
+                    None,
+                    None,
+                    elapsed(&started),
+                ),
                 Ok(Ok(out)) => {
                     let (stdout, t1) = summarize_output(&out.stdout);
                     let (stderr, t2) = summarize_output(&out.stderr);
@@ -334,8 +348,11 @@ fn summarize_output(bytes: &[u8]) -> (String, bool) {
     };
     let text = String::from_utf8_lossy(capped);
     let lines: Vec<&str> = text.lines().collect();
-    if !byte_capped && lines.len() <= OUTPUT_HEAD_LINES + OUTPUT_TAIL_LINES {
-        return (lines.join("\n"), false);
+    // 行数不超限 = 全量保留（即便 byte_capped：字节截断只可能残缺尾行，
+    // 残行如实展示并保留 truncated 标记——此前 byte_capped 且行数 ≤ 100 会
+    // 误入截断分支只留前 80 行，结果尾部的信息量最高的行被静默丢弃）。
+    if lines.len() <= OUTPUT_HEAD_LINES + OUTPUT_TAIL_LINES {
+        return (lines.join("\n"), byte_capped);
     }
     let mut kept: Vec<&str> = lines.iter().take(OUTPUT_HEAD_LINES).copied().collect();
     if lines.len() > OUTPUT_HEAD_LINES + OUTPUT_TAIL_LINES {
@@ -373,8 +390,12 @@ pub(crate) async fn batch_exec(
     let token = CancellationToken::new();
     state.batches.register(&batch_id, token.clone());
 
-    let resolve: ExecResolver = Arc::new(session_resolver(Arc::clone(&state.sessions)));
-    let timeout = Duration::from_secs(timeout_secs.unwrap_or(BATCH_DEFAULT_TIMEOUT_SECS));
+    let timeout = Duration::from_secs(
+        timeout_secs
+            .unwrap_or(BATCH_DEFAULT_TIMEOUT_SECS)
+            .clamp(1, BATCH_MAX_TIMEOUT_SECS),
+    );
+    let resolve: ExecResolver = Arc::new(session_resolver(Arc::clone(&state.sessions), timeout));
     let concurrency = concurrency.unwrap_or(BATCH_DEFAULT_CONCURRENCY);
     let sink: ResultSink = {
         let app = app.clone();
@@ -428,7 +449,7 @@ mod tests {
 
     /// mock resolver：固定 stdout + 退出码（可按 target 定制）。
     fn ok_resolve(
-        f: impl Fn(&BatchTargetInput) -> Result<ExecOutput, String> + Send + Sync + 'static,
+        f: impl Fn(&BatchTargetInput) -> Result<ExecOutcome, String> + Send + Sync + 'static,
     ) -> ExecResolver {
         Arc::new(move |t: &BatchTargetInput| {
             let out = f(t);
@@ -449,7 +470,8 @@ mod tests {
     #[tokio::test]
     async fn pool_executes_all_and_passes_output() {
         let resolve = ok_resolve(|t| {
-            Ok(ExecOutput {
+            Ok(ExecOutcome {
+                timed_out: false,
                 stdout: format!("out-{} from {}", t.host_id, t.command).into_bytes(),
                 stderr: b"warn".to_vec(),
                 exit_status: Some(7),
@@ -496,7 +518,8 @@ mod tests {
                     max_seen.fetch_max(now, Ordering::SeqCst);
                     tokio::time::sleep(Duration::from_millis(20)).await;
                     in_flight.fetch_sub(1, Ordering::SeqCst);
-                    Ok(ExecOutput {
+                    Ok(ExecOutcome {
+                        timed_out: false,
                         stdout: vec![],
                         stderr: vec![],
                         exit_status: Some(0),
@@ -531,7 +554,8 @@ mod tests {
                 if slow {
                     tokio::time::sleep(Duration::from_secs(10)).await;
                 }
-                Ok(ExecOutput {
+                Ok(ExecOutcome {
+                    timed_out: false,
                     stdout: b"done".to_vec(),
                     stderr: vec![],
                     exit_status: Some(0),
@@ -580,7 +604,8 @@ mod tests {
                     // 全部 exec 都挂在 gate 上：并发 1 下同一时刻至多一个在途，
                     // 「calls==1」即「恰有一个主机占着额度阻塞在 exec 里」
                     gate.notified().await;
-                    Ok(ExecOutput {
+                    Ok(ExecOutcome {
+                        timed_out: false,
                         stdout: b"ran".to_vec(),
                         stderr: vec![],
                         exit_status: Some(0),
@@ -631,7 +656,8 @@ mod tests {
                 Err("no live session for host b (not connected)".to_string())
             } else {
                 Ok(Box::pin(async move {
-                    Ok(ExecOutput {
+                    Ok(ExecOutcome {
+                        timed_out: false,
                         stdout: b"ok".to_vec(),
                         stderr: vec![],
                         exit_status: Some(0),
@@ -723,7 +749,8 @@ mod tests {
     #[tokio::test]
     async fn out_of_range_params_are_clamped() {
         let resolve = ok_resolve(|_t| {
-            Ok(ExecOutput {
+            Ok(ExecOutcome {
+                timed_out: false,
                 stdout: b"ok".to_vec(),
                 stderr: vec![],
                 exit_status: Some(0),

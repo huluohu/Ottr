@@ -25,6 +25,7 @@
 //! （配置面与 alert_rules 同款）；cj_runs / cj_run_output 是历史读面（
 //! notify_list / recording_list 同款豁免）。
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use ottr_cron::{
@@ -159,6 +160,9 @@ fn persist_and_emit(
     Some(row.id)
 }
 
+/// sidecar 目录清扫计数（每 32 次写扫一次，见 write_sidecar）。
+static SIDECAR_SWEEP_SEQ: AtomicU32 = AtomicU32::new(0);
+
 fn record_status_str(s: CronRunStatus) -> String {
     match s {
         CronRunStatus::Ok => "ok".into(),
@@ -185,8 +189,14 @@ fn write_sidecar(
     // 0644 的默认权限在多用户机器上等于公开可读。此前 `std::fs::write` 按
     // umask 落 0644，与 vault.db / 录制文件的 0600 口径不一致。
     write_private_file(&path, bytes).map_err(|e| format!("write sidecar: {e}"))?;
-    // 清理旧 sidecar：mtime > 7 天的 .log 文件删除（不依赖 DB 查询，简单有效）
-    if let Ok(entries) = std::fs::read_dir(&dir) {
+    // 清理旧 sidecar：mtime > 7 天的 .log 文件删除（不依赖 DB 查询，简单有效）。
+    // 降频：每 32 次写扫一次目录（每次写后全目录扫描在多任务同分触发时是
+    // N² 放大；7 天粒度的清理不需要逐写执行）。
+    if SIDECAR_SWEEP_SEQ
+        .fetch_add(1, Ordering::Relaxed)
+        .is_multiple_of(32)
+        && let Ok(entries) = std::fs::read_dir(&dir)
+    {
         let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(7 * 24 * 3600);
         for entry in entries.flatten() {
             let p = entry.path();
@@ -259,6 +269,9 @@ pub fn spawn_cron_scheduler(app: AppHandle) {
 
     // exec resolver：host_id → 在册会话；脚本现读任务行（任务刚删 → missed）
     let resolver_app = app.clone();
+    // exec 内部限时与调度核外层 timeout 同值：exec_with_timeout 超时**显式关
+    // 通道**，远端不留悬挂 shell（外层 tokio timeout 退为 mock 兜底）。
+    let exec_timeout = config.exec_timeout;
     let exec: CronExecResolver = Arc::new(move |job: &CronJobView| {
         let session = session_for_host(&resolver_app, job.host_id)
             .ok_or_else(|| format!("no live session for host {} (not connected)", job.host_id))?;
@@ -270,27 +283,37 @@ pub fn spawn_cron_scheduler(app: AppHandle) {
                 .script
         };
         Ok(Box::pin(async move {
-            let out = session.exec(&script).await.map_err(|e| e.to_string())?;
+            let out = session
+                .exec_with_timeout(&script, exec_timeout)
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(CronExecOutput {
                 exit_code: out.exit_status.map(i64::from),
                 stdout: out.stdout,
                 stderr: out.stderr,
+                timed_out: out.timed_out,
             })
         }) as BoxedCronExec)
     });
 
-    // 结果 sink：落库 + sidecar + 事件（core 回调线程面——阻塞写很小，直调）
+    // 结果 sink：落库 + sidecar + 事件。SQLite INSERT / sidecar 写 / 目录
+    // 清扫都是阻塞 IO，调度核回调在 tokio worker 上——移入 spawn_blocking
+    // （此前「阻塞写很小，直调」：DB 锁竞争 busy_timeout 最坏 5s 会卡住
+    // worker，调度 tick 与 PTY 转发一起遭殃）。结果 fire-and-forget。
     let sink_app = app.clone();
     let sink: CronRunSink = Arc::new(move |record: CronRunRecord| {
-        // host_id/channels 需要任务行——刚删的任务记录尽力归档（host_id 取 0）
-        let (host_id, channel_ids) = {
-            let state = sink_app.try_state::<VaultState>();
-            match state.map(|s| CronJobs::get(&s.0, record.cron_id)) {
-                Some(Ok(Some(job))) => (job.host_id, job.channels),
-                _ => (0, Vec::new()),
-            }
-        };
-        persist_and_emit(&sink_app, record, host_id, channel_ids);
+        let app2 = sink_app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            // host_id/channels 需要任务行——刚删的任务记录尽力归档（host_id 取 0）
+            let (host_id, channel_ids) = {
+                let state = app2.try_state::<VaultState>();
+                match state.map(|s| CronJobs::get(&s.0, record.cron_id)) {
+                    Some(Ok(Some(job))) => (job.host_id, job.channels),
+                    _ => (0, Vec::new()),
+                }
+            };
+            persist_and_emit(&app2, record, host_id, channel_ids);
+        });
     });
 
     tauri::async_runtime::spawn(async move {
@@ -393,27 +416,16 @@ pub(crate) async fn cj_trigger(
         },
         Some(session) => {
             let script = job.script.clone();
-            let exec = async move {
-                let out = session.exec(&script).await.map_err(|e| e.to_string())?;
-                Ok(CronExecOutput {
-                    exit_code: out.exit_status.map(i64::from),
-                    stdout: out.stdout,
-                    stderr: out.stderr,
-                })
-            };
-            // 手动触发限时 = 生产单轮限时（CronLoopConfig::production）
-            match tokio::time::timeout(CronLoopConfig::production().exec_timeout, exec).await {
-                Err(_) => CronRunRecord {
-                    cron_id: job.id,
-                    status: CronRunStatus::Timeout,
-                    exit_code: None,
-                    output: String::new(),
-                    truncated: false,
-                    duration_ms: elapsed_ms(&started),
-                    ts,
-                    error: None,
-                },
-                Ok(Err(e)) => CronRunRecord {
+            // 手动触发限时 = 生产单轮限时（CronLoopConfig::production）。走
+            // exec_with_timeout：超时**显式关通道**，远端不留悬挂 shell（此前
+            // 外层 tokio::time::timeout drop future = 通道 + 远端 shell 悬挂到
+            // 会话断开）。
+            let out = session
+                .exec_with_timeout(&script, CronLoopConfig::production().exec_timeout)
+                .await
+                .map_err(|e| e.to_string());
+            match out {
+                Err(e) => CronRunRecord {
                     cron_id: job.id,
                     status: CronRunStatus::Failed,
                     exit_code: None,
@@ -423,7 +435,27 @@ pub(crate) async fn cj_trigger(
                     ts,
                     error: Some(e),
                 },
-                Ok(Ok(out)) => cron_settle_from_output(job.id, ts, &started, out),
+                Ok(out) if out.timed_out => CronRunRecord {
+                    cron_id: job.id,
+                    status: CronRunStatus::Timeout,
+                    exit_code: None,
+                    output: String::new(),
+                    truncated: false,
+                    duration_ms: elapsed_ms(&started),
+                    ts,
+                    error: None,
+                },
+                Ok(out) => cron_settle_from_output(
+                    job.id,
+                    ts,
+                    &started,
+                    CronExecOutput {
+                        exit_code: out.exit_status.map(i64::from),
+                        stdout: out.stdout,
+                        stderr: out.stderr,
+                        timed_out: out.timed_out,
+                    },
+                ),
             }
         }
     };
@@ -538,6 +570,7 @@ mod tests {
             100,
             &started,
             CronExecOutput {
+                timed_out: false,
                 exit_code: Some(0),
                 stdout: b"hello".to_vec(),
                 stderr: vec![],
@@ -551,6 +584,7 @@ mod tests {
             100,
             &started,
             CronExecOutput {
+                timed_out: false,
                 exit_code: Some(2),
                 stdout: vec![],
                 stderr: b"boom".to_vec(),
@@ -567,6 +601,7 @@ mod tests {
             100,
             &started,
             CronExecOutput {
+                timed_out: false,
                 exit_code: None,
                 stdout: vec![],
                 stderr: vec![],
@@ -586,6 +621,7 @@ mod tests {
             100,
             &started,
             CronExecOutput {
+                timed_out: false,
                 exit_code: Some(0),
                 stdout: big,
                 stderr: vec![],

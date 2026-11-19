@@ -332,6 +332,9 @@ export function SecuritySettings({
   // 终端字体族/字号（外观分节，2026-10-10；localStorage 终端设置 + 事件广播）
   const [termFont, setTermFont] = useState<string | null>(null);
   const [termFontSize, setTermFontSize] = useState<number | null>(null);
+  // 读屏模式（2026-11 性能审计改设置项，默认关）：广播 ottr://terminal-settings
+  // 与字体同路，活动终端即时应用。
+  const [termScreenReader, setTermScreenReader] = useState(false);
 
   function applyTerminalFont(fontFamily: string | null, fontSize: number | null) {
     saveTerminalSettings({ ...loadTerminalSettings(), fontFamily, fontSize });
@@ -363,6 +366,7 @@ export function SecuritySettings({
       const ts = loadTerminalSettings();
       setTermFont(ts.fontFamily);
       setTermFontSize(ts.fontSize ?? 13);
+      setTermScreenReader(ts.screenReaderMode);
       return;
     }
     // 定向分区消费（2026-10-13 修复）：initialPane 此前只有文档与依赖数组，
@@ -1127,7 +1131,10 @@ export function SecuritySettings({
               data-testid="alerts-pane"
             >
               <PaneErrorBoundary label="alerts" fallbackText={t("settings.panelError")}>
-                <AlertSettings open />
+                {/* 懒装载收口（2026-11 审计 P2，SyncSettings 同款口径）：open 恒
+                    true = 挂载即跑渠道/规则清单——分区懒加载纪律「非当前分区
+                    绝不偷跑数据面调用」，且这些面板内就有秘密字段编辑面。 */}
+                <AlertSettings open={pane === "alerts"} />
               </PaneErrorBoundary>
             </div>
 
@@ -1155,7 +1162,8 @@ export function SecuritySettings({
               data-testid="mcp-pane"
             >
               <PaneErrorBoundary label="mcp" fallbackText={t("settings.panelError")}>
-                <McpSettings open />
+                {/* 懒装载收口（同 alerts 分区注释） */}
+                <McpSettings open={pane === "mcp"} />
               </PaneErrorBoundary>
             </div>
 
@@ -1366,6 +1374,23 @@ export function SecuritySettings({
               ))}
             </select>
           </label>
+          {/* 读屏模式开关（2026-11 性能审计）：默认关。开启后 xterm 逐码点
+              发 a11y 事件（输出洪流时可感知 CPU 上升）——读屏用户按需开。 */}
+          <div className="settings-row" data-testid="terminal-screen-reader-row">
+            <span className="settings-label">{t("settings.terminalScreenReader")}</span>
+            <InfoHint text={t("settings.terminalScreenReaderHint")} />
+            <Switch
+              testid="terminal-screen-reader-toggle"
+              label={t("settings.terminalScreenReader")}
+              checked={termScreenReader}
+              onChange={(e) => {
+                const on = e.currentTarget.checked;
+                setTermScreenReader(on);
+                saveTerminalSettings({ ...loadTerminalSettings(), screenReaderMode: on });
+                window.dispatchEvent(new CustomEvent("ottr://terminal-settings"));
+              }}
+            />
+          </div>
         </section>
 
             {/* --- 通用：语言 + 行为开关（关窗到托盘 / shell 集成，自外观节归位）--- */}
@@ -1492,7 +1517,8 @@ export function SecuritySettings({
               data-testid="ai-pane"
             >
               <h3>{t("settings.sectionAi")}</h3>
-              <AISettings open embedded />
+              {/* 懒装载收口（同 alerts 分区注释）：AI Key 编辑面在此分区 */}
+              <AISettings open={pane === "ai"} embedded />
             </section>
 
             {/* --- 关于（2026-10-13 第 7 分区；v2 重排）：紧凑信息卡（名称+版本

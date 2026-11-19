@@ -18,7 +18,8 @@
     "no": "No",
     "error": "Errore",
     "done": "Fatto",
-    "connect": "Connetti"
+    "connect": "Connetti",
+    "confirmDelete": "Conferma eliminazione"
   },
   "settings": {
     "title": "Impostazioni",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "Impostazione applicata, ma salvataggio non riuscito",
     "langHant": "Cinese tradizionale",
     "searchPlaceholder": "Cerca nelle impostazioni...",
-    "brandStable": "Stabile"
+    "brandStable": "Stabile",
+    "terminalScreenReader": "Modalità screen reader del terminale",
+    "terminalScreenReaderHint": "Espone il buffer del terminale come testo leggibile per gli screen reader (NVDA/VoiceOver ecc.). Disattivato per impostazione predefinita: attivarlo aumenta sensibilmente l'uso della CPU con output intensi — attivare solo quando si usa uno screen reader."
   },
   "hostForm": {
     "newTitle": "Nuovo host",
@@ -190,7 +193,8 @@
     "confirmDelete": "Fai clic di nuovo per confermare",
     "exportCsv": "Esporta CSV",
     "menuEdit": "Modifica host",
-    "menuDelete": "Elimina host"
+    "menuDelete": "Elimina host",
+    "addToGroupName": "Aggiungi host al gruppo \"{{name}}\""
   },
   "importDialog": {
     "title": "Importa host",
@@ -224,7 +228,8 @@
     "skippedEntries": "{{count}} voci/file non utilizzabili ignorati",
     "xshellIntro": "Scegli una cartella di file di sessione Xshell .xsh (o un singolo .xsh). Vengono importati host/porta/utente; i duplicati per indirizzo+porta+utente vengono ignorati.",
     "tabbyIntro": "Scegli un'esportazione della configurazione di Tabby (JSON o YAML — ~/.config/tabby/config.yaml è in YAML). Vengono importati i profili SSH; i duplicati per indirizzo+porta+utente vengono ignorati.",
-    "csvIntro": "Scegli un file esportato con “Esporta CSV” (8 colonne esattamente come nell'esportazione: nome/utente/indirizzo/porta/gruppo/tag/codifica/note; i duplicati per indirizzo+porta+utente vengono ignorati; i gruppi mancanti vengono creati)."
+    "csvIntro": "Scegli un file esportato con \"Esporta CSV host\" (11 colonne identiche all'esportazione: nome/utente/indirizzo/porta/gruppo/tag/codifica/note/protocollo/monitoraggio/produzione; deduplica per indirizzo+porta+utente, i gruppi mancanti vengono creati; i file a 8 colonne legacy restano importabili).",
+    "errCsvProtocolInvalid": "Riga {{line}}: protocolo \"{{value}}\" non valido (supportati ssh/ftp/ftps) — ignorata"
   },
   "palette": {
     "title": "Palette dei comandi",
@@ -256,7 +261,8 @@
     "tabSummaries": "Riepiloghi",
     "emptySummaries": "Ancora nessun riepilogo di sessione — vengono generati al termine di una sessione (≥3 comandi)",
     "commands": "{{count}} comandi",
-    "tabRecordings": "Registrazioni"
+    "tabRecordings": "Registrazioni",
+    "searchAria": "Cerca nella cronologia dei comandi"
   },
   "titlebar": {
     "menu": "Menu",
@@ -862,7 +868,8 @@
     "resend": "Invia di nuovo",
     "resending": "Invio in corso…",
     "centerTitle": "Centro notifiche",
-    "sendTimeout": "Richiesta scaduta (15 s) — controlla rete o proxy"
+    "sendTimeout": "Richiesta scaduta (15 s) — controlla rete o proxy",
+    "clearConfirmBody": "Cancellare tutte le notifiche? Non recuperabili."
   },
   "knownHosts": {
     "title": "Chiavi host note",
@@ -1037,7 +1044,10 @@
     "errHopsRequired": "È richiesto almeno un salto",
     "saveFailed": "Salvataggio non riuscito: {{message}}",
     "actionFailed": "Azione non riuscita: {{message}}",
-    "loadFailed": "Caricamento non riuscito: {{message}}"
+    "loadFailed": "Caricamento non riuscito: {{message}}",
+    "editWithName": "Modifica catena di salto \"{{name}}\"",
+    "deleteWithName": "Elimina catena di salto \"{{name}}\"",
+    "deleteConfirmBody": "Eliminare la catena di salto \"{{name}}\"? Gli host che la referenziano verranno scollegati. Operazione irreversibile."
   },
   "monitor": {
     "title": "Monitoraggio",
@@ -1197,7 +1207,8 @@
     "errNoChannelHint": "Ancora nessun canale — aggiungine uno qui sopra, così la regola ha dove inviare.",
     "lastFired": "Ultima attivazione",
     "never": "mai",
-    "errSaveFailed": "Salvataggio non riuscito"
+    "errSaveFailed": "Salvataggio non riuscito",
+    "deleteChannelConfirmBody": "Eliminare questo canale di avvisi? Il suo token andrà perso."
   },
   "batch": {
     "title": "Esecuzione per lotti",
@@ -1294,7 +1305,8 @@
     "errScriptRequired": "Inserisci uno script",
     "actionFailed": "Azione non riuscita: {{message}}",
     "loadFailed": "Caricamento non riuscito: {{message}}",
-    "saveFailed": "Salvataggio non riuscito: {{message}}"
+    "saveFailed": "Salvataggio non riuscito: {{message}}",
+    "deleteConfirmBody": "Eliminare questa attività pianificata? L'esecuzione si interrompe subito. Operazione irreversibile."
   },
   "mcp": {
     "title": "MCP (server locale)",

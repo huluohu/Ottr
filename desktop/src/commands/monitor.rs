@@ -164,6 +164,9 @@ pub(crate) async fn monitor_start(
         Settings::get_u64(&vault.0, SETTING_MONITOR_INTERVAL).map_err(|e| e.to_string())?,
     );
 
+    // exec 内部限时（与采样循环外层 timeout 同值双保险）：collect 走
+    // exec_with_timeout，超时显式关通道，远端不留悬挂 shell。
+    let exec_timeout = LoopConfig::production(interval).exec_timeout;
     let token = CancellationToken::new();
     if !state.monitors.register(&id, token.clone()) {
         return Ok(()); // 幂等：已在采样
@@ -182,7 +185,7 @@ pub(crate) async fn monitor_start(
                 let c = collector.clone();
                 async move {
                     match c {
-                        Collector::Ssh(session) => collect(&session).await,
+                        Collector::Ssh(session) => collect(&session, exec_timeout).await,
                         Collector::Local(sampler) => {
                             tauri::async_runtime::spawn_blocking(move || {
                                 sampler.lock().unwrap().sample()

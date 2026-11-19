@@ -239,12 +239,18 @@ describe("CronPanel", () => {
     expect(badge.textContent).toContain(new Date(1_800_000_200 * 1000).toLocaleString());
   });
 
-  it("删除调 cj_delete", async () => {
+  it("删除调 cj_delete（两段确认：点删 → 点确认）", async () => {
     seedJobs([job({})]);
     render(<CronPanel open />);
     await screen.findByTestId("cron-row-1");
     await act(async () => {
       fireEvent.click(screen.getByTestId("cron-delete-1"));
+    });
+    // 第一击只出确认框，不删
+    expect(mockedInvoke).not.toHaveBeenCalledWith("cj_delete", { id: 1 });
+    expect(screen.getByTestId("cron-confirm-1")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("cron-confirm-delete-1"));
     });
     expect(mockedInvoke).toHaveBeenCalledWith("cj_delete", { id: 1 });
   });

@@ -109,7 +109,7 @@ async fn sampling_worker(
             cancel,
             move || {
                 let s = Arc::clone(&session);
-                async move { collect(&s).await }
+                async move { collect(&s, Duration::from_secs(10)).await }
             },
             move |m| {
                 let c = Arc::clone(&c);
@@ -210,6 +210,7 @@ async fn run(hold: u64) -> (String, bool) {
                 exit_code: out.exit_status.map(i64::from),
                 stdout: out.stdout,
                 stderr: out.stderr,
+                timed_out: false,
             })
         });
         Ok(fut)

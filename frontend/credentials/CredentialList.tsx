@@ -7,6 +7,7 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi, type Credential } from "../vault/api";
+import { PASSWORD_LIKE_KINDS } from "./credentialDraft";
 import { useVaultStore } from "../vault/store";
 import { keyFingerprint } from "./fingerprint";
 import { CredentialForm } from "./CredentialForm";
@@ -84,7 +85,7 @@ export function CredentialList() {
                   </code>
                 )}
                 <span className="cred-meta">{t("credentials.boundCount", { count: bound })}</span>
-                {c.kind === "password" && (
+                {PASSWORD_LIKE_KINDS.includes(c.kind) && (
                   <button
                     type="button"
                     data-testid={`cred-copy-${c.id}`}

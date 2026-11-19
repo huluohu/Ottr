@@ -117,6 +117,58 @@ describe("FilePanel", () => {
     expect(labels.some((l) => /download/i.test(l))).toBe(true);
   });
 
+  // 导航竞态（2026-11-19 审计批修复项）：慢响应的旧目录不得覆盖新目录的
+  // 列表——否则「路径栏 = B、列表 = A 的条目」，此时按路径栏选中/删除会作用
+  // 到**错误目录的同名文件**（数据丢失面）。真机上本地栏是同步 IO（无竞态）、
+  // 远端栏需 SSH 服务器 + 慢链路，故用延迟 mock 构造乱序。
+  it("远端栏导航竞态：慢响应后到不得覆盖新目录列表", async () => {
+    const slow = [
+      { name: "SLOW-MARKER", is_dir: false, size: 1, mode: 0o100644, mtime: 1700000000 },
+    ];
+    const fast = [
+      { name: "FAST-MARKER", is_dir: false, size: 1, mode: 0o100644, mtime: 1700000000 },
+    ];
+    mockedInvoke.mockImplementation((cmd: string, args: { path?: string; id?: string }) => {
+      if (cmd === "local_home") return Promise.resolve("/Users/me");
+      if (cmd === "sftp_realpath") return Promise.resolve("/home/spike");
+      if (cmd === "local_list") {
+        return Promise.resolve(args.path === "/Users/me" ? localEntries : []);
+      }
+      if (cmd === "sftp_list") {
+        if (args.path === "/slow") {
+          return new Promise((r) => setTimeout(() => r(slow), 80));
+        }
+        if (args.path === "/fast") return Promise.resolve(fast);
+        return Promise.resolve(args.path === "/home/spike" ? remoteEntries : []);
+      }
+      return Promise.resolve(undefined as unknown as never);
+    });
+    render(<FilePanel session={makeSession()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("big100"),
+    );
+    const input = screen.getByLabelText("Remote path");
+    // ①先导航到慢目录
+    fireEvent.change(input, { target: { value: "/slow" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockedInvoke).toHaveBeenCalledWith("sftp_list", { id: "pty-0", path: "/slow" }),
+    );
+    // ②立刻导航到快目录（其响应先到）
+    fireEvent.change(input, { target: { value: "/fast" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.getByTestId("file-list-remote").textContent).toContain("FAST-MARKER"),
+    );
+    // ③慢响应后到：列表必须仍是 /fast 的内容
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 160));
+    });
+    const list = screen.getByTestId("file-list-remote").textContent ?? "";
+    expect(list).toContain("FAST-MARKER");
+    expect(list).not.toContain("SLOW-MARKER");
+  });
+
   it("未连接：显示提示，不发起任何 SFTP 命令", () => {
     mockListings();
     render(<FilePanel session={makeSession({ rustId: null, status: "disconnected" })} />);

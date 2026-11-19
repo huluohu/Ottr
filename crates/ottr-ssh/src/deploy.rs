@@ -78,7 +78,14 @@ pub async fn deploy_public_key(
     );
 
     let session = connect(addr, port, username, auth, host_key_cb).await?;
-    let output = session.exec(&command).await?;
+    // exec 失败也要显式 disconnect（`?` 早退会跳过下方收尾 → SSH 会话悬挂）。
+    let output = match session.exec(&command).await {
+        Ok(out) => out,
+        Err(e) => {
+            let _ = session.disconnect().await;
+            return Err(e);
+        }
+    };
     let host_key_fingerprint = session.host_key_fingerprint();
     let _ = session.disconnect().await;
 

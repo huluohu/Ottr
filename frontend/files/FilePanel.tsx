@@ -13,7 +13,7 @@
 //   * 传输队列（TransferQueue）常驻底部，事件驱动（events.ts）。
 //
 // 会话耦合：未连接（rustId 空）显示提示；会话切换时两栏重置到各自 home。
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEscClose } from "../ui/useEscClose";
 import { useModalStore } from "../ui/modalStore";
 import { useTranslation } from "react-i18next";
@@ -155,15 +155,9 @@ export function FilePanel({ session }: { session: Session }) {
   const [local, setLocal] = useState<PaneState>(emptyPane(""));
   const [focus, setFocus] = useState<Side>("remote");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  // 右键菜单 Esc 关闭（2026-10-09 断点清偿：ctx-overlay 只有点外/再右键，无键盘路径）。
-  useEffect(() => {
-    if (!menu) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(null);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [menu]);
+  // 右键菜单 Esc 关闭：统一走 useEscClose 栈（见下方 menu != null 注册）——
+  // 此前这里还私挂了一份 document keydown，与栈双注册：叠层时 document 先于
+  // window 触发且不查栈顶，一个 Esc 能把菜单和上层弹框一起关掉。
   const [dialog, setDialog] = useState<DialogState | null>(null);
   // 文件操作小对话框接入全局弹窗唯一槽（2026-10-14 用户裁定）：开启即认领
   // "filesDialog" 槽；被其他弹窗顶掉 = 本框销毁；面板卸载时如仍持槽则释放。
@@ -203,6 +197,7 @@ export function FilePanel({ session }: { session: Session }) {
     startY: number;
     active: boolean;
   } | null>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
   const [rowDragView, setRowDragView] = useState<{
     side: Side;
     name: string;
@@ -314,10 +309,13 @@ export function FilePanel({ session }: { session: Session }) {
     try {
       const list = await localList(path);
       const entries = Array.isArray(list) ? list : [];
-      setLocal((p) => ({ ...p, entries, loading: false }));
+      // 竞态守卫：回填只在「当前路径仍是本次请求的路径」时生效——快速连点
+      // 目录时慢响应后到，若不比对会把列表回填成旧目录的内容（路径栏 = B、
+      // 列表 = A 的条目），此时按路径栏选中/删除会作用于错误目录的同名文件。
+      setLocal((p) => (p.path === path ? { ...p, entries, loading: false } : p));
       return true;
     } catch (e) {
-      setLocal((p) => ({ ...p, loading: false, error: String(e) }));
+      setLocal((p) => (p.path === path ? { ...p, loading: false, error: String(e) } : p));
       return false;
     }
   }, []);
@@ -329,10 +327,11 @@ export function FilePanel({ session }: { session: Session }) {
       try {
         const list = await sftpListFor(rustId, path);
         const entries = Array.isArray(list) ? list : [];
-        setRemote((p) => ({ ...p, entries, loading: false }));
+        // 竞态守卫（同 loadLocal）：慢响应后到不得覆盖新目录的列表。
+        setRemote((p) => (p.path === path ? { ...p, entries, loading: false } : p));
         return true;
       } catch (e) {
-        setRemote((p) => ({ ...p, loading: false, error: String(e) }));
+        setRemote((p) => (p.path === path ? { ...p, loading: false, error: String(e) } : p));
         return false;
       }
     },
@@ -559,14 +558,14 @@ export function FilePanel({ session }: { session: Session }) {
         if (Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) < DRAG_THRESHOLD) return;
         d.active = true;
       }
-      setRowDragView({
-        side: d.side,
-        name: d.name,
-        isDir: d.isDir,
-        count: d.count,
-        x: ev.clientX,
-        y: ev.clientY,
-      });
+      // 浮标位置走 ref + transform 直写（60–120Hz 的 pointermove 不再触发
+      // 整面板重渲染——content 在激活时定格一次，之后只有位移变化）。
+      setRowDragView((cur) =>
+        cur ? cur : { side: d.side, name: d.name, isDir: d.isDir, count: d.count, x: ev.clientX, y: ev.clientY },
+      );
+      if (ghostRef.current) {
+        ghostRef.current.style.transform = `translate(${ev.clientX + 14}px, ${ev.clientY + 14}px)`;
+      }
       const target = hitSide(ev.clientX, ev.clientY);
       setDropTarget(target !== null && target !== d.side ? target : null);
     };
@@ -922,6 +921,17 @@ export function FilePanel({ session }: { session: Session }) {
     );
   }
 
+  // 排序结果 memo 化（2026-11 性能审计 P1-3）：此前排序在渲染体内联——
+  // 拖拽浮标每 pointermove 一次 setState → 整面板重渲染 → 两栏全量重排序
+  // （O(n log n)×2）+ 数千行 reconcile。现在仅 entries/排序变化时重算。
+  const sortedBySide = useMemo(
+    () => ({
+      local: sortFileEntries(local.entries, sorts.local),
+      remote: sortFileEntries(remote.entries, sorts.remote),
+    }),
+    [local.entries, remote.entries, sorts.local, sorts.remote],
+  ) as Record<Side, PaneState["entries"]>;
+
   const renderPane = (side: Side, state: PaneState) => (
     <section
       className="file-pane"
@@ -941,7 +951,7 @@ export function FilePanel({ session }: { session: Session }) {
         const menuH = 360;
         setMenu({
           x: Math.min(ev.clientX, window.innerWidth - menuW),
-          y: Math.min(ev.clientY, window.innerHeight - menuH),
+          y: Math.max(0, Math.min(ev.clientY, window.innerHeight - menuH)),
         });
       }}
     >
@@ -1032,7 +1042,7 @@ export function FilePanel({ session }: { session: Session }) {
         )}
         {!state.loading &&
           !state.error &&
-          sortFileEntries(state.entries, sorts[side]).map((e) => (
+          sortedBySide[side].map((e) => (
             <div
               key={e.name}
               role="option"
@@ -1083,7 +1093,7 @@ export function FilePanel({ session }: { session: Session }) {
                 const menuH = 360;
                 setMenu({
                   x: Math.min(ev.clientX, window.innerWidth - menuW),
-                  y: Math.min(ev.clientY, window.innerHeight - menuH),
+                  y: Math.max(0, Math.min(ev.clientY, window.innerHeight - menuH)),
                 });
               }}
             >
@@ -1200,7 +1210,8 @@ export function FilePanel({ session }: { session: Session }) {
         <div
           className="file-drag-badge"
           data-testid="file-drag-badge"
-          style={{ left: rowDragView.x + 14, top: rowDragView.y + 14 }}
+          ref={ghostRef}
+          style={{ left: 0, top: 0, transform: `translate(${rowDragView.x + 14}px, ${rowDragView.y + 14}px)` }}
           aria-hidden="true"
         >
           <span className="file-icon">

@@ -1,6 +1,7 @@
 // 终端搜索栏（自 Terminal.tsx 拆出）：⌘F 面板，操作「聚焦 pane」的会话。
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useEscClose } from "../ui/useEscClose";
 import { useSessionStore } from "../session/SessionStore";
 import { getSearch, type SearchResultSummary } from "./SearchAddon";
 
@@ -30,6 +31,13 @@ export function SearchBar({ sessionId }: { sessionId: string }) {
     useSessionStore.getState().openSearch(null);
   }
 
+  // Esc 关闭走全局栈：此前输入框私有 Escape 分支只 preventDefault 不阻断
+  // 冒泡——搜索栏开着时上层再弹模态（如主机密钥确认框），焦点仍在输入框，
+  // 一次 Esc 会先关搜索栏、事件继续冒泡到 window 的栈顶 fire，把主机密钥
+  // 确认框也一起关掉（= 静默拒绝连接）。入栈后 Esc 只关栈顶（搜索栏自己
+  // 就是栈顶时才关它）。
+  useEscClose(true, close);
+
   return (
     <div className="search-bar" data-testid="search-bar" role="search">
       <input
@@ -39,12 +47,10 @@ export function SearchBar({ sessionId }: { sessionId: string }) {
         data-testid="search-input"
         onChange={(e) => setQuery(e.currentTarget.value)}
         onKeyDown={(e) => {
+          // Esc 不在这里处理：统一走 useEscClose 栈（见上）。
           if (e.key === "Enter") {
             e.preventDefault();
             doSearch(e.shiftKey ? "prev" : "next");
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            close();
           }
         }}
       />

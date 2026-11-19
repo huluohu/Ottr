@@ -141,10 +141,15 @@ export function JumpChainEditor({ open }: JumpChainEditorProps) {
     }
   }
 
+  // 两段确认（2026-11 审计 P2）：此前删除一键直发——误触即删，且删链会
+  // 波及引用它的主机绑定（对齐凭据/主机删除的同款交互）。
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
   async function handleDelete(row: JumpChain) {
     setActionError(null);
     try {
       await deleteJumpChain(row.id);
+      setConfirmDeleteId(null);
       if (editingId === row.id) closeForm();
       await refresh();
     } catch (err) {
@@ -193,18 +198,38 @@ export function JumpChainEditor({ open }: JumpChainEditorProps) {
                   <button
                     data-testid={`jump-edit-${row.id}`}
                     onClick={() => openEdit(row)}
-                    aria-label={t("common.edit")}
+                    aria-label={t("jump.editWithName", { name: row.name })}
                   >
                     {t("common.edit")}
                   </button>
                   <button
                     data-testid={`jump-delete-${row.id}`}
-                    onClick={() => void handleDelete(row)}
-                    aria-label={t("common.delete")}
+                    onClick={() => setConfirmDeleteId(row.id)}
+                    aria-label={t("jump.deleteWithName", { name: row.name })}
                   >
                     {t("common.delete")}
                   </button>
                 </span>
+                {confirmDeleteId === row.id && (
+                  <div className="cred-confirm" data-testid={`jump-confirm-${row.id}`}>
+                    <p data-testid={`jump-confirm-text-${row.id}`}>
+                      {t("jump.deleteConfirmBody", { name: row.name })}
+                    </p>
+                    <div className="form-actions">
+                      <button type="button" onClick={() => setConfirmDeleteId(null)}>
+                        {t("common.cancel")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        data-testid={`jump-confirm-delete-${row.id}`}
+                        onClick={() => void handleDelete(row)}
+                      >
+                        {t("common.confirmDelete")}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

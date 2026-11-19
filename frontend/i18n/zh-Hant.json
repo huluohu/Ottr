@@ -18,7 +18,8 @@
     "no": "否",
     "error": "錯誤",
     "done": "完成",
-    "connect": "連接"
+    "connect": "連接",
+    "confirmDelete": "確認刪除"
   },
   "settings": {
     "title": "設定",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "設定已生效，但儲存失敗",
     "langHant": "繁體中文",
     "searchPlaceholder": "搜尋設定...",
-    "brandStable": "穩定版"
+    "brandStable": "穩定版",
+    "terminalScreenReader": "終端讀屏模式",
+    "terminalScreenReaderHint": "把終端緩衝區暴露成可讀文本供讀屏器（NVDA/VoiceOver 等）朗讀。預設關：開啟後輸出洪流場景 CPU 佔用會明顯上升，僅在使用讀屏軟體時開啟。"
   },
   "hostForm": {
     "newTitle": "新建主機",
@@ -190,7 +193,8 @@
     "confirmDelete": "再次點擊確認刪除",
     "exportCsv": "匯出 CSV",
     "menuEdit": "編輯主機",
-    "menuDelete": "刪除主機"
+    "menuDelete": "刪除主機",
+    "addToGroupName": "在分組「{{name}}」中新增主機"
   },
   "importDialog": {
     "title": "匯入主機",
@@ -224,7 +228,8 @@
     "skippedEntries": "跳過 {{count}} 個不可用條目/檔案",
     "xshellIntro": "選擇 Xshell .xsh 會話檔案所在目錄（或單個 .xsh）。匯入主機/端口/用戶；按地址+端口+用戶去重。",
     "tabbyIntro": "選擇 Tabby 配置匯出檔案（JSON 或 YAML，~/.config/tabby/config.yaml 即 YAML）。匯入其中 SSH 配置；按地址+端口+用戶去重。",
-    "csvIntro": "選擇「匯出主機 CSV」匯出的檔案回導（8 列與匯出完全對錶：名稱/用戶/地址/端口/分組/標籤/編碼/備註；按地址+端口+用戶去重，缺失的分組自動創建）。"
+    "csvIntro": "選擇「匯出主機 CSV」匯出的檔案回導（11 列與匯出完全對錶：名稱/用戶/地址/端口/分組/標籤/編碼/備註/協議/監控/生產標記；按地址+端口+用戶去重，缺失的分組自動建立；舊 8 列檔案仍可匯入）。",
+    "errCsvProtocolInvalid": "第 {{line}} 行協議「{{value}}」無效（支援 ssh/ftp/ftps），已跳過"
   },
   "palette": {
     "title": "命令面板",
@@ -256,7 +261,8 @@
     "tabSummaries": "紀要",
     "emptySummaries": "還沒有會話紀要——會話結束（≥3 條命令）時自動生成",
     "commands": "{{count}} 條命令",
-    "tabRecordings": "錄製"
+    "tabRecordings": "錄製",
+    "searchAria": "搜尋歷史命令"
   },
   "titlebar": {
     "menu": "菜單",
@@ -861,7 +867,8 @@
     "resend": "重發",
     "resending": "重發中…",
     "centerTitle": "通知中心",
-    "sendTimeout": "請求逾時（15 秒）——檢查網路或代理設定"
+    "sendTimeout": "請求逾時（15 秒）——檢查網路或代理設定",
+    "clearConfirmBody": "清空全部通知？不可恢復。"
   },
   "knownHosts": {
     "title": "已知主機密鑰",
@@ -1036,7 +1043,10 @@
     "errHopsRequired": "至少需要一跳",
     "saveFailed": "保存失敗：{{message}}",
     "actionFailed": "操作失敗：{{message}}",
-    "loadFailed": "加載失敗：{{message}}"
+    "loadFailed": "加載失敗：{{message}}",
+    "editWithName": "編輯跳板鏈「{{name}}」",
+    "deleteWithName": "刪除跳板鏈「{{name}}」",
+    "deleteConfirmBody": "刪除跳板鏈「{{name}}」？引用它的主機將解除綁定，此操作不可撤銷。"
   },
   "monitor": {
     "title": "監控",
@@ -1196,7 +1206,8 @@
     "errNoChannelHint": "還沒有可用渠道——先在上方添加渠道，規則纔有推送去處。",
     "lastFired": "上次觸發",
     "never": "從未",
-    "errSaveFailed": "保存失敗"
+    "errSaveFailed": "保存失敗",
+    "deleteChannelConfirmBody": "確認刪除該告警渠道？渠道權杖將一併遺失。"
   },
   "batch": {
     "title": "批量執行",
@@ -1293,7 +1304,8 @@
     "errScriptRequired": "請填寫腳本",
     "actionFailed": "操作失敗：{{message}}",
     "loadFailed": "加載失敗：{{message}}",
-    "saveFailed": "保存失敗：{{message}}"
+    "saveFailed": "保存失敗：{{message}}",
+    "deleteConfirmBody": "確認刪除該定時任務？任務即停止執行，此操作不可撤銷。"
   },
   "mcp": {
     "title": "MCP",

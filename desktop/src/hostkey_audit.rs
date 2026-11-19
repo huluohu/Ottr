@@ -104,6 +104,9 @@ pub fn probe_endpoint(address: &str, port: u16) -> Result<Vec<String>, String> {
             &KEYSCAN_TIMEOUT_SECS.to_string(),
             "-t",
             "rsa,ecdsa,ed25519",
+            // `--` 终结选项解析：地址以 `-` 开头（如 `-6`、`--help` 形态）时
+            // 否则会被 keyscan 当成自己的选项（地址可经 CSV 导入等入库）。
+            "--",
             address,
         ])
         .output()

@@ -577,11 +577,21 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       const activePane = { ...st.activePane };
       delete trees[id];
       delete activePane[id];
+      // 模块级 Map/记录收尾（2026-11 审计）：paneBounds（分屏几何，写后无删除面）、
+      // generations / connectSeq（连接守卫与排序，键随标签单调增长）——长会话
+      // 高频开关标签下缓慢累积。
+      const paneBounds = { ...st.paneBounds };
+      for (const sid of doomedIds) {
+        delete paneBounds[sid];
+        generations.delete(sid);
+        connectSeq.delete(sid);
+      }
       return {
         sessions,
         activeId,
         trees,
         activePane,
+        paneBounds,
         hostKeyAsk: hostKeyDoomed ? keyPromoted : st.hostKeyAsk,
         hostKeyAskQueue: keyPromoted ? survivingKeyQueue.slice(1) : survivingKeyQueue,
         promptAsk: askDoomed ? promoted : st.promptAsk,

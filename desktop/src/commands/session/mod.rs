@@ -21,8 +21,8 @@ mod relay;
 mod shell_integration;
 
 pub(crate) use attach::{
-    app_restart, attach_host_session, disconnect_all_inner, disconnect_all_local, drop_session,
-    quit_app, session_disconnect_all,
+    app_restart, attach_host_session, disconnect_all_core, drop_session, quit_app,
+    session_disconnect_all,
 };
 // 夹具驱动面：release 不导出（生产闸门，见 attach.rs 的命令说明）。
 #[cfg(debug_assertions)]

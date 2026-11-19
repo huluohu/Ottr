@@ -1534,6 +1534,15 @@ pub(crate) fn tray_menu_action(app: &AppHandle<Wry>) -> crate::dock_menu::DockAc
     std::sync::Arc::new(move |id| match dispatch_of(id) {
         Some(Dispatch::TrayShow) => show_main_window(&handle),
         Some(Dispatch::Quit) => handle.exit(0),
+        // macOS 托盘/Dock 菜单的「断开全部连接」走这条 objc 路径（muda 的
+        // setMenu 路径在本机 macOS 静默失效，见 dock_menu.rs）——此前落到
+        // `_` 是死项，点击零效果；与 Windows/Linux 的 muda 分派共用同一
+        // 实现核（终端 + 本地终端 + FTP 全收尾）。
+        Some(Dispatch::TrayDisconnectAll) => {
+            let state = handle.state::<AppState>();
+            let n = crate::disconnect_all_core(&state);
+            eprintln!("[tray] disconnect all: {n} session(s)");
+        }
         Some(Dispatch::Frontend) => {
             // 同上：先唤回主窗再转发，避免「弹在隐藏窗口里 = 没效果」。
             show_main_window(&handle);
@@ -1766,10 +1775,9 @@ pub fn setup(app: &AppHandle<Wry>) -> tauri::Result<()> {
             Some(Dispatch::TrayShow) => show_main_window(app),
             Some(Dispatch::TrayDisconnectAll) => {
                 let state = app.state::<AppState>();
-                let n = crate::disconnect_all_inner(&state.sessions)
-                    + crate::disconnect_all_local(&state.local_sessions);
-                // 全部会话断开 = 全部 AI 目标作用域失效（feat/ask-ottr-orb Task 1）。
-                state.ai_scopes.revoke_all();
+                // 与命令面同一实现核（终端 + 本地终端 + FTP 全收尾 + AI 作用域
+                // 撤销）——此前托盘只收尾两张终端表，FTP 会话残留连接。
+                let n = crate::disconnect_all_core(&state);
                 eprintln!("[tray] disconnect all: {n} session(s)");
             }
             Some(Dispatch::Quit) => app.exit(0),

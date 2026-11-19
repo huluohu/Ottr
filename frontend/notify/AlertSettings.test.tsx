@@ -178,9 +178,13 @@ describe("AlertSettings 渠道区", () => {
     expect(testChannel).toHaveBeenCalledWith("telegram", { bot_token: "OLD", chat_id: "-100" });
   });
 
-  it("删除渠道：nc_delete + 重挂载", async () => {
+  it("删除渠道：nc_delete + 重挂载（两段确认）", async () => {
     render(<AlertSettings open={true} />);
     fireEvent.click(await screen.findByTestId("alert-channel-delete-3"));
+    // 第一击只出确认框
+    expect(screen.getByTestId("alert-channel-confirm-3")).toBeTruthy();
+    expect(mockedInvoke).not.toHaveBeenCalledWith("nc_delete", { id: 3 });
+    fireEvent.click(screen.getByTestId("alert-channel-confirm-delete-3"));
     await waitFor(() => expect(remountChannels).toHaveBeenCalled());
     expect(mockedInvoke).toHaveBeenCalledWith("nc_delete", { id: 3 });
   });

@@ -1,6 +1,7 @@
 //! 传输命令域（Task 0 拆分，纯搬家）：SFTP 文件面板命令面 + 本地栏 + 传输队列
 //! （journal 派生/清扫、进度节流、begin/progress/end 事件、取消）。
 //! SFTP 通道复用既有会话（SessionEntry 持 Arc<SshSession>，见 sftp_for）。
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -44,32 +45,27 @@ pub(crate) async fn sftp_for(
             "session {id} is a local terminal: open the file directly instead of remote edit"
         ));
     }
-    let (session, cached) = {
+    // 会话取一次 Arc（sessions 表锁内只做查表）；slot 锁（tokio Mutex）
+    // **持锁跨 await** 懒开：并发双开时第二路等锁后复用第一路的实例
+    // （同会话单客户端）——std Mutex 形态下双开各自开 SFTP 子系统通道，
+    // 输家整只客户端被静默 drop，远端 sftp-server 子进程无 CHANNEL_CLOSE
+    // 残留到会话断开。
+    let (session, slot) = {
         let sessions = state.sessions.lock().unwrap();
         let e = sessions
             .get(id)
             .ok_or_else(|| format!("no such session: {id}"))?;
-        let session = Arc::clone(&e.session);
-        let cached = e.sftp.lock().unwrap().as_ref().map(Arc::clone);
-        (session, cached)
+        (Arc::clone(&e.session), Arc::clone(&e.sftp))
     };
-    if let Some(c) = cached {
-        return Ok(c);
+    let mut guard = slot.lock().await;
+    if let Some(c) = guard.as_ref() {
+        return Ok(Arc::clone(c));
     }
     let client = Arc::new(
         ottr_transfer::SftpClient::open(&session)
             .await
             .map_err(|e| e.to_string())?,
     );
-    // 竞态兜底：两路并发懒开时后到者采用先到者的实例（同会话单客户端）。
-    let sessions = state.sessions.lock().unwrap();
-    let slot = sessions
-        .get(id)
-        .ok_or_else(|| format!("no such session: {id}"))?;
-    let mut guard = slot.sftp.lock().unwrap();
-    if let Some(c) = guard.as_ref() {
-        return Ok(Arc::clone(c));
-    }
     *guard = Some(Arc::clone(&client));
     Ok(client)
 }
@@ -704,10 +700,11 @@ fn spawn_transfer(
 }
 
 /// 本地会话的「传输」= 本机文件复制（2026-10-20）：下载/上传在本地终端的
-/// 文件面板里都是同一台机器的两个目录之间搬文件。无分块/无 journal（std::fs::copy
-/// 一次到底，取消令牌在开始前检查一次），完成后发一帧满进度让进度条收口。
-/// **同文件守卫**：源与目标 canonicalize 相等时拒绝——`std::fs::copy` 把文件
-/// 复制到自身会先截断再读，等于清空该文件。
+/// 文件面板里都是同一台机器的两个目录之间搬文件。无 journal；分块复制（
+/// 1MiB/块）中途查取消令牌——此前 std::fs::copy 一次到底，取消钮只在开始前
+/// 检查一次，大文件复制中点取消无效。完成后发一帧满进度让进度条收口。
+/// **同文件守卫**：源与目标 canonicalize 相等时拒绝——复制到自身会先截断再
+/// 读，等于清空该文件。
 async fn local_copy_transfer(
     from: PathBuf,
     to: PathBuf,
@@ -718,7 +715,7 @@ async fn local_copy_transfer(
         return Err(ottr_transfer::Error::Cancelled);
     }
     let started = Instant::now();
-    let total = local_fs(move || {
+    let outcome = local_fs(move || -> std::io::Result<Option<u64>> {
         let src = std::fs::canonicalize(&from)?;
         if src.is_dir() {
             return Err(std::io::Error::other(format!(
@@ -734,17 +731,54 @@ async fn local_copy_transfer(
                 src.display()
             )));
         }
-        std::fs::copy(&src, &to)
-    })
-    .await?;
+        let existed = to.exists();
+        let mut reader = std::fs::File::open(&src)?;
+        let total = reader.metadata()?.len();
+        // 分块复制：块间查取消（取消 = 半成品文件删除，不留「看似成功」的
+        // 截断文件——目标此前不存在时）。
+        const CHUNK: usize = 1024 * 1024;
+        let mut writer = std::fs::File::create(&to)?;
+        let mut copied: u64 = 0;
+        let mut chunk = vec![0u8; CHUNK];
+        loop {
+            if cancel.is_cancelled() {
+                drop(writer);
+                if !existed {
+                    let _ = std::fs::remove_file(&to);
+                }
+                return Ok(None);
+            }
+            let n = std::io::Read::read(&mut reader, &mut chunk)?;
+            if n == 0 {
+                break;
+            }
+            writer.write_all(&chunk[..n])?;
+            copied += n as u64;
+            if copied >= total {
+                break;
+            }
+        }
+        writer.flush()?;
+        drop(writer);
+        if copied < total {
+            return Err(std::io::Error::other(format!(
+                "copy truncated: {copied}/{total} bytes"
+            )));
+        }
+        Ok(Some(copied))
+    });
+    let copied = match outcome.await? {
+        Some(copied) => copied,
+        None => return Err(ottr_transfer::Error::Cancelled),
+    };
     hook(ottr_transfer::TransferProgress {
-        transferred: total,
-        total,
+        transferred: copied,
+        total: copied,
         chunks_done: 1,
         chunks_total: 1,
     });
     Ok(ottr_transfer::TransferStats {
-        total_bytes: total,
+        total_bytes: copied,
         chunks_total: 1,
         chunks_resumed: 0,
         elapsed: started.elapsed(),

@@ -18,7 +18,8 @@
     "no": "아니오",
     "error": "오류",
     "done": "완료",
-    "connect": "연결"
+    "connect": "연결",
+    "confirmDelete": "삭제 확인"
   },
   "settings": {
     "title": "설정",
@@ -119,7 +120,9 @@
     "askOttrOrbSaveFailed": "설정은 적용되었지만 저장에 실패했습니다",
     "langHant": "중국어(번체)",
     "searchPlaceholder": "설정 검색...",
-    "brandStable": "안정 버전"
+    "brandStable": "안정 버전",
+    "terminalScreenReader": "터미널 스크린 리더 모드",
+    "terminalScreenReaderHint": "터미널 버퍼를 스크린 리더(NVDA/VoiceOver 등)가 읽을 수 있는 텍스트로 노출합니다. 기본값은 꺼짐: 출력이 많을 때 CPU 사용률이 크게 올라가므로 스크린 리더 사용 시에만 켜세요."
   },
   "hostForm": {
     "newTitle": "새 호스트",
@@ -190,7 +193,8 @@
     "confirmDelete": "한 번 더 클릭하면 삭제됩니다",
     "exportCsv": "CSV 내보내기",
     "menuEdit": "호스트 편집",
-    "menuDelete": "호스트 삭제"
+    "menuDelete": "호스트 삭제",
+    "addToGroupName": "그룹 \"{{name}}\"에 호스트 추가"
   },
   "importDialog": {
     "title": "호스트 가져오기",
@@ -224,7 +228,8 @@
     "skippedEntries": "사용할 수 없는 항목/파일 {{count}}개를 건너뛰었습니다",
     "xshellIntro": "Xshell .xsh 세션 파일이 들어 있는 폴더(또는 .xsh 파일 하나)를 선택하세요. 호스트/포트/사용자를 가져오며, 주소+포트+사용자가 같은 중복 항목은 건너뜁니다.",
     "tabbyIntro": "Tabby 설정 내보내기 파일(JSON 또는 YAML — ~/.config/tabby/config.yaml는 YAML)을 선택하세요. SSH 프로필을 가져오며, 주소+포트+사용자가 같은 중복 항목은 건너뜁니다.",
-    "csvIntro": "“호스트 CSV 내보내기”로 내보낸 파일을 선택하세요(8개 열: 이름/사용자/주소/포트/그룹/태그/인코딩/메모 — 내보내기 형식과 동일). 주소+포트+사용자가 같은 중복 항목은 건너뛰고, 없는 그룹은 새로 만듭니다."
+    "csvIntro": "\"호스트 CSV 내보내기\"로 내보낸 파일을 선택하세요(11개 열: 이름/사용자/주소/포트/그룹/태그/인코딩/비고/프로토콜/모니터링/프로덕션. 주소+포트+사용자 기준 중복 제거, 누락된 그룹은 자동 생성. 기존 8개 열 파일도 가져오기 가능).",
+    "errCsvProtocolInvalid": "{{line}}번째 줄의 프로토콜 \"{{value}}\"이(가) 잘못되었습니다(ssh/ftp/ftps 지원) — 건너뜀"
   },
   "palette": {
     "title": "명령 팔레트",
@@ -256,7 +261,8 @@
     "tabSummaries": "요약",
     "emptySummaries": "아직 세션 요약이 없습니다. 세션(명령 3개 이상)이 끝나면 생성됩니다",
     "commands": "명령 {{count}}개",
-    "tabRecordings": "녹화"
+    "tabRecordings": "녹화",
+    "searchAria": "명령어 기록 검색"
   },
   "titlebar": {
     "menu": "메뉴",
@@ -862,7 +868,8 @@
     "resend": "다시 보내기",
     "resending": "다시 보내는 중…",
     "centerTitle": "알림 센터",
-    "sendTimeout": "요청 시간 초과(15초) — 네트워크 또는 프록시 설정을 확인하세요"
+    "sendTimeout": "요청 시간 초과(15초) — 네트워크 또는 프록시 설정을 확인하세요",
+    "clearConfirmBody": "모든 알림을 지울까요? 복구할 수 없습니다."
   },
   "knownHosts": {
     "title": "알려진 호스트 키",
@@ -1037,7 +1044,10 @@
     "errHopsRequired": "홉이 최소 하나 필요합니다",
     "saveFailed": "저장 실패: {{message}}",
     "actionFailed": "작업 실패: {{message}}",
-    "loadFailed": "불러오기 실패: {{message}}"
+    "loadFailed": "불러오기 실패: {{message}}",
+    "editWithName": "점프 체인 \"{{name}}\" 편집",
+    "deleteWithName": "점프 체인 \"{{name}}\" 삭제",
+    "deleteConfirmBody": "점프 체인 \"{{name}}\"을(를) 삭제할까요? 참조하는 호스트의 연결도 해제됩니다. 되돌릴 수 없습니다."
   },
   "monitor": {
     "title": "모니터링",
@@ -1197,7 +1207,8 @@
     "errNoChannelHint": "아직 채널이 없습니다 — 규칙이 전송할 대상이 생기도록 위에서 하나 추가하세요.",
     "lastFired": "마지막 발동",
     "never": "없음",
-    "errSaveFailed": "저장 실패"
+    "errSaveFailed": "저장 실패",
+    "deleteChannelConfirmBody": "이 알림 채널을 삭제할까요? 채널 토큰도 함께 사라집니다."
   },
   "batch": {
     "title": "일괄 실행",
@@ -1294,7 +1305,8 @@
     "errScriptRequired": "스크립트를 입력하세요",
     "actionFailed": "작업 실패: {{message}}",
     "loadFailed": "불러오기 실패: {{message}}",
-    "saveFailed": "저장 실패: {{message}}"
+    "saveFailed": "저장 실패: {{message}}",
+    "deleteConfirmBody": "이 예약 작업을 삭제할까요? 작업이 즉시 중지됩니다. 되돌릴 수 없습니다."
   },
   "mcp": {
     "title": "MCP 연동",

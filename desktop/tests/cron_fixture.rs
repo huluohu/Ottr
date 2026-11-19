@@ -205,6 +205,7 @@ async fn cron_every_minute_two_rounds_two_runs_and_offline_missed() {
             Ok(Box::pin(async move {
                 let out = session.exec(&script).await.map_err(|e| e.to_string())?;
                 Ok(CronExecOutput {
+                    timed_out: false,
                     exit_code: out.exit_status.map(i64::from),
                     stdout: out.stdout,
                     stderr: out.stderr,

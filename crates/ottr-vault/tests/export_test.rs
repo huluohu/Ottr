@@ -40,12 +40,14 @@ fn hosts_csv_joins_group_and_escapes_cells() {
 
     let csv = ottr_vault::hosts_csv(&vault).unwrap();
     assert!(
-        csv.starts_with("name,username,address,port,group,tags,encoding,notes\n"),
+        csv.starts_with(
+            "name,username,address,port,group,tags,encoding,notes,protocol,monitor_enabled,is_production\n"
+        ),
         "表头固定：{csv}"
     );
     // name 含逗号 → 整格加引号；group join 出分组名；notes 换行 → 加引号。
     assert!(
-        csv.contains("\"web,1\",deploy,10.0.0.1,2222,prod,a|b,,\"line\nbreak\"\n"),
+        csv.contains("\"web,1\",deploy,10.0.0.1,2222,prod,a|b,,\"line\nbreak\",ssh,false,false\n"),
         "行内容：{csv}"
     );
     // 空库 = 只有表头。
@@ -53,7 +55,7 @@ fn hosts_csv_joins_group_and_escapes_cells() {
     let empty = open_vault(dir2.path());
     assert_eq!(
         ottr_vault::hosts_csv(&empty).unwrap(),
-        "name,username,address,port,group,tags,encoding,notes\n"
+        "name,username,address,port,group,tags,encoding,notes,protocol,monitor_enabled,is_production\n"
     );
 }
 

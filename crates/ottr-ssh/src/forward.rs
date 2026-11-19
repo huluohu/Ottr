@@ -348,7 +348,21 @@ async fn start_local(
                         let host = target_host.clone();
                         let st = Arc::clone(&stats);
                         tokio::spawn(async move {
-                            let channel = s.open_direct_tcpip_stream(&host, target_port).await;
+                            // 建连纳入取消 + 限时（ pump 阶段的 select 之外——
+                            // 此前 CHANNEL_OPEN 不回时任务永挂）。
+                            let channel = tokio::select! {
+                                c = tokio::time::timeout(
+                                    CONNECT_OPEN_TIMEOUT,
+                                    s.open_direct_tcpip_stream(&host, target_port),
+                                ) => match c {
+                                    Ok(c) => c,
+                                    Err(_) => {
+                                        st.conn_failed();
+                                        return;
+                                    }
+                                },
+                                _ = child.cancelled() => return,
+                            };
                             pump_tcp_to_channel(tcp, channel, st, child).await;
                         });
                     }
@@ -403,10 +417,28 @@ async fn start_dynamic(
                         tokio::spawn(async move {
                             // SOCKS5 握手在直连 TCP 上做（不经 SSH）；拿到目标后
                             // 才打开 direct-tcpip——错误目标是本地拒绝，不烧服务端。
-                            match socks5_connect_request(&mut tcp).await {
-                                Ok((host, port)) => {
-                                    let channel =
-                                        s.open_direct_tcpip_stream(&host, port).await;
+                            match tokio::time::timeout(
+                                CONNECT_OPEN_TIMEOUT,
+                                socks5_connect_request(&mut tcp),
+                            )
+                            .await
+                            {
+                                Ok(Ok((host, port))) => {
+                                    // 建连纳入取消 + 限时（同 -L）。
+                                    let channel = tokio::select! {
+                                        c = tokio::time::timeout(
+                                            CONNECT_OPEN_TIMEOUT,
+                                            s.open_direct_tcpip_stream(&host, port),
+                                        ) => match c {
+                                            Ok(c) => c,
+                                            Err(_) => {
+                                                st.conn_failed();
+                                                let _ = socks5_reply(&mut tcp, SOCKS5_REP_GENERAL_FAILURE).await;
+                                                return;
+                                            }
+                                        },
+                                        _ = child.cancelled() => return,
+                                    };
                                     // 应答必须在泵数据前写回（RFC1928 时序）：
                                     // 成功 = REP 0；channel 打不开（目标拒绝/
                                     // 会话已死）= REP 1（M-2 fix 1/5：客户端
@@ -419,10 +451,16 @@ async fn start_dynamic(
                                     let _ = socks5_reply(&mut tcp, rep).await;
                                     pump_tcp_to_channel(tcp, channel, st, child).await;
                                 }
-                                Err(()) => {
+                                Ok(Err(())) => {
                                     // 失败应答已在握手函数里发过（尽力而为）；
                                     // 连接随 drop 关闭。
                                     st.conn_failed();
+                                }
+                                Err(_) => {
+                                    // 握手限时（客户端连上不发话）：发失败
+                                    // 应答尽力而为，连接随 drop 关闭。
+                                    st.conn_failed();
+                                    let _ = socks5_reply(&mut tcp, SOCKS5_REP_GENERAL_FAILURE).await;
                                 }
                             }
                         });
@@ -493,7 +531,24 @@ async fn start_remote(
             let st = Arc::clone(&stats);
             tokio::spawn(async move {
                 // target 从本机视角解析（-R 语义：隧道回客户端侧）。
-                match TcpStream::connect((host.as_str(), target_port)).await {
+                // 目标 connect 纳入取消 + 限时：目标被防火墙 drop 时任务
+                // 不再永挂（此前裸 await，停转发/会话断开都收不掉）。
+                match tokio::select! {
+                    c = tokio::time::timeout(
+                        CONNECT_OPEN_TIMEOUT,
+                        TcpStream::connect((host.as_str(), target_port)),
+                    ) => match c {
+                        Ok(c) => c,
+                        Err(_) => Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "remote forward target connect timed out",
+                        )),
+                    },
+                    _ = child.cancelled() => {
+                        // 取消：channel 侧随 drop 关闭，服务端感知连接失败。
+                        return;
+                    }
+                } {
                     Ok(mut tcp) => {
                         let mut counted = CountedStream::new(channel.into_stream(), &st);
                         let _ = tokio::select! {
@@ -549,6 +604,12 @@ async fn pump_tcp_to_channel(
 // ---------------------------------------------------------------------------
 // SOCKS5（RFC1928 最小面：无认证 + CONNECT）
 // ---------------------------------------------------------------------------
+
+/// 建连阶段限时（direct-tcpip 打开 / SOCKS5 握手 / -R 目标 connect）：服务端
+/// 半死（收 TCP 不回 CHANNEL_OPEN、目标被防火墙 drop）时任务不再永挂——此前
+/// 建连裸 await 且不在取消 select 内，停转发/会话断开都收不掉，socket+任务
+/// 泄漏到进程退出。10s 与监控 exec 限时同量级（LAN/典型链路充分）。
+const CONNECT_OPEN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 const SOCKS5_VER: u8 = 5;
 const SOCKS5_METHOD_NO_AUTH: u8 = 0x00;

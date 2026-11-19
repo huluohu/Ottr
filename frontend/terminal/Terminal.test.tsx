@@ -106,7 +106,7 @@ afterEach(() => {
   resetTerminalThemeStoreForTest();
   useSessionStore.setState({ sessions: [], activeId: null, trees: {}, activePane: {}, searchSessionId: null });
   localStorage.clear();
-  saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: null, fontSize: null });
+  saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: null, fontSize: null, screenReaderMode: false });
 });
 
 describe("PasteConfirmDialog（粘贴确认弹层）", () => {
@@ -364,7 +364,7 @@ describe("SessionTerminal 右键唤起菜单（集成）", () => {
 
   it("设置读写：copyOnSelect 开关持久化", () => {
     expect(loadTerminalSettings().copyOnSelect).toBe(false);
-    saveTerminalSettings({ copyOnSelect: true, completionEnabled: true, fontFamily: null, fontSize: null });
+    saveTerminalSettings({ copyOnSelect: true, completionEnabled: true, fontFamily: null, fontSize: null, screenReaderMode: false });
     expect(loadTerminalSettings().copyOnSelect).toBe(true);
   });
 });
@@ -394,7 +394,7 @@ describe("智能补全开关（Task 8 B8）", () => {
     expect(loaded.copyOnSelect).toBe(true);
     expect(loaded.completionEnabled).toBe(true);
     // 关闭后持久化
-    saveTerminalSettings({ copyOnSelect: true, completionEnabled: false, fontFamily: null, fontSize: null });
+    saveTerminalSettings({ copyOnSelect: true, completionEnabled: false, fontFamily: null, fontSize: null, screenReaderMode: false });
     expect(loadTerminalSettings().completionEnabled).toBe(false);
   });
 
@@ -494,7 +494,7 @@ describe("终端字体/字号设置事件（设置页 → 活动终端即时应�
     const term = capturedTerms()[capturedTerms().length - 1];
 
     // 换字体 + 大字号
-    saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: "Menlo", fontSize: 20 });
+    saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: "Menlo", fontSize: 20, screenReaderMode: false });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("ottr://terminal-settings"));
     });
@@ -502,7 +502,7 @@ describe("终端字体/字号设置事件（设置页 → 活动终端即时应�
     expect(term.options.fontSize).toBe(20);
 
     // 切回「系统默认」（null）→ 还原默认字体栈（SF Mono 现代栈，非 xterm 缺省 Courier New）
-    saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: null, fontSize: null });
+    saveTerminalSettings({ copyOnSelect: false, completionEnabled: true, fontFamily: null, fontSize: null, screenReaderMode: false });
     await act(async () => {
       window.dispatchEvent(new CustomEvent("ottr://terminal-settings"));
     });

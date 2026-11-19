@@ -258,7 +258,7 @@ export function HistorySearch({
               aria-label={
                 tab === "recordings"
                   ? t("recording.searchPlaceholder")
-                  : t("history.title")
+                  : t("history.searchAria")
               }
               data-testid="history-input"
               onChange={(e) => {

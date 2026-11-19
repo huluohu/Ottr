@@ -12,12 +12,17 @@ use crate::{Result, Vault};
 
 /// 主机清单 CSV（RFC4180：含逗号/引号/换行的字段加引号、引号翻倍）。
 /// 分组列按 group_id join 分组名（悬空/无分组 = 空串）。
+/// 11 列含 protocol/monitor_enabled/is_production：CSV 往返此前丢这三项
+/// （FTP/FTPS 主机导出再导入会静默变回 SSH、监控开关/生产标记归 false）。
+/// 导入器对旧 8 列表头仍兼容（缺省值同旧语义）。
 pub fn hosts_csv(vault: &Vault) -> Result<String> {
     let groups: HashMap<i64, String> = HostGroups::list(vault)?
         .into_iter()
         .map(|g| (g.id, g.name))
         .collect();
-    let mut out = String::from("name,username,address,port,group,tags,encoding,notes\n");
+    let mut out = String::from(
+        "name,username,address,port,group,tags,encoding,notes,protocol,monitor_enabled,is_production\n",
+    );
     for h in Hosts::list(vault)? {
         let group = h
             .group_id
@@ -33,6 +38,9 @@ pub fn hosts_csv(vault: &Vault) -> Result<String> {
             h.tags.join("|"),
             h.encoding_override.clone().unwrap_or_default(),
             h.notes.clone().unwrap_or_default(),
+            h.protocol.as_str().to_string(),
+            h.monitor_enabled.to_string(),
+            h.is_production.to_string(),
         ];
         let cells: Vec<String> = row.iter().map(|c| csv_field(c)).collect();
         out.push_str(&cells.join(","));

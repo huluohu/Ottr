@@ -83,6 +83,11 @@ export interface TerminalSettings {
   fontFamily: string | null;
   /** 终端字号（null = 13 默认）。 */
   fontSize: number | null;
+  /** 读屏模式（2026-11 性能审计改设置项，**默认关**）：此前对所有用户无条件
+   *  常开——xterm 在 print 内层循环逐码点发 a11y 事件，输出洪流场景仅此一项
+   *  可烧 0.3–1 核（所有用户为读屏用户付常态税）。读屏用户在设置页开启后
+   *  xterm 才把缓冲区暴露成可读 DOM。 */
+  screenReaderMode: boolean;
 }
 
 const DEFAULT_SETTINGS: TerminalSettings = {
@@ -90,6 +95,7 @@ const DEFAULT_SETTINGS: TerminalSettings = {
   completionEnabled: true,
   fontFamily: null,
   fontSize: null,
+  screenReaderMode: false,
 };
 
 export function loadTerminalSettings(): TerminalSettings {
@@ -108,6 +114,10 @@ export function loadTerminalSettings(): TerminalSettings {
         fontFamily:
           typeof parsed.fontFamily === "string" ? parsed.fontFamily : DEFAULT_SETTINGS.fontFamily,
         fontSize: typeof parsed.fontSize === "number" ? parsed.fontSize : DEFAULT_SETTINGS.fontSize,
+        screenReaderMode:
+          typeof parsed.screenReaderMode === "boolean"
+            ? parsed.screenReaderMode
+            : DEFAULT_SETTINGS.screenReaderMode,
       };
     }
   } catch {

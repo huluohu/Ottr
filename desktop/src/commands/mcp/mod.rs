@@ -272,18 +272,20 @@ pub(crate) fn mcp_set_approval_timeout(
     secs: u64,
 ) -> CmdResult<McpStatus> {
     crate::security::validate_setting(SETTING_MCP_APPROVAL_TIMEOUT, &serde_json::json!(secs))?;
-    Settings::set(
-        &state.0,
-        SETTING_MCP_APPROVAL_TIMEOUT,
-        &serde_json::json!(secs),
-    )
-    .map_err(|e| e.to_string())?;
+    // 顺序与 mcp_set_enabled 同契约：动作成功**先于**落盘——重启 listener 失败
+    // 时报错返回，不残留「设置已是新值、引擎却还在跑旧值」的错位态。
     {
         let manager = app.state::<McpManager>();
         if manager.socket().is_some() {
             start_listener(&app, &state)?;
         }
     }
+    Settings::set(
+        &state.0,
+        SETTING_MCP_APPROVAL_TIMEOUT,
+        &serde_json::json!(secs),
+    )
+    .map_err(|e| e.to_string())?;
     mcp_status(app, state)
 }
 

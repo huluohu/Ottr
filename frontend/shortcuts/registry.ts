@@ -405,6 +405,18 @@ export function isTerminalTarget(target: EventTarget | null): boolean {
 
 // --- 开发期冲突检测 -----------------------------------------------------------
 
+/** 冲突归一：与 parseAccelerator 同语义——CmdOrCtrl 与 Ctrl 同义（运行时
+ * 匹配器两者等价命中）。不改归一的话，改键捕获侧产出的 CmdOrCtrl+X 与默认
+ * 表字面 Ctrl+X 永不相等 → 静默死绑（按键被表内默认项先命中）且冲突提示
+ * 完全不报（2026-11 审计 P1，win/linux 全系默认 Ctrl 键位受害）。 */
+function normConflictAccel(accel: string): string {
+  return accel
+    .split("+")
+    .map((p) => (p.trim().toLowerCase() === "cmdorctrl" ? "ctrl" : p.trim().toLowerCase()))
+    .sort()
+    .join("+");
+}
+
 /** 同平台下同键位被多个动作绑定 → 返回冲突描述（空 = 无冲突）。纯函数，测试直测。
  * `overrides`（改键设置草稿/生效表）：冲突按「覆盖优先」的生效键位计算。 */
 export function findConflicts(plat: Platform, overrides: OverrideMap = {}): string[] {
@@ -412,7 +424,7 @@ export function findConflicts(plat: Platform, overrides: OverrideMap = {}): stri
   for (const def of ACTIONS) {
     const accel = overrides[def.id] ?? actionKeys(def, plat);
     if (!accel) continue;
-    const norm = accel.split("+").map((p) => p.trim().toLowerCase()).sort().join("+");
+    const norm = normConflictAccel(accel);
     byKey.set(norm, [...(byKey.get(norm) ?? []), def.id]);
   }
   return [...byKey.entries()]
@@ -430,11 +442,7 @@ export function findConflictGroups(
   for (const def of ACTIONS) {
     const accel = overrides[def.id] ?? actionKeys(def, plat);
     if (!accel) continue;
-    const norm = accel
-      .split("+")
-      .map((p) => p.trim().toLowerCase())
-      .sort()
-      .join("+");
+    const norm = normConflictAccel(accel);
     byKey.set(norm, [...(byKey.get(norm) ?? []), def.id]);
   }
   return [...byKey.values()].filter((ids) => ids.length > 1);

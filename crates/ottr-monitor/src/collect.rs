@@ -40,6 +40,9 @@ echo '===OTTR:DF==='; df -k";
 pub enum MonitorError {
     /// exec 通道失败（连接断开/协议错）。
     Exec(String),
+    /// exec 硬超时（`exec_with_timeout` 显式关通道，远端不留悬挂 shell）。
+    /// 瞬时失败语义，循环按连续失败计数处置。
+    Timeout,
     /// 远端不支持：/proc/stat 无聚合 cpu 行（macOS/BSD 等）。
     Unsupported { detail: String },
     /// Linux 但输出解析失败（理论极罕见，安全侧按失败处置）。
@@ -50,6 +53,7 @@ impl std::fmt::Display for MonitorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MonitorError::Exec(m) => write!(f, "monitor exec failed: {m}"),
+            MonitorError::Timeout => write!(f, "monitor exec timed out (channel closed)"),
             MonitorError::Unsupported { detail } => write!(f, "monitor unsupported: {detail}"),
             MonitorError::Malformed(m) => write!(f, "monitor output malformed: {m}"),
         }
@@ -81,11 +85,20 @@ pub(crate) fn split_sections(text: &str) -> HashMap<String, String> {
 
 /// 一次采集：跑复合命令 → 切段 → 解析为 [`RawSample`]。
 /// exec 的非零退出码不拦（`;` 链下单段失败合法，分段判定位在 STAT 段）。
-pub async fn collect(session: &SshSession) -> Result<RawSample, MonitorError> {
+/// `timeout` 走 [`SshSession::exec_with_timeout`]：超时**显式关通道**，远端
+/// 不留悬挂 shell（此前调用方 `tokio::time::timeout` drop future = 通道 +
+/// 远端 shell 悬挂到会话断开）。
+pub async fn collect(
+    session: &SshSession,
+    timeout: std::time::Duration,
+) -> Result<RawSample, MonitorError> {
     let out = session
-        .exec(COMPOSITE_CMD)
+        .exec_with_timeout(COMPOSITE_CMD, timeout)
         .await
         .map_err(|e| MonitorError::Exec(e.to_string()))?;
+    if out.timed_out {
+        return Err(MonitorError::Timeout);
+    }
     let text = String::from_utf8_lossy(&out.stdout);
     let sections = split_sections(&text);
 

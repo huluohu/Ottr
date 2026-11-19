@@ -203,10 +203,14 @@ export function CronPanel({ open }: CronPanelProps) {
     }
   }
 
+  // 两段确认（2026-11 审计 P2，跳板链删除同批）：此前一键直发。
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
   async function handleDelete(row: CronJob) {
     setActionError(null);
     try {
       await cronApi.remove(row.id);
+      setConfirmDeleteId(null);
       if (expanded === row.id) setExpanded(null);
       await refresh();
     } catch (err) {
@@ -378,10 +382,30 @@ export function CronPanel({ open }: CronPanelProps) {
                   <button data-testid={`cron-edit-${row.id}`} onClick={() => openEdit(row)}>
                     {t("common.edit")}
                   </button>
-                  <button data-testid={`cron-delete-${row.id}`} onClick={() => void handleDelete(row)}>
+                  <button data-testid={`cron-delete-${row.id}`} onClick={() => setConfirmDeleteId(row.id)}>
                     {t("common.delete")}
                   </button>
                 </span>
+                {confirmDeleteId === row.id && (
+                  <div className="cred-confirm" data-testid={`cron-confirm-${row.id}`}>
+                    <p data-testid={`cron-confirm-text-${row.id}`}>
+                      {t("cron.deleteConfirmBody")}
+                    </p>
+                    <div className="form-actions">
+                      <button type="button" onClick={() => setConfirmDeleteId(null)}>
+                        {t("common.cancel")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        data-testid={`cron-confirm-delete-${row.id}`}
+                        onClick={() => void handleDelete(row)}
+                      >
+                        {t("common.confirmDelete")}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {expanded === row.id && (
                   <ul className="cron-runs" data-testid={`cron-runs-${row.id}`}>
                     {runs.length === 0 && <li className="forward-meta">{t("cron.noRuns")}</li>}

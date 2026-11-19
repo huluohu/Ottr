@@ -12,7 +12,7 @@
 //     在 hint 明示。
 // 口令面：系统钥匙链（sync_passphrase_* 命令，task-2 裁定归本任务落地）。
 // 测试连接：用**当前草稿**（未保存也可测）构建 transport 走 test() 布尔面。
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { vaultApi } from "../vault/api";
 import { createGitTransport, tauriGitDeps, validateRepoUrl, type GitConfig } from "./git";
@@ -142,14 +142,22 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
    *  清除动作发生在弹框关闭态，错误必须仍可见（ui2 T4 扫描清偿）。 */
   const [forgetError, setForgetError] = useState<string | null>(null);
 
+  // 分区重挂载不重置草稿（2026-11 审计 P1）：面板 hidden 保持挂载，但
+  // effect 依赖 [active] 会在每次切回 sync 分区时重跑 loadChannelSettings →
+  // setCfg(loaded) 把所有通道的未保存草稿静默冲掉。改为只在首次激活装载；
+  // 口令状态（hasPassphrase）仍每次刷新（廉价读）。
+  const loadedOnceRef = useRef(false);
   useEffect(() => {
     if (!active) return;
     let disposed = false;
     void (async () => {
-      const loaded = await loadChannelSettings();
-      if (!disposed) {
-        setCfg(loaded);
-        setSaved(loaded.kind === null ? null : loaded);
+      if (!loadedOnceRef.current) {
+        loadedOnceRef.current = true;
+        const loaded = await loadChannelSettings();
+        if (!disposed) {
+          setCfg(loaded);
+          setSaved(loaded.kind === null ? null : loaded);
+        }
       }
       try {
         const { invoke } = await import("@tauri-apps/api/core");
@@ -202,7 +210,14 @@ export function SyncSettings({ onOpenSync, active = true }: SyncSettingsProps) {
       const draft =
         key === "webdav" ? cfg.webdav : key === "git" ? { ...cfg.git, token: cfg.git.token } : cfg.localdir;
       await vaultApi.settings.set(syncConfigKey(key), draft);
-      setSaved({ ...cfg });
+      // saved 快照只拍**当前通道**：整 cfg 快照会把未保存的其他通道草稿也
+      // 盖章成「已保存」，draftDirty 提示被抹平（用户以为已生效，立即同步
+      // 实际跑的是盘上的旧配置）。
+      setSaved((prev) => {
+        const base =
+          prev ?? { kind: cfg.kind, webdav: cfg.webdav, git: cfg.git, localdir: cfg.localdir };
+        return { ...base, kind: key, [key]: cfg[key] } as typeof base;
+      });
       setSaveFlash(true);
       setFormError(null);
     } catch (err2) {

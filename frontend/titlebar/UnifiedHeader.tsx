@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useEscClose } from "../ui/useEscClose";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ACTIONS,
@@ -77,35 +78,28 @@ export function UnifiedHeader({
     const onDown = (e: MouseEvent) => {
       if (!snapAnchorRef.current?.contains(e.target as Node)) setSnapOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSnapOpen(false);
-    };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [snapOpen]);
+  // Esc 收编进统一栈（此前私挂 document keydown，叠层时一键穿两层）。
+  useEscClose(snapOpen, () => setSnapOpen(false));
 
   useEffect(() => () => clearTimeout(snapTimer.current), []);
 
-  // 点击标题栏外部收起汉堡菜单
+  // 点击标题栏外部收起汉堡菜单（Esc 走统一栈，见下）
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setMenuOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
-    };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
+  useEscClose(menuOpen, () => setMenuOpen(false));
 
   const controls = win ?? defaultControls();
   const shortcutHint = (id: ActionId) => shortcutLabel(id, plat);

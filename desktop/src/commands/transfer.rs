@@ -137,10 +137,8 @@ pub(crate) fn sftp_slot_wedged_text(text: &str) -> bool {
         "Ok: ",
         "Limit exceeded: ",
     ];
-    if SERVER_STATUS.iter().any(|m| text.contains(m)) {
-        return false;
-    }
-    true
+    // 服务器正常应答（StatusCode 2xx 语义 + limits 扩展）→ 通道健康，清了白白重开
+    !SERVER_STATUS.iter().any(|m| text.contains(m))
 }
 
 /// typed 面：ottr_transfer 错误 → 判据。`Protocol { source: Some }` 才代表

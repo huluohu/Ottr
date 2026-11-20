@@ -61,11 +61,14 @@ pub fn pread_upto(file: &File, offset: u64, buf: &mut [u8]) -> io::Result<usize>
         use std::os::windows::fs::FileExt;
         let mut read = 0usize;
         while read < buf.len() {
-            match file.seek_read(&mut buf[read..], offset + read as u64)? {
-                Some(0) => break,
-                Some(n) => read += n,
-                None => break,
+            // seek_read 返回读到的字节数（0 = 文件尾）；新版 Rust 的签名是
+            // io::Result<usize>（旧版是 Option<usize>）——与同文件 pread_exact
+            // 的写法保持一致。
+            let n = file.seek_read(&mut buf[read..], offset + read as u64)?;
+            if n == 0 {
+                break;
             }
+            read += n;
         }
         Ok(read)
     }

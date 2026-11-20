@@ -85,8 +85,11 @@ describe("诊断面板多轮 UI", () => {
     // 追问轮的用户诉求照常进气泡流
     expect(screen.getAllByTestId("ai-msg-user")[0].textContent).toContain("磁盘满了怎么办");
     // 助手气泡内容走 markdown 渲染器（懒加载 chunk）→ 异步到达，需等待。
-    await waitFor(() =>
-      expect(screen.getAllByTestId("ai-msg-assistant")[0].textContent).toContain("原因"),
+    // 超时放宽到 5s：全量并行跑时该 chunk 的解析/加载偶尔超过 waitFor 的
+    // 默认 1s（单跑绿、并行红——CI 门随机红不可接受）。
+    await waitFor(
+      () => expect(screen.getAllByTestId("ai-msg-assistant")[0].textContent).toContain("原因"),
+      { timeout: 5000 },
     );
   });
 

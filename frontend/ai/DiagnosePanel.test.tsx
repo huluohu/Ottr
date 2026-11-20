@@ -91,8 +91,9 @@ describe("面板渲染", () => {
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
     // 散文部分走 markdown 渲染器（懒加载 chunk，2026-11-20 性能审计 P2）
     // → 文本异步到达，需等待；代码块不走 markdown（同步渲染）。
-    await waitFor(() =>
-      expect(screen.getByTestId("ai-answer").textContent).toContain("原因是磁盘满。"),
+    await waitFor(
+      () => expect(screen.getByTestId("ai-answer").textContent).toContain("原因是磁盘满。"),
+      { timeout: 5000 },
     );
     expect(screen.getByTestId("ai-code-text").textContent).toBe("df -h");
     expect(screen.getByTestId("ai-insert")).toBeTruthy();

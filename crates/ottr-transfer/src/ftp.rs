@@ -46,8 +46,8 @@
 //! 权限位（MLSD UNIX.mode 事实，无 SFTP 的类型位）。
 
 use std::future::Future;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_native_tls::TlsConnector;
@@ -60,7 +60,6 @@ use suppaftp::types::{FileType, FtpError, Response};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
-use crate::fs_at::pwrite_all;
 use crate::ops::DirEntry;
 use crate::sftp::{
     CHUNK_SIZE, CancelToken, Journal, ProgressHook, TransferProgress, TransferStats,
@@ -71,6 +70,39 @@ use crate::{Error, FileTransfer, Result};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FtpsPolicy {
     pub accept_invalid_certs: bool,
+}
+
+/// 控制面操作限时（2026-11-20 健壮性审计 P1）。
+///
+/// 30s 覆盖跨洲 RTT + 慢速服务器应答；超时判「这条连接此刻不可用」。
+const FTP_CONTROL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// 数据面读写空闲限时（2026-11-20 健壮性审计 P1）。
+///
+/// 60s 是**空闲**口径（不是总时长）：传输中途卡顿不误杀，只在完全收不到
+/// 字节时才判定连接已死。取值理由：单次读 64KB（STREAM_BUF），慢速链路
+/// （1KB/s 的跨国 FTP）也要一分钟上下——限时须高于最坏合法耗时，否则把
+/// 慢链路误判成死连接。
+const FTP_DATA_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// 控制面操作限时壳：超时 → 显式错误（不再无限期挂起）。
+///
+/// 半开连接（TCP 活着但对端不再回话：远端断电 / NAT 老化 / 防火墙静默丢包）
+/// 下，suppaftp 的控制命令会**永久**挂在读应答上。此前的后果不只是这一条
+/// 命令超时——控制连接互斥锁整程被持有，该会话**所有**后续 FTP 操作
+/// （包括关标签时发的 QUIT）都排在锁后永久挂起，唯一出路是重启应用。
+///
+/// 超时后放弃在途命令：suppaftp 的流此后可能残留半条应答（下一条命令读到
+/// 陈旧应答）——但这是「连接已死」场景下的次生问题，会话级心跳（desktop
+/// 侧）会摘除该会话并让前端走重连。互斥锁随 future drop 一并释放（不泄漏）。
+async fn control_op<T>(fut: impl Future<Output = Result<T>>, ctx: &str) -> Result<T> {
+    match tokio::time::timeout(FTP_CONTROL_TIMEOUT, fut).await {
+        Ok(result) => result,
+        Err(_elapsed) => Err(plain_error(format!(
+            "{ctx}: FTP control operation timed out after {}s",
+            FTP_CONTROL_TIMEOUT.as_secs()
+        ))),
+    }
 }
 
 /// FTP/FTPS 客户端：FilePanel 远端操作面 + [`FileTransfer`] 传输。
@@ -203,12 +235,16 @@ impl FtpClient {
     /// 列目录（MLSD，RFC 3659）。`type=cdir/pdir` 与 `.`/`..` 不进结果；
     /// 按 name 排序（与 SftpClient::list_dir 同口径）。
     pub async fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>> {
-        let lines = self
-            .lock()
-            .await
-            .mlsd(Some(path))
-            .await
-            .map_err(|e| protocol_error(e, &format!("mlsd {path}")))?;
+        let lines = control_op(
+            async {
+                let mut s = self.lock().await;
+                s.mlsd(Some(path))
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("mlsd {path}")))
+            },
+            &format!("mlsd {path}"),
+        )
+        .await?;
         let mut out = Vec::new();
         for line in lines {
             let entry = match ListParser::parse_mlsd(&line) {
@@ -227,59 +263,87 @@ impl FtpClient {
 
     /// 新建目录。
     pub async fn mkdir(&self, path: &str) -> Result<()> {
-        self.lock()
-            .await
-            .mkdir(path)
-            .await
-            .map_err(|e| protocol_error(e, &format!("mkdir {path}")))
+        control_op(
+            async {
+                let mut s = self.lock().await;
+                s.mkdir(path)
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("mkdir {path}")))
+            },
+            &format!("mkdir {path}"),
+        )
+        .await
     }
 
     /// 重命名（RNFR/RNTO；目标已存在由服务器拒绝，UI 层提示）。
     pub async fn rename(&self, from: &str, to: &str) -> Result<()> {
-        self.lock()
-            .await
-            .rename(from, to)
-            .await
-            .map_err(|e| protocol_error(e, &format!("rename {from} -> {to}")))
+        control_op(
+            async {
+                let mut s = self.lock().await;
+                s.rename(from, to)
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("rename {from} -> {to}")))
+            },
+            &format!("rename {from} -> {to}"),
+        )
+        .await
     }
 
     /// 删除文件（DELE）。
     pub async fn remove_file(&self, path: &str) -> Result<()> {
-        self.lock()
-            .await
-            .rm(path)
-            .await
-            .map_err(|e| protocol_error(e, &format!("remove {path}")))
+        control_op(
+            async {
+                let mut s = self.lock().await;
+                s.rm(path)
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("remove {path}")))
+            },
+            &format!("remove {path}"),
+        )
+        .await
     }
 
     /// 删除空目录（RMD；非空由服务器拒绝——递归删除不进 MVP，同 SFTP 裁定）。
     pub async fn remove_dir(&self, path: &str) -> Result<()> {
-        self.lock()
-            .await
-            .rmdir(path)
-            .await
-            .map_err(|e| protocol_error(e, &format!("rmdir {path}")))
+        control_op(
+            async {
+                let mut s = self.lock().await;
+                s.rmdir(path)
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("rmdir {path}")))
+            },
+            &format!("rmdir {path}"),
+        )
+        .await
     }
 
     /// chmod（SITE CHMOD；`mode` 为 9 位权限位）。服务器不支持时显式报错。
     pub async fn chmod(&self, path: &str, mode: u32) -> Result<()> {
-        let resp = self
-            .lock()
-            .await
-            .site(format!("CHMOD {mode:o} {path}"))
-            .await
-            .map_err(|e| protocol_error(e, &format!("chmod {mode:o} {path}")))?;
+        let resp = control_op(
+            async {
+                let mut s = self.lock().await;
+                s.site(format!("CHMOD {mode:o} {path}"))
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("chmod {mode:o} {path}")))
+            },
+            &format!("chmod {mode:o} {path}"),
+        )
+        .await?;
         ensure_ok(resp, &format!("chmod {mode:o} {path}"))
     }
 
     /// stat 单个路径（MLST；目录/文件通用；不存在返回 Err）。
     pub async fn stat(&self, path: &str) -> Result<DirEntry> {
-        let line = self
-            .lock()
-            .await
-            .mlst(Some(path))
-            .await
-            .map_err(|e| protocol_error(e, &format!("mlst {path}")))?;
+        let line = control_op(
+            async {
+                let mut s = self.lock().await;
+                s.mlst(Some(path))
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("mlst {path}")))
+            },
+            &format!("mlst {path}"),
+        )
+        .await?;
         let entry = ListParser::parse_mlst(&line)
             .map_err(|e| plain_error(format!("mlst {path}: unparsable reply {line:?}: {e}")))?;
         let name = path.rsplit('/').next().unwrap_or(path).to_string();
@@ -288,7 +352,24 @@ impl FtpClient {
 
     /// 是否存在（MLST 探测；550 = 不存在，其余错误透传）。
     pub async fn exists(&self, path: &str) -> Result<bool> {
-        match self.lock().await.mlst(Some(path)).await {
+        // 这里要区分「550 = 不存在」（正常结果）与「其它错误」，故不能套用
+        // 把错误统一映射成 crate Error 的 control_op —— 改为在限时壳内保留
+        // suppaftp 原始错误，再在壳外分类。
+        let outcome = match tokio::time::timeout(FTP_CONTROL_TIMEOUT, async {
+            let mut s = self.lock().await;
+            s.mlst(Some(path)).await
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_elapsed) => {
+                return Err(plain_error(format!(
+                    "mlst {path}: FTP control operation timed out after {}s",
+                    FTP_CONTROL_TIMEOUT.as_secs()
+                )));
+            }
+        };
+        match outcome {
             Ok(_) => Ok(true),
             Err(FtpError::UnexpectedResponse(resp)) if resp.status == Status::FileUnavailable => {
                 Ok(false)
@@ -299,12 +380,16 @@ impl FtpClient {
 
     /// 远端文件字节数（SIZE，二进制模式）。
     pub async fn size(&self, path: &str) -> Result<u64> {
-        let n = self
-            .lock()
-            .await
-            .size(path)
-            .await
-            .map_err(|e| protocol_error(e, &format!("size {path}")))?;
+        let n = control_op(
+            async {
+                let mut s = self.lock().await;
+                s.size(path)
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("size {path}")))
+            },
+            &format!("size {path}"),
+        )
+        .await?;
         Ok(n as u64)
     }
 
@@ -434,7 +519,7 @@ async fn download_linear(
         .await
         .map(|n| n as u64)
         .map_err(|e| protocol_error(e, &format!("size {remote}")))?;
-    let done = Journal::load(journal_path, "down", remote, total)?;
+    let done = crate::sftp::load_journal(journal_path, "down", remote, total).await?;
     let resume_chunks = contiguous_prefix(&done);
     let resume_from = resume_chunks as u64 * CHUNK_SIZE;
     let chunks_total = total.div_ceil(CHUNK_SIZE) as usize;
@@ -447,13 +532,12 @@ async fn download_linear(
     // 本地按远端长度定长（稀疏预分配）；REST 起点之后的旧字节被重传覆盖。
     // 刻意**不 truncate**（create|write）：续传时本地前缀字节必须保留——
     // set_len 只补长不截短，尺寸真值来自远端 SIZE。
-    #[allow(clippy::suspicious_open_options)]
-    let local_file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(local)?;
-    local_file.set_len(total)?;
-    let journal = Journal::open(journal_path, "down", remote, total)?;
+    //
+    // 开文件 + set_len + 开 journal 移入 blocking 段（2026-11-20 性能审计
+    // P2）：目标目录可能是网络盘 / NAS 挂载，单次 open/set_len 可挂起数秒，
+    // 直调会冻住与 PTY 转发共享的 tokio worker。
+    let (local_file, journal) =
+        crate::sftp::open_local_target(local, journal_path, "down", remote, total).await?;
 
     if resume_from >= total {
         // 全命中（hazard 面与 SFTP 同款：app「done 即删 journal」策略兜底）。
@@ -480,22 +564,43 @@ async fn download_linear(
         chunks_total,
         done: resume_chunks,
     };
-    let mut transfer = s
-        .retr_as_stream(remote)
-        .await
-        .map_err(|e| protocol_error(e, &format!("retr {remote}")))?;
+    let mut transfer = control_op(
+        async {
+            s.retr_as_stream(remote)
+                .await
+                .map_err(|e| protocol_error(e, &format!("retr {remote}")))
+        },
+        &format!("retr {remote}"),
+    )
+    .await?;
     let mut buf = vec![0u8; STREAM_BUF];
     let mut pos = resume_from;
     loop {
         // 取消（chunk 边界协作检查）：ABOR 中止数据流，journal 保留前缀。
         if cancel.is_cancelled() {
-            let _ = s.abort(transfer).await;
+            // ABOR 自身也限时——挂死的连接上 ABOR 同样不会回来，取消路径
+            // 不能变成新的挂起点。
+            let _ = tokio::time::timeout(FTP_CONTROL_TIMEOUT, s.abort(transfer)).await;
             return Err(Error::Cancelled);
         }
-        let n = transfer
-            .read(&mut buf)
-            .await
-            .map_err(|e| protocol_error(e, &format!("retr stream {remote} @{pos}")))?;
+        // 空闲限时（2026-11-20 健壮性审计 P1）：半开连接（TCP 活着但对端
+        // 不再发数据）下 read 会**永久**阻塞——取消令牌永远观察不到，传输
+        // 任务永不收尾，且整程持有的客户端互斥锁永不释放 → 该会话所有
+        // 后续操作排队挂起，唯一出路是重启应用。到点判「连接已死」。
+        let n = match tokio::time::timeout(FTP_DATA_IDLE_TIMEOUT, transfer.read(&mut buf)).await {
+            Ok(result) => {
+                result.map_err(|e| protocol_error(e, &format!("retr stream {remote} @{pos}")))?
+            }
+            Err(_elapsed) => {
+                // ABOR 中止数据流（自身也限时——挂死的连接上 ABOR 同样不会
+                // 回来）；journal 保留已落盘前缀 → 续传可用。
+                let _ = tokio::time::timeout(FTP_CONTROL_TIMEOUT, s.abort(transfer)).await;
+                return Err(plain_error(format!(
+                    "FTP download stalled: no data for {}s at offset {pos} of {total} ({remote})",
+                    FTP_DATA_IDLE_TIMEOUT.as_secs()
+                )));
+            }
+        };
         if n == 0 {
             // P0 transfer-0（2026-10-16 全面评审）：EOF ≠ 成功——校验 pos==total，
             // 远端在 SIZE 与 RETR 之间被替换/截短时在此检测（SFTP 侧同语义）。
@@ -506,15 +611,23 @@ async fn download_linear(
             }
             break; // 数据收讫且长度匹配
         }
-        pwrite_all(&local_file, pos, &buf[..n])?;
+        // 落盘走 blocking 段（2026-11-20 性能审计 P2：网络盘上的 pwrite
+        // 可挂起数秒，冻住与 PTY 转发共享的 runtime worker）。
+        crate::sftp::write_at(Arc::clone(&local_file), pos, buf[..n].to_vec()).await?;
         pos += n as u64;
         tracker.advance(pos);
     }
     // 226 = 传输完成的唯一权威确认；之后补记尾 chunk（数据已在服务器落定）。
-    transfer
-        .finish()
-        .await
-        .map_err(|e| protocol_error(e, &format!("retr finish {remote}")))?;
+    control_op(
+        async {
+            transfer
+                .finish()
+                .await
+                .map_err(|e| protocol_error(e, &format!("retr finish {remote}")))
+        },
+        &format!("retr finish {remote}"),
+    )
+    .await?;
     tracker.finish();
 
     Ok(TransferStats {
@@ -542,10 +655,23 @@ async fn upload_linear(
     // journal → 重传」对等；FTP 的真值是远端 SIZE，删 journal 必须同样有效）。
     // journal 身份不符（换文件/换大小/旧格式）= 显式报错，绝不按旧 offset 续传
     // （与 SFTP 上传侧同一语义）。
-    let done = Journal::load(journal_path, "up", remote, total)?;
+    let done = crate::sftp::load_journal(journal_path, "up", remote, total).await?;
     let mut s = client.lock().await;
     // 偏移真值 = 远端实际大小（APPE 只能接在真实文件尾后；无文件 = 0）。
-    let remote_size = s.size(remote).await.map(|n| n as u64).unwrap_or(0);
+    // SIZE 也限时（控制面统一口径——半开连接下同样会永久挂起）。
+    let remote_size = match control_op(
+        async {
+            s.size(remote)
+                .await
+                .map_err(|e| protocol_error(e, &format!("size {remote}")))
+        },
+        &format!("size {remote}"),
+    )
+    .await
+    {
+        Ok(n) => n as u64,
+        Err(_) => 0, // 取不到远端大小 = 视作新文件（STOR 全量覆盖，语义安全）
+    };
     let resuming = !done.is_empty();
     let resume_from = if resuming { remote_size.min(total) } else { 0 };
     if resuming && remote_size > total {
@@ -564,10 +690,21 @@ async fn upload_linear(
 
     // journal 续写：身份头（open 对空文件补写）+ 前缀补记（偏移真值在远端
     // SIZE；journal 的职责是「闸门 + 统计」，与下载侧「真值」角色刻意区分）。
-    let journal = Journal::open(journal_path, "up", remote, total)?;
-    for i in 0..resumed {
-        let _ = journal.record(i as u64 * CHUNK_SIZE);
-    }
+    // 开 journal + 前缀补记走 blocking 段（2026-11-20 性能审计 P2）。
+    let journal = tokio::task::spawn_blocking({
+        let journal_path = journal_path.to_path_buf();
+        let remote = remote.to_string();
+        move || -> std::io::Result<Journal> {
+            let journal = Journal::open(&journal_path, "up", &remote, total)?;
+            for i in 0..resumed {
+                let _ = journal.record(i as u64 * CHUNK_SIZE);
+            }
+            Ok(journal)
+        }
+    })
+    .await
+    .map_err(|e| crate::sftp::join_err("open journal", e))??;
+    let journal = std::sync::Arc::new(journal);
 
     if resume_from >= total {
         // 全命中——**仅在 journal 闸门放行后可达**（resuming = true），即「同
@@ -580,16 +717,35 @@ async fn upload_linear(
         });
     }
 
-    let mut local_file = std::fs::File::open(local)?;
-    local_file.seek(SeekFrom::Start(resume_from))?;
+    // 本地源文件（只读；后续按 pos 定位读，不再用共享游标）。
+    let local_file = std::sync::Arc::new(
+        tokio::task::spawn_blocking({
+            let local = local.to_path_buf();
+            move || std::fs::File::open(&local)
+        })
+        .await
+        .map_err(|e| crate::sftp::join_err("open local source", e))??,
+    );
     let mut transfer = if resume_from > 0 {
-        s.append_with_stream(remote)
-            .await
-            .map_err(|e| protocol_error(e, &format!("appe {remote} (resume at {resume_from})")))?
+        control_op(
+            async {
+                s.append_with_stream(remote).await.map_err(|e| {
+                    protocol_error(e, &format!("appe {remote} (resume at {resume_from})"))
+                })
+            },
+            &format!("appe {remote}"),
+        )
+        .await?
     } else {
-        s.put_with_stream(remote)
-            .await
-            .map_err(|e| protocol_error(e, &format!("stor {remote}")))?
+        control_op(
+            async {
+                s.put_with_stream(remote)
+                    .await
+                    .map_err(|e| protocol_error(e, &format!("stor {remote}")))
+            },
+            &format!("stor {remote}"),
+        )
+        .await?
     };
 
     let mut tracker = BoundaryTracker {
@@ -599,15 +755,18 @@ async fn upload_linear(
         chunks_total,
         done: resumed,
     };
-    let mut buf = vec![0u8; STREAM_BUF];
     let mut pos = resume_from;
     loop {
         if cancel.is_cancelled() {
-            let _ = s.abort(transfer).await;
+            // ABOR 自身也限时（下载侧同款：取消路径不能变成新的挂起点）。
+            let _ = tokio::time::timeout(FTP_CONTROL_TIMEOUT, s.abort(transfer)).await;
             return Err(Error::Cancelled);
         }
-        let n = local_file.read(&mut buf)?;
-        if n == 0 {
+        // 定位读（不再用共享游标；blocking 段——2026-11-20 性能审计 P2：
+        // 网络盘上的 read 可挂起数秒，冻住 runtime worker）。读到文件尾返回
+        // 空 vec（等价原 `read` 返回 0）。
+        let data = crate::sftp::read_upto(Arc::clone(&local_file), pos, STREAM_BUF).await?;
+        if data.is_empty() {
             // P0 transfer-0 上传侧同修：本地源在传输中途被截短时不再静默成功。
             if pos != total {
                 return Err(plain_error(format!(
@@ -616,19 +775,37 @@ async fn upload_linear(
             }
             break;
         }
-        transfer
-            .write_all(&buf[..n])
-            .await
-            .map_err(|e| protocol_error(e, &format!("stor stream {remote} @{pos}")))?;
+        let n = data.len();
+        // 空闲限时（2026-11-20 健壮性审计 P1，下载侧同修）：半开连接下
+        // write_all 永久阻塞——取消令牌观察不到，任务与互斥锁双双泄漏。
+        match tokio::time::timeout(FTP_DATA_IDLE_TIMEOUT, transfer.write_all(&data)).await {
+            Ok(result) => {
+                result.map_err(|e| protocol_error(e, &format!("stor stream {remote} @{pos}")))?;
+            }
+            Err(_elapsed) => {
+                // ABOR 中止（自身限时）；journal 保留已推送的边界 → 续传可用。
+                let _ = tokio::time::timeout(FTP_CONTROL_TIMEOUT, s.abort(transfer)).await;
+                return Err(plain_error(format!(
+                    "FTP upload stalled: no progress for {}s at offset {pos} of {total} ({remote})",
+                    FTP_DATA_IDLE_TIMEOUT.as_secs()
+                )));
+            }
+        }
         pos += n as u64;
         tracker.advance(pos);
     }
     // 226 确认后补记尾 chunk（上传的不变量级别：以服务器 ack 收尾——比
     // SFTP 的逐 chunk ack 粗，FTP 协议固有限制，报告如实记录）。
-    transfer
-        .finish()
-        .await
-        .map_err(|e| protocol_error(e, &format!("stor finish {remote}")))?;
+    control_op(
+        async {
+            transfer
+                .finish()
+                .await
+                .map_err(|e| protocol_error(e, &format!("stor finish {remote}")))
+        },
+        &format!("stor finish {remote}"),
+    )
+    .await?;
     tracker.finish();
 
     Ok(TransferStats {

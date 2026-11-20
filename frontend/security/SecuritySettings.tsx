@@ -28,6 +28,7 @@ import { setOttyEnabled, useOttyStore } from "../ui/otty/ottyStore";
 // 但 toast 可见）。
 import { useOrbStore } from "../ai/orbStore";
 import { loadTerminalSettings, saveTerminalSettings } from "../terminal/ContextMenu";
+import { setSudoAutofillGate } from "../terminal/SudoAutofill";
 import { useEscClose } from "../ui/useEscClose";
 import { PaneErrorBoundary } from "../ui/PaneErrorBoundary";
 import { UpdateCheck } from "../update/UpdateCheck";
@@ -1066,6 +1067,10 @@ export function SecuritySettings({
                       setSudoConfirm(false);
                       setSudoAutofill(false);
                       void saveSetting("security.sudo_autofill", false);
+                      // 终端侧热路径门控同步（2026-11-20 性能审计 P3）：关 = 热
+                      // 路径跳过每块的解码与检测。设置页是唯一写入面 → 这里是
+                      // 门控的权威同步点（保险库模式变化由终端侧重探）。
+                      setSudoAutofillGate(false);
                     }
                   }}
                 />
@@ -1098,6 +1103,11 @@ export function SecuritySettings({
                         setSudoConfirm(false);
                         setSudoAutofill(true);
                         void saveSetting("security.sudo_autofill", true);
+                        // 门控同步（开启侧）：主密码模式限定在终端侧探测时判定
+                        // （keyring 模式下即使键为 true 也不生效——显式解锁是这
+                        // 条安全功能的前提）；此处同步为「开」，由终端侧的
+                        // 模式限定探测负责最终收敛。
+                        setSudoAutofillGate(true);
                       }}
                     >
                       {t("security.sudoAutofillAccept")}

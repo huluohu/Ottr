@@ -29,7 +29,7 @@
 // decoration 纯视觉层（PTY 零污染）；建议来源 = 历史缓存（history/cache.ts，
 // history_search 空 query 复用 + onCommandFinished 增量）+ 内置命令表
 // （terminal/completion.ts 纯引擎）。开关在右键菜单（默认开）。
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -65,6 +65,8 @@ import {
   SudoPromptDetector,
   runSudoAutofill,
   SUDO_AUTOFILL_SETTING_KEY,
+  setSudoAutofillGate,
+  sudoAutofillGateOpen,
   type SudoSkipReason,
 } from "./SudoAutofill";
 import { registerSearch, unregisterSearch, SearchController } from "./SearchAddon";
@@ -130,7 +132,12 @@ interface MenuState {
 // 单会话终端（xterm 装配 + 状态横幅 + 右键菜单 + 粘贴确认）
 // ---------------------------------------------------------------------------
 
-export function SessionTerminal({ sessionId }: { sessionId: string }) {
+// memo（2026-11-20 性能审计 P2）：本组件的 props 只有 `sessionId`（字符串，
+// 恒稳定），自身的数据全部来自 store 的**原始标量**订阅（status/restored/
+// attempt/nextRetryAt/lastError）——自给自足。父级（TerminalArea）因任何
+// 原因重渲染（侧栏拖拽、其它会话状态变化、store 数组重建）时，memo 让
+// **全部终端面板**跳过重渲；面板仍按自己的订阅独立更新。
+export const SessionTerminal = memo(function SessionTerminal({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const { mode: themeMode, resolved } = useTheme();
   // 终端 auto 色板键（theme-suite T2.3）：具体主题 id 直取，system 摊平为亮/暗。
@@ -252,6 +259,34 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     return () => window.removeEventListener("ottr://terminal-settings", apply);
   }, []);
 
+  // sudo 自动填充门控探测（2026-11-20 性能审计 P3）：功能默认关，关闭时热
+  // 路径跳过每块的解码与检测。门控状态是模块级的（多终端共享），故这里
+  // 只需「确保探测过一次」+ 保险库模式变化时重探（keyring ⇄ password 会
+  // 改变可用性；解锁后 mode 落到 password 需重新探测）。
+  useEffect(() => {
+    let alive = true;
+    const probe = async () => {
+      try {
+        if (useVaultLockStore.getState().mode !== "password") {
+          setSudoAutofillGate(false);
+          return;
+        }
+        const on = (await vaultApi.settings.get<boolean>(SUDO_AUTOFILL_SETTING_KEY)) === true;
+        if (alive) setSudoAutofillGate(on);
+      } catch {
+        if (alive) setSudoAutofillGate(false);
+      }
+    };
+    void probe();
+    const unsub = useVaultLockStore.subscribe((s, prev) => {
+      if (s.mode !== prev.mode) void probe();
+    });
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, []);
+
   // --- 一次性装配：term 实例 + sink 注册 + 击键接线 + 尺寸观测 ---
   useEffect(() => {
     // B8：allowProposedApi 开启——ghost text 的 registerDecoration 是 xterm
@@ -334,10 +369,17 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     async function sudoAutofillEnabled(): Promise<boolean> {
       // 主密码模式限定（裁定：keyring 模式即使键为 true 也不生效——显式解锁
       // 语义是这条安全功能的前提）；settings 不可达 = 安全侧默认关。
-      if (useVaultLockStore.getState().mode !== "password") return false;
+      if (useVaultLockStore.getState().mode !== "password") {
+        setSudoAutofillGate(false);
+        return false;
+      }
       try {
-        return (await vaultApi.settings.get<boolean>(SUDO_AUTOFILL_SETTING_KEY)) === true;
+        const on = (await vaultApi.settings.get<boolean>(SUDO_AUTOFILL_SETTING_KEY)) === true;
+        // 探测结果回填门控（热路径据此短路，见 SudoAutofill 门控缓存注释）。
+        setSudoAutofillGate(on);
+        return on;
       } catch {
+        setSudoAutofillGate(false);
         return false;
       }
     }
@@ -430,7 +472,9 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
     trzszRef.current = trzsz;
     registerSink(sessionId, {
       write: (bytes) => {
-        observeSudoOutput(bytes); // B9 sudo 提示检测（旁路，不改流）
+        // B9 sudo 提示检测（旁路，不改流）。功能默认关——门控未开时**跳过**
+        // 解码与检测（2026-11-20 性能审计 P3：输出洪流路径上的恒定开销）。
+        if (sudoAutofillGateOpen()) observeSudoOutput(bytes);
         trzsz.processServerOutput(bytes);
       },
       getSize: () => {
@@ -1034,7 +1078,7 @@ export function SessionTerminal({ sessionId }: { sessionId: string }) {
       )}
     </div>
   );
-}
+});
 
 
 // ---------------------------------------------------------------------------

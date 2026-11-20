@@ -347,23 +347,29 @@ function HomeLayout() {
       } catch {
         // 失败由 store.error 驱动主区错误横幅；恢复跳过（无主机可查）
       }
-      await initSessionEvents();
-      await initShortcutOverrides();
-      await initTransferEvents();
-      // T12（spec §7）：通知管线接线（transfer-end / session-closed → 中心）。
-      // 在事件源初始化之后挂（管线订阅既有事件，顺序无依赖，晚挂只漏启动窗口期事件）。
-      await initNotifyEvents();
-      // Phase 3 Task 1（B4 上半）：监控采样事件接线（ottr://monitor → store）。
-      await initMonitorEvents();
-      // Phase 3 Task 4（B6）：批量结果事件接线（ottr://batch-result → store）。
-      await initBatchEvents();
-      // Phase 4 Task 1（缺口①）：cron 运行事件接线（ottr://cron-run → store
-      // + notify(kind=cron)；调度器在 Rust 侧先行，晚挂只漏启动窗口期事件）。
-      await initCronEvents();
-      // Phase 3 Task 3（B5）：告警规则引擎接线（订阅 ottr://monitor 评估 +
-      // 进程快照轮询）+ 外部渠道挂载（notify_channels → core.channels）。
-      // 都在事件源之后挂（晚挂只漏启动窗口期采样）；挂载失败各自静默降级。
-      await initAlertEngine();
+      // 事件接线并发化（2026-11-20 性能审计 P2）：这 8 个 init 各自是 1-3 次
+      // `await listen(...)`（每次一次 IPC 往返），串行 = 首屏串上十几次往返。
+      // 它们**无状态依赖**（各自独立注册监听；原注释即自证「顺序无依赖，晚挂
+      // 只漏启动窗口期事件」）——并发化不改变语义，只缩短首屏等待。
+      //
+      // allSettled 而非 all：一个 init 失败不应连累其余接线（all 会在首个
+      // rejection 处直接抛出，后面的 init 永不执行 → 事件永久失联）。失败者
+      // 记 console，其余照常生效。
+      const initResults = await Promise.allSettled([
+        initSessionEvents(),
+        initShortcutOverrides(),
+        initTransferEvents(),
+        initNotifyEvents(),
+        initMonitorEvents(),
+        initBatchEvents(),
+        initCronEvents(),
+        initAlertEngine(),
+      ]);
+      for (const r of initResults) {
+        if (r.status === "rejected") {
+          console.error("[init] event wiring failed:", r.reason);
+        }
+      }
       void remountChannels();
       useSessionStore.getState().restoreTabs(useVaultStore.getState().hosts);
       // 默认落地总览（2026-10-14 用户裁定「打开 app 默认进总览」）：库内有主机
@@ -702,14 +708,30 @@ function HomeLayout() {
     document.body.dataset.resizing = "true";
     const startX = e.clientX;
     const startWidth = sidebarWidth;
+    // 拖拽合帧（2026-11-20 性能审计 P2）：pointermove 在 60-120Hz 触发，
+    // 每次都 setState → 整棵应用树重渲染（终端面含 FilePanel 数千行）。
+    // rAF 合帧：每帧至多一次 setState，视觉上无差别（拖拽本来就是连续动画）。
+    let frame = 0;
+    let pendingX = e.clientX;
+    const flush = () => {
+      frame = 0;
+      if (!resizing.current) return;
+      setSidebarWidth(clampSidebarWidth(startWidth + pendingX - startX));
+    };
     const onMove = (ev: PointerEvent) => {
-      if (resizing.current) setSidebarWidth(clampSidebarWidth(startWidth + ev.clientX - startX));
+      if (!resizing.current) return;
+      pendingX = ev.clientX;
+      if (frame === 0) frame = window.requestAnimationFrame(flush);
     };
     const onUp = (ev: PointerEvent) => {
       resizing.current = false;
       delete document.body.dataset.resizing;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      if (frame !== 0) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
       const finalWidth = clampSidebarWidth(startWidth + ev.clientX - startX);
       setSidebarWidth(finalWidth);
       try {

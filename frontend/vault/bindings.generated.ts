@@ -139,6 +139,9 @@ export const commands = {
 	 *  导入 ~/.ssh/config（`path` 缺省时用 `~/.ssh/config`；前端 MVP 无文件选择器，
 	 *  传 None 即默认路径——留参数位给后续文件选择对话框）。
 	 *  解析与去重规则见 ssh_config 模块文档；报告（新增/跳过/错误行）由前端对话框展示。
+	 * 
+	 *  注（2026-11-20）：这段文档此前错位在 `use` 语句之上 → specta 导出为空 →
+	 *  重生成的绑定与提交物不一致（ts_bindings 契约测试红）。文档归位到命令。
 	 */
 	importSshConfig: (path: string | null) => typedError<ImportReport, string>(__TAURI_INVOKE("import_ssh_config", { path })),
 	/**

@@ -77,10 +77,13 @@ export function PromptDialog() {
   }, [ask]);
 
   useEffect(() => {
-    if (!ask) return;
+    // 倒计时只在**有有效期**的码上跑（2026-11-20 性能审计 P3）：普通密码
+    // 问询（无 TOTP 建议）不显示倒计时，500ms 的 tick 纯属白跑——整框每
+    // 500ms 重渲染一次。
+    if (!ask || expiresAt == null) return;
     const id = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(id);
-  }, [ask]);
+  }, [ask, expiresAt]);
 
   /** 剩余有效秒数（null = 不知道有效期）。 */
   const remain = useMemo(

@@ -80,6 +80,110 @@ pub(crate) enum FileClient {
     Local,
 }
 
+// ---------------------------------------------------------------------------
+// SFTP 会话级客户端缓存的自愈（robustness 审计 P2：子系统通道死后文件面永久
+// 报错——槽位只在懒开成功时写入、错误路径从不清理）
+// ---------------------------------------------------------------------------
+
+/// 擦除后的底层错误文本 → 是否通道/协议级（SFTP 客户端缓存槽位应清）。
+///
+/// ottr-transfer 的 `Error::Protocol` 在产生点把 russh-sftp 3.0.1 的
+/// `client::error::Error` 类型擦除进 `source`（I-1 纪律：底层类型不出 crate，
+/// desktop 不引 russh-sftp）——判据按其 Display 形态分层，逐一对照源码：
+///
+/// **清槽**（通道/协议级——子系统任务已死、应答通道断、协议失配、超时）：
+/// * `"I/O: …"`（`Error::IO`，通道 IO 故障；低层 error::Error::IO 经
+///   UnexpectedBehavior 包装后同形态）
+/// * `"Timeout"`（`Error::Timeout`，应答超时）
+/// * `"Unexpected packet"`（`Error::UnexpectedPacket`，协议失配）
+/// * `"Bad message: …"`（`Status(BadMessage)` / 低层 `BadMessage`——协议级）
+/// * `"No connection: …"` / `"Connection lost: …"`（客户端本地生成的伪
+///   Status——RFC 明示 MUST NOT 由服务器返回，即连接已死）
+/// * `"RecvError…"` / `"SendError…"`（UnexpectedBehavior 包装的 oneshot/mpsc
+///   通道断——sftp 客户端应答任务已亡 = 子系统通道已死）
+/// * `"Unexpected EOF on stream"` / `"Client error. (…)"`（低层解析/流错误）
+///
+/// **不清**（服务器正常应答的业务错误——通道健康，重开无益）：
+/// * `"No such file: …"` / `"Permission denied: …"` / `"Failure: …"` /
+///   `"Eof: …"` / `"Operation unsupported: …"` / `"Ok: …"`（`Status` 包）
+/// * `"Limit exceeded: …"`（limits@openssh.com 扩展应答）
+///
+/// **缺省清**（未知形态 / source 缺失的应用层错误不走本函数）：误清的代价
+/// 只是一次重开（几百 ms），wedged 不清 = 文件面永久报错——宁可偏保守。
+pub(crate) fn sftp_slot_wedged_text(text: &str) -> bool {
+    const TRANSPORT: [&str; 9] = [
+        "I/O: ",
+        "Timeout",
+        "Unexpected packet",
+        "Bad message",
+        "No connection",
+        "Connection lost",
+        "RecvError",
+        "SendError",
+        "Unexpected EOF on stream",
+    ];
+    if TRANSPORT.iter().any(|m| text.contains(m)) {
+        return true;
+    }
+    if text.contains("Client error.") {
+        return true;
+    }
+    const SERVER_STATUS: [&str; 7] = [
+        "No such file: ",
+        "Permission denied: ",
+        "Failure: ",
+        "Eof: ",
+        "Operation unsupported: ",
+        "Ok: ",
+        "Limit exceeded: ",
+    ];
+    // 服务器正常应答（StatusCode 2xx 语义 + limits 扩展）→ 通道健康，清了白白重开
+    !SERVER_STATUS.iter().any(|m| text.contains(m))
+}
+
+/// typed 面：ottr_transfer 错误 → 判据。`Protocol { source: Some }` 才代表
+/// 底层 SFTP 错误（source 缺失的应用层错误、本地 IO、取消都与通道健康无关，
+/// 一律不清）。
+pub(crate) fn sftp_slot_wedged(err: &ottr_transfer::Error) -> bool {
+    match err {
+        ottr_transfer::Error::Protocol {
+            source: Some(src), ..
+        } => sftp_slot_wedged_text(&src.to_string()),
+        _ => false,
+    }
+}
+
+/// 清会话的 SFTP 缓存槽（下次调用在 `sftp_for` 重开 subsystem 自愈）。
+/// 只对 SSH 会话生效——id 必须在 SSH 表里（FTP/本地会话无槽，天然跳过）。
+async fn clear_sftp_slot(state: &AppState, id: &str, why: &str) {
+    let slot = {
+        let sessions = state.sessions.lock().unwrap();
+        sessions.get(id).map(|entry| Arc::clone(&entry.sftp))
+    };
+    if let Some(slot) = slot {
+        *slot.lock().await = None;
+        eprintln!("[sftp:{id}] cached client cleared ({why}); subsystem reopens on next use");
+    }
+}
+
+/// sftp_* 命令统一收尾壳：客户端操作失败时按判据清 SFTP 缓存槽（wedged
+/// 自愈），错误文本照旧上抛——行为兼容，只在协议级错误后多一次重开。
+async fn sftp_op<T>(
+    state: &AppState,
+    id: &str,
+    op: impl std::future::Future<Output = ottr_transfer::Result<T>>,
+) -> Result<T, String> {
+    match op.await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            if sftp_slot_wedged(&e) {
+                clear_sftp_slot(state, id, "protocol-level error").await;
+            }
+            Err(e.to_string())
+        }
+    }
+}
+
 /// 本机文件系统操作统一下 spawn_blocking（网络盘/大目录可能秒级阻塞，不得
 /// 冻结 UI——与 local_list 同口径）；io 错误映射为传输层 `Error::Io`。
 async fn local_fs<T: Send + 'static>(
@@ -293,7 +397,7 @@ pub(crate) async fn sftp_list(
     path: String,
 ) -> Result<Vec<ottr_transfer::DirEntry>, String> {
     let client = file_client_for(&state, &id).await?;
-    client.list_dir(&path).await.map_err(|e| e.to_string())
+    sftp_op(&state, &id, client.list_dir(&path)).await
 }
 
 #[tauri::command]
@@ -303,7 +407,7 @@ pub(crate) async fn sftp_realpath(
     path: String,
 ) -> Result<String, String> {
     let client = file_client_for(&state, &id).await?;
-    client.realpath(&path).await.map_err(|e| e.to_string())
+    sftp_op(&state, &id, client.realpath(&path)).await
 }
 
 #[tauri::command]
@@ -313,7 +417,7 @@ pub(crate) async fn sftp_mkdir(
     path: String,
 ) -> Result<(), String> {
     let client = file_client_for(&state, &id).await?;
-    client.mkdir(&path).await.map_err(|e| e.to_string())
+    sftp_op(&state, &id, client.mkdir(&path)).await
 }
 
 /// 幂等建目录（递归上传用，2026-10-19）：已存在且是目录 → Ok（不报错）；
@@ -328,7 +432,7 @@ pub(crate) async fn sftp_mkdir_all(
     if client.stat(&path).await.is_ok() {
         return Ok(()); // 已存在（目录或同名文件）：交给后续传输报同名文件错误
     }
-    client.mkdir(&path).await.map_err(|e| e.to_string())
+    sftp_op(&state, &id, client.mkdir(&path)).await
 }
 
 #[tauri::command]
@@ -339,7 +443,7 @@ pub(crate) async fn sftp_rename(
     to: String,
 ) -> Result<(), String> {
     let client = file_client_for(&state, &id).await?;
-    client.rename(&from, &to).await.map_err(|e| e.to_string())
+    sftp_op(&state, &id, client.rename(&from, &to)).await
 }
 
 /// 删除远端文件或空目录（`is_dir` 选 remove/rmdir；递归删除不进 MVP——
@@ -352,12 +456,11 @@ pub(crate) async fn sftp_remove(
     is_dir: bool,
 ) -> Result<(), String> {
     let client = file_client_for(&state, &id).await?;
-    let r = if is_dir {
-        client.remove_dir(&path).await
+    if is_dir {
+        sftp_op(&state, &id, client.remove_dir(&path)).await
     } else {
-        client.remove_file(&path).await
-    };
-    r.map_err(|e| e.to_string())
+        sftp_op(&state, &id, client.remove_file(&path)).await
+    }
 }
 
 /// chmod（`mode` 为完整 POSIX 权限位十进制值，如 0o644 = 420）。
@@ -376,7 +479,7 @@ pub(crate) async fn sftp_chmod(
         ));
     }
     let client = file_client_for(&state, &id).await?;
-    client.chmod(&path, mode).await.map_err(|e| e.to_string())
+    sftp_op(&state, &id, client.chmod(&path, mode)).await
 }
 
 // --- 本地面（FilePanel 左栏） ------------------------------------------------
@@ -811,13 +914,20 @@ pub(crate) async fn sftp_download(
         .get(&id)
         .map(|e| (Arc::clone(&e.session), e.endpoint.clone()));
     let is_local = state.local_sessions.lock().unwrap().contains_key(&id);
+    // FTP 传输闸门（robustness 审计 P1）：下载整程持有客户端互斥锁——把闸门
+    // 交给传输任务，心跳在此期间跳过探测（否则等锁撞探测限时误杀活会话）。
+    let mut ftp_gate = None;
     let (backend, endpoint) = match ssh_lookup {
         Some((session, endpoint)) => (Backend::Ssh(session), endpoint),
         None if is_local => (Backend::Local, "local".to_string()),
-        None => (
-            Backend::Ftp(super::ftp::ftp_for(&state, &id).await?),
-            super::ftp::ftp_endpoint(&state, &id)?,
-        ),
+        None => {
+            let gate = super::ftp::ftp_transfer_gate(&state, &id).await?;
+            ftp_gate = Some(Arc::clone(&gate));
+            (
+                Backend::Ftp(super::ftp::ftp_for(&state, &id).await?),
+                super::ftp::ftp_endpoint(&state, &id)?,
+            )
+        }
     };
     let local = match local {
         Some(p) => PathBuf::from(p),
@@ -873,6 +983,12 @@ pub(crate) async fn sftp_download(
                     .await
             }
             Backend::Ftp(client) => {
+                // 整传输持闸门（拿不到 = 传输在途 → 心跳跳过探测，见
+                // FtpSessionEntry.transfer_gate 文档）。
+                let _gate = match ftp_gate.as_ref() {
+                    Some(gate) => Some(gate.lock().await),
+                    None => None,
+                };
                 client
                     .download(
                         &remote_fut,
@@ -929,10 +1045,16 @@ pub(crate) async fn sftp_upload(
         .get(&id)
         .map(|e| Arc::clone(&e.session));
     let is_local = state.local_sessions.lock().unwrap().contains_key(&id);
+    // FTP 传输闸门（sftp_download 同款：上传整程持客户端互斥锁，心跳跳过探测）
+    let mut ftp_gate = None;
     let backend = match ssh_lookup {
         Some(session) => Backend::Ssh(session),
         None if is_local => Backend::Local,
-        None => Backend::Ftp(super::ftp::ftp_for(&state, &id).await?),
+        None => {
+            let gate = super::ftp::ftp_transfer_gate(&state, &id).await?;
+            ftp_gate = Some(Arc::clone(&gate));
+            Backend::Ftp(super::ftp::ftp_for(&state, &id).await?)
+        }
     };
     let local_path = PathBuf::from(&local);
     let total = std::fs::metadata(&local_path)
@@ -982,6 +1104,11 @@ pub(crate) async fn sftp_upload(
                     .await
             }
             Backend::Ftp(client) => {
+                // 整传输持闸门（sftp_download 同款，见 FtpSessionEntry 文档）。
+                let _gate = match ftp_gate.as_ref() {
+                    Some(gate) => Some(gate.lock().await),
+                    None => None,
+                };
                 client
                     .upload(
                         &local_fut,
@@ -1029,6 +1156,107 @@ pub(crate) fn transfer_cancel(
     };
     cancel.cancel();
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// SFTP 槽位失效判据单测（robustness 审计 P2 回归）：判据按 russh-sftp 3.0.1
+// client::error::Error 的 Display 形态分层（见 sftp_slot_wedged_text 文档）。
+// desktop 不引 russh-sftp 类型（I-1 依赖纪律），测试用 Display 等价的桩错误
+// 类型钉住判据行为：服务器正常应答不清槽，通道/协议级一律清槽（自愈）。
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod sftp_slot_criterion_tests {
+    use super::{sftp_slot_wedged, sftp_slot_wedged_text};
+
+    /// Display 等价桩：模拟被擦除进 source 的 russh-sftp 错误 Display 文本。
+    #[derive(Debug)]
+    struct FakeSftpError(&'static str);
+
+    impl std::fmt::Display for FakeSftpError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.0)
+        }
+    }
+
+    impl std::error::Error for FakeSftpError {}
+
+    fn protocol_with(source_display: &'static str) -> ottr_transfer::Error {
+        ottr_transfer::Error::Protocol {
+            message: format!("stat /x: {source_display}"),
+            source: Some(Box::new(FakeSftpError(source_display))),
+        }
+    }
+
+    #[test]
+    fn server_status_responses_keep_slot() {
+        // 服务器正常应答（StatusCode 2xx 语义 + limits 扩展）：通道健康，清了
+        // 白白重开。Status Display = "{StatusCode}: {error_message}"。
+        for status in [
+            "No such file: /a/b does not exist",
+            "Permission denied: permission denied",
+            "Failure: failure",
+            "Eof: eof",
+            "Operation unsupported: operation unsupported",
+            "Ok: ok",
+            "Limit exceeded: write request exceeds max packet size",
+        ] {
+            assert!(
+                !sftp_slot_wedged(&protocol_with(status)),
+                "服务器应答 {status:?} 不得清槽"
+            );
+            assert!(!sftp_slot_wedged_text(status));
+        }
+    }
+
+    #[test]
+    fn transport_level_errors_clear_slot() {
+        // 通道/协议级：子系统任务死（RecvError/SendError）、应答超时、协议
+        // 失配、本地伪 Status、流断——下次调用必须重开 subsystem 自愈。
+        for transport in [
+            "I/O: channel closed",
+            "Timeout",
+            "Unexpected packet",
+            "Bad message: short packet",
+            "No connection: generated locally",
+            "Connection lost: generated locally",
+            "RecvError: receiving on an empty channel",
+            "SendError: channel closed",
+            "Unexpected EOF on stream",
+            "Client error. (unexpected packet)",
+            // 未知形态也清（缺省自愈——宁可多开一次，不永久 wedged）
+            "something entirely unknown",
+        ] {
+            assert!(
+                sftp_slot_wedged(&protocol_with(transport)),
+                "通道/协议级 {transport:?} 必须清槽"
+            );
+            assert!(sftp_slot_wedged_text(transport));
+        }
+    }
+
+    #[test]
+    fn transport_markers_win_over_status_markers() {
+        // 判据顺序：传输级特征优先——服务器错误消息里含路径（如
+        // "No such file: /Timeout …"）不得把真超时误判成健康。
+        assert!(sftp_slot_wedged_text("stat /x: Timeout"));
+        assert!(sftp_slot_wedged_text(
+            "mlst /No such file dir: I/O: stream closed"
+        ));
+    }
+
+    #[test]
+    fn non_protocol_errors_keep_slot() {
+        // source 缺失（应用层错误）、本地 IO、取消：与 SFTP 通道健康无关。
+        let plain = ottr_transfer::Error::Protocol {
+            message: "journal identity mismatch".into(),
+            source: None,
+        };
+        assert!(!sftp_slot_wedged(&plain));
+        assert!(!sftp_slot_wedged(&ottr_transfer::Error::Io(
+            std::io::Error::other("disk full")
+        )));
+        assert!(!sftp_slot_wedged(&ottr_transfer::Error::Cancelled));
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,11 @@ publish = false
 [dependencies]
 # features 对齐原 desktop 内 bin 时的有效并集：io-std（stdin/stdout 泵）、
 # macros（tokio::select!）——独立 crate 后无图内聚合，必须自持。
+#
+# 2026-11-20：tokio 移到 [target.'cfg(windows)'.dependencies]——本 crate 的
+# tokio 用法全在 windows 分支（命名管道传输 + tokio::select! 泵）；unix 分支
+# 是 UDS + std::io 的同步泵，不用 tokio。留在通用段会让非 Windows 目标上
+# clippy 的 unused_dependencies 判它「未使用」而报错（CI 三平台门红）。
 tokio = { workspace = true, features = ["io-util", "io-std", "macros", "rt", "sync", "time", "net"] }
 
 # MCP Windows 传输（沿 desktop 同版本/同 features）：命名管道同步 FFI 客户端。

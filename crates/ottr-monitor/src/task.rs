@@ -90,21 +90,27 @@ where
     let mut consecutive_failures: u32 = 0;
 
     loop {
-        let sample = tokio::select! {
-            got = tokio::time::timeout(config.exec_timeout, collect()) => match got {
-                Ok(Ok(s)) => Some(s),
-                Ok(Err(e @ MonitorError::Unsupported { .. })) => {
-                    return SamplingEnd::Unsupported(e.to_string());
+        // 取消**不与采集 select 竞争**（robustness 审计 P3）：select 取消分支
+        // 胜出会 drop 在途的 collect() future——collect 内部 exec_with_timeout
+        // 的关通道逻辑随 drop 失效，远端采样命令悬挂到会话断开。改为「采完
+        // 本轮再退出」：exec_timeout 兜底在途时长（collect 内部限时 ≤10s，通常
+        // 毫秒级），取消语义从「立即中断」变为「≤一个采集窗口内停表」。
+        let collected = tokio::time::timeout(config.exec_timeout, collect()).await;
+        if cancel.is_cancelled() {
+            return SamplingEnd::Cancelled;
+        }
+        let sample = match collected {
+            Ok(Ok(s)) => Some(s),
+            Ok(Err(e @ MonitorError::Unsupported { .. })) => {
+                return SamplingEnd::Unsupported(e.to_string());
+            }
+            Ok(Err(_)) | Err(_) => {
+                consecutive_failures += 1;
+                if consecutive_failures >= config.max_consecutive_failures {
+                    return SamplingEnd::ExcessiveFailures;
                 }
-                Ok(Err(_)) | Err(_) => {
-                    consecutive_failures += 1;
-                    if consecutive_failures >= config.max_consecutive_failures {
-                        return SamplingEnd::ExcessiveFailures;
-                    }
-                    None
-                }
-            },
-            _ = cancel.cancelled() => return SamplingEnd::Cancelled,
+                None
+            }
         };
         if let Some(sample) = sample {
             // 打点即「拿到样本的时刻」，差分间隔以此为准

@@ -381,33 +381,55 @@ export function FilePanel({ session }: { session: Session }) {
   // 传输完成 → 对应侧自动刷新（上传=远端，下载=本地）：用户不用手动点刷新
   // 才能看到传输结果。用状态迁移判定（前值非 done、现值 done）——初挂载时
   // store 里可能残留旧会话的 done 条目，prev===undefined 不触发。
-  const transfers = useTransferStore((s) => s.items);
+  //
+  // 订阅粒度（2026-11-20 性能审计 P1）：**不订阅 items 数组本身**——Rust 侧
+  // 进度事件 100ms 节流一次，每次都重建数组（TransferStore.patchItem），
+  // 订阅它等于让整个面板（含两栏全部文件行）每秒重渲染 10×N 次，而面板对
+  // 进度**只用一件事**：状态迁移到 done。改为命令式订阅（subscribe）——
+  // 面板不因进度重渲染，只在迁移发生时触发一次刷新。
   const transferStatusRef = useRef<Map<string, TransferStatus>>(new Map());
   useEffect(() => {
-    let dirty = false;
-    const seen = new Set<string>();
-    for (const it of transfers) {
-      seen.add(it.transferId);
-      const prev = transferStatusRef.current.get(it.transferId);
-      if (prev !== undefined && prev !== "done" && it.status === "done") {
-        if (it.kind === "upload") void loadRemote(remote.path);
-        else void loadLocal(local.path);
-      }
-      if (prev !== it.status) {
-        transferStatusRef.current.set(it.transferId, it.status);
-        dirty = true;
-      }
+    // 基线：挂载时记录当前各条目状态（prev===undefined 语义——不触发刷新）。
+    for (const it of useTransferStore.getState().items) {
+      transferStatusRef.current.set(it.transferId, it.status);
     }
-    // 收尾条目 6s 后自动销毁（TransferStore），水位表同步裁剪防无界增长。
-    if (dirty) {
-      for (const id of [...transferStatusRef.current.keys()]) {
-        if (!seen.has(id)) transferStatusRef.current.delete(id);
+    const unsub = useTransferStore.subscribe((state, prevState) => {
+      if (state.items === prevState.items) return;
+      let dirty = false;
+      const seen = new Set<string>();
+      for (const it of state.items) {
+        seen.add(it.transferId);
+        const prev = transferStatusRef.current.get(it.transferId);
+        if (prev !== undefined && prev !== "done" && it.status === "done") {
+          if (it.kind === "upload") void loadRemote(remote.path);
+          else void loadLocal(local.path);
+        }
+        if (prev !== it.status) {
+          transferStatusRef.current.set(it.transferId, it.status);
+          dirty = true;
+        }
       }
-    }
-  }, [transfers, loadRemote, loadLocal, remote.path, local.path]);
+      // 收尾条目 6s 后自动销毁（TransferStore），水位表同步裁剪防无界增长。
+      if (dirty) {
+        for (const id of [...transferStatusRef.current.keys()]) {
+          if (!seen.has(id)) transferStatusRef.current.delete(id);
+        }
+      }
+    });
+    return unsub;
+  }, [loadRemote, loadLocal, remote.path, local.path]);
 
   // --- 拖拽（Tauri onDragDropEvent）：OS 文件落远端栏=上传、落本地栏=复制进
   // 当前目录；跨面板内部拖拽走行 dragstart（见 renderPane onDrop）。 ----------
+  // 拖拽回调需要**最新**的 handleDrop（它闭包了当前远端/本地路径）——用 ref
+  // 持最新值，监听注册因而不再随路径变化反复重挂（2026-11-20 性能审计 P3：
+  // 此前每次目录切换都 unlisten + 重新动态 import + 重新注册 onDragDropEvent
+  // = 一次无谓的 IPC 往返；清理正确、无泄漏，纯浪费）。
+  const handleDropRef = useRef<(paths: string[], target: Side) => void>(() => {});
+  useEffect(() => {
+    handleDropRef.current = handleDrop;
+  });
+
   useEffect(() => {
     if (!rustId) return;
     let cancelled = false;
@@ -431,7 +453,7 @@ export function FilePanel({ session }: { session: Session }) {
           const target: Side | null = hit === "remote" ? "remote" : hit === "local" ? "local" : null;
           if (p.type === "drop") {
             setDropTarget(null);
-            if (target !== null) void handleDrop(p.paths ?? [], target);
+            if (target !== null) void handleDropRef.current(p.paths ?? [], target);
           } else {
             setDropTarget(target);
           }
@@ -446,13 +468,16 @@ export function FilePanel({ session }: { session: Session }) {
       cancelled = true;
       unlisten?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rustId, remote.path, local.path]);
+    // 依赖只留 rustId：拖拽回调经 ref 取最新实现（见上方说明）。
+  }, [rustId]);
 
   async function handleDrop(paths: string[], target: Side) {
     if (!rustId || paths.length === 0) return;
     let queued = 0;
     let skippedDirs = 0;
+    // 单文件没能进上传队列的计数（2026-11-20 健壮性审计 P2）：与「目录跳过」
+    // 分开——前者是具体文件失败（用户需重新确认），后者是能力/额度边界。
+    let failedFiles = 0;
     for (const p of paths) {
       // 目录判定：查父目录列表判定 is_dir（一次 invoke 足够）。
       let isDir = false;
@@ -475,6 +500,7 @@ export function FilePanel({ session }: { session: Session }) {
           });
           queued += r.files;
           skippedDirs += r.skipped;
+          failedFiles += r.failed;
         } else {
           skippedDirs++; // 递归下载不在本期（远端侧遍历另行排期）
         }
@@ -494,7 +520,10 @@ export function FilePanel({ session }: { session: Session }) {
         }
       }
     }
-    if (skippedDirs > 0) {
+    if (failedFiles > 0) {
+      // 失败优先提示（更可操作）：具体哪些文件没进队列需要用户重新确认。
+      showNotice(t("files.dropFilesFailed", { count: failedFiles }));
+    } else if (skippedDirs > 0) {
       showNotice(t("files.dropDirsSkipped", { count: skippedDirs }));
     } else if (queued > 0) {
       showNotice(

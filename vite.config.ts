@@ -60,6 +60,19 @@ export default defineConfig(() => ({
     exclude: ["trzsz"],
   },
 
+  // **刻意不配 manualChunks**（2026-11-20 性能审计 P2 的实测结论）：
+  // 桌面应用的产物从**应用包内的本地文件**加载，没有 HTTP 缓存可命中——
+  // 「把 xterm / trzsz 拆成独立 chunk 以利缓存」在本项目**没有收益**。
+  // 实测（`npm run build` 产物体积对比）：
+  //   不拆：index 1,945.79 kB（gzip 585.88 kB）——首屏同量；
+  //   拆了：index 1,485.60 kB + xterm 366.84 kB + trzsz 84.91 kB
+  //         → 首屏总量 1,937.35 kB，与不拆**基本相同**（xterm/trzsz 仍首屏
+  //         加载，只是换了文件边界），只多出几次本地文件读。
+  // 真正让首屏变轻的是 **markdown 的动态 import**（frontend/ai/Markdown.tsx
+  // 里 React.lazy）：react-markdown + remark-gfm 共 ~156 kB 不再进首屏，
+  // 只有 AI 面板真的渲染出散文时才加载。
+  // （本仓库用 rolldown，manualChunks 只接受函数形式——真要拆时注意。）
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

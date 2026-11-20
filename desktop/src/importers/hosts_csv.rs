@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 
 use ottr_vault::Vault;
-use ottr_vault::entities::{HostGroups, HostInput, HostProtocol, Hosts};
+use ottr_vault::entities::HostProtocol;
 
 use crate::ssh_config::{ImportIssue, ImportReport};
 
@@ -200,66 +200,138 @@ pub fn parse(content: &str) -> CsvOutcome {
 }
 
 /// 落库：分组按名解析、缺失即建；去重键 = (address, port, username)。
+///
+/// **全程单事务**（robustness 审计 P2：此前逐行 create 各自独立事务，中途
+/// 失败 `?` 上抛留半截 + ImportReport 丢失）：`with_conn` +
+/// `unchecked_transaction` 形态（先例 ottr-vault sync_snapshot），单行失败
+/// 记入 report.errors 并 continue，最后统一提交。行为兼容：成功行照常入库，
+/// 失败行在报告里可见。行级校验/INSERT 与 ottr-vault `Hosts::create` 同规则
+/// （校验器与 SQL 不出 crate——依赖纪律 desktop 不引 rusqlite——镜像见
+/// [`crate::ssh_config::validate_host_row`] 与 [`crate::ssh_config::HOST_INSERT_SQL`]）。
 pub fn import_entries(vault: &Vault, outcome: CsvOutcome) -> ottr_vault::Result<ImportReport> {
-    let mut groups: std::collections::HashMap<String, i64> = HostGroups::list(vault)?
-        .into_iter()
-        .map(|g| (g.name, g.id))
-        .collect();
-    let mut seen: HashSet<(String, i64, Option<String>)> = Hosts::list(vault)?
-        .into_iter()
-        .map(|h| (h.address, h.port, h.username))
-        .collect();
-    let mut report = ImportReport {
-        added: 0,
-        skipped_wildcards: 0,
-        skipped_duplicates: 0,
-        errors: outcome.errors,
-    };
-    for row in outcome.rows {
-        let key = (row.address.clone(), row.port, row.username.clone());
-        if seen.contains(&key) {
-            report.skipped_duplicates += 1;
-            continue;
-        }
-        let group_id = match &row.group {
-            Some(name) => match groups.get(name) {
-                Some(id) => Some(*id),
-                None => {
-                    let g = HostGroups::create(vault, name, None, None)?;
-                    groups.insert(name.clone(), g.id);
-                    Some(g.id)
-                }
-            },
-            None => None,
+    use crate::ssh_config::{HOST_INSERT_SQL, now_ts, validate_group_row, validate_host_row};
+    vault.with_conn(|conn| {
+        let tx = conn.unchecked_transaction()?;
+        let ts = now_ts();
+        let mut groups: std::collections::HashMap<String, i64> = {
+            let mut stmt = tx.prepare("SELECT id, name FROM host_groups")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(1)?, r.get(0)?)))?;
+            rows.collect::<Result<std::collections::HashMap<_, _>, _>>()?
         };
-        Hosts::create(
-            vault,
-            HostInput {
-                protocol: row.protocol,
-                name: row.name,
-                group_id,
-                tags: row.tags,
-                address: row.address,
-                port: row.port,
-                username: row.username,
-                credential_id: None,
-                jump_chain_id: None,
-                encoding_override: row.encoding,
-                theme_override: None,
-                monitor_enabled: row.monitor_enabled,
-                is_production: row.is_production,
-                notes: row.notes,
-            },
-        )?;
-        seen.insert(key);
-        report.added += 1;
-    }
-    Ok(report)
+        let mut seen: HashSet<(String, i64, Option<String>)> = {
+            let mut stmt = tx.prepare("SELECT address, port, username FROM hosts")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            rows.collect::<Result<HashSet<_>, _>>()?
+        };
+        let mut report = ImportReport {
+            added: 0,
+            skipped_wildcards: 0,
+            skipped_duplicates: 0,
+            errors: outcome.errors,
+        };
+        for row in outcome.rows {
+            let key = (row.address.clone(), row.port, row.username.clone());
+            if seen.contains(&key) {
+                report.skipped_duplicates += 1;
+                continue;
+            }
+            // 行级校验（与 Hosts::create 同规则）：失败记报告并跳过该行
+            if let Err(reason) =
+                validate_host_row(&row.name, &row.address, row.port, row.username.as_deref())
+            {
+                report.errors.push(ImportIssue::with(
+                    "csv.row_invalid",
+                    &[("name", row.name.clone()), ("reason", reason)],
+                ));
+                continue;
+            }
+            let group_id = match &row.group {
+                Some(name) => match groups.get(name) {
+                    Some(id) => Some(*id),
+                    None => {
+                        // 分组按名解析、缺失即建（同事务；建组失败 = 该行失败）
+                        if let Err(reason) = validate_group_row(name) {
+                            report.errors.push(ImportIssue::with(
+                                "csv.row_invalid",
+                                &[("name", row.name.clone()), ("reason", reason)],
+                            ));
+                            continue;
+                        }
+                        let created = tx.execute(
+                            "INSERT INTO host_groups (name, parent_id, color, created_at, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, ?4)",
+                            (
+                                name.as_str(),
+                                Option::<i64>::None,
+                                Option::<String>::None,
+                                ts,
+                            ),
+                        );
+                        match created {
+                            Ok(_) => {
+                                let id = tx.last_insert_rowid();
+                                groups.insert(name.clone(), id);
+                                Some(id)
+                            }
+                            Err(e) => {
+                                report.errors.push(ImportIssue::with(
+                                    "csv.row_invalid",
+                                    &[(
+                                        "name",
+                                        row.name.clone(),
+                                    ), ("reason", format!("create group {name}: {e}"))],
+                                ));
+                                continue;
+                            }
+                        }
+                    }
+                },
+                None => None,
+            };
+            let tags_json =
+                serde_json::to_string(&row.tags).expect("Vec<String> 总能序列化");
+            // 参数 15 元组：?15 占位符出现两次（created_at/updated_at 同 ts），
+            // 只绑一个值——entities.rs Hosts::create 的 params! 同款计数。
+            let inserted = tx.execute(
+                HOST_INSERT_SQL,
+                (
+                    row.name.as_str(),
+                    group_id,
+                    tags_json.as_str(),
+                    row.address.as_str(),
+                    row.port,
+                    row.username.as_deref(),
+                    row.protocol.as_str(),
+                    Option::<i64>::None,
+                    Option::<i64>::None,
+                    row.encoding.as_deref(),
+                    Option::<String>::None,
+                    row.monitor_enabled,
+                    row.is_production,
+                    row.notes.as_deref(),
+                    ts,
+                ),
+            );
+            if let Err(e) = inserted {
+                report.errors.push(ImportIssue::with(
+                    "csv.row_invalid",
+                    &[("name", row.name), ("reason", e.to_string())],
+                ));
+                continue;
+            }
+            seen.insert(key);
+            report.added += 1;
+        }
+        tx.commit()?;
+        Ok(report)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    // 断言面直驱 vault 实体（导入本体走单事务 SQL，与实体入口互不依赖）
+    use ottr_vault::entities::{HostGroups, Hosts};
 
     #[test]
     fn parse_round_trip_with_quotes_and_multiline() {

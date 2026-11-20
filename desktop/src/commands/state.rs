@@ -290,6 +290,14 @@ pub(crate) struct FtpSessionEntry {
     pub(crate) client: Arc<ottr_transfer::FtpClient>,
     /// `host:port`（下载 journal 的 scope 身份，与 SSH 端点同语义）。
     pub(crate) endpoint: String,
+    /// 死活检测心跳的取消令牌（robustness 审计 P1）：drop/断开全部时先取消
+    /// 再 QUIT——心跳不再对已关闭的会话发 session-closed。
+    pub(crate) heartbeat_cancel: tokio_util::sync::CancellationToken,
+    /// 传输闸门（robustness 审计 P1）：FTP 下载/上传**整程**持有客户端互斥锁
+    /// （ottr-transfer 裁定：单控制连接串行协议）——心跳探测若与传输竞争同
+    /// 一把锁，会在探测限时内等锁超时，把活会话误判成死会话。传输任务先持
+    /// 本闸门再开传；心跳拿不到闸门 = 传输在途 = 本轮跳过探测。
+    pub(crate) transfer_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// FTP/FTPS 会话表（id → 表项；drop_session / disconnect_all 统一清收）。

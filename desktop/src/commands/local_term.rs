@@ -400,51 +400,48 @@ pub(crate) fn local_term_open_with(
         }
     });
 
-    // 批量线程（收尾归它：child 收尸 + 录制自动落账 + 表项移除 + 关闭事件）
+    // 批量线程（收尾归它：child 收尸 + 录制自动落账 + 表项移除 + 关闭事件）。
+    // 循环体包 catch_unwind（robustness 审计 P2）：解码/IPC 面任一 panic 若不
+    // 隔离，收尾随线程静默死亡——表项泄漏 + `ottr://session-closed` 不发
+    // （前端永挂 connected）。panic → 按 Closed（异常死亡语义，前端走重连
+    // 状态机）收尾；收尾本体在 catch 之外且全容错锁（[`finalize_local_exit`]），
+    // 绝不二次 panic。
     let loop_id = id.clone();
     let recorder_slot = Arc::clone(&recorder_slot);
     std::thread::spawn(move || {
-        let reason = local_forward_loop(
-            &rx,
-            &on_data,
-            &counters,
-            &decoder,
-            &text_tail,
-            &loop_id,
-            &cancel,
-            &recorder_slot,
-        );
+        let reason = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            local_forward_loop(
+                &rx,
+                &on_data,
+                &counters,
+                &decoder,
+                &text_tail,
+                &loop_id,
+                &cancel,
+                &recorder_slot,
+            )
+        })) {
+            Ok(reason) => reason,
+            Err(panic) => {
+                let msg = panic
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+                    .unwrap_or("non-string panic payload");
+                eprintln!("[local-term:{loop_id}] forward loop panicked: {msg}; running teardown");
+                SessionCloseReason::Closed
+            }
+        };
         // 收尾：child 收尸（子进程已死 wait 立即返回）+ 录制自动落账（敲 exit
         // 也要 finalize 入库；host_id None = 本地）+ 清表 + 关闭事件
         let _ = child.wait();
-        let recording = recorder_slot.lock().unwrap().take();
-        local_sessions.lock().unwrap().remove(&loop_id);
-        if let Some(app) = &app {
-            use tauri::Manager;
-            if let Some(handle) = recording {
-                if let Some(vault_state) = app.try_state::<crate::vault::VaultState>() {
-                    let _ = crate::commands::recording::insert_finalized(&vault_state.0, handle);
-                } else {
-                    eprintln!("[local-term:{loop_id}] vault gone; recording lost");
-                }
-            }
-            // 监控采样随会话消亡停表（SSH 路径 register.rs 的 session_down 钩子同款）
-            app.state::<crate::commands::state::AppState>()
-                .monitors
-                .session_down(&loop_id);
-            // AI 目标作用域随会话消亡（feat/ask-ottr-orb Task 1；shell 敲 exit
-            // 的自清路径——drop_session 之外的第二条本地收尾）。
-            app.state::<crate::commands::state::AppState>()
-                .ai_scopes
-                .revoke_runtime(crate::commands::ai_session::AiSessionKind::Local, &loop_id);
-            let _ = app.emit(
-                "ottr://session-closed",
-                SessionClosedEvent {
-                    id: loop_id,
-                    reason,
-                },
-            );
-        }
+        finalize_local_exit(
+            app.as_ref(),
+            &local_sessions,
+            &loop_id,
+            &recorder_slot,
+            reason,
+        );
     });
 
     Ok(id)
@@ -455,6 +452,58 @@ pub(crate) fn local_term_open_with(
 struct SessionClosedEvent {
     id: String,
     reason: SessionCloseReason,
+}
+
+/// 本地批量线程退出收尾（录制自动落账 + 清表 + monitors/AI 收尾 + 关闭事件）。
+/// 正常路径与 panic 路径（上方 catch_unwind 看护）共用同一套——锁全容错：
+/// 循环 panic 可能已中毒录制槽锁，收尾再 panic = 表项泄漏 + 事件不发
+/// （前端永挂 connected = 僵尸会话）。child 收尸（wait）由调用方先行。
+fn finalize_local_exit(
+    app: Option<&AppHandle>,
+    local_sessions: &LocalTermMap,
+    session_id: &str,
+    recorder_slot: &crate::commands::recording::RecorderSlot,
+    reason: SessionCloseReason,
+) {
+    // 录制自动落账：槽锁中毒（循环 panic 时正持锁的 tee 路径）→ 跳过并记
+    // 日志——审计痕迹丢这一次，好过整个收尾死亡。
+    let recording = match recorder_slot.lock() {
+        Ok(mut slot) => slot.take(),
+        Err(_) => {
+            eprintln!(
+                "[local-term:{session_id}] recorder slot poisoned by loop panic; auto-finalize skipped"
+            );
+            None
+        }
+    };
+    if let Ok(mut table) = local_sessions.lock() {
+        table.remove(session_id);
+    }
+    if let Some(app) = app {
+        use tauri::Manager;
+        if let Some(handle) = recording {
+            if let Some(vault_state) = app.try_state::<crate::vault::VaultState>() {
+                let _ = crate::commands::recording::insert_finalized(&vault_state.0, handle);
+            } else {
+                eprintln!("[local-term:{session_id}] vault gone; recording lost");
+            }
+        }
+        // 监控采样随会话消亡停表（SSH 路径 register.rs 的 session_down 钩子同款）
+        app.state::<AppState>().monitors.session_down(session_id);
+        // AI 目标作用域随会话消亡（feat/ask-ottr-orb Task 1；shell 敲 exit
+        // 的自清路径——drop_session 之外的第二条本地收尾）。
+        app.state::<AppState>().ai_scopes.revoke_runtime(
+            crate::commands::ai_session::AiSessionKind::Local,
+            session_id,
+        );
+        let _ = app.emit(
+            "ottr://session-closed",
+            SessionClosedEvent {
+                id: session_id.to_string(),
+                reason,
+            },
+        );
+    }
 }
 
 /// 本地批量转发循环（语义对齐 `forward_pty_loop`：合批窗口/上限、解码、

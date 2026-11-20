@@ -26,6 +26,13 @@ use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 
 use crate::{Error, Result};
 
+/// SFTP 协议握手（INIT）限时（2026-11-20 健壮性审计 P2）。
+///
+/// 开通道与请求子系统在 ottr-ssh 侧已限时（15s），本步补上 SFTP INIT 应答的
+/// 限时：10s 覆盖跨洲 RTT + 慢速 sftp-server 启动。超时的含义是「这个服务端
+/// 此刻不可用」，不是「命令跑太久」。
+const SFTP_INIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// 目录项（serde 直出 desktop 命令面）。`mode` 为 POSIX 权限位（含类型位，
 /// 与 chmod 回写同一口径）；`mtime` 为秒级 Unix 时间。
 #[derive(Debug, Clone, serde::Serialize)]
@@ -71,10 +78,20 @@ impl SftpClient {
     pub async fn open(session: &SshSession) -> Result<Self> {
         let stream = session.open_sftp_stream().await?;
         let inner = Arc::new(RawSftpSession::new(stream));
-        inner
-            .init()
-            .await
-            .map_err(|e| protocol_error(e, "sftp init"))?;
+        // INIT 握手限时（2026-11-20 健壮性审计 P2）：服务端不回 INIT 应答
+        // （半开链路 / sftp-server 卡死）时**按时返回错误**，而不是让文件面板的
+        // 每个操作都挂在 await 上（desktop 侧 `sftp_for` 的 Mutex 持锁跨 await
+        // → 该会话后续所有文件请求排队挂起）。
+        match tokio::time::timeout(SFTP_INIT_TIMEOUT, inner.init()).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => return Err(protocol_error(e, "sftp init")),
+            Err(_elapsed) => {
+                return Err(Error::Protocol {
+                    message: format!("sftp init timed out after {}s", SFTP_INIT_TIMEOUT.as_secs()),
+                    source: None,
+                });
+            }
+        }
         Ok(Self { inner })
     }
 

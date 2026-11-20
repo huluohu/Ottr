@@ -25,6 +25,32 @@ export interface TabBarProps {
   dragRegion?: Record<string, unknown>;
 }
 
+/** AI「待看」徽标（2026-11-20 性能审计 P3 拆出）。
+ *
+ * 独立成组件是为了**订阅粒度**：这里订阅的是原始布尔（`request != null &&
+ * !seen`），而不是整张 `aiStore.sessions` 记录——aiStore 每次 patch 都重建
+ * 整表（AI 输入框每次击键、流式每 50ms 一次 flush），父组件订阅整表会让
+ * 整条页签条跟着持续重渲染。布尔是原始值 → zustand 的 Object.is 比较稳定。
+ */
+function TabAiBadge({ sessionId, hostName }: { sessionId: string; hostName: string }) {
+  const { t } = useTranslation();
+  const pending = useAiStore((s) => {
+    const st = s.sessions[sessionId];
+    return st != null && st.request != null && !st.seen;
+  });
+  if (!pending) return null;
+  return (
+    <span
+      className="tab-ai-pending"
+      data-testid={`tab-ai-pending-${hostName}`}
+      aria-label={t("tabs.aiPendingBadge")}
+      title={t("tabs.aiPendingBadge")}
+    >
+      AI
+    </span>
+  );
+}
+
 export function TabBar({ dragRegion }: TabBarProps) {
   const { t } = useTranslation();
   const sessions = useSessionStore((s) => s.sessions);
@@ -42,7 +68,9 @@ export function TabBar({ dragRegion }: TabBarProps) {
   const closeOverview = useWorkspaceStore((s) => s.closeOverview);
   // AI 诊断「待看」徽标（2026-10-19 方案 A 会话作用域）：该会话有面板且用户
   // 未看过（seen=false）→ 页签琥珀点；markSeen（面板挂载）/close 后消失。
-  const aiSessions = useAiStore((s) => s.sessions);
+  // 订阅粒度在子组件内（<TabAiBadge>，原始布尔）——本页签条不订阅整张
+  // aiStore.sessions 记录（2026-11-20 性能审计 P3：aiStore 每次 patch 都
+  // 重建整表，AI 输入框每次击键 / 流式每 50ms flush 都会拖着页签条重渲染）。
   // 页签右键菜单（2026-10-20 用户需求：重命名 + 复制连接）
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; sessionId: string } | null>(
     null,
@@ -172,19 +200,7 @@ export function TabBar({ dragRegion }: TabBarProps) {
             </span>
           )}
           {/* AI 诊断待看（方案 A）：后台失败不再抢当前视图，页签引导 */}
-          {(() => {
-            const ai = aiSessions[session.id];
-            return ai?.request != null && !ai.seen ? (
-              <span
-                className="tab-ai-pending"
-                data-testid={`tab-ai-pending-${session.hostName}`}
-                aria-label={t("tabs.aiPendingBadge")}
-                title={t("tabs.aiPendingBadge")}
-              >
-                AI
-              </span>
-            ) : null;
-          })()}
+          <TabAiBadge sessionId={session.id} hostName={session.hostName} />
           {/* 生产环境主机（Phase 2 Task 11，B11）：PROD 徽标（红 pill，防呆一眼辨） */}
           {session.isProduction && (
             <span

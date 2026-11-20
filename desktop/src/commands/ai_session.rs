@@ -1144,14 +1144,25 @@ async fn list_dir_scope(
                 let sftp = scope_sftp(&entry).await?;
                 sftp_list_dir(&sftp, path).await
             };
-            let result = tokio::time::timeout(AI_SCOPE_IO_TIMEOUT, io)
-                .await
-                .map_err(|_| {
-                    format!(
+            let result = match tokio::time::timeout(AI_SCOPE_IO_TIMEOUT, io).await {
+                Ok(r) => r,
+                Err(_) => {
+                    // 超时 = 通道可能已半开：清 AI 作用域的 SFTP 缓存槽，
+                    // 下次调用重开 subsystem 自愈（robustness 审计 P2）。
+                    *entry.sftp.lock().await = None;
+                    return Err(format!(
                         "AI read rejected: timed out after {}s",
                         AI_SCOPE_IO_TIMEOUT.as_secs()
-                    )
-                })?;
+                    ));
+                }
+            };
+            // 协议级错误（通道/协议——RecvError/超时/协议失配）同样清槽；
+            // 服务器正常应答（NoSuchFile 等）不清。判据与 transfer.rs 同源。
+            if let Err(text) = &result
+                && crate::commands::transfer::sftp_slot_wedged_text(text)
+            {
+                *entry.sftp.lock().await = None;
+            }
             recheck_scope(state, scope_id, &entry, "read")?;
             result
         }
@@ -1181,14 +1192,23 @@ async fn read_file_scope(
                 let sftp = scope_sftp(&entry).await?;
                 sftp_read_file(&sftp, path).await
             };
-            let result = tokio::time::timeout(AI_SCOPE_IO_TIMEOUT, io)
-                .await
-                .map_err(|_| {
-                    format!(
+            let result = match tokio::time::timeout(AI_SCOPE_IO_TIMEOUT, io).await {
+                Ok(r) => r,
+                Err(_) => {
+                    // 超时清槽自愈（list_dir_scope 同款）。
+                    *entry.sftp.lock().await = None;
+                    return Err(format!(
                         "AI read rejected: timed out after {}s",
                         AI_SCOPE_IO_TIMEOUT.as_secs()
-                    )
-                })?;
+                    ));
+                }
+            };
+            // 协议级错误清槽（list_dir_scope 同款，判据与 transfer.rs 同源）。
+            if let Err(text) = &result
+                && crate::commands::transfer::sftp_slot_wedged_text(text)
+            {
+                *entry.sftp.lock().await = None;
+            }
             recheck_scope(state, scope_id, &entry, "read")?;
             result
         }

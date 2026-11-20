@@ -344,6 +344,23 @@ pub enum CronLoopEnd {
     Cancelled,
 }
 
+/// in-flight 槽位 RAII guard：**Drop 即摘除**。单轮执行任务 panic（mock
+/// resolver / 生产 resolver 任一未来 panic）不再把槽位永久占死——互斥语义
+/// 「上一轮未完本轮让位」在 panic 后依然收敛为「无在册」，下一轮照常触发
+/// （否则该任务从此永远让位，cron 静默停摆）。摘除用容错锁：Drop 不得 panic。
+struct InFlightGuard {
+    slots: Arc<Mutex<HashSet<i64>>>,
+    id: i64,
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        if let Ok(mut slots) = self.slots.lock() {
+            slots.remove(&self.id);
+        }
+    }
+}
+
 /// 输出组合 + 截断：stdout 为主体，stderr 非空则追加标注段；合计超 cap 按
 /// 字节截（UTF-8 lossy 兜底——exec 输出编码不保证）。digest/落盘面在 sink。
 fn combine_output(stdout: &[u8], stderr: &[u8], cap: usize) -> (String, bool) {
@@ -523,6 +540,13 @@ pub async fn run_cron_scheduler(
             let timeout = config.exec_timeout;
             let cap = config.output_cap;
             tokio::spawn(async move {
+                // 槽位摘除挂 RAII guard（Drop 即 remove）：任务体任一路径——
+                // 包括 resolver/任务体 panic 之外的意外 panic——都释放槽位，
+                // 互斥不因一次 panic 永久卡死（见 InFlightGuard 文档）。
+                let _guard = InFlightGuard {
+                    slots: in_flight,
+                    id: job_id,
+                };
                 let ts = clock();
                 let started = Instant::now();
                 let outcome = match exec(&CronJobView {
@@ -546,19 +570,12 @@ pub async fn run_cron_scheduler(
                             ts,
                             error: Some(e),
                         });
-                        in_flight
-                            .lock()
-                            .expect("cron in-flight poisoned")
-                            .remove(&job_id);
-                        return;
+                        return; // 槽位随 _guard drop 释放
                     }
                 };
                 let record = settle(job_id, ts, &started, outcome, cap);
                 on_run(record);
-                in_flight
-                    .lock()
-                    .expect("cron in-flight poisoned")
-                    .remove(&job_id);
+                // 槽位随 _guard drop 释放
             });
         }
     }
@@ -1138,6 +1155,70 @@ mod tests {
         clock.fetch_add(60, Ordering::SeqCst);
         let got = wait_for(&runs, 2).await;
         assert_eq!(got.len(), 2, "空闲后恢复触发（跳过的不补）");
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    /// P3 回归（panic 隔离 / InFlightGuard）：单轮执行任务 panic 不把 in-flight
+    /// 槽永久占死——第一轮 resolver panic（任务体由 tokio::spawn 包裹，guard
+    /// Drop 摘槽），下一分界的第二轮必须照常触发（修复前该任务从此永远让位，
+    /// cron 静默停摆）。
+    #[tokio::test]
+    async fn panicking_exec_releases_in_flight_slot() {
+        let (clock, t0) = virtual_clock();
+        let jobs_snapshot = Arc::new(Mutex::new(vec![job(1, "* * * * *")]));
+        let runs: Arc<Mutex<Vec<CronRunRecord>>> = Arc::new(Mutex::new(Vec::new()));
+        let cancel = CancellationToken::new();
+        let config = CronLoopConfig {
+            heartbeat: Duration::from_millis(10),
+            exec_timeout: Duration::from_secs(5),
+            output_cap: 64 * 1024,
+            phase_seed: "test".into(),
+        };
+        let clock_fn: CronClock = {
+            let clock = Arc::clone(&clock);
+            Arc::new(move || clock.load(Ordering::SeqCst))
+        };
+        let jobs_provider: CronJobsProvider = {
+            let snap = Arc::clone(&jobs_snapshot);
+            Arc::new(move || snap.lock().unwrap().clone())
+        };
+        let runs_sink = Arc::clone(&runs);
+        let run_sink: CronRunSink = Arc::new(move |r| runs_sink.lock().unwrap().push(r));
+        let call_count = Arc::new(AtomicI64::new(0));
+        let resolver: CronExecResolver = {
+            let calls = Arc::clone(&call_count);
+            Arc::new(move |_job: &CronJobView| {
+                if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    panic!("simulated single-run panic");
+                }
+                Ok(Box::pin(async {
+                    Ok(CronExecOutput {
+                        timed_out: false,
+                        exit_code: Some(0),
+                        stdout: vec![],
+                        stderr: vec![],
+                    })
+                }) as BoxedCronExec)
+            })
+        };
+        let handle = tokio::spawn(run_cron_scheduler(
+            cancel.clone(),
+            config,
+            clock_fn,
+            jobs_provider,
+            resolver,
+            run_sink,
+        ));
+        settle_first_tick().await;
+        clock.store(t0 + 40, Ordering::SeqCst); // 第一轮到点：resolver panic
+        // 给第一轮 spawn 的任务留出 poll+panic+guard 摘槽的时间（下一轮的
+        // in-flight 互斥要在此之后对账才有确定性）
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        clock.store(t0 + 100, Ordering::SeqCst); // 第二轮到点
+        let got = wait_for(&runs, 1).await;
+        assert_eq!(got[0].cron_id, 1, "panic 后槽位必须已释放：下一轮照常触发");
+        assert_eq!(got[0].status, CronRunStatus::Ok);
         cancel.cancel();
         let _ = handle.await;
     }

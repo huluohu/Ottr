@@ -13,7 +13,7 @@ use ottr_ssh::{AuthMethod, HostKeyPolicy, PtyChannel, SshSession};
 use ottr_term::encoding::{Encoding, StreamDecoder};
 use tokio::sync::Notify;
 
-use super::relay::{SessionClosedPayload, forward_pty_loop};
+use super::relay::{SessionCloseReason, SessionClosedPayload, forward_pty_loop};
 use super::shell_integration::inject_shell_integration;
 use crate::commands::encoding::EncodingHintPayload;
 use crate::commands::state::{
@@ -117,6 +117,61 @@ async fn teardown_attached(
     }
 }
 
+/// 会话转发循环退出收尾（清表 / 录制 finalize / forwards+monitors
+/// session_down / `ottr://session-closed` 事件 / 显式断开）。正常路径与
+/// panic 看护路径（[`register_opened`] 下方的看护任务）共用同一套——所有
+/// 锁取容错形态：循环 panic 可能已中毒部分锁（解码器/录制槽都是 std Mutex），
+/// 收尾再 panic = 静默死亡（表项泄漏、事件不发、连接不拆 = 僵尸会话）。
+/// `ui_app` = close_event（ui_face 才有；spike 面只断连不发事件）。
+async fn finalize_forward_exit(
+    sessions: &SessionMap,
+    session_id: &str,
+    recorder: &crate::commands::recording::RecorderSlot,
+    ui_app: Option<&AppHandle>,
+    reason: SessionCloseReason,
+    chain: Option<&Arc<ottr_ssh::JumpSession>>,
+    session: &SshSession,
+) {
+    // 清会话表项（此后 session_stats 报 no such session；drop_session 对已
+    // 消失的 id 幂等报错，前端容忍）。容错锁：中毒则跳过（表项留待进程退出）。
+    if let Ok(mut table) = sessions.lock() {
+        table.remove(session_id);
+    }
+    // 录制自动收尾（Phase 3 Task 5）：槽位若仍有 handle = 用户没手动停 →
+    // 自动 finalize + 入库。槽锁中毒（循环 panic 时正持锁的 tee 路径）→
+    // 跳过并记日志——审计痕迹丢这一次，好过整个收尾死亡。
+    if recorder.is_poisoned() {
+        eprintln!(
+            "[batcher:{session_id}] recorder slot poisoned by loop panic; auto-finalize skipped"
+        );
+    } else {
+        let vault = ui_app.map(|app| app.state::<VaultState>());
+        crate::commands::recording::auto_finalize_on_exit(
+            recorder,
+            vault.as_deref().map(|vs| vs.0.as_ref()),
+        );
+    }
+    if let Some(app) = ui_app {
+        app.state::<AppState>().forwards.session_down(session_id);
+        // 监控采样同点收尾（Phase 3 Task 1）：会话消亡 → 采样任务摘除即停
+        // （guard Drop 即 cancel；此后 monitor_start 对该 id 也会因会话表
+        // 已清而显式报错，双保险）。
+        app.state::<AppState>().monitors.session_down(session_id);
+        // session-closed 事件（前端重连状态机的触发点）。
+        let _ = app.emit(
+            "ottr://session-closed",
+            SessionClosedPayload {
+                id: session_id.to_string(),
+                reason,
+            },
+        );
+    }
+    // 显式断开（链式 = 全链拆除；russh Handle::drop 不关连接）。
+    if let Err(e) = teardown_attached(chain, session).await {
+        eprintln!("[batcher:{session_id}] disconnect on exit failed: {e}");
+    }
+}
+
 /// 注册生命周期（[`open_and_register`] 的连接后段与链式 attach 共用，
 /// Phase 2 Task 2 拆分；行为与拆分前逐句等价，chain 字段除外）：
 /// open_pty（10s）→ request_shell（10s）→ 注册会话表 → 起合批转发循环。
@@ -199,9 +254,8 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
     );
 
     // 读循环持有 channel 与 session（及 chain）；循环退出后统一收尾：清表
-    // （此后 session_stats 报 no such session；drop_session 对已消失的 id 幂等
-    // 报错，前端容忍）→ session-closed 事件（前端重连状态机的触发点）→
-    // 断开（链式=全链拆除）。
+    // → session-closed 事件（前端重连状态机的触发点）→ 断开（链式=全链拆除）。
+    // 收尾提取成 [`finalize_forward_exit`]：正常路径与 panic 看护路径共用。
     let session_id = id.clone();
     let probe_app = close_event.clone(); // 探测任务与收尾事件各持一份
     let probe_session = ui_face.then(|| Arc::clone(&session));
@@ -218,7 +272,15 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
     // handle = 用户没手动停 → 自动 finalize + 入库（审计痕迹不随连接死亡丢失）。
     // vault 从 app 取（ui_face 才有 close_event；spike 面只落文件留日志）。
     let exit_recorder = Arc::clone(&recorder);
-    tauri::async_runtime::spawn(async move {
+    // panic 看护（robustness 审计 P2）的共享面（**先于**循环任务 spawn——
+    // 循环任务 async move 拿走原值）：
+    let guard_sessions = Arc::clone(&sessions);
+    let guard_session_id = session_id.clone();
+    let guard_recorder = Arc::clone(&recorder);
+    let guard_session = Arc::clone(&session);
+    let guard_chain = chain.clone();
+    let guard_ui_app = close_event.clone();
+    let loop_handle = tauri::async_runtime::spawn(async move {
         let reason = forward_pty_loop(
             &mut channel,
             &on_data,
@@ -231,33 +293,38 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
             &resize,
         )
         .await;
-        sessions.lock().unwrap().remove(&session_id);
-        {
-            let vault_app = forward_close_app.as_ref();
-            let vault = vault_app.map(|app| app.state::<VaultState>());
-            crate::commands::recording::auto_finalize_on_exit(
-                &exit_recorder,
-                vault.as_deref().map(|vs| vs.0.as_ref()),
+        finalize_forward_exit(
+            &sessions,
+            &session_id,
+            &exit_recorder,
+            forward_close_app.as_ref(),
+            reason,
+            chain.as_ref(),
+            &session,
+        )
+        .await;
+    });
+    // 转发循环任务 panic（解码/IPC/任何意外）原本 = 静默死亡——表项泄漏
+    // （session_stats 永远报在册）、`ottr://session-closed` 不发（前端永挂
+    // connected）、连接不拆（sshd 上 shell 悬挂、跳板全链泄漏）。看护任务
+    // await JoinHandle：正常返回无事；Err（panic / 运行时异常终止）→ 执行
+    // 同一套收尾（reason 取 Closed——对端关闭语义最近似，前端走重连）。
+    // 收尾全程容错锁，重复路径幂等无害。
+    tauri::async_runtime::spawn(async move {
+        if let Err(loop_panic) = loop_handle.await {
+            eprintln!(
+                "[batcher:{guard_session_id}] forward loop aborted ({loop_panic}); running teardown"
             );
-        }
-        if let Some(app) = &forward_close_app {
-            app.state::<AppState>().forwards.session_down(&session_id);
-            // 监控采样同点收尾（Phase 3 Task 1）：会话消亡 → 采样任务摘除即停
-            // （guard Drop 即 cancel；此后 monitor_start 对该 id 也会因会话表
-            // 已清而显式报错，双保险）。
-            app.state::<AppState>().monitors.session_down(&session_id);
-        }
-        if let Some(app) = &close_event {
-            let _ = app.emit(
-                "ottr://session-closed",
-                SessionClosedPayload {
-                    id: session_id.clone(),
-                    reason,
-                },
-            );
-        }
-        if let Err(e) = teardown_attached(chain.as_ref(), &session).await {
-            eprintln!("[batcher:{session_id}] disconnect on exit failed: {e}");
+            finalize_forward_exit(
+                &guard_sessions,
+                &guard_session_id,
+                &guard_recorder,
+                guard_ui_app.as_ref(),
+                SessionCloseReason::Closed,
+                guard_chain.as_ref(),
+                &guard_session,
+            )
+            .await;
         }
     });
 
@@ -271,10 +338,15 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
     if let Some(probe_session) = probe_session {
         let probe_id = id.clone();
         tauri::async_runtime::spawn(async move {
-            let probe =
-                tokio::time::timeout(LANG_PROBE_TIMEOUT, probe_session.exec(LANG_PROBE_CMD)).await;
+            // exec_with_timeout（robustness 审计 P3）：外层 tokio timeout 会 drop
+            // 在途 future——russh Channel 无 Drop 收尾，远端探测 shell 悬挂到会话
+            // 断开。exec_with_timeout 超时显式关通道，timed_out 标记照常打点。
+            let probe = probe_session
+                .exec_with_timeout(LANG_PROBE_CMD, LANG_PROBE_TIMEOUT)
+                .await;
             match probe {
-                Ok(Ok(out)) => {
+                Ok(out) if out.timed_out => eprintln!("[attach:{probe_id}] LANG probe timed out"),
+                Ok(out) => {
                     let locale = String::from_utf8_lossy(&out.stdout);
                     let hint = ottr_term::Decoder::detect_hint(&locale);
                     eprintln!(
@@ -294,8 +366,7 @@ pub(super) async fn register_opened(args: RegisterArgs) -> Result<String, String
                         );
                     }
                 }
-                Ok(Err(e)) => eprintln!("[attach:{probe_id}] LANG probe exec failed: {e}"),
-                Err(_) => eprintln!("[attach:{probe_id}] LANG probe timed out"),
+                Err(e) => eprintln!("[attach:{probe_id}] LANG probe exec failed: {e}"),
             }
         });
     }

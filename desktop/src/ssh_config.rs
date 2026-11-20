@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use ottr_vault::{HostInput, Hosts, Vault};
+use ottr_vault::{HostProtocol, Vault};
 
 /// 解析出的单个主机条目（通配/排除 pattern 不在此列）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -207,53 +207,153 @@ fn flush_block(
     pending.clear();
 }
 
+/// 秒级 unix 时间（落库 created_at/updated_at；entities.rs `now_ts` 镜像）。
+pub(crate) fn now_ts() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// 控制字符拒绝（ottr-vault `reject_control_chars` 镜像，2026-11-01 P1-2）：
+/// name/address/username 逐字进 OpenSSH config 导出——换行即等于注入任意
+/// ssh_config 指令（恶意主机清单经导入落库后持久化执行）。
+fn reject_control_chars(field: &str, value: &str) -> Result<(), String> {
+    if let Some(c) = value.chars().find(|c| c.is_control()) {
+        return Err(format!(
+            "{field} must not contain control characters (found U+{:04X})",
+            c as u32
+        ));
+    }
+    Ok(())
+}
+
+/// 主机行校验（ottr-vault `Hosts::validate` 镜像：name/address 非空、端口
+/// 1-65535、控制字符）。vault 校验器私有不出 crate，事务化导入在 desktop 侧
+/// 执行同一规则——ssh_config / hosts_csv 两个导入器共用。
+pub(crate) fn validate_host_row(
+    name: &str,
+    address: &str,
+    port: i64,
+    username: Option<&str>,
+) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("host name must not be empty".into());
+    }
+    if address.trim().is_empty() {
+        return Err("host address must not be empty".into());
+    }
+    if !(1..=65535).contains(&port) {
+        return Err(format!("port {port} out of range 1-65535"));
+    }
+    reject_control_chars("host name", name)?;
+    reject_control_chars("host address", address)?;
+    if let Some(user) = username {
+        reject_control_chars("host username", user)?;
+    }
+    Ok(())
+}
+
+/// 分组名校验（ottr-vault `HostGroups::validate` 镜像：非空 + 控制字符——
+/// 分组名进导出的注释行）。
+pub(crate) fn validate_group_row(name: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("group name must not be empty".into());
+    }
+    reject_control_chars("group name", name)
+}
+
+/// hosts 表 INSERT（列清单/参数序与 ottr-vault entities.rs `Hosts::create`
+/// 逐字对齐——vault 的校验器与 INSERT 不出 crate（依赖纪律：desktop 不引
+/// rusqlite），事务化导入在 desktop 侧执行同一语句；**改列必两处同改**）。
+pub(crate) const HOST_INSERT_SQL: &str =
+    "INSERT INTO hosts (name, group_id, tags, address, port, username, protocol,
+                            credential_id, jump_chain_id, encoding_override, theme_override,
+                            monitor_enabled, is_production, notes, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)";
+
 /// 把解析条目导入 vault（去重 + 落库）。错误行原样透传进报告。
 ///
 /// 去重键 = (address, port, username)：先取库内全量主机建索引，再边导边查
-/// （同键的文件内重复一并去重）。逐条 create、无包裹事务：导入中断留已导入
-/// 部分，重跑同一文件可续（重复项全被去重跳过）——幂等性优先于原子性。
+/// （同键的文件内重复一并去重）。
+///
+/// **全程单事务**（robustness 审计 P2：此前逐条 create 各自独立事务，中途
+/// 失败留半截 + ImportReport 丢失）：`with_conn` + `unchecked_transaction`
+/// 形态（先例 ottr-vault sync_snapshot），单行失败记入 report.errors 并
+/// continue，最后统一提交。行为兼容：成功行照常入库，失败行在报告里可见。
 pub fn import_entries(vault: &Vault, outcome: ParseOutcome) -> ottr_vault::Result<ImportReport> {
-    let mut seen: HashSet<(String, i64, Option<String>)> = Hosts::list(vault)?
-        .into_iter()
-        .map(|h| (h.address, h.port, h.username))
-        .collect();
-    let mut report = ImportReport {
-        added: 0,
-        skipped_wildcards: outcome.skipped_wildcards,
-        skipped_duplicates: 0,
-        errors: outcome.errors,
-    };
-    for entry in outcome.entries {
-        let address = entry.hostname.unwrap_or_else(|| entry.host.clone());
-        let port = i64::from(entry.port.unwrap_or(22));
-        let key = (address.clone(), port, entry.user.clone());
-        if seen.contains(&key) {
-            report.skipped_duplicates += 1;
-            continue;
+    vault.with_conn(|conn| {
+        let tx = conn.unchecked_transaction()?;
+        let ts = now_ts();
+        let mut seen: HashSet<(String, i64, Option<String>)> = {
+            let mut stmt = tx.prepare("SELECT address, port, username FROM hosts")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            rows.collect::<Result<HashSet<_>, _>>()?
+        };
+        let mut report = ImportReport {
+            added: 0,
+            skipped_wildcards: outcome.skipped_wildcards,
+            skipped_duplicates: 0,
+            errors: outcome.errors,
+        };
+        for entry in outcome.entries {
+            let SshConfigEntry {
+                host: name,
+                hostname,
+                port: port_opt,
+                user,
+                identity_file,
+            } = entry;
+            let address = hostname.unwrap_or_else(|| name.clone());
+            let port = i64::from(port_opt.unwrap_or(22));
+            let notes = identity_file.map(|f| format!("IdentityFile: {f}"));
+            let key = (address.clone(), port, user.clone());
+            if seen.contains(&key) {
+                report.skipped_duplicates += 1;
+                continue;
+            }
+            if let Err(reason) = validate_host_row(&name, &address, port, user.as_deref()) {
+                report.errors.push(ImportIssue::with(
+                    "sshconfig.row_invalid",
+                    &[("name", name.clone()), ("reason", reason)],
+                ));
+                continue;
+            }
+            // 参数 15 元组：?15 占位符出现两次（created_at/updated_at 同 ts），
+            // 只绑一个值——entities.rs Hosts::create 的 params! 同款计数。
+            let inserted = tx.execute(
+                HOST_INSERT_SQL,
+                (
+                    name.as_str(),
+                    Option::<i64>::None,
+                    "[]",
+                    address.as_str(),
+                    port,
+                    user.as_deref(),
+                    HostProtocol::Ssh.as_str(),
+                    Option::<i64>::None,
+                    Option::<i64>::None,
+                    Option::<String>::None,
+                    Option::<String>::None,
+                    false,
+                    false,
+                    notes.as_deref(),
+                    ts,
+                ),
+            );
+            if let Err(e) = inserted {
+                report.errors.push(ImportIssue::with(
+                    "sshconfig.row_invalid",
+                    &[("name", name), ("reason", e.to_string())],
+                ));
+                continue;
+            }
+            seen.insert(key);
+            report.added += 1;
         }
-        Hosts::create(
-            vault,
-            HostInput {
-                protocol: Default::default(),
-                name: entry.host,
-                group_id: None,
-                tags: vec![],
-                address,
-                port,
-                username: entry.user,
-                credential_id: None,
-                jump_chain_id: None,
-                encoding_override: None,
-                theme_override: None,
-                monitor_enabled: false,
-                is_production: false,
-                notes: entry.identity_file.map(|f| format!("IdentityFile: {f}")),
-            },
-        )?;
-        seen.insert(key);
-        report.added += 1;
-    }
-    Ok(report)
+        tx.commit()?;
+        Ok(report)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +363,8 @@ pub fn import_entries(vault: &Vault, outcome: ParseOutcome) -> ottr_vault::Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    // 测试面直驱 vault 实体（事务化导入绕开 Hosts::create 的独立事务面）
+    use ottr_vault::{HostInput, Hosts};
 
     fn fixture() -> String {
         std::fs::read_to_string(concat!(

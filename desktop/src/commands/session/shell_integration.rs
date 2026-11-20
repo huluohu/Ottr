@@ -163,10 +163,14 @@ async fn wait_echo_off(text_tail: &TextTail) {
 
 /// stty 可用性探测（exec 通道，不进历史）。失败/超时按「无」处理：最坏是
 /// 少走一轮隐身步骤，注入本身不受影响（所有 stty 行都带 `2>/dev/null`）。
+/// exec_with_timeout：超时显式关通道（外层 tokio timeout drop future = 远端
+/// 探测 shell 悬挂，robustness 审计 P3 同款残留点）。
 async fn probe_has_stty(session: &SshSession) -> bool {
     matches!(
-        tokio::time::timeout(INJECT_AUX_TIMEOUT, session.exec("command -v stty")).await,
-        Ok(Ok(out)) if out.exit_status == Some(0) && !out.stdout.is_empty()
+        session
+            .exec_with_timeout("command -v stty", INJECT_AUX_TIMEOUT)
+            .await,
+        Ok(out) if !out.timed_out && out.exit_status == Some(0) && !out.stdout.is_empty()
     )
 }
 
@@ -231,8 +235,10 @@ async fn inject_hook_file(
     let path = si::sh_hook_temp_path();
     let write_cmd = si::hook_write_command(kind, &path);
     let file_ready = matches!(
-        tokio::time::timeout(INJECT_AUX_TIMEOUT, probe_session.exec(&write_cmd)).await,
-        Ok(Ok(out)) if String::from_utf8_lossy(&out.stdout).contains("OTTR_HOOK_OK")
+        probe_session
+            .exec_with_timeout(&write_cmd, INJECT_AUX_TIMEOUT)
+            .await,
+        Ok(out) if !out.timed_out && String::from_utf8_lossy(&out.stdout).contains("OTTR_HOOK_OK")
     );
     if !file_ready {
         eprintln!("[shell-integration] hook file unavailable; falling back to inline snippet");
@@ -290,12 +296,15 @@ pub async fn inject_shell_integration(
     if !enabled {
         return ShellIntegrationOutcome::SkippedDisabled;
     }
-    // $SHELL 探测（exec 通道，不进 PTY 数据流；同 LANG 探测先例）
-    let kind =
-        match tokio::time::timeout(LANG_PROBE_TIMEOUT, probe_session.exec("echo $SHELL")).await {
-            Ok(Ok(out)) => detect_shell_kind(&String::from_utf8_lossy(&out.stdout)),
-            Ok(Err(_)) | Err(_) => return ShellIntegrationOutcome::ProbeFailed,
-        };
+    // $SHELL 探测（exec 通道，不进 PTY 数据流；同 LANG 探测先例）。
+    // exec_with_timeout：超时显式关通道（drop future = 远端 shell 悬挂）。
+    let kind = match probe_session
+        .exec_with_timeout("echo $SHELL", LANG_PROBE_TIMEOUT)
+        .await
+    {
+        Ok(out) if !out.timed_out => detect_shell_kind(&String::from_utf8_lossy(&out.stdout)),
+        Ok(_) | Err(_) => return ShellIntegrationOutcome::ProbeFailed,
+    };
     let Some(kind) = kind else {
         return ShellIntegrationOutcome::SkippedNoShell;
     };

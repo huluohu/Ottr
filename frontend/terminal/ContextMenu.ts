@@ -98,9 +98,37 @@ const DEFAULT_SETTINGS: TerminalSettings = {
   screenReaderMode: false,
 };
 
+/** 终端设置的模块级缓存（击键热路径读；失效点见 loadTerminalSettings 注释）。
+ *  `cachedRaw` = 上次解析所依据的 localStorage 原文——**按原文键控**：
+ *  任何写入面（含直接写 localStorage 的路径）只要原文变了就重新解析，
+ *  不会读到过期值。 */
+let cachedRaw: string | null = null;
+let cachedSettings: TerminalSettings | null = null;
+
 export function loadTerminalSettings(): TerminalSettings {
+  // 模块级缓存（2026-11-20 性能审计 P3）：本函数在**击键热路径**上被调用
+  // （ghost 补全的 enabled 判定、选择即复制回调）——每次 JSON.parse 在高频
+  // 路径上是纯浪费。缓存**按 localStorage 原文键控**：原文未变即复用解析
+  // 结果，原文变了（任何写入面）即重解析——既省掉热路径的解析开销，又不会
+  // 读到过期值（不依赖「谁负责失效」这类约定）。
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    raw = localStorage.getItem(SETTINGS_KEY);
+  } catch {
+    raw = null;
+  }
+  if (cachedSettings !== null && raw === cachedRaw) {
+    // 返回浅拷贝：调用方若就地改字段不会污染缓存（与「每次返回新对象」的
+    // 旧语义一致）。
+    return { ...cachedSettings };
+  }
+  cachedRaw = raw;
+  cachedSettings = parseTerminalSettings(raw);
+  return { ...cachedSettings };
+}
+
+function parseTerminalSettings(raw: string | null): TerminalSettings {
+  try {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<TerminalSettings>;
       // 字段独立回退（旧存量只有 copyOnSelect）：缺省各自落默认值
@@ -127,9 +155,13 @@ export function loadTerminalSettings(): TerminalSettings {
 }
 
 export function saveTerminalSettings(settings: TerminalSettings): void {
+  const raw = JSON.stringify(settings);
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    localStorage.setItem(SETTINGS_KEY, raw);
   } catch {
     // 持久化失败不阻塞菜单
   }
+  // 写入即刷新缓存（下次读按原文命中，无需重解析）。
+  cachedRaw = raw;
+  cachedSettings = settings;
 }

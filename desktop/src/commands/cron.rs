@@ -70,6 +70,25 @@ fn now_secs() -> i64 {
         .as_secs() as i64
 }
 
+/// 同步回调里的 vault 阻塞面 → blocking 池 + 就地等待：SQLite 读写（含
+/// busy_timeout 最坏 5s 的连接竞争）都在 blocking 池线程上执行，调用线程只做
+/// channel park。与下方调度 sink（spawn_blocking fire-and-forget）同一
+/// 「阻塞面出 tokio worker」口径；provider/resolver 的注入签名是同步 Fn
+/// （ottr-cron 公共面，改 async 会波及 desktop/tests 与 ottr-monitor example
+/// 的 mock 面），结果只能就地等——blocking 任务 panic 时返回 None（调用方按
+/// 各自语义兜底，不让 panic 穿透回调度器/策略闭包）。
+fn vault_blocking<T, F>(f: F) -> Option<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = tx.send(f());
+    });
+    rx.recv().ok()
+}
+
 /// host_id → 在册会话（SessionEntry.host_id 扫描；batch 的 session_resolver
 /// Rust 侧等价物——「已连标签复用」同一执行模型）。多个会话同主机时取第一个
 /// （表序即注册序；exec 通道彼此独立，无状态冲突面）。
@@ -249,13 +268,16 @@ pub fn spawn_cron_scheduler(app: AppHandle) {
     let cancel = CancellationToken::new();
     let clock: CronClock = Arc::new(now_secs);
 
-    // 任务表快照：每 tick 全量读（明文面——锁定态照读；vault 未就绪 = 空表）
+    // 任务表快照：每 tick 全量读（明文面——锁定态照读；vault 未就绪 = 空表）。
+    // SQLite 读经 vault_blocking 进 blocking 池（每 20s 心跳同步读——此前直调
+    // 会把调度 worker 冻在 SQLite 竞争里，busy_timeout 最坏 5s）。
     let jobs_app = app.clone();
     let jobs: CronJobsProvider = Arc::new(move || {
         let Some(state) = jobs_app.try_state::<VaultState>() else {
             return Vec::new();
         };
-        CronJobs::list(&state.0)
+        let vault = Arc::clone(&state.0);
+        vault_blocking(move || CronJobs::list(&vault).unwrap_or_default())
             .unwrap_or_default()
             .into_iter()
             .map(|j| CronJobView {
@@ -275,9 +297,14 @@ pub fn spawn_cron_scheduler(app: AppHandle) {
     let exec: CronExecResolver = Arc::new(move |job: &CronJobView| {
         let session = session_for_host(&resolver_app, job.host_id)
             .ok_or_else(|| format!("no live session for host {} (not connected)", job.host_id))?;
+        // 脚本现读任务行（任务刚删 → missed）：SQLite 读经 vault_blocking 进
+        // blocking 池（resolver 在每轮 spawn 的单轮任务里同步调用）。
         let script = {
             let state = resolver_app.state::<VaultState>();
-            CronJobs::get(&state.0, job.id)
+            let vault = Arc::clone(&state.0);
+            let job_id = job.id;
+            vault_blocking(move || CronJobs::get(&vault, job_id))
+                .ok_or_else(|| "vault blocking task died".to_string())?
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| format!("job {} deleted", job.id))?
                 .script
@@ -459,8 +486,26 @@ pub(crate) async fn cj_trigger(
             }
         }
     };
-    let run_id =
-        persist_and_emit(&app, record.clone(), job.host_id, job.channels.clone()).unwrap_or(0);
+    // 落库 + sidecar 写 + 事件与调度 sink 走同一收尾路径；CronRuns::insert /
+    // write_sidecar / 目录清扫都是阻塞 IO——同款 spawn_blocking（命令体在
+    // webview IPC 的 async worker 上，不得冻在 SQLite 竞争里）。
+    let run_id = {
+        let persist_app = app.clone();
+        let persist_record = record.clone();
+        let persist_channels = job.channels.clone();
+        let persist_host_id = job.host_id;
+        tauri::async_runtime::spawn_blocking(move || {
+            persist_and_emit(
+                &persist_app,
+                persist_record,
+                persist_host_id,
+                persist_channels,
+            )
+            .unwrap_or(0)
+        })
+        .await
+        .map_err(|e| format!("cron persist join error: {e}"))?
+    };
     Ok(CronRunEvent {
         run_id,
         cron_id: record.cron_id,

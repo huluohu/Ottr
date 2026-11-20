@@ -773,6 +773,7 @@
     "downloadToDownloads": "Download di \"{{name}}\" nella cartella Download",
     "dropQueued": "{{count}} file(s) in coda per il caricamento",
     "dropDirsSkipped": "{{count}} cartella/e ignorata/e (caricamento di cartelle non ancora supportato)",
+    "dropFilesFailed": "Impossibile aggiungere {{count}} file alla coda di caricamento (potrebbero essere stati eliminati o non leggibili)",
     "queue": {
       "title": "Trasferimenti",
       "active": "Trasferimento in corso",

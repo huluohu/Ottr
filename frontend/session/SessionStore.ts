@@ -286,10 +286,12 @@ function deferConnect(id: string): void {
 // settle 时，把会话复位为 disconnected（带 lastError），让用户可重试；若丢失的
 // 响应只是迟到，随后照常走守卫路径（gen 未变 → 迟到成功照常落 connected；用户
 // 已重试 → 孤儿分支 drop_session 清掉迟到会话），两条出路都收敛。
-// **只护直连**（评审 I-2，fix 1/5）：链式预算按跳数累乘（Rust 侧每跳预算
-// = 两个问询窗口之和 + 网络余量，见 Rust state.rs CONNECT_BUDGET_PER_HOP），
-// 前端拿不到跳数、不可缩放——链式不武装，由 Rust 侧全程超时兜底
-// （见 connect() 武装点注释）。
+// **链式（跳板）会话同样武装**（robustness 审计 P3）：链式预算按跳数累乘
+// （Rust 侧每跳预算 = 两个问询窗口之和 + 网络余量，见 Rust state.rs
+// CONNECT_BUDGET_PER_HOP），前端拿不到跳数、不可精确缩放——取跳数预算上限
+// 的保守封顶（ATTACH_WATCHDOG_CHAIN_MAX_MS，见常量注释）；到点同样只复位
+// loading 态（disconnected + lastError），不做破坏性操作（迟到成功照常落
+// connected、已重试的孤儿分支照常 drop）。
 //
 // **不覆盖交互式认证阶段**：问询期会话状态是 waiting_prompt（不在本看门狗的
 // 武装状态里），超时由 Rust 侧问询窗口（180s）+ `ottr://kbd-interactive-timeout`
@@ -302,6 +304,11 @@ function deferConnect(id: string): void {
 // disconnected」，用户看到的是「后端无响应」这种假报错（真机实测过：100s 的
 // 看门狗抢在 180s 的问询超时前面，把「用户没作答」误报成「后端无响应」）。
 const ATTACH_WATCHDOG_MS = 290_000;
+// 链式（跳板）会话的看门狗预算：跳数预算按跳数累乘但前端拿不到跳数——
+// 取 Rust 侧跳数预算上限的保守封顶 = 直连预算 × 3（即最多按 3 跳估）：
+// 290s × 3 ≈ 870s > 3 跳合法最坏等待（255s × 3 + 20s ≈ 785s）。到点只复位
+// loading 态，误报窗口从直连的 15s 余量放宽到 ~85s——保守侧代价可接受。
+const ATTACH_WATCHDOG_CHAIN_MAX_MS = ATTACH_WATCHDOG_MS * 3;
 
 /**
  * 会话 connect 序号（问询归属用）。
@@ -343,7 +350,7 @@ function enqueueHostKeyAsk(ask: HostKeyAsk): void {
 }
 const attachWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
 
-function armAttachWatchdog(id: string, gen: number): void {
+function armAttachWatchdog(id: string, gen: number, budget: number = ATTACH_WATCHDOG_MS): void {
   cancelAttachWatchdog(id);
   attachWatchdogs.set(
     id,
@@ -368,7 +375,7 @@ function armAttachWatchdog(id: string, gen: number): void {
           nextRetryAt: null,
         }),
       }));
-    }, ATTACH_WATCHDOG_MS),
+    }, budget),
   );
 }
 
@@ -652,12 +659,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         nextRetryAt: null,
       }),
     }));
-    // 看门狗只护直连（评审 I-2，fix 1/5）：链式 connect 预算 = 75s×(跳数+1)
-    // （每跳还各挂 60s 问询），前端无跳数不可缩放——100s 会对逐跳答问询稍慢的
-    // 合法挂起误复位 + 随后孤儿 drop 误杀真会话。链式由 Rust 侧全程 tokio
-    // timeout（75s×(跳数+1) + open_pty/request_shell 各 10s）兜底，命令必 settle；
-    // IPC 响应丢失的触发面已被 deferConnect 结构性移除，链式不再叠第二道兜底。
-    if (session.jumpChainId == null) armAttachWatchdog(id, gen);
+    // 看门狗（BL-501 + robustness 审计 P3）：直连取 290s；链式 connect 预算
+    // 按跳数累乘（Rust 侧每跳 = 两个问询窗口之和 + 网络余量），前端无跳数
+    // 不可精确缩放——取跳数预算上限的保守封顶（×3 ≈ 870s，见常量注释），
+    // 到点只复位 loading 态不做破坏性操作（迟到成功照常落 connected）。
+    armAttachWatchdog(
+      id,
+      gen,
+      session.jumpChainId == null ? ATTACH_WATCHDOG_MS : ATTACH_WATCHDOG_CHAIN_MAX_MS,
+    );
 
     // FTP/FTPS 会话（Phase 2 Task 5）：纯文件面——无 PTY、无 on_data 通道、
     // 无 host key TOFU（Rust 侧 ftp_attach 直接连，不产生 host-key-ask 事件）。
@@ -1078,6 +1088,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   onSessionClosed: (payload) => {
+    // 按 rustId 精确匹配（pty-N / local-* / ftpsess-N 同一逻辑）：FTP 文件
+    // 会话（robustness 审计 P1）的 rustId 就是 ftpsess-N——Rust 侧心跳探测
+    // 失败对它发 ottr://session-closed(closed)，此处自然命中既有重连状态机
+    // （reason=closed 走 scheduleReconnect；cancelled/shell_exit 分支不适用）。
     const session = get().sessions.find((s) => s.rustId === payload.id);
     if (!session) return; // 未知会话（已关标签）——忽略
     // 主动关闭（关标签/手动断开）+ 用户主动退出 shell（exit/logout）——不重连

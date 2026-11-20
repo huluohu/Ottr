@@ -11,6 +11,15 @@ use russh::client::{self, Handle};
 use crate::auth::{self, ClientAuthHandler, HostKeyPolicy};
 use crate::{AuthMethod, Error, Result, SshTransport};
 
+/// SFTP 子系统打开预算（开通道 + 请求子系统两步合计，2026-11-20 健壮性
+/// 审计 P2）。
+///
+/// 与 exec 路径的差别：exec 的预算是**业务**上限（命令可以跑很久），而 SFTP
+/// 打开是**纯握手**——本地 SSH 服务端回 CHANNEL_OPEN / CHANNEL_SUCCESS 通常
+/// 在毫秒级，15s 已经覆盖跨洲 RTT + 慢速 sftp-server 启动。超时的含义是
+/// 「这个服务端此刻不可用」，而不是「命令跑太久」。
+const SFTP_OPEN_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// 组装握手用 config 与 host key 记录型 Handler（`connect*` 系列共用，
 /// 保证直连与隧道跳行为一致）。`keepalive_interval` 透传进 russh 传输层：
 /// `Some(d)` 时 run loop 每 d 发送传输层 keepalive（SSH 全局请求，**不进任何
@@ -41,6 +50,19 @@ fn handshake_parts(
     let config = Arc::new(client::Config {
         inactivity_timeout: None,
         keepalive_interval,
+        // TCP_NODELAY（2026-11-20 性能审计 P1）：russh 0.63.3 默认 **关**
+        // （"disabled by default (i.e. Nagle's algorithm is active)"）——
+        // 击键是几字节小包，交互会话几乎总有未 ACK 的在途段（回显/窗口调整），
+        // Nagle 会把小写缓冲到对端延迟 ACK（Linux 典型 ~40ms）到达才才发出，
+        // 每击键可感知的延迟抖动。OpenSSH 客户端对交互会话默认开 NODELAY。
+        // 代价：无（只改内核缓冲行为，不增加包数）。
+        nodelay: true,
+        // 通道接收窗口放大到 8 MiB（russh 默认 2 MiB）：SFTP 并行传输的
+        // 在途字节 ≈ 并发 chunk × 子请求 ≈ 4 MiB（ottr-transfer 的设计口径），
+        // 2 MiB 窗口先到上限 → 对端等 WINDOW_ADJUST 才继续发；高 BDP 链路
+        // （跨境 100ms RTT）单通道吞吐被钉在 window/RTT，16 路流水线吃不满。
+        // 成本：窗口是流控计数（不是预分配内存），仅在会话实际用到时生效。
+        window_size: 8 * 1024 * 1024,
         ..Default::default()
     });
     (
@@ -447,9 +469,41 @@ impl SshSession {
     /// `RawSftpSession::new(stream)` → `init` → 并行分块读写。
     /// ottr-ssh 不反向依赖 ottr-transfer（后者依赖前者），此处仅以文字引用。
     pub async fn open_sftp_stream(&self) -> Result<russh::ChannelStream<russh::client::Msg>> {
-        let channel = self.handle.channel_open_session().await?;
+        // 开通道 + 请求子系统共用一条 deadline（2026-11-20 健壮性审计 P2）：
+        // 与 exec_with_timeout 同款形态——服务端不回 CHANNEL_OPEN / 不回
+        // CHANNEL_SUCCESS（sftp-server 卡死、半开链路）时**按时返回超时**，
+        // 而不是无限期挂起。挂起的后果：文件面板每个操作都卡在 await 上，
+        // 且 desktop 侧 `sftp_for` 的 tokio Mutex 持锁跨 await → 该会话后续
+        // 所有文件请求排队挂起。
+        let deadline = tokio::time::Instant::now() + SFTP_OPEN_TIMEOUT;
+        let channel =
+            match tokio::time::timeout_at(deadline, self.handle.channel_open_session()).await {
+                Ok(result) => result?,
+                Err(_elapsed) => {
+                    // 超时：此时**没有通道可关**（远端尚未起 sftp 子系统），
+                    // 直接返回超时标记，与 exec 的开通道超时分支同语义。
+                    return Err(Error::Timeout {
+                        message: format!(
+                            "sftp subsystem channel open timed out after {}s",
+                            SFTP_OPEN_TIMEOUT.as_secs()
+                        ),
+                    });
+                }
+            };
         // want_reply=true：等 SSH_MSG_CHANNEL_SUCCESS，确认子系统已启动再发 SFTP INIT
-        channel.request_subsystem(true, "sftp").await?;
+        match tokio::time::timeout_at(deadline, channel.request_subsystem(true, "sftp")).await {
+            Ok(result) => result?,
+            Err(_elapsed) => {
+                // 超时：通道已开 → 显式关通道，远端不留悬挂的 sftp-server。
+                let _ = channel.close().await;
+                return Err(Error::Timeout {
+                    message: format!(
+                        "sftp subsystem request timed out after {}s",
+                        SFTP_OPEN_TIMEOUT.as_secs()
+                    ),
+                });
+            }
+        }
         Ok(channel.into_stream())
     }
 

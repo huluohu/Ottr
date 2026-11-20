@@ -41,6 +41,45 @@ pub fn pwrite_all(file: &File, offset: u64, buf: &[u8]) -> io::Result<()> {
     }
 }
 
+/// 定位读**至多** `buf.len()` 字节：返回实际读到的字节数（读到文件尾返回
+/// 实际字节数，下一轮再读返回 0）。
+///
+/// 与 [`pread_exact`] 的区别：后者必须读满（读不到即 UnexpectedEof），
+/// 适合 SFTP 的定长 chunk；本函数保留「顺序流读到 EOF」的语义（FTP 上传侧
+/// 的源文件读取：短读 = 正常 EOF，不是错误）。
+///
+/// 同样**不经过共享文件游标**——与 [`pwrite_all`]/[`pread_exact`] 同纪律。
+pub fn pread_upto(file: &File, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        file.read_at(buf, offset)
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt;
+        let mut read = 0usize;
+        while read < buf.len() {
+            match file.seek_read(&mut buf[read..], offset + read as u64)? {
+                Some(0) => break,
+                Some(n) => read += n,
+                None => break,
+            }
+        }
+        Ok(read)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (file, offset, buf);
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "positioned I/O is unsupported on this platform",
+        ))
+    }
+}
+
 /// 定位读整段：从文件 `offset` 处完整读满 `buf`（处理短读，EOF 即错）。
 pub fn pread_exact(file: &File, offset: u64, buf: &mut [u8]) -> io::Result<()> {
     #[cfg(unix)]

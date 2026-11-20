@@ -16,6 +16,25 @@ use crate::vault::VaultState;
 // 主机指纹 pin（来自 fixtures/known_hosts，spike 不允许静默跳过校验）
 // ---------------------------------------------------------------------------
 
+/// TOFU 策略闭包里的 vault 阻塞面 → blocking 池 + 就地等待（cron.rs 的
+/// `vault_blocking` 同口径）：KnownHosts 读写是 SQLite IO（busy_timeout 最坏
+/// 5s），闭包跑在 russh 连接专属任务上——连接上全部流量串行依赖本闭包返回，
+/// SQLite 竞争不得在 russh 任务里原地执行（与 block_in_place 等待问询的
+/// 既有裁定同属「阻塞面不占死执行面」）。HostKeyPolicy 是同步 Fn，结果就地
+/// 等；blocking 任务 panic → None（调用方按 fail-closed 判拒，绝不放行）。
+fn known_hosts_blocking<T, F>(vault: &Arc<ottr_vault::Vault>, f: F) -> Option<T>
+where
+    F: FnOnce(&ottr_vault::Vault) -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let vault = Arc::clone(vault);
+    let (tx, rx) = std::sync::mpsc::channel();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = tx.send(f(&vault));
+    });
+    rx.recv().ok()
+}
+
 /// 写入时的夹具指纹常量；运行时优先从仓库夹具文件按端点解析（防夹具重生成
 /// 后漂移）。解析走 [`ottr_ssh::known_hosts::fingerprint_for_host`]（BL-211
 /// 收敛点：此前本文件内联的「整文件取首条」实现在多 host 文件上可能 pin 错
@@ -73,10 +92,19 @@ pub(crate) fn tofu_host_key_policy(
     origin_host_id: Option<i64>,
 ) -> HostKeyPolicy {
     Arc::new(move |fingerprint: &str| {
-        let known = match KnownHosts::get(&vault, &host_key) {
-            Ok(k) => k,
-            Err(e) => {
+        // 闭包捕获的 host_key/fingerprint 借用进不了 spawn_blocking 的
+        // 'static 界——探测面各自 clone 所需字段（探测与外层闭包互不干扰）。
+        let known = match known_hosts_blocking(&vault, {
+            let host_key = host_key.clone();
+            move |v| KnownHosts::get(v, &host_key)
+        }) {
+            Some(Ok(k)) => k,
+            Some(Err(e)) => {
                 eprintln!("[host-key] known_hosts read failed: {e}");
+                return false;
+            }
+            None => {
+                eprintln!("[host-key] known_hosts read task died");
                 return false;
             }
         };
@@ -131,13 +159,35 @@ pub(crate) fn tofu_host_key_policy(
         let kind = host_key_ask_kind(known.as_ref(), fingerprint);
         let rotated = matches!(&known, Some(k) if k.fingerprint != fingerprint);
         if kind == Some("first") {
-            if let Err(e) = KnownHosts::upsert(&vault, &host_key, fingerprint) {
-                eprintln!("[host-key] upsert failed: {e}");
-                return false;
+            match known_hosts_blocking(&vault, {
+                let (host_key, fingerprint) = (host_key.clone(), fingerprint.to_string());
+                move |v| KnownHosts::upsert(v, &host_key, &fingerprint)
+            }) {
+                Some(Ok(_)) => {}
+                Some(Err(e)) => {
+                    eprintln!("[host-key] upsert failed: {e}");
+                    return false;
+                }
+                None => {
+                    eprintln!("[host-key] upsert task died");
+                    return false;
+                }
             }
-        } else if rotated && let Err(e) = KnownHosts::mark_changed(&vault, &host_key, fingerprint) {
-            eprintln!("[host-key] mark_changed failed: {e}");
-            return false;
+        } else if rotated {
+            match known_hosts_blocking(&vault, {
+                let (host_key, fingerprint) = (host_key.clone(), fingerprint.to_string());
+                move |v| KnownHosts::mark_changed(v, &host_key, &fingerprint)
+            }) {
+                Some(Ok(_)) => {}
+                Some(Err(e)) => {
+                    eprintln!("[host-key] mark_changed failed: {e}");
+                    return false;
+                }
+                None => {
+                    eprintln!("[host-key] mark_changed task died");
+                    return false;
+                }
+            }
         }
         match kind {
             None => true,            // state=ok 且指纹一致 → 静默放行

@@ -772,6 +772,7 @@
     "downloadToDownloads": "「{{name}}」開始下載到下載目錄",
     "dropQueued": "已加入上傳隊列 {{count}} 個檔案",
     "dropDirsSkipped": "已跳過 {{count}} 個目錄（暫不支持目錄上傳）",
+    "dropFilesFailed": "有 {{count}} 個檔案未能加入上傳佇列（可能已被刪除或不可讀）",
     "queue": {
       "title": "傳輸隊列",
       "active": "傳輸中",

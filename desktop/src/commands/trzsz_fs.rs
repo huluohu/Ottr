@@ -170,6 +170,17 @@ fn revoke_inner(grants: &TrzszGrants, scope: &str) -> Result<(), String> {
 // fs 原语（*_inner 纯函数；命令 = 白名单校验 + inner）
 // ---------------------------------------------------------------------------
 
+/// 阻塞 fs/base64 面统一 spawn_blocking（transfer.rs 的 local_fs 同口径）：
+/// 1 MiB 分页读 + base64 编码、base64 解码 + 顺序写都是毫秒到秒级同步 IO/CPU，
+/// 直调会把 tokio worker 冻在系统调用上（终端转发/调度 tick 同池遭殃）。
+async fn blocking_fs<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("trzsz fs join error: {e}"))?
+}
+
 /// stat 结果（nodefs 只消费 isDirectory/isFile/size；exists 供 access(F_OK)；
 /// canonical 供 fs.realpath（目录递归的软链环防护）——canonicalize 失败回落原路径）。
 #[derive(serde::Serialize)]
@@ -331,8 +342,10 @@ pub async fn trzsz_fs_read(
     len: u32,
 ) -> Result<String, String> {
     ensure_granted(&grants, &path)?;
-    // 单块上限 1MiB（nodefs 分块由协议 chunk 决定，远小于此；防御性钳制）
-    read_inner(&path, offset, len.min(1024 * 1024))
+    // 单块上限 1MiB（nodefs 分块由协议 chunk 决定，远小于此；防御性钳制）。
+    // 文件读 + ~1.4MB base64 编码都在 blocking 段（不占 async worker）。
+    let len = len.min(1024 * 1024);
+    blocking_fs(move || read_inner(&path, offset, len)).await
 }
 
 #[tauri::command]
@@ -343,10 +356,14 @@ pub async fn trzsz_fs_write(
     truncate: bool,
 ) -> Result<(), String> {
     ensure_granted(&grants, &path)?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .map_err(|e| format!("decode: {e}"))?;
-    write_inner(&path, &bytes, truncate)
+    // base64 解码（~1.4MB 字符串）+ 文件写同在 blocking 段。
+    blocking_fs(move || {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&data)
+            .map_err(|e| format!("decode: {e}"))?;
+        write_inner(&path, &bytes, truncate)
+    })
+    .await
 }
 
 #[tauri::command]

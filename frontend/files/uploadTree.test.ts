@@ -37,7 +37,7 @@ describe("uploadLocalTree", () => {
       ],
     });
     const r = await uploadLocalTree("/local/photos", "/remote", deps);
-    expect(r).toEqual({ dirs: 1, files: 2, skipped: 0 });
+    expect(r).toEqual({ dirs: 1, files: 2, skipped: 0, failed: 0 });
     expect(dirs).toEqual(["/remote/photos"]);
     expect(files).toEqual([
       ["/local/photos/a.jpg", "/remote/photos"],
@@ -54,7 +54,7 @@ describe("uploadLocalTree", () => {
       "/l/d/sub": [{ name: "y.txt", is_dir: false }],
     });
     const r = await uploadLocalTree("/l/d", "/r", deps);
-    expect(r).toEqual({ dirs: 2, files: 2, skipped: 0 });
+    expect(r).toEqual({ dirs: 2, files: 2, skipped: 0, failed: 0 });
     expect(dirs).toEqual(["/r/d", "/r/d/sub"]);
     expect(files).toEqual([
       ["/l/d/x.txt", "/r/d"],
@@ -97,5 +97,32 @@ describe("uploadLocalTree", () => {
     expect(r.files).toBe(2);
     expect(r.skipped).toBe(1);
     expect(files).toHaveLength(2);
+  });
+
+  it("单文件入队失败：计入 skipped 且**不中断整树**（后续文件照常入队）", async () => {
+    // 2026-11-20 健壮性审计 P2：入队前失败（文件被删/不可读）此前会整体
+    // 中断递归上传——头注释承诺的「失败不中断整树」在入队前这一段没兑现。
+    const { deps, files } = makeDeps({
+      "/l/d": [
+        { name: "a.txt", is_dir: false },
+        { name: "b.txt", is_dir: false },
+        { name: "c.txt", is_dir: false },
+      ],
+    });
+    const attempted: string[] = [];
+    const r = await uploadLocalTree("/l/d", "/r", {
+      ...deps,
+      uploadFile: async (local, remoteDir) => {
+        attempted.push(local);
+        if (local.endsWith("b.txt")) throw new Error("file vanished before enqueue");
+        files.push([local, remoteDir]);
+      },
+    });
+    expect(r).toEqual({ dirs: 1, files: 2, skipped: 0, failed: 1 });
+    expect(attempted).toEqual(["/l/d/a.txt", "/l/d/b.txt", "/l/d/c.txt"]); // c 仍被尝试
+    expect(files).toEqual([
+      ["/l/d/a.txt", "/r/d"],
+      ["/l/d/c.txt", "/r/d"],
+    ]);
   });
 });

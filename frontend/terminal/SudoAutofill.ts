@@ -31,6 +31,35 @@ export const SUDO_COOLDOWN_MS = 2_000;
 /** 填充前置延迟（ms）：等 sudo 完成 tcsetattr（见模块文档的 TCSAFLUSH 踩坑）。 */
 export const FILL_DELAY_MS = 250;
 
+// ---------------------------------------------------------------------------
+// 功能门控缓存（2026-11-20 性能审计 P3）
+//
+// 功能默认关（设置默认 false + 主密码模式限定）。关闭时终端**每个输出块**
+// 都白付一次 UTF-8 解码 + 检测器 tail 拼接 + 正则测试——`cat` 大文件之类
+// 的输出洪流路径上是恒定开销（100 MB/s 输出 ≈ 每秒 2.5 万块）。
+//
+// 缓存把「关」这一状态提前确定，热路径只剩一次布尔比较。失效点覆盖全部
+// 状态变化面：设置页切换开关、保险库模式变化（keyring ⇄ password）。
+// ---------------------------------------------------------------------------
+
+/** 门控状态：true = 明确已知开启；false = 明确已知关闭；null = 未知（按关处理）。 */
+let autofillGate: boolean | null = null;
+
+/** 热路径门控：仅当**明确已知为开**时才做检测（未知 = 不检测，等探测回填）。 */
+export function sudoAutofillGateOpen(): boolean {
+  return autofillGate === true;
+}
+
+/** 设置门控状态（探测结果回填 / 设置页切换后同步）。 */
+export function setSudoAutofillGate(enabled: boolean): void {
+  autofillGate = enabled;
+}
+
+/** 置为未知（下次探测前按关闭处理——安全侧默认关）。 */
+export function invalidateSudoAutofillGate(): void {
+  autofillGate = null;
+}
+
 /** 检测器（跨 chunk 有状态；纯逻辑无 xterm 依赖）。feed 返回是否命中一次
  * 提示（冷却窗内的重复命中折叠为 false）。 */
 export class SudoPromptDetector {

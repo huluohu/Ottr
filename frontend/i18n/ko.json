@@ -773,6 +773,7 @@
     "downloadToDownloads": "\"{{name}}\"을(를) 다운로드 폴더로 내보내는 중입니다",
     "dropQueued": "업로드 대기열에 파일 {{count}}개를 추가했습니다",
     "dropDirsSkipped": "폴더 {{count}}개를 건너뛰었습니다 (폴더 업로드는 아직 지원되지 않음)",
+    "dropFilesFailed": "파일 {{count}}개를 업로드 대기열에 추가하지 못했습니다(삭제되었거나 읽을 수 없음)",
     "queue": {
       "title": "전송",
       "active": "전송 중",

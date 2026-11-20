@@ -773,6 +773,7 @@
     "downloadToDownloads": "\"{{name}}\" is downloading to your Downloads folder",
     "dropQueued": "Queued {{count}} file(s) for upload",
     "dropDirsSkipped": "Skipped {{count}} folder(s) (folder upload not supported yet)",
+    "dropFilesFailed": "{{count}} file(s) could not be added to the upload queue (they may have been deleted or are unreadable)",
     "queue": {
       "title": "Transfers",
       "active": "Transferring",

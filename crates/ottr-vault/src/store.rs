@@ -433,6 +433,13 @@ impl Vault {
         let _mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        // synchronous=NORMAL（2026-11-20 性能审计 P3）：SQLite 默认 FULL —— WAL
+        // 下**每次 commit 都 fsync**。本库的高频小写（每条命令 history_insert
+        // + 滚动清理 DELETE、notify_insert、cron_runs insert）因此每次双持久化。
+        // NORMAL 是 WAL 的推荐档：崩溃最多丢最后一个事务，已提交的事务不丢
+        // （与 FULL 的差别只在「断电瞬间未落盘的最后一个 commit」）。
+        // 凭据/主机等关键数据的写入仍是同库同事务，语义不变。
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
 
         migrate(&conn)?;
         // v1.6.2 数据事故修复（2026-11-03）：0026 重建 credentials 表时，外键的

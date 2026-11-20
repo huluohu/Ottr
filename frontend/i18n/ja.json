@@ -773,6 +773,7 @@
     "downloadToDownloads": "\"{{name}}\" をダウンロードフォルダにダウンロードしています",
     "dropQueued": "{{count}} 件のファイルをアップロード待ちに追加しました",
     "dropDirsSkipped": "{{count}} 件のフォルダをスキップしました（フォルダのアップロードはまだ未対応です）",
+    "dropFilesFailed": "{{count}} 件のファイルをアップロードキューに追加できませんでした（削除済みまたは読み取り不可の可能性があります）",
     "queue": {
       "title": "転送",
       "active": "転送中",

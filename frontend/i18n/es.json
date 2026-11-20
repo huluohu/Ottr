@@ -773,6 +773,7 @@
     "downloadToDownloads": "«{{name}}» se está descargando en tu carpeta de Descargas",
     "dropQueued": "{{count}} archivo(s) en cola para subir",
     "dropDirsSkipped": "Se omitieron {{count}} carpeta(s) (todavía no se admite subir carpetas)",
+    "dropFilesFailed": "No se pudieron añadir {{count}} archivo(s) a la cola de subida (pueden haberse borrado o no ser legibles)",
     "queue": {
       "title": "Transferencias",
       "active": "Transferiendo",

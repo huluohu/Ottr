@@ -36,6 +36,13 @@ export interface UploadTreeResult {
   files: number;
   /** 超限/建目录失败的条目数（用户可见提示用）。 */
   skipped: number;
+  /** **单文件入队失败**的条目数（2026-11-20 健壮性审计 P2）。
+   *
+   * 与 `skipped` 分开计数：两者对用户的含义不同——`skipped` 是「没能力/
+   * 没额度处理」（目录建失败、超深度/超文件数上限），`failed` 是「这个具体
+   * 文件没能进队列」（已被删除、不可读）——后者需要用户重新确认文件，
+   * 文案不能混为一谈。 */
+  failed: number;
 }
 
 /**
@@ -49,7 +56,7 @@ export async function uploadLocalTree(
   limits: UploadTreeLimits = UPLOAD_TREE_LIMITS,
 ): Promise<UploadTreeResult> {
   const name = localDir.replace(/\/+$/, "").split("/").pop() ?? "";
-  const result: UploadTreeResult = { dirs: 0, files: 0, skipped: 0 };
+  const result: UploadTreeResult = { dirs: 0, files: 0, skipped: 0, failed: 0 };
   if (!name) return result; // 根目录：拒（不应发生；防御）
 
   const rootRemote = deps.joinRemote(remoteParent, name);
@@ -88,8 +95,18 @@ export async function uploadLocalTree(
           result.skipped++;
           continue;
         }
-        await deps.uploadFile(abs, node.remote);
-        result.files++;
+        // 单文件入队失败**不中断整树**（2026-11-20 健壮性审计 P2）：本模块
+        // 头注释承诺「失败不中断整树」，但**入队前**的失败（文件在列表后被
+        // 删除/不可读、journal 路径不可写等）此前会直接上抛 → 整个 while
+        // 循环中断，剩余文件不再入队，用户只看到一条笼统报错。
+        // 传输**中**的失败仍由上传队列的 failed 态承载（可重试）——两种失败
+        // 的处置口径现在一致：计入 skipped，循环继续。
+        try {
+          await deps.uploadFile(abs, node.remote);
+          result.files++;
+        } catch {
+          result.failed++;
+        }
       }
     }
   }

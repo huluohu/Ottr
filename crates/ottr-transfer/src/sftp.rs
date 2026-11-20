@@ -290,6 +290,141 @@ fn plain_error(ctx: String) -> Error {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 本地落盘面的 blocking 化（2026-11-20 性能审计 P2）
+//
+// 传输 worker 与 PTY 转发循环共享同一 tokio 运行时。目标目录可能是网络盘 /
+// iCloud / NAS 挂载，单次 pwrite / pread / journal 追加可挂起数秒——直调会
+// **冻住 runtime worker**，终端转发随之卡顿（与 local_fs 已有的 spawn_blocking
+// 口径一致）。下列三段把同步 IO 移出 async worker。
+// ---------------------------------------------------------------------------
+
+/// spawn_blocking 任务的 join 错误 → crate 错误（join 失败 = 阻塞线程 panic）。
+pub(crate) fn join_err(context: &str, e: tokio::task::JoinError) -> Error {
+    Error::Io(std::io::Error::other(format!(
+        "{context}: blocking task failed: {e}"
+    )))
+}
+
+/// 读 journal（blocking 段）。
+pub(crate) async fn load_journal(
+    path: &Path,
+    mode: &str,
+    identity_path: &str,
+    total: u64,
+) -> Result<HashSet<u64>> {
+    let path = path.to_path_buf();
+    let mode = mode.to_string();
+    let identity_path = identity_path.to_string();
+    tokio::task::spawn_blocking(move || Journal::load(&path, &mode, &identity_path, total))
+        .await
+        .map_err(|e| join_err("journal load", e))?
+}
+
+/// 下载侧：整 chunk 数据落盘 + 记 journal（**同一 blocking 段**）。
+///
+/// 顺序不变量在此段内保持：数据先完整写盘，journal 才记该 chunk 完成
+/// （journal 的语义 = 「这些字节已经安全落盘」）。
+async fn write_chunk_and_record(
+    local_file: Arc<std::fs::File>,
+    journal: Arc<Journal>,
+    offset: u64,
+    data: Vec<u8>,
+) -> Result<()> {
+    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+        pwrite_all(&local_file, offset, &data)?;
+        journal.record(offset)
+    })
+    .await
+    .map_err(|e| join_err("chunk write", e))??;
+    Ok(())
+}
+
+/// 上传侧：从本地读一个 chunk（blocking 段）。
+async fn read_chunk_local(
+    local_file: Arc<std::fs::File>,
+    offset: u64,
+    len: usize,
+) -> Result<Vec<u8>> {
+    tokio::task::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
+        let mut data = vec![0u8; len];
+        pread_exact(&local_file, offset, &mut data)?;
+        Ok(data)
+    })
+    .await
+    .map_err(|e| join_err("chunk read", e))?
+    .map_err(Error::Io)
+}
+
+/// 上传侧：记 journal（blocking 段）——远端全部 ack 之后才记（顺序不变量）。
+async fn record_journal(journal: Arc<Journal>, offset: u64) -> Result<()> {
+    tokio::task::spawn_blocking(move || journal.record(offset))
+        .await
+        .map_err(|e| join_err("journal record", e))??;
+    Ok(())
+}
+
+/// 定位写一段数据（blocking 段；FTP 线性下载落盘复用）。
+pub(crate) async fn write_at(
+    local_file: Arc<std::fs::File>,
+    offset: u64,
+    data: Vec<u8>,
+) -> Result<()> {
+    tokio::task::spawn_blocking(move || pwrite_all(&local_file, offset, &data))
+        .await
+        .map_err(|e| join_err("write chunk", e))??;
+    Ok(())
+}
+
+/// 定位读**至多** `len` 字节（blocking 段；FTP 上传侧源文件读取复用）。
+///
+/// 返回实际读到的字节（空 = 到文件尾）。
+pub(crate) async fn read_upto(
+    local_file: Arc<std::fs::File>,
+    offset: u64,
+    len: usize,
+) -> Result<Vec<u8>> {
+    tokio::task::spawn_blocking(move || {
+        let mut buf = vec![0u8; len];
+        let n = crate::fs_at::pread_upto(&local_file, offset, &mut buf)?;
+        buf.truncate(n);
+        Ok::<Vec<u8>, std::io::Error>(buf)
+    })
+    .await
+    .map_err(|e| join_err("read chunk", e))?
+    .map_err(Error::Io)
+}
+
+/// 下载侧：打开本地目标文件（定长）+ 打开 journal（blocking 段，FTP 后端复用）。
+///
+/// 本地按远端长度定长（稀疏预分配）；续传时旧字节被重传覆盖。刻意**不
+/// truncate**（create|write）：续传时本地前缀字节必须保留——set_len 只补长
+/// 不截短，尺寸真值来自远端 SIZE。
+pub(crate) async fn open_local_target(
+    local: &Path,
+    journal_path: &Path,
+    mode: &str,
+    identity_path: &str,
+    total: u64,
+) -> Result<(Arc<std::fs::File>, Arc<Journal>)> {
+    let local = local.to_path_buf();
+    let journal_path = journal_path.to_path_buf();
+    let mode = mode.to_string();
+    let identity_path = identity_path.to_string();
+    tokio::task::spawn_blocking(move || -> Result<(Arc<std::fs::File>, Arc<Journal>)> {
+        #[allow(clippy::suspicious_open_options)]
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(&local)?;
+        file.set_len(total)?;
+        let journal = Journal::open(&journal_path, &mode, &identity_path, total)?;
+        Ok((Arc::new(file), Arc::new(journal)))
+    })
+    .await
+    .map_err(|e| join_err("open local target", e))?
+}
+
 /// SFTP EOF 状态包（read 越过文件尾；对"按 stat 长度分块"的我们意味着
 /// 文件在传输中被截短，属于异常终止条件而非正常 EOF）。
 fn is_eof(e: &SftpError) -> bool {
@@ -388,7 +523,7 @@ pub async fn download_parallel(
         .map_err(|e| protocol_error(e, &format!("open remote {remote}")))?
         .handle;
 
-    let done = Journal::load(journal_path, "down", remote, total)?;
+    let done = load_journal(journal_path, "down", remote, total).await?;
     let pending = chunk_table(total, &done);
     let chunks_total = total.div_ceil(CHUNK_SIZE) as usize;
     let resumed = chunks_total - pending.len();
@@ -396,16 +531,10 @@ pub async fn download_parallel(
 
     // 本地文件按远端长度定长（稀疏预分配）；partial chunk 的旧字节会被
     // 重传幂等覆盖。写入用 pwrite（write_all_at），worker 间无共享游标。
-    let local_file = Arc::new(
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false) // 续传绝不截断：定长由下方 set_len 显式给出
-            .open(local)?,
-    );
-    local_file.set_len(total)?;
-
-    let journal = Arc::new(Journal::open(journal_path, "down", remote, total)?);
+    // 开文件 + set_len + 开 journal 走 blocking 段（2026-11-20 性能审计
+    // P2：网络盘上的 open/set_len 可挂起数秒，冻住 runtime worker）。
+    let (local_file, journal) =
+        open_local_target(local, journal_path, "down", remote, total).await?;
     let (read_block, _) = probe_block_sizes(&sftp, &read_handle).await;
 
     let queue = Arc::new(Mutex::new(VecDeque::from(pending)));
@@ -437,8 +566,9 @@ pub async fn download_parallel(
                 let data =
                     read_chunk_pipelined(&sftp, &handle, offset, len as usize, read_block).await?;
                 // 顺序不变量：数据先完整写盘（页缓存，kill -9 不丢），后记 journal。
-                pwrite_all(&local_file, offset, &data)?;
-                journal.record(offset)?;
+                // （两者同处一个 blocking 段——blocking 化不改变先后次序。）
+                write_chunk_and_record(Arc::clone(&local_file), Arc::clone(&journal), offset, data)
+                    .await?;
                 let done_now = counter.fetch_add(1, Ordering::Relaxed) + 1;
                 let chunks_done = chunks_total as u64 - remaining + done_now;
                 if let Some(hook) = &progress_hook {
@@ -573,7 +703,7 @@ pub async fn upload_parallel(
     let sftp = open_sftp(session).await?;
     let total = std::fs::metadata(local)?.len();
 
-    let done = Journal::load(journal_path, "up", remote, total)?;
+    let done = load_journal(journal_path, "up", remote, total).await?;
     let pending = chunk_table(total, &done);
     let chunks_total = total.div_ceil(CHUNK_SIZE) as usize;
     let resumed = chunks_total - pending.len();
@@ -610,10 +740,25 @@ pub async fn upload_parallel(
         }
     }
 
-    let journal = Arc::new(Journal::open(journal_path, "up", remote, total)?);
+    // 开 journal + 开本地源文件走 blocking 段（2026-11-20 性能审计 P2）。
+    let journal = tokio::task::spawn_blocking({
+        let journal_path = journal_path.to_path_buf();
+        let remote = remote.to_string();
+        move || Journal::open(&journal_path, "up", &remote, total)
+    })
+    .await
+    .map_err(|e| join_err("open journal", e))??;
+    let journal = Arc::new(journal);
     let (_, write_block) = probe_block_sizes(&sftp, &write_handle).await;
 
-    let local_file = Arc::new(std::fs::File::open(local)?);
+    let local_file = Arc::new(
+        tokio::task::spawn_blocking({
+            let local = local.to_path_buf();
+            move || std::fs::File::open(&local)
+        })
+        .await
+        .map_err(|e| join_err("open local source", e))??,
+    );
     let queue = Arc::new(Mutex::new(VecDeque::from(pending)));
     // 计数器与进度 hook 参数刻意不同名（counter）：`progress` 参数是 hook 传递面。
     let counter = Arc::new(AtomicU64::new(0));
@@ -638,8 +783,7 @@ pub async fn upload_parallel(
                 let Some((_index, offset, len)) = next else {
                     break;
                 };
-                let mut data = vec![0u8; len as usize];
-                pread_exact(&local_file, offset, &mut data)?;
+                let data = read_chunk_local(Arc::clone(&local_file), offset, len as usize).await?;
                 // 远端写：块切分后一轮 try_join_all 流水线；raw write 对每个
                 // ack 校验 Status Ok。全部 ack 返回，chunk 才算完成 —— 然后才
                 // 记 journal（顺序不变量，见模块注释）。
@@ -660,7 +804,7 @@ pub async fn upload_parallel(
                 try_join_all(futs)
                     .await
                     .map_err(|e| protocol_error(e, &format!("sftp write chunk @{offset}")))?;
-                journal.record(offset)?;
+                record_journal(Arc::clone(&journal), offset).await?;
                 let done_now = counter.fetch_add(1, Ordering::Relaxed) + 1;
                 let chunks_done = chunks_total as u64 - remaining + done_now;
                 if let Some(hook) = &progress_hook {

@@ -309,6 +309,10 @@ pub(crate) async fn drop_session(state: State<'_, AppState>, id: String) -> Resu
         return Ok(());
     }
     if let Some(entry) = state.ftp_sessions.lock().unwrap().remove(&id) {
+        // 心跳先取消再 QUIT（robustness 审计 P1）：取消后心跳任务就地退出，
+        // 不再对已关闭的会话探测/发 session-closed（QUIT 与心跳竞争同一把
+        // 客户端互斥锁，也无谓排队）。
+        entry.heartbeat_cancel.cancel();
         tauri::async_runtime::spawn(async move {
             entry.client.quit().await;
         });
@@ -507,7 +511,8 @@ pub(crate) fn disconnect_all_core(state: &AppState) -> usize {
     let mut n = disconnect_all_inner(&state.sessions);
     // 本地终端会话同语义收尾（杀 PTY 子进程）
     n += disconnect_all_local(&state.local_sessions);
-    // FTP 文件会话同语义收尾（无转发循环，QUIT 即可）
+    // FTP 文件会话同语义收尾（无转发循环；QUIT 前先取消心跳——drop_session
+    // FTP 分支同口径）
     let drained: Vec<crate::commands::state::FtpSessionEntry> = state
         .ftp_sessions
         .lock()
@@ -517,6 +522,7 @@ pub(crate) fn disconnect_all_core(state: &AppState) -> usize {
         .collect();
     n += drained.len();
     for entry in drained {
+        entry.heartbeat_cancel.cancel();
         tauri::async_runtime::spawn(async move {
             entry.client.quit().await;
         });

@@ -269,6 +269,24 @@ export function DiagnosePanel({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  // 内容**异步**变高 → 重新贴底（2026-11-20 性能审计 P2：markdown 渲染器
+  // 改为懒加载后，散文内容在状态稳定**之后**才到达——依赖 [answer] 的贴底
+  // effect 早已跑完 → 新内容落在折线以下，界面上看着「什么都没发生」；
+  // verify-views 守卫的「对话流贴底」断言即由此变红）。
+  // MutationObserver 盯对话区的 DOM 变化：任何异步增高（懒加载 chunk、
+  // 图片解码、行内码换行）都会重新贴底；用户已上翻历史时不抢滚动。
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el || typeof MutationObserver === "undefined") return;
+    const mo = new MutationObserver(() => {
+      if (!stickBottom.current) return;
+      const cur = threadRef.current;
+      if (!cur) return;
+      cur.scrollTop = cur.scrollHeight;
+    });
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => mo.disconnect();
+  }, []);
   const markSeen = useAiStore((s) => s.markSeen);
   useEffect(() => {
     if (sessionId && request) markSeen(sessionId);

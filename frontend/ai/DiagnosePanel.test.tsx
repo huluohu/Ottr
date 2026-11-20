@@ -1,7 +1,7 @@
 // DiagnosePanel 组件测试（T13；2026-10-19 方案 A 会话作用域）：流式渲染、
 // 代码块插终端三档确认状态机、错误面（noProvider/noKey → 去设置）。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import i18n from "../i18n";
 import { useAiStore, type DiagnoseRequest, type SessionAiState } from "./aiStore";
 import { DiagnosePanel, extractCodeBlocks } from "./DiagnosePanel";
@@ -86,10 +86,14 @@ describe("面板渲染", () => {
     expect(screen.getByTestId("ai-redactions").textContent).toContain("3");
   });
 
-  it("流式答案渲染文本 + 代码块（插终端按钮在位）", () => {
+  it("流式答案渲染文本 + 代码块（插终端按钮在位）", async () => {
     reset(REQ, { status: "done", answer: "原因是磁盘满。\n```bash\ndf -h\n```" });
     render(<DiagnosePanel sessionId="tab-1" onOpenSettings={() => {}} />);
-    expect(screen.getByTestId("ai-answer").textContent).toContain("原因是磁盘满。");
+    // 散文部分走 markdown 渲染器（懒加载 chunk，2026-11-20 性能审计 P2）
+    // → 文本异步到达，需等待；代码块不走 markdown（同步渲染）。
+    await waitFor(() =>
+      expect(screen.getByTestId("ai-answer").textContent).toContain("原因是磁盘满。"),
+    );
     expect(screen.getByTestId("ai-code-text").textContent).toBe("df -h");
     expect(screen.getByTestId("ai-insert")).toBeTruthy();
   });

@@ -261,14 +261,6 @@
   padding: 2px 10px;
   font-size: var(--text-sm);
   user-select: none;
-  /* 大目录渲染降本（2026-11-20 性能审计 P1）：SFTP 目录可达数千项，全量
-   * 渲染 = 数万 DOM 节点，且每次面板级 setState（路径输入 / 选中 / 拖拽
-   * 浮标）都触发整表 reconcile。content-visibility 让浏览器跳过视口外行
-   * 的布局与绘制（DOM 仍在，但零布局成本）。contain-intrinsic-size 给出
-   * 行高估值——行高随内容（名称换行）略有出入，用近似值即可（滚动条长度
-   * 会随滚动校正，不影响可用性）。 */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 22px;
 }
 /* 排序列头（feat/file-panel-enhancements）：与 .file-row 同栅格口径
  * （icon 占位 / 名称弹性 / 大小·权限·时间定宽）；可点列 hover 提亮，
